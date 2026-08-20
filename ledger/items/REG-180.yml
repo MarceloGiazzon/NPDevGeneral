@@ -5,8 +5,10 @@ title: >-
   exploitable via any documented launch path
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-15
+closed: 2026-08-20
+verification: UNIT_TESTED
 source: >-
   Found incidentally while investigating a reported com.finalexec.controlpanel 404 (see REG-179's
   own source note -- that 404 did not reproduce; this is a different thing found along the way
@@ -84,12 +86,26 @@ detail: |
   that R7 Stage B moved the un-profiled boot from "impossible" to "the shortest command a third party
   might try" (a bare `java -jar ... ` with no `--spring.profiles.active` flag). Re-rating deferred to
   whoever next picks this up with full context -- not changed here alongside an unrelated plan.
+
+  2026-08-20 (fix, option (b) -- owner decision accepted): confirmed the enforcement is INTENTIONALLY
+  profile-scoped and documented that in RuntimeControllerAllowlistConfig.java and
+  application-default.properties, with the history of both reverted quick-fixes recorded. Pinned by a
+  new run-runtime-surface-evidence.ps1 check ("enforcement-scoped-to-default-profile-only") that fails
+  the gate if any application*.properties other than application-default.properties sets
+  npdev.runtime.supported-surface-enforced=true -- so the landmine cannot silently arm on a real launch
+  profile. Severity stays LOW (dormant, not exploitable via any documented path); the re-rating
+  question remains open for whoever designs the companion non-API allowlist mechanism.
 guard:
-  kind: manual
-  ref: >-
-    boot a generated app with NO --spring.profiles.active flag at all (a genuinely un-profiled
-    boot), then GET a com.finalexec.controlpanel endpoint
+  kind: script
+  ref: scripts/quality/run-runtime-surface-evidence.ps1
   asserts: >-
-    the endpoint does not silently 404 due to RuntimeControllerAllowlistConfig stripping an
-    unlisted-but-intended-to-be-supported controller package
+    The "enforcement-scoped-to-default-profile-only" check fails the gate if any application*.properties
+    other than application-default.properties sets npdev.runtime.supported-surface-enforced=true -- the
+    documented intentional scoping that keeps the ControlPanel admin surface from being stripped on a
+    real launch profile.
   provenRed: false
+  provenRedNote: >-
+    Both "quick fixes" were already reproduced as RED and reverted before this item's closure (an
+    allowlist add breaks the runtime-surface invariant in CI; matchIfMissing=true was traced to 404 the
+    whole admin surface before ever shipping). The scoping guard is a static gate check, so no new
+    failing run was captured at fix time -- the RED history is the two reverted attempts above.

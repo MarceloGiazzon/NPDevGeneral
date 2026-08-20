@@ -195,9 +195,9 @@ class ScheduledEventDrainRunnerIT {
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO npdev_scheduled_event (
                        id, schedule_key, orchestration_name, action_index, source_event_name,
-                       source_event_id, trigger_correlation_id, event_name, due_at, payload,
+                       source_event_id, trigger_correlation_id, tenant_id, event_name, due_at, payload,
                        status, attempt_count, created_at, updated_at
-                     ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
+                     ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, 'PENDING', 0, ?, ?)
                      """)) {
             statement.setString(1, scheduleId.toString());
             statement.setString(2, "drain-it:" + scheduleId);
@@ -205,11 +205,12 @@ class ScheduledEventDrainRunnerIT {
             statement.setString(4, "ContactCreated");
             statement.setString(5, UUID.randomUUID().toString());
             statement.setString(6, UUID.randomUUID().toString());
-            statement.setString(7, eventName);
-            statement.setTimestamp(8, Timestamp.from(dueAt));
-            statement.setString(9, "{\"contactId\":\"" + scheduleId + "\"}");
-            statement.setTimestamp(10, now);
+            statement.setString(7, "default");
+            statement.setString(8, eventName);
+            statement.setTimestamp(9, Timestamp.from(dueAt));
+            statement.setString(10, "{\"contactId\":\"" + scheduleId + "\"}");
             statement.setTimestamp(11, now);
+            statement.setTimestamp(12, now);
             statement.executeUpdate();
         }
     }
@@ -230,6 +231,7 @@ class ScheduledEventDrainRunnerIT {
                       source_event_name VARCHAR(191) NOT NULL,
                       source_event_id VARCHAR(191),
                       trigger_correlation_id TEXT,
+                      tenant_id TEXT,
                       event_name TEXT NOT NULL,
                       due_at TIMESTAMP NOT NULL,
                       payload TEXT NOT NULL,

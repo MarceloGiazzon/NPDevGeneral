@@ -286,6 +286,39 @@ detail: |
   and editing a flow's or panel's internals once created. Whether that residue still blocks R10.3 is
   now an owner call of the kind option 1 always described -- it is no longer a claim engineering can
   settle by pointing at a capability nothing replaces.
+
+  DRAFT OWNER MESSAGE (go/no-go for R10.3, ready to send):
+
+  Subject: R10.3 go/no-go -- the frozen AuthoringApp bundle now has a verified replacement
+
+  The original reason R10.3 (delete `static-react/`) was blocked was a capability nothing else served:
+  a client-side model-authoring studio (starter templates, scaffolding, import/export). That reason no
+  longer holds. The generator now emits `model-authoring.html`, which meets all three criteria this
+  item named:
+
+    1. Starter templates (Business Record Starter, Approval Workflow Starter).
+    2. All seven scaffolding action types (add concept/field/flow/panel/invariant/state/transition).
+    3. A real editing surface (rename/delete a concept, rename/retype/remove a field, remove a state),
+       with `renamedFrom` recorded so a rename is not a data-destroying drop-and-create.
+
+  It is verified end-to-end: a headless-Chromium round trip (66/66 assertions) covering every editing
+  action and its refusals, and the edited model passes the real validator with `status: warning` and
+  zero errors.
+
+  What remains (the residue, named in the page itself): reference-typed and enum fields in the
+  add-field forms, multi-step flow authoring, and editing a flow's or panel's internals once created.
+
+  Decision requested: does that residue still block R10.3, or can R10.3 proceed now?
+
+    Option 1 (recommended) -- proceed: lift the guard, delete `static-react/`, and close EDIT-12 in the
+    same change; track the three residue items as a separate, additive authoring item. The original
+    "nothing replaces this" blocker is gone; the residue is additive refinement, not a capability gap.
+
+    Option 2 -- wait: hold R10.3 until the three residue items land. Cost: the frozen bundle (~430 KB of
+    minified JS across three chunks, including a dead Workbench and a duplicated Operator-UI surface)
+    keeps decaying for another cycle.
+
+  Engineering recommendation: Option 1.
 guard:
   kind: manual
   ref: NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json

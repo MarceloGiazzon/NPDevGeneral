@@ -651,6 +651,20 @@ if (Test-Path -LiteralPath $SeedsSrcDir) {
   Write-Step "data-seeds/index.json written with $($seedManifest.Count) seed(s)."
 }
 
+# ---- 4e. copy definition/exploration-config.json into the app's _ops toolbox --------------
+# MON-19: npdev_explore reads <app>/_ops/exploration-config.json, but nothing wrote it -- every
+# narrow excuse had to be hand-placed after each rebuild, which wipes _ops wholesale. Source it from
+# the app definition (definition/exploration-config.json), exactly like the seeds above, and copy it
+# into the generated app's _ops so it is re-established on every build instead of surviving only until
+# the next regeneration.
+$ExplorationConfigSrc = Join-Path $Definition 'exploration-config.json'
+if (Test-Path -LiteralPath $ExplorationConfigSrc) {
+  $ExplorationConfigDst = Join-Path $GeneratedAppRoot '_ops\exploration-config.json'
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ExplorationConfigDst) | Out-Null
+  Copy-Item -LiteralPath $ExplorationConfigSrc -Destination $ExplorationConfigDst -Force
+  Write-Step "Copied definition/exploration-config.json into the app's _ops toolbox."
+}
+
 # ---- 5. resolve RuntimeHost libs ------------------------------------------
 $GeneratedAppRoot = Join-Path $OutRoot 'App'
 $LibsResult = [ordered]@{ status = 'skipped'; libsDir = $RuntimeHostLibsDir }

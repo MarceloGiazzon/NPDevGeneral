@@ -90,23 +90,35 @@ public final class PackExtensionComposer {
     }
 
     /**
-     * Reads this pack's own declared extension target from {@code metadata.extends}, or {@code null}
-     * if this pack declares none (an ordinary, non-extending pack).
+     * Reads this pack's own declared extension target, or {@code null} if this pack declares none
+     * (an ordinary, non-extending pack). Checks the first-class {@code extends} property first
+     * (PACK-10/R8.11), falling back to the legacy {@code metadata.extends} convention for backward
+     * compatibility.
      */
     public ExtensionTarget readExtensionTarget(JsonNode packJson) {
         if (packJson == null || !packJson.isObject()) {
             return null;
         }
+        // First-class `extends` (PACK-10/R8.11)
+        JsonNode extends_ = packJson.get("extends");
+        if (extends_ != null && extends_.isObject()) {
+            String targetPack = textOrNull(extends_.get("pack"));
+            String targetConcept = textOrNull(extends_.get("concept"));
+            if (targetPack != null && targetConcept != null) {
+                return new ExtensionTarget(targetPack, targetConcept);
+            }
+        }
+        // Legacy fallback: metadata.extends
         JsonNode metadata = packJson.get("metadata");
         if (metadata == null || !metadata.isObject()) {
             return null;
         }
-        JsonNode extends_ = metadata.get("extends");
-        if (extends_ == null || !extends_.isObject()) {
+        JsonNode metaExtends = metadata.get("extends");
+        if (metaExtends == null || !metaExtends.isObject()) {
             return null;
         }
-        String targetPack = textOrNull(extends_.get("pack"));
-        String targetConcept = textOrNull(extends_.get("concept"));
+        String targetPack = textOrNull(metaExtends.get("pack"));
+        String targetConcept = textOrNull(metaExtends.get("concept"));
         if (targetPack == null || targetConcept == null) {
             return null;
         }

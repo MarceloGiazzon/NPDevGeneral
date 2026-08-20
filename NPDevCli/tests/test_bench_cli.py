@@ -212,6 +212,31 @@ class BenchBaselineCompare(unittest.TestCase):
         result = npdev_cli._compare_to_baseline(stats, baseline, 1.5)
         self.assertFalse(result["regressed"])
 
+    def test_uniform_machine_slowdown_is_cancelled_by_the_control(self):
+        # MON-21: endpoint and control both ~1.6x slower -> raw ratio flags, normalised does not.
+        stats = {"samples": 5, "p50Ms": 16.0}
+        baseline = {"p50Ms": 10.0, "samples": 5, "measuredAt": "2026-08-19T00:00:00Z"}
+        result = npdev_cli._compare_to_baseline(stats, baseline, 1.5, control_ratio=1.6)
+        self.assertGreater(result["ratio"], 1.5)
+        self.assertFalse(result["regressed"])
+        self.assertAlmostEqual(result["normalizedRatio"], 1.0, places=3)
+
+    def test_a_real_regression_survives_normalization(self):
+        # MON-21: endpoint 1.6x slower while the control stayed flat -> still regressed.
+        stats = {"samples": 5, "p50Ms": 16.0}
+        baseline = {"p50Ms": 10.0, "samples": 5, "measuredAt": "2026-08-19T00:00:00Z"}
+        result = npdev_cli._compare_to_baseline(stats, baseline, 1.5, control_ratio=1.0)
+        self.assertTrue(result["regressed"])
+        self.assertAlmostEqual(result["normalizedRatio"], 1.6, places=3)
+
+    def test_absent_control_ratio_falls_back_to_the_raw_ratio(self):
+        stats = {"samples": 5, "p50Ms": 16.0}
+        baseline = {"p50Ms": 10.0, "samples": 5, "measuredAt": "2026-08-19T00:00:00Z"}
+        result = npdev_cli._compare_to_baseline(stats, baseline, 1.5, control_ratio=None)
+        self.assertTrue(result["regressed"])
+        self.assertFalse(result["normalizationApplied"])
+        self.assertNotIn("normalizedRatio", result)
+
 
 class BenchBaselineFile(unittest.TestCase):
     def test_a_missing_baseline_file_is_an_empty_dict_not_an_error(self):
@@ -356,7 +381,9 @@ class RunBenchBaseline(unittest.TestCase):
             self.assertTrue(baseline_path.is_file())
             saved = json.loads(baseline_path.read_text(encoding="utf-8"))
             self.assertEqual(saved["schemaVersion"], npdev_cli.BENCH_BASELINE_SCHEMA_VERSION)
-            self.assertEqual(set(saved["endpoints"]), {"list:User", "list:Order", "panel:UserSummary"})
+            self.assertEqual(set(saved["endpoints"]),
+                             {"list:User", "list:Order", "panel:UserSummary",
+                              npdev_cli.BENCH_CONTROL_BASELINE_KEY})
             # Not every regression is real on a first run: nothing was there to be worse than.
             self.assertEqual(result["counts"]["regressed"], 0)
 

@@ -99,6 +99,17 @@ detail: |
   unblock reviving NonDefaultRuntimeSurfaceProfileIntegrationTest), and Stage 4's 4 deferred
   scenario tests (need a fixture model with Patient/Provider/Appointment/InsuranceClaim wired into
   a Postgres-capable sample, or a rewrite against an existing corpus model).
+
+  2026-08-20 (Stage 3 completed, verified live against the assembled simple-contact-intake sample):
+  of the 4 remaining candidates, 3 are now REVIVED and pass -- RuntimePluginStatusControllerIntegrationTest,
+  RuntimePluginFilesystemDiscoveryIntegrationTest, and SupportedRuntimeSurfaceAllowlistIntegrationTest (all
+  full-boot @SpringBootTest surface tests). The 4th, SupportedCoreControllerBlackBoxIntegrationTest, FAILS
+  FOR REAL and stays excluded -- but NOT as a manifest drift (that first read was later corrected): the
+  test walks the assembled app's whole com.finalexec tree, which the manifest does not govern (it is
+  api-scoped, spanning RuntimeHost + the jar-shipped runtimehost-core). Filed separately as REG-196 (a
+  test-side scope mismatch, not a manifest error). Net test-result files
+  131 -> 134, 0 failures. (The earlier "real fix for REG-163" note above is stale: REG-163 closed
+  2026-08-15 and NonDefaultRuntimeSurfaceProfileIntegrationTest was already revived then.)
 guard:
   kind: script
   ref: NPDevSamples/scripts/generate-sample-app.ps1 + gradlew test (RED/GREEN test-result-file counts under com/finalexec/api and com/finalexec/controlpanel), plus scripts/quality/run-runtimehost-gate.ps1 (full gate, passed)

@@ -3,6 +3,8 @@ package com.npdev.adapters.persistence.inproc;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.PersistenceCapabilityContract;
 import com.npdev.kernel.ports.TenantScope;
 import com.npdev.kernel.ports.TenantScopedPersistenceCapabilityContract;
@@ -23,6 +25,11 @@ public final class InMemoryPersistenceCapabilityAdapter
         implements PersistenceCapabilityContract, TenantScopedPersistenceCapabilityContract {
     private final Map<String, Map<Object, Map<String, Object>>> storeByConcept = new ConcurrentHashMap<>();
     private final CompiledModel compiledModel;
+    // REG-187: when a ConceptStore is provided (the runtime injects the SAME store the generated
+    // service's CRUD reads), save() delegates to it, so a flow-driven create is visible to the
+    // service's post-flow findById under InMemory. Null keeps the legacy isolated Map (unit tests /
+    // non-runtime wiring).
+    private final ConceptStore conceptStore;
 
     public InMemoryPersistenceCapabilityAdapter() {
         this(null);
@@ -34,7 +41,12 @@ public final class InMemoryPersistenceCapabilityAdapter
     // InMemory storage that omits a field with a declared default persisted it as null/missing
     // (ARCH-8b).
     public InMemoryPersistenceCapabilityAdapter(CompiledModel compiledModel) {
+        this(compiledModel, null);
+    }
+
+    public InMemoryPersistenceCapabilityAdapter(CompiledModel compiledModel, ConceptStore conceptStore) {
         this.compiledModel = compiledModel;
+        this.conceptStore = conceptStore;
     }
 
     @Override
@@ -60,6 +72,22 @@ public final class InMemoryPersistenceCapabilityAdapter
         // id field the record arrived with (e.g. "userId") is read above but never used to
         // hide the canonical id.
         record.put("id", id);
+
+        if (conceptStore != null) {
+            // REG-187: write to the SAME ConceptStore the generated service's CRUD reads, so a
+            // flow-driven create is visible to the service's post-flow findById under InMemory. The
+            // tenant the kernel stamped into the entity (persistence.save tenant isolation) is what
+            // the service's own read uses, so both sides agree.
+            Object tenant = record.get("tenantId");
+            if (tenant == null) {
+                tenant = record.get("tenant_id");
+            }
+            String tenantId = (tenant == null || String.valueOf(tenant).isBlank())
+                    ? "default" : String.valueOf(tenant);
+            ConceptRecord saved = conceptStore.save(
+                    new ConceptRecord(conceptKey, String.valueOf(id), tenantId, new LinkedHashMap<>(record)));
+            return immutableRecord(new LinkedHashMap<>(saved.data()));
+        }
 
         storeByConcept
                 .computeIfAbsent(conceptKey, k -> new ConcurrentHashMap<>())

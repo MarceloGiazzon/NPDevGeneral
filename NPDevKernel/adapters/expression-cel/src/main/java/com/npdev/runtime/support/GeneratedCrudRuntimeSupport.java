@@ -748,7 +748,7 @@ public final class GeneratedCrudRuntimeSupport {
         int safeOffset = sanitizeScheduleOffset(offset);
         SqlDialect dialect = SqlDialects.active();
         String sql = dialect.paginated("SELECT id, schedule_key, orchestration_name, action_index, source_event_name, source_event_id, "
-                + "trigger_correlation_id, event_name, due_at, status, attempt_count, created_at, "
+                + "trigger_correlation_id, tenant_id, event_name, due_at, status, attempt_count, created_at, "
                 + "updated_at, processed_at, payload "
                 + "FROM " + SCHEDULE_TABLE + " "
                 + "ORDER BY created_at DESC ").stripTrailing();
@@ -816,15 +816,11 @@ public final class GeneratedCrudRuntimeSupport {
                 payload.putIfAbsent("scheduleId", record.id().toString());
                 payload.putIfAbsent("sourceEventName", record.sourceEventName());
                 payload.putIfAbsent("sourceEventId", record.sourceEventId());
-                publishRuntimeEvent(
-                        record.eventName(),
-                        payload,
-                        Map.of(
-                                "orchestrationAction", "scheduleEvent",
-                                "scheduleId", record.id().toString(),
-                                "sourceEventName", nullToEmpty(record.sourceEventName())
-                        )
-                );
+                publishScheduledDueEvent(record, payload, Map.of(
+                        "orchestrationAction", "scheduleEvent",
+                        "scheduleId", record.id().toString(),
+                        "sourceEventName", nullToEmpty(record.sourceEventName())
+                ));
                 markScheduledEventProcessed(record.id());
                 processed++;
                 publishRuntimeEvent(
@@ -1170,6 +1166,26 @@ public final class GeneratedCrudRuntimeSupport {
                 payload.put(fieldName, value);
             }
         }
+    }
+
+    private void publishScheduledDueEvent(ScheduledEventRecord record, Map<String, Object> payload,
+                                          Map<String, Object> metadata) {
+        // RUN-10: publish the due event with the SAME correlation id AND tenant it was scheduled under,
+        // so a correlated AWAIT_EVENT (matchCorrelation: true) is satisfied instead of staying parked.
+        Map<String, Object> eventPayload = new LinkedHashMap<>(payload == null ? Map.of() : payload);
+        if (metadata != null && !metadata.isEmpty()) {
+            eventPayload.put("_meta", Map.copyOf(new LinkedHashMap<>(metadata)));
+        }
+        String tenantId = (record.tenantId() == null || record.tenantId().isBlank())
+                ? "default"
+                : record.tenantId();
+        kernelRunner.publishExternalEvent(
+                record.eventName(),
+                Map.copyOf(eventPayload),
+                record.correlationId(),
+                null,
+                ExecutionContext.of(tenantId, null)
+        );
     }
 
     private void publishRuntimeEvent(String eventName, Map<String, Object> payload, Map<String, Object> metadata) {
@@ -1609,6 +1625,7 @@ public final class GeneratedCrudRuntimeSupport {
                     envelope.eventName(),
                     envelope.eventId(),
                     envelope.correlationId(),
+                    envelope.tenantId(),
                     scheduleAction.eventName(),
                     dueAt,
                     payloadJson
@@ -2449,6 +2466,7 @@ public final class GeneratedCrudRuntimeSupport {
                     "flow:" + envelope.flowName(),
                     envelope.causationId(),
                     envelope.correlationId(),
+                    envelope.tenantId(),
                     envelope.eventName(),
                     dueAt,
                     payloadJson
@@ -2480,6 +2498,7 @@ public final class GeneratedCrudRuntimeSupport {
             String sourceEventName,
             String sourceEventId,
             String correlationId,
+            String tenantId,
             String eventName,
             OffsetDateTime dueAt,
             String payloadJson
@@ -2498,12 +2517,13 @@ public final class GeneratedCrudRuntimeSupport {
             statement.setString(5, sourceEventName);
             statement.setString(6, sourceEventId);
             statement.setString(7, correlationId);
-            statement.setString(8, eventName);
-            statement.setTimestamp(9, toTimestamp(dueAt));
-            statement.setString(10, payloadJson);
-            statement.setString(11, SCHEDULE_STATUS_PENDING);
-            statement.setTimestamp(12, now);
+            statement.setString(8, tenantId == null || tenantId.isBlank() ? "default" : tenantId);
+            statement.setString(9, eventName);
+            statement.setTimestamp(10, toTimestamp(dueAt));
+            statement.setString(11, payloadJson);
+            statement.setString(12, SCHEDULE_STATUS_PENDING);
             statement.setTimestamp(13, now);
+            statement.setTimestamp(14, now);
             statement.executeUpdate();
         }
     }

@@ -1046,8 +1046,12 @@ def _derived_engine_candidates(workspace_root: Path | None) -> list[Path]:
 
 
 def detect_engine(port: int = DEFAULT_ENGINE_PORT, configured_root: str | None = None,
-                  workspace_root: Path | None = None) -> dict:
-    """D9's four steps, in order, with the reason for each recorded on the answer."""
+                  workspace_root: Path | None = None, search_derived: bool = True) -> dict:
+    """D9's four steps, in order, with the reason for each recorded on the answer.
+
+    `search_derived=False` skips the derived-candidate scan (siblings-walking-up / managed home / npm
+    global). Tests use it to make the verdict depend only on the arguments they pass, not on where the
+    runner's temp directory happens to sit under a tree that contains a real engine checkout (MON-24)."""
     endpoint = f"http://127.0.0.1:{port}"
     status, _ = _http_json(f"{endpoint}/v1/status", timeout=2.0)
     if status is not None and status < 500:
@@ -1069,15 +1073,16 @@ def detect_engine(port: int = DEFAULT_ENGINE_PORT, configured_root: str | None =
                 "detail": "a declared root, verified by CONTENTS (src/server.ts + node_modules/.bin/tsx). Offer Start.",
             }
 
-    for group in _derived_candidate_groups(workspace_root):
-        for candidate in group:
-            if _engine_root_ok(candidate):
-                return {
-                    "found": True, "state": "installed-stopped", "via": "derived-candidate",
-                    "endpoint": None, "port": port, "root": str(candidate.resolve()),
-                    "detail": "found by scanning locations derived from this machine's own layout. "
-                              "Offer Start, and offer to remember it.",
-                }
+    if search_derived:
+        for group in _derived_candidate_groups(workspace_root):
+            for candidate in group:
+                if _engine_root_ok(candidate):
+                    return {
+                        "found": True, "state": "installed-stopped", "via": "derived-candidate",
+                        "endpoint": None, "port": port, "root": str(candidate.resolve()),
+                        "detail": "found by scanning locations derived from this machine's own layout. "
+                                  "Offer Start, and offer to remember it.",
+                    }
 
     return {
         "found": False, "state": "not-found", "via": None,
@@ -1102,7 +1107,8 @@ def engine_start_command(root: str, port: int, allowed_origins: list[str], api_k
     return [str(launcher), str(engine_root / "src" / "server.ts")]
 
 
-def engine_start_env(port: int, allowed_origins: list[str], api_key: str, artifact_dir: str) -> dict:
+def engine_start_env(port: int, allowed_origins: list[str], api_key: str, artifact_dir: str,
+                     allow_evaluate: bool = False) -> dict:
     origins = ",".join(sorted({o for o in allowed_origins if o}))
     return {
         "PORT": str(port),
@@ -1112,7 +1118,7 @@ def engine_start_env(port: int, allowed_origins: list[str], api_key: str, artifa
         "ALLOWED_TARGET_ORIGINS": origins,
         "ALLOWED_RESOURCE_ORIGINS": origins,
         "ARTIFACT_DIR": artifact_dir,
-        "ALLOW_EVALUATE": "false",
+        "ALLOW_EVALUATE": "true" if allow_evaluate else "false",
         # A generated app renders a SPA that fetches /api/me and friends; the library defaults of
         # 10s/60s are too tight for a cold-cache first load. Same values the harness proved.
         "STEP_TIMEOUT_MS": "30000",

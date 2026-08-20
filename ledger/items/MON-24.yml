@@ -4,8 +4,10 @@ title: >-
   ScrapForAI checkout -- detect_engine walks five parents up from the workspace root it is handed
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-20
+verification: UNIT_TESTED
 source: >-
   Found by the orchestrator after two EngineDetection tests went red with no code change. Diagnosed
   to the orchestrator's OWN temp redirection, not to any product change -- recorded so the next
@@ -56,18 +58,23 @@ detail: |
   has one, and reporting it found is correct. It only makes the gated Python suite's verdict depend
   on the runner's temp configuration, which is exactly the kind of red that gets waved through as
   "pre-existing" the next time.
+
+  2026-08-20 (fix): `detect_engine` gained a `search_derived: bool = True` parameter; when False it
+  skips the derived-candidate scan (siblings-walking-up / managed home / npm global) entirely. The two
+  affected tests now pass `search_derived=False`, so their verdict depends only on the arguments they
+  pass, not on where the runner's temp directory sits. Two regression tests added to the
+  EngineDetection class: `test_search_derived_false_skips_the_derived_candidate_scan` (mocks
+  `_derived_candidate_groups` and asserts it is NOT called) and `test_search_derived_defaults_to_on`.
+  The five-level walk itself is untouched -- it is load-bearing product behaviour.
 guard:
-  kind: manual
-  ref: >-
-    Run `python -m unittest discover -s NPDevCli/tests -p "test_monitor_and_explore.py"` twice: once
-    with the default OS temp, once with TMPDIR set to a directory whose fifth-level ancestor contains
-    a ScrapForAI checkout (on this machine, anything under D:\WorkSpace\NPDev). The second run fails
-    the two EngineDetection assertions with no code change.
+  kind: test
+  ref: NPDevCli/tests/test_monitor_and_explore.py
   asserts: >-
-    EngineDetection's verdict depends only on the arguments the test passes, not on where the
-    runner's temp directory happens to sit
+    EngineDetection's verdict depends only on the arguments the test passes: search_derived=False skips
+    the derived-candidate scan (the mocked _derived_candidate_groups is never called) and the not-found
+    and contents-check tests stay green regardless of where the runner's temp directory sits.
   provenRed: false
   provenRedNote: >-
-    Observed live (397/OK before the temp redirection, 2 failures after, same code) and traced to the
-    exact line, but not captured by a test written to force it -- a deliberate RED here would mean
-    parameterising the suite over temp locations.
+    The flakiness was observed live (397 OK before temp redirection, 2 failures after, same code) and
+    traced to the exact line, but it is environmental and not forceable by a portable unit test; the
+    regression guard is the mocked call-count assertion, not a live temp-location reproduction.

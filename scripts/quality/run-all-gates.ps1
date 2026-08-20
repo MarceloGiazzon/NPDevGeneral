@@ -9,15 +9,17 @@
     check-panel-provenance-impact.py stayed red across three moves while three consecutive move
     reports said otherwise.
 
-    Order is deliberate, cheapest-and-most-diagnostic first:
+    Order is deliberate -- the build gates run FIRST so their fresh JaCoCo reports are on disk when
+    the coverage ratchet (a step inside ai-knowledge) reads them. Running ai-knowledge first left the
+    ratchet reading a PREVIOUS run's reports and produced a false "regression" off a partial report
+    (QUAL-27):
 
-      1. ai-knowledge   -- static, seconds; hosts 13 of the repo's 13 check-*.py, including the
+      1. generator      -- the codegen engine (builds dsl + generator, runs tests -> JaCoCo).
+      2. runtimehost    -- generates an assembled sample app and runs its test suite -> JaCoCo.
+      3. ai-knowledge   -- static instrument checks + all check-*.py, including the coverage ratchet
+                           (which now sees the reports the two build gates above just wrote) and the
                            script-inventory rule that fails if any checker is hosted by no gate.
-                           Run first: if the instruments are broken, later results mean less.
-      2. generator      -- the codegen engine.
-      3. runtimehost    -- generates an assembled sample app and runs its test suite.
-      4. frontend       -- the authoring UI.
-      5. beta-release   -- the aggregate release checks (it does NOT invoke the four above; it is
+      4. beta-release   -- the aggregate release checks (it does NOT invoke the three above; it is
                            an additional gate, not a superset -- verified, not assumed).
 
     Every gate runs even after an earlier one fails (-StopOnFirstFailure opts out). A gate suite
@@ -66,9 +68,9 @@ $ErrorActionPreference = "Continue"
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 
 $gates = @(
-    [pscustomobject]@{ Name = "aiKnowledge"; Script = "scripts/quality/run-ai-knowledge-gate.ps1"; Why = "static instrument checks + all check-*.py"; Tier = "T2" }
     [pscustomobject]@{ Name = "generator";   Script = "scripts/quality/run-generator-gate.ps1";    Why = "codegen engine"; Tier = "T2" }
     [pscustomobject]@{ Name = "runtimeHost"; Script = "scripts/quality/run-runtimehost-gate.ps1";  Why = "assembled sample app + its test suite"; Tier = "T2" }
+    [pscustomobject]@{ Name = "aiKnowledge"; Script = "scripts/quality/run-ai-knowledge-gate.ps1"; Why = "static instrument checks + all check-*.py"; Tier = "T2" }
     [pscustomobject]@{ Name = "betaRelease"; Script = "scripts/quality/run-beta-release-gate.ps1"; Why = "aggregate release checks"; Tier = "T3" }
 )
 

@@ -95,6 +95,53 @@ class PackExtensionComposerTest {
     }
 
     @Test
+    void readsExtensionTargetFromFirstClassExtendsKeyword() throws Exception {
+        String firstClassExtends = """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "clinicext",
+                  "version": "1.0.0",
+                  "extends": { "pack": "clinicbase", "concept": "Patient" },
+                  "concepts": [
+                    { "name": "Patient", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true },
+                      { "name": "specialty", "type": "string", "required": false, "maxLength": 80 }
+                    ]}
+                  ]
+                }
+                """;
+        JsonNode packJson = MAPPER.readTree(firstClassExtends);
+        PackExtensionComposer.ExtensionTarget target = new PackExtensionComposer().readExtensionTarget(packJson);
+
+        assertEquals("clinicbase", target.packAlias());
+        assertEquals("Patient", target.conceptName());
+        assertEquals("clinicbase::Patient", target.qualifiedName());
+    }
+
+    @Test
+    void firstClassExtendsTakesPrecedenceOverMetadataExtends() throws Exception {
+        String bothExtends = """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "clinicext",
+                  "version": "1.0.0",
+                  "extends": { "pack": "firstclass", "concept": "Alpha" },
+                  "metadata": { "extends": { "pack": "legacy", "concept": "Beta" } },
+                  "concepts": [
+                    { "name": "Patient", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ]}
+                  ]
+                }
+                """;
+        JsonNode packJson = MAPPER.readTree(bothExtends);
+        PackExtensionComposer.ExtensionTarget target = new PackExtensionComposer().readExtensionTarget(packJson);
+
+        assertEquals("firstclass", target.packAlias());
+        assertEquals("Alpha", target.conceptName());
+    }
+
+    @Test
     void returnsNullWhenPackDeclaresNoExtensionTarget() throws Exception {
         JsonNode packJson = MAPPER.readTree(CLINICBASE_PACK_JSON);
         assertNull(new PackExtensionComposer().readExtensionTarget(packJson));
