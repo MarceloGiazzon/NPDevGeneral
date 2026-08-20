@@ -110,6 +110,13 @@ detail: |
   test-side scope mismatch, not a manifest error). Net test-result files
   131 -> 134, 0 failures. (The earlier "real fix for REG-163" note above is stale: REG-163 closed
   2026-08-15 and NonDefaultRuntimeSurfaceProfileIntegrationTest was already revived then.)
+
+  2026-08-20 (REG-196 fix): SupportedCoreControllerBlackBoxIntegrationTest is now REVIVED. The test's
+  discoverSourceControllers() filesystem walk was replaced with a classpath scan of com.finalexec.api
+  (ClassPathScanningCandidateComponentProvider), matching the manifest's actual two-module scope
+  (RuntimeHost + runtimehost-core jar). A fallback handles HelloController (compile-time excluded).
+  The test was removed from the exclusion list in both build.gradle and build.gradle.template.
+  Net test-result files 134 -> 135. Remaining: Stage 4's 4 deferred scenario tests.
 guard:
   kind: script
   ref: NPDevSamples/scripts/generate-sample-app.ps1 + gradlew test (RED/GREEN test-result-file counts under com/finalexec/api and com/finalexec/controlpanel), plus scripts/quality/run-runtimehost-gate.ps1 (full gate, passed)

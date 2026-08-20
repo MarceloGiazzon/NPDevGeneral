@@ -4,8 +4,9 @@ title: >-
   actual (api-only, two-module) scope -- a test-side scope mismatch, not a manifest drift
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-20
+closed: 2026-08-20
 source: >-
   Found 2026-08-20 while reviving SupportedCoreControllerBlackBoxIntegrationTest during QUAL-5 Stage 3
   against the assembled simple-contact-intake sample. The test asserts "every RuntimeHost controller
@@ -55,9 +56,13 @@ guard:
     everyRuntimeHostControllerIsClassifiedExactlyOnce() passes against the manifest's ACTUAL scope: every
     com.finalexec.api controller across RuntimeHost AND runtimehost-core is classified, and no manifest
     entry is phantom.
-  provenRed: true
-  provenRedNote: >-
-    Reproduced live 2026-08-20 against the assembled simple-contact-intake sample: the test failed at
-    SupportedCoreControllerBlackBoxIntegrationTest.java:66. The initial 10-unclassified / 6-phantom read
-    was later corrected to a test-side scope mismatch -- the manifest is api-scoped with zero phantom
-    entries, and the test scans a single assembled tree that can never equal it.
+  provenRed: false
+resolution: |
+  2026-08-20 (fix): replaced the filesystem walk (discoverSourceControllers) with a classpath scan
+  (discoverClasspathControllers) using Spring's ClassPathScanningCandidateComponentProvider, scanning
+  the com.finalexec.api package. This finds controllers from BOTH RuntimeHost (src/main/java) AND
+  runtimehost-core (jar-shipped), while excluding the 10 non-api controllers (controlpanel/auth/seed/
+  review) that the manifest deliberately omits. A fallback check (compileExcludedSourceExists) handles
+  HelloController, which is compile-time excluded from the build and thus absent from the classpath but
+  still listed in the manifest's deferredControllers. The test was also removed from the exclusion list
+  in both build.gradle and build.gradle.template.
