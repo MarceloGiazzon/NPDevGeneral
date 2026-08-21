@@ -474,8 +474,32 @@ final class PackDependencyGraphWalker {
                             .add(new MinimalVersionSelector.Requirement(packId, pathToThisPack, constraint));
                 }
                 if (!packNodeById.containsKey(childPackId)) {
-                    Path childFile = defaultPackFile(childPackId);
+                    // PACK-8: a transitive dependency may now declare its own `from` (remote
+                    // coordinate) or `$ref` (explicit local file), mirroring the app-level packRef
+                    // pattern. When neither is present the pre-PACK-8 convention applies unchanged.
+                    JsonNode childFromNode = dependency.get("from");
+                    JsonNode childRefNode = dependency.get("$ref");
+                    boolean hasChildFrom = childFromNode != null && childFromNode.isTextual() && !childFromNode.asText("").isBlank();
+                    boolean hasChildRef = childRefNode != null && childRefNode.isTextual() && !childRefNode.asText("").isBlank();
+                    if (hasChildFrom && hasChildRef) {
+                        throw ModelSourceResolver.error(packFile, "/packs",
+                                "Transitive pack '" + childPackId + "' declares both 'from' and '$ref' -- exactly one is allowed");
+                    }
+                    Path childFile;
+                    String childFromCoordinate = "";
+                    if (hasChildFrom) {
+                        childFromCoordinate = childFromNode.asText().trim();
+                        String depPath = "/packs/" + childPackId + "/from";
+                        childFile = resolveRemotePackFile(childFromCoordinate, depPath, packFile);
+                    } else if (hasChildRef) {
+                        childFile = ModelSourceResolver.resolvePackPath(childRefNode.asText(), packFile, rootDirectory);
+                    } else {
+                        childFile = defaultPackFile(childPackId);
+                    }
                     ObjectNode childNode = loadAndResolvePack(childFile, depth + 1);
+                    if (!childFromCoordinate.isEmpty()) {
+                        fromByPackId.put(childPackId, childFromCoordinate);
+                    }
                     List<String> childPath = new ArrayList<>(pathToThisPack);
                     childPath.add(childPackId);
                     discover(childPackId, childNode, childFile, depth + 1, childPath);
