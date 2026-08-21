@@ -24,6 +24,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.finalexec.boundary.*;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -427,7 +429,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // taken either way -- see MigrationMutex for how it avoids needing a table at all on three
         // engines, and keeps its table out of Flyway's schema on the fourth.
         boolean freshDatabase = storedAtBootStart == null || storedAtBootStart.isBlank();
-        MigrationClaimStore.Claim claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+        MigrationClaimStore.Claim claim;
+        try {
+            claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+        } catch (RuntimeException lockFailure) {
+            throw new BoundaryBootException(new BoundaryViolation("B4", "boot",
+                    "Another app instance holds the migration lock. Wait for it to finish or clear the claim.",
+                    Instant.now()));
+        }
         try {
             boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
                     && !storedAtBootStart.equals(manifest.schemaFingerprint());
@@ -667,15 +676,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         Optional<SchemaHistoryStore.HistoryPoint> aheadOfBuild = SchemaHistoryStore.databaseMigratedPastThisBuild(dataSource, manifest);
         if (aheadOfBuild.isPresent()) {
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
-            throw new IllegalStateException("This database was migrated PAST this build. Schema history shows "
-                    + "fingerprint " + aheadOfBuild.get().toFingerprint() + " was successfully applied at "
-                    + aheadOfBuild.get().appliedAtUtc() + " (epoch ms), newer than this build's own target ("
-                    + manifest.schemaFingerprint() + "). Rolling an older build back onto a database a newer "
-                    + "build already migrated is unsupported and can silently lose data (REG-8) -- roll forward "
-                    + "to the newer build, restore from backup/snapshot, or -- if you deliberately intend this "
-                    + "older build to take over -- mark fingerprint " + aheadOfBuild.get().toFingerprint()
-                    + " done (see docs/SCHEMA_EVOLUTION.md#marking-a-migration-as-done) and redeploy. See "
-                    + "docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.");
+            throw new BoundaryBootException(new BoundaryViolation("B5", "boot",
+                    "This database was migrated by a newer build. Downgrade is not supported.",
+                    Instant.now()));
         }
 
         // SER-P4.8: classify's COLUMN-level decision is now ClassificationReducer over the live diff
@@ -1472,6 +1475,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             DatabaseMetaData metadata, DataSource dataSource, SchemaManifest manifest) throws SQLException {
         Set<String> owned = readOwnedBusinessTables(dataSource);
         if (owned == null || owned.isEmpty()) {
+            // B8 (ownership history): no ownership evidence recorded -- cannot prove any live table is
+            // NPDev-owned, so skipping drop of unowned tables. Warn so the operator sees the boundary.
+            System.out.println("NPDev schema lifecycle: WARNING [B8] no ownership history recorded -- "
+                    + "skipping drop of unowned tables (no ownership evidence to act on).");
             return Set.of();
         }
         Set<String> stillDeclared = new LinkedHashSet<>();
