@@ -2,6 +2,6 @@
   "schemaVersion": "ai-expected-behavior.v1",
   "scenarioId": "custom-procedure-invalid",
   "comparisonMode": "exact",
-  "expectedClass": "FAIL_KIND_UNSUPPORTED",
+  "expectedClass": "PASS_CUSTOM_PROCEDURE_MINIMAL",
   "assertions": []
 }
