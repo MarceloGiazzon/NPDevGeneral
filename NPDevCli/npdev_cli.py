@@ -7153,6 +7153,7 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
         report_target.parent.mkdir(parents=True, exist_ok=True)
         command = _ai_tools_command(
             AI_TOOLS_VALIDATOR_MAIN, [str(model), "--out", str(report_target)])
+        warm_path = command is not None
         if command is None:
             wrapper = gradle_wrapper(root)
             if not wrapper.exists():
@@ -7171,7 +7172,9 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
         # Capture the subprocess output: the Java validator echoes the report to stdout, but the
         # report FILE is the channel we read, and the CLI is the single stdout authority (printing
         # captured output too would emit two JSON docs). On failure, surface it in the error.
+        started = time.perf_counter()
         completed = subprocess.run(command, cwd=root, check=False, capture_output=True, text=True)
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
         if not report_target.exists():
             detail = (completed.stderr or completed.stdout or "").strip()
             raise CliError(
@@ -7184,6 +7187,8 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     _capture_validation(model, report)
     print(json.dumps(report, indent=2))
     _print_boundary_limits(report)
+    route = "warm" if warm_path else "gradle"
+    print(f"validate: {elapsed_ms} ms ({route} path)", file=sys.stderr)
     return 2 if report.get("status") == "failed" else 0
 
 

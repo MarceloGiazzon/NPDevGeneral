@@ -1,0 +1,24 @@
+id: QUAL-29
+title: >-
+  R4.4 -- declarative cross-concept invariants at aggregate scope
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-20
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R4.4.
+surface: kernel/aggregate-invariants
+detail: |
+  aggregates[].invariants bind the aggregate tree's collections into the expression environment,
+  evaluated pre-commit. EDIT-13 fixed the wiring gap (invariant engine existed but was never called
+  from the gateway).
+resolution: >-
+  Already implemented. EDIT-13 closed the gateway wiring gap same day.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/AggregateInvariantTest.java
+  asserts: >-
+    Cross-concept invariants evaluate pre-commit and reject invalid aggregate states
+  provenRed: true

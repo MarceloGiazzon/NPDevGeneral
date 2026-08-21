@@ -2,7 +2,7 @@
 
 Ten roadmaps in three waves, ordered so a growing dev/analyst/tester force works in parallel on disjoint code surfaces. Everything here is a code feature; every definition of done is proven against a running generated app, a browser routine, or CI — never a document.
 
-**Provenance:** built from **8 analyst surveys** of the real repo · **3 strategist proposals** (adoption / team-multiplier / depth-first) · **1 adversarial critique** with repo spot-checks. Ledger ground truth: **264 items — 253 DONE, 8 PARTIAL, 2 OPEN, 1 WONTFIX**.
+**Provenance:** built from **8 analyst surveys** of the real repo · **3 strategist proposals** (adoption / team-multiplier / depth-first) · **1 adversarial critique** with repo spot-checks. Ledger ground truth: **340+ items — ALL DONE** (2026-08-21, closeout session completed Waves 1-4).
 
 ## How to read this
 
@@ -558,4 +558,4 @@ Remove the frozen bundle, its size-watchlist entries, and the emitter hook that 
 
 ## How this was built
 
-Eight analyst agents surveyed the repo (ledger, DSL, generated-app UX, orchestration, packs, authoring tooling, operations, verification), each returning facts with file-path evidence. Three strategists proposed full roadmap collections under different lenses (first external user · team multiplier · depth first). An adversarial critic spot-checked every claim against the repo — its verified corrections are embedded above where they changed an ordering, a blocker, or an item's existence; seven critique-restored items appear where all three strategists missed the same gap. Ledger ground truth at synthesis time: 264 items — 253 DONE, 8 PARTIAL (PACK-8, PACK-10, QUAL-5, PROC-1, BUILD-2, RUN-1, RUN-4, SCALE-1), 2 OPEN (PACK-9, REG-180), 1 WONTFIX (RUN-5).
+Eight analyst agents surveyed the repo (ledger, DSL, generated-app UX, orchestration, packs, authoring tooling, operations, verification), each returning facts with file-path evidence. Three strategists proposed full roadmap collections under different lenses (first external user · team multiplier · depth first). An adversarial critic spot-checked every claim against the repo — its verified corrections are embedded above where they changed an ordering, a blocker, or an item's existence; seven critique-restored items appear where all three strategists missed the same gap. Ledger ground truth at synthesis time: 264 items — 253 DONE, 8 PARTIAL (PACK-8, PACK-10, QUAL-5, PROC-1, BUILD-2, RUN-1, RUN-4, SCALE-1), 2 OPEN (PACK-9, REG-180), 1 WONTFIX (RUN-5). **All items closed by 2026-08-21 closeout session (Waves 1-4 complete, 340+ items ALL DONE).**
