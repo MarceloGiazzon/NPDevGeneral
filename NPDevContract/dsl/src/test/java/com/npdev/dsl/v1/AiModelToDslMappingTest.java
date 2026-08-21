@@ -111,12 +111,10 @@ class AiModelToDslMappingTest {
             }
         }
 
-        // 22 ACTIVE scenarios. This was pinned at 24 while `deferred/` was walked too; those two
-        // deferred entries are deliberately-inactive and one is structurally incomplete, which is
-        // why every PowerShell gate skips that directory by name. Excluding it here (see
-        // scenarioDirs) makes this test agree with the rest of the harness rather than being the
-        // only place deferred scenarios count as active.
-        assertEquals(22, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");
+        // 24 ACTIVE scenarios. Was 22 before the trusted-source scenarios were promoted from
+        // deferred/ to active (Wave 4 closeout). The deferred/ directory is deliberately excluded
+        // from this walk -- see scenarioDirs filtering.
+        assertEquals(24, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");
         assertTrue(unclassified.isEmpty(), "unclassified golden scenario AI model fields: " + unclassified);
     }
 
