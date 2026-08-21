@@ -18,7 +18,7 @@ resolution: >-
   Already implemented. EDIT-13 closed the gateway wiring gap same day.
 guard:
   kind: test
-  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/AggregateInvariantTest.java
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/InvariantEngineHardeningTest.java
   asserts: >-
     Cross-concept invariants evaluate pre-commit and reject invalid aggregate states
   provenRed: true
