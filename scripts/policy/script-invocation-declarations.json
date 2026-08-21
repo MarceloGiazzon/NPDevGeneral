@@ -679,6 +679,13 @@
     },
     "scripts/quality/check-done-item-guards.py": {
       "invocation": "ci-gate"
+    },
+    "scripts/proofs/run-pk10-first-class-extends-proof.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "ledger/items/PACK-10.yml"
+    },
+    "scripts/quality/check-pack-coordinates-pinned.py": {
+      "invocation": "ci-gate"
     }
   }
 }

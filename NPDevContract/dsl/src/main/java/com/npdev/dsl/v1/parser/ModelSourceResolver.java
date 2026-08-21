@@ -1508,6 +1508,12 @@ public final class ModelSourceResolver {
         if (rawPack.has("migrations")) {
             resolvedPack.set("migrations", rawPack.get("migrations").deepCopy());
         }
+        // PACK-10/R8.11: first-class `extends` keyword -- same "schema-validates then silently
+        // vanishes" hazard as packs[]/requires/migrations before them. PackExtensionComposer
+        // .readExtensionTarget() is the actual consumer, one layer up.
+        if (rawPack.has("extends")) {
+            resolvedPack.set("extends", rawPack.get("extends").deepCopy());
+        }
         JsonNode fragments = rawPack.get("fragments");
         if (fragments != null) {
             if (!fragments.isArray()) {
