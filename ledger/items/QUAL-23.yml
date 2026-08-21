@@ -27,7 +27,7 @@ detail: |
   workflow files: **21 modules appear in neither**:
 
       auth-context-jwt          authz-default             document-render-inproc
-      document-render-stub      expression-cel            external-ai-http
+      document-render-stub      runtime-support            external-ai-http
       external-ai-inproc        external-ai-pack-core     file-store-objectstore
       json-jackson              mail-inproc               mail-smtp
       messaging-http            messaging-inproc          metrics-micrometer
@@ -35,7 +35,7 @@ detail: |
       schema-validator-default  tracing-redaction-default webhook-http
 
   Some of those are defensible: `postgres-test-support` is test scaffolding. Most are not.
-  `expression-cel` holds `CelInvariantEngine` and `GeneratedCrudRuntimeSupport` -- core runtime.
+  `runtime-support` holds `CelInvariantEngine` and `GeneratedCrudRuntimeSupport` -- core runtime.
   `auth-context-jwt`, `authz-default`, `webhook-http`, `external-ai-http` and `mail-smtp` are the
   security- and network-facing adapters, and `external-ai-http`/`mail-smtp` are precisely where
   RUN-4's deadline/retry proofs live (hanging-socket tests that assert a bounded failure). Those
@@ -64,7 +64,7 @@ detail: |
   Measured RED against the pre-fix repo (this checker's first real run, before any workflow edit):
   22 covered, 1 excluded, **18 uncovered** (messaging-http/messaging-inproc from the source commit
   already covered, so 18 not 19) -- exact list: auth-context-jwt, authz-default,
-  document-render-inproc, document-render-stub, expression-cel, external-ai-inproc, external-ai-http,
+  document-render-inproc, document-render-stub, runtime-support, external-ai-inproc, external-ai-http,
   external-ai-pack-core, file-store-objectstore, json-jackson, mail-inproc, mail-smtp,
   metrics-micrometer, resume-bootstrap-spring, runtime-validation, schema-validator-default,
   tracing-redaction-default, webhook-http. Each was checked individually (test source dir present,

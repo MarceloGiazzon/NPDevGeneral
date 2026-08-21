@@ -163,10 +163,10 @@ array). Add 7 new test classes.
 - `NPDevGenerator/build.gradle`
 
 **Kernel — bonds runtime + tests:**
-- `NPDevKernel/adapters/expression-cel/build.gradle`
+- `NPDevKernel/adapters/runtime-support/build.gradle`
 - `NPDevKernel/adapters/flow-compiled/build.gradle`
 - `NPDevKernel/adapters/persistence-inproc/src/main/java/com/npdev/adapters/persistence/inproc/InMemoryPersistenceCapabilityAdapter.java`
-- `NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportBondJdbcTest.java` *(new)*
+- `NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportBondJdbcTest.java` *(new)*
 - `NPDevKernel/build.gradle`
 
 **Other:**
@@ -207,7 +207,7 @@ Run in sequence:
 # From repo root
 .\npdev-gradlew.ps1 :NPDevContract:dsl:check
 .\npdev-gradlew.ps1 :NPDevGenerator:generator:check
-.\npdev-gradlew.ps1 :NPDevKernel:adapters:expression-cel:check
+.\npdev-gradlew.ps1 :NPDevKernel:adapters:runtime-support:check
 ```
 
 All three must pass (green) before proceeding.

@@ -16,13 +16,13 @@ surface: dsl/validation, kernel/value-expressions
 files:
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FieldValueValidation.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ValueExpressionEvaluator.java
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/DslTypeCoercionSupport.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/DslTypeCoercionSupport.java
   - NPDevSamples/dsl-conformance-max
   - scripts/quality/dsl_coverage/
 detail: |
   **THE ROADMAP'S PREMISE WAS HALF TRUE, AND THE FALSE HALF IS THE DANGEROUS ONE.** R4.1 was framed
   as pure author-time widening: "the runtime already evaluates the full grammar". That holds for
-  `SchemaExpressionSupport.evaluateSchemaExpression` (the expression-cel adapter's CRUD path), which
+  `SchemaExpressionSupport.evaluateSchemaExpression` (the runtime-support adapter's CRUD path), which
   does delegate to `ComputedExpression`.
 
   But there is a **SECOND, parallel evaluator**: `ValueExpressionEvaluator` (kernel), which
@@ -51,7 +51,7 @@ detail: |
     2. `ValueExpressionEvaluator.evaluate` (kernel): ONE added fallback branch -- after every
        existing special case, try `ComputedExpression.evaluate`, else keep the old behaviour. Every
        prior special case is byte-identical.
-    3. `DslTypeCoercionSupport.normalizeFieldValue` (expression-cel): a computed Long/Double for a
+    3. `DslTypeCoercionSupport.normalizeFieldValue` (runtime-support): a computed Long/Double for a
        `decimal` field now coerces via the existing `toBigDecimal` helper, closing the same class of
        gap on the sibling `GeneratedCrudRuntimeSupport` path.
 
@@ -68,14 +68,14 @@ detail: |
   deleted afterward -- confirmed by the orchestrator (no directory, no lingering java process).
 
   GATES, independently re-run by the orchestrator: `:kernel:test` **536/0**,
-  `:adapters:expression-cel:test` **127/0**, `:NPDevContract:dsl:test` 777 with only the known-red
+  `:adapters:runtime-support:test` **127/0**, `:NPDevContract:dsl:test` 777 with only the known-red
   pre-existing `AiModelToDslMappingTest`, `check-schema-mirror-consistency.py` OK.
   `check-dsl-coverage.py` OK with the new tracked feature `field.derivedExpression.arithmetic`
   covered by `dsl-conformance-max` -- and **RED-proven**: removing the example makes the gate fail
   naming that feature.
 guard:
   kind: test
-  ref: NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java
   asserts: >-
     an arithmetic derivedExpression is EVALUATED rather than stored as its own raw text on the
     generated-CRUD path. Two further guards sit outside this one file and are named here because the

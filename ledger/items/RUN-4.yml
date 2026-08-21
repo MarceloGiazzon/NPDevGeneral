@@ -85,7 +85,7 @@ detail: |
   `logging.pattern.console=... [%X{correlationId:--}] ...` -- a log line emitted from a
   `ForkJoinPool.commonPool` worker would silently print `--` instead of the real id, breaking
   cross-log traceability with no exception anywhere. (2) Spring's `RequestContextHolder`:
-  `GeneratedCrudRuntimeSupport.resolveCurrentExecutionContext()` (expression-cel adapter) calls
+  `GeneratedCrudRuntimeSupport.resolveCurrentExecutionContext()` (runtime-support adapter) calls
   `RequestContextHolder.getRequestAttributes()` and falls back to `ExecutionContext.anonymous()` when
   it returns null (which it would, from a pool worker thread that never had the request bound to it)
   -- a silent authorization/audit-identity downgrade, not a crash. Neither call site is proven to sit
