@@ -19,7 +19,7 @@ resolution: >-
   Already implemented. Ledger item filed retroactively for tracking completeness.
 guard:
   kind: test
-  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConceptQueryEngineTest.java
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConceptQueryFilterSupportPredicateTest.java
   asserts: >-
     Query predicates with OR, IN, contains, startsWith, is-null all produce correct SQL
   provenRed: true
