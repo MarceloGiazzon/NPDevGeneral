@@ -19,5 +19,5 @@ dependencies {
     // spring-web is compileOnly over in runtime-support, so without this the class fails to
     // initialize with a NoClassDefFoundError at first use.
     testRuntimeOnly 'org.springframework:spring-web:6.1.12'
-    testRuntimeOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    testRuntimeOnly 'jakarta.servlet:jakarta.servlet-api:6.1.0'
 }
