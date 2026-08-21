@@ -516,7 +516,6 @@ sourceSets {
         java {
             srcDir 'src/main/java'
             srcDir 'npdev-generated/src/main/java'
-            exclude 'com/finalexec/HelloController.java'
             unsupportedRuntimeHostControllerSources.each { exclude it }
             unsupportedRuntimeHostServiceSources.each { exclude it }
             if (!generatedRuntimeMountPresent()) {

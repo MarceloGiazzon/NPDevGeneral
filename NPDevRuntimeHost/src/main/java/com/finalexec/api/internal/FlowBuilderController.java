@@ -1,11 +1,11 @@
-package com.finalexec.api.experimental;
+package com.finalexec.api.internal;
 
 import com.finalexec.api.*;
 import com.finalexec.api.internal.*;
 
 import com.finalexec.npdev.dto.FlowBuilderDraftRequest;
 import com.finalexec.npdev.dto.FlowBuilderStepRequest;
-import com.finalexec.npdev.service.experimental.FlowBuilderService;
+import com.finalexec.npdev.service.internal.FlowBuilderService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
