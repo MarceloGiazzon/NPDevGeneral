@@ -13,12 +13,16 @@ import java.util.Set;
  * exactly as Postgres does, so more than half the job carried over with no work at all. The real
  * work is the other 18 sites, and they are mostly small.
  *
- * <p><b>{@code RETURNING} does not apply here.</b> MySQL's one genuinely structural gap -- it cannot
- * return generated keys inline, needing a second query plus {@code LAST_INSERT_ID()} -- is the thing
- * a text-returning interface cannot hide, because it changes the NUMBER of statements. Measured on
- * 5680551: <b>zero production sites use RETURNING.</b> So {@link MySqlReturningStrategy} declares
- * itself non-inline and refuses both directions rather than shipping a two-statement path nothing
- * exercises. Conformance vector A2 is what will say the day that changes.
+ * <p><b>{@code RETURNING} does not apply inline here.</b> MySQL's one genuinely structural gap -- it
+ * cannot return generated keys inline -- is the thing a text-returning interface cannot hide,
+ * because the matching two-statement path ({@code SELECT LAST_INSERT_ID()}) changes the NUMBER of
+ * statements a caller runs rather than their spelling. Measured on 5680551: <b>zero production
+ * sites use RETURNING</b> (NPDev keys are client-assigned UUIDs), so the two-statement path has no
+ * caller today. {@link MySqlReturningStrategy} therefore declares itself non-inline -- {@link
+ * ReturningStrategy#inlineClause} still refuses, because MySQL truly has no inline clause -- but now
+ * provides {@link ReturningStrategy#secondQuerySql()}, the same "prepared early, not wrong" state
+ * the inline engines' {@code returning()} have always held. It is implemented here so the interface
+ * is uniform across all four engines, not opened on speculation of a caller.
  *
  * <h2>The DDL-commit decision</h2>
  *
@@ -688,12 +692,17 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     /**
-     * MySQL cannot return generated columns from an insert.
+     * MySQL cannot return generated columns from an insert -- there is no inline {@code RETURNING}
+     * clause, so {@link #inlineClause} refuses. The generated key (an {@code AUTO_INCREMENT}
+     * integer) must be read with a follow-up statement, which {@link #secondQuerySql()} provides.
      *
-     * <p>Both methods throw. That is the whole point: a {@code secondQuerySql()} returning
-     * {@code SELECT LAST_INSERT_ID()} would be a code path no caller exercises (zero sites use
-     * RETURNING), maintained on speculation, and trusted the first time someone did. When
-     * conformance A2 fails, implement it then -- and the failure will say exactly which site needs it.
+     * <p>{@code secondQuerySql()} is implemented the same "prepared early" way the inline engines'
+     * {@code returning()} values are (STOR-13): it is real and correct, matching MySQL's documented
+     * idiom, even though no production site calls it today -- NPDev's entity keys are client-assigned
+     * UUIDs, so there is no auto-increment key to fetch. Making it throw was the outlier among the
+     * four engines; returning the true second query keeps the {@link ReturningStrategy} contract
+     * uniform. A caller that actually needs a DB-generated key asks {@link #isInline()} first, sees
+     * false, and runs the insert then {@code secondQuerySql()}.
      */
     static final class MySqlReturningStrategy implements ReturningStrategy {
         @Override
@@ -704,20 +713,19 @@ public final class MySqlDialect implements SqlDialect {
         @Override
         public String inlineClause(List<String> columns) {
             throw new UnsupportedOperationException(
-                    "engine 'mysql': there is no RETURNING clause. Generated keys need a second query "
-                    + "(SELECT LAST_INSERT_ID()), which changes the number of statements a caller runs "
-                    + "-- check isInline() first. No production site uses RETURNING today, which is why "
-                    + "the two-statement path is not built; conformance vector A2 is what will say it "
-                    + "is needed.");
+                    "engine 'mysql': there is no inline RETURNING clause. Generated keys need a second "
+                    + "query (SELECT LAST_INSERT_ID(), via secondQuerySql()), which changes the number "
+                    + "of statements a caller runs -- check isInline() first.");
         }
 
         @Override
         public String secondQuerySql() {
-            throw new UnsupportedOperationException(
-                    "engine 'mysql': the two-statement generated-key path is deliberately NOT "
-                    + "implemented -- zero production sites use RETURNING (measured on 5680551), and an "
-                    + "unexercised path would be trusted the first time it ran. Implement it when "
-                    + "conformance A2 fails, together with the call site that needs it.");
+            // MySQL's generated-key read-back. Only meaningful for an AUTO_INCREMENT column: it reads
+            // LAST_INSERT_ID() from the most recent INSERT on this connection. NPDev's entity keys
+            // are client-assigned UUIDs, so no production site issues this today (zero RETURNING
+            // sites, measured on 5680551); it is provided so the ReturningStrategy contract is
+            // uniform across all four engines rather than opening a throw for this one.
+            return "SELECT LAST_INSERT_ID()";
         }
     }
 }

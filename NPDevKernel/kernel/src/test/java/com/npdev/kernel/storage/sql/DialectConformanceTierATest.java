@@ -236,15 +236,19 @@ class DialectConformanceTierATest {
     // ------------------------------------------------------------------ A2/C1: honest refusals
 
     @Test
-    @DisplayName("A2: MySQL admits it has no RETURNING instead of inventing one")
-    void mySqlRefusesReturning() {
+    @DisplayName("A2: MySQL has no inline RETURNING, but provides the two-statement LAST_INSERT_ID() path")
+    void mySqlReturning() {
         ReturningStrategy returning = MySqlDialect.INSTANCE.returning();
         assertTrue(!returning.isInline());
-        // Both directions throw. The two-statement LAST_INSERT_ID() path is deliberately NOT built:
-        // zero production sites use RETURNING, and an unexercised path gets trusted the first time
-        // it runs. A2 failing is what will say it is needed.
+        // inlineClause() must refuse: there is no inline RETURNING clause on MySQL, and inventing
+        // one would be the silent-answer defect -- returning no row masquerading as a real answer.
         assertThrows(UnsupportedOperationException.class, () -> returning.inlineClause(List.of("id")));
-        assertThrows(UnsupportedOperationException.class, returning::secondQuerySql);
+        // The two-statement path is the real answer: read the AUTO_INCREMENT key the insert created
+        // with a follow-up statement. No production site uses it (NPDev keys are client-assigned
+        // UUIDs, and a text-returning interface cannot hide that it changes the NUMBER of statements
+        // a caller runs), but the dialect now returns the true query the same way the other three
+        // engines return their real inline clause, so the ReturningStrategy contract is uniform.
+        assertEquals("SELECT LAST_INSERT_ID()", returning.secondQuerySql());
     }
 
     @Test
