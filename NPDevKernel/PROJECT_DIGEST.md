@@ -23,7 +23,7 @@ NPDevKernel is the domain-neutral runtime engine that executes flows, capabiliti
 - `adapters\tracing-*`
 - `adapters\tracestore-postgres`
 - `adapters\runtime-validation`
-- `adapters\expression-cel`
+- `adapters\runtime-support`
 
 ## Operational Expectations
 - Capability binding precedence is explicit and tested.

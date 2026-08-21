@@ -262,7 +262,7 @@ public final class QueryPredicateGrammar {
      * call sites this module does not own. Wiring OR/IN/contains/startsWith/is-null/reference-path
      * joins all the way to a live SQL WHERE clause needs changes in NPDevRuntimeHost (the WHERE/JOIN
      * builder, mirroring its own registerJoinChain's groupBy-join pattern for the FROM/JOIN side)
-     * and possibly NPDevKernel/adapters/expression-cel -- both out of this change's owned surface.
+     * and possibly NPDevKernel/adapters/runtime-support -- both out of this change's owned surface.
      *
      * So parseGroups() below is the COMPLETE, tested grammar -- proven correct in isolation
      * (QueryPredicateGrammarTest) and reusing GroupByJoinGrammar's own hop-bounded join resolution

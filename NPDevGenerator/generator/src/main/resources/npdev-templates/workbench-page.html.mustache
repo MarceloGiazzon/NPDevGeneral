@@ -379,7 +379,7 @@
 
   // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 2B / M6 "balanced banner",
   // docs/MOVE3_G2_CHECKLISTS.md): a DELIBERATELY narrow expression subset for display-only derived
-  // fields -- not a client-side clone of the platform's real expression-cel engine (unrealistic to
+  // fields -- not a client-side clone of the platform's real runtime-support engine (unrealistic to
   // reimplement CEL in a browser), just enough syntax for "sum across a nested path, optionally
   // filtering one collection first" that a balanced-totals banner needs. Only ever reads root; it
   // never writes anything back into the draft, so a derived value can never leak into a commit.

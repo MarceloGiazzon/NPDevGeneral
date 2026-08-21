@@ -212,7 +212,7 @@
      templates, N:M runtime) as two sequential commits — exact file lists in
      `NPDevContract/docs/BOND-GAPS-IMPLEMENTATION-PLAN.md` §Phase 0.
   3. Run the three gates green: `:NPDevContract:dsl:check`, `:NPDevGenerator:generator:check`,
-     `:NPDevKernel:adapters:expression-cel:check`.
+     `:NPDevKernel:adapters:runtime-support:check`.
 - **Definition of Done:** `BondModelSupport.java` and the full bond file set are tracked in git; all
   three `:check` tasks pass; a fresh `git clean`-style checkout compiles.
 - **Verify:** The three gradle `:check` tasks above return green.

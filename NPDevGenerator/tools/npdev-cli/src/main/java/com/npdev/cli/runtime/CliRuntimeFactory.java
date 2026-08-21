@@ -5,7 +5,7 @@ import com.npdev.adapters.bulkhead.inproc.InProcBulkheadStore;
 import com.npdev.adapters.circuit.inproc.InProcCircuitBreakerStateStore;
 import com.npdev.adapters.events.inproc.InProcEventBus;
 import com.npdev.adapters.events.inproc.InProcEventStore;
-import com.npdev.adapters.expression.cel.CelInvariantEngine;
+import com.npdev.runtime.support.CelInvariantEngine;
 import com.npdev.adapters.flowcompiled.CompiledModelFlowDefinitionProvider;
 import com.npdev.adapters.flowcompiled.ModelBackedKernelRuntimeFactory;
 import com.npdev.adapters.flowcompiled.CompiledModelEventSchemaProvider;

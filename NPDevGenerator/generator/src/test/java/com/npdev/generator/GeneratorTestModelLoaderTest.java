@@ -167,8 +167,8 @@ public class GeneratorTestModelLoaderTest {
                 "Generated runtime config must not construct kernel runner directly");
         assertTrue(!runtimeConfigContent.contains("com.npdev.adapters.events.inproc"),
                 "Generated runtime config must not reference in-proc event adapter classes directly");
-        assertTrue(!runtimeConfigContent.contains("com.npdev.adapters.expression.cel"),
-                "Generated runtime config must not reference CEL adapter classes directly");
+        assertTrue(!runtimeConfigContent.contains("com.npdev.runtime.support"),
+                "Generated runtime config must not reference runtime-support adapter classes directly");
         assertTrue(generatedSignatureContent.contains("contract=npdev-generated-folder-signature-v1"),
                 "Expected generated strict-execution signature contract marker");
         assertTrue(generatedSignatureContent.contains("treeSha256="),

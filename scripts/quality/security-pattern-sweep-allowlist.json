@@ -28,7 +28,7 @@
     },
     "015998481669": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "01ce4dd9c3d6": {
@@ -113,7 +113,7 @@
     },
     "0d68c1f7e9c9": {
       "rule": "H1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5080",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5080",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3."
     },
     "0d7971df9c25": {
@@ -178,7 +178,7 @@
     },
     "14a1d1a98155": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "15422a3c1f67": {
@@ -218,7 +218,7 @@
     },
     "1ab54d1ebdd5": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "1bb50f2f3e23": {
@@ -228,7 +228,7 @@
     },
     "1d32f96c3dcd": {
       "rule": "I4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:62",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:62",
       "why": "Payload/attribute columns rather than index key material: an oversized value costs storage governed by the upstream request-size limit, and cannot break a btree entry the way REG-36's key did."
     },
     "1d9186ef3758": {
@@ -278,7 +278,7 @@
     },
     "238fe69c056c": {
       "rule": "H1/H2",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:3870; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:3128; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java:289; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/TenantStoragePartitioningService.java:284; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:109; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:186,327",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:3870; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:3128; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java:289; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/TenantStoragePartitioningService.java:284; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:109; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:186,327",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
     },
     "2398627d24ee": {
@@ -293,7 +293,7 @@
     },
     "23ae2360bcea": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
     },
     "2530555f6c3f": {
@@ -318,7 +318,7 @@
     },
     "26b5021c0ac0": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "2753ed78d3c5": {
@@ -353,12 +353,12 @@
     },
     "2a74888d0504": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:745; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSql.java:14",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:745; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSql.java:14",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. || Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
     },
     "2a93dc71f91d": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "2b925411d01b": {
@@ -373,7 +373,7 @@
     },
     "2c0035c89c2d": {
       "rule": "A1",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java:70; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:161,297",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java:70; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:161,297",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. || Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "2c14e74117a5": {
@@ -428,12 +428,12 @@
     },
     "2fa2af4f60a5": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4697",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4697",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
     },
     "30082f8cd5cb": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "30167dcce5a5": {
@@ -548,7 +548,7 @@
     },
     "3e2fd16c94f6": {
       "rule": "H1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2671",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2671",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3."
     },
     "3f9661468cab": {
@@ -603,7 +603,7 @@
     },
     "445198cca66a": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "44e1b4b3cd9c": {
@@ -643,7 +643,7 @@
     },
     "4a8d5b2b4011": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
     },
     "4b19297e432a": {
@@ -723,12 +723,12 @@
     },
     "51d640d9d5f0": {
       "rule": "A4/H1/H2",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/auth/PasswordHasher.java:55; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2162; NPDevRuntimeHost/src/main/java/com/finalexec/api/StorageSummaryController.java:95; NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:306; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:250",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/auth/PasswordHasher.java:55; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2162; NPDevRuntimeHost/src/main/java/com/finalexec/api/StorageSummaryController.java:95; NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:306; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:250",
       "why": "Fail-closed: a hash that cannot be verified is not a match. Returning false is the only safe answer and no other outcome is reachable. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
     },
     "521ff9d7e861": {
       "rule": "I4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:537",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:537",
       "why": "Payload/attribute columns rather than index key material: an oversized value costs storage governed by the upstream request-size limit, and cannot break a btree entry the way REG-36's key did."
     },
     "52624b5f22f5": {
@@ -798,7 +798,7 @@
     },
     "5d54606198ae": {
       "rule": "I4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2499",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2499",
       "why": "Payload/attribute columns rather than index key material: an oversized value costs storage governed by the upstream request-size limit, and cannot break a btree entry the way REG-36's key did."
     },
     "5d943e97bb9b": {
@@ -838,7 +838,7 @@
     },
     "6179cd7bed39": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4659",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4659",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
     },
     "61950fe6ddf2": {
@@ -913,7 +913,7 @@
     },
     "688c459ccec8": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:710",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:710",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "699576bd4b0b": {
@@ -978,7 +978,7 @@
     },
     "708f2dd719a3": {
       "rule": "A1/A5/H1",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198; NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130; NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539; NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java:372; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198; NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130; NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539; NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java:372; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. || Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint. || Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "71c2527ac682": {
@@ -1033,7 +1033,7 @@
     },
     "7a2a981c92df": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "7ad9d469c120": {
@@ -1058,7 +1058,7 @@
     },
     "7e700fa66e6c": {
       "rule": "A2",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:130",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:130",
       "why": "IdentityRoleLookup.isTokenRevoked/rejectTvlessTokensNow: a malformed `tv` claim cannot be attacker-produced -- the claim is inside the JWT the server itself signed, so reaching the catch means the server emitted a non-numeric tv, not that a caller chose one. The system-property cutover parse is validated at boot by StartupValidator."
     },
     "7eafcdd1222c": {
@@ -1068,7 +1068,7 @@
     },
     "7ec3c873a3d0": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "7ec82fa52170": {
@@ -1353,7 +1353,7 @@
     },
     "9b2a394bdea3": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2141",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2141",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "9b89a663f664": {
@@ -1398,7 +1398,7 @@
     },
     "a1db3de87640": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:533",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:533",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "a21b21e9ae16": {
@@ -1458,7 +1458,7 @@
     },
     "aa2adaca7e53": {
       "rule": "A2/A5",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:116; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:116; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395",
       "why": "IdentityRoleLookup.isTokenRevoked/rejectTvlessTokensNow: a malformed `tv` claim cannot be attacker-produced -- the claim is inside the JWT the server itself signed, so reaching the catch means the server emitted a non-numeric tv, not that a caller chose one. The system-property cutover parse is validated at boot by StartupValidator. || Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25."
     },
     "aaeb9131a3f1": {
@@ -1478,12 +1478,12 @@
     },
     "ad3a4af05c1b": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:199,231,248",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:199,231,248",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "adaf1f087189": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "adf88c76ac38": {
@@ -1508,12 +1508,12 @@
     },
     "b11714148a61": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "b1caf0f0b32b": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:675",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:675",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "b2ce70311f70": {
@@ -1533,7 +1533,7 @@
     },
     "b3eff2b843a5": {
       "rule": "H1/H2",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:765; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:236",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:765; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:236",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
     },
     "b4538270b3c0": {
@@ -1583,7 +1583,7 @@
     },
     "b8e1b1a379d4": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4626",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4626",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
     },
     "b92d28b35625": {
@@ -1643,12 +1643,12 @@
     },
     "c0798a725af0": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2187",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2187",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "c18694f35655": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "c23f4d2e25de": {
@@ -1728,7 +1728,7 @@
     },
     "c9897a622262": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "c9af2387ae0f": {
@@ -1863,7 +1863,7 @@
     },
     "ddbcb35ee7ee": {
       "rule": "H4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:156",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:156",
       "why": "rolesFor returns an EMPTY role set when the lookup fails -- the closed direction: the caller ends up with no roles rather than borrowed ones. Worth a WARN so an operator can tell 'lost all permissions' from 'has no roles'; recorded, not a bypass."
     },
     "df5764fd885e": {
@@ -2018,7 +2018,7 @@
     },
     "ec4e2835b626": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:692",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:692",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "ed357d6ffbf3": {
@@ -2108,7 +2108,7 @@
     },
     "f603d95a667b": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "f6185e69d721": {
@@ -2148,7 +2148,7 @@
     },
     "fa1ab287a9e9": {
       "rule": "H1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSupport.java:154",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSupport.java:154",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "faf1818efeba": {

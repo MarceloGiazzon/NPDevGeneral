@@ -18,7 +18,7 @@ import java.util.UUID;
  *
  * <p>R4.1 (roadmap): {@code FieldValueValidation}'s author-time validator was widened to accept the
  * full {@code ComputedExpression} grammar (e.g. {@code "quantity * unitPrice"}), on the premise that
- * the runtime already evaluated it -- true for {@code SchemaExpressionSupport} (the expression-cel
+ * the runtime already evaluated it -- true for {@code SchemaExpressionSupport} (the runtime-support
  * adapter's CRUD path), but NOT for this class, which a generated concept's declarative
  * {@code capabilities}/{@code bindings}-bound create/update ultimately writes through
  * ({@code DefaultConceptGateway.save} -> this evaluator). Before this, an arithmetic expression fell

@@ -729,7 +729,7 @@ try {
     # workflows' hand-maintained `:adapters:<name>:test` allowlists -- the same "declared source of
     # truth vs. what actually runs" shape as check-test-task-coverage.py (Test-task coverage, above),
     # applied to kernel adapter modules instead of custom Gradle Test tasks. Measured RED on
-    # 2026-08-19: 21 of 41 modules were in neither workflow, including expression-cel and the two
+    # 2026-08-19: 21 of 41 modules were in neither workflow, including runtime-support and the two
     # RUN-4 hanging-socket proof adapters. See scripts/quality/check-ci-adapter-coverage.py's own
     # EXCLUDED table for the one deliberate, reviewed exception (postgres-test-support).
     Write-Host "[37/37] Checking every kernel adapter module runs its tests in some CI workflow..."

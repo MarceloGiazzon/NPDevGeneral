@@ -411,7 +411,7 @@ L2/L3/L4 client mechanics ahead of P4 and the P2 store.
 | Risk | Phase | Mitigation |
 |---|---|---|
 | N-level nesting destabilizes existing panel validation | P4 | Keep 1-level cap for procedure-bound dataSources; new rule only for owned aggregate collections |
-| Client/server CEL parity drift | P2 | Single expr string, evaluated client-side + re-validated server-side via `expression-cel` |
+| Client/server CEL parity drift | P2 | Single expr string, evaluated client-side + re-validated server-side via `runtime-support` |
 | `display:all` DOM weight with live cells | P4 | `paged` virtualization + soft item-count warning in generator |
 | Hash-guarded bundle blocks runtime injection | P1 | Runtime emitted by templates, never post-gen patched |
 | Allocation logic leaks into platform | P6 | Confined to app-side procedures via slots |

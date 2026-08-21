@@ -11,7 +11,7 @@ app, neither of which reaches `NPDevKernel/adapters`.
 
 Measured 2026-08-19 (ledger/items/QUAL-23.yml): diffing `settings.gradle`'s 41 `include
 'adapters:*'` entries against both workflow files found 21 modules in neither -- including
-`expression-cel` (holds `CelInvariantEngine`/`GeneratedCrudRuntimeSupport`, core runtime) and the two
+`runtime-support` (holds `CelInvariantEngine`/`GeneratedCrudRuntimeSupport`, core runtime) and the two
 adapters carrying RUN-4's hanging-socket deadline/retry proofs (`external-ai-http`, `mail-smtp`). A
 whole adapter's test suite could be green on a laptop and never once run in CI, with nothing anywhere
 reporting the gap.

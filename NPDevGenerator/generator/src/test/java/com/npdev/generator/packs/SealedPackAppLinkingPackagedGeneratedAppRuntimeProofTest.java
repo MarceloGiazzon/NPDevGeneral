@@ -416,7 +416,7 @@ final class SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:circuit-postgres:jar",
                         ":adapters:document-render-inproc:jar",
                         ":adapters:document-render-stub:jar",
-                        ":adapters:expression-cel:jar",
+                        ":adapters:runtime-support:jar",
                         ":adapters:external-ai-http:jar",
                         ":adapters:external-ai-inproc:jar",
                         ":adapters:external-ai-pack-core:jar",

@@ -1,7 +1,7 @@
 package com.finalexec.npdev.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.npdev.adapters.expression.cel.CelInvariantEngine;
+import com.npdev.runtime.support.CelInvariantEngine;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiler.ModelCompiler;

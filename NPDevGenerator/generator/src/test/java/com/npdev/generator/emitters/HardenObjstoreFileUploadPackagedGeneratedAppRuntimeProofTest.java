@@ -397,7 +397,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         // below) -- both jars must exist or the generated app fails to compile.
                         ":adapters:document-render-inproc:jar",
                         ":adapters:document-render-stub:jar",
-                        ":adapters:expression-cel:jar",
+                        ":adapters:runtime-support:jar",
                         ":adapters:external-ai-http:jar",
                         ":adapters:external-ai-inproc:jar",
                         ":adapters:external-ai-pack-core:jar",

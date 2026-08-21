@@ -554,7 +554,7 @@ Remove the frozen bundle, its size-watchlist entries, and the emitter hook that 
 - **REG-163 — already DONE.** One strategist proposal scheduled it as an open architecture decision. The critique verified the ledger: closed 2026-08-15, VERIFIED_LIVE, the headline test already revived and passing. This is exactly the stale-blocker-citation failure the repo guide warns about — nothing to schedule. Only QUAL-5's four untried test-revival candidates remain in that cluster, as test hygiene, not a roadmap slot. REG-180 (the un-profiled-boot 404) is genuinely open and lives at wave-1 adjacency — a design item for whoever touches the runtime surface next; both quick fixes are proven-reverted traps.
 - **Nightly scale ladder (SCALE-1 remainder) — maintenance track, not a feature slot.** Real and worth fixing (open the failed run's artifact first — the repo's own history says never trust a never-green ladder), but it's verification infrastructure with zero user-facing surface. It rides the maintenance cadence, per the standing features-over-gates default.
 - **packs[].from corpus-coverage detector — ride-along, not a slot.** Gate wiring that ships in the same commit as R8.1's fragment fixture, per the standing "DSL feature → corpus coverage in the same commit" rule.
-- **expression-cel rename (RUN-5) — WONTFIX stands.** Measured blast radius (19 files) worse than a cosmetic misnomer. Revisit only if the module is touched for unrelated reasons.
+- **runtime-support rename (RUN-5) — WONTFIX stands.** Measured blast radius (19 files) worse than a cosmetic misnomer. Revisit only if the module is touched for unrelated reasons.
 
 ## How this was built
 
