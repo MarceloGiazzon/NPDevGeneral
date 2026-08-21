@@ -20,7 +20,7 @@ import java.util.Map;
  * walks whatever top-level keys the JSON actually has. A part of the model this class has never
  * heard of still shows up on the page, because nothing here (or in {@code model-surface.mustache})
  * branches on which part it is looking at. That is the property this item exists to prove: the
- * frozen bundle under {@code static-react/} hardcodes a handful of panes and silently drops
+ * frozen bundle (removed in R10.3) hardcoded a handful of panes and silently drops
  * anything else, and a platform feature landing today should not have to wait for that bundle's
  * next rebuild to become visible anywhere.
  *

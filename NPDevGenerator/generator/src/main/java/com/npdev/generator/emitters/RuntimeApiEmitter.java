@@ -220,7 +220,6 @@ writer.writeRelative(
                 "src/main/resources/static/npdev-ui/style.css",
                 templates.render("npdev-ui-style.mustache", ctx)
         );
-        emitOptionalReactUiAssets();
         writer.writeRelative(
                 "src/main/resources/npdev/ui-boundary/canonical-ui-selection.json",
                 readCanonicalUiSelectionJson()
@@ -1426,45 +1425,6 @@ writer.writeRelative(
             }
         }
         return null;
-    }
-
-    /**
-     * Copies every file the editor's build actually produced, per
-     * npdev-templates/static-react-manifest.json (written by NPDevEditor/ui-react/build-templates.ps1
-     * alongside the assets it lists). A hardcoded 3-file list (index.html/app.js/app.css) used to
-     * live here; it silently dropped any Vite code-split chunk (e.g. AuthoringApp.js,
-     * ReactWorkbenchApp.js -- lazy-loaded from app.js, never referenced by index.html itself), so a
-     * generated app would 404 the moment a user opened the surface that chunk belongs to.
-     */
-    private void emitOptionalReactUiAssets() {
-        String manifestJson = readOptionalClasspathText("npdev-templates/static-react-manifest.json");
-        if (manifestJson == null || manifestJson.isBlank()) {
-            return;
-        }
-        JsonNode manifest;
-        try {
-            manifest = new ObjectMapper().readTree(manifestJson);
-        } catch (IOException exception) {
-            throw new RuntimeException("Failed parsing npdev-templates/static-react-manifest.json", exception);
-        }
-        if (!manifest.isArray()) {
-            throw new RuntimeException("npdev-templates/static-react-manifest.json must be a JSON array of relative paths");
-        }
-        for (JsonNode entry : manifest) {
-            String relativePath = entry.asText();
-            emitOptionalReactUiFile(
-                    "npdev-templates/static-react/" + relativePath,
-                    "src/main/resources/static/npdev-ui-react/" + relativePath
-            );
-        }
-    }
-
-    private void emitOptionalReactUiFile(String classpathResource, String outputPath) {
-        String content = readOptionalClasspathText(classpathResource);
-        if (content == null || content.isBlank()) {
-            return;
-        }
-        writer.writeRelative(outputPath, content);
     }
 
     private String readOptionalClasspathText(String classpathResource) {

@@ -50,9 +50,6 @@ class OfficialSamplesGenerationSmokeTest {
             Path compiledModelPath = out.resolve("src/main/resources/npdev/compiled-model.json");
             Path compiledMetadataPath = out.resolve("src/main/resources/npdev/compiled-metadata.json");
             Path metadataIndexPath = out.resolve("src/main/resources/npdev/metadata/index.json");
-            Path uiIndexPath = out.resolve("src/main/resources/static/npdev-ui-react/index.html");
-            Path uiJsPath = out.resolve("src/main/resources/static/npdev-ui-react/assets/app.js");
-            Path uiCssPath = out.resolve("src/main/resources/static/npdev-ui-react/assets/app.css");
             Path runtimeOverridesPath = out.resolve("src/main/resources/npdev/runtime/dev.runtime.json");
             Path permissionManifestPath = out.resolve("src/main/resources/npdev/security/dev.permissions.json");
             Path policyManifestPath = out.resolve("src/main/resources/npdev/security/dev.ui-metadata-policy.json");
@@ -61,9 +58,6 @@ class OfficialSamplesGenerationSmokeTest {
                     compiledModelPath,
                     compiledMetadataPath,
                     metadataIndexPath,
-                    uiIndexPath,
-                    uiJsPath,
-                    uiCssPath,
                     runtimeOverridesPath,
                     permissionManifestPath,
                     policyManifestPath
