@@ -68,7 +68,6 @@ public final class FinalAppAssembler {
             "NO_BUILD_ARTIFACTS.policy"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_CONTROLLER_SOURCES = List.of(
-            "com/finalexec/HelloController.java",
             "com/finalexec/api/experimental/*.java"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_SERVICE_SOURCES = List.of(

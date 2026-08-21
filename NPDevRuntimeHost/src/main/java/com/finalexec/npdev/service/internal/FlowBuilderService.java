@@ -1,4 +1,4 @@
-package com.finalexec.npdev.service.experimental;
+package com.finalexec.npdev.service.internal;
 
 import com.finalexec.npdev.service.*;
 import com.finalexec.npdev.service.internal.*;

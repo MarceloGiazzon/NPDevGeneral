@@ -35,16 +35,15 @@
     "CredentialAdminController",
     "FileUploadController",
     "DocumentRenderController",
-    "SemanticBehaviorWriteBackController"
-  ],
-  "deferredControllers": [
-    "HelloController",
+    "SemanticBehaviorWriteBackController",
     "ModelSyncStatusController",
     "RuntimePluginPackagesController",
     "RuntimeRefreshController",
     "RuntimeTopologyExplorerController",
     "BetaOnboardingController",
     "FlowBuilderController"
+  ],
+  "deferredControllers": [
   ],
   "testOnlyControllers": [],
   "supportedCoreServiceComponents": [
@@ -85,7 +84,14 @@
     "TenantRegistryService",
     "CredentialRegistryService",
     "SemanticBehaviorWriteBackService",
-    "SemanticBehaviorWriteBackCanonicalizationService"
+    "SemanticBehaviorWriteBackCanonicalizationService",
+    "ModelSyncStatusService",
+    "RuntimePluginPackageCatalog",
+    "RuntimePluginPackageRealizationService",
+    "RuntimePluginProfileDiagnostics",
+    "RuntimeTopologyExplorerService",
+    "FlowBuilderService",
+    "GovernanceWorkspaceService"
   ],
   "supportedCoreServicePatterns": [
     "*ArtifactRealizationProvider",
@@ -109,7 +115,6 @@
     "HumanReadableAuditExport*",
     "GraphWeightedImpactScorer",
     "Import*",
-    "ModelSyncStatusService",
     "MultiCapabilityComposition*",
     "OperationalReadiness*",
     "OwnershipIsolation*",
@@ -123,7 +128,6 @@
     "RichExplainability*",
     "RoleWorkspace*",
     "Rollback*",
-    "RuntimeTopologyExplorer*",
     "ScenarioTemplate*",
     "Semantic*",
     "SourceMutation*",
@@ -134,10 +138,7 @@
   ],
   "experimentalServicePatterns": [
     "ArchitectureVisualization*",
-    "Beta*Service",
     "BusinessCapabilityMarketplace*",
-    "FlowBuilder*",
-    "GovernanceWorkspace*",
     "GuidedTaskWorkspace*",
     "PreviewReferenceResolver",
     "SpreadsheetOnboarding*",
