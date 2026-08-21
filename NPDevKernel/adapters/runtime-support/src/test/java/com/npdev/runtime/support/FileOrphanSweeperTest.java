@@ -29,7 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * RuntimeHost template's {@code FileOrphanSweepServiceTest}, which never runs as a standalone Gradle
  * task (the template is compiled only inside a generated FinalApp) -- so the abandoned-upload
  * reclamation path had no gate-enforced test. The logic now lives in {@link FileOrphanSweeper} and
- * is exercised here in {@code :adapters:expression-cel:test}.
+ * is exercised here in {@code :adapters:runtime-support:test}.
  */
 class FileOrphanSweeperTest {
 

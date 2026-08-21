@@ -22,8 +22,8 @@ include 'adapters:events-inproc'
 project(':adapters:events-inproc').projectDir = file('../NPDevKernel/adapters/events-inproc')
 include 'adapters:eventstore-postgres'
 project(':adapters:eventstore-postgres').projectDir = file('../NPDevKernel/adapters/eventstore-postgres')
-include 'adapters:expression-cel'
-project(':adapters:expression-cel').projectDir = file('../NPDevKernel/adapters/expression-cel')
+include 'adapters:runtime-support'
+project(':adapters:runtime-support').projectDir = file('../NPDevKernel/adapters/runtime-support')
 include 'adapters:flow-compiled'
 project(':adapters:flow-compiled').projectDir = file('../NPDevKernel/adapters/flow-compiled')
 include 'adapters:flowinstance-inproc'

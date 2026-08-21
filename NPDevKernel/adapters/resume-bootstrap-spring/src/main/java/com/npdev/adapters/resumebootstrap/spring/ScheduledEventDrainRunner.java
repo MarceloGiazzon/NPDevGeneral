@@ -93,7 +93,7 @@ public final class ScheduledEventDrainRunner {
      * The single call this runner makes, as a seam rather than a type dependency.
      *
      * <p>{@code processDueScheduledEvents} lives on {@code GeneratedCrudRuntimeSupport} in
-     * {@code :adapters:expression-cel}. This adapter depends only on {@code :kernel}; binding the
+     * {@code :adapters:runtime-support}. This adapter depends only on {@code :kernel}; binding the
      * method reference in the RuntimeHost (which already has both on its classpath) keeps it that
      * way instead of making one adapter depend on a sibling adapter for one method.
      */

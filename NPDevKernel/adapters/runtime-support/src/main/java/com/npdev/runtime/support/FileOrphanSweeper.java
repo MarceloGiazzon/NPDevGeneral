@@ -23,7 +23,7 @@ import java.util.function.BiConsumer;
 /**
  * HARDEN-GC-P3: the pure orphan-sweep algorithm, extracted out of the RuntimeHost Spring service
  * ({@code com.finalexec.filestore.FileOrphanSweepService}) so it runs in a real Gradle test gate
- * ({@code :adapters:expression-cel:test}) instead of only in the RuntimeHost template's src/test,
+ * ({@code :adapters:runtime-support:test}) instead of only in the RuntimeHost template's src/test,
  * which never executes standalone. The Spring service is now a thin scheduling/config wrapper that
  * delegates here.
  *

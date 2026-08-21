@@ -49,7 +49,7 @@ public class NpdevSchedulerConfig {
      * Drains the durable scheduled-event table on the same tick as the resume sweep above.
      *
      * <p>The method reference is bound here rather than inside the adapter because
-     * {@code processDueScheduledEvents} lives in {@code :adapters:expression-cel} while the runner
+     * {@code processDueScheduledEvents} lives in {@code :adapters:runtime-support} while the runner
      * lives in {@code :adapters:resume-bootstrap-spring}; the RuntimeHost is the one place that
      * already has both. See {@link ScheduledEventDrainRunner} for why nothing polled this table
      * until now.

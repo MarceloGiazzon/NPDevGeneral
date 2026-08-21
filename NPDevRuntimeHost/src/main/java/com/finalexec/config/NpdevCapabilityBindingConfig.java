@@ -3,7 +3,7 @@ package com.finalexec.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.adapters.events.inproc.InProcEventBus;
 import com.npdev.adapters.events.inproc.InProcEventStore;
-import com.npdev.adapters.expression.cel.CelInvariantEngine;
+import com.npdev.runtime.support.CelInvariantEngine;
 import com.npdev.adapters.flowcompiled.CompiledModelFlowDefinitionProvider;
 import com.npdev.adapters.json.jackson.JacksonJsonCodec;
 import com.npdev.adapters.schema.validator.DefaultSchemaValidator;

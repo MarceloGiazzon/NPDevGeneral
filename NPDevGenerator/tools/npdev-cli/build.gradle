@@ -7,7 +7,7 @@ dependencies {
     implementation project(':dsl')
 
     implementation project(':adapters:flow-compiled')
-    implementation project(':adapters:expression-cel')
+    implementation project(':adapters:runtime-support')
     implementation project(':adapters:events-inproc')
     implementation project(':adapters:flowinstance-inproc')
     implementation project(':adapters:tracing-inproc')

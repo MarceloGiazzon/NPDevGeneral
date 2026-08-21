@@ -543,7 +543,7 @@ flow at all. Each has a trigger event, an optional condition expression over `$e
 actions (`create`, `callCapability`, `scheduleEvent`). The runtime is a **genuinely separate mechanism**
 from `KernelRunner`'s flow-step execution: `GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers`
 subscribes directly to the event bus per orchestration
-(`NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java:1188-1210`), sitting alongside
+(`NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java:1188-1210`), sitting alongside
 the flow engine's own subscribers, not routed through `FlowStepDefinition`/`executeSteps`. Each firing
 claims an exactly-once execution slot (`OrchestrationExecutionRegistry`, keyed by orchestration name +
 source event id) before running its actions. Worked example:

@@ -8,7 +8,7 @@ import com.npdev.kernel.events.EventEnvelope;
  *
  * <p><b>Why this is a port and not a call.</b> The durable substrate this writes to
  * ({@code npdev_scheduled_event}, its {@code due_at} column, and the {@code processDueScheduledEvents}
- * drain R2.3 wired to a timer) lives in {@code :adapters:expression-cel}, which depends on
+ * drain R2.3 wired to a timer) lives in {@code :adapters:runtime-support}, which depends on
  * {@code :kernel} -- so the kernel cannot call it directly. This is the same seam, in the same
  * direction, as {@code ScheduledEventDrainRunner.ScheduledEventDrain}: one method, JDK/kernel types
  * only, bound by whoever already holds both halves.

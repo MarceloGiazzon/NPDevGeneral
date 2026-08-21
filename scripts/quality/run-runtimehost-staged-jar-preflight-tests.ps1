@@ -22,7 +22,7 @@ $assertions = @()
 $fixtureRequiredJars = @(
     "dsl-0.1.0.jar",
     "kernel-0.1.0.jar",
-    "expression-cel-0.1.0.jar",
+    "runtime-support-0.1.0.jar",
     "authz-default-0.1.0.jar",
     "persistence-postgres-0.1.0.jar"
 )
@@ -101,7 +101,7 @@ Add-Assertion -Name "success-fixture-report-passed" -Passed ([string]$successRep
 Add-Assertion -Name "success-fixture-outside-workspace" -Passed ([bool]$successReport.runtimeHostLibs.outsideWorkspace) -Message "RuntimeHost preflight did not require outside-workspace staging."
 Add-Assertion -Name "success-fixture-verifies-full-fixture-set" -Passed ([int]$successReport.requiredJarSet.count -eq $fixtureRequiredJars.Count -and @($successReport.requiredJars).Count -eq $fixtureRequiredJars.Count) -Message "RuntimeHost preflight did not verify the full fixture jar set."
 Add-Assertion -Name "success-fixture-verifies-manifest-set" -Passed ([int]$successReport.requiredJarSet.manifestCount -eq $fixtureRequiredJars.Count) -Message "RuntimeHost preflight did not verify the staged manifest jar set."
-$oldThreeJarList = "def requiredJars = ['dsl-0.1.0.jar', 'kernel-0.1.0.jar', 'expression-cel-0.1.0.jar']"
+$oldThreeJarList = "def requiredJars = ['dsl-0.1.0.jar', 'kernel-0.1.0.jar', 'runtime-support-0.1.0.jar']"
 Add-Assertion -Name "template-does-not-hardcode-three-jars" -Passed (-not (Get-Content -Raw -LiteralPath "NPDevRuntimeHost/build.gradle.template").Contains($oldThreeJarList)) -Message "RuntimeHost template still hard-codes the old three-jar preflight."
 
 $missingLibs = Join-Path $outsideRoot "missing-libs"

@@ -8,7 +8,7 @@ dependencies {
     // npdev_scheduled_event table through the real GeneratedCrudRuntimeSupport, so the proof is
     // "the timer fired it", not "a stub said it did". spring-context is compileOnly above, which
     // does NOT reach the test classpath -- hence the repeat here.
-    testImplementation project(':adapters:expression-cel')
+    testImplementation project(':adapters:runtime-support')
     testImplementation project(':dsl')
     // GeneratedCrudRuntimeSupport's constructor names EntityManager, so javac needs the type on the
     // classpath even though this test passes null for it.
@@ -16,7 +16,7 @@ dependencies {
     testImplementation 'org.springframework:spring-context:6.1.12'
     testImplementation 'com.h2database:h2:2.2.224'
     // GeneratedCrudRuntimeSupport touches org.springframework.http.HttpStatusCode while it loads;
-    // spring-web is compileOnly over in expression-cel, so without this the class fails to
+    // spring-web is compileOnly over in runtime-support, so without this the class fails to
     // initialize with a NoClassDefFoundError at first use.
     testRuntimeOnly 'org.springframework:spring-web:6.1.12'
     testRuntimeOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'

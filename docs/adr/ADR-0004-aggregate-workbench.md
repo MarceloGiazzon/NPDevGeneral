@@ -51,7 +51,7 @@ hosting 1..N child grids), `SelectorGrid` (modal filtered multi-select returning
 
 ### L3 — Two-tier reactivity
 - **Tier A (client):** pure CEL computed fields over row/aggregate scope, evaluated reactively in
-  the generated bundle. Reuses the `expression-cel` language; adds a client evaluator. No round-trip.
+  the generated bundle. Reuses the `runtime-support` language; adds a client evaluator. No round-trip.
 - **Tier B (server):** procedure-over-aggregate. Reads the draft tree, runs a **procedure**
   (procedures may loop; flows may not), returns a patched draft. This is the sanctioned seam for
   allocation math (Gerar Demanda, recompute saldos from stock).

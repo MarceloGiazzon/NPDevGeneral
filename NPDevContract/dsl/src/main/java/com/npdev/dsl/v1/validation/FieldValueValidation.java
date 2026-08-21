@@ -356,7 +356,7 @@ final class FieldValueValidation {
      * author time even though the runtime already evaluated it.
      *
      * <p>The runtime ({@code SchemaExpressionSupport.evaluateSchemaExpression}, the
-     * expression-cel adapter's {@code applySchemaValueBehaviors}) has evaluated the full {@link
+     * runtime-support adapter's {@code applySchemaValueBehaviors}) has evaluated the full {@link
      * ComputedExpression} grammar -- arithmetic, comparison, logical, function calls, lambdas --
      * for every default/derived expression all along, trying it first and only falling back to a
      * legacy literal-evaluator for the small set of things it doesn't parse. This method now
