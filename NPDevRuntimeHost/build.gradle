@@ -123,7 +123,7 @@ dependencies {
     // LNCH-11: the mail-smtp adapter (staged via npdevRuntimeHostLibsDir like the other kernel
     // adapters) needs Jakarta Mail on the runtime classpath -- same reason as the AWS SDK above:
     // jar-staging only copies this workspace's own project jars, not their third-party deps.
-    implementation 'org.eclipse.angus:angus-mail:2.0.3'
+    implementation 'org.eclipse.angus:angus-mail:2.0.5'
 
     // REG-12 Slice 3: the document-render-inproc adapter (staged via npdevRuntimeHostLibsDir like
     // the other kernel adapters) needs OpenHTMLtoPDF/PDFBox on the runtime classpath -- same reason
