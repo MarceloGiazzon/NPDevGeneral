@@ -214,8 +214,6 @@ tasks.named('compileJava') {
 // TOGETHER, so deleting both keeps that rule's sibling-group check trivially satisfied (both absent).
 def modelSpecificGeneratedAppTests = [
         'com/finalexec/AsyncWaitResumeE2EIT.java',
-        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
-        'com/finalexec/InvariantApiIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         // REG-163: NonDefaultRuntimeSurfaceProfileIntegrationTest REVIVED 2026-08-15 -- the compile-
@@ -239,8 +237,6 @@ def modelSpecificGeneratedAppTests = [
         // switched from filesystem walk to classpath scan of com.finalexec.api, matching the manifest's
         // actual two-module scope (RuntimeHost + runtimehost-core jar).
         'com/finalexec/Stage12UiModelRuntimeIT.java',
-        'com/finalexec/Step01MultiConceptIntegrationTest.java',
-        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/TenantIsolationE2EIT.java'
 ]
 
@@ -249,21 +245,16 @@ def generatedRuntimeIntegrationTestSources = [
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/TenantIsolationE2EIT.java',
-        // R1 Stage 4 (MASTER-ROADMAP.md Track C item C3): 2 of the 6 remaining
-        // AbstractScenarioIntegrationTest subclasses -- confirmed via a real `integrationTest`
-        // compile+run against superuser-admin-console (the actual sample
-        // .github/workflows/npdev-ci-validation.yml's "RuntimeHost generated-app Postgres
-        // integration tests" step generates and runs integrationTest against, per that workflow's
-        // own NEW-1 comment) that they compile and pass there.
-        // The other 4 -- CanonicalDemoBusinessE2EIT, InvariantApiIntegrationTest,
-        // Step01MultiConceptIntegrationTest, Step03NestedJsonbIntegrationTest -- import
-        // com.npdev.generated.entities.{Patient,Provider,Appointment,InsuranceClaim} /
-        // repositories.{PatientRepository,ProviderRepository,AppointmentRepository,
-        // InsuranceClaimRepository}, none of which superuser-admin-console's model declares --
-        // confirmed as real `compileIntegrationTestJava` errors ("cannot find symbol") against
-        // that sample. Routing them here would BREAK the currently-passing CI integrationTest job,
-        // not fix a dead test, so they stay in modelSpecificGeneratedAppTests only (excluded from
-        // both test and integrationTest) pending a fixture that actually has these entities.
+        // QUAL-5 (2026-08-20): the 4 deferred AbstractScenarioIntegrationTest subclasses are now
+        // routed here. They import com.npdev.generated.entities.{Patient,Provider,Appointment,
+        // InsuranceClaim} / repositories.{PatientRepository,ProviderRepository,AppointmentRepository,
+        // InsuranceClaimRepository}, which only the canonical-demo sample declares -- so the CI
+        // integrationTest step (.github/workflows/npdev-ci-validation.yml) now generates
+        // canonical-demo instead of superuser-admin-console.
+        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
+        'com/finalexec/InvariantApiIntegrationTest.java',
+        'com/finalexec/Step01MultiConceptIntegrationTest.java',
+        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/AsyncWaitResumeE2EIT.java',
         'com/finalexec/Stage12UiModelRuntimeIT.java',
         // LNCH-1 Phase 7 (task 7.2): the Postgres Testcontainers twin of the H2 schema-evolution

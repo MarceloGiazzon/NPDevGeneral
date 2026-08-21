@@ -219,7 +219,7 @@ jobs:
       # A failing generator test printed only "AssertionFailedError at <File>.java:458" -- the
       # assertion MESSAGE (which for the packaged-app proofs is the full output of the command that
       # failed) never reached the log, because the only error-surfacing step in this workflow reads
-      # NPDevSamples/superuser-admin-console/.../integrationTest/*.xml while these results live in
+      # NPDevSamples/canonical-demo/.../integrationTest/*.xml while these results live in
       # NPDevGenerator/generator/build/test-results/. Three Linux-only failures were undiagnosable
       # for a full day as a result: the run said WHERE, never WHY.
       #
@@ -269,22 +269,21 @@ jobs:
           chmod +x NPDevKernel/gradlew NPDevGenerator/gradlew NPDevRuntimeHost/gradlew 2>/dev/null || true
           pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
 
-      # Fix A / NEW-1 (2026-07-24): the postgres ITs boot a real generated app under mode=postgres,
-      # which requires a JDBC DataSource bean. The InMemory `canonical-demo` wires none (in-memory
-      # adapters only) -> StartupValidator aborts context load "DataSource bean is required when
-      # mode=postgres". Use a JDBC-capable sample: `superuser-admin-console` (H2Local wires a JDBC
-      # DataSource; Testcontainers overrides the URL to postgres). Proven locally RED->GREEN:
-      # canonical-demo integrationTest 10/35 FAIL, superuser-admin-console 35/35 PASS.
-      - name: Generate RuntimeHost sample app (Postgres-capable) for integration tests
+      # QUAL-5 (2026-08-20): switched from superuser-admin-console to canonical-demo. The 4 deferred
+      # AbstractScenarioIntegrationTest subclasses (CanonicalDemoBusinessE2EIT, InvariantApiIntegrationTest,
+      # Step01MultiConceptIntegrationTest, Step03NestedJsonbIntegrationTest) import entities/repositories
+      # (Patient, Provider, Appointment, InsuranceClaim) that only canonical-demo's model declares.
+      # These tests are now in generatedRuntimeIntegrationTestSources and require canonical-demo to compile.
+      - name: Generate RuntimeHost sample app (canonical-demo) for integration tests
         timeout-minutes: 45
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass \
             -File "$GITHUB_WORKSPACE/scripts/samples/generate-sample.ps1" \
             -WorkspaceRoot "$GITHUB_WORKSPACE" \
-            -SampleIds superuser-admin-console
+            -SampleIds canonical-demo
 
       - name: RuntimeHost generated-app Postgres integration tests
-        working-directory: NPDevSamples/superuser-admin-console/Output/App
+        working-directory: NPDevSamples/canonical-demo/Output/App
         timeout-minutes: 45
         run: |
           chmod +x ./gradlew
@@ -305,7 +304,7 @@ jobs:
       - name: On failure, surface integration-test error messages (NEW-1)
         if: failure()
         run: |
-          results="NPDevSamples/superuser-admin-console/Output/App/build/test-results/integrationTest"
+          results="NPDevSamples/canonical-demo/Output/App/build/test-results/integrationTest"
           if [ ! -d "$results" ]; then
             echo "No integration-test results at $results -- the generated app was never built,"
             echo "so this run's failure is upstream of the integration tests. Nothing to surface."
