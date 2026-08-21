@@ -3,7 +3,7 @@ title: >-
   Packs cannot be distributed; $ref is local-only by schema
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md §1 ground truth, card PK-5). Confirmed this
@@ -29,6 +29,11 @@ files:
   - NPDevContract/schemas/authoring/model.schema.json
   - NPDevContract/dsl/src/main/resources/schema/model.schema.json
   - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - schemas/ai/pack-catalog.schema.json
+  - scripts/quality/generate-pack-catalog.py
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackSearchMain.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/cli/PackSearchMainTest.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/cli/PackCatalogGeneratorTest.java
 detail: |
   MASTER-ROADMAP.md Step 14 (PM4), PACK-ROADMAP.md card PK-5, branch step14-pk5-distribution. Card
   has 7 steps; this pass ships steps 1+2+4 fully, step 3 fully for the model-authoring/parsing half
@@ -243,5 +248,17 @@ resolution: |
   alongside the existing check-container-images-pinned.py. Currently passes clean (no `from` fields
   with mutable tags in the repo).
 
-  Remaining deferred steps: (5) signatures/cosign, (6) npdev pack publish, (7) static JSON index,
+  2026-08-20 (static JSON index + pack search CLI, Step 7): pack-catalog.schema.json defines the
+  catalog shape (schemaVersion, generatedAt, packs[] with packId/version/description/author/category/
+  coordinate/digest/signature/concepts). generate-pack-catalog.py scans NPDevContract/packs/, reads
+  each pack.json, extracts metadata + concept names, computes a content digest (sha256 of all files
+  sorted by path, .git excluded), validates against the schema, and outputs pack-catalog.json to
+  scripts/reports/out/. PackSearchMain.java implements `npdev pack search` with --query (substring
+  match on packId/description/concepts), --category (exact match), and --catalog (local path or URL).
+  Prints a formatted table; exit 0 = results, exit 1 = no matches, exit 2 = usage error. Gradle
+  JavaExec task `packSearch` wired with -Pcatalog/-Pquery/-Pcategory properties. PackSearchMainTest
+  covers query filtering (packId, description, concepts), category filtering, combined filters, empty
+  results, missing args. PackCatalogGeneratorTest covers catalog JSON structure validation.
+
+  Remaining deferred steps: (5) signatures/cosign, (6) npdev pack publish,
   corpus coverage for `packs[].from`.
