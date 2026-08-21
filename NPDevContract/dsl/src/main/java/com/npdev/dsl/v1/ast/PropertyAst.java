@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * MASTER_AI_PLATFORM_PROGRAMME_v2.md Wave 6 (RC-A1, {@code MOVE11_RUNTIME_CONFIGURATION_PLAN}
@@ -23,9 +24,11 @@ public record PropertyAst(
         Object defaultValue,
         List<String> settableAt,
         String label,
-        boolean securityRelevant
+        boolean securityRelevant,
+        Map<String, String> labelLocales
 ) {
     public PropertyAst {
         settableAt = settableAt == null ? List.of() : List.copyOf(settableAt);
+        labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 }

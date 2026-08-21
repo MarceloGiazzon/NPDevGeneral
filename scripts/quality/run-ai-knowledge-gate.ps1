@@ -488,6 +488,15 @@ try {
         $failures += "a storage conformance container image is a moving tag, or the Java map and the workflow env block disagree: see scripts/quality/check-container-images-pinned.py output above (re-resolve with --resolve)"
     }
 
+    # PACK-8: every `from` coordinate in model.json or pack.json must be pinned (digest or semver
+    # tag), never a mutable branch name. Same defect class as the container-image pinning check
+    # above: a gate on a moving tag cannot distinguish "we broke it" from "the upstream changed".
+    Write-Host "[22b/36] Checking pack `from` coordinates are pinned (no mutable tags)..."
+    & $py "scripts/quality/check-pack-coordinates-pinned.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a pack `from` coordinate uses a mutable tag (latest/main/master): see scripts/quality/check-pack-coordinates-pinned.py output above -- pin to a digest or semver tag"
+    }
+
     # [22/35] storage/FULL_SUPPORT_PLAN.md W3, and the mechanical half of STOR-2. A storage message
     # that ASSERTS "nothing persisted" / "was rolled back" is a claim about the database's state, and
     # it is FALSE on every engine that commits implicitly on DDL (H2 today, MySQL now). A false
@@ -714,6 +723,19 @@ try {
     & $py "scripts/quality/check-done-item-guards.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a ledger item's falsifiable-DONE guard is missing or unresolvable: see scripts/quality/check-done-item-guards.py output above, and scripts/policy/done-item-guard-policy.json"
+    }
+
+    # QUAL-23 (2026-08-19): reconciles NPDevKernel/settings.gradle's adapter list against both CI
+    # workflows' hand-maintained `:adapters:<name>:test` allowlists -- the same "declared source of
+    # truth vs. what actually runs" shape as check-test-task-coverage.py (Test-task coverage, above),
+    # applied to kernel adapter modules instead of custom Gradle Test tasks. Measured RED on
+    # 2026-08-19: 21 of 41 modules were in neither workflow, including runtime-support and the two
+    # RUN-4 hanging-socket proof adapters. See scripts/quality/check-ci-adapter-coverage.py's own
+    # EXCLUDED table for the one deliberate, reviewed exception (postgres-test-support).
+    Write-Host "[37/37] Checking every kernel adapter module runs its tests in some CI workflow..."
+    & $py "scripts/quality/check-ci-adapter-coverage.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a kernel adapter module runs its tests in NO CI workflow and is not excluded: see scripts/quality/check-ci-adapter-coverage.py output above"
     }
 
     if ($failures.Count -gt 0) {

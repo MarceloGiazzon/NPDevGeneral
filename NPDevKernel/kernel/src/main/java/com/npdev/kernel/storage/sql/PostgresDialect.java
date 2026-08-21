@@ -52,7 +52,12 @@ public final class PostgresDialect implements SqlDialect {
             StorageCapability.OPTIMISTIC_LOCKING,
             StorageCapability.SNAPSHOT_RESTORE,
             // R8c: native "FOR UPDATE SKIP LOCKED" since Postgres 9.5 (2016).
-            StorageCapability.SKIP_LOCKED_READS);
+            StorageCapability.SKIP_LOCKED_READS,
+            // R9.3: pg_advisory_lock, session-scoped and needing no table -- so it can protect a
+            // FIRST-EVER boot, before any NPDev table exists to lock.
+            StorageCapability.SESSION_ADVISORY_LOCK,
+            // R5.4: partial index (CREATE UNIQUE INDEX ... WHERE ...) -- documented since Postgres 8.0.
+            StorageCapability.PARTIAL_UNIQUE_INDEX);
 
     private final UpsertStrategy upsert = new PostgresUpsertStrategy();
     private final ReturningStrategy returning = new PostgresReturningStrategy();
@@ -284,8 +289,67 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropIndexIfExists(String indexName, String tableName) {
+        return "DROP INDEX IF EXISTS " + indexName + ";";
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         return SqlDdlGuards.insertAfter(alterStatement, "ADD COLUMN", "IF NOT EXISTS");
+    }
+
+    @Override
+    public String guardedCreateSchema(String schemaName) {
+        return "CREATE SCHEMA IF NOT EXISTS " + schemaName;
+    }
+
+    /**
+     * R9.3. {@code bigint}, not a name: Postgres keys advisory locks numerically, so a name has to
+     * be hashed to reach one.
+     *
+     * <p><b>FNV-1a 64-bit, not {@link String#hashCode()}.</b> Both are deterministic across JVMs, so
+     * either would be reproducible -- the difference is collision width, and it matters because the
+     * two callers have very different key counts. The migration mutex has exactly ONE key, where a
+     * collision is meaningless. {@code PostgresAdvisoryBulkheadStore} derives a key per
+     * {@code tenant|capability|operation|slot} and can hold thousands, where a collision silently
+     * merges two unrelated bulkheads into one -- a concurrency limit applied to the wrong operation,
+     * with nothing to observe. That store already used FNV-1a for exactly this reason and predates
+     * this method; adopting its derivation here is what lets it route through the dialect with its
+     * lock ids BYTE-IDENTICAL to what it computes today, rather than silently re-keying every
+     * bulkhead in a live system on upgrade.
+     *
+     * <p>The migration mutex's own key does change from the {@code String.hashCode} value
+     * {@code MigrationClaimStore} used while it spelled this lock inline. That is only visible to
+     * two NPDev builds straddling this commit booting against one database at the same instant, and
+     * the cost of getting it wrong there (one interleaved migration) is smaller than the cost of a
+     * silent bulkhead collision, which is permanent.
+     */
+    @Override
+    public Object advisoryLockKey(String lockName) {
+        return fnv1a64(lockName);
+    }
+
+    /** FNV-1a 64-bit -- stable across process restarts and JVM versions by construction (it is
+     *  arithmetic on char values, not a JDK-specified algorithm that could be retuned). */
+    private static long fnv1a64(String input) {
+        long hash = 0xcbf29ce484222325L;
+        for (int index = 0; index < input.length(); index++) {
+            hash ^= input.charAt(index);
+            hash *= 0x100000001b3L;
+        }
+        return hash;
+    }
+
+    /** R9.3. Normalised to 1/0 -- {@code pg_try_advisory_lock} returns a boolean, and the two other
+     * advisory-lock engines return neither a boolean nor the same numbers. */
+    @Override
+    public String tryAdvisoryLockSql() {
+        return "SELECT CASE WHEN pg_try_advisory_lock(?) THEN 1 ELSE 0 END";
+    }
+
+    @Override
+    public String releaseAdvisoryLockSql() {
+        return "SELECT CASE WHEN pg_advisory_unlock(?) THEN 1 ELSE 0 END";
     }
 
     @Override

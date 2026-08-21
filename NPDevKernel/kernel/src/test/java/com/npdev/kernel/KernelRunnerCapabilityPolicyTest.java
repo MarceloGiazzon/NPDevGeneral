@@ -532,6 +532,135 @@ class KernelRunnerCapabilityPolicyTest {
         assertEquals(true, info.get("cacheIdempotencyFailures"));
     }
 
+    // ------------------------------------------------------------------------
+    // R2.6 (RUN-4): kernel-wide timeout backstop + context-propagating executor
+    // ------------------------------------------------------------------------
+
+    private static FlowStepDefinition saveStep() {
+        return FlowStepDefinition.capabilityCall(
+                "save", "persistence", "PersistenceCapability", "inmemory", "save",
+                List.of("$input"), "$saved", CapabilityExecutionPolicy.defaults()
+        );
+    }
+
+    @Test
+    void undeclaredCapabilityTimeoutResolvesToTheKernelBackstopRatherThanNoDeadline() {
+        KernelRunner runner = runnerWithCapabilityStep(
+                CapabilityExecutionPolicy.defaults(),
+                (call, state) -> CapabilityResult.success(Map.of("id", "u-1"))
+        );
+
+        KernelRunner.EffectiveCapabilityPolicy effective = runner.resolveEffectiveCapabilityPolicy(
+                saveStep(), CapabilityExecutionPolicy.defaults(), null
+        );
+
+        // Before R2.6 this was 0, which sent every capability down invokeCapabilityOnce's
+        // synchronous branch with no deadline at all: an adapter that never returned hung the
+        // calling thread forever.
+        assertTrue(
+                effective.timeoutMs() > 0L,
+                "expected a non-zero kernel timeout backstop, got " + effective.timeoutMs()
+        );
+    }
+
+    @Test
+    void aDeclaredModelTimeoutStillWinsOverTheKernelBackstop() {
+        KernelRunner runner = runnerWithCapabilityStep(
+                CapabilityExecutionPolicy.defaults(),
+                (call, state) -> CapabilityResult.success(Map.of())
+        );
+
+        KernelRunner.EffectiveCapabilityPolicy effective = runner.resolveEffectiveCapabilityPolicy(
+                saveStep(),
+                new CapabilityExecutionPolicy(1, 0, 1_500L, 0, 0, 0, null, null),
+                null
+        );
+
+        assertEquals(1_500L, effective.timeoutMs());
+    }
+
+    @Test
+    void aHostOverrideOfZeroStillDisablesTheTimeoutBackstop() {
+        KernelRunner runner = runnerWithCapabilityStep(
+                CapabilityExecutionPolicy.defaults(),
+                (call, state) -> CapabilityResult.success(Map.of()),
+                CircuitBreakerStateStore.noop(),
+                BulkheadStore.noop(),
+                IdempotencyStore.noop(),
+                MetricsSink.noop(),
+                new CapabilityPolicyOverrides(Map.of(
+                        "persistence",
+                        Map.of("save", new CapabilityPolicyOverride(null, null, null, 0L, null, null, null, null))
+                ))
+        );
+
+        KernelRunner.EffectiveCapabilityPolicy effective = runner.resolveEffectiveCapabilityPolicy(
+                saveStep(), CapabilityExecutionPolicy.defaults(), null
+        );
+
+        assertEquals(0L, effective.timeoutMs());
+    }
+
+    @Test
+    void capabilityRunsOnADedicatedNamedWorkerNotTheCommonPool() {
+        AtomicReference<String> workerThreadName = new AtomicReference<>();
+        String callerThreadName = Thread.currentThread().getName();
+        KernelRunner runner = runnerWithCapabilityStep(
+                CapabilityExecutionPolicy.defaults(),
+                (call, state) -> {
+                    workerThreadName.set(Thread.currentThread().getName());
+                    return CapabilityResult.success(Map.of("id", "u-1"));
+                }
+        );
+
+        ExecutionResult result = runner.execute("CreateUser", Map.of("email", "a@b.com"));
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertNotNull(workerThreadName.get());
+        assertFalse(
+                workerThreadName.get().startsWith("ForkJoinPool.commonPool"),
+                "capability must not run on the shared common pool, ran on " + workerThreadName.get()
+        );
+        assertTrue(
+                workerThreadName.get().startsWith("npdev-capability-"),
+                "expected a dedicated npdev-capability worker, ran on " + workerThreadName.get()
+        );
+        assertFalse(workerThreadName.get().equals(callerThreadName));
+    }
+
+    @Test
+    void theFlowContextGuardStillFiresInsideACapabilityRunOnTheWorkerThread() {
+        // The concrete reason the timeout branch needs a context-propagating executor rather than
+        // ForkJoinPool.commonPool(): KernelRunner's own currentFlowContext ThreadLocal is set for
+        // the whole flow-step loop and read by assertCrudInvariantPathAllowed, which rejects the
+        // deprecated CRUD invariant path being re-entered during flow execution. On a commonPool
+        // worker that read returns null and the guard silently stops guarding. Here the dispatcher
+        // -- running on the worker -- re-enters that path, and the guard must still reject it.
+        AtomicReference<String> guardOutcome = new AtomicReference<>("guard did not run");
+        AtomicReference<KernelRunner> self = new AtomicReference<>();
+        // Declared 5s timeout, not the new default: this exact configuration was already reachable
+        // BEFORE R2.6 and already took the async branch, so it is the configuration that proves the
+        // regression rather than merely exercising the new code.
+        KernelRunner runner = runnerWithCapabilityStep(
+                new CapabilityExecutionPolicy(1, 0, 5_000L, 0, 0, 0, null, null),
+                (call, state) -> {
+                    try {
+                        self.get().checkInvariants("User", Map.of("email", "a@b.com"));
+                        guardOutcome.set("NOT REJECTED");
+                    } catch (IllegalStateException expected) {
+                        guardOutcome.set(expected.getMessage());
+                    }
+                    return CapabilityResult.success(Map.of("id", "u-1"));
+                }
+        );
+        self.set(runner);
+
+        ExecutionResult result = runner.execute("CreateUser", Map.of("email", "a@b.com"));
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertEquals("CRUD invariant path invoked during flow execution", guardOutcome.get());
+    }
+
     private static KernelRunner runnerWithCapabilityStep(
             CapabilityExecutionPolicy policy,
             com.npdev.kernel.ports.CapabilityDispatcher dispatcher

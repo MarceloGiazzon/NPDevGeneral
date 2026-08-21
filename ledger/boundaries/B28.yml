@@ -1,9 +1,9 @@
 id: B28
 title: "Live model reload (LC-C3) -- DO NOT SHIP; the app restarts to pick up a model change"
 kind: HITTABLE
-userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+userFacingText: "Model changes require an app restart. Hot reload is available for metadata/UI changes via the admin reload endpoint, but full model changes (schema, flows) still require restart."
 workaround: "Restart the app (~30s) for a schema/logic-shaped model change; use LC-C2's metadata-only fast path for a label/panel-only change (no restart needed)."
 enforcingDiagnosticCodes: []
-codeLinked: false
-codeLinkedNote: "This is a design limitation with NO enforcing code path at all -- there is nothing to reject or refuse; a user simply gets a restart instead of a hot reload. No ModelHolder-style atomic-swap mechanism exists anywhere in NPDevRuntimeHost (confirmed by grep). Not wireable to boundaryId because there is no diagnostic here to attach it to."
+codeLinked: true
+codeLinkedNote: "ModelHolder.java provides AtomicReference<CompiledModel> + ReadWriteLock. MetadataHotSwapController exposes POST /api/admin/runtime/metadata-hotswap/model-reload. Note: only consumers using ModelHolder.get() see the swap — direct CompiledModel injection retains the old model."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"

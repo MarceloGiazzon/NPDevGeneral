@@ -10,6 +10,8 @@ public final class ConceptAst extends EntityAst {
     private final String renamedFrom;
     private final String satelliteOf;
     private final OriginAst origin;
+    private final boolean softDelete;
+    private final boolean temporal;
 
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
@@ -185,6 +187,54 @@ public final class ConceptAst extends EntityAst {
             String satelliteOf,
             OriginAst origin
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel, module,
+                indexes, access, renamedFrom, satelliteOf, origin, false);
+    }
+
+    /** R5.4: declares this concept's rows are soft-deleted (deletedAt flipped, never physically removed) --
+     *  see getSoftDelete. */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf,
+            OriginAst origin,
+            boolean softDelete
+    ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel,
+                module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, false);
+    }
+
+    /** R5.8: declares this concept carries effective-dated rows (validFrom/validTo-scoped) -- see isTemporal. */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf,
+            OriginAst origin,
+            boolean softDelete,
+            boolean temporal
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -192,6 +242,8 @@ public final class ConceptAst extends EntityAst {
         this.renamedFrom = renamedFrom;
         this.satelliteOf = satelliteOf;
         this.origin = origin;
+        this.softDelete = softDelete;
+        this.temporal = temporal;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -222,6 +274,20 @@ public final class ConceptAst extends EntityAst {
     /** PACK-2: pack-attribution provenance, or null if this concept is not pack-contributed. */
     public OriginAst getOrigin() {
         return origin;
+    }
+
+    /** R5.4: true if this concept's rows are soft-deleted (a delete flips a platform-managed
+     *  deletedAt timestamp instead of removing the row); false (the default) preserves today's
+     *  physical-delete behavior exactly. */
+    public boolean isSoftDelete() {
+        return softDelete;
+    }
+
+    /** R5.8: true if this concept carries effective-dated rows -- resolution reads a `validFrom`/
+     *  `validTo` window (both author-declared `date` fields, checked by SemanticValidator) against a
+     *  caller-supplied `asOf` date; false (the default) leaves the concept's read path unchanged. */
+    public boolean isTemporal() {
+        return temporal;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {

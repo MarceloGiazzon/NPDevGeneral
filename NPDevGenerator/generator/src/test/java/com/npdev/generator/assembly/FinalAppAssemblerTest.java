@@ -1,12 +1,21 @@
 package com.npdev.generator.assembly;
 
+import com.npdev.generator.packs.PackAbiIncompatibleException;
+import com.npdev.generator.packs.SealedPackJarBuilder;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.jar.Attributes;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
+import java.util.jar.Manifest;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FinalAppAssemblerTest {
@@ -34,7 +43,6 @@ class FinalAppAssemblerTest {
         write(host.resolve("src/main/java/com/finalexec/api/experimental/FlowBuilderController.java"), "package com.finalexec.api.experimental;\n");
         write(host.resolve("src/main/java/com/finalexec/npdev/service/internal/ModelSyncStatusService.java"), "package com.finalexec.npdev.service.internal;\n");
         write(host.resolve("src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java"), "package com.finalexec.npdev.service.experimental;\n");
-        write(host.resolve("src/main/java/com/finalexec/HelloController.java"), "package com.finalexec;\n");
         write(host.resolve("src/main/resources/db/migration/V5001__runtime.sql"), "select 1;\n");
         write(host.resolve("libs/kernel-0.1.0.jar"), "jar");
         // BT-1: the app-independent runtimehost-core module lives nested under the host root but
@@ -84,7 +92,6 @@ class FinalAppAssemblerTest {
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/api/experimental/FlowBuilderController.java")));
         assertTrue(Files.exists(finalApp.resolve("src/main/java/com/finalexec/npdev/service/internal/ModelSyncStatusService.java")));
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java")));
-        assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/HelloController.java")));
         assertFalse(Files.exists(finalApp.resolve("libs/kernel-0.1.0.jar")));
         assertFalse(Files.exists(finalApp.resolve("runtimehost-core/build.gradle")));
         assertFalse(Files.exists(finalApp.resolve("runtimehost-core/src/main/java/com/finalexec/api/RuntimeSchedulesController.java")));
@@ -318,6 +325,115 @@ class FinalAppAssemblerTest {
         java.io.IOException failure = org.junit.jupiter.api.Assertions.assertThrows(
                 java.io.IOException.class, () -> assembler.assemble(options));
         assertTrue(failure.getMessage().contains("Web assets root"));
+    }
+
+    /**
+     * BUILD-2 (BT-2's own "the linking" follow-on, ledger item BUILD-2): the assembly-level half of
+     * linking, proven end to end -- a real sealed jar of the real {@code identity} pack (built by
+     * {@link SealedPackJarBuilder}, the SAME class {@code SealedPackJarBuilderTest} proves is
+     * byte-identical across independent builds) copied into the assembled app, and the generated
+     * {@code @EntityScan}/{@code @ComponentScan} companion config naming its namespace -- with NO
+     * edit needed to the (here, hand-written stub) {@code FinalExecApplication.java} for it to be
+     * found, exactly as {@link FinalAppAssembler#linkSealedPacks} documents.
+     */
+    @Test
+    void linksASealedPackJar_intoLibsSealedPacks_withEntityAndComponentScanConfig(@org.junit.jupiter.api.io.TempDir Path tempRoot) throws Exception {
+        Path identityPackFile = Path.of("..", "..", "NPDevContract", "packs", "identity", "pack.json")
+                .toAbsolutePath().normalize();
+        assertTrue(Files.isRegularFile(identityPackFile), "expected " + identityPackFile + " to exist");
+
+        Path sealedJar = tempRoot.resolve("identity-v1.jar");
+        SealedPackJarBuilder.JarResult sealResult = new SealedPackJarBuilder().sealToJar(identityPackFile, sealedJar);
+
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-sealedpack-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(host.resolve("src/main/java/com/finalexec/FinalExecApplication.java"), "package com.finalexec;\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+
+        FinalAppAssembler.Options options = new FinalAppAssembler.Options(
+                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null,
+                List.of(new FinalAppAssembler.SealedPackLink("identity", sealedJar))
+        );
+        new FinalAppAssembler().assemble(options);
+
+        Path linkedJar = finalApp.resolve("libs/sealed-packs/identity-1.0.0.jar");
+        assertTrue(Files.isRegularFile(linkedJar), "expected the sealed pack jar to be copied into libs/sealed-packs/");
+        assertArrayEqualsBytes(Files.readAllBytes(sealedJar), Files.readAllBytes(linkedJar));
+
+        Path linkageConfig = finalApp.resolve("src/main/java/com/finalexec/config/SealedPackLinkageConfig.java");
+        assertTrue(Files.isRegularFile(linkageConfig), "expected a generated SealedPackLinkageConfig.java");
+        String source = Files.readString(linkageConfig);
+        assertTrue(source.contains("package com.finalexec.config;"));
+        assertTrue(source.contains("@Configuration"));
+        assertTrue(source.contains("@EntityScan(basePackages = {\"" + sealResult.manifest().packageName() + "\"})"));
+        assertTrue(source.contains("@ComponentScan(basePackages = {\"" + sealResult.manifest().packageName() + "\"})"));
+        assertEquals("com.npdev.pack.identity.v1", sealResult.manifest().packageName());
+
+        // FinalExecApplication.java itself is untouched -- SealedPackLinkageConfig is auto-detected
+        // only because it lives under com.finalexec, already covered by that file's own
+        // @ComponentScan(basePackages = {"com.finalexec", ...}).
+        assertEquals("package com.finalexec;\n",
+                Files.readString(finalApp.resolve("src/main/java/com/finalexec/FinalExecApplication.java")));
+    }
+
+    /**
+     * BT-2's own ABI refusal ({@code PackAbiCompatibility.checkLinkable}), exercised through
+     * assembly: a jar declaring a kernel ABI version other than {@code KernelAbi.CURRENT_ABI_VERSION}
+     * must fail assembly loudly, before anything is copied or generated.
+     */
+    @Test
+    void refusesToLinkASealedPackJarBuiltAgainstAnIncompatibleKernelAbi(@org.junit.jupiter.api.io.TempDir Path tempRoot) throws Exception {
+        Path mismatchedJar = tempRoot.resolve("mismatched-abi.jar");
+        writeFakeSealedPackJar(mismatchedJar, "widgets", "1.0.0", "1", "999-not-the-current-abi");
+
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-sealedpack-abi-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+
+        FinalAppAssembler.Options options = new FinalAppAssembler.Options(
+                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null,
+                List.of(new FinalAppAssembler.SealedPackLink("widgets", mismatchedJar))
+        );
+
+        PackAbiIncompatibleException thrown = assertThrows(
+                PackAbiIncompatibleException.class, () -> new FinalAppAssembler().assemble(options));
+        assertTrue(thrown.getMessage().contains("widgets"));
+        assertTrue(thrown.getMessage().contains("999-not-the-current-abi"));
+        assertFalse(Files.exists(finalApp.resolve("libs/sealed-packs")),
+                "an ABI-incompatible link must be refused before anything is copied");
+        assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/config/SealedPackLinkageConfig.java")));
+    }
+
+    private static void writeFakeSealedPackJar(
+            Path jarFile, String packId, String packVersion, String packMajorVersion, String kernelAbiVersion
+    ) throws IOException {
+        Files.createDirectories(jarFile.getParent());
+        Manifest manifest = new Manifest();
+        manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+        try (var fileOut = Files.newOutputStream(jarFile);
+             JarOutputStream jarOut = new JarOutputStream(fileOut, manifest)) {
+            jarOut.putNextEntry(new JarEntry("META-INF/npdev-pack.properties"));
+            String properties = "packId=" + packId + "\n"
+                    + "packVersion=" + packVersion + "\n"
+                    + "packMajorVersion=" + packMajorVersion + "\n"
+                    + "kernelAbiVersion=" + kernelAbiVersion + "\n";
+            jarOut.write(properties.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
+            jarOut.closeEntry();
+        }
+    }
+
+    private static void assertArrayEqualsBytes(byte[] expected, byte[] actual) {
+        org.junit.jupiter.api.Assertions.assertArrayEquals(expected, actual);
     }
 
     private static void write(Path path, String content) throws Exception {

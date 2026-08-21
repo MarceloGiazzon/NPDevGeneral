@@ -45,7 +45,7 @@ public class PermissionAwareUiMetadataService {
     }
 
     public Map<String, Object> actions(String conceptName, String ownerName, ExecutionContext context) {
-        Map<String, Object> response = new LinkedHashMap<>(runtimeMetadataService.actions(conceptName, ownerName));
+        Map<String, Object> response = new LinkedHashMap<>(runtimeMetadataService.actions(conceptName, ownerName, localeOf(context)));
         ActionEvaluation evaluation = evaluateActions(extractItems(response), context);
         response.put("permissionAware", true);
         response.put("policyPath", POLICY_CLASSPATH);
@@ -63,7 +63,7 @@ public class PermissionAwareUiMetadataService {
     }
 
     public Map<String, Object> fields(String conceptName, String fieldPath, ExecutionContext context) {
-        Map<String, Object> response = new LinkedHashMap<>(runtimeMetadataService.fields(conceptName, fieldPath));
+        Map<String, Object> response = new LinkedHashMap<>(runtimeMetadataService.fields(conceptName, fieldPath, localeOf(context)));
         FieldEvaluation evaluation = evaluateFields(extractItems(response), context);
         response.put("permissionAware", true);
         response.put("policyPath", POLICY_CLASSPATH);
@@ -79,7 +79,13 @@ public class PermissionAwareUiMetadataService {
     }
 
     public Map<String, Object> previewSupport(String conceptName, ExecutionContext context) {
-        Map<String, Object> response = new LinkedHashMap<>(runtimeMetadataService.previewSupport(conceptName));
+        // R5.6: the locale-aware overload -- unlike fields()/actions() below, previewSupport's own
+        // nested "previewSupport" object (listColumns/summaryFields/referencePickers, built INSIDE
+        // RuntimeMetadataService from raw layout/action items) is never re-touched by this method, so
+        // resolving here via localizeLabels alone would miss it. Passing the locale down instead means
+        // RuntimeMetadataService resolves every label BEFORE building those derived views, so they
+        // inherit already-correct text with no separate localization pass needed for them.
+        Map<String, Object> response = new LinkedHashMap<>(runtimeMetadataService.previewSupport(conceptName, localeOf(context)));
         Map<String, Object> fieldResponse = fields(conceptName, null, context);
         Map<String, Object> actionResponse = actions(conceptName, null, context);
 
@@ -157,15 +163,15 @@ public class PermissionAwareUiMetadataService {
         }
         response.put("scope", scope);
 
-        response.put("concept", concept.isBlank() ? null : runtimeMetadataService.concept(concept).get("concept"));
+        response.put("concept", concept.isBlank() ? null : castMap(runtimeMetadataService.concept(concept, localeOf(context)).get("concept")));
         response.put("fields", fieldResponse.get("items"));
-        response.put("layout", rawCatalogItems("layout", concept));
-        response.put("enums", rawCatalogItems("enums", concept));
-        response.put("references", rawCatalogItems("references", concept));
+        response.put("layout", rawCatalogItems("layout", concept, context));
+        response.put("enums", rawCatalogItems("enums", concept, context));
+        response.put("references", rawCatalogItems("references", concept, context));
         response.put("actions", actionResponse.get("items"));
-        response.put("transitions", rawCatalogItems("transitions", concept));
-        response.put("validation", rawCatalogItems("validationHints", concept));
-        response.put("invocations", invocationItems(concept, panel));
+        response.put("transitions", rawCatalogItems("transitions", concept, context));
+        response.put("validation", rawCatalogItems("validationHints", concept, context));
+        response.put("invocations", invocationItems(concept, panel, context));
 
         response.put("apiBase", "/api/v1");
         Map<String, Object> auth = new LinkedHashMap<>();
@@ -175,19 +181,29 @@ public class PermissionAwareUiMetadataService {
         return response;
     }
 
-    private List<Map<String, Object>> rawCatalogItems(String catalogName, String concept) {
-        return extractItems(runtimeMetadataService.catalog(catalogName, concept, null, null));
+    private List<Map<String, Object>> rawCatalogItems(String catalogName, String concept, ExecutionContext context) {
+        return extractItems(runtimeMetadataService.catalog(catalogName, concept, null, null, localeOf(context)));
+    }
+
+    /** R5.6/EDIT-13: the requested locale tag off {@code context} ({@link ExecutionContext#locale()}),
+     * or null when there is none / no context at all -- the "null means unresolved, byte-identical to
+     * before" contract every {@code RuntimeMetadataService} locale-aware overload relies on.
+     * Resolution itself happens once, centrally, in {@code RuntimeMetadataService#resolveLabels}
+     * (which also strips the raw {@code labelLocales}/{@code shortLabelLocales} map from the item),
+     * so this class only ever hands down the plain locale tag, never re-implements resolution. */
+    private static String localeOf(ExecutionContext context) {
+        return context == null ? null : context.locale();
     }
 
     /** Concept scope filters the invocations catalog by its "concept" property, same as every other
      * catalog here. Panel scope has no such property to reuse generically -- panelAction/panelRowAdd/
      * panelRowDelete entries key on "panel" instead -- so it is filtered by hand here rather than
      * stretching {@code RuntimeMetadataService}'s single-key concept filter to cover a second key. */
-    private List<Map<String, Object>> invocationItems(String concept, String panel) {
+    private List<Map<String, Object>> invocationItems(String concept, String panel, ExecutionContext context) {
         if (!concept.isBlank()) {
-            return rawCatalogItems("invocations", concept);
+            return rawCatalogItems("invocations", concept, context);
         }
-        List<Map<String, Object>> all = rawCatalogItems("invocations", "");
+        List<Map<String, Object>> all = rawCatalogItems("invocations", "", context);
         if (panel.isBlank()) {
             return all;
         }

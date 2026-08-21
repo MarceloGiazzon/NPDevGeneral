@@ -171,6 +171,108 @@ public record FlowInstance(
         );
     }
 
+    /**
+     * R2.1: zero the resume streak WITHOUT touching status, state or timestamps. {@code
+     * resumeAttemptCount} carries two different kinds of tally -- quiet "no event yet" misses,
+     * which ResumeCoordinator deliberately never lets exhaust the cap, and real resume failures,
+     * which must still end in STUCK. Since a quiet wait may legitimately run for weeks, the count
+     * can sit far above any cap by the time something genuinely throws; the caller resets the
+     * streak at that changeover so the real failure gets its full retry budget rather than an
+     * instant, unrecoverable STUCK on the very first fault.
+     */
+    public FlowInstance withResumeStreakReset() {
+        if (resumeAttemptCount == 0) {
+            return this;
+        }
+        return new FlowInstance(
+                executionId,
+                flowName,
+                correlationId,
+                tenantId,
+                actorId,
+                currentStepIndex,
+                status,
+                state,
+                waitingForEventName,
+                createdAtEpochMs,
+                updatedAtEpochMs,
+                0,
+                lastResumeAtEpochMs,
+                lastResumeErrorCode,
+                nextEligibleResumeAtEpochMs,
+                lastProgressAtEpochMs,
+                lastErrorKind,
+                lastErrorCode,
+                lastErrorMessage,
+                failedAtEpochMs
+        );
+    }
+
+    /**
+     * R2.2: the only coded transition OUT of {@link FlowInstanceStatus#STUCK}. Until this existed
+     * the sole recovery was an UPDATE against {@code npdev_flow_instance} by hand, because nothing
+     * in the engine ever moves an instance out of STUCK -- {@code ResumeCoordinator} only ever
+     * sweeps WAITING_EVENT rows, so a stuck instance cannot self-heal.
+     *
+     * <p>Three field changes, and each one is load-bearing for the next sweep picking the instance
+     * up: status back to WAITING_EVENT (what {@code findAllWaiting}/{@code
+     * claimWaitingEligibleToResume} select on), {@code resumeAttemptCount} to 0 (otherwise the very
+     * next real fault re-exhausts the cap immediately -- the same reasoning as {@link
+     * #withResumeStreakReset}), and {@code nextEligibleResumeAtEpochMs} to null, which {@link
+     * #isResumeEligible} reads as "eligible now" rather than making an operator who just clicked
+     * un-stick wait out a 300s backoff window.
+     *
+     * <p>The terminal-failure quartet ({@code lastErrorKind}/{@code lastErrorCode}/{@code
+     * lastErrorMessage}/{@code failedAtEpochMs}) is cleared because it describes a STUCK status the
+     * instance no longer has, and {@code ExecutionSummary} exposes {@code failedAtEpochMs} to
+     * monitors that would otherwise read a live waiter as having failed at some past instant. The
+     * resume pair ({@code lastResumeAtEpochMs}/{@code lastResumeErrorCode}) is deliberately KEPT --
+     * after this call it is the only surviving evidence on the row of why the instance got stuck.
+     *
+     * <p>R2.1 made STUCK mean something sharper: a quiet wait no longer counts toward the cap, so
+     * every instance that reaches STUCK is one whose resume genuinely kept throwing. Un-sticking
+     * therefore says "I believe the underlying fault is fixed", which is why the REST surface over
+     * this is SUPERUSER-gated rather than a routine read.
+     *
+     * @throws IllegalStateException if the instance is not STUCK, or is STUCK without a
+     *         {@code waitingForEventName} -- STUCK is also reachable from RUNNING (see {@code
+     *         KernelRunner.resolveFailureTerminalStatus}), and such a row has no event to wait on,
+     *         so WAITING_EVENT is not a state it can legally hold. Retry that one with a resume.
+     */
+    public FlowInstance withUnstuck(long nowEpochMs) {
+        if (status != FlowInstanceStatus.STUCK) {
+            throw new IllegalStateException(
+                    "Only a STUCK execution can be un-stuck; " + executionId + " is " + status);
+        }
+        if (waitingForEventName == null || waitingForEventName.isBlank()) {
+            throw new IllegalStateException(
+                    "Execution " + executionId + " became stuck without an awaited event, so it "
+                            + "cannot return to WAITING_EVENT; resume it instead");
+        }
+        return new FlowInstance(
+                executionId,
+                flowName,
+                correlationId,
+                tenantId,
+                actorId,
+                currentStepIndex,
+                FlowInstanceStatus.WAITING_EVENT,
+                state,
+                waitingForEventName,
+                createdAtEpochMs,
+                nowEpochMs,
+                0,
+                lastResumeAtEpochMs,
+                lastResumeErrorCode,
+                null,
+                lastProgressAtEpochMs,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
     public FlowInstance markResumeFailure(
             String errorCode,
             long nowEpochMs,

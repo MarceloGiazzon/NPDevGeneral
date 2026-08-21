@@ -60,7 +60,7 @@ NPDev's files live in three places on disk. Only the middle one is where you, as
 author, actually work day to day.
 
 ```
-D:\WorkSpace\NPDev\
+./
 │
 ├── NPDev_General\          <- THE ENGINE. Java/TypeScript source code of the generator,
 │                              the runtime, the editor. You do NOT edit this to build an app.
@@ -96,9 +96,9 @@ Before building your first app, two things must be true on your machine:
    app links against:
 
 ```powershell
-& 'D:\WorkSpace\NPDev\NPDev_General\scripts\runtimehost\sync-runtimehost-libs.ps1' `
+& '$repo\scripts\runtimehost\sync-runtimehost-libs.ps1' `
   -BuildLocalJars `
-  -RuntimeHostLibsDir 'D:\WorkSpace\NPDev\Build\runtimehost-libs'
+  -RuntimeHostLibsDir './Build\runtimehost-libs'
 ```
 
 This takes a few minutes. You'll know you need to re-run it if a build fails complaining
@@ -113,10 +113,10 @@ workflow:
 
 ```powershell
 # 1. Generate the app from your JSON definition + emit a control-script toolbox ("_ops")
-& 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1' -App <YourAppName>
+& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App <YourAppName>
 
 # The command above prints where it put things, typically:
-$ops = 'D:\WorkSpace\NPDev\Build\generated-finalapps\<yourapp>\_ops'
+$ops = './Build\generated-finalapps\<yourapp>\_ops'
 
 # 2. Compile it (Gradle build -> runnable .jar)
 & "$ops\Build-App.ps1"
@@ -148,7 +148,7 @@ about steps 2–5 changes between a one-concept toy app and a full showcase app 
 | `_ops\Start-Environment.ps1` / `Stop-Environment.ps1` | generated app | Starts/stops only the database server process (used automatically by Start/Stop-App). |
 | `scripts\runtimehost\sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir ...` | NPDev_General | One-time (or after an engine change) compile of the shared runtime libraries every generated app links against. |
 
-Output is always written to `D:\WorkSpace\NPDev\Build\generated-finalapps\<scenario.name>`
+Output is always written to `./Build\generated-finalapps\<scenario.name>`
 — never inside `NPDev_General` and never inside `AppGen`.
 
 ---
@@ -311,7 +311,7 @@ H2Server (persistent) example — pick a unique TCP port and a unique data folde
   "database": {
     "engine": "H2Server",
     "databaseName": "npdev_myapp",
-    "jdbcUrl": "jdbc:h2:tcp://localhost:9200/D:/WorkSpace/NPDev/Build/databases/myapp/npdev_myapp;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE",
+    "jdbcUrl": "jdbc:h2:tcp://localhost:9200/./databases/myapp/npdev_myapp;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE",
     "username": "sa",
     "password": "",
     "createInternalTables": true,
@@ -431,8 +431,8 @@ level is about the API only — omit that block and you'd get Level 2 for free.
 **Run it** (once you've created the folder as `AppGen\apps\notes-app\`):
 
 ```powershell
-& 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1' -App notes-app
-$ops = 'D:\WorkSpace\NPDev\Build\generated-finalapps\notes-app\_ops'
+& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App notes-app
+$ops = './Build\generated-finalapps\notes-app\_ops'
 & "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"
 ```
 
@@ -508,8 +508,8 @@ This exact pattern already exists and is proven green as the reference app
 **Run the real thing:**
 
 ```powershell
-& 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1' -App simple-user-registry-inmemory
-$ops = 'D:\WorkSpace\NPDev\Build\generated-finalapps\simple-user-registry\_ops'
+& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App simple-user-registry-inmemory
+$ops = './Build\generated-finalapps\simple-user-registry\_ops'
 & "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"
 ```
 
@@ -578,7 +578,7 @@ automatic notification created the moment an invoice is issued.
   ],
   "events": [ { "name": "InvoiceIssued", "payload": ["id", "invoiceNumber"] } ],
   "queries": [
-    { "name": "PendingInvoices", "concept": "Invoice", "where": "status == 'DRAFT'", "orderBy": ["invoiceNumber"], "auditPolicy": "read" }
+    { "name": "PendingInvoices", "concept": "Invoice", "where": "status == 'DRAFT'", "orderBy": ["invoiceNumber"] }
   ],
   "flows": [
     {
@@ -614,8 +614,8 @@ across restarts.
 **Run the real thing:**
 
 ```powershell
-& 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1' -App invoice-bonds-demo
-$ops = 'D:\WorkSpace\NPDev\Build\generated-finalapps\invoicebonds\_ops'
+& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App invoice-bonds-demo
+$ops = './Build\generated-finalapps\invoicebonds\_ops'
 & "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"; & "$ops\Test-App.ps1"
 ```
 
@@ -718,8 +718,8 @@ notify" is modeled without polling or manual bookkeeping.
 **Run the real thing:**
 
 ```powershell
-& 'D:\WorkSpace\NPDev\NPDev_General\scripts\appgen\Build-AppGenApp.ps1' -App Claude
-$ops = 'D:\WorkSpace\NPDev\Build\generated-finalapps\claude-support-desk\_ops'
+& '$repo\scripts\appgen\Build-AppGenApp.ps1' -App Claude
+$ops = './Build\generated-finalapps\claude-support-desk\_ops'
 & "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"; & "$ops\Test-App.ps1"
 ```
 
@@ -759,10 +759,10 @@ above, just more of it at once.
 
 ## 9. Where to go deeper
 
-- `D:\WorkSpace\NPDev\AppGen\apps\APP_DEFINITION_FORMAT.md` — the exhaustive field-by-field
+- `./AppGen\apps\APP_DEFINITION_FORMAT.md` — the exhaustive field-by-field
   reference for `config.json` / `db.definition.json` / `model.json`, written for whoever is
   authoring a definition (human or AI).
-- `D:\WorkSpace\NPDev\AppGen\apps\README.md` — the list of proven reference apps and the exact
+- `./AppGen\apps\README.md` — the list of proven reference apps and the exact
   build commands for each.
 - `docs\architecture\NPDEV_BOX_OBJECT_TRUTH_VISION.md` — the underlying philosophy (why
   generated output is disposable, why your JSON is the only real source of truth, how NPDev

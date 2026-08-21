@@ -24,6 +24,11 @@ public final class NpdevScheduledEventTable {
                         InternalColumnDefinition.required("source_event_name", TEXT),
                         InternalColumnDefinition.optional("source_event_id", TEXT),
                         InternalColumnDefinition.optional("trigger_correlation_id", TEXT),
+                        // RUN-10: the tenant the deferred event was scheduled under, so the drain can
+                        // publish with the SAME correlation id AND tenant -- enforceCorrelationOwnership
+                        // needs both, and a correlated await is only satisfied when the drain echoes the
+                        // correlation id it was scheduled with.
+                        InternalColumnDefinition.optional("tenant_id", TEXT),
                         InternalColumnDefinition.required("event_name", TEXT),
                         InternalColumnDefinition.required("due_at", TIMESTAMP),
                         InternalColumnDefinition.required("payload", JSON_DOCUMENT),

@@ -65,6 +65,9 @@ class StorageCapabilityGateTest {
             @Override public String selectForUpdate(String columns, String table, String whereClause) {
                 throw new UnsupportedOperationException();
             }
+            @Override public String guardedCreateSchema(String schemaName) {
+                throw new UnsupportedOperationException();
+            }
             @Override public String selectForUpdateSkipLocked(
                     String columns, String table, String whereClause, String orderBy, int maxRows) {
                 throw new UnsupportedOperationException();
@@ -82,6 +85,9 @@ class StorageCapabilityGateTest {
                 throw new UnsupportedOperationException();
             }
             @Override public String guardedCreateIndex(String index, String table, String statement) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public String guardedDropIndexIfExists(String index, String table) {
                 throw new UnsupportedOperationException();
             }
             @Override public String guardedAddColumn(String table, String column, String statement) {
@@ -154,7 +160,7 @@ class StorageCapabilityGateTest {
                 field("id", true, false, null),
                 field("customer", false, false, "Customer")));
         CompiledQuery summary = new CompiledQuery(
-                "orderSummary", "Order", null, List.of(), null, List.of(), List.of(), null, null,
+                "orderSummary", "Order", null, List.of(), null, List.of(), List.of(), null,
                 java.util.Map.of(),
                 List.of(new CompiledGroupByField("customer.region", null)),
                 List.of(), null);

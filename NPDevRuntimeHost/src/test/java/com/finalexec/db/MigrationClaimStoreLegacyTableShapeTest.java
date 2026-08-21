@@ -91,14 +91,20 @@ class MigrationClaimStoreLegacyTableShapeTest {
     @DisplayName("REG-91: clear() -- the operator escape hatch -- works against the legacy strict shape")
     void clearWorksAgainstTheLegacyStrictShape() throws SQLException {
         execute(LEGACY_DDL);
-        MigrationClaimStore.claim(dataSource, false); // a holder that never releases (crashed instance)
+        // R9.3: a crashed instance is now simulated by its leftover ROW, not by calling claim() and
+        // walking away. claim() takes a connection-scoped mutex it would still be holding, which is
+        // precisely what a crashed process does NOT do -- its connection died with it.
+        execute("INSERT INTO " + MigrationClaimStore.TABLE
+                + " (claim_key, instance_id, hostname, claimed_at_utc) "
+                + "VALUES ('schema-migration', 'crashed-instance', 'some-host', 1)");
 
         MigrationClaimStore.clear(dataSource);
 
         assertTrue(MigrationClaimStore.current(dataSource).isEmpty(),
                 "clear() must leave the row unheld; against the legacy shape the NULL form threw outright");
-        assertTrue(MigrationClaimStore.claim(dataSource, false) != null,
-                "and the next boot must then be able to claim normally");
+        MigrationClaimStore.Claim next = MigrationClaimStore.claim(dataSource, false);
+        assertTrue(next != null, "and the next boot must then be able to claim normally");
+        MigrationClaimStore.release(dataSource, next.instanceId());
     }
 
     @Test

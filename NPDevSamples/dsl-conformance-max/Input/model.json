@@ -47,6 +47,12 @@
     { "$ref": "packs/labeling/pack.json", "as": "labeling" }
   ],
 
+  "provides": {
+    "roleBindings": {
+      "curator": "WidgetLabelCurator"
+    }
+  },
+
   "fragments": [
     { "$ref": "fragments/auditLog.json" }
   ],
@@ -79,10 +85,17 @@
       "name": "WidgetOrder",
       "truthLevel": "T2",
       "ui": {
-        "label": "Widget order"
+        "label": { "default": "Widget order", "pt-BR": "Pedido de widget" }
       },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "orderNumber",
+          "type": "string",
+          "required": false,
+          "defaultExpression": "nextNumber('orderNumber')",
+          "ui": { "label": "Order number" }
+        },
         {
           "name": "customerEmail",
           "renamedFrom": "email",
@@ -95,7 +108,10 @@
           "name": "status",
           "type": "string",
           "required": true,
-          "ui": { "label": "Status" }
+          "ui": { "label": "Status" },
+          "access": {
+            "write": "customerEmail == $user.id"
+          }
         },
         {
           "name": "lineCount",
@@ -112,6 +128,16 @@
             "maxSizeBytes": 5242880
           },
           "ui": { "label": "Purchase order (PDF)" }
+        },
+        {
+          "name": "companyLogo",
+          "type": "file",
+          "required": false,
+          "file": {
+            "contentTypes": ["image/png", "image/jpeg"],
+            "maxSizeBytes": 1048576
+          },
+          "ui": { "label": "Company logo" }
         },
         {
           "name": "requestedShipDate",
@@ -165,6 +191,22 @@
           "type": "integer",
           "required": true,
           "ui": { "label": "Quantity" }
+        },
+        {
+          "name": "unitPrice",
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "required": true,
+          "ui": { "label": "Unit price" }
+        },
+        {
+          "name": "lineTotal",
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "derivedExpression": "quantity * unitPrice",
+          "ui": { "label": "Line total" }
         }
       ],
       "invariants": [
@@ -349,6 +391,30 @@
         { "name": "productSku", "type": "string", "ui": { "label": "Product SKU (legacy)" } },
         { "name": "productId", "type": "uuid", "required": true, "ui": { "label": "Product" } }
       ]
+    },
+    {
+      "name": "WidgetSupplier",
+      "truthLevel": "T2",
+      "softDelete": true,
+      "ui": { "label": "Widget supplier" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "supplierCode", "type": "string", "required": true, "unique": true, "ui": { "label": "Supplier code" } },
+        { "name": "displayName", "type": "string", "required": true, "ui": { "label": "Name" } }
+      ]
+    },
+    {
+      "name": "WidgetPriceListEntry",
+      "truthLevel": "T2",
+      "temporal": true,
+      "ui": { "label": "Widget price list entry" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "productCode", "type": "string", "required": true, "ui": { "label": "Product code" } },
+        { "name": "amount", "type": "decimal", "required": true, "ui": { "label": "Amount" } },
+        { "name": "validFrom", "type": "date", "required": true, "ui": { "label": "Valid from" } },
+        { "name": "validTo", "type": "date", "required": true, "ui": { "label": "Valid to" } }
+      ]
     }
   ],
 
@@ -419,6 +485,45 @@
       "payload": [
         { "name": "sku", "type": "string" }
       ]
+    },
+    {
+      "name": "WidgetOrderManagerApproved",
+      "payload": [
+        { "name": "approvedBy", "type": "string" }
+      ]
+    },
+    {
+      "name": "WidgetOrderApprovalEscalated",
+      "payload": [
+        { "name": "widgetOrderId", "type": "uuid" }
+      ]
+    },
+    {
+      "name": "PaymentConfirmed",
+      "payload": [
+        { "name": "correlationId", "type": "string" },
+        { "name": "reference", "type": "string" }
+      ]
+    }
+  ],
+
+  "webhooks": [
+    {
+      "source": "payment-processor",
+      "hmacSecretEnvVar": "NPDEV_WEBHOOK_PAYMENT_PROCESSOR_SECRET",
+      "eventName": "PaymentConfirmed",
+      "fieldMapping": {
+        "correlationId": "orderId",
+        "reference": "txnRef"
+      }
+    }
+  ],
+
+  "sequences": [
+    {
+      "name": "orderNumber",
+      "format": "ORD-{year}-{seq:4}",
+      "scope": "tenant"
     }
   ],
 
@@ -721,6 +826,45 @@
       "metadata": {
         "purpose": "Coverage for documents[]: only superuser-admin-console declared one."
       }
+    },
+    {
+      "name": "WidgetOrderInvoice",
+      "concept": "WidgetOrder",
+      "aggregate": "WidgetOrderAggregate",
+      "title": "Widget order invoice",
+      "pageSize": "A4",
+      "marginMm": 15,
+      "logo": {
+        "field": "companyLogo"
+      },
+      "bands": [
+        {
+          "name": "header",
+          "kind": "header",
+          "label": "Order",
+          "fields": [
+            { "field": "orderNumber", "ui": { "label": "Order number" } },
+            { "field": "customerEmail", "ui": { "label": "Customer" } },
+            { "field": "status", "ui": { "label": "Status" } },
+            { "field": "requestedShipDate", "ui": { "label": "Requested ship date" } }
+          ]
+        },
+        {
+          "name": "lines",
+          "kind": "lineItems",
+          "collection": "lines",
+          "label": "Line items",
+          "fields": [
+            { "field": "sku", "ui": { "label": "SKU" } },
+            { "field": "quantity", "ui": { "label": "Qty" } },
+            { "field": "unitPrice", "ui": { "label": "Unit price" } },
+            { "field": "lineTotal", "ui": { "label": "Line total" } }
+          ]
+        }
+      ],
+      "metadata": {
+        "purpose": "R5.7 coverage: an aggregate-bound document with a header band, a lineItems band (WidgetOrderAggregate's 'lines' collection), and a logo bound to a stored image field -- the canonical invoice shape (header + line-item table + logo)."
+      }
     }
   ],
 
@@ -956,11 +1100,29 @@
           "output": "$orderId"
         },
         {
+          "name": "flag-bulk-order",
+          "type": "branch",
+          "condition": "$saved.lineCount > 5 && $saved.status == \"open\"",
+          "then": [
+            { "name": "mark-bulk-order", "type": "map", "input": "$saved.lineCount", "output": "$bulkOrderFlag" }
+          ],
+          "else": [
+            { "name": "mark-standard-order", "type": "map", "input": "$saved.status", "output": "$bulkOrderFlag" }
+          ]
+        },
+        {
           "name": "score-order-risk",
           "type": "generatedAction",
           "actionName": "ScoreWidgetOrderRisk",
           "input": "$saved",
           "output": "$riskScore"
+        },
+        {
+          "name": "announce-order-placed",
+          "type": "scheduleEvent",
+          "event": "WidgetOrderPlaced",
+          "from": "$saved",
+          "delaySeconds": 0
         },
         {
           "name": "schedule-review",
@@ -1187,6 +1349,55 @@
         },
         {
           "name": "return-processed-parallel",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
+      "name": "EscalateWidgetOrderApproval",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "await-manager-approval",
+          "type": "awaitEvent",
+          "awaitEvent": "WidgetOrderManagerApproved",
+          "match": {
+            "correlation": true
+          },
+          "awaitRef": "managerApproval",
+          "timeout": 259200,
+          "onTimeout": [
+            {
+              "name": "escalate-approval",
+              "type": "emitEvent",
+              "event": "WidgetOrderApprovalEscalated",
+              "payload": "$input"
+            }
+          ]
+        },
+        {
+          "name": "return-approval-outcome",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
+      "name": "AwaitPaymentConfirmation",
+      "concept": "WidgetOrder",
+      "steps": [
+        {
+          "name": "await-payment-confirmation",
+          "type": "awaitEvent",
+          "awaitEvent": "PaymentConfirmed",
+          "match": {
+            "correlation": true
+          },
+          "awaitRef": "paymentConfirmation"
+        },
+        {
+          "name": "return-payment-outcome",
           "type": "return",
           "value": "$input"
         }

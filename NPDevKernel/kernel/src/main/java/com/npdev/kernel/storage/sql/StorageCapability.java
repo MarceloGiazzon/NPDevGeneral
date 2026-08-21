@@ -83,5 +83,67 @@ public enum StorageCapability {
      * rule) rather than assuming, so a future fifth engine without this capability fails loudly
      * instead of silently losing the double-resume guard.
      */
-    SKIP_LOCKED_READS
+    SKIP_LOCKED_READS,
+
+    /**
+     * A named mutex the engine scopes to the SESSION that took it, needing <b>no table to exist</b>
+     * and released by the engine itself the moment that session's connection dies.
+     *
+     * <p><b>R9.3: the property that makes a FIRST-EVER boot lockable at all.</b> NPDev's migration
+     * mutex has to be held across {@code flyway.migrate()}, and on a virgin database there is
+     * nothing to lock -- every table NPDev owns is about to be created by the migration this lock
+     * is protecting. Worse, creating one early is not merely useless but actively breaking:
+     * self-bootstrapping any table into Flyway's schema ahead of {@code flyway.migrate()} makes
+     * Flyway refuse the boot outright with <i>"Found non-empty schema(s) 'public' but no schema
+     * history table"</i> (REG-7.2, verified live on {@code simple-user-registry-h2local}). A lock
+     * that needs no table is the only kind that can close that window without re-opening REG-7.2.
+     *
+     * <p><b>Splits the matrix three-to-one</b> -- unlike {@link #SKIP_LOCKED_READS}, this is a
+     * capability an engine genuinely lacks, which is exactly why it is a capability and not an
+     * assumption:
+     * <pre>
+     *   Postgres    pg_try_advisory_lock(bigint) / pg_advisory_unlock -- session-scoped
+     *   MySQL       GET_LOCK(name, timeout) / RELEASE_LOCK(name)      -- session-scoped
+     *   SQL Server  sp_getapplock @LockOwner='Session' / sp_releaseapplock
+     *   H2          NONE. H2 has no advisory-lock function of any kind, so the migration mutex
+     *               falls back to a row lock held open in its own transaction, in a DEDICATED
+     *               schema Flyway does not manage (see MigrationMutex) -- which needs a table, and
+     *               therefore has to keep that table out of Flyway's way rather than not need one.
+     * </pre>
+     * Ask with {@link SqlDialect#supports(StorageCapability)} and branch on the ANSWER, never on
+     * the engine name: that is what keeps the fallback one code path instead of three.
+     */
+    SESSION_ADVISORY_LOCK,
+
+    /**
+     * A {@code UNIQUE} index can carry a {@code WHERE} predicate, so the constraint applies only to
+     * the rows matching it (e.g. {@code WHERE deleted_at IS NULL}) instead of the whole table.
+     *
+     * <p><b>R5.4: what makes "unique among live rows only" a real, engine-enforced constraint</b>
+     * instead of a JVM-side precheck alone (see {@code ConceptStore#existsUnique}, R5.2/RUN-16) --
+     * without it, a soft-deleted row's still-physically-present unique value keeps blocking reuse at
+     * the database even after the application-level check has been taught to ignore it.
+     * <pre>
+     *   Postgres    CREATE UNIQUE INDEX ix ON t (col) WHERE deleted_at IS NULL -- partial index,
+     *               documented since 8.0
+     *   SQL Server  CREATE UNIQUE INDEX ix ON t (col) WHERE deleted_at IS NULL -- filtered index,
+     *               documented since SQL Server 2008; identical syntax to Postgres's
+     *   H2          NONE. Empirically confirmed (2026-08-19): H2 2.2.224 raises
+     *               "Syntax error in SQL statement" on a WHERE clause attached to CREATE (UNIQUE)
+     *               INDEX -- H2 has no partial-index feature at all, at any version this platform
+     *               has pinned.
+     *   MySQL       NONE. MySQL 8.x has no partial/filtered index syntax; the documented workaround
+     *               (a generated column that is NULL for a deleted row, uniquely indexed) is real
+     *               engine-specific DDL this platform does not emit today.
+     * </pre>
+     * Splits the matrix two-to-two, unlike {@link #SKIP_LOCKED_READS}. A concept declaring {@code
+     * softDelete: true} still generates correctly on every engine -- {@code SchemaRealizationEmitter}
+     * asks {@link SqlDialect#supports(StorageCapability)} and falls back to the same tenant-scoped
+     * (non-filtered) unique index a non-soft-delete concept gets on H2/MySQL, documented plainly
+     * rather than silently degraded (the X0 rule): on those two engines the DB itself still refuses
+     * to reuse a deleted row's unique value, and only the JVM-side {@code existsUnique} precheck
+     * (which does exclude deleted rows) can no longer be the whole story for the caller who bypasses
+     * it and writes raw SQL.
+     */
+    PARTIAL_UNIQUE_INDEX
 }

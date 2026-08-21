@@ -83,7 +83,40 @@ public final class ModelSourceResolver {
             "aggregates",
             "autoPanels",
             "documents",
-            "selectors"
+            "selectors",
+            // R6.2 (2026-08-19): webhooks[] threaded exactly like the PACK-11 four keys above --
+            // composer support here first, pack.schema.json permission second (relaxing the schema
+            // alone would accept a pack's webhooks[] file and drop its content in silence, REG-108's
+            // X0 shape). Its `eventName` field also needs a rewriteKnownMemberReferenceFields entry
+            // (the "PACK-11 fifth place" for any member kind carrying a reference of its own) --
+            // see that method's own "webhooks" branch.
+            "webhooks",
+            // R5.3 (2026-08-19): sequences[] threaded the same way. Unlike every other kind in this
+            // set, its own `name` field is deliberately EXCLUDED from mergeQualifiedNonConceptArrays'
+            // generic pack-qualification (see that method's own "sequences" check) -- a sequence is
+            // referenced by nextNumber('name') as an opaque literal argument embedded inside a
+            // field's defaultExpression TEXT, which rewriteKnownMemberReferenceFields cannot reach
+            // (it rewrites discrete JSON fields, never substrings inside another field's expression
+            // string). Qualifying the declaration but never the reference would silently break every
+            // pack-declared sequence -- the same reasoning webhooks[].source already established for
+            // a wire-visible identity. SequenceValidation instead requires global name uniqueness
+            // across the fully-resolved model, closing the loop WebhookValidation closes for source.
+            "sequences",
+            // R8.8 (Roadmap Wave 2, 2026-08-19): seeds[] threaded the same way, but with the
+            // OPPOSITE reference-rewriting posture from every kind above: a seed's `concept` field
+            // is REWRITTEN to pack-qualified form when pack/context-declared, but deliberately NOT
+            // via the shared rewriteKnownMemberReferenceFields/resolveUnqualifiedReferences path
+            // every other kind uses -- that path's later global pass would silently resolve an
+            // unowned bare concept name to some OTHER pack's same-named concept the moment it
+            // happens to be globally unique, which is exactly wrong here: inserting rows into a
+            // concept another pack owns, unattended, at that pack's own first boot, is a materially
+            // different hazard than merely reading/joining it. mergeQualifiedNonConceptArrays' own
+            // "seeds" branch resolves `concept` ONLY against the SAME pack/context's own local
+            // concept map and throws immediately if it does not resolve there -- a compile error,
+            // not a silent cross-pack fix. A seed record also has no `name` field, so it never
+            // participates in the generic name-qualification/duplicate-name-within-a-pack check
+            // every sibling kind above gets for free.
+            "seeds"
     );
     private static final Set<String> ROOT_SCALAR_KEYS = orderedSet(
             "$schema",
@@ -303,7 +336,8 @@ public final class ModelSourceResolver {
             if (!packs.isArray()) {
                 throw error(sourceFile, "/packs", "packs must be an array of pack import objects");
             }
-            List<PackRequirementEntry> requirements = resolvePacks((ArrayNode) packs, resolved, sourceFile, state);
+            List<PackRequirementEntry> requirements =
+                    resolvePacks((ArrayNode) packs, resolved, sourceFile, state, root.get("provides"));
             checkPackRequirements(requirements, root.get("provides"), sourceFile);
         }
 
@@ -605,9 +639,10 @@ public final class ModelSourceResolver {
             ArrayNode packsNode,
             ObjectNode resolved,
             Path modelFile,
-            ResolutionState state
+            ResolutionState state,
+            JsonNode provides
     ) throws IOException {
-        return PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state);
+        return PackDependencyGraphWalker.resolve(this, packsNode, resolved, modelFile, state, provides);
     }
 
     /** PK-3: one pack's own {@code requires} declaration, plus the path that reached it -- for
@@ -920,6 +955,20 @@ public final class ModelSourceResolver {
         globalRewriteMaps.put("capabilities", mergedCapabilities);
 
         for (String kind : MODEL_ARRAY_KEYS) {
+            // R8.8: seeds[] is deliberately excluded from this GLOBAL cross-pack pass -- see
+            // rewriteSeedConceptOwnership's javadoc. A pack/context-declared seed's `concept` was
+            // already resolved (or rejected) against ONLY its own declaring pack/context's local
+            // concepts by mergeQualifiedNonConceptArrays; letting this generic walker visit it again
+            // here would (a) risk resolving an otherwise-unowned bare name to some OTHER pack's
+            // same-named concept via the unqualified-reference convenience every other kind gets,
+            // exactly the hazard seed ownership must never be subject to, and (b) recurse into each
+            // record's `data` -- an arbitrary business payload, not DSL structure -- looking for
+            // field names like `conceptRef`/`domainType` to rewrite. A root-declared seed needs no
+            // pass here either: root concepts are never namespace-qualified, so there is nothing to
+            // resolve.
+            if ("seeds".equals(kind)) {
+                continue;
+            }
             JsonNode array = resolved.get(kind);
             if (array == null || !array.isArray()) {
                 continue;
@@ -994,13 +1043,74 @@ public final class ModelSourceResolver {
                         throw error(sourceFile, "/" + key,
                                 kindLabel + " '" + qualifierId + "' contributes duplicate " + key + " member '" + localName + "'");
                     }
-                    ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
+                    // R5.3: sequences[].name is deliberately NOT namespace-qualified here, unlike
+                    // every other kind this loop walks -- see MODEL_ARRAY_KEYS' own "sequences"
+                    // comment for why (nextNumber('name') references it as an opaque literal inside
+                    // a defaultExpression string the reference-rewriting machinery cannot reach).
+                    // The duplicate-within-this-pack check above still applies unconditionally.
+                    if (!"sequences".equals(key)) {
+                        ((ObjectNode) rewritten).put("name", qualifierId + "::" + localName);
+                    }
                 }
-                rewritePackLocalConceptReferencesInPlace(rewritten, rewriteMaps, ambiguousNames, key, qualifiedReferenceValidator);
+                if ("seeds".equals(key)) {
+                    // R8.8: deliberately bypasses rewritePackLocalConceptReferencesInPlace below --
+                    // see rewriteSeedConceptOwnership's own javadoc for why.
+                    rewriteSeedConceptOwnership(kindLabel, qualifierId, rewritten, mapFor(rewriteMaps, "concepts"), sourceFile, key);
+                } else {
+                    rewritePackLocalConceptReferencesInPlace(rewritten, rewriteMaps, ambiguousNames, key, qualifiedReferenceValidator);
+                }
                 target.add(rewritten);
             }
             resolved.set(key, target);
         }
+    }
+
+    /**
+     * R8.8: a pack/context's own seed may only target a concept IT OWNS -- rewritten to
+     * {@code qualifierId::concept} here (using ONLY this pack/context's own local concept map,
+     * built by {@link #buildRewriteMaps} from its own raw JSON, never the whole resolved model),
+     * and a concept this pack/context does not declare is a compile error, thrown immediately.
+     *
+     * <p>Deliberately isolated from {@link #rewritePackLocalConceptReferencesInPlace}/
+     * {@link #rewriteKnownMemberReferenceFields} for two reasons: (1) that shared walker is reused
+     * UNCHANGED by {@link #resolveUnqualifiedReferences}'s later GLOBAL pass, which would silently
+     * "fix" an unowned bare reference the moment some OTHER pack happens to declare a same-named
+     * concept -- exactly the hazard {@link #MODEL_ARRAY_KEYS}' own "seeds" comment warns about; (2)
+     * that walker also recurses into EVERY nested field looking for known reference field names
+     * ({@code conceptRef}/{@code domainType}, rewritten unconditionally at any depth), and a
+     * seed's {@code data} is an arbitrary business payload mirroring the TARGET concept's own
+     * schema -- a business field genuinely named e.g. "domainType" must never be mistaken for a DSL
+     * reference and silently rewritten. Skipping the walker entirely for {@code seeds} protects
+     * {@code data} from that hazard for free; nothing else in the seed record shape ({@code
+     * alias}/{@code id}/{@code repeatOver}/{@code count}) contains a reference to any other member
+     * kind.
+     *
+     * <p>An already-qualified {@code concept} (containing {@code ::}, e.g. an explicit
+     * self-reference or an attempt at a cross-pack one) is deliberately NOT specially unwrapped --
+     * {@code localConcepts} is keyed by bare local names only, so it never matches and always fails
+     * ownership, the same simple, safe default every other MODEL_ARRAY_KEYS kind's OWN-concept-only
+     * fields (documents/selectors) leave to plain bare-name authoring.
+     */
+    private static void rewriteSeedConceptOwnership(
+            String kindLabel,
+            String qualifierId,
+            JsonNode seedRecord,
+            Map<String, String> localConcepts,
+            Path sourceFile,
+            String key
+    ) throws IOException {
+        if (!seedRecord.isObject() || !seedRecord.has("concept") || !seedRecord.get("concept").isTextual()) {
+            return; // malformed -- pack.schema.json's own required:["concept"] already refuses this file.
+        }
+        String authored = seedRecord.get("concept").asText();
+        String qualified = localConcepts.get(authored);
+        if (qualified == null) {
+            throw error(sourceFile, "/" + key, kindLabel + " '" + qualifierId + "' declares a seed for concept '"
+                    + authored + "', which it does not own -- a seed may only target a concept declared by the "
+                    + "SAME " + kindLabel.toLowerCase(Locale.ROOT) + " (declare '" + authored + "' in "
+                    + qualifierId + "'s own concepts[], or remove this seed)");
+        }
+        ((ObjectNode) seedRecord).put("concept", qualified);
     }
 
     /** B20 (S2): same field walk, plus a hook invoked for every reference already qualified
@@ -1197,6 +1307,13 @@ public final class ModelSourceResolver {
         } else if ("events".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             rewriteTextField(object, "conceptName", conceptRewriteMap, qualifiedReferenceValidator);
+        } else if ("webhooks".equals(rootKey) && parentKey.isBlank()) {
+            // R6.2 (the "PACK-11 fifth place"): a webhook names the event it publishes on a
+            // verified request. `source` itself is deliberately NOT rewritten here -- unlike every
+            // other MODEL_ARRAY_KEYS member, a webhook's identity is a wire path segment a third
+            // party posts to; qualifying it would make POST /api/hooks/{source} depend on pack
+            // composition order, which the external contract cannot tolerate (see WebhookAst).
+            rewriteTextField(object, "eventName", resolverFor(rewriteMaps, ambiguousNames, "events"), qualifiedReferenceValidator);
         } else if ("bindings".equals(rootKey) && parentKey.isBlank()) {
             rewriteTextField(object, "capability", resolverFor(rewriteMaps, ambiguousNames, "capabilities"), qualifiedReferenceValidator);
         } else if ("properties".equals(rootKey) && parentKey.isBlank()) {
@@ -1390,6 +1507,12 @@ public final class ModelSourceResolver {
         // applyMigrationChains is the actual consumer, one layer up.
         if (rawPack.has("migrations")) {
             resolvedPack.set("migrations", rawPack.get("migrations").deepCopy());
+        }
+        // PACK-10/R8.11: first-class `extends` keyword -- same "schema-validates then silently
+        // vanishes" hazard as packs[]/requires/migrations before them. PackExtensionComposer
+        // .readExtensionTarget() is the actual consumer, one layer up.
+        if (rawPack.has("extends")) {
+            resolvedPack.set("extends", rawPack.get("extends").deepCopy());
         }
         JsonNode fragments = rawPack.get("fragments");
         if (fragments != null) {
@@ -1961,7 +2084,18 @@ public final class ModelSourceResolver {
         if (!Files.isRegularFile(real)) {
             throw error(referencingFile, "$ref", label + " is not a file: " + ref);
         }
-        if (rootDirectory != null && !real.startsWith(rootDirectory)) {
+        // R8.1: a cache-resident (remote) pack's own directory lives entirely OUTSIDE the app's
+        // model root by construction -- every fragment inside a multi-file remote pack therefore
+        // tripped "escapes the model root" before it could ever be reached, even though it never
+        // left the pack's own directory. Detected by asking whether the pack's own containment
+        // directory is itself outside the root: if so, this call is resolving a REMOTE pack's
+        // internal $ref, and the model-root boundary simply does not apply to it -- the
+        // containment-directory check just below is what still stops a fragment reaching outside
+        // its own pack (e.g. path traversal into a sibling cache entry). A LOCAL pack's containment
+        // directory is always under the model root, so this changes nothing for it.
+        boolean containedByAPackOutsideTheRoot = containmentDirectory != null && rootDirectory != null
+                && !containmentDirectory.startsWith(rootDirectory);
+        if (!containedByAPackOutsideTheRoot && rootDirectory != null && !real.startsWith(rootDirectory)) {
             throw error(referencingFile, "$ref", label + " escapes the model root: " + ref);
         }
         if (containmentDirectory != null && !real.startsWith(containmentDirectory)) {

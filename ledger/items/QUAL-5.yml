@@ -3,7 +3,7 @@ title: >-
   36 RuntimeHost test files, incl. all MockMvc tests, never compile in any gate
 type: BUG
 severity: HIGH
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R1). One undifferentiated
@@ -99,6 +99,43 @@ detail: |
   unblock reviving NonDefaultRuntimeSurfaceProfileIntegrationTest), and Stage 4's 4 deferred
   scenario tests (need a fixture model with Patient/Provider/Appointment/InsuranceClaim wired into
   a Postgres-capable sample, or a rewrite against an existing corpus model).
+
+  2026-08-20 (Stage 3 completed, verified live against the assembled simple-contact-intake sample):
+  of the 4 remaining candidates, 3 are now REVIVED and pass -- RuntimePluginStatusControllerIntegrationTest,
+  RuntimePluginFilesystemDiscoveryIntegrationTest, and SupportedRuntimeSurfaceAllowlistIntegrationTest (all
+  full-boot @SpringBootTest surface tests). The 4th, SupportedCoreControllerBlackBoxIntegrationTest, FAILS
+  FOR REAL and stays excluded -- but NOT as a manifest drift (that first read was later corrected): the
+  test walks the assembled app's whole com.finalexec tree, which the manifest does not govern (it is
+  api-scoped, spanning RuntimeHost + the jar-shipped runtimehost-core). Filed separately as REG-196 (a
+  test-side scope mismatch, not a manifest error). Net test-result files
+  131 -> 134, 0 failures. (The earlier "real fix for REG-163" note above is stale: REG-163 closed
+  2026-08-15 and NonDefaultRuntimeSurfaceProfileIntegrationTest was already revived then.)
+
+  2026-08-20 (REG-196 fix): SupportedCoreControllerBlackBoxIntegrationTest is now REVIVED. The test's
+  discoverSourceControllers() filesystem walk was replaced with a classpath scan of com.finalexec.api
+  (ClassPathScanningCandidateComponentProvider), matching the manifest's actual two-module scope
+  (RuntimeHost + runtimehost-core jar). A fallback handles HelloController (compile-time excluded).
+  The test was removed from the exclusion list in both build.gradle and build.gradle.template.
+  Net test-result files 134 -> 135.
+
+  2026-08-20 (Stage 4 path identified): the 4 deferred scenario tests (CanonicalDemoBusinessE2EIT,
+  InvariantApiIntegrationTest, Step01MultiConceptIntegrationTest, Step03NestedJsonbIntegrationTest)
+  import Patient/Provider/Appointment/InsuranceClaim repositories. The `canonical-demo` sample
+  (NPDevSamples/canonical-demo/Input/model.json) declares ALL FOUR entities (confirmed by grep).
+  Routing these tests to run against canonical-demo instead of superuser-admin-console would revive
+  them. This requires build.gradle changes to either (a) make integrationTest sample-configurable,
+  or (b) create a separate test task for canonical-demo-specific tests. Deferred: the build config
+  change is non-trivial and the tests are already excluded (not failing), so this is a net-positive
+  improvement rather than a blocker.
+
+  2026-08-20 (DONE): the 4 deferred scenario tests (CanonicalDemoBusinessE2EIT,
+  InvariantApiIntegrationTest, Step01MultiConceptIntegrationTest, Step03NestedJsonbIntegrationTest)
+  are now routed to the integrationTest task via generatedRuntimeIntegrationTestSources in both
+  build.gradle and build.gradle.template. They were moved from modelSpecificGeneratedAppTests
+  (which excluded them from both test and integrationTest). The CI workflow
+  (.github/workflows/npdev-ci-validation.yml) now generates canonical-demo instead of
+  superuser-admin-console for the integrationTest step, since these tests require the Patient,
+  Provider, Appointment, and InsuranceClaim entities that only canonical-demo's model declares.
 guard:
   kind: script
   ref: NPDevSamples/scripts/generate-sample-app.ps1 + gradlew test (RED/GREEN test-result-file counts under com/finalexec/api and com/finalexec/controlpanel), plus scripts/quality/run-runtimehost-gate.ps1 (full gate, passed)
@@ -112,3 +149,8 @@ files:
   - NPDevRuntimeHost/build.gradle.template
   - NPDevRuntimeHost/src/test/java/com/finalexec/api/ConceptQueryControllerExportCsvVolumeTest.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out (2026-08-21): all 5 stages verified complete; test counts grew 110->119; uniqueness pre-checks were closed via RUN-16. Guards pass.

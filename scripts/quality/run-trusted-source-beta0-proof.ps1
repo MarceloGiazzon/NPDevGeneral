@@ -616,7 +616,7 @@ function Write-GeneratedRuntimeModel {
                 returns = [ordered]@{ type = "object"; properties = [ordered]@{ createdCount = [ordered]@{ type = "integer" } } }
                 permissionRequirements = @("admin")
                 tracePolicy = "summary"
-                auditPolicy = "write"
+                # R5.1: auditPolicy retired -- schema-declared but consumed by nothing at runtime.
                 metadata = [ordered]@{ beta0Surface = "trusted-source"; trustedSourceEntrypoint = "procedure/CreateUsersProcedure.java" }
             }
         )

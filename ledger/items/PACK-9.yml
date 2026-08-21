@@ -3,8 +3,10 @@ title: >-
   Packs can hardcode app roles; there is no declared-interface/binding mechanism
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-19
+verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-3, "requires.roles" binding). A pack
   today has no way to declare "I need a role that means admin" and let the consuming app map its own
@@ -59,3 +61,138 @@ detail: |
   -- genuinely needs new DSL syntax plus a real design decision (how a pack author writes a binding
   reference, how the expression language distinguishes it from a literal, how/when the rewrite pass
   runs relative to compilation) before implementation, not a quick pass alongside smaller items.
+
+  2026-08-19 (R8.9, this session): the DSL-side half landed and is solid --
+  `PackRoleBindingRewriter`/`PackRoleBindingRewriteTest` (both in
+  `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/`), the `role('name')` token, and
+  `packs[].provides.roleBindings`, wired through `ModelSourceResolver`/`PackDependencyGraphWalker`/
+  `PackValidation`, all pre-existed this session, committed and green. Attempted to close the item
+  against its own done-when (two apps binding the same pack's `role('approver')`-equivalent token to
+  different concrete roles, live-verified enforcing correctly in both; an unbound role refusing at
+  composition naming the pack and key) and got a SPLIT result:
+
+  - **Item 2 (unbound refusal) is fully proven, live, not just by unit test.** Ran the real generator
+    (`:generator:run`, not a mocked resolver) against a throwaway model importing the `labeling` pack
+    with NO `provides.roleBindings` declared. It failed at composition with exactly:
+    `pack 'labeling' (via app -> labeling) references role('curator'), which the app does not declare
+    in provides.roleBindings.'curator' -- composition refuses (an unbound role must fail at
+    composition, never silently reach runtime)` -- names both the pack (`labeling`) and the unbound
+    key (`curator`), plus the exact JSON path to fix. `PackRoleBindingRewriteTest.
+    unboundRoleTokenRefusesNamingThePackAndTheKey` covers the same shape and still passes (verified
+    this session, `:dsl:test --tests PackRoleBindingRewriteTest`, 3/3 green).
+
+  - **Item 1 (two-app live enforcement) could NOT be proven, and the reason is outside this item's own
+    surface.** Built two new fixture apps, `NPDevSamples/pack9-role-binding-a` and `-b` (repro-case,
+    `scripts/quality/corpus-roles.json`), both composing the exact same `labeling` pack
+    (`dsl-conformance-max`'s copy, byte-identical) but binding `curator` to a different concrete role
+    each (`CURATOR_A` / `CURATOR_B`). Generated, built, and booted BOTH as real FinalApps (H2Local,
+    apikey auth) on ports 8410/8411 -- `npdev-canary` was not used as the base since it is explicitly
+    frozen ("do not add features"); these two are plain siblings of it instead. Confirmed the
+    compile-time half worked perfectly first: each app's own `compiled-model.json` carries its own
+    literal (`CURATOR_A` / `CURATOR_B`) exactly 4 times, zero leftover `role('curator')` tokens, in
+    both apps.
+
+    Then drove real HTTP traffic (`POST /api/concepts/labeling_labels`, the labeling pack's generated
+    CRUD endpoint) with actors holding each concrete role. Every combination was DENIED on BOTH apps,
+    including the case that should have succeeded (an actor holding the app's own correctly-bound
+    role). Root cause, confirmed by reading `ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule`
+    (`NPDevKernel/kernel/.../concepts/`) and reproduced live via stack trace
+    (`ConceptGatewayAccessDeniedException: Concept Gateway denied row-level write access`): it calls
+    `ComputedExpression.evaluateBoolean(expression, scope)` with an EMPTY `FunctionRegistry`, so the
+    labeling pack's `access.write` rule -- `$user.roles.contains(role('curator'))`, the ONLY existing
+    corpus usage of this idiom -- throws `"unknown function: contains"` on every evaluation, which the
+    method's own catch block turns into a silent `false` (fail-closed by design, but here masking a
+    permanently-broken rule rather than a genuinely denied actor). **This is a pre-existing NPDevKernel
+    defect, not something the PACK-9 rewrite mechanism itself got wrong** -- filed as `REG-195` (new
+    this session) rather than fixed here, per this item's explicit ownership boundary
+    (`NPDevKernel/**` is out of scope; ownership belongs to a separate workstream this session).
+
+  **Because item 1's own explicit non-negotiable ("enforces correctly at runtime in both,
+  live-verified") could not be met** -- the only mechanism the DSL layer offers for a pack to express
+  "does the actor hold role X" inside a row-level rule is currently inert at runtime, independent of
+  which concrete role the app bound -- **PACK-9 stays OPEN.** Re-attempt once REG-195 is fixed (a real
+  `FunctionRegistry` threaded into `ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule`,
+  registering at least `contains`); the two fixture apps and their live-boot recipe above should
+  reproduce cleanly against a fixed kernel with no DSL-side changes needed.
+
+  2026-08-19 (re-attempt, same session, after REG-195's fix landed in commit 31e2c5ea): re-ran item
+  1's live two-app enforcement proof exactly as scoped above, and it now PASSES for both apps --
+  **PACK-9 closes DONE.**
+
+  Before re-running, confirmed the staged `runtimehost-libs` kernel jar was STALE (built before
+  REG-195): `kernel-0.1.0.jar`'s `ConfiguredConceptGatewaySemanticPolicy.class` contained no
+  `ACCESS_RULE_FUNCTIONS` string. Rebuilt via `scripts/runtimehost/sync-runtimehost-libs.ps1
+  -BuildLocalJars` (default `RuntimeHostLibsDir`, i.e. `D:\WorkSpace\NPDev\Build\runtimehost-libs`) --
+  the restaged jar then carried the fix. Regenerated both fixture apps (`scripts\samples\generate-
+  sample.ps1 -SampleIds pack9-role-binding-a,pack9-role-binding-b`) and rebuilt each app's own
+  `gradlew bootJar` so the fresh kernel jar was actually linked in.
+
+  Found one thing beyond REG-195 worth recording precisely, so the proof recipe is reproducible: an
+  actor needs a role satisfying the **coarse, action-level** permission grant
+  (`create:labeling::label`, only ever assigned by default to the built-in `admin`/`user` roles when
+  the app declares no custom `roles[]`, which neither fixture app does) *in addition to* the
+  row-bound role, or the request never reaches the row-level `access.write` rule at all -- it is
+  denied earlier, at 403, by `StaticPermissionEvaluator`/`PermissionGrant` (kernel/security), an
+  entirely separate authorization layer from the one PACK-9/REG-195 concern. This matches REG-195's
+  own live evidence, which already used a two-role actor (`roles=[USER, CURATOR_A]`) for exactly this
+  reason. Both apps were booted with `NPDEV_AUTH_APIKEYS` set to a two-key mapping: a "correct" actor
+  holding both the coarse role and the row-bound role, and a "wrong" actor holding only the coarse
+  role.
+
+  **App A** (`NPDevSamples/pack9-role-binding-a`, binds `curator` -> `CURATOR_A`), booted
+  `--server.port=8410 --spring.profiles.active=dev,trial`, H2Local:
+  - `NPDEV_AUTH_APIKEYS=key-correct=tenant-a:curator-1:CURATOR_A|USER;key-wrong=tenant-a:other-1:USER`
+  - `POST /api/concepts/labeling_labels` with `X-Api-Key: key-correct`
+    (`roles=[curator_a, user]`), body `{"text":"hello"}` -> **200**,
+    `{"color":null,"id":"bff0ab72-17a9-4486-a97b-750f34aa3ec3","text":"hello"}` (row created).
+  - Same request with `X-Api-Key: key-wrong` (`roles=[user]`, lacking `CURATOR_A`) -> **500**, log
+    shows `com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException: Concept Gateway denied
+    row-level write access for concept labeling::Label` at
+    `DefaultConceptGateway.enforceRowWritable` (the documented `ROW_SCOPE_DENIED` write-denial shape,
+    `docs/reference/ROW_LEVEL_AUTHORIZATION.md`) -- the identical exception REG-195 found always
+    firing; here it fires only for the actor that should be denied.
+
+  **App B** (`NPDevSamples/pack9-role-binding-b`, binds `curator` -> `CURATOR_B`), booted
+  `--server.port=8411 --spring.profiles.active=dev,trial`, H2Local:
+  - `NPDEV_AUTH_APIKEYS=key-correct=tenant-b:curator-1:CURATOR_B|USER;key-wrong=tenant-b:other-1:USER`
+  - `POST /api/concepts/labeling_labels` with `X-Api-Key: key-correct`
+    (`roles=[curator_b, user]`), body `{"text":"hello"}` -> **200**,
+    `{"color":null,"id":"8d69b0c9-9060-4d36-a272-2865d7de0d18","text":"hello"}` (row created).
+  - Same request with `X-Api-Key: key-wrong` (`roles=[user]`, lacking `CURATOR_B`) -> **500**,
+    identical `ConceptGatewayAccessDeniedException` shape as app A.
+
+  Both apps: the correctly-bound actor was GRANTED and the actor missing the app's own bound role
+  was DENIED, with no cross-contamination between the two apps' bindings (app A's proof used
+  `CURATOR_A`, app B's used `CURATOR_B`, each the OTHER app's role would not have satisfied). Both
+  java processes stopped after the proof (ports 8410/8411 confirmed free again); no generated app
+  output committed (`Output/` is gitignored, `NPDevSamples/**/Output/` in `.gitignore`).
+
+  This closes PACK-9's own remaining scope in full: item 2 (unbound-role composition refusal) was
+  already proven 2026-08-19 earlier the same day; item 1 (two-app live runtime enforcement) is now
+  proven live above. No DSL-side code change was needed for this re-attempt, confirming the original
+  prediction that the fixture apps and recipe would reproduce cleanly once REG-195 was fixed.
+guard:
+  kind: manual
+  ref: >-
+    NPDevSamples/pack9-role-binding-a and NPDevSamples/pack9-role-binding-b -- generate via
+    scripts/samples/generate-sample.ps1 -SampleIds pack9-role-binding-a,pack9-role-binding-b, build
+    each app's own gradlew bootJar, boot with NPDEV_AUTH_APIKEYS set as recorded in detail above, and
+    POST /api/concepts/labeling_labels with each of the two X-Api-Key values.
+  asserts: >-
+    An actor holding the app's own root-bound concrete role (plus a coarse-permission role) for
+    role('curator') gets 200 with the row created; an actor missing that role gets 500 with root
+    cause ConceptGatewayAccessDeniedException ("Concept Gateway denied row-level write access") --
+    proven for both apps A (CURATOR_A) and B (CURATOR_B), each against its OWN bound role.
+  provenRed: true
+  provenRedNote: >-
+    Reproduced live 2026-08-19 (earlier the same session, before REG-195's fix) against the same two
+    apps on the same ports -- every combination was denied, including the actor holding the correct
+    role, root-caused to REG-195 (empty FunctionRegistry made $user.roles.contains(...) always throw
+    and the denial catch-block silently returned false). See REG-195.yml for that evidence.
+  provenGreenNote: >-
+    Re-run 2026-08-19 after REG-195's fix and a runtimehost-libs jar restage (the previously-staged
+    kernel jar predated the fix). App A: key-correct (roles=[curator_a,user]) -> 200 row created;
+    key-wrong (roles=[user]) -> 500 ConceptGatewayAccessDeniedException. App B: key-correct
+    (roles=[curator_b,user]) -> 200 row created; key-wrong (roles=[user]) -> 500
+    ConceptGatewayAccessDeniedException. Both processes stopped afterward, ports 8410/8411 confirmed
+    free.

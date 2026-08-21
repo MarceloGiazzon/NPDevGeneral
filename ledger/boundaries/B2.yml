@@ -1,9 +1,9 @@
 id: B2
 title: "Expression-valued backfills require an explicit dry-run + acknowledgment"
 kind: HITTABLE
-userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+userFacingText: "Expression-valued backfills require a dry-run preview and explicit acknowledgment. Preview affected rows first via the schema migration preview endpoint."
 workaround: "Call GET /api/admin/schema-migration/expression-backfill-preview, review affected rows, then acknowledge via the existing /acknowledge endpoint."
-enforcingDiagnosticCodes: []
-codeLinked: false
+enforcingDiagnosticCodes: ["B2:expression_backfill_requires_ack"]
+codeLinked: true
 codeLinkedNote: "Enforced by an admin REST endpoint/workflow (ExpressionBackfillPreview, BackfillPass), not the DSL ValidationDiagnostic pipeline -- a user hits this via the schema-migration API, not npdev validate model. boundaryId as currently scoped (ValidationDiagnostic-only) cannot reach this without extending the concept to REST error responses."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B2"

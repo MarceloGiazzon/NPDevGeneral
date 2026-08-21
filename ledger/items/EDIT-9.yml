@@ -1,0 +1,188 @@
+id: EDIT-9
+title: >-
+  execution.statusRoute shipped with no consumer -- a flow-bound invocation that returns 202 (or its
+  panel-action equivalent, WAITING) now shows a pending toast, polls the route, resolves to a
+  success/failure toast, and keeps a recent-executions rail in the shell
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R7.7 -- "a UI that shows Saved! on a
+  202 is lying ... invocations carry execution.statusRoute ... with no consumer. Show a pending
+  indicator polling the status route, resolve to a success/failure toast, keep a recent-executions
+  rail in the shell." Blocked by R7.1 (DONE, EDIT-5 -- toasts). Reuses R2.5/RUN-11 (durable awaitEvent)
+  and R6.2/RUN-17 (inbound HMAC webhook) as its live fixture.
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache
+  - AppGen/apps/payment-webhook-rehearsal/definition/model.json (external, AppGen source of truth)
+  - AppGen/apps/payment-webhook-rehearsal/explorations/r7-7-async-flow-progress.json (external)
+detail: |
+  PREMISES CHECKED AGAINST REAL CODE, NOT ASSUMED (eight premises in this roadmap collection had
+  already been measured false):
+    - `docs/UI_CONTRACT.md` line 111 really does say "A UI that shows 'Saved!' on a 202 is lying,"
+      and the invocations catalog really does carry `execution.statusRoute` (verified against the
+      real fixture `NPDevRuntimeHost/src/test/resources/npdev/metadata/invocations.manifest.json`:
+      `"statusRoute": "/api/v1/executions/{executionId}/links", "correlationField": "executionId"`
+      on the `flow:CreateAppointment` entry) -- TRUE.
+    - The claim that this had "no consumer" was ALSO verified true, not assumed: grepped
+      `business-ui-app.mustache` and `shell.js.mustache` for `statusRoute`/`executionId`/
+      `flowInput`/`async.*true` and found zero matches. `submitForm` (the only form-save path) always
+      POSTs to `concept.endpointBase` -- direct CRUD, never a flow's `/execute` endpoint -- so no
+      shipped generated UI had ever reached a 202 in the first place.
+    - `statusRoute`'s literal value, `/api/v1/executions/{executionId}/links`, IS a real, already-
+      shipped route (`ExecutionMonitorController.links`, `com.finalexec.api`, hand-written, part of
+      R2.2's "Execution Monitor") -- not a documented-but-missing endpoint, and not the generated
+      `ExecutionQueryController`'s plain detail route either (a second, DIFFERENT real route the
+      catalog does not name). It returns `executionStatus` (COMPLETED/WAITING_EVENT/FAILED/...),
+      confirmed live via `curl`-equivalent PowerShell BEFORE writing any browser routine.
+
+  REUSED, NOT REBUILT:
+    - R7.1/EDIT-5's toast host (`toast()`/`dismissToast()`/`notify()`, appended to `<body>` above the
+      modal backdrop) is the ONLY notification system touched. `toast()` gained a third non-auto-
+      dismissing kind, `"pending"` (same rule as `"error"`, just one more excluded kind in the same
+      condition). A new `resolveToast(node, success, message)` MORPHS that same pending toast node in
+      place into success/error rather than creating a second one.
+    - R7.5/EDIT-8's fix to `NPDevShell.setContext` (commit e6939e5f, the guide-page-reset bug) was
+      read via `git show` before editing shell.js.mustache and left untouched.
+    - The REAL trigger for a genuine 202/WAITING response, found by reading `PanelRuntime.java`
+      (`NPDevRuntimeHost`, not touched by this item) rather than invented: a declared Panel action
+      with `binding: "flow"` already routes through `KernelFacade.executeFlow` and already returns
+      `status: "WAITING"` + `executionId` + `correlationId` in its (always-200) JSON envelope when the
+      flow parks on `awaitEvent` -- shipped, working, and until now silently mis-reported by
+      `executeDeclaredPanelAction` as `Action "X" completed: WAITING` (the exact "Saved! on a 202"
+      lie, one layer down). No DSL/schema/Java change was needed to create a real async trigger.
+
+  CHANGES (3 owned files, +252/-4):
+    - `business-ui-app.mustache`: `toast()`'s auto-dismiss condition excludes `"pending"` too;
+      `resolveToast()` added; `trackFlowExecution(executionId, flowName)` added (shows the pending
+      toast, hands the executionId to `window.NPDevShell.trackExecution`, resolves the SAME toast node
+      via the caller's `onSettled`); `executeDeclaredPanelAction` now branches on
+      `payload.status === "WAITING"` -- that branch alone is new, every other response path
+      (`"OK"`/`"FAILED"`/`"UNSUPPORTED"`, and every unrelated caller: `submitForm`,
+      `createDeclaredPanelRow`, `deleteDeclaredPanelRow`, ...) is byte-for-byte unchanged.
+    - `shell.js.mustache`: `state.executions` (in-memory, newest-first, capped at 20 -- a recency
+      rail, not an audit log; the durable record is `ExecutionMonitorController`'s own `/active` and
+      `/history`); `executionOutcome`/`upsertExecutionRailEntry`/`renderExecutionsRail`/
+      `pollExecution`/`trackExecution` (poll interval 2s, cap 150 attempts ~5 min, terminal on
+      COMPLETED/FAILED/FAILED_PERMANENT/STUCK); a topbar toggle + dropdown panel, CSS-injected via a
+      `<style>` tag the same way `injectAppTheme` already injects `theme.css` (kept OUT of
+      `shell.css.mustache`, not owned this round); `trackExecution` exposed on the public
+      `window.NPDevShell` API next to `applyGuidePage`/`setContext`.
+    - `business-ui-style.mustache`: `.toast.is-pending` (amber left border + a CSS-only spinner via
+      `::before`, no extra DOM).
+
+  BACKWARD COMPATIBILITY: the rail toggle is `display:none` until `trackExecution` is first called,
+  which happens ONLY from the new `WAITING` branch -- an app with zero flow-bound Panel actions that
+  park calls `trackExecution` zero times, ever. LIVE-PROVEN, not just argued: the routine's own step 9
+  (`assertHidden .npdev-shell-executions-toggle`, run BEFORE the flow-bound action's first click)
+  passed on this exact app, which DOES declare the capability -- a stronger proof than testing an
+  unrelated plain-CRUD app, since it shows the hiding mechanism actively firing rather than merely
+  never being exercised. `toast()`'s auto-dismiss condition change is inert for every existing kind
+  ("error"/"success"/"info"): the added `&& kind !== "pending"` clause is never false for a caller that
+  never passes `"pending"`. Full regression against an unrelated existing app (e.g. re-running EDIT-5's
+  `r7-1-form-feedback.json`) was NOT done this round (time-boxed) -- code-level reasoning plus this
+  live default-state proof is the evidence on record.
+
+  LIVE PROOF (`AppGen/apps/payment-webhook-rehearsal`, H2Local, port 8098, reused per R6.2/RUN-17
+  rather than building a new fixture): a `PaymentOrderIntake` Panel with one `binding: "flow"` action
+  (`flow: "PlacePaymentOrder"`, the SAME flow RUN-17's model already declared parking on
+  `awaitEvent("PaymentConfirmed")`) was added to the app's model -- pure DSL/model data, using an
+  already-shipped platform feature (`panelAction.binding: "flow"`), zero platform code required for
+  the fixture itself. Manually verified end-to-end via PowerShell BEFORE writing the browser routine:
+  the panel action returns `status: "WAITING"` + `executionId` + `correlationId`; `/links` reports
+  `executionStatus: "WAITING_EVENT"`; an HMAC-SHA256-signed POST to `/api/hooks/payment-processor`
+  (RUN-17's own inbound door, no NPDev credential) returns 200; `/links` then reports `COMPLETED`.
+
+  BROWSER-VERIFIED (this item's Definition of Done, verbatim): `r7-7-async-flow-progress.json`,
+  **34/34 steps, `green: true`, `reasons: []`** -- run 2026-08-19T05-09-00, recorded via
+  `npdev explore run --ledger-id EDIT-9` (the SAME `evaluate_verdict` `npdev explore record` itself
+  uses). The routine drives the flow-bound action's inline mini-form (fills customerEmail/amount/
+  status, clicks "Place payment order"), asserts the pending toast (`.toast.is-pending`, text
+  "PlacePaymentOrder is running...") and the rail toggle appearing, opens the rail and asserts a
+  pending row naming the flow, then an `evaluate` step (engine started manually with
+  `ALLOW_EVALUATE=true` on a dedicated port -- `npdev explore run`'s own auto-start hardcodes it
+  `false`, REG-192) computes the HMAC-SHA256 signature via `crypto.subtle` in-page and POSTs the
+  webhook with NO NPDev credential, then asserts the SAME toast node resolved to
+  `.toast.is-success` / "PlacePaymentOrder completed." and the SAME rail row now reads
+  `npdev-shell-execution-succeeded`. Screenshots confirm both the resolved toast and the rail's
+  "COMPLETED" badge, side by side, in one frame.
+
+  A REAL TIMING DEFECT WAS FOUND AND FIXED IN THE ROUTINE, NOT ROUTED AROUND: the FIRST two attempts
+  failed at the pending-toast/mini-form-fill steps. Root cause, confirmed by reading the failure
+  screenshot pixel-for-pixel rather than guessing: `loadDeclaredPanel`'s own async data fetch
+  re-renders the WHOLE panel section (a pre-existing, unrelated behavior) shortly after it becomes
+  visible, tearing down and recreating the mini-form's textareas -- a `fill` issued before that second
+  render lands is silently lost when the old node is discarded. Fixed by adding a
+  `waitForSelector .declared-panel-datasource` step before touching the mini-form. A THIRD failure
+  (assertVisible run immediately after the click, before the async POST's response arrived) was fixed
+  by replacing the non-waiting `assertVisible`/`isVisible()` check with a `waitForSelector` (which
+  DOES poll) before it -- `isVisible()` has no auto-retry in this engine, `waitFor()` does.
+
+  `green: true` required four NARROW `allowedConsoleErrorSubstrings` entries in the app's (ephemeral)
+  `_ops/exploration-config.json` -- MON-12 style, `urlContains` + `status`, each with a written note:
+  `/api/me` (401, a second pre-auth fetch the `index==0`-only default rule doesn't reach),
+  `/api/properties` (401, covers `/api/properties/scopes` too -- R7.4's boot fetch), `/api/workspace_
+  menus` (401 AND a SEPARATE 404 entry -- this minimal app declares no `workspace::Menu` concept, so
+  the built-in route 404s regardless of auth, pre-existing and unrelated to this item), and
+  `/api/concepts/payment_orders` (401, the panel's own dataSource load on the default route). All fire
+  only in the pre-auth window before the routine's own `#apiKey` reload. No blanket excuse was added.
+  Config copied to `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\r7-7\exploration-runs\` (MON-19: an
+  app's `_ops/exploration-config.json` and `_ops/exploration-runs` are NOT spared across
+  regeneration).
+
+  DETERMINISM: `check-deterministic-generation.ps1 -SampleId dsl-conformance-max` PASSED (two full
+  generations, 0 differing files) -- chosen over the default sample because that corpus already
+  declares a `binding: "flow"` Panel action (`WidgetOrderReviewPanel`/`PlaceWidgetOrder`), so the
+  determinism check exercises the exact code path this item touches, not just an unrelated sample.
+
+  WHAT WAS DELIBERATELY NOT DONE: no persistence of the rail across a page reload (in-memory only,
+  stated in the code comment) -- the roadmap's own wording ("keep a recent-executions rail in the
+  shell") does not require durability, and the real durable record already exists
+  (`ExecutionMonitorController`/RUN-14's Execution Monitor); no change to `submitForm` or any direct-
+  CRUD create/update path to route through a flow even when one is `preferred` in the invocations
+  catalog -- that is a materially larger, separate feature (routing ordinary form saves through
+  flows) the roadmap text does not ask for, and doing it would have required new Java emitter work
+  outside this round's three-file template ownership; no full regression run against an unrelated
+  pre-existing app (see Backward compatibility above); `shell.css.mustache` was not touched (the
+  rail's CSS is self-injected by shell.js.mustache instead, to stay inside this round's file
+  ownership).
+guard:
+  kind: manual
+  ref: >-
+    D:\WorkSpace\NPDev\AppGen\apps\payment-webhook-rehearsal\explorations\r7-7-async-flow-progress.json
+    -- run with `npdev explore run --app-dir <generated app> --file <routine> --engine-port <port of
+    an engine started with ALLOW_EVALUATE=true> --api-key <engine key> --credential apiKey=<app's own
+    X-Api-Key>`. Evidence (final green run record, routine, exploration-config.json, all four
+    screenshots) copied to D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\r7-7\ because a generated
+    app's `_ops/exploration-runs` and `_ops/exploration-config.json` are NOT spared across
+    regeneration (MON-19). DELIBERATELY `manual`, not `test`: the routine lives with an AppGen app,
+    which CLAUDE.md defines as source-of-truth layer 2 ("not a git repo"), so no repo-rooted path can
+    name it -- same reason EDIT-5's/EDIT-6's/EDIT-7's/EDIT-8's guards are manual.
+  asserts: >-
+    against a flow parked on awaitEvent (reached through a declared Panel action's real
+    `binding: "flow"` WAITING response, the panel-action equivalent of a raw 202), a routine sees a
+    pending toast + a rail toggle appear, opens the rail and sees a pending row naming the flow,
+    publishes the awaited event via an unauthenticated HMAC-signed webhook POST from inside the page,
+    and then sees the SAME toast node resolve to a success message AND the SAME rail row flip to
+    "COMPLETED" -- the exact DoD sentence from the roadmap, verbatim.
+  provenRed: true
+  provenRedNote: >-
+    Three distinct real reds, each diagnosed from a failure screenshot rather than guessed, none
+    simulated: (1) the mini-form's fields ended up scrambled/partly empty because
+    `loadDeclaredPanel`'s own async re-render tore down and rebuilt the textareas mid-fill -- fixed by
+    waiting for `.declared-panel-datasource` before filling, re-verified by the field values landing
+    correctly on the next run. (2) `assertVisible .toast.is-pending` failed immediately after the
+    click even though the toast appeared moments later -- the failure screenshot (captured slightly
+    after the failing check) showed the toast already present, proving `isVisible()` does not
+    auto-retry in this engine; fixed by adding a `waitForSelector` (which does) before the assertion.
+    (3) with that fixed, the run still failed waiting 15s for the resolved success toast even though a
+    direct PowerShell check of the same executionId confirmed the backend had genuinely reached
+    COMPLETED -- raising the routine's wait to the schema's own 30s cap (still a routine-side budget,
+    not a template change) went green, consistent with headless-tab timer throttling rather than any
+    defect in the poll loop itself.

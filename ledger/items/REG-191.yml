@@ -1,0 +1,48 @@
+id: REG-191
+title: >-
+  `npdev monitor engine-start` crashes with NameError on every invocation -- `import time` is missing
+  from npdev_cli.py while four call sites use `time.monotonic()`/`time.sleep()`
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-20
+verification: UNIT_TESTED
+source: >-
+  Found while browser-verifying EDIT-7 (R7.4), which had to start the ScrapForAI engine manually as a
+  result. Confirmed independently by the orchestrator.
+surface: cli/monitor
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  Verified directly, not reported second-hand: `grep -n "^import time" NPDevCli/npdev_cli.py` returns
+  **nothing**, while bare `time.` is used at four sites --
+  `time.monotonic()` (~2141, ~2252, ~2320) and `time.sleep(2)` (~2264). Line ~2640 uses `_time.monotonic()`,
+  so an aliased import exists somewhere, but the bare-name uses have no binding.
+
+  Consequence: `npdev monitor engine-start` raises `NameError: name 'time' is not defined` on
+  essentially any real invocation that reaches the wait loop. Severity HIGH not because the fix is
+  hard -- it is one import line -- but because the command is a documented entry point that cannot
+  currently work at all, and because it went unnoticed, which says the path has no test coverage.
+
+  FIX: add `import time` (or convert the four bare uses to the existing `_time` alias -- pick one and
+  make the file consistent rather than leaving both spellings). Then add a test that actually reaches
+  the wait loop; the absence of one is why a missing import survived.
+
+  Not fixed at discovery time because `NPDevCli` was held by a concurrent workstream.
+
+  2026-08-20 (fix): added a module-level `import time` to npdev_cli.py and normalised run_setup's
+  local `import time as _time` alias to the plain `time` name, removing the now-redundant local
+  `import time` that had been added inside `_run_monitor_engine_start`. This also covers `_follow_logs`
+  (`npdev monitor logs --follow`), which called `time.sleep(0.4)` with no binding at all -- the same
+  missing-import class the original report named for engine-start. Regression test added:
+  NPDevCli/tests/test_follow_logs_time_import.py (2 tests, green). py_compile clean; the remaining
+  per-function `import time` lines elsewhere in the file are harmless redundancies of the same name.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_follow_logs_time_import.py
+  asserts: >-
+    npdev_cli.time is the stdlib time module (a module-level import), and _follow_logs
+    (npdev monitor logs --follow) reaches its time.sleep(0.4) wait loop without NameError -- the same
+    missing-import class that broke engine-start.
+  provenRed: true

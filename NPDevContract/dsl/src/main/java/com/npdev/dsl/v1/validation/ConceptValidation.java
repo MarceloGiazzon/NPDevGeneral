@@ -11,6 +11,7 @@ import com.npdev.dsl.v1.ast.EventAst;
 import com.npdev.dsl.v1.ast.EventPayloadAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
 import com.npdev.dsl.v1.ast.EnumOptionAst;
+import com.npdev.dsl.v1.ast.FieldAccessAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowScheduleAst;
@@ -284,6 +285,7 @@ final class ConceptValidation {
 
                 validateFieldWidgetCompatibility(e, f, normalizedType, errors);
                 validateFieldValueBehavior(e.getName(), f, fieldNames, errors);
+                validateFieldAccessRules(e.getName(), f, fieldNames, errors);
             }
             validateFieldValueBehaviorGraph(e.getName(), effective.fields(), fieldNames, errors);
             Set<String> invariantNames = new HashSet<>();
@@ -428,17 +430,17 @@ final class ConceptValidation {
             String normalizedOwnName = normalize(concept.getName());
 
             if (normalizedRenamedFrom.equals(normalizedOwnName)) {
-                semanticWarnings.add("Concept " + concept.getName()
+                semanticWarnings.add("B1:rename_self_reference:Concept " + concept.getName()
                         + ": renamedFrom equals the concept's own name; this has no effect and is likely a leftover marker");
             } else if (entitiesByLower.containsKey(normalizedRenamedFrom)) {
-                errors.add("Concept " + concept.getName()
+                errors.add("B1:rename_source_missing:Concept " + concept.getName()
                         + ": renamedFrom " + renamedFrom + " names a concept that still exists "
                         + "(ambiguous: is this a rename or a reference to a real concept?)");
             }
 
             String firstConceptName = renamedFromSeen.putIfAbsent(normalizedRenamedFrom, concept.getName());
             if (firstConceptName != null && !normalize(firstConceptName).equals(normalizedOwnName)) {
-                errors.add("Concepts " + firstConceptName + " and " + concept.getName()
+                errors.add("B1:rename_ambiguous:Concepts " + firstConceptName + " and " + concept.getName()
                         + ": both declare renamedFrom " + renamedFrom
                         + " (ambiguous: which one is the actual rename target?)");
             }
@@ -496,7 +498,10 @@ final class ConceptValidation {
             if (!entitiesByLower.containsKey(normalizedTarget)) {
                 errors.add("Concept " + concept.getName()
                         + ": satelliteOf \"" + satelliteOf + "\" names a concept that does not exist "
-                        + "in the resolved model");
+                        + "in the resolved model"
+                        + " -- suggestedFix: add the pack that owns \"" + satelliteOf + "\" to this "
+                        + "model's packs[], or correct the packId::ConceptName spelling; a satellite "
+                        + "cannot be resolved before the concept it extends is in the resolved model");
                 continue;
             }
 
@@ -517,6 +522,59 @@ final class ConceptValidation {
                         + ": satelliteOf \"" + satelliteOf + "\" is ambiguous -- more than one "
                         + "unique+required reference field targets it");
             }
+        }
+    }
+
+    /**
+     * R5.8 (Roadmap Collection 2026-08-18, "Effective-dated values"): a concept declaring
+     * {@code temporal: true} is asserting its rows are resolved by an as-of date, not just
+     * documenting intent -- the generic concept-CRUD read path (business-concept-crud-controller
+     * .mustache's {@code asOf} handling) unconditionally filters on fields literally named
+     * {@code validFrom}/{@code validTo}, so a temporal concept missing either (or declaring either
+     * with the wrong type) would silently 400 or silently return nothing at read time instead of
+     * failing loudly here, at author time. Three checks, all named errors:
+     * <ol>
+     *   <li>The concept must declare a field named {@code validFrom} of {@code type: date}, with
+     *       {@code required: true}.</li>
+     *   <li>Same for {@code validTo}.</li>
+     * </ol>
+     * Deliberately does NOT require any particular identity/uniqueness scoping among a temporal
+     * concept's rows (e.g. "at most one row per product covers a given date") -- R5.8's own decided
+     * scope (see ledger RUN-22) leaves "the same logical entity" resolution to an ordinary
+     * {@code where=} filter the caller supplies, not a new schema-level identity key, so there is
+     * nothing further to validate here without inventing that surface speculatively.
+     */
+    static void validateConceptTemporal(
+            ModelAst effectiveModel,
+            List<String> errors
+    ) {
+        for (ConceptAst concept : effectiveModel.getConcepts()) {
+            if (!concept.isTemporal()) {
+                continue;
+            }
+            requireTemporalWindowField(concept, "validFrom", errors);
+            requireTemporalWindowField(concept, "validTo", errors);
+        }
+    }
+
+    private static void requireTemporalWindowField(ConceptAst concept, String fieldName, List<String> errors) {
+        FieldAst field = concept.getFields().stream()
+                .filter(f -> fieldName.equalsIgnoreCase(f.getName()))
+                .findFirst()
+                .orElse(null);
+        if (field == null) {
+            errors.add("Concept " + concept.getName() + ": temporal:true requires a \"" + fieldName
+                    + "\" field (type: date, required: true), which this concept does not declare");
+            return;
+        }
+        if (!"date".equalsIgnoreCase(field.getType())) {
+            errors.add("Concept " + concept.getName() + ": temporal:true requires \"" + fieldName
+                    + "\" to be type: date (found: " + field.getType() + ")");
+        }
+        if (!field.isRequired()) {
+            errors.add("Concept " + concept.getName() + ": temporal:true requires \"" + fieldName
+                    + "\" to be required:true (an effective-dated row with no validity window bound "
+                    + "cannot be resolved by an as-of read)");
         }
     }
 
@@ -859,6 +917,28 @@ final class ConceptValidation {
         }
         validateAccessExpression(entityName, "read", access.getRead(), fieldNames, errors);
         validateAccessExpression(entityName, "write", access.getWrite(), fieldNames, errors);
+    }
+
+    /**
+     * R5.5: compile-time checks for a FIELD's own declarative access rule (field.access:
+     * { read, write }) -- the same shape and grammar as {@link #validateAccessRules}, one rung
+     * down the ladder (role ceiling -> row scope (concept.access) -> field scope (this)). Reuses
+     * {@link #validateAccessExpression} verbatim so both rungs share one syntax/boolean-shape/
+     * referenced-field/{@code $prop.*}-ban check, not two.
+     */
+    private static void validateFieldAccessRules(
+            String entityName,
+            FieldAst field,
+            Set<String> fieldNames,
+            List<String> errors
+    ) {
+        FieldAccessAst access = field.getAccess();
+        if (access == null) {
+            return;
+        }
+        String fieldEntityLabel = entityName + " field '" + field.getName() + "'";
+        validateAccessExpression(fieldEntityLabel, "read", access.getRead(), fieldNames, errors);
+        validateAccessExpression(fieldEntityLabel, "write", access.getWrite(), fieldNames, errors);
     }
 
     private static void validateAccessExpression(

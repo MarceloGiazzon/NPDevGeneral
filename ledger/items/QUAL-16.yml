@@ -1,0 +1,113 @@
+id: QUAL-16
+title: >-
+  Every semantic validate, classify and re-sign forks Gradle, making the authoring inner loop
+  seconds-to-tens-of-seconds per call for humans and AI agents alike
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R1 "Fast Inner Loop", item R1.1 --
+  "cut validate -> generate -> build -> boot from minutes to seconds... Every later roadmap iterates
+  through this loop, so it pays for itself across the whole collection."
+surface: cli/authoring-loop
+files:
+  - NPDevGenerator/generator/build.gradle
+  - scripts/runtimehost/sync-runtimehost-libs.ps1
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_ai_tools_jar.py
+detail: |
+  `ModelValidatorMain` (`:dsl`) and `ModelChangeClassifierMain` (`:generator`) are plain
+  stdlib+Jackson main classes whose real work takes well under a second, but every CLI and MCP path
+  reached them by forking Gradle. Now packaged as one self-contained jar the CLI invokes directly,
+  with the Gradle path retained as an automatic fallback.
+
+  **A correction to the roadmap's own premise, measured rather than assumed.** The roadmap said all
+  of these fork "mostly `--no-daemon`: a single-use JVM per call". That is WRONG for the validate
+  site and RIGHT for the classify/re-sign sites:
+    - `run_validate_semantic` passes no `--no-daemon` (`gradle.properties` sets
+      `org.gradle.daemon=true` repo-wide), so it already reused a warm daemon. Its cost was the
+      Gradle client bootstrap plus configuring the project graph on every call -- real, but not a
+      fresh JVM. Measured **p50 4.09s -> 1.75s (2.3x)**.
+    - `_classify_model_change` and `_metadata_only_fast_path` DO pass `--no-daemon`, exactly as
+      described. Measured **19.9-21.7s -> 1.6-2.4s (9-12x)** -- the far larger win, and the one the
+      roadmap's wording would have led someone to look for in the wrong place.
+
+  DESIGN NOTES worth keeping, both of which are non-obvious traps avoided:
+    - The jar is written to `build/ai-tools/`, deliberately NOT `build/libs/`.
+      `sync-runtimehost-libs.ps1` stages EVERY jar it finds under a `*/libs/*` path into
+      `runtimehost-libs`, and `build.gradle.template:219` puts that whole directory on each
+      generated FinalApp's compile classpath via `fileTree(include: ['*.jar'])`. A fat jar landing
+      there would shadow every thin platform jar with its own embedded copy of the same classes.
+      Verified absent from `runtimehost-libs` and from its manifest after the change.
+    - `META-INF/*.SF|DSA|RSA|EC` are excluded: a signed dependency's signature files do not survive
+      being unpacked into another jar, and the JVM then refuses the whole archive at class-load
+      time ("invalid signature file digest").
+    - No Shadow plugin (nothing in this repo uses one; a plain `Jar` + `zipTree` suffices) and no
+      `Main-Class` manifest attribute (there are two entry points; the caller names the one it
+      wants).
+    - No NEW file under `scripts/` -- `sync-runtimehost-libs.ps1` was EXTENDED, so neither
+      `script-inventory-policy.json` nor `script-invocation-declarations.json` needed a new entry.
+      `run-script-inventory-check.ps1` passed 199/199.
+    - `_default_ai_tools_jar()` resolves via the existing `_ai_build_root()` -- content-based, no
+      directory-NAME matching and no hardcoded absolute default, per REG-144. `NPDEV_AI_TOOLS_JAR`
+      is the override/escape hatch.
+
+  PROOFS, all measured, and the byte-identity and fallback proofs independently re-run by the
+  orchestrator rather than taken on the implementing agent's word:
+    1. **Byte-identical reports.** Both paths on `NPDevSamples/canonical-demo/Input/model.json`
+       produce sha256 `43a16faf03edb3b49c2f0b8107ec87358ea969f357942c38c48490b9918bef53`.
+       Re-verified independently: fast path emitted exactly that hash. Also identical across four
+       more fixtures including a `status=failed` report with 2 diagnostics and a `status=warning`
+       one -- so the equivalence holds on the failure shapes, not just the happy path.
+    2. **The fallback is real, not theoretical.** The staged jar was physically moved aside
+       (absence confirmed) and the same command re-run: **exit 0**, and the report hashed to the
+       SAME `43a16faf...`. Jar restored afterward. A fresh checkout with nothing staged keeps
+       working exactly as before.
+    3. **No Gradle process on the fast path.** Win32_Process sampled every 100ms: fast path spawns
+       **0** new Gradle processes; the fallback spawns 4 (`cmd.exe /c gradlew.bat`, the
+       `-Dorg.gradle.appname=gradlew` client JVM, the daemon JVM, a worker). This is the roadmap's
+       own stated definition of done.
+    4. **Timing**, 6 interleaved A/B pairs: p50 4.09s -> 1.75s. Orchestrator's own independent
+       run measured 4.53s (fallback) vs 1.63s (fast) on the same model -- same direction, same
+       magnitude. A session's FIRST Gradle call was 24.4s (daemon start), which is the number a
+       human actually feels when they sit down to work.
+    5. **Jar reproducibility:** two back-to-back `--rerun-tasks` builds produced 0 differing bytes
+       across 6.18 MB / 3351 entries, identical order and CRCs. An earlier apparent mismatch was
+       traced to a REAL input change -- concurrent agents editing `ModelSourceResolver.java` and
+       `DockerEngineProfile*.java` in the same working tree -- not to jar nondeterminism.
+
+  **A latent defect found in passing, documented but deliberately NOT fixed here:**
+  `classifyModelChange`'s Gradle task sets `ignoreExitValue = true`, which makes its own comment
+  false -- a classifier refusal exits 2 but Gradle still exits 0, so `_metadata_only_fast_path`
+  would report success for a file it never wrote. Unreachable today (the caller gates on
+  METADATA_ONLY first). The new direct path propagates the real exit code; the Gradle side was left
+  unchanged rather than widening this item's scope, and the hazard is recorded in the docstring.
+
+  TESTS: `NPDevCli/tests/test_ai_tools_jar.py`, 11 tests, auto-discovered by the ai-knowledge gate's
+  existing Python step. Full suite after both this and QUAL-15's work landed:
+  `python -m unittest discover -s NPDevCli/tests` -> **Ran 244 tests, OK** (re-run by the
+  orchestrator with both new test files present).
+
+  NOT done here: `NPDevMcp/server.py` needed no change -- `tool_validate` shells to `npdev_cli.py`
+  and inherits the speedup transitively, which was confirmed rather than assumed. R1.2 (incremental
+  dev-loop builds), R1.5-R1.7 remain open.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_ai_tools_jar.py
+  asserts: >-
+    the CLI invokes the staged npdev-ai-tools.jar directly when it is present and falls back to the
+    Gradle path unchanged when it is absent, for all three call sites (run_validate_semantic,
+    _classify_model_change, _metadata_only_fast_path); jar resolution is content-based with an
+    env-var override rather than a hardcoded path (REG-144). The equivalence claim itself is
+    guarded by measurement rather than by this test: both paths must emit a byte-identical
+    npdev-validation-report.v2, re-provable at any time by hashing the report from each path.
+  provenRed: false
+  provenRedNote: >-
+    The speedup and the byte-identity are measurements, not a red/green test -- both paths were run
+    and compared directly (identical sha256, 4.53s vs 1.63s, 0 vs 4 Gradle processes), which is
+    stronger evidence for this kind of claim than a unit test could be. The unit tests cover the
+    branch/fallback logic and were written alongside the implementation, so they are not recorded as
+    proven-red.

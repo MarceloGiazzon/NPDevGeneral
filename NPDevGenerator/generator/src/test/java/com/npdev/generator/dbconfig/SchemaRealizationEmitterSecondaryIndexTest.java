@@ -53,7 +53,7 @@ final class SchemaRealizationEmitterSecondaryIndexTest {
 
         CompiledQuery openOrders = new CompiledQuery(
                 "openOrders", "Order", "status == 'open'", List.of("priority desc"),
-                null, List.of(), List.of(), null, null, Map.of(), List.of(), List.of(), null);
+                null, List.of(), List.of(), null, Map.of(), List.of(), List.of(), null);
 
         CompiledPanelDataSource ordersSource = new CompiledPanelDataSource(
                 "orders", "Order", null, null, Map.of(), null, null, null, List.of(), List.of());
@@ -108,7 +108,7 @@ final class SchemaRealizationEmitterSecondaryIndexTest {
 
         CompiledQuery openOrders = new CompiledQuery(
                 "openOrders", "Order", "status == 'open'", List.of(),
-                null, List.of(), List.of(), null, null, Map.of(), List.of(), List.of(), null);
+                null, List.of(), List.of(), null, Map.of(), List.of(), List.of(), null);
 
         CompiledModel model = new CompiledModel(
                 "test", "1.0.0", "1.0.0", Map.of(order.getName(), order),

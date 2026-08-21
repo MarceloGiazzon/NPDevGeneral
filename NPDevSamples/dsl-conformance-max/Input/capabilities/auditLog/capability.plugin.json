@@ -1,0 +1,46 @@
+{
+  "$schema": "npdev/capability-plugin.schema.json",
+  "packageFormatVersion": "1.0",
+  "packageId": "user-auditlog-java-source-package",
+  "pluginId": "user-auditlog-java-source-plugin",
+  "displayName": "dsl-conformance-max audit log capability",
+  "version": "1.0.0",
+  "description": "Real, in-git example of a mounted plugin:java-source capability -- fixes the fixture's original 'auditLog' binding, which pointed at a builtin-style adapter id ('audit-log-inproc') that was never registered in any plugin manifest. Mirrors NPDevSamples/probes/lib-probe's librarySignature capability, the proven-working precedent for this exact mechanism.",
+  "capability": "auditLog",
+  "capabilityType": "AuditLogCapability",
+  "adapterId": "plugin:java-source",
+  "runtimeRef": "auditLogJavaSourceHandler",
+  "implementation": {
+    "kind": "javaSource",
+    "sourceRoot": "capabilities/auditLog/src/main/java",
+    "mainClass": "com.npdev.samples.dslconformance.audit.AuditLogCapability",
+    "factory": {
+      "kind": "defaultConstructor"
+    }
+  },
+  "operationBindings": [
+    {
+      "operation": "record",
+      "method": "record",
+      "input": {
+        "mode": "firstArgument",
+        "expectedType": "java.util.Map"
+      },
+      "output": {
+        "mode": "returnValue",
+        "expectedType": "java.util.Map"
+      }
+    }
+  ],
+  "trust": {
+    "mode": "artifact-local-source",
+    "source": "external-artifact-bundle",
+    "level": "developer-supplied"
+  },
+  "generation": {
+    "mount": "compileIntoGeneratedApp",
+    "emitManifestContribution": true,
+    "emitPackageDescriptor": true,
+    "emitBinding": true
+  }
+}

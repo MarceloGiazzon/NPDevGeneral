@@ -81,7 +81,6 @@ def build_model(concept_count: int) -> dict:
                 "where": "sequence >= 0",
                 "orderBy": ["sequence"],
                 "tracePolicy": "summary",
-                "auditPolicy": "read",
             }
         ],
         "procedures": [
@@ -105,7 +104,6 @@ def build_model(concept_count: int) -> dict:
                     {"name": "return-saved", "type": "return", "value": "$saved", "trace": True},
                 ],
                 "tracePolicy": "detailed",
-                "auditPolicy": "write",
             }
         ],
         "panels": [

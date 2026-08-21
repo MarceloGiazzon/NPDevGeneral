@@ -2,16 +2,13 @@
 # independent Gradle roots (each with its own settings.gradle + gradlew) plus one orphan single-project
 # build with neither -- so dependency scanning needs one `gradle` entry per root, not one for the repo.
 #
-# KNOWN LIMITATION, read before trusting this file's RuntimeHost coverage: two different Spring Boot
-# versions exist in this repo. NPDevRuntimeHost/build.gradle (a real, Dependabot-scannable Gradle file)
-# declares 3.3.2 and is kept ONLY for a direct bare-checkout GATE-H2/GATE-PG run -- see that file's own
-# header comment. NPDevRuntimeHost/build.gradle.template declares 3.5.16 and is what FinalAppAssembler
-# actually copies byte-for-byte into every generated FinalApp (materializeRootTemplate). Dependabot
-# parses `*.gradle` files, not `*.gradle.template` (mustache-adjacent tokens aside, it is not valid
-# Gradle syntax Dependabot's parser would accept), so it can only ever see and bump the DEAD 3.3.2 pin
-# below -- never the 3.5.16 that ships. Do not read a clean Dependabot run against NPDevRuntimeHost/ as
-# coverage of what users actually run; that gap needs a human to re-apply any RuntimeHost Spring Boot
-# bump to build.gradle.template by hand (or a future card that generates one from the other).
+# KNOWN LIMITATION, read before trusting this file's RuntimeHost coverage: two Spring Boot pins exist
+# in this repo. NPDevRuntimeHost/build.gradle (the Dependabot-scannable Gradle file) and
+# NPDevRuntimeHost/build.gradle.template (the file FinalAppAssembler copies byte-for-byte into every
+# generated FinalApp) BOTH pin 3.5.16 and must be bumped together. Dependabot parses `*.gradle` files,
+# not `*.gradle.template` (its parser rejects the template's mustache-adjacent tokens), so a PR can
+# only ever update build.gradle -- a human must manually re-apply any RuntimeHost Spring Boot bump to
+# build.gradle.template so the version that actually ships matches.
 version: 2
 updates:
   # ---------------------------------------------------------------------------------------------

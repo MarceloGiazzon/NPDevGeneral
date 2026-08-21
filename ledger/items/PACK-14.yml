@@ -1,0 +1,87 @@
+id: PACK-14
+title: >-
+  A second concept-to-pack export ships in every generated app's admin UI -- single-concept and
+  reference-blind, the exact two defects PACK-13's CLI verb was built to fix
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-20
+verification: UNIT_TESTED
+source: >-
+  Found by the R8.2 implementation while verifying the roadmap's claim that the PowerShell script was
+  "the only path from a working app concept to a reusable pack". That premise was FALSE. Confirmed
+  independently by the orchestrator against the emitted controller and its UI caller.
+surface: generator/pack-emitters
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-pack-catalog-controller.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+detail: |
+  `GeneratedPackCatalogController.exportConceptToPack` (`business-ui-pack-catalog-controller.mustache:240-241`,
+  `POST /api/admin/packs/export`) is a fully independent export path, called from the business UI at
+  `business-ui-app.mustache:1802`. It ships in EVERY generated app, so it is not a dev-only
+  convenience -- it is the button an analyst actually finds.
+
+  It has the same two limitations the roadmap attributed solely to the now-deleted PowerShell script:
+    - **Single-concept**: it takes one `conceptName` (line 244) and fails with 404 if that one name
+      does not match (line 294). There is no member set.
+    - **Reference-blind**: it copies the concept's JSON with no classification of
+      `fields[].reference` / `satelliteOf` targets. A concept exported this way carries references
+      that may point at concepts which did not travel with it, and nothing says so.
+
+  So closing R8.2 by deleting `NPDevSamples/scripts/packs/export-concept-to-pack.ps1` and adding
+  `npdev pack export` (PACK-13) removed the path nobody used and left the path everybody sees.
+
+  WHAT PACK-13 ESTABLISHED THAT THIS PATH SHOULD ADOPT: every reference target is classified three
+  ways -- rewritten to intra-pack form when the target is also exported; left qualified and declared
+  in the pack's `packs[]` at a `^major.minor` constraint when it is a real sibling pack; and
+  otherwise the export is REFUSED by default, naming each `concept.field -> target` offender, with an
+  explicit `--allow-unresolved-refs` override that still records the dangling reference in
+  `metadata.unresolvedReferences` rather than dropping it silently. That is the behaviour worth
+  sharing, not the CLI plumbing.
+
+  RIGHT FIX, and the reason this is filed rather than done: the controller should DELEGATE to the
+  same export logic the CLI verb uses instead of growing a second copy of the classification rules --
+  the roadmap's own R8.2 entry anticipates this ("a later Store 'export as pack' button calls the
+  same path"). That is a real design step: the CLI logic currently lives in Python
+  (`NPDevCli/npdev_cli.py`) while the controller is emitted Java, so "call the same path" needs a
+  decision about where the single implementation lives. Making that decision is the work; copying the
+  rules into the mustache would be the wrong answer and is explicitly not what this item asks for.
+
+  Not urgent-severity because the export produces a pack that fails loudly at composition rather than
+  silently corrupting anything -- but it is exactly the "two implementations of one idea" shape the
+  standing no-parallel-implementations rule exists to prevent, and it is now measurably true rather
+  than suspected.
+
+  2026-08-20 (partial fix, option (a) -- owner decision accepted: Java is the single implementation):
+  created com.npdev.dsl.v1.pack.PackExportReferenceClassifier (the shared reference-classification
+  rules, ported from the CLI's run_pack_export: intra-pack rewrite / cross-pack ^major.minor dependency
+  / unresolved refusal), with a DSL unit test (PackExportReferenceClassifierTest, 3 cases, green). The
+  generated GeneratedPackCatalogController.exportConceptToPack now delegates to it: it refuses on
+  unresolved references by default (naming every offender), accepts an allowUnresolvedRefs opt-in that
+  records metadata.unresolvedReferences, and emits packs[] for cross-pack dependencies. Guarded by
+  BusinessUiEmitterPackCatalogExportTest (emitted-controller assertion, green).
+
+  REMAINING (now done): added PackExportReferenceClassifierMain (com.npdev.dsl.v1.cli) as the CLI
+  entry point -- it is packaged by the existing aiToolsJar task (which already pulls :dsl onto the
+  classpath, so no build change was needed) -- and npdev_cli.py's run_pack_export now delegates to it
+  via `java -cp npdev-ai-tools.jar PackExportReferenceClassifierMain`, with the inline classification
+  retained as the R1.1 mandatory fallback for a fresh checkout (no jar / no java). The CLI and the
+  generated controller now share ONE implementation of the reference-classification rules. Tests:
+  PackExportReferenceClassifierTest (3, green), BusinessUiEmitterPackCatalogExportTest (green),
+  NPDevCli/tests/test_pack_export.py (6/6 green).
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/pack/PackExportReferenceClassifierTest.java
+  asserts: >-
+    PackExportReferenceClassifier classifies reference targets three ways (intra-pack rewrite, cross-pack
+    ^major.minor dependency, unresolved); the generated GeneratedPackCatalogController delegates to it
+    (refuses on unresolved by default, records with allowUnresolvedRefs, emits packs[]); and
+    npdev_cli.py's run_pack_export delegates to PackExportReferenceClassifierMain (with the inline
+    fallback) -- one implementation, three surfaces.
+  provenRed: false
+  provenRedNote: >-
+    The defect (single-concept, reference-blind export) was established by reading the emitted
+    controller (single conceptName, 404 on mismatch, no reference handling) and its UI caller, not by a
+    failing run. The classifier is new code (no pre-existing RED to capture); the controller test pins
+    the delegation.

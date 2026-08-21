@@ -28,13 +28,13 @@ files:
   - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelAdminUserController.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
   - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookup.java
   - NPDevKernel/adapters/authz-default/src/main/java/com/npdev/adapters/authz/defaultpolicy/DefaultExecutionAuthorizationPolicy.java
   - NPDevKernel/adapters/authz-default/src/test/java/com/npdev/adapters/authz/defaultpolicy/IdentityPermissionOverrideLookupTest.java
-  - NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/IdentityRoleLookupTvlessRevocationTest.java
-  - NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/IdentityRoleLookupSchemaMismatchTest.java
+  - NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/IdentityRoleLookupTvlessRevocationTest.java
+  - NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/IdentityRoleLookupSchemaMismatchTest.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/auth/IdentityAwareContextResolverTest.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/auth/LoginControllerTest.java
 detail: |
@@ -91,7 +91,7 @@ resolution: >-
   **2026-08-15: implemented -- scope grew significantly during investigation.** Fixing
   `LoginController` alone surfaced two MORE files with the identical defect shape, both more
   severe than `LoginController` itself: `IdentityRoleLookup.java` (`NPDevKernel/adapters/
-  expression-cel`) is, by its own javadoc, "THE single revocation decision point" for role
+  runtime-support`) is, by its own javadoc, "THE single revocation decision point" for role
   resolution and token-revocation on EVERY authenticated request (called from both RuntimeHost's
   `IdentityAwareContextResolver` and the generated-CRUD kernel path's `GeneratedCrudRuntimeSupport`),
   and `IdentityPermissionOverrideLookup.java` (`NPDevKernel/adapters/authz-default`) is the same
@@ -129,7 +129,7 @@ resolution: >-
   used everywhere else in this exact codebase.
 
   **Verification, precisely what was and wasn't proven live:** every affected module compiles and
-  its full test suite passes -- `:dsl:test`, `:adapters:expression-cel:test`,
+  its full test suite passes -- `:dsl:test`, `:adapters:runtime-support:test`,
   `:adapters:authz-default:test`, `runtimehost-core`'s own test suite, and the full assembled-app
   `gradlew test` (557 tests) against `simple-contact-intake`. `TenantAutoRegistrationRunner`'s own
   fix is LIVE-PROVEN: generated, built, and booted `superuser-admin-console` (real identity pack

@@ -535,5 +535,70 @@ class CompiledModelDetectionTest(unittest.TestCase):
         self.assertEqual(before, doc)
 
 
+class QueryProcedureAuditPolicyMigrationTest(unittest.TestCase):
+    """R5.1: `queries[].auditPolicy`/`procedures[].auditPolicy` were retired (consumed by nothing at
+    runtime) -- the codemod strips the dead key so an existing model keeps validating against the
+    schema that no longer declares it."""
+
+    def _doc(self, queries=None, procedures=None) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "queries": queries or [], "procedures": procedures or [],
+        }
+
+    def test_audit_policy_dropped_from_query(self):
+        doc = self._doc(queries=[
+            {"name": "OpenWorkItems", "concept": "WorkItem", "auditPolicy": "read"},
+        ])
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertNotIn("auditPolicy", doc["queries"][0])
+        self.assertEqual("OpenWorkItems", doc["queries"][0]["name"])
+        self.assertTrue(any("queries[0]" in c and "auditPolicy" in c for c in result.changes))
+
+    def test_audit_policy_dropped_from_procedure(self):
+        doc = self._doc(procedures=[
+            {"name": "SubmitWorkItem", "steps": [], "auditPolicy": "write"},
+        ])
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        self.assertNotIn("auditPolicy", doc["procedures"][0])
+        self.assertEqual("SubmitWorkItem", doc["procedures"][0]["name"])
+
+    def test_no_audit_policy_present_is_a_no_op(self):
+        doc = self._doc(
+            queries=[{"name": "OpenWorkItems", "concept": "WorkItem"}],
+            procedures=[{"name": "SubmitWorkItem", "steps": []}],
+        )
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+
+    def test_idempotent_second_run_makes_no_further_changes(self):
+        doc = self._doc(
+            queries=[{"name": "OpenWorkItems", "concept": "WorkItem", "auditPolicy": "none"}],
+            procedures=[{"name": "SubmitWorkItem", "steps": [], "auditPolicy": "write"}],
+        )
+        first = migrate_document(doc)
+        self.assertTrue(first.changed)
+        before = copy.deepcopy(doc)
+        second = migrate_document(doc)
+        self.assertFalse(second.changed)
+        self.assertEqual([], second.changes)
+        self.assertEqual(before, doc)
+
+    def test_other_fields_on_the_same_entry_are_untouched(self):
+        doc = self._doc(queries=[{
+            "name": "OpenWorkItems", "concept": "WorkItem", "where": "status == 'open'",
+            "tracePolicy": "summary", "auditPolicy": "read",
+        }])
+        migrate_document(doc)
+        query = doc["queries"][0]
+        self.assertEqual("status == 'open'", query["where"])
+        self.assertEqual("summary", query["tracePolicy"])
+        self.assertNotIn("auditPolicy", query)
+
+
 if __name__ == "__main__":
     unittest.main()

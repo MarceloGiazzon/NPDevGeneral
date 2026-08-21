@@ -15,6 +15,7 @@ public final class StateTransitionAst {
     private final String actionLabel;
     private final Map<String, String> metadata;
     private final ActionMetadataAst action;
+    private final Map<String, String> actionLabelLocales;
 
     public StateTransitionAst(String from, String to, List<String> requires) {
         this(from, to, requires, null);
@@ -46,6 +47,20 @@ public final class StateTransitionAst {
             Map<String, String> metadata,
             ActionMetadataAst action
     ) {
+        this(from, to, requiredPayload, event, guard, actionLabel, metadata, action, Map.of());
+    }
+
+    public StateTransitionAst(
+            String from,
+            String to,
+            List<String> requiredPayload,
+            String event,
+            String guard,
+            String actionLabel,
+            Map<String, String> metadata,
+            ActionMetadataAst action,
+            Map<String, String> actionLabelLocales
+    ) {
         this.from = from;
         this.to = to;
         this.requiredPayload = requiredPayload == null ? List.of() : new ArrayList<>(requiredPayload);
@@ -54,6 +69,7 @@ public final class StateTransitionAst {
         this.actionLabel = actionLabel;
         this.metadata = metadata == null ? Map.of() : new LinkedHashMap<>(metadata);
         this.action = action;
+        this.actionLabelLocales = (actionLabelLocales == null || actionLabelLocales.isEmpty()) ? Map.of() : Map.copyOf(actionLabelLocales);
     }
 
     public String getFrom() {
@@ -82,6 +98,10 @@ public final class StateTransitionAst {
 
     public String getActionLabel() {
         return actionLabel;
+    }
+
+    public Map<String, String> getActionLabelLocales() {
+        return actionLabelLocales;
     }
 
     public Map<String, String> getMetadata() {

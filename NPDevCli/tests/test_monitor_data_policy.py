@@ -105,6 +105,48 @@ class DataPolicyProbeTest(unittest.TestCase):
         self.assertEqual("<redacted>", redacted["password"])
         self.assertIn("password=<redacted>", redacted["jdbcUrl"])
 
+    def test_redaction_does_not_eat_the_word_passed(self) -> None:
+        """MON-14. `_SECRET_KEYS` is used with `search()`, so the original `pass(word)?` matched the
+        word **passed** and replaced the value of any `passed`/`summary.passed` field. Measured
+        before the fix: `{'summary': {'passed': 12}}` -> `{'summary': {'passed': '<redacted>'}}`.
+
+        That is the worst shape a redactor can fail in -- the result is still well-formed JSON, so an
+        operator reads quietly wrong numbers rather than getting an error. And redaction is mandatory
+        on the export path, so any test-shaped payload joining a bundle was silently corrupted.
+
+        Both directions are asserted here: the innocent keys must survive AND the credentials must
+        still go, because a "fix" that simply stopped redacting would also make this pass.
+        """
+        payload = {
+            "summary": {"passed": 12, "failed": 0},
+            "passCount": 7,
+            "passRate": 0.9,
+            "keyCount": 3,
+            # ... while every genuine credential shape still goes.
+            "password": "hunter2",
+            "dbPassword": "hunter2",
+            "passwd": "hunter2",
+            "passphrase": "correct horse",
+            "pass": "hunter2",
+            "apiKey": "k",
+            "api_key": "k",
+            "token": "t",
+            "secret": "s",
+            "privateKey": "pk",
+        }
+
+        redacted = npdev_monitor.redact(payload)
+
+        self.assertEqual({"passed": 12, "failed": 0}, redacted["summary"])
+        self.assertEqual(7, redacted["passCount"])
+        self.assertEqual(0.9, redacted["passRate"])
+        self.assertEqual(3, redacted["keyCount"])
+        for credential_key in (
+            "password", "dbPassword", "passwd", "passphrase", "pass",
+            "apiKey", "api_key", "token", "secret", "privateKey",
+        ):
+            self.assertEqual("<redacted>", redacted[credential_key], credential_key)
+
 
 if __name__ == "__main__":
     unittest.main()

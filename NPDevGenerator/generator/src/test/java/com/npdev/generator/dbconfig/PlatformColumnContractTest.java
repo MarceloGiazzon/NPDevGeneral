@@ -100,10 +100,19 @@ final class PlatformColumnContractTest {
      * the concept's own declared field columns -- whatever is left is, by definition, platform-added.
      * The concept deliberately declares no id so the {@code !hasIdField} branch that injects
      * {@code id} is exercised.
+     *
+     * <p>R5.4: {@code softDelete: true} on this same fixture concept (rather than a second one) is
+     * deliberate -- {@code deleted_at} is conditional on that flag (unlike version/row_version/
+     * tenant_id, which every business table gets), so a fixture that never sets it would leave this
+     * whole contract blind to a drift between {@code fullColumnNames}'s {@code deleted_at} branch and
+     * {@code SchemaLifecycleExecutor.PLATFORM_MANAGED_COLUMNS} -- exactly the silent-drift class this
+     * test exists to catch (see the class javadoc).
      */
     private static Set<String> platformColumnsTheEmitterAppends() {
         CompiledField title = new CompiledField("title", "string", "String", false, true, false);
-        CompiledConcept note = new CompiledConcept("Note", "Note", "notes", List.of(title));
+        CompiledConcept note = new CompiledConcept(
+                "Note", "Note", "notes", List.of(title), List.of(), List.of(), null, null, null, null,
+                List.of(), null, null, null, null, true);
         CompiledModel model = new CompiledModel(
                 "platform-column-contract", "1.0.0", "1.0.0", Map.of(note.getName(), note));
 

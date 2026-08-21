@@ -111,6 +111,9 @@ class AiModelToDslMappingTest {
             }
         }
 
+        // 24 ACTIVE scenarios. Was 22 before the trusted-source scenarios were promoted from
+        // deferred/ to active (Wave 4 closeout). The deferred/ directory is deliberately excluded
+        // from this walk -- see scenarioDirs filtering.
         assertEquals(24, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");
         assertTrue(unclassified.isEmpty(), "unclassified golden scenario AI model fields: " + unclassified);
     }
@@ -375,6 +378,13 @@ class AiModelToDslMappingTest {
         try (Stream<Path> stream = Files.walk(SCENARIO_ROOT)) {
             return stream
                     .filter(Files::isDirectory)
+                    // `deferred/` holds scenarios that are deliberately not active yet -- several are
+                    // incomplete on purpose (a manifest with no matching model/expectation files).
+                    // Every PowerShell gate that walks this tree already skips it by name
+                    // (run-ai-beta-gate, run-ai-schema-validation, run-ai-contract-normalizer-tests);
+                    // this test did not, and only passed while the directory happened to be absent
+                    // from the working tree.
+                    .filter(path -> !SCENARIO_ROOT.relativize(path).startsWith("deferred"))
                     .filter(path -> Files.isRegularFile(path.resolve("scenario.manifest.json")))
                     .sorted(Comparator.comparing(path -> path.getFileName().toString()))
                     .collect(Collectors.toList());

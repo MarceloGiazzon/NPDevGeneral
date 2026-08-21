@@ -221,6 +221,69 @@ public class KernelFacade {
         }
     }
 
+    /**
+     * R2.2: the audited wrapper over {@link KernelRunner#unstickExecution}.
+     *
+     * <p><b>No {@link ExecutionAuthorizationPolicy} check here, deliberately -- the SUPERUSER gate
+     * at the controller IS the authorization.</b> The obvious predicate to reuse was {@code
+     * canResumeExecution}, and it would have made this endpoint permanently 403. Two independent
+     * reasons, both measured against {@code DefaultExecutionAuthorizationPolicy}: (1) {@code
+     * RolePermissions} maps only the three built-in roles USER/OPERATOR/ADMIN, and {@code SUPERUSER}
+     * is none of them, so {@code hasPermission} returns false for a super-key caller on EVERY
+     * permission; (2) {@code canResumeExecution} additionally requires same-tenant AND same-actor
+     * (REG-45's disposition), while {@code SuperUserBootstrapper} always issues the super-key under
+     * tenant {@code __system__}, actor {@code superuser} -- which by construction never matches the
+     * instance being recovered. This is the same reason every other SUPERUSER surface (the
+     * ControlPanel controllers, {@code SchemaAcknowledgmentController}) reaches its service directly:
+     * the Super User is deliberately outside the tenant role model, not a privileged member of it.
+     *
+     * <p>The audit record is therefore the accountability mechanism, not a fallback for one.
+     *
+     * @return the post-transition instance, or empty when no such execution exists
+     * @throws IllegalStateException when the execution is not un-stickable (not STUCK, or STUCK
+     *         with no awaited event) -- surfaced by the controller as a 409, not a 500
+     */
+    public Optional<FlowInstance> unstickExecution(String executionId, ExecutionContext requesterContext) {
+        long startedAtMs = System.currentTimeMillis();
+        ExecutionContext requester = normalizeContext(requesterContext);
+        metricInc("npdev.api.admin.unstick", requester, Map.of("outcome", "ATTEMPT"));
+        Optional<FlowInstance> instanceOpt = flowInstanceStore.findByExecutionId(executionId);
+        if (instanceOpt.isEmpty()) {
+            audit(requester, "ADMIN_UNSTICK_EXECUTION", "EXECUTION", executionId, OUTCOME_ALLOW, "not_found", Map.of());
+            metricInc("npdev.api.admin.unstick", requester, Map.of("outcome", "NOT_FOUND"));
+            metricObserveMs("npdev.api.admin.unstick.duration_ms", startedAtMs, requester, Map.of("outcome", "NOT_FOUND"));
+            return Optional.empty();
+        }
+        try {
+            Optional<FlowInstance> unstuck = kernelRunner.unstickExecution(executionId);
+            audit(
+                    requester,
+                    "ADMIN_UNSTICK_EXECUTION",
+                    "EXECUTION",
+                    executionId,
+                    OUTCOME_ALLOW,
+                    "ok",
+                    Map.of("flowName", safe(instanceOpt.get().flowName()))
+            );
+            metricInc("npdev.api.admin.unstick", requester, Map.of("outcome", "ALLOW"));
+            metricObserveMs("npdev.api.admin.unstick.duration_ms", startedAtMs, requester, Map.of("outcome", "ALLOW"));
+            return unstuck;
+        } catch (IllegalStateException notUnstickable) {
+            audit(
+                    requester,
+                    "ADMIN_UNSTICK_EXECUTION",
+                    "EXECUTION",
+                    executionId,
+                    OUTCOME_DENY,
+                    "not_stuck",
+                    Map.of("status", safe(instanceOpt.get().status() == null ? null : instanceOpt.get().status().name()))
+            );
+            metricInc("npdev.api.admin.unstick", requester, Map.of("outcome", "NOT_STUCK"));
+            metricObserveMs("npdev.api.admin.unstick.duration_ms", startedAtMs, requester, Map.of("outcome", "NOT_STUCK"));
+            throw notUnstickable;
+        }
+    }
+
     public EventEnvelope publishExternalEvent(
             String eventName,
             String correlationId,

@@ -10,8 +10,6 @@ import {{dtoPackage}}.ExecutionSummaryResponse;
 import {{dtoPackage}}.FlowExecutionResponse;
 import {{servicePackage}}.KernelFacade;
 import {{servicePackage}}.RuntimeContextService;
-import com.npdev.dsl.v1.compiled.CompiledModel;
-import com.npdev.generated.runtime.model.NPDevModelProvider;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
 import com.npdev.kernel.ExecutionStatus;
@@ -20,10 +18,8 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -40,18 +36,13 @@ import java.util.Properties;
 @RequestMapping({"/api/v1/admin", "/api/admin"})
 public class AdminController {
     private static final ObjectMapper UI_MODEL_MAPPER = new ObjectMapper();
-    private static volatile JsonNode MODEL_EDITOR_DRAFT = null;
-    private static volatile JsonNode RULE_EDITOR_DRAFT = null;
-    private static volatile JsonNode ORCHESTRATION_EDITOR_DRAFT = null;
 
     private final KernelFacade kernelFacade;
     private final RuntimeContextService runtimeContextService;
-    private final NPDevModelProvider modelProvider;
 
-    public AdminController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService, NPDevModelProvider modelProvider) {
+    public AdminController(KernelFacade kernelFacade, RuntimeContextService runtimeContextService) {
         this.kernelFacade = kernelFacade;
         this.runtimeContextService = runtimeContextService;
-        this.modelProvider = modelProvider;
     }
 
     @GetMapping("/failures/recent")
@@ -162,150 +153,6 @@ public class AdminController {
         } catch (IOException exception) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "ui_model_export_failed", exception);
         }
-    }
-
-
-
-
-    @GetMapping(value = {"/model/editor/draft"}, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> getModelEditorDraft(HttpServletRequest request) {
-        requireAdminContext(request);
-        return readDraftOrModel(MODEL_EDITOR_DRAFT, DraftKind.MODEL);
-    }
-
-    @PostMapping(value = {"/model/editor/draft"}, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> saveModelEditorDraft(@RequestBody String draftJson, HttpServletRequest request) {
-        requireAdminContext(request);
-        return saveDraft(draftJson, DraftKind.MODEL);
-    }
-
-    @DeleteMapping(value = {"/model/editor/draft"})
-    public ResponseEntity<Void> resetModelEditorDraft(HttpServletRequest request) {
-        requireAdminContext(request);
-        MODEL_EDITOR_DRAFT = null;
-        return ResponseEntity.noContent().build();
-    }
-
-    @GetMapping(value = {"/model/rules/draft"}, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> getRuleEditorDraft(HttpServletRequest request) {
-        requireAdminContext(request);
-        return readDraftOrModel(RULE_EDITOR_DRAFT, DraftKind.RULES);
-    }
-
-    @PostMapping(value = {"/model/rules/draft"}, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> saveRuleEditorDraft(@RequestBody String draftJson, HttpServletRequest request) {
-        requireAdminContext(request);
-        return saveDraft(draftJson, DraftKind.RULES);
-    }
-
-    @DeleteMapping(value = {"/model/rules/draft"})
-    public ResponseEntity<Void> resetRuleEditorDraft(HttpServletRequest request) {
-        requireAdminContext(request);
-        RULE_EDITOR_DRAFT = null;
-        return ResponseEntity.noContent().build();
-    }
-
-    @GetMapping(value = {"/model/orchestration/draft"}, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> getOrchestrationEditorDraft(HttpServletRequest request) {
-        requireAdminContext(request);
-        return readDraftOrModel(ORCHESTRATION_EDITOR_DRAFT, DraftKind.ORCHESTRATION);
-    }
-
-    @PostMapping(value = {"/model/orchestration/draft"}, consumes = MediaType.APPLICATION_JSON_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> saveOrchestrationEditorDraft(@RequestBody String draftJson, HttpServletRequest request) {
-        requireAdminContext(request);
-        return saveDraft(draftJson, DraftKind.ORCHESTRATION);
-    }
-
-    @DeleteMapping(value = {"/model/orchestration/draft"})
-    public ResponseEntity<Void> resetOrchestrationEditorDraft(HttpServletRequest request) {
-        requireAdminContext(request);
-        ORCHESTRATION_EDITOR_DRAFT = null;
-        return ResponseEntity.noContent().build();
-    }
-
-    private enum DraftKind {
-        MODEL,
-        RULES,
-        ORCHESTRATION
-    }
-
-    private ResponseEntity<String> saveDraft(String draftJson, DraftKind draftKind) {
-        try {
-            JsonNode parsed = UI_MODEL_MAPPER.readTree(draftJson);
-            switch (draftKind) {
-                case MODEL -> MODEL_EDITOR_DRAFT = parsed;
-                case RULES -> RULE_EDITOR_DRAFT = parsed;
-                case ORCHESTRATION -> ORCHESTRATION_EDITOR_DRAFT = parsed;
-            }
-            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
-                    .body(UI_MODEL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(parsed));
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "draft_invalid_json", exception);
-        }
-    }
-
-    /**
-     * REG-139 root cause: on a fresh JVM start the draft field is null (a plain static, never
-     * persisted), and this used to fall back to classpath resource {@code npdev/model.json} --
-     * returned VERBATIM, as if a compiled model ({@code $schema}/{@code namespace}/{@code concepts}/
-     * {@code procedures}/{@code panels}) were interchangeable with a draft ({@code namespace}/
-     * {@code version}/{@code entities}). The two shapes share only {@code namespace}, so the model
-     * editor's {@code draft.entities.find(...)} threw on undefined before the shell even painted.
-     * (That classpath resource can ALSO be RuntimeHost's own unreplaced template placeholder rather
-     * than this app's real model, depending on how generation resolved the model source --
-     * {@code modelProvider}'s compiled-model.json is unconditionally written and is this app's one
-     * reliable source of truth, so it is used here instead of re-reading that resource.)
-     */
-    private ResponseEntity<String> readDraftOrModel(JsonNode draft, DraftKind draftKind) {
-        if (draft != null) {
-            try {
-                return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON)
-                        .body(UI_MODEL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(draft));
-            } catch (IOException exception) {
-                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "draft_serialize_failed", exception);
-            }
-        }
-        try {
-            return ResponseEntity.ok().contentType(MediaType.APPLICATION_JSON).body(buildEmptyDraft(draftKind));
-        } catch (IOException exception) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "draft_load_failed", exception);
-        }
-    }
-
-    /**
-     * No draft has been saved yet -- a genuinely empty draft of the CORRECT, panel-specific shape is
-     * the truthful response (each of the three panels expects a different shape: the model/rule
-     * editors key their draft on {@code entities[]}, the orchestration editor on
-     * {@code triggerRules}/{@code actionRules}/{@code scheduleRules}). Namespace/version are read
-     * from the app's own compiled model so the empty draft still identifies the right app --
-     * everything else stays empty rather than attempting to project compiled-model concepts into
-     * draft-shaped entities, since that projection is not a genuine equivalence (REG-139: "a
-     * differently wrong draft is not an improvement").
-     */
-    private String buildEmptyDraft(DraftKind draftKind) throws IOException {
-        CompiledModel compiledModel = modelProvider.compiledModel();
-        ObjectNode node = UI_MODEL_MAPPER.createObjectNode();
-        switch (draftKind) {
-            case MODEL -> {
-                node.put("namespace", compiledModel.getNamespace());
-                node.put("dslVersion", compiledModel.getDslVersion());
-                node.put("version", compiledModel.getVersion());
-                node.set("entities", UI_MODEL_MAPPER.createArrayNode());
-            }
-            case RULES -> {
-                node.put("namespace", compiledModel.getNamespace());
-                node.put("version", compiledModel.getVersion());
-                node.set("entities", UI_MODEL_MAPPER.createArrayNode());
-            }
-            case ORCHESTRATION -> {
-                node.put("name", "");
-                node.set("triggerRules", UI_MODEL_MAPPER.createArrayNode());
-                node.set("actionRules", UI_MODEL_MAPPER.createArrayNode());
-                node.set("scheduleRules", UI_MODEL_MAPPER.createArrayNode());
-            }
-        }
-        return UI_MODEL_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(node);
     }
 
     private static String buildUiModelProjectionSafe(String modelJson) {

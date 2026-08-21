@@ -62,7 +62,7 @@ public class FileOrphanSweepService {
 
     /**
      * Runs one sweep pass immediately; also the entry point tests call directly. The reclamation
-     * algorithm itself lives in {@link FileOrphanSweeper} (in the expression-cel adapter) so it is
+     * algorithm itself lives in {@link FileOrphanSweeper} (in the runtime-support adapter) so it is
      * exercised by a real Gradle test gate; this method is just its Spring/config/logging wrapper.
      */
     public SweepResult sweep() {

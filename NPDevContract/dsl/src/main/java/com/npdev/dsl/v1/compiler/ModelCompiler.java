@@ -6,7 +6,10 @@ import com.npdev.dsl.v1.ast.ConversionAst;
 import com.npdev.dsl.v1.ast.ConversionLookupMatchAst;
 import com.npdev.dsl.v1.ast.ConversionSplitTargetAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
+import com.npdev.dsl.v1.ast.DocumentBandAst;
+import com.npdev.dsl.v1.ast.DocumentLogoAst;
 import com.npdev.dsl.v1.ast.ExternalAiAst;
+import com.npdev.dsl.v1.ast.FieldAccessAst;
 import com.npdev.dsl.v1.ast.FieldAst;
 import com.npdev.dsl.v1.ast.FieldPickerAst;
 import com.npdev.dsl.v1.ast.FileMetadataAst;
@@ -35,6 +38,7 @@ import com.npdev.dsl.v1.ast.FlowAst;
 import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateInvariantAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
@@ -85,6 +89,7 @@ import com.npdev.dsl.v1.compiled.CompiledEnumOption;
 import com.npdev.dsl.v1.compiled.CompiledEvent;
 import com.npdev.dsl.v1.compiled.CompiledEventField;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledFieldAccess;
 import com.npdev.dsl.v1.compiled.CompiledFieldPicker;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
@@ -103,12 +108,15 @@ import com.npdev.dsl.v1.compiled.CompiledOrchestrationAction;
 import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
 import com.npdev.dsl.v1.compiled.CompiledOrigin;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelDataSource;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
+import com.npdev.dsl.v1.compiled.CompiledDocumentBand;
+import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledExternalAi;
 import com.npdev.dsl.v1.compiled.CompiledSettings;
 import com.npdev.dsl.v1.compiled.CompiledTransactionHooks;
@@ -281,7 +289,8 @@ public final class ModelCompiler {
                         f.getRenamedFrom(),
                         toCompiledFileMetadata(f.getFile()),
                         f.isSensitive(),
-                        toCompiledFieldPicker(f.getPicker())
+                        toCompiledFieldPicker(f.getPicker()),
+                        toCompiledFieldAccess(f.getAccess())
                 ));
 
                 if (f.isRequired()) {
@@ -328,7 +337,9 @@ public final class ModelCompiler {
                             compiledAccess,
                             concept.getRenamedFrom(),
                             concept.getSatelliteOf(),
-                            toCompiledOrigin(concept.getOrigin())
+                            toCompiledOrigin(concept.getOrigin()),
+                            concept.isSoftDelete(),
+                            concept.isTemporal()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());
@@ -454,7 +465,6 @@ public final class ModelCompiler {
                     compileProcedureParameters(queryAst.parameters()),
                     sortedStrings(queryAst.permissionRequirements()),
                     queryAst.tracePolicy(),
-                    queryAst.auditPolicy(),
                     sortObjectMap(queryAst.metadata()),
                     toCompiledGroupByFields(queryAst.groupBy()),
                     toCompiledAggregateFunctions(queryAst.aggregates()),
@@ -487,7 +497,6 @@ public final class ModelCompiler {
                     toCompiledSchema(procedureAst.returns()),
                     sortedStrings(procedureAst.permissionRequirements()),
                     procedureAst.tracePolicy(),
-                    procedureAst.auditPolicy(),
                     compileGeneratedActionDescriptor(procedureAst),
                     sortObjectMap(procedureAst.metadata())
             ));
@@ -616,7 +625,10 @@ public final class ModelCompiler {
                 toCompiledPropertyScopes(modelAst.getPropertyScopes()),
                 toCompiledProperties(modelAst.getProperties()),
                 toCompiledContexts(modelAst.getContexts()),
-                conversions
+                conversions,
+                toCompiledWebhooks(modelAst.getWebhooks()),
+                toCompiledSequences(modelAst.getSequences()),
+                toCompiledSeeds(modelAst.getSeeds())
         );
     }
 
@@ -773,6 +785,48 @@ public final class ModelCompiler {
         return compiled;
     }
 
+    /** R6.2: compiles the model-declared inbound webhook doors -- no origin (unlike roles/events/...,
+     *  a webhook's identity is a wire path segment, deliberately never pack-qualified; see
+     *  {@link com.npdev.dsl.v1.ast.WebhookAst}). */
+    private static List<com.npdev.dsl.v1.compiled.CompiledWebhook> toCompiledWebhooks(
+            List<com.npdev.dsl.v1.ast.WebhookAst> webhookAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledWebhook> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.WebhookAst webhookAst : webhookAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledWebhook(
+                    webhookAst.source(), webhookAst.hmacSecretEnvVar(), webhookAst.eventName(), webhookAst.fieldMapping()));
+        }
+        return compiled;
+    }
+
+    /** R5.3: compiles the model-declared document-numbering counters -- no origin (like webhooks
+     *  above, a sequence's {@code name} is deliberately never pack-qualified; see
+     *  {@link com.npdev.dsl.v1.ast.SequenceAst}). */
+    private static List<com.npdev.dsl.v1.compiled.CompiledSequence> toCompiledSequences(
+            List<com.npdev.dsl.v1.ast.SequenceAst> sequenceAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledSequence> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.SequenceAst sequenceAst : sequenceAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledSequence(
+                    sequenceAst.name(), sequenceAst.format(), sequenceAst.scope()));
+        }
+        return compiled;
+    }
+
+    /** R8.8: compiles the model/pack-declared first-boot seed rows -- no origin lookup (a seed
+     *  record has no {@code name} to key one by; ownership of a pack-declared seed's target
+     *  concept was already enforced at pack-composition time, see {@link
+     *  com.npdev.dsl.v1.ast.SeedAst}). Order is preserved untouched, unlike every sibling {@code
+     *  toCompiledX} above -- see that class's javadoc for why. */
+    private static List<com.npdev.dsl.v1.compiled.CompiledSeed> toCompiledSeeds(
+            List<com.npdev.dsl.v1.ast.SeedAst> seedAsts) {
+        List<com.npdev.dsl.v1.compiled.CompiledSeed> compiled = new ArrayList<>();
+        for (com.npdev.dsl.v1.ast.SeedAst seedAst : seedAsts) {
+            compiled.add(new com.npdev.dsl.v1.compiled.CompiledSeed(
+                    seedAst.concept(), seedAst.alias(), seedAst.id(), seedAst.data(),
+                    seedAst.repeatOverVars(), seedAst.count()));
+        }
+        return compiled;
+    }
+
     /** Wave 6 (RC-A1): compiles the declared scope levels of the property cascade. */
     private static List<com.npdev.dsl.v1.compiled.CompiledPropertyScope> toCompiledPropertyScopes(
             List<com.npdev.dsl.v1.ast.PropertyScopeAst> scopeAsts) {
@@ -790,7 +844,8 @@ public final class ModelCompiler {
         for (com.npdev.dsl.v1.ast.PropertyAst propertyAst : propertyAsts) {
             compiled.add(new com.npdev.dsl.v1.compiled.CompiledProperty(
                     propertyAst.name(), propertyAst.type(), propertyAst.defaultValue(),
-                    propertyAst.settableAt(), propertyAst.label(), propertyAst.securityRelevant()));
+                    propertyAst.settableAt(), propertyAst.label(), propertyAst.securityRelevant(),
+                    propertyAst.labelLocales()));
         }
         return compiled;
     }
@@ -824,8 +879,41 @@ public final class ModelCompiler {
                 documentAst.title(),
                 documentAst.pageSize(),
                 documentAst.marginMm(),
-                sortObjectMap(documentAst.metadata())
+                sortObjectMap(documentAst.metadata()),
+                documentAst.aggregate(),
+                compileDocumentBands(documentAst.bands()),
+                compileDocumentLogo(documentAst.logo())
         );
+    }
+
+    /**
+     * R5.7: a document band's {@code fields} compiles through the SAME {@link
+     * #compilePanelFieldBindings} a panel's {@code fieldBindings} already uses -- one compiled
+     * shape for the reused binding vocabulary, not a parallel one.
+     */
+    private static List<CompiledDocumentBand> compileDocumentBands(List<DocumentBandAst> bands) {
+        List<CompiledDocumentBand> out = new ArrayList<>();
+        if (bands == null) {
+            return out;
+        }
+        for (DocumentBandAst band : bands) {
+            out.add(new CompiledDocumentBand(
+                    band.name(),
+                    band.kind(),
+                    band.collection(),
+                    band.label(),
+                    band.labelLocales(),
+                    compilePanelFieldBindings(band.fields())
+            ));
+        }
+        return out;
+    }
+
+    private static CompiledDocumentLogo compileDocumentLogo(DocumentLogoAst logo) {
+        if (logo == null) {
+            return null;
+        }
+        return new CompiledDocumentLogo(logo.field());
     }
 
     private static String autoPanelKey(AutoPanelAst autoPanel) {
@@ -863,7 +951,7 @@ public final class ModelCompiler {
         }
         List<CompiledDerivedField> derivedFields = new ArrayList<>();
         for (DerivedFieldAst d : surface.derivedFields()) {
-            derivedFields.add(new CompiledDerivedField(d.name(), d.label(), d.tier(), d.expression(), d.procedure()));
+            derivedFields.add(new CompiledDerivedField(d.name(), d.label(), d.tier(), d.expression(), d.procedure(), d.labelLocales()));
         }
         Map<String, CompiledRegionMount> regions = new LinkedHashMap<>();
         for (Map.Entry<String, RegionMountAst> entry : surface.regions().entrySet()) {
@@ -878,7 +966,8 @@ public final class ModelCompiler {
                     new ArrayList<>(action.inputFields()),
                     toCompiledWorkbenchActionApplyTo(action.applyTo()),
                     action.afterAction(),
-                    action.visibleWhen()
+                    action.visibleWhen(),
+                    action.labelLocales()
             ));
         }
         Map<String, CompiledWorkbenchBandPicker> bandPickers = new LinkedHashMap<>();
@@ -887,14 +976,15 @@ public final class ModelCompiler {
             bandPickers.put(entry.getKey(),
                     new CompiledWorkbenchBandPicker(
                             picker.panel(), picker.label(), new ArrayList<>(picker.columns()),
-                            picker.filter(), picker.multiSelect()));
+                            picker.filter(), picker.multiSelect(), picker.labelLocales()));
         }
         // Move 11 W6: declared transient UI state a `$ui.<name>` visibleWhen predicate can read.
         Map<String, CompiledUiStateControl> uiState = new LinkedHashMap<>();
         for (Map.Entry<String, UiStateControlAst> entry : surface.uiState().entrySet()) {
             UiStateControlAst control = entry.getValue();
             uiState.put(entry.getKey(), new CompiledUiStateControl(
-                    control.name(), control.label(), new ArrayList<>(control.values()), control.defaultValue()));
+                    control.name(), control.label(), new ArrayList<>(control.values()), control.defaultValue(),
+                    control.labelLocales()));
         }
         return new CompiledAutoPanelSurface(
                 new ArrayList<>(surface.filters()),
@@ -951,8 +1041,23 @@ public final class ModelCompiler {
                 compileAggregateCollections(aggregateAst.collections()),
                 onCommit,
                 sortObjectMap(aggregateAst.metadata()),
-                onValidate
+                onValidate,
+                // npdev-aggregate-invariant-four-place (R4.4): parser -> HERE -> canonical writer+reader.
+                compileAggregateInvariants(aggregateAst.invariants())
         );
+    }
+
+    /** R4.4: pass-through compile of aggregates[].invariants[] -- no specialization concept
+     *  applies to an aggregate invariant (it is not a concept-level rule), so this is a direct
+     *  1:1 mapping, same shape as {@link #compileAggregateCollections}. */
+    private static List<CompiledAggregateInvariant> compileAggregateInvariants(
+            List<AggregateInvariantAst> invariantAsts) {
+        List<CompiledAggregateInvariant> compiled = new ArrayList<>();
+        for (AggregateInvariantAst invariantAst : invariantAsts) {
+            compiled.add(new CompiledAggregateInvariant(
+                    invariantAst.name(), invariantAst.expression(), invariantAst.message()));
+        }
+        return compiled;
     }
 
     /** Move 6 Move B: an aggregate-bound AutoPanel's transaction.hooks.onValidate/onCommit is an
@@ -1161,7 +1266,8 @@ public final class ModelCompiler {
                 uiAst.getLabel(),
                 uiAst.getPlaceholder(),
                 uiAst.getHelpText(),
-                uiAst.getWidget()
+                uiAst.getWidget(),
+                uiAst.getLabelLocales()
         );
         return new CompiledDomainType(
                 domainTypeAst.getName(),
@@ -1196,7 +1302,8 @@ public final class ModelCompiler {
                     enumOption.isDeprecated(),
                     enumOption.getIconHint(),
                     enumOption.getBadgeHint(),
-                    enumOption.getDescription()
+                    enumOption.getDescription(),
+                    enumOption.getLabelLocales()
             ));
         }
         return List.copyOf(compiled);
@@ -1347,7 +1454,8 @@ public final class ModelCompiler {
                     stateAst.getLabel(),
                     stateAst.isInitial(),
                     stateAst.isTerminal(),
-                    stateAst.getMetadata()
+                    stateAst.getMetadata(),
+                    stateAst.getLabelLocales()
             ));
         }
         List<CompiledStateTransition> transitions = new ArrayList<>();
@@ -1365,7 +1473,8 @@ public final class ModelCompiler {
                     transitionAst.getGuard(),
                     transitionAst.getActionLabel(),
                     transitionAst.getMetadata(),
-                    toCompiledActionMetadata(transitionAst.getAction())
+                    toCompiledActionMetadata(transitionAst.getAction()),
+                    transitionAst.getActionLabelLocales()
             ));
         }
         transitions.sort(Comparator
@@ -1592,6 +1701,16 @@ public final class ModelCompiler {
                     invariantRefsByConcept,
                     invariantRefAliasByConcept
             );
+            // R2.5: an awaitEvent step's escalation branch, compiled the same recursive way as
+            // every other nested step list above.
+            List<CompiledFlowStep> onTimeoutSteps = compileFlowSteps(
+                    stepAst.getOnTimeoutSteps(),
+                    capabilityTypesByName,
+                    operationsByCapability,
+                    flowConcept,
+                    invariantRefsByConcept,
+                    invariantRefAliasByConcept
+            );
 
             out.add(new CompiledFlowStep(
                     stepAst.getName(),
@@ -1622,7 +1741,9 @@ public final class ModelCompiler {
                     stepAst.getMaxLoopIterations(),
                     onFailureSteps,
                     stepAst.getProcedure(),
-                    stepAst.getParallelAwait()
+                    stepAst.getParallelAwait(),
+                    stepAst.getTimeoutSeconds(),
+                    onTimeoutSteps
             ));
         }
         return out;
@@ -1640,7 +1761,8 @@ public final class ModelCompiler {
                 actionMetadata.getDangerLevel(),
                 actionMetadata.getVisibleWhen(),
                 actionMetadata.getPermissionHint(),
-                actionMetadata.getInputFormHint()
+                actionMetadata.getInputFormHint(),
+                actionMetadata.getLabelLocales()
         );
     }
 
@@ -1831,7 +1953,8 @@ public final class ModelCompiler {
                     sortedStrings(action.inputFields()),
                     action.resultAs(),
                     action.filename(),
-                    action.contentType()
+                    action.contentType(),
+                    action.labelLocales()
             ));
         }
         out.sort(Comparator.comparing(action -> normalize(action.name())));
@@ -1901,6 +2024,14 @@ public final class ModelCompiler {
         return new CompiledFieldPicker(picker.filter(), picker.multiSelect());
     }
 
+    /** R5.5: compiles a field's declared {read, write} authorization rule. */
+    private static CompiledFieldAccess toCompiledFieldAccess(FieldAccessAst access) {
+        if (access == null) {
+            return null;
+        }
+        return new CompiledFieldAccess(access.getRead(), access.getWrite());
+    }
+
     private static CompiledPresentationMetadata toCompiledPresentationMetadata(PresentationMetadataAst metadata) {
         if (metadata == null) {
             return null;
@@ -1940,7 +2071,9 @@ public final class ModelCompiler {
                 metadata.getDefaultSort(),
                 metadata.getDefaultGroup(),
                 metadata.getImageField(),
-                metadata.getCustomWidgetRef()
+                metadata.getCustomWidgetRef(),
+                metadata.getLabelLocales(),
+                metadata.getShortLabelLocales()
         );
     }
 

@@ -1,0 +1,197 @@
+id: RUN-18
+title: >-
+  documentRender had no flow-callable entry point and mail-smtp was plain-text-only, so "nightly
+  report emailed as PDF" could not compose from its existing pieces; expose documentRender as a
+  CapabilityAdapter and extend mail to MIME (HTML alternative + attachments), proven end to end by a
+  cron-scheduled flow that renders a real PDF and delivers it as a real MIME attachment
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R6 item R6.3 -- "the renderer is
+  REST-only (no flow step can call it) and the mail adapter is plain-text-only." Both premises
+  confirmed against real code before starting, not assumed: DocumentRenderContract had exactly one
+  production caller, the REST-only DocumentRenderController, and its own javadoc explicitly argued
+  rendering should NOT be a capability (see detail -- that argument was itself wrong, corrected
+  in-place); SmtpMailCapabilityAdapter.send called a single mimeMessage.setText(body) with no HTML
+  part and no attachment support anywhere in MailMessage/MailPayload.
+surface: kernel/adapters/mail, kernel/adapters/document-render, kernel/ports
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/MailMessage.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/MailPayload.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/MailAttachment.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/DocumentRenderPayload.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/DocumentRenderContract.java
+  - NPDevKernel/adapters/mail-smtp/build.gradle
+  - NPDevKernel/adapters/mail-smtp/src/main/java/com/npdev/adapters/mail/smtp/SmtpMailCapabilityAdapter.java
+  - NPDevKernel/adapters/mail-smtp/src/test/java/com/npdev/adapters/mail/smtp/SmtpMailCapabilityAdapterTest.java
+  - NPDevKernel/adapters/mail-smtp/src/test/java/com/npdev/adapters/mail/smtp/ScheduledReportEndToEndTest.java
+  - NPDevKernel/adapters/mail-inproc/src/main/java/com/npdev/adapters/mail/inproc/InProcMailCapabilityAdapter.java
+  - NPDevKernel/adapters/mail-inproc/src/test/java/com/npdev/adapters/mail/inproc/InProcMailCapabilityAdapterTest.java
+  - NPDevKernel/adapters/document-render-inproc/src/main/java/com/npdev/adapters/documentrender/inproc/DocumentRenderInProcAdapter.java
+  - NPDevKernel/adapters/document-render-inproc/src/test/java/com/npdev/adapters/documentrender/inproc/DocumentRenderInProcAdapterTest.java
+  - NPDevKernel/adapters/document-render-stub/src/main/java/com/npdev/adapters/documentrender/stub/DocumentRenderStubAdapter.java
+  - NPDevKernel/adapters/document-render-stub/src/test/java/com/npdev/adapters/documentrender/stub/DocumentRenderStubAdapterTest.java
+detail: |
+  Two additive changes, no new adapter module (both `document-render-inproc`/`document-render-stub`
+  and `mail-inproc`/`mail-smtp` already existed and were already registered in
+  `NPDevKernel/settings.gradle` -- no settings.gradle edit was needed this round):
+
+  **1. documentRender becomes a real CapabilityAdapter.** Both `DocumentRenderInProcAdapter` and
+  `DocumentRenderStubAdapter` now implement `CapabilityAdapter` (capability `documentRender`,
+  capabilityType `DocumentRenderCapability`, operation `render`) IN ADDITION to `DocumentRenderContract`
+  -- exactly mirroring how `mail-inproc`/`mail-smtp` already implement both `CapabilityAdapter` and
+  `EmailCapability`. A new shared `DocumentRenderPayload` (kernel port, mirroring `MailPayload`'s
+  role) parses a flow's positional args or a map payload into `(html, pageSize, marginMm, filename)`;
+  `invoke()` renders and returns `{contentBase64, contentType, filename, sizeBytes}` -- a JSON-safe
+  map a flow's state can hold and a later `mail.send` step can reference directly as an attachment.
+  The stub adapter's `invoke()` fails exactly as loudly as its direct `render()` call always has
+  (`DOCUMENT_RENDER_FAILED`), never a silent/empty PDF just because it was reached through a flow
+  step instead of the REST controller.
+
+  **DocumentRenderContract's own javadoc claim was corrected, not just worked around.** It said
+  rendering "lives behind a port/adapter pair rather than a capability" because it is I/O-heavy, not
+  a pure function -- true of REG-12 Slice 3's original scope (one REST-only caller), but wrong as a
+  general argument: `EmailCapability` was equally I/O-heavy (a real SMTP send) and had already been
+  both a typed port AND a capability since LNCH-11. The two are not mutually exclusive; the real gap
+  was that no adapter implementing `DocumentRenderContract` also implemented `CapabilityAdapter`. The
+  javadoc now says so explicitly, so the next reader does not re-derive the same wrong conclusion.
+
+  **2. Mail becomes MIME: HTML alternative + attachments, additive and backward-compatible.**
+  `MailMessage` gained `htmlBody` (nullable) and `attachments` (`List<MailAttachment>`, a new
+  `filename`/`contentType`/`contentBytes` record) as trailing record components; the original 4-arg
+  constructor is preserved as an explicit secondary constructor delegating `(null, List.of())`, so
+  every pre-existing caller (mail-inproc, mail-smtp, and both their existing test suites) compiles
+  and behaves unchanged. `MailPayload` reads `htmlBody`/`attachments` from either the positional-args
+  form (5th/6th slots) or the map form (`contentBase64`-encoded attachment bytes -- never raw bytes
+  at the DSL boundary, since a flow's capabilityCall args are plain JSON-safe value refs). `attachments`
+  accepts either a list of attachment maps OR a single map, auto-wrapped as one element -- exactly the
+  shape `documentRender`'s own capability output has, so a rendered PDF's output ref can be passed
+  straight through as the mail step's attachments arg with zero reshaping step in between, which the
+  DSL genuinely cannot express inline (`MailPayload`'s own pre-existing javadoc note, unchanged).
+
+  `SmtpMailCapabilityAdapter.send` now builds `multipart/alternative` (text+html, HTML only),
+  `multipart/mixed` (text + N attachment parts, attachments only), or both nested (HTML alternative
+  wrapped inside mixed, when both are present) via Jakarta Mail's `MimeBodyPart`/`MimeMultipart` +
+  `ByteArrayDataSource`/`DataHandler` for attachment bytes. **When neither htmlBody nor attachments
+  is present, the exact same `mimeMessage.setText(body)` call every pre-R6.3 send made still runs --
+  byte-for-byte unchanged for every existing plain-text caller**, verified by re-running the
+  pre-existing `sendRendersTemplateAndDeliversOverRealSmtp`/`invokeViaCapabilityCallSendsOverSmtp`
+  tests unmodified and green. `InProcMailCapabilityAdapter` records `htmlBody` (only when present --
+  its delivery map uses `Map.copyOf`, which rejects null values) and `attachmentCount`/
+  `attachmentFilenames`, purely additive keys that do not disturb any existing `.get(key)` assertion.
+
+  **Security posture matches the established webhook-http/external-ai-http pattern, per this round's
+  explicit instruction.** SMTP credentials were ALREADY resolved from configuration/environment by
+  name via `@Value` properties in `NpdevPluginConfig.mailSmtpRuntimePluginRealizationProvider` (a
+  pre-existing LNCH-11/RUN-4 mechanism, unchanged by this item) -- never a literal, never committed.
+  Nothing in this item introduces a new secret or a new fail-open path: `mail-smtp` already refuses
+  to construct with a blank host/from (`IllegalStateException`), and `send` already requires at least
+  one `to` address (`mail-smtp send requires at least one 'to' address`) -- both unchanged. No
+  recipient allowlist exists for mail (unlike webhook-http's destination allowlist) because mail's
+  fail-closed surface is different: SMTP has no equivalent of "any host on the internet" risk the way
+  an outbound HTTP POST does -- the existing host/from/credential requirements are mail's fail-closed
+  gate, and this item added no new network egress path, only a richer message BODY over the SAME
+  already-configured SMTP connection.
+
+  **Tests never send real mail.** Every test uses GreenMail (`greenmail-junit5:2.1.0`, already a
+  `mail-smtp` test dependency since LNCH-11) bound to loopback -- an in-process SMTP sink, not a
+  fake/mock transport. No Docker, no real network. The end-to-end test's own GreenMail server binds a
+  DYNAMIC (OS-assigned) port rather than the module's pre-existing fixed-port instance
+  (`ServerSetupTest.SMTP`, already owned by `SmtpMailCapabilityAdapterTest`) -- running both test
+  classes' fixed-port GreenMail servers in the same Gradle test JVM collided
+  (`IllegalStateException` at `GreenMail.java:125`, port-in-use), measured directly, fixed by giving
+  the new test its own dynamically-assigned port read back via `greenMail.getSmtp().getPort()`.
+
+  **End-to-end proof (`ScheduledReportEndToEndTest`), the whole chain, not the pieces.** A real
+  `model.json` (declaring `documentRender`/`mail` capabilities, their bindings to
+  `document-render-inproc`/`mail-smtp`, and a flow with `schedule: {cron: "0 0 3 * * *"}` and two
+  `capabilityCall` steps) is parsed, semantically validated, and compiled via
+  `ModelBackedKernelRuntimeFactory.compileModel` -- the SAME parse/validate/compile path a generated
+  app's build uses. **Zero DSL/schema changes were needed**: `capability.type`/`binding.adapter` are
+  free-form strings with no enum in `model.schema.json` (same finding RUN-14/RUN-17 already made for
+  `webhook`), and `flow.schedule.cron` already existed (LNCH-12). The compiled flow is then executed
+  by a real `KernelRunner` (`ModelBackedKernelRuntimeFactory.createKernelRunner`) against a real
+  `DocumentRenderInProcAdapter` (OpenHTMLtoPDF, real PDF bytes, not a mock) and a real
+  `SmtpMailCapabilityAdapter` pointed at the loopback GreenMail sink -- registered exactly the way
+  `NpdevCapabilityBindingConfig.capabilityRegistry` registers adapters in a booted app
+  (`CapabilityRegistry.register(capability, type, adapterId, adapter)`), just without the Spring
+  plugin-resolution indirection layered on top in production (see "deliberately not done" below).
+  MEASURED: the flow completes `ExecutionStatus.OK`; the SMTP sink receives exactly one message whose
+  subject shows real `${day}` template substitution; the message is genuine `multipart/mixed`
+  containing a `multipart/alternative` part (the flow-supplied `htmlBody` reaches the outbound MIME
+  message, asserted by content, not by adapter internal state) plus one `application/pdf` attachment
+  part named `document.pdf` whose bytes are non-empty and start with the real `%PDF-` file signature
+  -- decoded straight off the wire the SMTP sink received, not read back from the adapter's own
+  return value.
+
+  **Live RED->GREEN, run this session, not simulated.** Temporarily forced
+  `hasAttachments = false && !rendered.attachments().isEmpty()` in `SmtpMailCapabilityAdapter
+  .populateContent` and re-ran `ScheduledReportEndToEndTest` alone: FAILED at the `multipart/mixed`
+  assertion (the message degraded to `multipart/alternative` with no attachment, exactly the
+  pre-R6.3-shaped defect this item closes). Reverted the one-line change and re-ran the full
+  4-module suite (`mail-smtp`, `mail-inproc`, `document-render-inproc`, `document-render-stub`):
+  31/31 green, 0 skipped. The full `:kernel:test` suite was also run as a safety check on the shared
+  port changes (`MailMessage`/`MailPayload`/`DocumentRenderPayload` live in `kernel/ports`, not an
+  adapter module) and passed clean.
+
+  **What this does NOT re-prove.** The cron TIMER firing itself: `NpdevCronSchedulerService`
+  (RuntimeHost, RUN-15/R2.7) is the component that polls `schedule.cron` and calls
+  `KernelRunner.executeFlow(flowName, ...)` on a tick -- already covered by its own tests, outside
+  this item's ownership (`NPDevKernel/adapters/*` only, per this round's file-ownership split). This
+  proof drives `executeFlow` directly, i.e. exactly what that poller does the moment a schedule
+  fires, and proves what happens next -- the declared capability chain for a model `schedule.cron`
+  marks as scheduled.
+
+  **Deliberately NOT done, and why.** RuntimeHost Spring wiring -- a `RuntimePluginRealizationProvider`
+  bean registering `document-render-inproc`/`document-render-stub` as selectable `documentRender`
+  bindings in `NpdevPluginConfig.java` (mail-smtp's own equivalent,
+  `mailSmtpRuntimePluginRealizationProvider`, already exists and is untouched) -- was deliberately
+  NOT added this round, following RUN-14's own established precedent verbatim: `NpdevPluginConfig
+  .java` is a shared RuntimeHost file with no owner assigned this round, editing it risks colliding
+  with concurrent sessions' unrelated changes to the same file with no merge, and the adapter-level
+  capability wiring this item delivers (both classes real `CapabilityAdapter` implementations,
+  compiling, tested, and proven end-to-end against the real production dispatch path) is what this
+  round's file ownership actually grants (`NPDevKernel/adapters/*` "plus their registration" was
+  read as capability-contract registration, i.e. implementing `CapabilityAdapter`, mirroring exactly
+  what RUN-14 delivered for `webhook-http` -- not the separate RuntimeHost Spring-wiring vertical
+  slice RUN-14 explicitly deferred). Wiring a selectable `documentRender` binding into a booted
+  generated app is the next step, exactly as RUN-14 left the equivalent step for `webhook-http`.
+
+  No DSL/schema files were touched (none were needed -- see above), so no `dsl-conformance-max`
+  corpus entry was required either, matching `check-dsl-coverage.py`'s own scope (DSL FEATURES, not
+  adapter-level capability wiring) and RUN-14/RUN-17's identical finding. `NPDevKernel/kernel/.../
+  storage/sql/**` was not touched -- no dialect-bound SQL construct was needed (documentRender/mail
+  have no persistence of their own). No BREAKING.md entry, no `npdev migrate` codemod: every change
+  is additive (new record components with a preserved legacy constructor, new capability-adapter
+  interface implementations alongside the existing typed-port implementations), no existing DSL
+  shape, generated code layout, or internal API signature changed in an incompatible way.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/mail-smtp/src/test/java/com/npdev/adapters/mail/smtp/ScheduledReportEndToEndTest.java#aCronScheduledFlowRendersAConceptListToPdfAndEmailsItWithTheAttachment
+  asserts: >-
+    A model.json declaring documentRender/mail capabilities+bindings and a schedule.cron flow
+    compiles through the real DSL parse/validate/compile path; executing that flow via a real
+    KernelRunner against real DocumentRenderInProcAdapter + SmtpMailCapabilityAdapter (GreenMail
+    sink) completes OK and delivers exactly one multipart/mixed MIME message whose alternative part
+    carries the flow-supplied HTML body and whose attachment part is a real, non-empty, well-formed
+    PDF (%PDF- signature) byte-identical to what the renderer produced. Sibling tests in
+    SmtpMailCapabilityAdapterTest/InProcMailCapabilityAdapterTest/DocumentRenderInProcAdapterTest/
+    DocumentRenderStubAdapterTest cover the individual pieces (HTML-only multipart/alternative,
+    attachment-only multipart/mixed, single-map attachment auto-wrap, documentRender invoke()
+    success/failure/unsupported-operation paths) in isolation.
+  provenRed: true
+  provenRedNote: >-
+    Forced `hasAttachments = false && !rendered.attachments().isEmpty()` in
+    SmtpMailCapabilityAdapter.populateContent (a one-line, temporary, in-session edit) and re-ran
+    ScheduledReportEndToEndTest alone: FAILED at the multipart/mixed assertion (org.opentest4j
+    .AssertionFailedError at ScheduledReportEndToEndTest.java:169) because the message degraded to
+    multipart/alternative with the attachment silently dropped -- exactly the class of defect this
+    item closes. Reverted the change and re-ran the full 4-module suite (mail-smtp, mail-inproc,
+    document-render-inproc, document-render-stub): 31/31 green, 0 skipped, including the same guard
+    test. :kernel:test (the shared kernel/ports changes) also run clean as a safety check. Both
+    gradle runs executed live this session, not simulated.

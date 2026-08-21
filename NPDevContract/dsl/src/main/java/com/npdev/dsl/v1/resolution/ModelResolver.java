@@ -120,7 +120,23 @@ public final class ModelResolver {
                 // Whole-map pass-through -- keyed by qualified concept name, which specialization
                 // resolution here never renames (extends is field-inheritance, not a rename), so the
                 // keys this map already has still match after resolution.
-                source.getPhysicalQualifierByConceptName()
+                source.getPhysicalQualifierByConceptName(),
+                // Whole-list pass-through, same reasoning as aggregates/autoPanels above -- a
+                // webhook has no `extends`/specialization concept of its own for this resolver to
+                // expand; ModelSourceResolver already rewrote its `eventName` field (the pack
+                // composition step, upstream of this specialization resolver) if it was pack-local.
+                source.getWebhooks(),
+                // Whole-list pass-through, same reasoning -- a sequence has no `extends`/
+                // specialization concept either, and its own `name` is deliberately never rewritten
+                // by pack composition (see SequenceAst's javadoc), so there is nothing here for
+                // this resolver to expand or rename.
+                source.getSequences(),
+                // R8.8: whole-list pass-through -- a seed has no `extends`/specialization concept
+                // either, and its own `concept` was already rewritten to pack-qualified form (when
+                // pack/context-declared) upstream by ModelSourceResolver, so there is nothing here
+                // for this resolver to expand or rename. Order is preserved untouched (never
+                // sorted), unlike every sibling list above -- see SeedAst's javadoc for why.
+                source.getSeeds()
         );
         return ResolvedModel.from(resolvedAst);
     }
@@ -145,7 +161,8 @@ public final class ModelResolver {
                     domainType.getUi().getLabel(),
                     domainType.getUi().getPlaceholder(),
                     domainType.getUi().getHelpText(),
-                    domainType.getUi().getWidget()
+                    domainType.getUi().getWidget(),
+                    domainType.getUi().getLabelLocales()
             );
             resolved.add(new DomainTypeAst(
                     domainType.getName(),
@@ -219,7 +236,9 @@ public final class ModelResolver {
                 concept.getAccess(),
                 concept.getRenamedFrom(),
                 concept.getSatelliteOf(),
-                concept.getOrigin()
+                concept.getOrigin(),
+                concept.isSoftDelete(),
+                concept.isTemporal()
         );
     }
 
@@ -286,6 +305,18 @@ public final class ModelResolver {
                 ? specialization.getOrigin()
                 : base.getOrigin();
 
+        // R5.4: sticky-true, not "specialization wins" -- a base concept declaring softDelete is a
+        // durability guarantee about the real-world entity's rows (never physically removed); a
+        // specialization silently reverting to hard delete would be a footgun a naive "specialization
+        // replaces base" merge (like access/origin above) would allow by omission. A specialization is
+        // still free to opt IN on its own even when the base does not.
+        boolean mergedSoftDelete = specialization.isSoftDelete() || base.isSoftDelete();
+
+        // R5.8: same sticky-true reasoning as softDelete just above -- a base concept's temporal
+        // durability contract (rows are effective-dated, never treated as a single current value)
+        // cannot be silently undone by a specialization; a specialization may still opt IN on its own.
+        boolean mergedTemporal = specialization.isTemporal() || base.isTemporal();
+
         return new ConceptAst(
                 specialization.getName(),
                 null,
@@ -301,8 +332,31 @@ public final class ModelResolver {
                 mergedAccess,
                 specialization.getRenamedFrom(),
                 specialization.getSatelliteOf(),
-                mergedOrigin
+                mergedOrigin,
+                mergedSoftDelete,
+                mergedTemporal
         );
+    }
+
+    /**
+     * R5.6: a label site now carries TWO values -- resolved default text and a per-locale
+     * overrides map -- that must move together during specialize/extend merge. The pre-existing
+     * {@code firstNonBlank(text, text)} merge rule ("override wins if it says anything, else
+     * base") still applies, but it has to be evaluated once per (text, locales) PAIR, not per
+     * scalar, or a specialization that only redeclares locale overrides (no plain-string default)
+     * would wrongly lose to a base that happens to have non-blank text.
+     */
+    private static boolean hasLabelContent(String text, Map<String, String> locales) {
+        return (text != null && !text.isBlank()) || (locales != null && !locales.isEmpty());
+    }
+
+    private static String mergeLabelText(String overrideText, Map<String, String> overrideLocales, String baseText) {
+        return hasLabelContent(overrideText, overrideLocales) ? overrideText : baseText;
+    }
+
+    private static Map<String, String> mergeLabelLocales(
+            String overrideText, Map<String, String> overrideLocales, Map<String, String> baseLocales) {
+        return hasLabelContent(overrideText, overrideLocales) ? overrideLocales : baseLocales;
     }
 
     private static PresentationMetadataAst mergePresentationMetadata(
@@ -319,8 +373,8 @@ public final class ModelResolver {
             return copyPresentationMetadata(base);
         }
         return new PresentationMetadataAst(
-                firstNonBlank(override.getLabel(), base.getLabel()),
-                firstNonBlank(override.getShortLabel(), base.getShortLabel()),
+                mergeLabelText(override.getLabel(), override.getLabelLocales(), base.getLabel()),
+                mergeLabelText(override.getShortLabel(), override.getShortLabelLocales(), base.getShortLabel()),
                 firstNonBlank(override.getDescription(), base.getDescription()),
                 firstNonBlank(override.getHelpText(), base.getHelpText()),
                 firstNonBlank(override.getPlaceholder(), base.getPlaceholder()),
@@ -353,7 +407,9 @@ public final class ModelResolver {
                 firstNonBlank(override.getDefaultSort(), base.getDefaultSort()),
                 firstNonBlank(override.getDefaultGroup(), base.getDefaultGroup()),
                 firstNonBlank(override.getImageField(), base.getImageField()),
-                firstNonBlank(override.getCustomWidgetRef(), base.getCustomWidgetRef())
+                firstNonBlank(override.getCustomWidgetRef(), base.getCustomWidgetRef()),
+                mergeLabelLocales(override.getLabel(), override.getLabelLocales(), base.getLabelLocales()),
+                mergeLabelLocales(override.getShortLabel(), override.getShortLabelLocales(), base.getShortLabelLocales())
         );
     }
 
@@ -396,7 +452,9 @@ public final class ModelResolver {
                 metadata.getDefaultSort(),
                 metadata.getDefaultGroup(),
                 metadata.getImageField(),
-                metadata.getCustomWidgetRef()
+                metadata.getCustomWidgetRef(),
+                metadata.getLabelLocales(),
+                metadata.getShortLabelLocales()
         );
     }
 
@@ -1035,7 +1093,9 @@ public final class ModelResolver {
                 step.getMaxLoopIterations(),
                 cloneSteps(step.getOnFailureSteps()),
                 step.getProcedure(),
-                step.getParallelAwait()
+                step.getParallelAwait(),
+                step.getTimeoutSeconds(),
+                cloneSteps(step.getOnTimeoutSteps())
         );
     }
 
@@ -1055,7 +1115,8 @@ public final class ModelResolver {
                 action.getDangerLevel(),
                 action.getVisibleWhen(),
                 action.getPermissionHint(),
-                action.getInputFormHint()
+                action.getInputFormHint(),
+                action.getLabelLocales()
         );
     }
 
@@ -1135,7 +1196,8 @@ public final class ModelResolver {
                     state.isInitial(),
                     state.isTerminal(),
                     state.getAllowedActions(),
-                    state.getMetadata()
+                    state.getMetadata(),
+                    state.getLabelLocales()
             ));
         }
         List<StateTransitionAst> transitions = new ArrayList<>();
@@ -1151,7 +1213,8 @@ public final class ModelResolver {
                     transition.getGuard(),
                     transition.getActionLabel(),
                     transition.getMetadata(),
-                    cloneActionMetadata(transition.getAction())
+                    cloneActionMetadata(transition.getAction()),
+                    transition.getActionLabelLocales()
             ));
         }
         transitions.sort(Comparator

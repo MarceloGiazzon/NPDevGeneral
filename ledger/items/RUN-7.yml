@@ -1,0 +1,108 @@
+id: RUN-7
+title: >-
+  A STUCK flow instance can only be recovered by SQL surgery -- listStuckSummaries exists at the
+  store layer with no wired endpoint, and there is no un-stick operation at all
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R2 item R2.2. docs/FLOWS.md stated the
+  gap plainly in two places: "no REST controller calls it" and "`STUCK` has no coded 'un-stick'
+  operation". Sharpened by RUN-6 landing first: now that quiet waits no longer reach STUCK, every
+  remaining STUCK is a genuine repeating failure -- so the recovery path matters more, not less.
+surface: kernel/execution, runtimehost/api
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/execution/FlowInstance.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-kernel-facade.mustache
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ExecutionMonitorService.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/ExecutionMonitorController.java
+  - docs/FLOWS.md
+detail: |
+  `GET /api/executions/stuck` now serves the pre-existing `ExecutionSummaryStore.listStuckSummaries`
+  (implemented by both `JdbcFlowInstanceStore` and `InProcFlowInstanceStore`, previously reachable
+  from nothing), and `POST /api/executions/{id}/unstick` recovers an instance.
+
+  `FlowInstance.withUnstuck(now)` is a new `with*` factory beside RUN-6's `withResumeStreakReset`:
+  status -> WAITING_EVENT, `resumeAttemptCount` -> 0, `nextEligibleResumeAtEpochMs` -> null so the
+  next sweep considers it immediately. It also clears the terminal-failure quartet
+  (`lastErrorKind/Code/Message`, `failedAtEpochMs`) because those describe a STUCK status the row no
+  longer has and `ExecutionSummary` exposes `failedAtEpochMs` to monitors; `lastResumeAtEpochMs` and
+  `lastResumeErrorCode` deliberately SURVIVE as the only remaining evidence of why it stuck. Refuses
+  a non-STUCK instance, and refuses a STUCK row with no `waitingForEventName` -- STUCK is reachable
+  from RUNNING, and such a row cannot legally hold WAITING_EVENT. No mutation, no setter.
+
+  `KernelRunner.unstickExecution` deliberately does NOT resume inline: it returns the row to the
+  sweep, which then carries it through the ordinary path with its usual idempotency and correlation
+  checks rather than a second, privileged resume route.
+
+  **Controller: EXTENDED `ExecutionMonitorController`, did not create one** -- it already lives in
+  `com.finalexec.api`, is already listed in `runtime-supported-controllers.json`, already owns
+  `/api/executions/*` and already classifies STUCK as NEEDS_ATTENTION. So no manifest edit was
+  needed and all three enforcement points (build.gradle.template compile-exclusion,
+  RuntimeControllerAllowlistConfig bean removal, run-runtime-surface-evidence.ps1) stay satisfied by
+  construction.
+
+  **SUPERUSER-gated, not ADMIN**, copying `AgentProxyController.requireSuperUser` verbatim rather
+  than the neighbouring generated `AdminController.requireAdminContext`. The reason is measured, not
+  stylistic: in an `auth.mode=none` app the generated `RuntimeContextService` grants ADMIN to every
+  anonymous caller, so ADMIN is no gate at all in exactly the dev apps most likely to be poked at.
+
+  **A wrong turn caught on evidence, worth recording because it would have shipped a permanently
+  broken endpoint:** the first attempt gated the facade with `canResumeExecution`. That would have
+  made the endpoint 403 forever -- `RolePermissions` maps only USER/OPERATOR/ADMIN so `hasPermission`
+  is false for any SUPERUSER-only caller, AND `canResumeExecution` additionally demands
+  same-tenant+same-actor while `SuperUserBootstrapper` always issues under `__system__`/`superuser`.
+  The controller gate is the authorization; the facade's audit record
+  (`ADMIN_UNSTICK_EXECUTION`) is the accountability. Documented in the facade javadoc.
+
+  KERNEL TESTS (these DO run, unlike RuntimeHost controller tests): `:kernel:test` **530 tests, 0
+  failures, 16 skipped**, independently re-run by the orchestrator with `--rerun-tasks`.
+  `KernelRunnerLifecycleTest` 22 tests including 3 new ones -- notably
+  `unstickExecutionReturnsStuckInstanceToTheSweepAndItCompletes` drives STUCK **organically** via a
+  throwing FlowDefinitionProvider, un-sticks, and lets the ordinary sweep carry it to COMPLETED.
+
+  LIVE HTTP EVIDENCE against a real booted app (`await-resume-rehearsal`, H2Local, :8099) -- this
+  item's definition of done demanded it, because RuntimeHost controller tests are excluded from
+  every gate by `build.gradle.template` and a green gate proves nothing about a controller:
+    1. `GET /api/executions/stuck` (ADMIN key) -> **200**, `stuckCount:1`, `resumeAttemptCount:20`,
+       `lastResumeErrorCode:"resume_attempt_cap"`.
+    2. `POST .../unstick` with an **ADMIN** key -> **403**. The gate is real, not decorative.
+    3. `POST .../unstick` with `X-Super-User-Key` -> **200**, `outcome:"UNSTUCK"`, status
+       WAITING_EVENT, `resumeAttemptCount:0`.
+    4. `POST /api/events/publish` -> **202**; 5. `GET /api/executions/{id}` -> **200**
+       `status:"COMPLETED"`; 6. stuck queue -> **200** `stuckCount:0`.
+    7. unstick on the COMPLETED row -> **409** `NOT_STUCK`; 8. unknown id -> **404** `NOT_FOUND`.
+
+  **Honest caveat on that setup:** the STUCK row was seeded by one offline `UPDATE` on the app's own
+  H2 file writing exactly the columns `markStuck` writes, because reaching STUCK organically now
+  costs ~70 minutes of wall clock (20 throwing resumes up the backoff ladder). The organic STUCK
+  transition is covered by the kernel tests above; everything AFTER it in the table is real JDBC
+  store, real REST, real resume.
+
+  NOT done here: the CLI parity verb the roadmap mentions was deliberately skipped (another
+  workstream held `npdev_cli.py` at the time) and can follow. A usability wart is left open and is
+  now documented in docs/FLOWS.md §9: listing and un-sticking need DIFFERENT credentials, because
+  the listing goes through `canReadFailures` which a SUPERUSER-only principal fails -- an operator
+  lists with an ADMIN key and un-sticks with the Super User key.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerLifecycleTest.java (unstickExecutionReturnsStuckInstanceToTheSweepAndItCompletes, unstickExecutionRefusesUnknownAndNotStuckExecutions, unstickExecutionRefusesStuckInstanceThatWasNeverWaitingOnAnEvent)
+  asserts: >-
+    an instance driven to STUCK organically (by a resume that keeps throwing) is returned to
+    WAITING_EVENT with a zeroed attempt count and cleared eligibility by unstickExecution, and the
+    ORDINARY sweep then carries it to COMPLETED -- no privileged inline resume; a non-STUCK or
+    unknown execution is refused; and a STUCK row that was never waiting on an event is refused
+    rather than being moved to a status it cannot legally hold. The REST/authorization half is not
+    guarded by these tests on purpose -- RuntimeHost controller tests are excluded from every gate --
+    and is evidenced instead by the recorded live 403/200/409/404 responses.
+  provenRed: false
+  provenRedNote: >-
+    The gap direction is self-evident: neither endpoint existed, and docs/FLOWS.md documented their
+    absence in two places, so no assertion about them could have passed before. Not recorded as
+    provenRed because the tests were written alongside the implementation. The authorization claim
+    WAS observed negatively for real, which is the part most worth doubting: an ADMIN key returns
+    403 against the running app, so the SUPERUSER gate is demonstrated rather than assumed.

@@ -79,6 +79,8 @@ def validate_item(item: dict, path: Path) -> list[str]:
         errors.append(f"status: {item.get('status')} requires a 'closed' date")
     if item.get("status") in {"WONTFIX", "OBSOLETE"} and not item.get("decision"):
         errors.append(f"status: {item.get('status')} requires a 'decision' one-line reason")
+    if item.get("decision") and not isinstance(item["decision"], str):
+        errors.append("'decision' must be a string")
     if item.get("verification") not in VALID_VERIFICATION:
         errors.append(f"verification '{item.get('verification')}' not in {sorted(v for v in VALID_VERIFICATION if v)}")
     if "guard" in item and item["guard"] is not None:
@@ -120,6 +122,8 @@ def render_item_detail(item: dict) -> list[str]:
                  + (f" ({item['closed']})" if item.get("closed") else ""))
     if item.get("verification"):
         lines.append(f"**Verification:** {item['verification']}")
+    if item.get("decision"):
+        lines.append(f"**Decision:** {item['decision']}")
     lines.append(f"**Source:** {item['source']}")
     lines.append(f"**Surface:** `{item['surface']}`")
     if item.get("files"):

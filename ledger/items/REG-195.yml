@@ -1,0 +1,128 @@
+id: REG-195
+title: >-
+  Row-level access.read/access.write rules can never use method-call CEL syntax (e.g.
+  $user.roles.contains(x)) -- ConfiguredConceptGatewaySemanticPolicy evaluates them with an EMPTY
+  FunctionRegistry, so the call throws "unknown function" and is silently caught, always denying
+  regardless of the actor
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: UNIT_TESTED
+source: >-
+  Found while live-verifying PACK-9 (R8.9)'s done-when -- two apps composing the same `labeling`
+  pack (NPDevSamples/dsl-conformance-max/Input/packs/labeling/pack.json), bound to different
+  concrete role names via root `provides.roleBindings`, were both booted and exercised over real
+  HTTP. The pack's own `access.write` rule is `"$user.roles.contains(role('curator'))"` --
+  PackRoleBindingRewriter correctly rewrites the `role('curator')` token at composition into each
+  app's own literal (verified: the compiled model contains the literal 4 times, zero leftover
+  tokens, in both apps), but at RUNTIME every create attempt was denied on BOTH apps for BOTH a
+  correctly-bound actor and a mismatched one -- i.e. row-level write access.write never once granted
+  access, independent of which concrete role the caller actually held.
+surface: kernel/concepts
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java
+detail: |
+  `ConfiguredConceptGatewaySemanticPolicy.evaluateAccessRule` (line ~537) calls
+  `ComputedExpression.evaluateBoolean(expression, scope)` -- the TWO-ARGUMENT overload. Reading
+  `ComputedExpression.java` (NPDevContract/dsl/.../expr/ComputedExpression.java): the 2-arg
+  `evaluateBoolean(String, Map)` delegates to the 2-arg `evaluate(String, Map)`, which explicitly
+  passes `FunctionRegistry.empty()` (line ~89) -- and `evaluate(String, Map, FunctionRegistry)`
+  unconditionally does `CURRENT_FUNCTIONS.set(functions)` (line ~99), clobbering whatever the
+  ThreadLocal held before, so there is no way for an outer caller to have pre-seeded a working
+  registry either.
+
+  Every `Call` node (i.e. any `name(...)` or `receiver.name(...)` syntax, per the parser's
+  `parseCallSuffix`) evaluates as `CURRENT_FUNCTIONS.get().lookup(name)` and throws
+  `ExpressionException("unknown function: " + name)` when the registry has nothing registered --
+  which is always true here, since the registry is empty. `evaluateAccessRule`'s own catch block
+  (documented as "fail closed: a row-level access rule that doesn't evaluate cleanly must never
+  silently grant access") then returns `false` -- i.e. denies.
+
+  Net effect: `.contains(...)` -- the natural, and per a repo-wide grep the ONLY, idiom this
+  codebase's own docs and corpus use for "does the actor have role X" inside `access.read`/
+  `access.write` -- can never work. `docs/reference/ROW_LEVEL_AUTHORIZATION.md`'s own examples avoid
+  the problem by using plain `==` (`"email == $user.id"`), which needs no function call and evaluates
+  fine; nothing in that doc, or anywhere else read while investigating, flags that `.contains()` is
+  unsupported in this position, so the failure mode is a silent, permanent "row access always
+  denied," not a documented limitation.
+
+  Live evidence (H2Local, apikey auth mode, two FinalApps built from NPDevSamples/pack9-role-binding-a
+  and -b, both binding the labeling pack's `role('curator')` to a different concrete role -- CURATOR_A
+  and CURATOR_B respectively): a `POST /api/concepts/labeling_labels` from an actor holding
+  `roles=[USER, CURATOR_A]` against APP A (which binds curator -> CURATOR_A, i.e. the CORRECT role for
+  this app) still returned `500` with root cause
+  `com.npdev.kernel.concepts.ConceptGatewayAccessDeniedException: Concept Gateway denied row-level
+  write access for concept labeling::Label` -- the identical outcome as the mismatched-role request.
+  Both apps denied both actors identically; the rewritten literal never once made a live difference,
+  because the expression comparing against it never evaluates to `true` in the first place.
+
+  Blast radius is broader than PACK-9: ANY app or pack in this platform that writes
+  `access.read`/`access.write` using `.contains(...)`, `.matches(...)`, or any other method-call CEL
+  idiom against `$user.roles` (or anything else) gets a rule that LOOKS like it works (it compiles,
+  validates, and the compiled model round-trips it correctly) but silently, permanently denies every
+  request it governs. This is the ONLY existing corpus usage of the pattern
+  (`grep -rn "roles.contains" NPDevSamples AppGen` outside this fixture returns nothing), which is
+  presumably why nobody had caught it: the docs' own row-level-authorization examples happen to avoid
+  method-call syntax entirely.
+
+  NOT FIXED HERE: PACK-9 (R8.9)'s remit is `NPDevContract/dsl/**` and
+  `NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/**`; this defect is in
+  `NPDevKernel/kernel/**`, owned by a different workstream in this session. Filed rather than
+  reached-across.
+
+  LIKELY FIX (not attempted): give `evaluateAccessRule` a real `FunctionRegistry` with at least
+  `contains` (Collection/String membership) registered, mirroring whatever registry
+  `CelInvariantEngine`/invariant evaluation already uses elsewhere for the same expression language --
+  worth checking whether one already exists and simply isn't threaded through to this call site,
+  before writing a new one.
+
+  FIX (this session, same day): checked the "mirror CelInvariantEngine's registry" option first and
+  found it does not exist to mirror -- `contains` is registered in NEITHER `CelInvariantEngine`
+  (invariants) NOR `SchemaExpressionSupport` (default/derived expressions); `docs/EXPRESSIONS.md`'s
+  own "Built-in functions" table lists `matches`/`uniqueBy`/`all`/`exists`/`conflicts`/`scope.exists`
+  for invariants and `concat`/`coalesce`/`trim`/`uppercase`/`lowercase` for schema expressions, with
+  no `contains` in either set. So this was never a wiring gap between an existing registry and the
+  access-rule call site -- `contains` did not exist anywhere in the platform. A repo-wide grep for
+  `.contains(` inside any model JSON found exactly one real usage (the `labeling` pack's own
+  `access.write`, the one this bug was found through), so the fix is scoped to that one function
+  rather than porting the whole invariant registry.
+
+  Added `ConfiguredConceptGatewaySemanticPolicy.ACCESS_RULE_FUNCTIONS`, a
+  `ComputedExpression.FunctionRegistry` scoped to access-rule evaluation (kernel module, no new
+  dependency -- kernel already depends on the DSL module for `ComputedExpression` itself), registering
+  `contains(receiver, needle)`: `Collection.contains` when the receiver is a `Collection` (the
+  `$user.roles.contains(x)` case), `String.contains` when it's a `String`, `false` otherwise.
+  `evaluateAccessRule` now calls the three-argument `ComputedExpression.evaluateBoolean(expression,
+  scope, ACCESS_RULE_FUNCTIONS)` instead of the two-argument overload that resolved to
+  `FunctionRegistry.empty()`. This follows the extension pattern `docs/EXPRESSIONS.md` already
+  documents ("a function registry is just a Map ... a future call site can register its own without
+  touching the grammar itself") rather than threading the adapter-side `CelInvariantEngine` registry
+  (which kernel has no dependency on, and which also carries invariant-only collaborators --
+  `conflictChecker`/`scopeChecker` -- that have no meaning for an access rule) into the kernel.
+
+  NOT DONE HERE, deliberately out of scope: `matches`/`all`/`exists` are NOT registered for access
+  rules -- no corpus usage of them in this position exists today (unlike `contains`), and adding them
+  speculatively would be exactly the "safeguard against a scenario that doesn't currently exist" the
+  roadmap's own discipline rules out. If a future access rule needs one, register it the same way.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicyTest.java#grantsRowWriteAccessWhenActorRoleSatisfiesContainsAccessRule
+    (see the same file's deniesRowWriteAccessWhenActorRoleFailsContainsAccessRule for the denial half)
+  asserts: >-
+    a row-level access.write rule using $user.roles.contains('CURATOR') grants access to an actor
+    whose roles contain CURATOR and denies (ConceptGatewayAccessDeniedException) one whose roles
+    don't -- i.e. the two cases produce different outcomes, proving the rule is no longer permanently
+    fail-closed
+  provenRed: true
+  provenRedNote: >-
+    Reproduced live over real HTTP against two booted FinalApps (ports 8410/8411, H2Local,
+    apikey auth), 2026-08-19 -- see detail above for the exact request/response pair. The new JUnit
+    test independently reproduces the same shape hermetically: before the fix,
+    grantsRowWriteAccessWhenActorRoleSatisfiesContainsAccessRule failed with
+    ConceptGatewayAccessDeniedException even though the actor's role satisfied the rule.
+  provenGreenNote: >-
+    Both new tests pass after the fix; full `:kernel:test` suite green (no regression) --
+    2026-08-19.

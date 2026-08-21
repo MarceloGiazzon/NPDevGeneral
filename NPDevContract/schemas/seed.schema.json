@@ -35,13 +35,27 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["concept"],
-      "oneOf": [
-        { "required": ["data"] },
-        { "required": ["repeatOver"] }
+      "allOf": [
+        {
+          "not": { "required": ["alias", "repeatOver"] },
+          "description": "Bulk-generated (repeatOver) rows can't be individually aliased."
+        },
+        {
+          "not": { "required": ["alias", "count"] },
+          "description": "Bulk-generated (count) rows can't be individually aliased."
+        },
+        {
+          "not": { "required": ["repeatOver", "count"] },
+          "description": "repeatOver and count are two alternative bulk-generation mechanisms -- use only one."
+        },
+        {
+          "if": {
+            "anyOf": [ { "required": ["repeatOver"] }, { "required": ["count"] } ]
+          },
+          "then": { "required": ["data"] },
+          "description": "Either bulk mechanism needs 'data' as the per-row template."
+        }
       ],
-      "not": {
-        "required": ["alias", "repeatOver"]
-      },
       "properties": {
         "concept": {
           "type": "string",
@@ -51,7 +65,7 @@
         "alias": {
           "type": "string",
           "pattern": "^[a-zA-Z0-9_]+$",
-          "description": "smart kind only. Optional local name a later record's data can reference via \"$ref:<alias>\". Only single (non-repeatOver) records may carry an alias."
+          "description": "smart kind only. Optional local name a later record's data can reference via \"$ref:<alias>\". Only single (non-bulk) records may carry an alias."
         },
         "id": {
           "type": "string",
@@ -59,11 +73,11 @@
         },
         "data": {
           "type": "object",
-          "description": "Field values, same shape as a POST /api/<concept> body. In 'smart' mode, a string value of the exact form \"$ref:<alias>\" is replaced with that alias's generated id."
+          "description": "Field values, same shape as a POST /api/<concept> body. In 'smart' mode: a string value of the exact form \"$ref:<alias>\" is replaced with that alias's generated id; a string value of the form \"$gen:<generator>[:<args>]\" is replaced with a value from one of the built-in generators below (R3.2). Both are resolved on top-level fields only. 'raw' seeds reject both forms outright -- raw doesn't template."
         },
         "repeatOver": {
           "type": "object",
-          "description": "smart kind only. Bulk-generates one record per combination of the declared integer ranges (Cartesian product).",
+          "description": "smart kind only. Bulk-generates one record per combination of the declared integer ranges (Cartesian product). Mutually exclusive with 'count' and 'alias'.",
           "additionalProperties": false,
           "required": ["vars"],
           "properties": {
@@ -79,8 +93,17 @@
               }
             }
           }
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "smart kind only (R3.2). Shorthand for repeatOver with no index variables: bulk-generates this many copies of 'data'. Meant to pair with $gen:* tokens for per-row randomized values rather than $var substitution. Mutually exclusive with 'repeatOver' and 'alias'."
         }
       }
+    },
+    "genToken": {
+      "description": "R3.2 -- not referenced by $ref anywhere (documentation only: 'data' values are untyped, so JSON Schema cannot itself express a conditional string-pattern-to-semantics mapping over a free-form object). The six built-in $gen:<generator>[:<args>] value tokens a 'smart' seed's 'data' fields may use, resolved against one Random per run seeded by the seed's own id (so two runs of the same seed produce identical generated values):",
+      "$comment": "$gen:name -- a two-word person name from a small built-in corpus. | $gen:words[:<count>] -- <count> space-joined words from a small built-in corpus, default count 5. | $gen:date-range:<minIso>:<maxIso> -- an ISO date (yyyy-MM-dd) uniformly drawn from the inclusive range. | $gen:decimal-range:<min>:<max> -- a decimal uniformly drawn from the inclusive range, scale matched to the more precise of min/max (minimum 2). | $gen:enum-pick:<v1>,<v2>,... -- one of the comma-separated literal values, chosen at random. | $gen:ref-pick-random:<concept> -- a random id among that concept's records already saved earlier in THIS seed run (like $ref:<alias>, the referent concept's records must be declared earlier in the file's 'records' array; fails with a named error, not a silent empty pick, if none have been saved yet)."
     }
   }
 }

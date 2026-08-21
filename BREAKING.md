@@ -5,6 +5,192 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-19 — every label site accepts a per-locale object, not just a plain string (R5.6)
+
+**What changes.** All 13 label-shaped fields in the model schema (`property.label`,
+`workbenchAction.label`, `workbenchBandPicker.label`, `transactionDerivedField.label`,
+`transactionUiState.label`, `lifecycleState.label`, `lifecycleTransition.actionLabel`,
+`enumOption.label`/`displayLabel`, `presentationMetadata.label`/`shortLabel` — which covers both
+`field.ui` and `concept.ui` via the shared `uiField`/`presentationMetadata` def, plus
+`domainType.ui.label` at the AST layer even though it shares the same schema def — `actionMetadata.label`,
+and `panelAction.label`) now accept `$defs/localizableLabel`: a plain string (**unchanged — every
+existing model keeps validating and behaving exactly as before, a widening not a replacement**) OR
+an object `{"default": "...", "<locale>": "...", ...}`. `default` is required whenever the object
+form is used — the deterministic terminal fallback. Resolution order, implemented in
+`com.npdev.kernel.i18n.LabelResolver` (new): exact locale-tag match (case-insensitive) → same-
+language match ignoring region (`pt-BR` request against a declared `pt` entry, or vice versa) →
+`default`. Never blank, never a random map entry.
+
+Threaded through the full four-place chain (`JsonModelParser` → `ModelCompiler` →
+`ModelResolver`'s specialize/extend merge, which now does a whole-value override — a specialization
+declaring ANY label content, text or locale map, replaces the base's entirely, matching this
+codebase's existing "override wins, no partial merge" convention elsewhere in the resolver → the
+`CompiledModelCanonicalJson`/`Reader` canonical pair, which writes the object form only when a
+label actually carries locale overrides so a plain-string label's canonical JSON is byte-identical
+to before). Every existing `label`/`labelLocales`-shaped getter (`CompiledProperty.label()`, etc.)
+keeps its old signature; `labelLocales()`/`getLabelLocales()` is a new, additive accessor. Records
+constructed positionally outside `NPDevContract/dsl` (`CompiledProperty`, `CompiledPanelAction`,
+`CompiledStateMachineState`, `CompiledStateTransition` — confirmed by grep across
+generator/kernel/runtimehost test fixtures) keep their pre-existing constructor overload
+unchanged; the widened shape is a new trailing-arg overload only.
+
+**Server-side locale is not wired end to end yet.** Nothing upstream of `ExecutionContext` carries
+a user locale today (no JWT claim, no header, no session field — confirmed by inspection of
+`JwtAuthenticatedContextResolver` and the `RuntimeContextService` mustache template). This change
+adds `ExecutionContext.locale()` (additive method, reads the existing generic `tags` map's
+`"locale"` key — the same pattern `correlationId()`/`idempotencyKey()` already use — deliberately
+NOT a new record component, since `ExecutionContext`'s canonical constructor is called positionally
+by callers this change does not own) and `LabelResolver`, both in `NPDevKernel/kernel`. Wiring an
+actual `Accept-Language`/`X-Tag-locale` header into `ExecutionContext.withTag("locale", ...)`, and
+calling `LabelResolver` from the UI-metadata bundle builder, is a `NPDevRuntimeHost` change (that
+module's `RuntimeUiMetadataController`/`RuntimeMetadataService`/`PanelRuntime` currently read
+labels as raw strings off the generically-parsed compiled-metadata JSON tree) — out of scope here
+and not yet done.
+
+**Codemod.** `NPDevCli/dsl_v2_migration.py`'s new `migrate_label_locales(doc, locale)` (not yet
+wired to a CLI subcommand — that file is the only one touched here; `npdev_cli.py`'s `migrate`
+subparser needs a follow-up commit from whoever owns it) widens every plain-string label site it
+finds into `{"default": <original text>, "<locale>": <original text>}`, structurally (walks the
+same shapes the parser recognizes, never a blind string replace), losslessly (the original text
+survives byte-for-byte as both `default` and the locale entry), and idempotently (an
+already-widened site is left alone). It is a no-op when `locale` is blank — this codemod does not
+guess what locale an app's existing plain strings are in. Round-tripped against
+`AppGen/apps/payment-webhook-rehearsal/definition/model.json` (18 real label sites): all 18
+widened, collapsing the widened form back to a plain string reproduces the original document
+byte-for-byte, a second run makes zero further changes, and `:dsl:validateModel` against both the
+original and the widened file report the identical single pre-existing warning (unrelated to
+labels) and zero errors.
+
+## 2026-08-19 — remote packs must be signed, or accepted with an explicit flag (R8.7)
+
+**What changes.** `npdev pack add` and `npdev pack update` now refuse a remote pack (any entry with
+a non-empty `from` git coordinate) whose detached Ed25519 signature is missing, signed by an
+untrusted key, or invalid — three distinct named refusals (`UNSIGNED`, `UNKNOWN_SIGNER`,
+`BAD_SIGNATURE`). Every pack published before this change is unsigned, so **the next `pack add` or
+`pack update` on any existing app with a remote pack coordinate will fail** until it is either
+re-published signed or accepted once with `--allow-unsigned`, which records the decision permanently
+in `npdev.lock` so a teammate can see the pack was taken on trust. Local (`$ref`) packs are entirely
+unaffected — the gate only ever inspects entries with a `from`.
+
+The default trust mode is `warn`, not `enforce`, precisely so this is a one-flag migration rather
+than a hard wall; `enforce` (set in `npdev-trust.json` beside `npdev.lock`) additionally makes
+`--allow-unsigned` inert. `UNKNOWN_SIGNER` and `BAD_SIGNATURE` are never bypassable in either mode.
+
+**Blast radius, measured not estimated.** Running the full CLI suite after the gate landed broke
+exactly four pre-existing tests, all of which call `pack add`/`pack update` against unsigned fixture
+packs: `test_pack_catalog.PackAddFromCatalogRoundTripTest`, two in `test_pack_lock_tamper_guard.py`,
+and `test_pack_publish_push.PackPublishPushRoundTripTest`. Each needed one line
+(`allow_unsigned=True`) — which is exactly the migration a real consumer performs.
+
+**Codemod.** None, and deliberately so: this is not a model rewrite. The migration is a human
+decision about whether to trust an unsigned publisher, which is the whole point of the feature — a
+codemod that silently added `--allow-unsigned` everywhere would remove the decision it exists to
+force. Publishers close the loop with `npdev pack sign-keygen` then
+`npdev pack publish --push --sign-with <keyfile>`.
+
+## 2026-08-19 — `queries[].auditPolicy` / `procedures[].auditPolicy` removed from the schema (R5.1)
+
+**What changes.** The `auditPolicy` field (`none`/`read`/`write`) on a `query` or `procedure`
+declaration is no longer accepted — both object shapes have `additionalProperties: false`, so a
+model that still declares it fails schema validation. It was schema-declared, parsed, compiled,
+and round-tripped through the canonical JSON, but no validator, compiler pass, or kernel/runtime
+code path ever read it to decide anything. Retired rather than enforced: the platform's real audit
+trail is unconditional, not opt-in per query/procedure — every concept create/update/delete/restore
+reached through the governed gateway is logged automatically (actor, timestamp, outcome, and — new
+in this same change — a field-level before/after diff), regardless of what any query or procedure
+declares. `tracePolicy` is unaffected and still works exactly as before.
+
+**Codemod.** `python NPDevCli/npdev_cli.py migrate dsl-2 --write --input <model.json or directory>`
+strips the dead key from every `queries[]`/`procedures[]` entry that declares it (structural, not a
+blind string replace — every other field on the entry is left untouched). Already run against the
+5 in-repo corpus models that declared it (medium-expense-approval's 3 copies, npdev-canary,
+engine-probe); re-validated against the updated schema.
+
+## 2026-08-19 — a generated app's background launcher moved into the emitter, and its log file moved with it (R9.4)
+
+**What changes.** The duplicate-PID guard, port-conflict guard and log archiving used to exist only
+in `Build-NpdevApp.ps1`'s inlined `$StartApp` text, so only AppGen-built apps had guarded launchers.
+They now live in `OperationalRunbookEmitter`, which means **every** generated app gets
+`Start-App.ps1`/`Stop-App.ps1` — plus new POSIX twins `start-app.sh`/`stop-app.sh`, where the
+toolbox previously had exactly one `.sh` script.
+
+**Your existing invocations still work.** `_ops\Start-App.ps1` and `_ops\Stop-App.ps1` exist at both
+known paths — the outer `<OutRoot>\_ops` and `<OutRoot>\App\_ops` — under the same names and the same
+calling convention. The outer pair are now two-line shims delegating to `App\_ops`, the same pattern
+already used for `Run-FinalApp.ps1`/`Build-FinalApp.ps1`, so the guard logic exists in exactly one
+place without breaking `Rebuild-And-Restage.ps1`, `New-AppConsole.ps1` or `Update-AppMetadata.ps1`,
+all of which invoke those scripts by name at the outer path.
+
+**What actually changes for you: the log file moved.** `Start-App.ps1` now writes stdout to
+`App\logs\app-<UTC timestamp>.log` instead of a fixed `_ops\app.out.log`, and **no longer writes
+`app.out.history.log` at all**. Anything tailing or parsing either of those two fixed filenames needs
+to look in `App\logs\` and pick the newest `app-*.log` — which is what `New-AppConsole.ps1`'s own
+status tail was changed to do in this same commit. The new location is deliberate: it is the `logs`
+directory every regeneration already spares, and it shares R9.2's newest-20 retention pruning, so
+background and foreground launches draw on one bounded budget rather than two unbounded ones.
+
+**Codemod.** None — no model file changes shape, and no script invocation changes. The only migration
+is the log path above, which is a read-side concern for tooling you own.
+
+## 2026-08-18 — a `scheduleEvent` flow step with a non-zero delay no longer fires immediately (R2.4)
+
+**What changes.** A flow step `"type": "scheduleEvent"` with `delaySeconds`/`delayMinutes`/`delayMs`
+greater than zero used to publish its event **during the flow execution**, stamping the delay onto
+the envelope as metadata "for a consumer to honor" — with no consumer that honored it. The canonical
+demo's `AppointmentReminderDue`, modelled at `delayMinutes: 1440`, arrived instantly. It now writes a
+PENDING `npdev_scheduled_event` row and is published by the R2.3 drain once `due_at` passes, so the
+reminder actually arrives 24 hours later.
+
+**`delaySeconds: 0` is unchanged in every respect** — same publish, same ordering, same synchronous
+resume of waiting instances, byte-for-byte the old path. Zero-delay was deliberately *not* routed
+through the table, which would have added a scheduler tick of latency to every model already using
+it.
+
+**Who is affected.** Any model with a `scheduleEvent` step whose delay is greater than zero. Because
+the event is no longer published at execution time, within that execution it is now absent from
+`ExecutionResult.getEmittedEvents()` and from the event store; a downstream step can no longer read
+`$lastEvent` from a delayed schedule; and the step's trace info reports `scheduledEventName`/
+`scheduledEventId` instead of `emittedEventName`/`emittedEventId`. There is also a new failure mode:
+a delayed step returns `EVENT_PERSIST_FAILED` naming `DeferredEventScheduler` when no durable
+scheduler is bound or the row cannot be written. That is deliberate — there is **no publish-now
+fallback**, because silently firing a 24-hour reminder immediately is the exact defect this change
+removes.
+
+**Known limitation, not introduced here but now more visible.** The drain publishes with a fresh
+correlation id (it ignores the row's stored `trigger_correlation_id`), so a deferred event does not
+satisfy an `AWAIT_EVENT` declaring `matchCorrelation: true`. The orchestration-level `scheduleEvent`
+action has always behaved this way; fixing it needs tenant propagation the scheduled-event table has
+no column for. Until that lands, do not model a delayed self-wake against a correlated await.
+
+**Codemod.** None, and none is needed: no model file changes shape. Every affected model is already
+spelled correctly — it simply now behaves the way it always read as behaving. A model that silently
+depended on the instant fire should reduce its delay to `0`, which is a one-value edit and is the
+honest expression of that intent.
+
+## 2026-08-18 — the model/rule/orchestration editor draft endpoints are deleted (R10.1)
+
+**What changes.** Every generated app's `AdminController` used to expose
+`GET`/`POST`/`DELETE /api/admin/model/editor/draft`, `.../model/rules/draft`, and
+`.../model/orchestration/draft` — server-side draft state, held in a plain static field, that a
+save never wrote back into `model.json`. That was the only one-way door in the authoring loop: a
+draft could silently diverge from the source model forever, and a full round-trip through it
+dropped 14 of the DSL's root sections. All nine mappings (three draft kinds × GET/POST/DELETE) are
+now deleted outright, along with their backing helpers (`DraftKind`, `saveDraft`,
+`readDraftOrModel`, `buildEmptyDraft`) and the now-unused `NPDevModelProvider` dependency they were
+the only consumer of. `GET /api/admin/model/export` and `GET /api/admin/model/ui` (`/ui-model`) are
+unaffected — they are a separate, read-only projection of the compiled model, not the draft
+mechanism. `POST /api/admin/model/sync-status` also stays; it only reports drift and never held
+draft state.
+
+**Who is affected.** The shipped React editor bundle (`static-react/`, no in-repo producer since
+2026-08-17) called these endpoints to save drafts from its Model/Rule/Orchestration editor panels;
+those saves now 404. This is an accepted, deliberate consequence of the owner decision recorded in
+`ledger/items/EDIT-3.yml` (Roadmap Collection 2026-08-18, R10.0): demote the shipped editor to a
+read-only viewer and make CLI/MCP authoring (`npdev validate`/`npdev add`/hand-editing `model.json`)
+the only write path, until R10.2 replaces the viewer with a surface emitted from the compiled model
+itself. No model DSL shape changed and no existing `model.json` needs rewriting, so there is no
+`npdev migrate` codemod for this entry.
+
 ## 2026-08-18 — `schemaLifecycle.strategy: RecreateOnAppStart` is deprecated in favour of `Ephemeral` (STOR-16)
 
 **What changes.** There is now a fourth `schemaLifecycle.strategy`, `Ephemeral`, meaning *this

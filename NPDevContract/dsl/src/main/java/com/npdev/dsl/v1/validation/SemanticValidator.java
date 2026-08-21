@@ -78,8 +78,9 @@ import java.util.stream.Collectors;
  * {@link ConceptValidation} (+ {@link DomainTypeValidation}, {@link ReferenceValidation},
  * {@link FieldValueValidation}, {@link LifecycleValidation} sub-boundaries),
  * {@link FlowValidation} (+ {@link OrchestrationValidation}), {@link PanelValidation}
- * (+ {@link UxMetadataValidation}), {@link AggregateValidation}, {@link PackValidation},
- * {@link RoleValidation}, and {@link ExpressionValidation}. {@link #normalize} and
+ * (+ {@link UxMetadataValidation}), {@link AggregateValidation}, {@link DocumentValidation},
+ * {@link PackValidation}, {@link RoleValidation}, {@link WebhookValidation},
+ * {@link SequenceValidation}, {@link SeedValidation}, and {@link ExpressionValidation}. {@link #normalize} and
  * {@link #hasText} remain here as the shared string-normalization utilities every section uses.
  */
 public final class SemanticValidator {
@@ -118,6 +119,7 @@ public final class SemanticValidator {
         ConceptValidation.validateTableNameCollisions(effectiveModel, errors);
         ConceptValidation.validateConceptRenamedFrom(effectiveModel, entitiesByLower, errors, semanticWarnings);
         ConceptValidation.validateConceptSatelliteOf(effectiveModel, entitiesByLower, errors, semanticWarnings);
+        ConceptValidation.validateConceptTemporal(effectiveModel, errors);
 
         ConceptValidation.validateCapabilities(effectiveModel, errors);
         ConceptValidation.validateBindings(effectiveModel, errors);
@@ -140,6 +142,7 @@ public final class SemanticValidator {
         PanelValidation.validatePanels(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateGuidePages(effectiveModel, errors);
         AggregateValidation.validateAggregates(effectiveModel, entitiesByLower, errors);
+        DocumentValidation.validateDocuments(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateAutoPanels(effectiveModel, entitiesByLower, errors, warnings);
         PanelValidation.validateSelectors(effectiveModel, entitiesByLower, errors);
         // REG-185: the model-wide reference sweep, LAST among the cross-reference checks on purpose
@@ -149,6 +152,9 @@ public final class SemanticValidator {
         // and where, interaction predicates, procedure $var.field reads).
         ReferenceIntegrityValidation.validate(effectiveModel, errors);
         RoleValidation.validateRoles(effectiveModel, errors);
+        WebhookValidation.validateWebhooks(effectiveModel, errors);
+        SequenceValidation.validateSequences(effectiveModel, errors);
+        SeedValidation.validateSeeds(effectiveModel, errors);
         PropertyValidation.validatePropertyScopesAndProperties(effectiveModel, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);

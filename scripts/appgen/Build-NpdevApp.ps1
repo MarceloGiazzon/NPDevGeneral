@@ -87,10 +87,19 @@ function Read-JsonFile {
   Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -Depth 100
 }
 function Write-JsonFile {
-  param([object]$Value, [string]$Path)
+  # -AsArray (REG-189): opt-in only, so every other manifest this shared helper writes for
+  # Build-NpdevApp.ps1/Build-ClaudeApp.ps1 keeps its existing shape. Without it, PowerShell's
+  # ConvertTo-Json unrolls a one-element array through the pipeline into a bare object -- callers
+  # that write a manifest meant to always be a JSON array (list-of-N, N can legitimately be 1)
+  # must pass this switch, or a reader gets `{...}` instead of `[{...}]` with no error anywhere.
+  param([object]$Value, [string]$Path, [switch]$AsArray)
   $parent = Split-Path -Parent $Path
   if (-not (Test-Path -LiteralPath $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-  $Value | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $Path -Encoding UTF8
+  if ($AsArray) {
+    $Value | ConvertTo-Json -Depth 100 -AsArray | Set-Content -LiteralPath $Path -Encoding UTF8
+  } else {
+    $Value | ConvertTo-Json -Depth 100 | Set-Content -LiteralPath $Path -Encoding UTF8
+  }
 }
 function Set-JsonProp {
   param([object]$Object, [string]$Name, [object]$Value)
@@ -602,7 +611,10 @@ if ($hasPages -or $hasMenu) {
   }
 
   $PageSeedDst = Join-Path $GeneratedAppRoot 'src\main\resources\npdev-seed\workspace-menu-pages-seed.json'
-  Write-JsonFile $menuSeedRows $PageSeedDst
+  # -AsArray (REG-189): an app with exactly one menu/page row would otherwise serialize as a bare
+  # object; WorkspaceMenuSeeder.readSeedResource() reads this file with objectMapper.readTree(),
+  # and JsonNode.forEach() over a bare ObjectNode iterates its FIELD VALUES, not the row itself.
+  Write-JsonFile $menuSeedRows $PageSeedDst -AsArray
   Write-Step "workspace-menu-pages-seed.json written with $($menuSeedRows.Count) row(s)."
 }
 
@@ -633,8 +645,24 @@ if (Test-Path -LiteralPath $SeedsSrcDir) {
       kind        = if ($seedJson.kind) { $seedJson.kind } else { 'smart' }
     }
   }
-  Write-JsonFile $seedManifest (Join-Path $SeedsDstDir 'index.json')
+  # -AsArray (REG-189): a one-seed app would otherwise serialize this manifest as a bare object;
+  # SeedDataService.listAvailable() now tolerates that shape too, but the writer should be correct.
+  Write-JsonFile $seedManifest (Join-Path $SeedsDstDir 'index.json') -AsArray
   Write-Step "data-seeds/index.json written with $($seedManifest.Count) seed(s)."
+}
+
+# ---- 4e. copy definition/exploration-config.json into the app's _ops toolbox --------------
+# MON-19: npdev_explore reads <app>/_ops/exploration-config.json, but nothing wrote it -- every
+# narrow excuse had to be hand-placed after each rebuild, which wipes _ops wholesale. Source it from
+# the app definition (definition/exploration-config.json), exactly like the seeds above, and copy it
+# into the generated app's _ops so it is re-established on every build instead of surviving only until
+# the next regeneration.
+$ExplorationConfigSrc = Join-Path $Definition 'exploration-config.json'
+if (Test-Path -LiteralPath $ExplorationConfigSrc) {
+  $ExplorationConfigDst = Join-Path $GeneratedAppRoot '_ops\exploration-config.json'
+  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ExplorationConfigDst) | Out-Null
+  Copy-Item -LiteralPath $ExplorationConfigSrc -Destination $ExplorationConfigDst -Force
+  Write-Step "Copied definition/exploration-config.json into the app's _ops toolbox."
 }
 
 # ---- 5. resolve RuntimeHost libs ------------------------------------------
@@ -896,94 +924,24 @@ function Ensure-NpdevApiKey {
 
 '@
 
-$StartApp = $ApiKeyProvisioner + @'
-$ErrorActionPreference = 'Stop'
-$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
-$startEnv = Join-Path $PSScriptRoot 'Start-Environment.ps1'
-if (Test-Path -LiteralPath $startEnv) { & $startEnv }
-$jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
-       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
-if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
-$pidFile = Join-Path $PSScriptRoot 'app.pid'
-$logFile = Join-Path $PSScriptRoot 'app.out.log'
-if (Test-Path -LiteralPath $pidFile) {
-  $old = Get-Process -Id ([int](Get-Content -Raw -LiteralPath $pidFile)) -ErrorAction SilentlyContinue
-  if ($null -ne $old) { Write-Host "Already running (PID $($old.Id)). Stop it first (Stop-App.ps1)."; exit 0 }
-}
-$portBusy = Get-NetTCPConnection -LocalPort $plan.serverPort -State Listen -ErrorAction SilentlyContinue
-if ($portBusy) { Write-Host "Port $($plan.serverPort) is already in use (PID $(($portBusy.OwningProcess | Sort-Object -Unique) -join ', ')). Stop that first (Stop-App.ps1) to avoid a duplicate." -ForegroundColor Yellow; exit 0 }
-Write-Host "Starting $($plan.appName) on $($plan.baseUrl) (profiles: $($plan.springProfiles))"
-# Start-Process -RedirectStandardOutput overwrites app.out.log on every restart -- archive whatever
-# was in it first (e.g. a first-boot SUPER USER KEY banner) so a later restart never destroys the
-# only place a one-time value like that was ever shown. app.out.log itself still only ever shows
-# the CURRENT run's live output, unchanged.
-if (Test-Path -LiteralPath $logFile) {
-  $historyFile = Join-Path $PSScriptRoot 'app.out.history.log'
-  Add-Content -LiteralPath $historyFile -Value "`n----- run ending $(Get-Date -Format o) -----"
-  Get-Content -LiteralPath $logFile -Raw -ErrorAction SilentlyContinue | Add-Content -LiteralPath $historyFile
-}
-# Agent proxy: optional per-app provider credentials, loaded into THIS process so Start-Process's
-# child inherits them. Absent on every app that has not opted in, and absent is not an error -- the
-# Agent Prompter page falls back to compose-and-copy. Kept behaviourally identical to the same block
-# in OperationalRunbookEmitter.runFinalAppScript(); both are launchers for the same app, and an app
-# whose proxy works under one launcher and not the other is worse than one where it never works.
-$secretsEnv = Join-Path $plan.appRoot 'secrets/agent-proxy.env'
-if (Test-Path -LiteralPath $secretsEnv) {
-  $loadedNames = @()
-  foreach ($rawLine in (Get-Content -LiteralPath $secretsEnv)) {
-    $line = $rawLine.Trim()
-    if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
-      $parts = $line.Split('=', 2)
-      $name = $parts[0].Trim()
-      if ($name) {
-        Set-Item -Path ("env:" + $name) -Value $parts[1].Trim()
-        $loadedNames += $name
-      }
-    }
-  }
-  # NAMES only -- never values. app.out.log is archived on restart and collected by log bundles.
-  Write-Host ("Loaded " + $loadedNames.Count + " secret(s) from " + $secretsEnv + ": " + ($loadedNames -join ', '))
-}
-Ensure-NpdevApiKey -AppRoot $plan.appRoot
-$args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
-$proc = Start-Process -FilePath 'java' -ArgumentList $args -WorkingDirectory $plan.appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError (Join-Path $PSScriptRoot 'app.err.log') -WindowStyle Hidden
-$proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
-Write-Host "Started PID $($proc.Id). Logs: $logFile"
-try {
-  $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'BOOT'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
-  ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $plan.appRoot 'npdev-run-app-progress.json') -Encoding UTF8
-} catch { }
-Write-Host 'Waiting for health...'
-# /actuator/health, not /api/flows -- it needs no credential under any auth.mode (apiKey or jwt),
-# unlike /api/flows which 401s once an app switches to jwt (X-Api-Key stops being valid), which
-# previously made this loop report a false "did not report healthy" for a genuinely-up app.
-$ok = $false
-for ($i = 0; $i -lt 60; $i++) {
-  Start-Sleep -Seconds 2
-  try { $h = Invoke-RestMethod -Method GET -Uri "$($plan.baseUrl)/actuator/health" -TimeoutSec 3; if ($h.status -eq 'UP') { $ok = $true; break } } catch { }
-}
-if ($ok) {
-  Write-Host "App is UP at $($plan.baseUrl)/actuator/health"
-  try {
-    $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'READY'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
-    ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $plan.appRoot 'npdev-run-app-progress.json') -Encoding UTF8
-  } catch { }
-} else { Write-Host 'App did not report healthy in time; check logs.' -ForegroundColor Yellow }
-# On a first-ever boot, SuperUserBootstrapper writes the one-time Super User key to
-# SUPER_USER_KEY.txt in the app's own working directory (it doesn't know about _ops). Relocate it
-# here so there's exactly ONE fixed, documented place to look -- the same path control-panel.html's
-# own unlock instructions point to. No-op on every later restart (the file won't exist).
-$keyFileSource = Join-Path $plan.appRoot 'SUPER_USER_KEY.txt'
-if (Test-Path -LiteralPath $keyFileSource) {
-  $keyFileDest = Join-Path $PSScriptRoot 'SUPER_USER_KEY.txt'
-  Move-Item -LiteralPath $keyFileSource -Destination $keyFileDest -Force
-  Write-Host ''
-  Write-Host "First boot: your Super User key is saved at $keyFileDest" -ForegroundColor Green
-  Write-Host 'Open that file and paste its contents into control-panel.html to unlock it.' -ForegroundColor Green
-}
-exit 0
-'@
-Set-Content -LiteralPath (Join-Path $OpsDir 'Start-App.ps1') -Value $StartApp -Encoding UTF8
+# R9.4: Start-App.ps1 and Stop-App.ps1 used to be emitted HERE, as this pipeline's own separate
+# PowerShell text blocks -- the duplicate-PID guard, port-conflict guard and log-archiving behaviour
+# existed only on this one pipeline. They are now emitted by OperationalRunbookEmitter itself
+# (startAppScript()/stopAppScript(), called from GeneratorMain before this script ever runs) --
+# but INSIDE the app, at $GeneratedAppRoot\_ops (App\_ops), not here at $OutRoot\_ops. Those are two
+# genuinely different directories (QUAL-3/PORT-2: the Java toolbox lives inside the FinalApp it
+# operates; this pipeline's own $OpsDir is a SIBLING of App, not inside it), so simply deleting this
+# pipeline's copies would leave every caller that invokes '_ops\Start-App.ps1'/'Stop-App.ps1' AT
+# THIS ($OutRoot\_ops) PATH -- Rebuild-And-Restage.ps1 step 4, New-AppConsole.ps1's Start/Stop
+# buttons, Update-AppMetadata.ps1's METADATA_ONLY fast path, $ReissueSuperUserKey below -- pointed at
+# a filename that no longer exists here. Delegating shims close that gap the same way the
+# Run-FinalApp.ps1/Build-FinalApp.ps1 shims below already do: the guard LOGIC lives in exactly one
+# place (the Java-emitted, guarded script inside App\_ops), and every caller of either name, at
+# either path, ends up running it.
+$StartAppShim = "# R9.4: delegates to the guarded launcher OperationalRunbookEmitter emits inside the app itself (duplicate-PID guard, port-conflict guard, restart-safe logs).`n& (Join-Path (Split-Path -Parent `$PSScriptRoot) 'App\_ops\Start-App.ps1') @args`nexit `$LASTEXITCODE`n"
+Set-Content -LiteralPath (Join-Path $OpsDir 'Start-App.ps1') -Value $StartAppShim -Encoding UTF8
+$StopAppShim = "# R9.4: delegates to the guarded stopper OperationalRunbookEmitter emits inside the app itself.`n& (Join-Path (Split-Path -Parent `$PSScriptRoot) 'App\_ops\Stop-App.ps1') @args`nexit `$LASTEXITCODE`n"
+Set-Content -LiteralPath (Join-Path $OpsDir 'Stop-App.ps1') -Value $StopAppShim -Encoding UTF8
 
 # SER-P6.4 (Surface 2): sibling of Build-App.ps1/Start-App.ps1 -- same jar-lookup pattern as
 # Start-App.ps1, but runs the jar ONCE in the FOREGROUND (not Start-Process/backgrounded) so this
@@ -1018,20 +976,6 @@ switch ($code) {
 exit $code
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Impact-Only.ps1') -Value $ImpactOnlyApp -Encoding UTF8
-
-$StopApp = @'
-$ErrorActionPreference = 'Stop'
-$pidFile = Join-Path $PSScriptRoot 'app.pid'
-if (-not (Test-Path -LiteralPath $pidFile)) { Write-Host 'No app.pid; nothing to stop.'; exit 0 }
-$procId = [int](Get-Content -Raw -LiteralPath $pidFile)
-$proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
-if ($null -ne $proc) { Stop-Process -Id $procId -Force; Write-Host "Stopped PID $procId." } else { Write-Host "Process $procId was not running." }
-Remove-Item -LiteralPath $pidFile -Force
-$stopEnv = Join-Path $PSScriptRoot 'Stop-Environment.ps1'
-if (Test-Path -LiteralPath $stopEnv) { & $stopEnv }
-exit 0
-'@
-Set-Content -LiteralPath (Join-Path $OpsDir 'Stop-App.ps1') -Value $StopApp -Encoding UTF8
 
 # Recovery for a lost Super User key: no network endpoint can safely do this (there's no
 # authenticated Super User yet to ask, same chicken-and-egg BootstrapAdminController has), so this

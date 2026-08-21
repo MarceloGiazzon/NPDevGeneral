@@ -288,6 +288,21 @@ final class OrchestrationValidation {
         }
     }
 
+    /**
+     * R4.2 (roadmap): widened from requiring "exactly one {@code ==}/{@code !=} comparison" -- the
+     * exact shape {@code GeneratedCrudRuntimeSupport.evaluateOrchestrationCondition}'s legacy
+     * hand-rolled matcher supported -- to the full {@link ComputedExpression} grammar ({@code &&},
+     * {@code ||}, {@code >}, arithmetic), now that the runtime tries {@link ComputedExpression}
+     * first and falls back to that legacy matcher only for what it cannot parse. A condition that
+     * fails to parse is refused here rather than reaching a running app and silently skipping every
+     * orchestration action forever (a blank/unparseable condition previously fell through to
+     * {@code shouldExecuteOrchestration}'s permissive default). The "at least one event payload
+     * field" rule survives unchanged, generalized from the two comparison operands to however many
+     * {@link ComputedExpression#referencedFields} finds -- literals (quoted strings, numbers,
+     * true/false/null) never appear there since the parser resolves them to AST literals, not
+     * variable references, so {@link #isConditionLiteral} stays reachable only for defensive symmetry
+     * inside {@link #validateConditionOperand}.
+     */
     private static void validateOrchestrationCondition(
             String orchestrationName,
             String rawCondition,
@@ -302,38 +317,22 @@ final class OrchestrationValidation {
             return;
         }
 
-        int eqIndex = condition.indexOf("==");
-        int neIndex = condition.indexOf("!=");
-        boolean hasEq = eqIndex >= 0;
-        boolean hasNe = neIndex >= 0;
-        if (hasEq == hasNe) {
+        Set<String> referencedFields;
+        try {
+            referencedFields = ComputedExpression.referencedFields(condition);
+        } catch (ComputedExpression.ExpressionException syntaxError) {
             errors.add("Orchestration " + orchestrationName
-                    + ": condition must use exactly one comparison operator (== or !=)");
+                    + ": condition has invalid syntax: " + condition + " (" + syntaxError.getMessage() + ")");
             return;
         }
 
-        int opIndex = hasEq ? eqIndex : neIndex;
-        String left = condition.substring(0, opIndex).trim();
-        String right = condition.substring(opIndex + 2).trim();
-        if (left.isBlank() || right.isBlank()) {
-            errors.add("Orchestration " + orchestrationName
-                    + ": condition has invalid comparison syntax");
-            return;
+        boolean referencesEventField = false;
+        for (String token : referencedFields) {
+            if (validateConditionOperand(orchestrationName, token, eventPayloadFields, errors)) {
+                referencesEventField = true;
+            }
         }
-
-        boolean leftIsEventRef = validateConditionOperand(
-                orchestrationName,
-                left,
-                eventPayloadFields,
-                errors
-        );
-        boolean rightIsEventRef = validateConditionOperand(
-                orchestrationName,
-                right,
-                eventPayloadFields,
-                errors
-        );
-        if (!leftIsEventRef && !rightIsEventRef) {
+        if (!referencesEventField) {
             errors.add("Orchestration " + orchestrationName
                     + ": condition must reference at least one event payload field");
         }

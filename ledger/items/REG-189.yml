@@ -1,0 +1,115 @@
+id: REG-189
+title: >-
+  An app with EXACTLY ONE seed file silently has no seeds -- PowerShell collapses the single-element
+  manifest array to a bare object, and SeedDataService returns an empty list without complaining
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Found while implementing R7.2 (EDIT-6), which is the first thing in the platform that ever calls
+  `GET /api/admin/seeds` from the UI -- the defect was unreachable while nothing consumed the
+  endpoint. Confirmed by the orchestrator by reading both sides.
+surface: appgen/build, runtimehost/seed
+files:
+  - scripts/appgen/Build-NpdevApp.ps1
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/seed/SeedDataService.java
+detail: |
+  Both halves confirmed in source, not inferred:
+
+  **Writer** (`Build-NpdevApp.ps1`, section 4d): `$seedManifest` is built with `+=` and written via
+  `Write-JsonFile`, which is `$Value | ConvertTo-Json -Depth 100`. PowerShell unrolls a
+  single-element array through the pipeline, so **with exactly one `definition/seeds/*.json` the
+  emitted `data-seeds/index.json` is a bare object `{...}` rather than `[{...}]`.** Two or more seed
+  files serialize as a real array and work fine, which is exactly why this survived.
+
+  **Reader** (`SeedDataService.listAvailable`): `if (manifest.isArray()) { ...populate... }` and then
+  `return entries;` -- a non-array skips the loop and returns an EMPTY list. No exception, no log, no
+  diagnostic. The endpoint answers `[]` and the app looks like it simply has no seeds.
+
+  So a one-seed app is silently seedless. The failure is invisible from both ends: the build reports
+  "data-seeds/index.json written with 1 seed(s)" and the API cheerfully returns an empty array.
+
+  NEWLY REACHABLE, which is why it is filed now: until R7.2 (EDIT-6) nothing in the generated UI ever
+  called `GET /api/admin/seeds`, so the manifest's shape had no observable consequence. R7.2 renders
+  a "Load sample data" action per declared seed on every empty grid -- so from now on, a one-seed app
+  shows no seed action and the author has no way to tell why. The R7.2 implementer worked around it
+  by authoring a SECOND seed file rather than editing `Build-NpdevApp.ps1` (correctly out of scope
+  for a business-UI item), which means the workaround is invisible and will not survive someone
+  deleting the spare seed.
+
+  FIX, two independent halves and both are worth doing:
+    - **Writer:** force array serialization -- `ConvertTo-Json -AsArray` (PowerShell 7+, which this
+      repo targets) or the classic `,$seedManifest` / `@($seedManifest)` idiom. Note
+      `Write-JsonFile` is a SHARED helper used for many manifests in both `Build-NpdevApp.ps1` and
+      `Build-ClaudeApp.ps1`, so changing it globally would alter every manifest it writes; prefer
+      fixing at this call site, or add an explicit `-AsArray` switch to the helper.
+    - **Reader:** stop swallowing the wrong shape. `SeedDataService.listAvailable` should either
+      accept a lone object as a one-element list, or refuse with a named error. Returning `[]` for
+      malformed input is the silent-wrong-answer shape this codebase rejects elsewhere -- an empty
+      list is indistinguishable from "this app declares no seeds".
+
+  FIXED 2026-08-18, both halves, plus a SECOND live instance the wider grep turned up.
+
+  **WRITER**: `Write-JsonFile` gained an **opt-in `-AsArray` switch** rather than a changed default --
+  it is shared with `Build-ClaudeApp.ps1` and writes several manifests (Config, Plan, DbPlan) that
+  must stay bare objects, so flipping the default would have corrupted them. Applied at two call
+  sites.
+
+  **THE SECOND INSTANCE, and it fails worse than the first**: `workspace-menu-pages-seed.json` has
+  the identical shape. `WorkspaceMenuSeeder.readSeedResource()` calls `.forEach()` on the raw
+  `JsonNode`; for a bare `ObjectNode` that iterates `elements()` -- the row's **FIELD VALUES**
+  (label/target/kind/...), not the row. So a one-row menu manifest would have silently inserted
+  several GARBAGE rows rather than zero. Fixed in both directions there too (writer `-AsArray`,
+  reader normalizes object -> one-element array).
+
+  **A third candidate was checked and deliberately left alone**: `Build-ClaudeApp.ps1`'s
+  `$report.steps` matches the same PowerShell shape, but only `New-AppConsole.ps1` reads that file
+  and only its `.status` -- never `.steps` -- so it is not genuinely affected. Not fixed
+  speculatively.
+
+  **READER POSTURE: permissive-on-read.** `listAvailable()` now treats a lone object as a
+  one-element list and throws `SeedLoadException` only for a shape that is neither array nor object.
+  The reasoning is recovery-shaped: an already-built app cannot be regenerated on demand, so a
+  permissive reader lets it recover on the next jar restart, while a genuinely malformed manifest
+  now fails LOUDLY instead of silently returning `[]` -- which was the actual defect.
+
+  LIVE EVIDENCE, both directions, foreground:
+    - **One seed** (spare `extra-user.json` deleted, rebuilt, port 8256): emitted
+      `data-seeds/index.json` is `[{"id":"demo-users",...}]` -- a real array where it was a bare
+      object before -- and `GET /api/admin/seeds` returns that single entry.
+    - **Two seeds** (regression check): manifest `[{demo-users},{extra-user}]`, endpoint returns
+      both. No regression.
+    - `extra-user.json` was left DELETED, so `simple-user-registry-h2local` is now itself a standing
+      one-seed case; EDIT-6's invisible workaround is gone.
+
+  **HONEST LIMIT on the menu-seed instance**: the writer fix is verified structurally (same
+  `-AsArray` path, same helper) but **NOT confirmed live** -- no app in the current
+  AppGen/NPDevSamples corpus composes the workspace pack AND declares exactly one `menu.json`/
+  `pages.json` row, so `WorkspaceMenuSeeder` never activates for that scenario in the fleet today.
+  The reader fix there is reasoned from Jackson's documented `JsonNode.elements()` behaviour, not
+  observed in a running app.
+
+  GATES: `run-runtimehost-gate.ps1` **BUILD SUCCESSFUL** (9m 15s), gate passed via assembled sample.
+  Because that gate wipes its own test-results in post-run cleanup, the new test class was also run
+  directly against the still-present assembled app: **5 tests, 0 failures**, including
+  `bareObjectManifestIsTreatedAsAOneElementList`. Scope verified by the orchestrator -- exactly four
+  files touched (`Build-NpdevApp.ps1`, `SeedDataService.java`, `WorkspaceMenuSeeder.java`, and the
+  new test), nothing else.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/seed/SeedDataServiceListAvailableTest.java (bareObjectManifestIsTreatedAsAOneElementList)
+  asserts: >-
+    a manifest that is a bare object rather than an array is read as a one-element list instead of
+    silently returning empty, and a shape that is neither array nor object refuses with a named
+    SeedLoadException rather than answering `[]`. The writer half is evidenced by measurement rather
+    than by this test -- a genuinely one-seed app now emits `[{...}]` and `GET /api/admin/seeds`
+    lists it -- because RuntimeHost tests are widely excluded from gate runs and a green gate is not
+    evidence for them.
+  provenRed: true
+  provenRedNote: >-
+    The defect was observed directly before the fix: the emitted index.json for a one-seed app was a
+    bare object and the endpoint returned []. Both were re-measured as corrected afterward, and the
+    two-seed case was re-run as a regression check.

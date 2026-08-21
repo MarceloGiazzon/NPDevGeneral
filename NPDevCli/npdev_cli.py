@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import copy
 import shutil
 import hashlib
 import json
@@ -16,7 +17,9 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple
@@ -49,6 +52,15 @@ DSL_MODEL_FORMAT_VERSION = "1.0.0"
 
 class CliError(Exception):
     pass
+
+
+class PackCatalogPublishRefusal(CliError):
+    """R8.5: the specific "this would mutate an already-published version" refusal
+    `_push_pack_to_catalog` raises. A distinct type from the generic `CliError` other failures in
+    that same function raise (a bad --catalog-repo, a failed git command) so `run_pack_publish` can
+    turn ONLY this one into a clean `{"ok": false}` report + exit 2 -- matching the existing publish
+    gate's own 0-allowed/2-refused convention -- while a genuine usage/git error still surfaces as
+    the usual CliError/exit 1."""
 
 
 def repo_root() -> Path:
@@ -246,6 +258,69 @@ def require_identifier(value: object, label: str, pattern: str) -> None:
         raise CliError(f"{label} is missing or invalid: {value!r}")
 
 
+def _document_kind(raw: dict, path: Path) -> str:
+    """R1.6 (`npdev impact`): 'pack' or 'model', read from the ROOT document's own declared shape
+    -- never resolve_split_model, because a pack.json's own top-level scalar keys (`pack`,
+    `category`, `author`, ...) are not in model.schema.json's ROOT_SCALAR_KEYS and resolve_split_model
+    would refuse a genuine pack.json outright (it validates against the MODEL shape only). The two
+    document kinds are told apart the same way a human would: pack.schema.json REQUIRES a top-level
+    string `pack` identifier (the pack's own id) that model.schema.json never defines at all --
+    a model's own pack DEPENDENCIES live under the plural `packs` array instead, so there is no
+    collision. `classifyModelChange`/`modelXref`/`authorDiffGate` all parse via JsonModelParser,
+    which cannot read a pack.json (different required top-level shape); `packDiff` (PackDiffEngine)
+    is the reverse -- it has no model.json input at all. This is why `impact` runs a different pair
+    of legs per kind rather than always attempting all four."""
+    if not isinstance(raw, dict):
+        raise CliError(f"{path}: must be a JSON object")
+    pack_id = raw.get("pack")
+    if isinstance(pack_id, str) and pack_id.strip():
+        return "pack"
+    return "model"
+
+
+# R1.5 (roadmap 2026-08-18 R1.5): the 4 of ModelSourceResolver.java's 18 MODEL_ARRAY_KEYS entries
+# `npdev add` scaffolds -- not a Python port of the resolver (nothing here composes fragments/
+# packs; that stays resolve_split_model's job below), just the kind-name -> top-level-array-key
+# agreement for the four member kinds this verb supports.
+ADD_MEMBER_ARRAY_KEYS = {
+    "concept": "concepts",
+    "panel": "panels",
+    "flow": "flows",
+    "procedure": "procedures",
+}
+
+# FlowValidation.BUILTIN_CAPABILITY_OPERATIONS / PackValidation (dsl module): these capability
+# names/types resolve even when the model declares no capabilities[] at all -- e.g. every flow's
+# createConcept/updateConcept step is backed by the builtin "persistence" capability's "save"
+# operation for free, which is exactly why the default flow/procedure stubs below need no
+# capabilities[] scaffolding of their own. Mirrored here (lowercase) so --from's self-containment
+# scan does not misreport a capabilityCall step as broken just because the model has no
+# capabilities[] declared.
+ADD_BUILTIN_CAPABILITIES = {
+    "persistencecapability", "persistence", "messagingcapability", "emailcapability",
+    "fiscalcapability", "signaturecapability", "eventbus", "invariantengine",
+}
+
+
+def _add_humanize_label(name: str) -> str:
+    """PascalCase/camelCase/snake_case -> "Spaced label" -- seeds a UX-friendly ui.label/title on
+    a scaffolded member so `npdev add`'s own output doesn't ship the missing_concept_label /
+    missing_field_label warning every hand-authored corpus model already avoids."""
+    spaced = re.sub(r"(?<!^)(?=[A-Z])", " ", name.replace("_", " ")).strip()
+    spaced = re.sub(r"\s+", " ", spaced)
+    return (spaced[:1].upper() + spaced[1:]) if spaced else name
+
+
+def _add_kebab_route(name: str) -> str:
+    spaced = re.sub(r"(?<!^)(?=[A-Z])", "-", name)
+    spaced = re.sub(r"[_\s]+", "-", spaced)
+    return "/" + re.sub(r"-+", "-", spaced).strip("-").lower()
+
+
+def _add_lower_first(name: str) -> str:
+    return (name[:1].lower() + name[1:]) if name else name
+
+
 def validate_json_schema(schema: Path, instance: Path) -> dict:
     root = repo_root()
     validator_root = root / "scripts" / "quality" / "json-schema-validator"
@@ -366,6 +441,11 @@ MODEL_ARRAY_KEYS = {
     "propertyScopes",
     "properties",
     "contexts",
+    # R8.8: pack-declared seed data. Added to ModelSourceResolver.MODEL_ARRAY_KEYS (the Java-side
+    # composer gate) in the same change; this Python copy is the build-free `npdev inspect` /
+    # `validate model --structural-only` path, and a key missing here is silently invisible to it --
+    # exactly the drift the block above was written to stop repeating.
+    "seeds",
 }
 ROOT_SCALAR_KEYS = {
     "$schema", "schemaVersion", "dslVersion", "namespace", "model", "version",
@@ -2036,9 +2116,22 @@ def _classify_boot_failure(log_text: str) -> dict | None:
         return _diag(
             "BOOT", "MIGRATION_CLAIM_HELD",
             "Another NPDev instance already holds the migration claim on this database.",
-            suggested_fix="Wait for it to finish, or if it crashed mid-migration, clear the stale "
-                           "claim via POST /api/admin/schema-migration/clear-claim (SUPERUSER) or the "
-                           "ControlPanel schema-migration screen.",
+            # REG-188: this refusal is now thrown by MigrationMutex (R9.3/STOR-17) -- a session-scoped
+            # lock held by an OPEN DATABASE CONNECTION, not a row. `clear-claim` only clears
+            # MigrationClaimStore's row and cannot free a live connection-held lock, so telling an
+            # operator to run it here used to send them to delete a row that was no longer the lock
+            # -- the boot would just wait out its budget and refuse again. `clear-claim` still has a
+            # real job: a genuine leftover row from before an upgrade to R9.3, with no boot actually
+            # holding the mutex.
+            suggested_fix="Wait for the holder to finish (a boot waits up to "
+                           "-Dnpdev.schema.lock.waitSeconds, default 300s, before giving up on its "
+                           "own); if it is genuinely hung rather than just slow, find and stop that "
+                           "process -- the lock is released when its database connection closes, "
+                           "which killing the process does. Only use POST "
+                           "/api/admin/schema-migration/clear-claim (SUPERUSER) or the ControlPanel "
+                           "schema-migration screen if you have confirmed no instance is actually "
+                           "migrating and this is a leftover claim row from before R9.3 -- it clears "
+                           "that row, not a live connection-held lock, and does nothing to free one.",
             help_key="migration-claim-held",
         )
     if "Web server failed to start" in log_text and "port" in log_text.lower():
@@ -2179,7 +2272,7 @@ def run_app(args: argparse.Namespace) -> dict:
             # --- BUILD ---------------------------------------------------------------------
             result["phase"] = "BUILD"
             _write_run_app_progress(final_app_out, result["phase"])
-            build_ok, build_output, jar_path = _build_phase(final_app_out, deadline)
+            build_ok, build_output, jar_path, _ = _build_phase(final_app_out, deadline)
             if not build_ok:
                 classified = _classify_build_failure(build_output)
                 result["diagnostics"].append(classified or _diag(
@@ -2597,8 +2690,6 @@ def run_setup(args: argparse.Namespace) -> int:
     Phase 0 I2: --json wraps the same two phases (jar build, knowledge index) with started/done
     events carrying elapsed seconds, ending with one npdev-cli-result.v1 object -- setup is long
     (~573s), so the Manager needs progress, not just a final verdict."""
-    import time as _time
-
     out = _SetupOutput(getattr(args, "json", False))
     root = repo_root()
     kernel_root = root / "NPDevKernel"
@@ -2624,7 +2715,7 @@ def run_setup(args: argparse.Namespace) -> int:
     libs_dir = build_root / "runtimehost-libs"
     libs_dir.mkdir(parents=True, exist_ok=True)
 
-    jars_started = _time.monotonic()
+    jars_started = time.monotonic()
     out.event("jars", "started")
 
     # I5: try a prebuilt Release asset before spending the ~9 of setup's ~10 minutes compiling --
@@ -2709,7 +2800,7 @@ def run_setup(args: argparse.Namespace) -> int:
         (libs_dir / "runtimehost-libs-manifest.json").write_text(
             json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
         out.narrate(f"npdev setup: {len(copied)} jar(s) copied, {len(up_to_date)} already current -> {libs_dir}")
-    out.event("jars", "done", seconds=round(_time.monotonic() - jars_started, 1), source=jars_source)
+    out.event("jars", "done", seconds=round(time.monotonic() - jars_started, 1), source=jars_source)
 
     # JDBC drivers, on BOTH jar paths. The build path used to leave Postgres in the Gradle module
     # cache as a side effect of compiling the RuntimeHost template; the download path stages prebuilt
@@ -2718,14 +2809,14 @@ def run_setup(args: argparse.Namespace) -> int:
     # being honest about an absent precondition, and setup is the thing that is supposed to supply it:
     # this command's own output tells the user "Run `npdev setup` ... to fetch it". Now that is true
     # however setup got its jars. Best-effort: an offline machine still completes setup.
-    drivers_started = _time.monotonic()
+    drivers_started = time.monotonic()
     out.event("jdbc-drivers", "started")
     driver_results: dict[str, str] = {}
     for engine_key in sorted(_JDBC_DRIVER_COORDINATES):
         jar, outcome = _ensure_jdbc_driver(engine_key)
         driver_results[engine_key] = outcome
         out.narrate(f"npdev setup: [2/3] JDBC driver {engine_key}: {outcome}")
-    out.event("jdbc-drivers", "done", seconds=round(_time.monotonic() - drivers_started, 1),
+    out.event("jdbc-drivers", "done", seconds=round(time.monotonic() - drivers_started, 1),
               **driver_results)
 
     # Clean the source builds' own build/ dirs afterward -- build output does not belong inside
@@ -2741,14 +2832,14 @@ def run_setup(args: argparse.Namespace) -> int:
                                  key=lambda p: len(str(p)), reverse=True):
             shutil.rmtree(build_dir, ignore_errors=True)
 
-    knowledge_started = _time.monotonic()
+    knowledge_started = time.monotonic()
     out.event("knowledge-index", "started")
     build_knowledge = root / "scripts" / "ai" / "build_knowledge.py"
     if build_knowledge.exists():
         out.narrate("npdev setup: [2/3] building the AI knowledge index")
         out.run([sys.executable, str(build_knowledge)], root)
         knowledge_note = str(build_root / "npdev-ai")
-        out.event("knowledge-index", "done", seconds=round(_time.monotonic() - knowledge_started, 1))
+        out.event("knowledge-index", "done", seconds=round(time.monotonic() - knowledge_started, 1))
     else:
         out.narrate(f"npdev setup: [2/3] skipped -- not found: {build_knowledge}")
         knowledge_note = "skipped"
@@ -4362,10 +4453,120 @@ def _default_runtimehost_libs_dir() -> Path | None:
     return candidate if candidate.is_dir() else None
 
 
-def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | None]:
+AI_TOOLS_VALIDATOR_MAIN = "com.npdev.dsl.v1.cli.ModelValidatorMain"
+AI_TOOLS_CLASSIFIER_MAIN = "com.npdev.generator.schemaevolution.ModelChangeClassifierMain"
+
+
+def _default_ai_tools_jar() -> Path | None:
+    """R1.1 (warm standalone validator): the staged npdev-ai-tools.jar, or None to use Gradle.
+
+    Every `npdev validate model --semantic` used to fork the Gradle wrapper to reach
+    ModelValidatorMain, and so did every classifyModelChange call. Both Main classes are pure
+    stdlib+Jackson+dsl -- no Spring, no database, no codegen -- so the whole Gradle layer was buying
+    nothing but a classpath. NPDevGenerator/generator/build.gradle's `aiToolsJar` task packages both
+    entry points with their runtime deps, and scripts/runtimehost/sync-runtimehost-libs.ps1 stages it
+    here.
+
+    Measured on this machine (canonical-demo, 2026-08-18, 8 interleaved A/B pairs of
+    `npdev validate model --semantic`): median 4.61s -> 2.24s, min 3.67s -> 1.82s, 2.1x; the first
+    call of a session cost 24.4s on the Gradle path because it also started the daemon. Roughly 0.4s
+    of each figure is this CLI's own Python startup, which neither path avoids. Process inspection
+    (Win32_Process sampled every 100ms for the duration of the call) counted 0 new Gradle processes
+    on this path against 3 on the Gradle one -- `cmd.exe /c gradlew.bat`, the wrapper's own
+    `-Dorg.gradle.appname=gradlew` client JVM, and the daemon-side JVM. Note the Gradle figure is
+    already a WARM-daemon figure: gradle.properties sets org.gradle.daemon=true and this call site
+    never passed --no-daemon, so what is being removed is the client bootstrap and per-call project
+    configuration, not a single-use JVM.
+
+    Returns None whenever the jar is absent, and EVERY caller then runs the Gradle path unchanged --
+    a fresh checkout that has never run the sync script must keep working exactly as before, so this
+    is an accelerator with a mandatory fallback, not a new prerequisite.
+
+    NPDEV_AI_TOOLS_JAR overrides the location (same shape as NPDEV_RUNTIMEHOST_LIBS_DIR); pointing it
+    at a path that does not exist is also the way to force the Gradle path back on for one run.
+    Otherwise the build root comes from _ai_build_root() rather than a fourth hand-rolled copy of the
+    same resolution -- REG-128 exists because there were two, and REG-144 because one of them matched
+    the repo root by directory NAME. There is no hardcoded <drive>:/WorkSpace/... default here for
+    the same reason _default_runtimehost_libs_dir() above has none.
+    """
+    override = os.environ.get("NPDEV_AI_TOOLS_JAR", "").strip()
+    if override:
+        candidate = Path(override).expanduser()
+    else:
+        candidate = _ai_build_root() / "ai-tools" / "npdev-ai-tools.jar"
+    return candidate if candidate.is_file() else None
+
+
+def _ai_tools_command(main_class: str, cli_args: list[str]) -> list[str] | None:
+    """The `java -cp <jar> <main_class> ...` form of an AI-loop call, or None when it is unavailable.
+
+    None means either "no staged jar" or "no java anywhere" (java_launcher() already prefers
+    JAVA_HOME over PATH, W1.3 -- the Manager hands its private JDK over as JAVA_HOME alone). Both
+    are ordinary states on a fresh machine, and both must land on the Gradle path rather than fail.
+    """
+    jar = _default_ai_tools_jar()
+    if jar is None:
+        return None
+    java = java_launcher()
+    if java is None:
+        return None
+    return [java, "-cp", str(jar), main_class, *cli_args]
+
+
+# The classifier's own flag names, mapped to the Gradle PROPERTIES :generator:classifyModelChange
+# reads (its JavaExec builds these exact flags back out of them). One table, so the two call sites
+# below cannot drift into disagreeing about which spelling belongs to which path.
+_CLASSIFIER_GRADLE_PROPERTIES = {
+    "--current": "currentPath",
+    "--baseline": "baselinePath",
+    "--out": "reportOut",
+    "--emitCompiledModelTo": "emitCompiledModelTo",
+    "--emitMetadataTo": "emitMetadataTo",
+}
+
+
+def _classifier_command(root: Path, cli_args: list[str]) -> tuple[list[str], Path] | None:
+    """R1.1: (command, cwd) for one ModelChangeClassifierMain call -- direct java when the staged
+    jar is there, otherwise the unchanged :generator:classifyModelChange Gradle invocation. Returns
+    None when neither is available (no jar AND no Gradle wrapper), which both callers already treat
+    as "cannot classify"."""
+    generator_root = root / "NPDevGenerator"
+    direct = _ai_tools_command(AI_TOOLS_CLASSIFIER_MAIN, cli_args)
+    if direct is not None:
+        return direct, generator_root
+
+    wrapper = gradle_wrapper(generator_root)
+    if not wrapper.exists():
+        return None
+    command = [
+        str(wrapper), *gradle_project_cache_args("generator"),
+        ":generator:classifyModelChange", "--no-daemon", "--console=plain",
+    ]
+    for flag, value in zip(cli_args[0::2], cli_args[1::2]):
+        command.append(f"-P{_CLASSIFIER_GRADLE_PROPERTIES[flag]}={value}")
+    if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+        command = ["cmd.exe", "/c"] + command
+    return command, generator_root
+
+
+def _build_phase(app_root: Path, deadline: float, *, clean: bool = True) -> tuple[bool, str, Path | None, bool]:
+    """R1.2 (incremental dev-loop builds). `clean=True` -- every caller's default, including
+    `run_app`'s one-shot GENERATE->BUILD->BOOT -- keeps the ORIGINAL command byte-for-byte:
+    `--no-daemon clean build -x test`. `clean=False` (the dev loop's default) drops both `clean` AND
+    `--no-daemon`: the generated app's own `gradle.properties` already sets `org.gradle.daemon=true`
+    (`NPDevRuntimeHost/gradle.properties`'s REG-10 comment -- copied verbatim into every generated
+    FinalApp by `FinalAppAssembler`), so a dev-loop session's consecutive builds share one warm
+    daemon instead of forking a fresh JVM per save, the same mechanism QUAL-16 measured for
+    validate/classify. Determinism is already gate-proven
+    (`scripts/hygiene/check-deterministic-generation.ps1`), so trusting incremental `build` output is
+    safe; the one real risk is a STALE incremental build failing for a reason a clean build would
+    fix, so a failed incremental build is retried ONCE with `clean` automatically -- still on the
+    warm daemon, since the retry belongs to the same dev-loop session -- and the caller never has to
+    remember a flag for it. The 4th return value says whether that automatic fallback fired.
+    """
     wrapper = app_root / ("gradlew.bat" if os.name == "nt" else "gradlew")
     if not wrapper.exists():
-        return False, f"Gradle wrapper not found in generated app: {wrapper}", None
+        return False, f"Gradle wrapper not found in generated app: {wrapper}", None, False
     env = dict(os.environ)
     if "NPDEV_RUNTIMEHOST_LIBS_DIR" not in env:
         derived = _default_runtimehost_libs_dir()
@@ -4374,36 +4575,62 @@ def _build_phase(app_root: Path, deadline: float) -> tuple[bool, str, Path | Non
         # else: leave unset -- the generated build.gradle's own "Missing NPDev RuntimeHost libs
         # manifest in <path>. Run scripts/runtimehost/sync-runtimehost-libs.ps1" error fires
         # instead of a wrong path producing a confusing downstream failure.
-    command = [str(wrapper), "--no-daemon", "--console=plain", "clean", "build", "-x", "test"]
+
+    # --no-daemon only when the CALLER asked for a clean build from the start -- a fallback clean
+    # build triggered below still belongs to an incremental (warm-daemon) session, so it keeps using
+    # the daemon rather than forking a fifth JVM on top of an already-failed cycle.
+    no_daemon = ["--no-daemon"] if clean else []
+
+    def run_once(with_clean: bool) -> subprocess.CompletedProcess:
+        tasks = (["clean", "build"] if with_clean else ["build"]) + ["-x", "test"]
+        command = [str(wrapper), *no_daemon, "--console=plain", *tasks]
+        return _run_bounded(command, str(app_root), deadline, env=env)
+
     try:
-        completed = _run_bounded(command, str(app_root), deadline, env=env)
+        completed = run_once(clean)
     except _DeadlineExceeded:
-        return False, "BUILD exceeded the overall --timeout budget.", None
+        return False, "BUILD exceeded the overall --timeout budget.", None, False
     output = (completed.stdout or "") + (completed.stderr or "")
+
+    fell_back = False
+    if completed.returncode != 0 and not clean:
+        fell_back = True
+        try:
+            retry = run_once(True)
+        except _DeadlineExceeded:
+            return (False,
+                    output + "\n\n-- incremental build failed; the automatic `clean build` fallback "
+                              "also exceeded the --timeout budget.\n",
+                    None, True)
+        retry_output = (retry.stdout or "") + (retry.stderr or "")
+        output = (
+            "incremental build failed -- automatically retried with a clean build.\n"
+            "--- incremental build output (tail) ---\n" + output[-2000:] + "\n"
+            "--- clean build output ---\n" + retry_output
+        )
+        completed = retry
+
     if completed.returncode != 0:
-        return False, output, None
-    return True, output, _find_jar(app_root)
+        return False, output, None, fell_back
+    return True, output, _find_jar(app_root), fell_back
 
 
 def _classify_model_change(root: Path, baseline: Path, current: Path, deadline: float) -> str | None:
     """Move 10 C1 (already implemented, Wave 1.2): shells out to the existing, real
-    ModelChangeClassifierMain (:generator:classifyModelChange) rather than reimplementing the diff.
-    That task reads its arguments as Gradle PROPERTIES (-PcurrentPath=...), not JavaExec `args`."""
-    generator_root = root / "NPDevGenerator"
-    wrapper = gradle_wrapper(generator_root)
-    if not wrapper.exists():
-        return None
+    ModelChangeClassifierMain rather than reimplementing the diff. R1.1: reached directly through the
+    staged npdev-ai-tools.jar when it exists, else through :generator:classifyModelChange, whose task
+    reads its arguments as Gradle PROPERTIES (-PcurrentPath=...), not JavaExec `args` --
+    _classifier_command owns that translation for both call sites."""
     with tempfile.TemporaryDirectory(prefix="npdev-classify-") as tmp:
         report_path = Path(tmp) / "classification.json"
-        command = [
-            str(wrapper), *gradle_project_cache_args("generator"),
-            ":generator:classifyModelChange", "--no-daemon", "--console=plain",
-            f"-PcurrentPath={current}", f"-PbaselinePath={baseline}", f"-PreportOut={report_path}",
-        ]
-        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
-            command = ["cmd.exe", "/c"] + command
+        resolved = _classifier_command(root, [
+            "--current", str(current), "--baseline", str(baseline), "--out", str(report_path),
+        ])
+        if resolved is None:
+            return None
+        command, cwd = resolved
         try:
-            _run_bounded(command, generator_root, deadline)
+            _run_bounded(command, cwd, deadline)
         except _DeadlineExceeded:
             return None
         if not report_path.exists():
@@ -4415,28 +4642,72 @@ def _classify_model_change(root: Path, baseline: Path, current: Path, deadline: 
         return report.get("classification")
 
 
+def _classify_model_change_report(root: Path, baseline: Path, current: Path, deadline: float) -> dict:
+    """R1.6 (`npdev impact`): the same `_classifier_command`/`_run_bounded` R1.1 fast path
+    `_classify_model_change` above already uses, but keeping the FULL parsed report (classification
+    + classificationReasons + the MigrationPlan) instead of collapsing it to just the classification
+    string -- `impact` is a preview report, not a boolean gate, so the reasons are the point. Raises
+    CliError on any failure (no jar/no Gradle wrapper, a timeout, an unparseable report) rather than
+    `_classify_model_change`'s `None`: that function's callers (`run_closed_loop`) treat "could not
+    classify" as merely informational inside a larger pipeline that already stopped on a real
+    failure elsewhere, but `impact` has no such earlier gate -- silently omitting this leg would be
+    exactly the "looks complete but is not" failure STEP 3 of this item's own brief warns against."""
+    with tempfile.TemporaryDirectory(prefix="npdev-impact-classify-") as tmp:
+        report_path = Path(tmp) / "classification.json"
+        resolved = _classifier_command(root, [
+            "--current", str(current), "--baseline", str(baseline), "--out", str(report_path),
+        ])
+        if resolved is None:
+            raise CliError("cannot classify the model change: no staged npdev-ai-tools.jar and no "
+                            "Gradle wrapper found.")
+        command, cwd = resolved
+        try:
+            completed = _run_bounded(command, cwd, deadline)
+        except _DeadlineExceeded:
+            raise CliError("migration classification exceeded the overall --timeout budget.")
+        if not report_path.exists():
+            detail = ((completed.stdout or "") + (completed.stderr or "")).strip()
+            raise CliError("migration classification did not produce a report"
+                            + (f": {detail[-500:]}" if detail else ""))
+        try:
+            return json.loads(report_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise CliError(f"migration classification report is not valid JSON: {exc}")
+
+
 def _metadata_only_fast_path(
         root: Path, current_model: Path, final_app_out: Path, deadline: float) -> tuple[bool, str]:
     """Move 10 C2 (already implemented, Wave 1.3): swaps compiled-model.json + re-signs the
     generated-folder signature, skipping GENERATE+BUILD entirely for a METADATA_ONLY change.
     Both underlying tasks read Gradle PROPERTIES, not JavaExec `args` -- see their own build.gradle
-    registrations (classifyModelChange / resignGeneratedFolder)."""
-    generator_root = root / "NPDevGenerator"
-    wrapper = gradle_wrapper(generator_root)
+    registrations (classifyModelChange / resignGeneratedFolder).
+
+    R1.1 speeds up the classify half only: GeneratedFolderSignatureMain lives in
+    :adapters:runtime-validation, which is not on :generator's runtime classpath and so is not in
+    npdev-ai-tools.jar. Re-signing runs once per fast path, not once per keystroke in an authoring
+    loop, so packaging a second jar to save one more fork is not worth the staging surface.
+
+    One deliberate divergence between the two paths, in the direction of safety: classifyModelChange
+    is registered with `ignoreExitValue = true`, so a `--emitCompiledModelTo` REFUSAL (the classifier
+    exits 2 without writing) still leaves the GRADLE process exiting 0 and this function reporting
+    success for a file it never wrote. Its build.gradle comment claims that exit code "must reach the
+    caller" -- with ignoreExitValue it never did. The direct path propagates the real exit code, so a
+    refusal is reported as a failure. The branch is unreachable in practice today (the only caller
+    gates on classification == METADATA_ONLY first), which is why the swallowed code went unnoticed;
+    it is left as-is on the Gradle side rather than changing behavior on the fallback path here."""
     generated_root = final_app_out / "npdev-generated"
     compiled_model_path = generated_root / "src" / "main" / "resources" / "npdev" / "compiled-model.json"
     with tempfile.TemporaryDirectory(prefix="npdev-metadata-only-") as tmp:
         report_path = Path(tmp) / "classification.json"
-        command = [
-            str(wrapper), *gradle_project_cache_args("generator"),
-            ":generator:classifyModelChange", "--no-daemon", "--console=plain",
-            f"-PcurrentPath={current_model}", f"-PbaselinePath={current_model}",
-            f"-PreportOut={report_path}", f"-PemitCompiledModelTo={compiled_model_path}",
-        ]
-        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
-            command = ["cmd.exe", "/c"] + command
+        resolved = _classifier_command(root, [
+            "--current", str(current_model), "--baseline", str(current_model),
+            "--out", str(report_path), "--emitCompiledModelTo", str(compiled_model_path),
+        ])
+        if resolved is None:
+            return False, "no Gradle wrapper and no staged npdev-ai-tools.jar -- cannot classify."
+        command, cwd = resolved
         try:
-            completed = _run_bounded(command, generator_root, deadline)
+            completed = _run_bounded(command, cwd, deadline)
         except _DeadlineExceeded:
             return False, "classifyModelChange exceeded the overall --timeout budget."
         if completed.returncode != 0:
@@ -4458,6 +4729,53 @@ def _metadata_only_fast_path(
     if completed.returncode != 0:
         return False, (completed.stdout or "") + (completed.stderr or "")
     return True, "metadata-only fast path applied"
+
+
+def _emit_metadata_only_catalogs(
+        root: Path, baseline_model: Path, current_model: Path, deadline: float,
+        emit_to: Path) -> tuple[str | None, bool, str]:
+    """RUN-24 gap 1: the metadata-catalog half of `npdev dev`'s own hot-swap fast path -- classify
+    `baseline_model` vs `current_model` and, only when the result is METADATA_ONLY, emit
+    compiled-metadata.json + metadata/*.manifest.json to `emit_to` in the exact directory shape
+    `MetadataHotSwapController#apply`'s own javadoc documents
+    (`<dir>/src/main/resources/npdev/...`) -- the SAME `--emitMetadataTo` flag
+    `Update-AppMetadata.ps1`'s Gradle call already drives, reused here rather than inventing a
+    second classifier invocation shape. Sibling of `_metadata_only_fast_path` above (that one emits
+    `compiled-model.json` for a RESTART-based fast path; this one emits the descriptive catalogs for
+    a NO-restart hot swap), so it does not also call `resignGeneratedFolder` -- that step only
+    matters for `NPDevModelProvider`'s external `compiled-model.json` path / `StrictExecutionValidator`
+    at BOOT, neither of which a live hot swap touches.
+
+    Returns `(classification, emitted, detail)`. `classification` is `None` only when the classifier
+    itself could not run at all (no staged jar and no Gradle wrapper, or a timeout) -- as distinct
+    from running successfully and reporting something other than METADATA_ONLY, in which case
+    `classification` carries that real value, `emitted` is `False`, and `detail` says so (the
+    classifier's own `--emitMetadataTo` refusal contract: non-METADATA_ONLY writes nothing and exits
+    non-zero) -- never silent, matching every other refusal path this fast path can take."""
+    with tempfile.TemporaryDirectory(prefix="npdev-dev-hotswap-report-") as tmp:
+        report_path = Path(tmp) / "classification.json"
+        resolved = _classifier_command(root, [
+            "--current", str(current_model), "--baseline", str(baseline_model),
+            "--out", str(report_path), "--emitMetadataTo", str(emit_to),
+        ])
+        if resolved is None:
+            return None, False, "no Gradle wrapper and no staged npdev-ai-tools.jar -- cannot classify."
+        command, cwd = resolved
+        try:
+            completed = _run_bounded(command, cwd, deadline)
+        except _DeadlineExceeded:
+            return None, False, "classifyModelChange exceeded the overall --timeout budget."
+        classification = None
+        if report_path.exists():
+            try:
+                classification = json.loads(report_path.read_text(encoding="utf-8")).get("classification")
+            except json.JSONDecodeError:
+                pass
+        if completed.returncode != 0 or classification != "METADATA_ONLY":
+            detail = ((completed.stdout or "") + (completed.stderr or "")).strip()[-800:]
+            return classification, False, (
+                detail or f"classifier did not emit metadata catalogs (classification={classification!r})")
+        return classification, True, ""
 
 
 # ---------------------------------------------------------------------------
@@ -4713,6 +5031,303 @@ def run_closed_loop(args: argparse.Namespace) -> dict:
     return report
 
 
+# ---------------------------------------------------------------------------
+# R3.4: `npdev test` -- one verb, one verdict per app. Composition only: it OWNS no runner and no
+# verdict of its own. The REST layer is derived from what the generator already published about the
+# model; the other two layers are `run_acceptance` and `npdev_explore.run_suite`, called as-is, and
+# their reports are embedded verbatim rather than re-summarised into a second vocabulary.
+# ---------------------------------------------------------------------------
+
+TEST_SCHEMA_VERSION = "npdev-test-report.v1"
+TEST_REPORT_FILENAME = "npdev-test-report.json"
+
+
+def _rest_smoke_layer(app_record: dict, timeout: float = 15.0) -> dict:
+    """Layer 1: GET every concept endpoint the app itself publishes.
+
+    The plan is MODEL-DERIVED with no per-app file, because `InfoPageEmitter` already wrote the
+    model's concepts into the app's own `static/info.json` (`concepts: [{name, route}]`, sorted) and
+    `probe_app(include_info=True)` already loads it. `/api/<route>` is the same URL that emitter
+    publishes one line away in its own Concepts rows, so this composes a path the app is known to
+    serve rather than inventing a convention.
+
+    (`compiled-metadata.json`'s invocation catalog carries the sibling `/api/concepts/<table>` form
+    and is equally model-derived. info.json wins here only because it needs no second file read: it
+    is already in hand from the probe every layer of this command shares.)
+
+    Check rows deliberately borrow `schemas/ai/ai-rest-smoke-result.schema.json`'s field names
+    (id/status/method/path/expectedStatus/actualStatus/durationMs/failures) so the one REST-smoke
+    vocabulary this repo has is not forked into a second one."""
+    import time
+    import urllib.error
+    import urllib.request
+
+    info = app_record.get("info") or {}
+    concepts = [c for c in (info.get("concepts") or [])
+                if isinstance(c, dict) and c.get("name") and c.get("route")]
+    base_url = app_record.get("probeBaseUrl")
+    layer: dict = {"layer": "rest-smoke", "source": "info.json concepts (model-derived)",
+                   "baseUrl": base_url, "checks": [],
+                   "counts": {"total": 0, "passed": 0, "failed": 0}}
+    if not app_record.get("hasInfoJson"):
+        layer.update(status="empty", green=None, detail=(
+            "this app has no generated static/info.json, so there is no published concept list to "
+            "derive a plan from. Regenerate it with a current generator."))
+        return layer
+    if not concepts:
+        layer.update(status="empty", green=None,
+                     detail="the app publishes no concepts, so there is no endpoint to GET.")
+        return layer
+
+    headers = {}
+    if app_record.get("apiKey"):
+        headers[app_record.get("authHeader") or "X-Api-Key"] = app_record["apiKey"]
+
+    for concept in concepts:
+        path = "/api/" + concept["route"]
+        started = time.time()
+        actual: int | None = None
+        failures: list[str] = []
+        request = urllib.request.Request(base_url + path, headers=headers)
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                actual = response.status
+                response.read()
+        except urllib.error.HTTPError as exc:
+            actual = exc.code
+            failures.append(f"HTTP {exc.code}: {exc.read().decode('utf-8', 'replace')[:200]}")
+        except urllib.error.URLError as exc:
+            failures.append(f"request failed: {exc.reason}")
+        # First, so the expectation leads and the body follows. A request that never completed has
+        # no status to compare and its own `request failed: <reason>` already says more than
+        # "expected 200, got nothing" would.
+        if actual is not None and actual != 200:
+            failures.insert(0, f"expected HTTP 200, got {actual}")
+        layer["checks"].append({
+            "id": f"concept-list-{concept['name']}",
+            "concept": concept["name"],
+            "status": "passed" if not failures else "failed",
+            "method": "GET", "path": path,
+            "expectedStatus": 200, "actualStatus": actual,
+            "durationMs": int((time.time() - started) * 1000),
+            "failures": failures,
+        })
+
+    passed = sum(1 for c in layer["checks"] if c["status"] == "passed")
+    layer["counts"] = {"total": len(layer["checks"]), "passed": passed,
+                       "failed": len(layer["checks"]) - passed}
+    layer["green"] = layer["counts"]["failed"] == 0
+    layer["status"] = "green" if layer["green"] else "red"
+    return layer
+
+
+def acceptance_dirs(app_record: dict) -> list[Path]:
+    """Where an app's `*.scenario.json` files can live, in precedence order, with no per-app config.
+
+    Same layering `npdev_explore.definition_dirs` uses for routines and for the same reason: the app
+    DEFINITION (layer 2) is the truth, but a FinalApp handed over on its own must still be testable,
+    so the app's own copy is looked at too. The generated app root is listed first because a copy
+    that travelled with the app is the one that describes THAT build."""
+    directories = []
+    for root in (app_record.get("finalAppRoot"), app_record.get("appDir"),
+                 app_record.get("appDefinitionRoot")):
+        if not root:
+            continue
+        candidate = Path(root) / "acceptance"
+        if candidate not in directories:
+            directories.append(candidate)
+    return directories
+
+
+def _acceptance_layer(app_record: dict) -> dict:
+    """Layer 2: the existing `run_acceptance`, pointed at the first discovered scenario directory.
+
+    `--base-url` mode, always: the app is already booted (this command refuses otherwise), and D2's
+    own note says that mode exists precisely so a caller that already paid for a boot does not pay
+    for a second one. Its report is embedded whole -- including its approved/unapproved rule, which
+    is not restated here because there must be one place that decides it."""
+    searched = acceptance_dirs(app_record)
+    layer: dict = {"layer": "acceptance", "searched": [str(d) for d in searched],
+                   "scenariosDir": None, "report": None}
+    chosen = next((d for d in searched if d.is_dir() and any(d.glob("*.scenario.json"))), None)
+    if chosen is None:
+        layer.update(status="empty", green=None, detail=(
+            "no *.scenario.json found in: " + ("; ".join(str(d) for d in searched) or "(nowhere to look)")))
+        return layer
+
+    layer["scenariosDir"] = str(chosen)
+    report = run_acceptance(argparse.Namespace(
+        base_url=app_record["probeBaseUrl"], scenarios=str(chosen),
+        api_key=app_record.get("apiKey") or "dev-key",
+        model=None, config=None, output=None, port=None, timeout=None,
+    ))
+    layer["report"] = report
+    layer["green"] = bool(report.get("ok"))
+    layer["status"] = "green" if layer["green"] else "red"
+    return layer
+
+
+def _browser_layer(root: Path, app_dir: Path, args: argparse.Namespace) -> dict:
+    """Layer 3: `npdev_explore.run_suite`, verbatim.
+
+    "No routines at all" is asked HERE, before calling the suite, because `run_suite` raises the same
+    ExploreError for that as for an app-wide refusal, and those are different facts: an app that
+    declares no browser routines has no browser coverage to report (`empty`), while an app whose
+    engine or lock refuses is a refusal (`refused`, and not green). `explore generate` (R3.3) can
+    fill that gap, but it is a separate, deliberate step, not something this layer calls itself --
+    so `empty` stays the ORDINARY state for an app nobody has run it on, and must not read as either
+    a pass or a failure.
+
+    Everything else -- per-routine refusals, app-wide aborts, unreached routines reported as skipped
+    -- is the suite's own decision and is inherited unchanged."""
+    import npdev_explore
+
+    layer: dict = {"layer": "browser", "report": None}
+    definitions = npdev_explore.definition_files(app_dir)
+    if not definitions:
+        layer.update(status="empty", green=None, detail=(
+            "this app declares no browser routines in: "
+            + "; ".join(str(d) for d in npdev_explore.definition_dirs(app_dir))
+            + " -- so no browser coverage was measured (not a pass, and not a failure)."))
+        return layer
+    try:
+        # `keep_engine=False`, the suite's own default: a one-shot verb must not leave a process
+        # behind, and `_stop_process` only ever stops an engine THIS run started, so an engine that
+        # was already up is untouched either way. The cost is one engine startup per routine; an app
+        # with enough routines for that to matter should pre-start an engine, or drive
+        # `explore suite --keep-engine` directly, rather than have this command silently change what
+        # is running on the machine.
+        report = npdev_explore.run_suite(
+            root, app_dir,
+            engine_port=args.engine_port, configured_root=args.engine_root,
+            api_key=args.engine_api_key)
+    except npdev_explore.ExploreError as exc:
+        layer.update(status="refused", green=False, detail=str(exc))
+        return layer
+    layer["report"] = report
+    layer["green"] = bool(report.get("green"))
+    layer["status"] = "green" if layer["green"] else "red"
+    return layer
+
+
+def run_test(args: argparse.Namespace) -> dict:
+    """R3.4: compose the three layers against ONE booted app and roll them into one verdict.
+
+    A layer that is `empty` is neither green nor red -- it measured nothing, says so, and is counted
+    separately. `ok` is false when any layer is red or refused, which is what the exit code carries.
+
+    Refusing outright (rather than writing a report full of zeros) when the app is not a healthy
+    generated app is the D4/QUAL-4 rule: a tool problem must not be rendered as a test result.
+    `probe_app` already owns that diagnosis, so its own sentence is the one the user gets."""
+    import time
+
+    root = repo_root()
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=True)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        raise CliError(
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')}. `npdev test` measures a RUNNING app -- start it "
+            f"first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    started_at = _utc_now()
+    begin = time.time()
+    layers = [
+        _rest_smoke_layer(app_record),
+        _acceptance_layer(app_record),
+        _browser_layer(root, app_dir, args),
+    ]
+    counts = {
+        "layers": len(layers),
+        "green": sum(1 for layer in layers if layer["status"] == "green"),
+        "red": sum(1 for layer in layers if layer["status"] in ("red", "refused")),
+        "empty": sum(1 for layer in layers if layer["status"] == "empty"),
+    }
+    # A run in which NOTHING measured anything is not a pass -- `run_suite`'s rule ("a summary of
+    # zero runs reads like a pass"), one level up. It is still reported rather than raised, because
+    # unlike a suite there IS something to say: which three places were looked at and what was not
+    # there, which is the actionable half of the answer.
+    nothing_measured = counts["green"] == 0 and counts["red"] == 0
+    green = counts["red"] == 0 and not nothing_measured
+    report = {
+        "schemaVersion": TEST_SCHEMA_VERSION,
+        "command": "test",
+        "ok": green,
+        "green": green,
+        "nothingMeasured": nothing_measured,
+        "appDir": str(app_dir),
+        "appName": app_record.get("name"),
+        "baseUrl": app_record.get("probeBaseUrl"),
+        "startedAt": started_at,
+        "durationMs": int((time.time() - begin) * 1000),
+        "counts": counts,
+        "layers": layers,
+    }
+
+    # Written where the app's other run artifacts already live -- `_ops/smoke-test-report.json`, the
+    # generated toolbox's own, is the neighbour.
+    #
+    # NOT passed through `npdev_monitor.redact()`, deliberately, unlike `explore`'s output (REG-153).
+    # That function is key-NAME driven and its pattern includes `pass(word)?`, which matches the
+    # ordinary word `passed` -- so redacting this report replaces `summary.passed` and
+    # `counts.passed` with "<redacted>" and destroys the pass/fail evidence that IS the report.
+    # Widening or narrowing a shared security pattern to suit one caller is the wrong trade, so the
+    # guarantee here is the stronger one instead: no credential is put in. Every field is composed
+    # explicitly from the three layer reports, and the one place this command holds the app's API key
+    # is layer 1's request header, which never reaches the result. A test asserts exactly that.
+    out = Path(args.report_out).expanduser() if args.report_out else app_dir / "_ops" / TEST_REPORT_FILENAME
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    report["reportPath"] = str(out)
+    return report
+
+
+def _test_human_summary(result: dict) -> str:
+    verdict = "GREEN" if result["green"] else ("NOTHING MEASURED" if result["nothingMeasured"] else "RED")
+    lines = [f"{verdict}  {result['appName']}  {result['baseUrl']}  ({result['durationMs']} ms)"]
+    for layer in result["layers"]:
+        lines.append(f"  [{layer['status']:<7}] {layer['layer']}")
+        if layer.get("detail"):
+            lines.append(f"      {layer['detail']}")
+        if layer["layer"] == "rest-smoke":
+            for check in layer["checks"]:
+                if check["status"] != "passed":
+                    lines.append(f"      {check['method']} {check['path']} -- "
+                                 f"{'; '.join(check['failures'])}")
+            if layer["counts"]["total"]:
+                lines.append(f"      {layer['counts']['passed']}/{layer['counts']['total']} "
+                             f"concept endpoint(s) answered 200")
+        elif layer.get("report") and layer["layer"] == "acceptance":
+            summary = layer["report"]["summary"]
+            lines.append(f"      {summary['passed']}/{summary['approvedTotal']} approved scenario(s) "
+                         f"passed, {summary['excludedUnapproved']} unapproved excluded")
+            for scenario in layer["report"]["scenarios"]:
+                if scenario["approved"] and scenario["outcome"] != "PASS":
+                    lines.append(f"      {scenario['file']}: {scenario['outcome']}"
+                                 + (f" -- {scenario['error']}" if scenario.get("error") else ""))
+                    for assertion in scenario["assertions"]:
+                        if not assertion["passed"]:
+                            lines.append(f"        {assertion['path']} {assertion['operator']} "
+                                         f"{assertion['expected']!r}, got {assertion['actual']!r}")
+        elif layer.get("report") and layer["layer"] == "browser":
+            counts = layer["report"]["counts"]
+            lines.append(f"      {counts['green']}/{counts['total']} routine(s) green, "
+                         f"{counts['red']} red, {counts['refused']} refused, {counts['skipped']} skipped")
+            # Same rule `_explore_human_summary` follows: `refused` and `skipped` stay visually
+            # distinct from `red`, and every non-green routine names its own reason here rather than
+            # only in the JSON.
+            for entry in layer["report"]["runs"]:
+                if entry["outcome"] == "green":
+                    continue
+                lines.append(f"      [{entry['outcome']}] {entry['name']}")
+                for reason in entry.get("reasons") or []:
+                    lines.append(f"        {reason}")
+    lines.append(f"  report: {result['reportPath']}")
+    return "\n".join(lines)
+
+
 def _fetch_json(url: str, headers: dict[str, str]) -> dict:
     import urllib.error
     import urllib.request
@@ -4726,6 +5341,501 @@ def _fetch_json(url: str, headers: dict[str, str]) -> dict:
         raise CliError(f"GET {url} -> HTTP {exc.code}: {body}")
     except urllib.error.URLError as exc:
         raise CliError(f"GET {url} failed: {exc.reason}")
+
+
+SEED_SCHEMA_VERSION = "npdev-seed-cli.v1"
+
+
+def run_seed(args: argparse.Namespace) -> dict:
+    """R3.2: a thin CLI wrapper around `DataSeedAdminController`'s two EXISTING endpoints --
+    `GET /api/admin/seeds` (list) and `POST /api/admin/seeds/{id}/run` -- no new server-side
+    surface. Same `--app-dir` + `npdev_monitor.probe_app` shape `run_test` already uses: resolve
+    the app, refuse (not report zeros) if it isn't a healthy running generated app, then call it
+    with whatever `X-Api-Key` the app is actually configured to accept (`apiKey`/`authHeader` from
+    the probe -- absent entirely for an `auth.mode=none` dev app, where ADMIN is granted to every
+    anonymous caller so no key is needed at all).
+    """
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+    import time
+
+    if args.seed_command not in ("list", "run"):
+        raise CliError("usage: npdev seed {list|run}")
+
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=True)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        raise CliError(
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')}. `npdev seed` calls a RUNNING app's admin seed "
+            f"endpoints -- start it first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    base_url = app_record.get("probeBaseUrl")
+    headers = {}
+    if app_record.get("apiKey"):
+        headers[app_record.get("authHeader") or "X-Api-Key"] = app_record["apiKey"]
+
+    if args.seed_command == "list":
+        seeds = _fetch_json(base_url + "/api/admin/seeds", headers)
+        return {
+            "schemaVersion": SEED_SCHEMA_VERSION, "command": "seed list", "ok": True,
+            "appDir": str(app_dir), "appName": app_record.get("name"), "baseUrl": base_url,
+            "seeds": seeds,
+        }
+
+    # seed run
+    path = f"/api/admin/seeds/{urllib.parse.quote(args.id, safe='')}/run"
+    if args.tenant_id:
+        path += "?" + urllib.parse.urlencode({"tenantId": args.tenant_id})
+    request = urllib.request.Request(base_url + path, method="POST", headers=headers)
+    started = time.time()
+    try:
+        with urllib.request.urlopen(request, timeout=args.timeout) as response:
+            report = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")[:500]
+        raise CliError(f"POST {path} -> HTTP {exc.code}: {body}")
+    except urllib.error.URLError as exc:
+        raise CliError(f"POST {path} failed: {exc.reason}")
+    return {
+        "schemaVersion": SEED_SCHEMA_VERSION, "command": "seed run", "ok": bool(report.get("ok")),
+        "appDir": str(app_dir), "appName": app_record.get("name"), "baseUrl": base_url,
+        "durationMs": int((time.time() - started) * 1000), "report": report,
+    }
+
+
+def _seed_human_summary(result: dict) -> str:
+    if result["command"] == "seed list":
+        seeds = result.get("seeds") or []
+        lines = [f"{result['appName']}  {result['baseUrl']}  -- {len(seeds)} seed(s) declared"]
+        for seed in seeds:
+            detail = f" -- {seed['description']}" if seed.get("description") else ""
+            lines.append(f"  {seed['id']}  [{seed.get('kind', 'smart')}]  {seed.get('label')}{detail}")
+        if not seeds:
+            lines.append("  (this app declares no seeds under definition/seeds/)")
+        return "\n".join(lines)
+
+    # seed run
+    report = result.get("report") or {}
+    verdict = "OK" if report.get("ok") else "FAILED"
+    lines = [f"{verdict}  seed '{report.get('seedId')}'  ({result['durationMs']} ms)"]
+    for concept, count in (report.get("createdCounts") or {}).items():
+        lines.append(f"  {concept}: {count} created")
+    if not report.get("ok"):
+        lines.append(f"  failed at record[{report.get('failedRecordIndex')}] "
+                      f"({report.get('failedConcept')}, alias={report.get('failedAlias')}): "
+                      f"{report.get('failureMessage')}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------------------------
+# R3.7: `npdev bench` -- per-app latency probe with saved baselines.
+#
+# PREMISES CHECKED FIRST (CLAUDE.md's own warning that several roadmap premises were false):
+#   - The nightly scale ladder (`scripts/proofs/run-scale-proof.ps1`,
+#     `scripts/policy/scale-proof-baseline.json`, `schemas/ai/scale-proof-report.schema.json`) DOES
+#     measure latency+memory and DOES save baselines -- but it is a synthetic-model harness bound to
+#     ONE hardcoded panel name (`ScaleProofPanel`) at model-synthesis time, PowerShell-driven, and
+#     scoped under `scripts/proofs/` (a different agent's surface this round). It answers "does the
+#     platform scale" as a maintenance/nightly concern, not "is THIS app slow right now" as a
+#     tester's on-demand question. Extending it to accept an arbitrary already-generated app's
+#     concept/panel plan would mean teaching a PowerShell proof script to read the same manifests
+#     this module already reads in Python for `test`/`seed`/`explore generate` -- a bigger, riskier
+#     change than the roadmap's own `M` sizing implies, for a genuinely different consumer. So this
+#     is a NEW verb in the CLI (matching `test`/`seed`'s own shape), not an extension of the ladder;
+#     the two intentionally share almost nothing except "measure HTTP latency with repeat samples".
+#   - `npdev monitor probe` reports app identity/health, never per-request timing -- nothing to
+#     extend there either.
+#   - R3.2 (`npdev seed`, generative `$gen` tokens) is already DONE (QUAL-18/QUAL-19), so this item's
+#     stated blocker is clear: an app can already be loaded to 100k+ rows before benching it.
+#
+# ENDPOINT PLAN, model-derived like `_rest_smoke_layer` and `explore generate` (no per-app config):
+#   - "concept list" checks reuse the EXACT source `_rest_smoke_layer` already reads
+#     (`info.json`'s `concepts: [{name, route}]`, `GET /api/<route>`) -- this is RUN-1's own surface,
+#     the landmine RUN-16 fixed part of and this item exists to let people measure without hand-rolling
+#     a timing comparison the way RUN-16 had to.
+#   - "panel" checks read `generated-ui-manifest.json`'s `panels[]` (the same manifest `explore
+#     generate` already parses) and GET `/api/runtime/metadata/ui/panels/<name>`
+#     (`RuntimeUiMetadataController.loadPanel`, verified by reading the controller, not assumed).
+#     This single generic endpoint IS the roadmap's "query" leg too: a panel's GET already executes
+#     its declared dataSource queries server-side and returns their rows -- there is no separate
+#     ad-hoc query endpoint outside a panel (confirmed by grep: no `/api/query*` mapping exists
+#     anywhere in runtime-host). So "concept list/panel/query" collapses to two endpoint KINDS, not
+#     three, and that collapse is stated here rather than silently assumed.
+#
+# MEASUREMENT HONESTY (the point of this item, and the RUN-16 lesson it exists to generalize):
+#   - Every report states its OWN sample count, mean and stdev next to p50/p95 -- never a bare
+#     number pretending to be exact.
+#   - The regression signal is RELATIVE (new p50 >= --regression-threshold times the saved p50),
+#     never an absolute millisecond ceiling. RUN-16 measured a plain "<300ms" absolute threshold
+#     flaking at 365ms under ordinary multi-agent machine contention while the SAME code was 167ms
+#     otherwise -- a swing from noise alone bigger than many real regressions. The default threshold
+#     (1.5x) sits well above that measured noise band without being so loose it misses a real
+#     regression.
+#   - A failed sample is counted and reported, never silently dropped from the total -- `failures`
+#     names the first few reasons and `failuresTruncated` says how many more were cut, so nothing
+#     measured is hidden even when the printed list is bounded.
+# ---------------------------------------------------------------------------------------------
+
+BENCH_SCHEMA_VERSION = "npdev-bench-report.v1"
+BENCH_REPORT_FILENAME = "npdev-bench-report.json"
+BENCH_BASELINE_FILENAME = "bench-baseline.json"
+BENCH_BASELINE_SCHEMA_VERSION = "npdev-bench-baseline.v1"
+# Matches the scale-proof ladder's own latency phase (20 requests) -- not copied blindly, but there
+# is no reason to invent a different default sample count for the same kind of measurement.
+DEFAULT_BENCH_SAMPLES = 20
+DEFAULT_BENCH_REGRESSION_THRESHOLD = 1.5
+# MON-21: a known-stable control endpoint measured in the SAME run, so ambient machine load (which
+# moves every endpoint's latency together) can be normalised out instead of reading as a regression.
+# /actuator/health is cheap, data-independent, and present on the dev/trial profile (actuator is
+# exposed to health,info,mappings,beans). If it is absent the bench degrades to the raw ratio.
+BENCH_CONTROL_PATH = "/actuator/health"
+BENCH_CONTROL_BASELINE_KEY = "__control__"
+
+
+def _bench_plan(app_record: dict, final_app_root: Path, *,
+                 concepts: list[str] | None, panels: list[str] | None) -> tuple[list[dict], list[str]]:
+    """The endpoint plan: every concept-list endpoint the app publishes, plus every panel endpoint,
+    unless narrowed by --concept/--panel. Returns (plan, warnings) -- a name that does not exist is a
+    WARNING (visible in both the JSON and the human summary), not a silent no-op."""
+    import npdev_explore
+
+    warnings: list[str] = []
+    plan: list[dict] = []
+
+    info = app_record.get("info") or {}
+    all_concepts = [c for c in (info.get("concepts") or [])
+                     if isinstance(c, dict) and c.get("name") and c.get("route")]
+    wanted_concepts = set(concepts) if concepts else None
+    if wanted_concepts:
+        missing = wanted_concepts - {c["name"] for c in all_concepts}
+        if missing:
+            warnings.append(f"--concept named {sorted(missing)}, not in info.json concepts -- skipped")
+    for concept in all_concepts:
+        if wanted_concepts and concept["name"] not in wanted_concepts:
+            continue
+        plan.append({"id": f"list:{concept['name']}", "kind": "concept-list",
+                     "name": concept["name"], "path": "/api/" + concept["route"]})
+
+    manifest_path = npdev_explore._manifest_path(final_app_root)
+    all_panels: list[dict] = []
+    if manifest_path is None:
+        warnings.append(f"no generated-ui-manifest.json under {final_app_root} -- panel endpoints "
+                         "skipped (concept-list checks still run; regenerate the app to add them)")
+    else:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8-sig"))
+        all_panels = [p for p in (manifest.get("panels") or []) if isinstance(p, dict) and p.get("name")]
+    wanted_panels = set(panels) if panels else None
+    if wanted_panels:
+        missing = wanted_panels - {p["name"] for p in all_panels}
+        if missing:
+            warnings.append(f"--panel named {sorted(missing)}, not in generated-ui-manifest.json "
+                             "panels -- skipped")
+    for panel in all_panels:
+        if wanted_panels and panel["name"] not in wanted_panels:
+            continue
+        import urllib.parse
+        plan.append({"id": f"panel:{panel['name']}", "kind": "panel", "name": panel["name"],
+                     "path": "/api/runtime/metadata/ui/panels/" + urllib.parse.quote(panel["name"], safe="")})
+
+    return plan, warnings
+
+
+def _bench_measure_endpoint(base_url: str, headers: dict[str, str], path: str,
+                             samples: int, timeout: float) -> tuple[list[float], list[str]]:
+    """Repeat GET `path` `samples` times, wall-clock each one with a monotonic clock. Returns
+    (latencies_ms for the requests that answered 2xx, failure reasons for the rest) -- a non-2xx or
+    unreachable sample is a counted failure, never folded into the timing average."""
+    import time
+    import urllib.error
+    import urllib.request
+
+    latencies_ms: list[float] = []
+    failures: list[str] = []
+    for _ in range(samples):
+        request = urllib.request.Request(base_url + path, headers=headers)
+        started = time.perf_counter()
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                response.read()
+                status = response.status
+        except urllib.error.HTTPError as exc:
+            exc.read()
+            failures.append(f"HTTP {exc.code}")
+            continue
+        except urllib.error.URLError as exc:
+            failures.append(f"request failed: {exc.reason}")
+            continue
+        elapsed_ms = (time.perf_counter() - started) * 1000.0
+        if 200 <= status < 300:
+            latencies_ms.append(elapsed_ms)
+        else:
+            failures.append(f"HTTP {status}")
+    return latencies_ms, failures
+
+
+def _bench_percentile(sorted_ms: list[float], pct: float) -> float:
+    """Nearest-rank percentile over an already-sorted sample -- simple, deterministic, and needs no
+    third-party stats library. `pct=50`/`pct=95` are the roadmap's own stated p50/p95."""
+    n = len(sorted_ms)
+    if n == 1:
+        return sorted_ms[0]
+    index = max(0, min(n - 1, round(pct / 100 * (n - 1))))
+    return sorted_ms[index]
+
+
+def _bench_stats(latencies_ms: list[float]) -> dict:
+    """Never a bare number: sample count, mean and stdev travel with p50/p95 so a reader can judge
+    the noise floor rather than trust one figure."""
+    import statistics
+
+    n = len(latencies_ms)
+    if n == 0:
+        return {"samples": 0, "minMs": None, "maxMs": None, "meanMs": None,
+                "p50Ms": None, "p95Ms": None, "stdevMs": None}
+    sorted_ms = sorted(latencies_ms)
+    return {
+        "samples": n,
+        "minMs": round(sorted_ms[0], 3),
+        "maxMs": round(sorted_ms[-1], 3),
+        "meanMs": round(statistics.fmean(sorted_ms), 3),
+        "p50Ms": round(_bench_percentile(sorted_ms, 50), 3),
+        "p95Ms": round(_bench_percentile(sorted_ms, 95), 3),
+        "stdevMs": round(statistics.pstdev(sorted_ms), 3) if n > 1 else 0.0,
+    }
+
+
+def _bench_baseline_path(app_dir: Path, override: str | None) -> Path:
+    return Path(override).expanduser() if override else app_dir / "_ops" / BENCH_BASELINE_FILENAME
+
+
+def _load_bench_baseline(path: Path) -> dict:
+    """Absent or unreadable is a first-run, not an error -- `run_bench` establishes it. A corrupt
+    file is treated the same way rather than raised, since a bench run must not be blockable by a
+    hand-edited baseline file; it will be overwritten with a good one at the end of this run."""
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    endpoints = data.get("endpoints")
+    return endpoints if isinstance(endpoints, dict) else {}
+
+
+def _compare_to_baseline(stats: dict, baseline_entry: dict | None, threshold: float,
+                         control_ratio: float | None = None) -> dict:
+    """RELATIVE comparison only (RUN-16's lesson) -- never an absolute ms ceiling. No baseline entry,
+    or zero successful samples on either side, means "nothing to compare" rather than a manufactured
+    regression.
+
+    MON-21: when `control_ratio` (the control endpoint's own current/baseline p50 ratio) is supplied,
+    the raw ratio is NORMALISED by it -- a machine that is uniformly slower this run (the control
+    slowed too) no longer reads as a per-endpoint regression. The report states which claim it is
+    making: `normalizedRatio` vs a raw `ratio` with `normalizationApplied: false`."""
+    if not baseline_entry or not stats.get("samples") or not baseline_entry.get("p50Ms"):
+        return {"hasBaseline": bool(baseline_entry), "regressed": False}
+    baseline_p50 = baseline_entry["p50Ms"]
+    raw_ratio = stats["p50Ms"] / baseline_p50
+    result = {
+        "hasBaseline": True,
+        "baselineP50Ms": baseline_p50,
+        "baselineSamples": baseline_entry.get("samples"),
+        "baselineMeasuredAt": baseline_entry.get("measuredAt"),
+        "ratio": round(raw_ratio, 3),
+        "thresholdRatio": threshold,
+    }
+    if control_ratio is not None and control_ratio > 0:
+        normalized = raw_ratio / control_ratio
+        result["controlRatio"] = round(control_ratio, 3)
+        result["normalizedRatio"] = round(normalized, 3)
+        result["regressed"] = normalized >= threshold
+    else:
+        result["normalizationApplied"] = False
+        result["regressed"] = raw_ratio >= threshold
+    return result
+
+
+def run_bench(args: argparse.Namespace) -> dict:
+    """R3.7: probe a RUNNING app's concept-list and panel/query endpoints with repeated samples,
+    report p50/p95/mean/stdev per endpoint, and diff against a saved per-app baseline.
+
+    Same refuse-rather-than-report-zeros rule `run_test`/`run_seed` already follow: a non-running
+    app is a CliError, not a report full of failed samples that would look like a real measurement.
+    """
+    import time
+
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=True)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        raise CliError(
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')}. `npdev bench` measures a RUNNING app -- start it "
+            f"first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    final_app_root = Path(app_record["finalAppRoot"])
+    plan, warnings = _bench_plan(app_record, final_app_root,
+                                  concepts=args.concept or None, panels=args.panel or None)
+    if not plan:
+        raise CliError("nothing to bench: " + ("; ".join(warnings) if warnings else
+                       "the app publishes no concepts and declares no panels."))
+
+    base_url = app_record.get("probeBaseUrl")
+    headers = {}
+    if app_record.get("apiKey"):
+        headers[app_record.get("authHeader") or "X-Api-Key"] = app_record["apiKey"]
+
+    baseline_path = _bench_baseline_path(app_dir, args.baseline_path)
+    baseline = _load_bench_baseline(baseline_path)
+    baseline_existed = bool(baseline)
+
+    started_at = _utc_now()
+    begin = time.time()
+
+    # MON-21: measure the control endpoint in the SAME run. Its own slow-down under ambient load is
+    # the yardstick that normalises every other endpoint's ratio, so machine load alone cannot read as
+    # a regression. A failed/absent control degrades to the raw ratio (normalizationApplied=false).
+    control_latencies_ms, control_failures = _bench_measure_endpoint(
+        base_url, headers, BENCH_CONTROL_PATH, args.samples, args.timeout)
+    control_stats = _bench_stats(control_latencies_ms)
+    control_baseline = baseline.get(BENCH_CONTROL_BASELINE_KEY) or {}
+    control_ratio = None
+    if control_stats.get("p50Ms") and control_baseline.get("p50Ms"):
+        control_ratio = control_stats["p50Ms"] / control_baseline["p50Ms"]
+
+    endpoints = []
+    for entry in plan:
+        latencies_ms, failures = _bench_measure_endpoint(
+            base_url, headers, entry["path"], args.samples, args.timeout)
+        stats = _bench_stats(latencies_ms)
+        comparison = _compare_to_baseline(
+            stats, baseline.get(entry["id"]), args.regression_threshold,
+            control_ratio=control_ratio)
+        endpoints.append({
+            **entry,
+            "stats": stats,
+            "failedSamples": len(failures),
+            # First few reasons only, with the drop COUNTED rather than hidden -- CLAUDE.md's own
+            # "if you bound coverage, SAY what was dropped" rule.
+            "failures": failures[:5],
+            "failuresTruncated": max(0, len(failures) - 5),
+            "baseline": comparison,
+        })
+
+    regressed = [e for e in endpoints if e["baseline"]["regressed"]]
+    all_failed = [e for e in endpoints if e["stats"]["samples"] == 0]
+    no_baseline = [e for e in endpoints if not e["baseline"]["hasBaseline"]]
+
+    report = {
+        "schemaVersion": BENCH_SCHEMA_VERSION,
+        "command": "bench",
+        "appDir": str(app_dir),
+        "appName": app_record.get("name"),
+        "baseUrl": base_url,
+        "startedAt": started_at,
+        "durationMs": int((time.time() - begin) * 1000),
+        "samplesPerEndpoint": args.samples,
+        "regressionThreshold": args.regression_threshold,
+        "warnings": warnings,
+        "control": {
+            "path": BENCH_CONTROL_PATH,
+            "stats": control_stats,
+            "failedSamples": len(control_failures),
+            "failures": control_failures[:5],
+            "ratio": round(control_ratio, 3) if control_ratio is not None else None,
+            "normalizationApplied": control_ratio is not None and control_ratio > 0,
+        },
+        "endpoints": endpoints,
+        "counts": {
+            "total": len(endpoints),
+            "measured": len(endpoints) - len(all_failed),
+            "allFailed": len(all_failed),
+            "noBaseline": len(no_baseline),
+            "regressed": len(regressed),
+        },
+        "ok": not regressed and not all_failed,
+        "baselinePath": str(baseline_path),
+        "baselineExistedBefore": baseline_existed,
+    }
+
+    # The FIRST run against an app always establishes the baseline -- there is nothing yet to
+    # protect, and refusing to record one would make the very next run useless too. After that, a
+    # baseline is only overwritten with --update-baseline: the same explicit-promotion discipline
+    # `explore accept` uses for one screenshot, so a bench run that catches a real regression does
+    # not quietly erase the evidence by being run a second time.
+    should_update = bool(args.update_baseline) or not baseline_existed
+    if should_update:
+        new_baseline = dict(baseline)
+        for endpoint in endpoints:
+            if endpoint["stats"]["samples"] == 0:
+                continue  # never baseline an endpoint that produced zero successful samples
+            new_baseline[endpoint["id"]] = {
+                "name": endpoint["name"], "kind": endpoint["kind"], "path": endpoint["path"],
+                "samples": endpoint["stats"]["samples"], "p50Ms": endpoint["stats"]["p50Ms"],
+                "p95Ms": endpoint["stats"]["p95Ms"], "meanMs": endpoint["stats"]["meanMs"],
+                "measuredAt": started_at,
+            }
+        if control_stats["samples"] > 0:
+            new_baseline[BENCH_CONTROL_BASELINE_KEY] = {
+                "name": "control", "kind": "control", "path": BENCH_CONTROL_PATH,
+                "samples": control_stats["samples"], "p50Ms": control_stats["p50Ms"],
+                "p95Ms": control_stats["p95Ms"], "meanMs": control_stats["meanMs"],
+                "measuredAt": started_at,
+            }
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_text(json.dumps(
+            {"schemaVersion": BENCH_BASELINE_SCHEMA_VERSION, "appName": app_record.get("name"),
+             "endpoints": new_baseline}, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    report["baselineUpdated"] = should_update
+
+    # Same non-redaction guarantee `run_test` documents: every field here is composed explicitly
+    # from measured facts, and the only place this command holds the app's API key is the request
+    # header, which never reaches the report.
+    out = Path(args.report_out).expanduser() if args.report_out else app_dir / "_ops" / BENCH_REPORT_FILENAME
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    report["reportPath"] = str(out)
+    return report
+
+
+def _bench_human_summary(result: dict) -> str:
+    if result["counts"]["regressed"]:
+        verdict = "REGRESSED"
+    elif result["counts"]["allFailed"]:
+        verdict = "FAILED"
+    else:
+        verdict = "OK"
+    lines = [f"{verdict}  {result['appName']}  {result['baseUrl']}  "
+             f"({result['counts']['measured']}/{result['counts']['total']} endpoint(s) measured, "
+             f"{result['samplesPerEndpoint']} sample(s) each, {result['durationMs']} ms total)"]
+    for warning in result["warnings"]:
+        lines.append(f"  ! {warning}")
+    for endpoint in result["endpoints"]:
+        stats = endpoint["stats"]
+        if not stats["samples"]:
+            lines.append(f"  [FAILED]     {endpoint['kind']:<12} {endpoint['name']:<24} "
+                         f"0/{result['samplesPerEndpoint']} sample(s) succeeded -- "
+                         f"{'; '.join(endpoint['failures']) or 'no successful sample'}")
+            continue
+        baseline = endpoint["baseline"]
+        tag = "REGRESSED" if baseline["regressed"] else ("no-baseline" if not baseline["hasBaseline"] else "ok")
+        line = (f"  [{tag:<10}] {endpoint['kind']:<12} {endpoint['name']:<24} "
+                f"p50={stats['p50Ms']}ms p95={stats['p95Ms']}ms mean={stats['meanMs']}ms "
+                f"stdev={stats['stdevMs']}ms n={stats['samples']}")
+        if baseline["hasBaseline"]:
+            line += f"  (baseline p50={baseline['baselineP50Ms']}ms, ratio={baseline['ratio']}x)"
+        if endpoint["failedSamples"]:
+            line += f"  [{endpoint['failedSamples']} failed sample(s)]"
+        lines.append(line)
+    lines.append(f"  baseline: {result['baselinePath']} "
+                 f"({'updated' if result['baselineUpdated'] else 'unchanged -- pass --update-baseline to promote this run'})")
+    lines.append(f"  report: {result['reportPath']}")
+    return "\n".join(lines)
 
 
 def _screen_auth_headers(args: argparse.Namespace) -> dict[str, str]:
@@ -4949,29 +6059,23 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     print(f"migration diff decision report: {decision_report}")
 
 
-def run_pack_diff(args: argparse.Namespace) -> int:
-    """PK-4 Stage A: routes to the :NPDevContract:dsl:packDiff Gradle task (PackDiffMain), which
-    diffs two pack.json documents -- no database, no filesystem beyond the two files given -- and
-    classifies every difference as ADDITIVE/BREAKING/PATCH via com.npdev.dsl.v1.pack.PackDiffEngine.
-    Purely informational, same as the Java CLI it wraps: exit code is always 0 once both files were
-    readable and diffable, whatever the classification turns out to be -- `pack publish` below is
-    what refuses.
-    """
+def _pack_diff_report(old_pack: Path, new_pack: Path, out: Path | None) -> dict:
+    """PK-4 Stage A, shared by `pack diff` and `impact` (R1.6): routes to the
+    :NPDevContract:dsl:packDiff Gradle task (PackDiffMain), which diffs two pack.json documents --
+    no database, no filesystem beyond the two files given -- and classifies every difference as
+    ADDITIVE/BREAKING/PATCH via com.npdev.dsl.v1.pack.PackDiffEngine. `out`, when given, is also
+    where the report is written; otherwise a temp file that is cleaned up once read."""
     root = repo_root()
     wrapper = gradle_wrapper(root)
     if not wrapper.exists():
         raise CliError(f"Gradle wrapper not found: {wrapper}")
-
-    old_pack = Path(args.old_pack).expanduser().resolve()
-    new_pack = Path(args.new_pack).expanduser().resolve()
     if not old_pack.exists():
         raise CliError(f"old pack not found: {old_pack}")
     if not new_pack.exists():
         raise CliError(f"new pack not found: {new_pack}")
 
-    written_report = Path(args.out).expanduser().resolve() if getattr(args, "out", None) else None
     with tempfile.TemporaryDirectory(prefix="npdev-pack-diff-") as temp_dir:
-        report_target = written_report or (Path(temp_dir) / "pack-diff-report.json")
+        report_target = out or (Path(temp_dir) / "pack-diff-report.json")
         report_target.parent.mkdir(parents=True, exist_ok=True)
         gradle_args = [
             str(wrapper),
@@ -4993,7 +6097,18 @@ def run_pack_diff(args: argparse.Namespace) -> int:
                 + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
                 + (f": {detail[-500:]}" if detail else "")
             )
-        report = read_json(report_target)
+        return read_json(report_target)
+
+
+def run_pack_diff(args: argparse.Namespace) -> int:
+    """PK-4 Stage A: see `_pack_diff_report`. Purely informational, same as the Java CLI it wraps:
+    exit code is always 0 once both files were readable and diffable, whatever the classification
+    turns out to be -- `pack publish` below is what refuses.
+    """
+    old_pack = Path(args.old_pack).expanduser().resolve()
+    new_pack = Path(args.new_pack).expanduser().resolve()
+    written_report = Path(args.out).expanduser().resolve() if getattr(args, "out", None) else None
+    report = _pack_diff_report(old_pack, new_pack, written_report)
 
     print(json.dumps(report, indent=2))
     return 0
@@ -5013,7 +6128,18 @@ def run_pack_publish(args: argparse.Namespace) -> int:
     field. The Gradle task itself always exits 0 (ignoreExitValue, same convention as validateModel
     and packDiff above), precisely so a refusal surfaces as a report instead of a Gradle build
     failure with no structured detail.
+
+    R8.5 `--push`: once (and ONLY once) this gate itself reports `allowed`, also commits
+    <new_pack> (+ a regenerated catalog-index.json, R8.4's own format) into the local git working
+    copy named by `--catalog-repo`, and pushes both the branch and the pack's own release tag to
+    `--remote`. See `_push_pack_to_catalog` for the local-first immutability refusal (an
+    already-published version's content can never be mutated, checked against on-disk bytes only,
+    before `git add`/`commit`/`push` ever runs) -- OCI is out of scope; the catalog is git-only.
     """
+    if getattr(args, "sign_with", None) and not getattr(args, "push", False):
+        raise CliError("--sign-with requires --push (there is nowhere to publish a detached "
+                        "signature to without --push landing the pack in a catalog repo)")
+
     root = repo_root()
     wrapper = gradle_wrapper(root)
     if not wrapper.exists():
@@ -5056,7 +6182,519 @@ def run_pack_publish(args: argparse.Namespace) -> int:
 
     print(json.dumps(report, indent=2))
     print(report.get("message", ""))
-    return 0 if report.get("allowed") else 2
+    if not report.get("allowed"):
+        return 2
+
+    if getattr(args, "push", False):
+        try:
+            push_report = _push_pack_to_catalog(new_pack, args)
+        except PackCatalogPublishRefusal as refusal:
+            push_report = {"ok": False, "pushed": False, "mutated": True, "message": str(refusal)}
+            print(json.dumps(push_report, indent=2))
+            return 2
+        print(json.dumps(push_report, indent=2))
+        return 0 if push_report.get("ok") else 2
+
+    return 0
+
+
+def _run_git(args: list[str], cwd: Path, *, check: bool = True) -> subprocess.CompletedProcess:
+    """Runs `git <args>` in `cwd` (a catalog repo, never THIS repo -- see this module's own R8.5
+    doc). Captured, never inherited, so a caller can fold a failure into the same structured
+    CliError convention every other pack command already uses."""
+    completed = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True, text=True)
+    if check and completed.returncode != 0:
+        raise CliError(
+            f"git {' '.join(args)} failed in {cwd} (exit {completed.returncode}): "
+            f"{(completed.stderr or completed.stdout or '').strip()}"
+        )
+    return completed
+
+
+def _pack_content_digest(file_bytes_by_relpath: dict) -> str:
+    """R8.6: a Python port of `PackCache#sha256OfTree`
+    (NPDevContract/dsl/.../pack/PackCache.java) -- SHA-256 over every `(path, bytes)` pair, sorted
+    by normalized ('/'-separated) relative path, each pair contributing `path_utf8 + NUL +
+    content_bytes + NUL` to the digest. Byte-for-byte the same algorithm PK-5 already uses to
+    content-address the machine-wide pack cache, so a digest computed here is directly comparable
+    to one `PackLockFile`/`PackCache` wrote -- not a new digest scheme, and deliberately NOT a
+    tarball hash (whose bytes would depend on mtimes/permissions/entry ordering, none of which are
+    part of a pack's actual CONTENT)."""
+    digest = hashlib.sha256()
+    for relpath in sorted(file_bytes_by_relpath):
+        digest.update(relpath.encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(file_bytes_by_relpath[relpath])
+        digest.update(b"\x00")
+    return f"sha256:{digest.hexdigest()}"
+
+
+def _pack_content_digest_of_dir(root: Path) -> str:
+    """`_pack_content_digest` read from an existing directory tree, skipping any `.git` subtree --
+    matches `PackCache.copyTree`/`sha256OfTree`'s own exclusion so a digest computed over a
+    catalog-repo working-copy directory is comparable to one computed over a freshly-fetched tree."""
+    files: dict = {}
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        if ".git" in path.relative_to(root).parts:
+            continue
+        files[path.relative_to(root).as_posix()] = path.read_bytes()
+    return _pack_content_digest(files)
+
+
+# ---------------------------------------------------------------------------------------------
+# R8.7: pack signing.
+#
+# PREMISE CHECK (done before writing any of this):
+#   1. A pack fetched from a public repo was, until this, verified only by the R8.6 content
+#      digest -- no authenticity check existed anywhere in the pipeline. TRUE: RemotePackFetcher/
+#      PackCache/PackLockFile (NPDevContract/dsl/.../pack/) content-address and re-verify on every
+#      read, but nothing anywhere asks WHO published the bytes at that digest.
+#   2. No `trust` config existed anywhere in the pack pipeline. TRUE: grepped the whole pack
+#      package and this module for "trust"/"signature"/"signing" before writing any of this --
+#      zero hits outside prose.
+#   3. The lock file can carry a new field without breaking existing locks. TRUE:
+#      `PackLockFile.read` (NPDevContract/dsl/.../pack/PackLockFile.java) only ever reads the five
+#      named fields off each pack entry via Jackson `JsonNode.get(...)`; an unrecognized sibling
+#      key (this feature's own `signature`) is silently ignored by the Java reader, never rejected
+#      -- and `PackLockFile.write` unconditionally REWRITES the whole file from its own five-field
+#      record on every `pack add`/`update`, which is exactly why `_verify_pack_signatures` below
+#      re-adds `signature` as a Python-owned overlay AFTER every Java-side fetch, the same pattern
+#      `_guard_against_remote_pack_tamper` (R8.6) already established for restoring the lock.
+#
+# SIGNING ALGORITHM: no `cryptography`/`pynacl` (or any other signing library) is installed in this
+# repo's toolchain -- checked before writing this -- and the task's own ground rules forbid adding
+# one. Python's stdlib has no asymmetric-signature primitive, so this is a compact, pure-stdlib
+# (hashlib.sha512 + Python's arbitrary-precision int/`pow`) port of the reference Ed25519 algorithm
+# (Bernstein et al., the classic ed25519.py reference implementation, RFC 8032's scheme). It is
+# verified -- NPDevCli/tests/test_pack_signing.py's Ed25519PrimitiveSelfTest -- against: many
+# random keys/messages round-tripping sign->verify; tampered message/signature/wrong-key rejection;
+# the base point's order (`l*BASE == identity`) and an encode/decode round trip. It is NOT claimed
+# to be side-channel-resistant (no constant-time guarantees anywhere in this port) -- acceptable
+# for a build-time CLI signing a public pack digest, never a runtime secret-handling path. If a
+# stronger implementation is ever wanted, the smallest upgrade is shelling out to the `git`/`ssh-
+# keygen`/`openssl` binaries already on this machine's PATH (confirmed present) for SSH- or GPG-
+# format signing -- deliberately NOT done here since that trades "no new dependency" for "a new,
+# undeclared external-binary dependency", which is the same category of problem stated differently.
+# ---------------------------------------------------------------------------------------------
+
+_ED25519_B = 256
+_ED25519_Q = 2 ** 255 - 19
+_ED25519_L = 2 ** 252 + 27742317777372353535851937790883648493
+
+
+def _ed25519_h(data: bytes) -> bytes:
+    return hashlib.sha512(data).digest()
+
+
+def _ed25519_inv(x: int) -> int:
+    return pow(x, _ED25519_Q - 2, _ED25519_Q)  # CPython's pow(base, exp, mod) is a fast C modexp
+
+
+_ED25519_D = (-121665 * _ed25519_inv(121666)) % _ED25519_Q
+_ED25519_I = pow(2, (_ED25519_Q - 1) // 4, _ED25519_Q)
+
+
+def _ed25519_xrecover(y: int) -> int:
+    xx = (y * y - 1) * _ed25519_inv(_ED25519_D * y * y + 1)
+    x = pow(xx, (_ED25519_Q + 3) // 8, _ED25519_Q)
+    if (x * x - xx) % _ED25519_Q != 0:
+        x = (x * _ED25519_I) % _ED25519_Q
+    if x % 2 != 0:
+        x = _ED25519_Q - x
+    return x
+
+
+_ED25519_BY = (4 * _ed25519_inv(5)) % _ED25519_Q
+_ED25519_BX = _ed25519_xrecover(_ED25519_BY)
+_ED25519_BASE = (_ED25519_BX % _ED25519_Q, _ED25519_BY % _ED25519_Q)
+
+
+def _ed25519_edwards(p: tuple, other: tuple) -> tuple:
+    x1, y1 = p
+    x2, y2 = other
+    x3 = (x1 * y2 + x2 * y1) * _ed25519_inv(1 + _ED25519_D * x1 * x2 * y1 * y2)
+    y3 = (y1 * y2 + x1 * x2) * _ed25519_inv(1 - _ED25519_D * x1 * x2 * y1 * y2)
+    return (x3 % _ED25519_Q, y3 % _ED25519_Q)
+
+
+def _ed25519_scalarmult(p: tuple, e: int) -> tuple:
+    if e == 0:
+        return (0, 1)
+    half = _ed25519_scalarmult(p, e // 2)
+    doubled = _ed25519_edwards(half, half)
+    return _ed25519_edwards(doubled, p) if e & 1 else doubled
+
+
+def _ed25519_encodeint(y: int) -> bytes:
+    bits = [(y >> i) & 1 for i in range(_ED25519_B)]
+    return bytes(sum(bits[i * 8 + j] << j for j in range(8)) for i in range(_ED25519_B // 8))
+
+
+def _ed25519_encodepoint(p: tuple) -> bytes:
+    x, y = p
+    bits = [(y >> i) & 1 for i in range(_ED25519_B - 1)] + [x & 1]
+    return bytes(sum(bits[i * 8 + j] << j for j in range(8)) for i in range(_ED25519_B // 8))
+
+
+def _ed25519_bit(h: bytes, i: int) -> int:
+    return (h[i // 8] >> (i % 8)) & 1
+
+
+def _ed25519_hint(m: bytes) -> int:
+    h = _ed25519_h(m)
+    return sum(2 ** i * _ed25519_bit(h, i) for i in range(2 * _ED25519_B))
+
+
+def ed25519_generate_seed() -> bytes:
+    return secrets.token_bytes(32)
+
+
+def ed25519_public_key(secret_seed: bytes) -> bytes:
+    h = _ed25519_h(secret_seed)
+    a = 2 ** (_ED25519_B - 2) + sum(2 ** i * _ed25519_bit(h, i) for i in range(3, _ED25519_B - 2))
+    return _ed25519_encodepoint(_ed25519_scalarmult(_ED25519_BASE, a))
+
+
+def ed25519_sign(message: bytes, secret_seed: bytes, public_key: bytes) -> bytes:
+    h = _ed25519_h(secret_seed)
+    a = 2 ** (_ED25519_B - 2) + sum(2 ** i * _ed25519_bit(h, i) for i in range(3, _ED25519_B - 2))
+    r = _ed25519_hint(bytes(h[i] for i in range(_ED25519_B // 8, _ED25519_B // 4)) + message)
+    r_point = _ed25519_scalarmult(_ED25519_BASE, r)
+    s = (r + _ed25519_hint(_ed25519_encodepoint(r_point) + public_key + message) * a) % _ED25519_L
+    return _ed25519_encodepoint(r_point) + _ed25519_encodeint(s)
+
+
+def _ed25519_isoncurve(p: tuple) -> bool:
+    x, y = p
+    return (-x * x + y * y - 1 - _ED25519_D * x * x * y * y) % _ED25519_Q == 0
+
+
+def _ed25519_decodeint(s: bytes) -> int:
+    return sum(2 ** i * _ed25519_bit(s, i) for i in range(_ED25519_B))
+
+
+def _ed25519_decodepoint(s: bytes) -> tuple:
+    y = sum(2 ** i * _ed25519_bit(s, i) for i in range(_ED25519_B - 1))
+    x = _ed25519_xrecover(y)
+    if (x & 1) != _ed25519_bit(s, _ED25519_B - 1):
+        x = _ED25519_Q - x
+    p = (x, y)
+    if not _ed25519_isoncurve(p):
+        raise ValueError("ed25519 point is not on the curve")
+    return p
+
+
+def ed25519_verify(signature: bytes, message: bytes, public_key: bytes) -> None:
+    """Raises ValueError naming exactly what failed (malformed length, or the actual verification
+    equality); returns None (never a bool) on success, so a caller cannot forget to check a return
+    value -- the only two outcomes are "returned" and "raised"."""
+    if len(signature) != _ED25519_B // 4:
+        raise ValueError(f"ed25519 signature must be {_ED25519_B // 4} bytes, got {len(signature)}")
+    if len(public_key) != _ED25519_B // 8:
+        raise ValueError(f"ed25519 public key must be {_ED25519_B // 8} bytes, got {len(public_key)}")
+    r_point = _ed25519_decodepoint(signature[: _ED25519_B // 8])
+    a_point = _ed25519_decodepoint(public_key)
+    s = _ed25519_decodeint(signature[_ED25519_B // 8: _ED25519_B // 4])
+    h = _ed25519_hint(_ed25519_encodepoint(r_point) + public_key + message)
+    left = _ed25519_scalarmult(_ED25519_BASE, s)
+    right = _ed25519_edwards(r_point, _ed25519_scalarmult(a_point, h))
+    if left != right:
+        raise ValueError("ed25519 signature does not verify against the given public key")
+
+
+PACK_TRUST_FILE_NAME = "npdev-trust.json"  # sibling of npdev.lock, same per-app-root convention.
+PACK_TRUST_DEFAULT_MODE = "warn"
+PACK_TRUST_MODES = ("warn", "enforce")
+
+
+def _pack_trust_path(model_path: Path) -> Path:
+    return Path(model_path).expanduser().resolve().parent / PACK_TRUST_FILE_NAME
+
+
+def _load_pack_trust_config(model_path: Path) -> dict:
+    """No `npdev-trust.json` at all is the SAFE DEFAULT (mode 'warn', zero trusted keys) -- see
+    this module's own report on why 'warn' (not 'enforce') is the default: every pack published
+    before this feature existed is unsigned, so an 'enforce'-by-default would hard-break every
+    app's existing `pack add`/`pack update` the moment this ships. 'warn' still requires
+    --allow-unsigned for every unsigned pack (never silently inherited) -- it is the flag, not the
+    mode, that keeps the done-when's "requires the explicit flag" true by default.
+    """
+    path = _pack_trust_path(model_path)
+    if not path.is_file():
+        return {"mode": PACK_TRUST_DEFAULT_MODE, "trustedKeys": {}}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as malformed:
+        raise CliError(f"{path} is not valid JSON: {malformed}")
+    if not isinstance(data, dict):
+        raise CliError(f"{path}: expected a JSON object with 'mode'/'trustedKeys'")
+    mode = data.get("mode", PACK_TRUST_DEFAULT_MODE)
+    if mode not in PACK_TRUST_MODES:
+        raise CliError(f"{path}: 'mode' must be one of {list(PACK_TRUST_MODES)}, got {mode!r}")
+    trusted_keys = data.get("trustedKeys", {})
+    if not isinstance(trusted_keys, dict):
+        raise CliError(f"{path}: 'trustedKeys' must be an object of {{keyId: hexPublicKey}}")
+    return {"mode": mode, "trustedKeys": trusted_keys}
+
+
+_GIT_COORDINATE_TRANSPORTS = ("https", "http", "ssh", "file", "git")
+
+
+def _parse_git_coordinate(from_str: str) -> tuple[str, str, str, str]:
+    """Python port of `GitCoordinate.parse` (NPDevContract/dsl/.../pack/GitCoordinate.java) -- same
+    grammar, `git+<transport>://<repo-url>[//<subpath>]@<tag>`, tag found by the LAST '@' after the
+    scheme (a `git+ssh://git@host/repo@v1` has a legitimate `user@host` earlier in the string).
+    Returns (transport, repoUrl, subpath, tag). Raises CliError (there is no shared exception type
+    with the Java side) on a malformed coordinate."""
+    if not from_str.startswith("git+"):
+        raise CliError(f"pack signature lookup only supports git+ coordinates, got: {from_str}")
+    rest = from_str[len("git+"):]
+    scheme_sep = rest.find("://")
+    if scheme_sep <= 0:
+        raise CliError(f"git+ coordinate must be 'git+<transport>://<url>[//<subpath>]@<tag>': {from_str}")
+    transport = rest[:scheme_sep]
+    if transport not in _GIT_COORDINATE_TRANSPORTS:
+        raise CliError(f"git+ transport must be one of {list(_GIT_COORDINATE_TRANSPORTS)}, "
+                        f"got '{transport}': {from_str}")
+    after_scheme = rest[scheme_sep + 3:]
+    last_at = after_scheme.rfind("@")
+    if last_at < 0 or last_at == len(after_scheme) - 1:
+        raise CliError(f"git+ coordinate must end with '@<tag>': {from_str}")
+    tag = after_scheme[last_at + 1:]
+    url_and_subpath = after_scheme[:last_at]
+    subpath_sep = url_and_subpath.find("//")
+    if subpath_sep >= 0:
+        repo_url = url_and_subpath[:subpath_sep]
+        subpath = url_and_subpath[subpath_sep + 2:]
+    else:
+        repo_url = url_and_subpath
+        subpath = ""
+    if not repo_url:
+        raise CliError(f"git+ coordinate must name a non-blank repository URL: {from_str}")
+    return transport, repo_url, subpath, tag
+
+
+def _fetch_pack_signature(from_coordinate: str, digest: str) -> dict | None:
+    """R8.7: independently (re-)clones the SAME repo at the SAME tag `from_coordinate` names (a
+    second, small clone, separate from PK-5's own Java-side fetch -- there is no way to reach into
+    that fetch's already-deleted temp clone from here) and looks for a detached signature at
+    `signatures/sha256/<digestHex>.sig`, deliberately at the CATALOG REPO ROOT rather than inside
+    the pack's own `packs/<id>/` subpath: that subpath is exactly what `PackCache.sha256OfTree`
+    hashes into the content digest (R8.6's own doc: "the digest covers the WHOLE cached tree"), so
+    a signature file living INSIDE it would have to sign a digest that already includes its own
+    bytes -- circular. Living at the catalog root instead, in the SAME commit/tag as the pack
+    content, sidesteps that for every subpath shape `pack publish --push` produces.
+
+    Returns the parsed signature JSON, or None when no signature file exists for this digest
+    (UNSIGNED, not an error). Raises CliError only for an actual fetch/parse failure (git error,
+    malformed JSON) -- never conflated with "unsigned", which is a legitimate, expected outcome.
+    """
+    _transport, repo_url, _subpath, tag = _parse_git_coordinate(from_coordinate)
+    full_url = f"{_transport}://{repo_url}"
+    digest_hex = digest.split(":", 1)[1] if ":" in digest else digest
+    with tempfile.TemporaryDirectory(prefix="npdev-pack-sig-fetch-") as temp_dir:
+        dest = Path(temp_dir) / "clone"
+        completed = subprocess.run(
+            ["git", "clone", "--quiet", "--branch", tag, "--depth", "1", full_url, str(dest)],
+            capture_output=True, text=True,
+        )
+        if completed.returncode != 0:
+            raise CliError(
+                f"could not fetch signature metadata for pack coordinate {from_coordinate}: "
+                f"git clone failed (exit {completed.returncode}): "
+                f"{(completed.stderr or completed.stdout or '').strip()}"
+            )
+        sig_path = dest / "signatures" / "sha256" / f"{digest_hex}.sig"
+        if not sig_path.is_file():
+            return None
+        try:
+            return json.loads(sig_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as malformed:
+            raise CliError(f"signature file for {from_coordinate} is not valid JSON: {sig_path}: {malformed}")
+
+
+def _load_pack_signing_key(path: Path) -> dict:
+    if not path.is_file():
+        raise CliError(f"--sign-with key file not found: {path}")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as malformed:
+        raise CliError(f"--sign-with key file is not valid JSON: {path}: {malformed}")
+    for field in ("keyId", "privateKey", "publicKey"):
+        if not data.get(field):
+            raise CliError(f"--sign-with key file {path} is missing required field '{field}'")
+    return data
+
+
+def run_pack_sign_keygen(args: argparse.Namespace) -> int:
+    """R8.7: generates an Ed25519 keypair for `pack publish --sign-with`. Writes the PRIVATE key
+    (alongside its own public key + keyId, so a caller need never separately re-derive the public
+    half) to --out as JSON, best-effort chmod 600. The public key + keyId are always ALSO printed
+    to stdout on their own -- that is the only part that ever needs to leave this machine, into a
+    consumer's npdev-trust.json trustedKeys.
+    """
+    seed = ed25519_generate_seed()
+    public_key = ed25519_public_key(seed)
+    key_id = hashlib.sha256(public_key).hexdigest()[:16]
+    record = {
+        "schemaVersion": "npdev-pack-signing-key.v1",
+        "keyId": key_id,
+        "algorithm": "ed25519",
+        "privateKey": seed.hex(),
+        "publicKey": public_key.hex(),
+    }
+    out_path = Path(args.out).expanduser().resolve()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(out_path, 0o600)
+    except OSError:
+        pass  # best-effort: meaningless on some filesystems, never worth failing the command over
+    print(json.dumps({"keyId": key_id, "algorithm": "ed25519", "publicKey": public_key.hex(),
+                       "privateKeyFile": str(out_path)}, indent=2))
+    print(f"Private key written to {out_path} -- keep it secret. Share only the printed publicKey "
+          f"(a consumer adds it to npdev-trust.json under trustedKeys.{key_id}).")
+    return 0
+
+
+def _push_pack_to_catalog(new_pack_path: Path, args: argparse.Namespace) -> dict:
+    """R8.5: commits `new_pack_path` (+ a regenerated `catalog-index.json`, R8.4's own writer --
+    `_scan_pack_catalog_entries`/`_write_pack_catalog_index`, never a second index format) into the
+    LOCAL git working copy named by `--catalog-repo`, and -- only when `--push` was actually passed
+    -- pushes both the commit's branch and the pack's own release tag to `--remote`.
+
+    Immutability refusal happens FIRST, comparing on-disk bytes only (this catalog-repo working
+    copy's OWN currently-checked-out `packs/<id>/pack.json`, no `git fetch`/`ls-remote` and no
+    `git add`/`commit`/`push` yet at this point) -- a push that would need to be undone afterwards
+    is not a guard; this one runs before any of `git add`/`commit`/`push` is ever invoked. A caller
+    is expected to keep `--catalog-repo` reasonably up to date (`git pull`) the same way any
+    git-based publish workflow requires; `git push`'s own non-fast-forward rejection is the
+    remaining backstop for a stale local clone, exercised for real by this module's own tests.
+    """
+    if not getattr(args, "catalog_repo", None):
+        raise CliError("--push requires --catalog-repo (a local git working copy of the catalog repo)")
+    catalog_repo = Path(args.catalog_repo).expanduser().resolve()
+    if not (catalog_repo / ".git").exists():
+        raise CliError(f"--catalog-repo {catalog_repo} is not a git working copy (no .git found there)")
+
+    new_pack = read_json(new_pack_path)
+    pack_id = new_pack.get("pack")
+    version = new_pack.get("version")
+    if not pack_id or not version:
+        raise CliError(f"{new_pack_path} has no 'pack'/'version' -- cannot publish it to the catalog")
+
+    new_pack_bytes = Path(new_pack_path).read_bytes()
+    target_dir = catalog_repo / "packs" / pack_id
+    target_file = target_dir / "pack.json"
+    new_digest = _pack_content_digest({"pack.json": new_pack_bytes})
+
+    if target_file.is_file():
+        existing = read_json(target_file)
+        existing_version = existing.get("version")
+        existing_digest = _pack_content_digest_of_dir(target_dir)
+        if existing_version == version:
+            if existing_digest == new_digest:
+                return {
+                    "ok": True, "pushed": False, "mutated": False, "alreadyPublished": True,
+                    "packId": pack_id, "version": version,
+                    "message": f"pack '{pack_id}' @ {version} is already published in the catalog "
+                               f"with identical content -- nothing to commit or push.",
+                }
+            raise PackCatalogPublishRefusal(
+                f"REFUSED (before any git add/commit/push): pack '{pack_id}' version {version} is "
+                f"already published in {target_file} with DIFFERENT content -- published digest "
+                f"{existing_digest}, this publish's digest {new_digest}. An already-published "
+                f"version is immutable; bump the version to publish new content."
+            )
+        # A different version than what's currently published -- a legitimate new release, proceed.
+
+    remote = getattr(args, "remote", None) or "origin"
+    repository_url = getattr(args, "repository_url", None)
+    if not repository_url:
+        origin = _run_git(["remote", "get-url", remote], catalog_repo, check=False)
+        repository_url = (origin.stdout or "").strip()
+        if not repository_url:
+            raise CliError(
+                f"--repository-url was not given and could not be read from --catalog-repo's "
+                f"'{remote}' remote -- pass --repository-url explicitly"
+            )
+
+    tag_template = getattr(args, "tag_template", None) or "v{version}"
+    branch = getattr(args, "branch", None)
+    if not branch:
+        branch = _run_git(["rev-parse", "--abbrev-ref", "HEAD"], catalog_repo).stdout.strip()
+    tag = tag_template.format(pack=pack_id, version=version)
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_file.write_bytes(new_pack_bytes)
+
+    entries, problems = _scan_pack_catalog_entries(catalog_repo, repository_url, tag_template)
+    catalog_index_path = catalog_repo / "catalog-index.json"
+    _write_pack_catalog_index(catalog_index_path, repository_url, entries)
+
+    # R8.7: sign the pack's own content digest -- recomputed over the tree AS ACTUALLY WRITTEN
+    # (target_dir, post-write), not the pre-write single-file `new_digest` above, so a future
+    # fragment-carrying pack (see PackCache's own "whole tree, not just pack.json" doc) still signs
+    # what a consumer will actually fetch and digest. Written to `signatures/sha256/<hex>.sig` at
+    # the CATALOG ROOT, deliberately outside `packs/<id>/` -- see `_fetch_pack_signature`'s own doc
+    # for why (signing a digest that already contains its own signature file is circular).
+    signed_git_paths: list[str] = []
+    signature_result = None
+    sign_with = getattr(args, "sign_with", None)
+    if sign_with:
+        signing_digest = _pack_content_digest_of_dir(target_dir)
+        key_record = _load_pack_signing_key(Path(sign_with).expanduser().resolve())
+        signature_bytes = ed25519_sign(
+            signing_digest.encode("utf-8"),
+            bytes.fromhex(key_record["privateKey"]),
+            bytes.fromhex(key_record["publicKey"]),
+        )
+        digest_hex = signing_digest.split(":", 1)[1]
+        sig_dir = catalog_repo / "signatures" / "sha256"
+        sig_dir.mkdir(parents=True, exist_ok=True)
+        sig_path = sig_dir / f"{digest_hex}.sig"
+        sig_path.write_text(json.dumps({
+            "schemaVersion": "npdev-pack-signature.v1",
+            "algorithm": "ed25519",
+            "keyId": key_record["keyId"],
+            "digest": signing_digest,
+            "signature": signature_bytes.hex(),
+        }, indent=2) + "\n", encoding="utf-8")
+        signed_git_paths = [sig_path.relative_to(catalog_repo).as_posix()]
+        signature_result = {"keyId": key_record["keyId"], "digest": signing_digest, "sigPath": str(sig_path)}
+
+    user_name = getattr(args, "git_user_name", None) or "npdev-pack-publish"
+    user_email = getattr(args, "git_user_email", None) or "npdev-pack-publish@localhost"
+    _run_git(["add", target_file.relative_to(catalog_repo).as_posix(), "catalog-index.json",
+              *signed_git_paths], catalog_repo)
+    _run_git(
+        ["-c", f"user.name={user_name}", "-c", f"user.email={user_email}",
+         "commit", "--quiet", "-m", f"publish {pack_id} v{version}"],
+        catalog_repo,
+    )
+    commit_sha = _run_git(["rev-parse", "HEAD"], catalog_repo).stdout.strip()
+    _run_git(["tag", tag], catalog_repo)
+
+    stripped_url = repository_url.rstrip("/")
+    if stripped_url.endswith(".git"):
+        stripped_url = stripped_url[: -len(".git")]
+    coordinate = f"git+{stripped_url}.git//packs/{pack_id}@{tag}"
+
+    pushed = False
+    if getattr(args, "push", False):
+        _run_git(["push", remote, branch], catalog_repo)
+        _run_git(["push", remote, tag], catalog_repo)
+        pushed = True
+
+    return {
+        "ok": True, "pushed": pushed, "mutated": False, "alreadyPublished": False,
+        "packId": pack_id, "version": version, "tag": tag, "branch": branch, "remote": remote,
+        "coordinate": coordinate, "commit": commit_sha,
+        "catalogRepo": str(catalog_repo), "catalogIndexPath": str(catalog_index_path),
+        "problems": problems, "signed": signature_result is not None, "signature": signature_result,
+    }
 
 
 def _add_merge_args(parser: argparse.ArgumentParser) -> None:
@@ -5074,11 +6712,26 @@ def _add_merge_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> dict:
-    """Shared by `author diff-gate` and `author submit`: invokes
+    """Shared by `author diff-gate` and `author submit` (and, since R1.6, `impact`): invokes
     `:generator:authorDiffGate` (AuthoringDiffGate, AI_AUTHORING_CONTRACT-2026-07-31.md Part 9,
     piece E2 -- "the load-bearing piece") and returns the parsed report. Raises CliError with the
     report's own diagnostics on failure -- never a bare non-zero exit with no explanation (C7:
     diff-gate failures must be structured, actionable diagnostics, not prose).
+
+    R1.6 fix: the Gradle subprocess is captured (matching `_classify_model_change_report`/
+    `_pack_diff_report`'s own convention), not left to inherit this process's stdout. Measured live
+    while building `impact`'s MCP tool: with the old bare `subprocess.run(..., check=True)`, the
+    caller's captured stdout was ~20s of raw Gradle build log (daemon-fork notice, task-execution
+    lines, `BUILD SUCCESSFUL in Ns`) followed by the JSON report -- harmless for a human at a
+    terminal, but it broke `npdev_impact`'s own promise of ONE parseable report for any caller that
+    reads stdout without a `--output` file (the MCP tool is exactly such a caller, and
+    `npdev_author_diff_gate`'s MCP tool had the identical, pre-existing defect). `ignoreExitValue =
+    true` on the `authorDiffGate` Gradle task (NPDevGenerator/generator/build.gradle) means a
+    'refused' gate result (exit 2 inside the JVM) never made Gradle itself exit non-zero, so
+    `check=True` was never actually the thing keeping refusals working -- switching to `check=False`
+    with an explicit decision_report existence check (identical to `_pack_diff_report`'s own
+    failure-diagnostic shape) preserves that behavior exactly while adding real detail on a genuine
+    Gradle-level failure instead of pointing at now-absent inherited console output.
     """
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -5136,10 +6789,15 @@ def _run_authoring_gate(args: argparse.Namespace, archive_dir: Path | None) -> d
     ]
     if os.name == "nt" and wrapper.suffix.lower() == ".bat":
         command = ["cmd.exe", "/c"] + command
-    subprocess.run(command, cwd=generator_root, check=True)
+    completed = subprocess.run(command, cwd=generator_root, check=False, capture_output=True, text=True)
 
     if not decision_report.exists():
-        raise CliError(f"diff gate did not produce a report at {decision_report} -- see Gradle output above.")
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise CliError(
+            f"diff gate did not produce a report at {decision_report}"
+            + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+            + (f": {detail[-1000:]}" if detail else "")
+        )
     return read_json(decision_report)
 
 
@@ -5471,16 +7129,20 @@ def run_release_candidate(args: argparse.Namespace, root: Path) -> dict:
 def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     """Run full structural + semantic validation via the standalone Java validator.
 
-    Invokes the :NPDevContract:dsl:validateModel Gradle task (ModelValidatorMain), which runs
-    the exact validation the generator runs -- without generating -- and writes a typed
-    npdev-validation-report.v2 report. Returns 0 when the model passes (or has warnings only),
-    2 when it has errors. The report is the loopable contract an AI-authoring agent self-corrects
-    against; here we also echo it to stdout.
+    Runs ModelValidatorMain, which runs the exact validation the generator runs -- without
+    generating -- and writes a typed npdev-validation-report.v2 report. Returns 0 when the model
+    passes (or has warnings only), 2 when it has errors. The report is the loopable contract an
+    AI-authoring agent self-corrects against; here we also echo it to stdout.
+
+    R1.1: reached directly as `java -cp npdev-ai-tools.jar ModelValidatorMain ...` when that jar is
+    staged, else through the :NPDevContract:dsl:validateModel Gradle task exactly as before. This is
+    the single hottest call in the authoring loop -- it runs after every model edit -- and the Gradle
+    layer contributed nothing but a classpath: the class is pure stdlib+Jackson+dsl. Measured
+    4.61s -> 2.24s median on canonical-demo (see _default_ai_tools_jar for the full numbers), with a
+    byte-identical report: the model path is the only environment-dependent value in it, and both
+    paths hand the validator the same resolved absolute path.
     """
     root = repo_root()
-    wrapper = gradle_wrapper(root)
-    if not wrapper.exists():
-        raise CliError(f"Gradle wrapper not found: {wrapper}")
     model = Path(model_path).expanduser().resolve()
     if not model.exists():
         raise CliError(f"model not found: {model}")
@@ -5489,26 +7151,35 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     with tempfile.TemporaryDirectory(prefix="npdev-validate-") as temp_dir:
         report_target = written_report or (Path(temp_dir) / "validation-report.json")
         report_target.parent.mkdir(parents=True, exist_ok=True)
-        gradle_args = [
-            str(wrapper),
-            *gradle_project_cache_args("root"),
-            ":NPDevContract:dsl:validateModel",
-            f"-PmodelPath={model}",
-            f"-PreportOut={report_target}",
-            "-q",
-            "--console=plain",
-        ]
-        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
-            gradle_args = ["cmd.exe", "/c"] + gradle_args
+        command = _ai_tools_command(
+            AI_TOOLS_VALIDATOR_MAIN, [str(model), "--out", str(report_target)])
+        warm_path = command is not None
+        if command is None:
+            wrapper = gradle_wrapper(root)
+            if not wrapper.exists():
+                raise CliError(f"Gradle wrapper not found: {wrapper}")
+            command = [
+                str(wrapper),
+                *gradle_project_cache_args("root"),
+                ":NPDevContract:dsl:validateModel",
+                f"-PmodelPath={model}",
+                f"-PreportOut={report_target}",
+                "-q",
+                "--console=plain",
+            ]
+            if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+                command = ["cmd.exe", "/c"] + command
         # Capture the subprocess output: the Java validator echoes the report to stdout, but the
         # report FILE is the channel we read, and the CLI is the single stdout authority (printing
         # captured output too would emit two JSON docs). On failure, surface it in the error.
-        completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
+        started = time.perf_counter()
+        completed = subprocess.run(command, cwd=root, check=False, capture_output=True, text=True)
+        elapsed_ms = int((time.perf_counter() - started) * 1000)
         if not report_target.exists():
             detail = (completed.stderr or completed.stdout or "").strip()
             raise CliError(
                 "validator did not produce a report"
-                + (f" (gradle exit {completed.returncode})" if completed.returncode else "")
+                + (f" (validator exit {completed.returncode})" if completed.returncode else "")
                 + (f": {detail[-500:]}" if detail else "")
             )
         report = read_json(report_target)
@@ -5516,6 +7187,8 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     _capture_validation(model, report)
     print(json.dumps(report, indent=2))
     _print_boundary_limits(report)
+    route = "warm" if warm_path else "gradle"
+    print(f"validate: {elapsed_ms} ms ({route} path)", file=sys.stderr)
     return 2 if report.get("status") == "failed" else 0
 
 
@@ -5562,12 +7235,459 @@ def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, st
     return 2 if report.get("status") == "failed" else 0
 
 
+def _pack_lock_path(model_path: Path) -> Path:
+    return Path(model_path).expanduser().resolve().parent / PACK_LOCK_FILE_NAME
+
+
+def _read_lock_entries_from_text(text: str | None) -> dict:
+    """Parses an `npdev.lock` document's `packs` object. Never raises -- a missing, corrupt or
+    unexpectedly-shaped lock is just "nothing to compare against" (empty dict), since this is only
+    ever used for the drift COMPARISON below, never as the source of truth PackLockFile itself is."""
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        return {}
+    packs = data.get("packs") if isinstance(data, dict) else None
+    return packs if isinstance(packs, dict) else {}
+
+
+def _guard_against_remote_pack_tamper(model_path: Path, before_text: str | None, task: str) -> None:
+    """R8.6: refuse -- LOCALLY, restoring the previous npdev.lock, before anything downstream ever
+    reads the newly-cached bytes as trustworthy -- when `<task>` (packAdd/packUpdate, which just
+    re-ran the real PK-5 fetch+digest machinery over the network) reports the SAME `from` coordinate
+    at the SAME resolvedVersion as before, but with a DIFFERENT content digest.
+
+    That combination -- same coordinate, same version, different bytes -- is never a legitimate
+    outcome: a real new release always bumps the version (that is what PackPublishGate/semver
+    honesty exists to enforce on the publishing side). It is exactly the signature of a mutated git
+    tag: an attacker (or a broken CI job) force-moved the tag this coordinate names to point at
+    different content without changing the version string the lock already trusted.
+
+    Deliberately reuses the digest RemotePackFetcher/PackCache/PackLockFile already computed on
+    both the prior AND the fresh fetch (no independent digest computation here, no new fetch
+    primitive) -- this function only ever compares two already-trustworthy strings the Java PK-5
+    machinery wrote into npdev.lock before and after this call.
+    """
+    lock_path = _pack_lock_path(model_path)
+    after_text = lock_path.read_text(encoding="utf-8") if lock_path.is_file() else None
+    before_entries = _read_lock_entries_from_text(before_text)
+    after_entries = _read_lock_entries_from_text(after_text)
+
+    mismatches = []
+    for pack_id, new_entry in after_entries.items():
+        old_entry = before_entries.get(pack_id)
+        if not isinstance(old_entry, dict) or not isinstance(new_entry, dict):
+            continue
+        old_from = str(old_entry.get("from") or "")
+        new_from = str(new_entry.get("from") or "")
+        if not old_from or old_from != new_from:
+            continue  # not a remote pack held at the same coordinate before -- nothing to compare
+        old_version = str(old_entry.get("resolvedVersion") or "")
+        new_version = str(new_entry.get("resolvedVersion") or "")
+        old_digest = str(old_entry.get("digest") or "")
+        new_digest = str(new_entry.get("digest") or "")
+        if old_version and old_version == new_version and old_digest and old_digest != new_digest:
+            mismatches.append((pack_id, old_from, old_version, old_digest, new_digest))
+
+    if not mismatches:
+        return
+
+    # Restore the lock to what it was before this call, BEFORE reporting anything -- the freshly
+    # (re-)fetched content must never be left as what npdev.lock trusts once its digest is shown to
+    # disagree with what was previously locked at the same coordinate and version.
+    if before_text is not None:
+        lock_path.write_text(before_text, encoding="utf-8")
+    else:
+        lock_path.unlink(missing_ok=True)
+
+    lines = [
+        f"REFUSED: `npdev pack {task}` re-fetched a REMOTE pack whose tag now points at DIFFERENT "
+        f"content under an UNCHANGED version -- the signature of a mutated/moved git tag. "
+        f"{lock_path} has been restored to its previous, trusted contents; nothing was left pointing "
+        f"at the mutated fetch.",
+    ]
+    for pack_id, from_coord, version, old_digest, new_digest in mismatches:
+        lines.append(
+            f"  pack '{pack_id}' @ {version} ({from_coord}): locked digest {old_digest} != "
+            f"freshly re-fetched digest {new_digest}"
+        )
+    lines.append(
+        "A legitimate content change always ships under a NEW version (see `npdev pack publish`'s "
+        "semver-honesty gate) -- npdev never silently accepts a content change under a version "
+        "number it has already locked."
+    )
+    raise CliError("\n".join(lines))
+
+
+def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path, args: argparse.Namespace) -> int:
+    """Wraps `_run_pack_gradle_task` for `packAdd`/`packUpdate` -- the two tasks that actually
+    touch the network and can rewrite npdev.lock with freshly-fetched remote content -- with the
+    R8.6 tamper guard above, THEN (R8.7) the signature-verification gate. `packList`/`packWhy`
+    never fetch or rewrite the lock, so they call `_run_pack_gradle_task` directly, unwrapped.
+    Order matters: a mutated-tag tamper is a stronger, unconditional signal than "unsigned" and
+    must be caught and rolled back FIRST, before signature verification ever looks at (and
+    potentially re-persists a `signature` field onto) content the tamper guard would have refused.
+    """
+    lock_path = _pack_lock_path(model_path)
+    before_text = lock_path.read_text(encoding="utf-8") if lock_path.is_file() else None
+    code = _run_pack_gradle_task(task, model_path)
+    if code == 0:
+        _guard_against_remote_pack_tamper(model_path, before_text, task)
+        _verify_pack_signatures(model_path, before_text, args)
+    return code
+
+
+def _classify_pack_signature(pack_id: str, entry: dict, trust: dict, allow_unsigned: bool) -> dict:
+    """R8.7's per-pack-entry trust decision, factored out of `_verify_pack_signatures` (R8.3: so
+    `run_pack_verify` below can classify the SAME way -- read-only, never mutating/raising -- rather
+    than inventing a second notion of "is this pack ok"). Pure: fetches the detached signature (the
+    one real network/git call, via `_fetch_pack_signature` -- its own CliError on an actual fetch
+    failure propagates unchanged, never conflated with "unsigned") and returns a dict, never raises
+    for a classification outcome:
+
+        {"status": "LOCAL" | "VERIFIED" | "UNSIGNED_ACCEPTED" | "UNSIGNED_REFUSED"
+                  | "UNKNOWN_SIGNER" | "BAD_SIGNATURE",
+         "message": "" or a REFUSED (...) sentence naming exactly which of the three named classes
+                     applies (see `_verify_pack_signatures`'s own doc for what each means),
+         "signatureField": the dict to store as entry["signature"], or None when nothing should be
+                            written (a refusal, or a LOCAL pack that was never checked at all)}
+
+    `_verify_pack_signatures` (mutating, used by `pack add`/`pack update`) turns a *_REFUSED/
+    UNKNOWN_SIGNER/BAD_SIGNATURE status into the exact same CliError + lock-rollback it always did;
+    `run_pack_verify` reports every status back to the caller instead, so several packs' failures
+    can be seen together rather than stopping at the first one.
+    """
+    from_coord = str(entry.get("from") or "")
+    digest = str(entry.get("digest") or "")
+    if not from_coord or not digest:
+        return {"status": "LOCAL", "message": "", "signatureField": None}
+
+    mode = trust["mode"]
+    trusted_keys = trust["trustedKeys"]
+    sig_record = _fetch_pack_signature(from_coord, digest)  # CliError propagates as-is (fetch failure)
+
+    if sig_record is None:
+        if mode == "enforce":
+            return {"status": "UNSIGNED_REFUSED", "signatureField": None, "message": (
+                f"REFUSED (UNSIGNED, trust mode 'enforce'): pack '{pack_id}' @ "
+                f"{entry.get('resolvedVersion')} ({from_coord}) has no detached signature for "
+                f"digest {digest} -- 'enforce' mode never accepts an unsigned pack, and "
+                f"--allow-unsigned cannot override it. Publish a signed version, or relax "
+                f"npdev-trust.json's mode to 'warn'."
+            )}
+        if not allow_unsigned:
+            return {"status": "UNSIGNED_REFUSED", "signatureField": None, "message": (
+                f"REFUSED (UNSIGNED): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
+                f"({from_coord}) has no detached signature for digest {digest}. Pass "
+                f"--allow-unsigned to accept it explicitly -- that decision is recorded in "
+                f"npdev.lock, not silently inherited."
+            )}
+        return {"status": "UNSIGNED_ACCEPTED", "message": "",
+                "signatureField": {"status": "unsigned", "allowedUnsigned": True}}
+
+    key_id = str(sig_record.get("keyId") or "")
+    trusted_public_key_hex = trusted_keys.get(key_id)
+    if not trusted_public_key_hex:
+        return {"status": "UNKNOWN_SIGNER", "signatureField": None, "message": (
+            f"REFUSED (UNKNOWN_SIGNER): pack '{pack_id}' @ {entry.get('resolvedVersion')} "
+            f"({from_coord}) is signed by keyId '{key_id}', which is not in "
+            f"npdev-trust.json's trustedKeys. Add it there once verified through another "
+            f"channel -- --allow-unsigned has no effect here, this pack IS signed, just not by "
+            f"a key you trust yet."
+        )}
+    try:
+        signature_bytes = bytes.fromhex(str(sig_record.get("signature") or ""))
+        public_key_bytes = bytes.fromhex(trusted_public_key_hex)
+        ed25519_verify(signature_bytes, digest.encode("utf-8"), public_key_bytes)
+    except ValueError as bad_signature:
+        return {"status": "BAD_SIGNATURE", "signatureField": None, "message": (
+            f"REFUSED (BAD_SIGNATURE): pack '{pack_id}' @ {entry.get('resolvedVersion')}'s "
+            f"detached signature does not verify against trusted key '{key_id}' for digest "
+            f"{digest} -- {bad_signature}. This is either tampering or a corrupted publish."
+        )}
+    return {"status": "VERIFIED", "message": "",
+            "signatureField": {"status": "verified", "keyId": key_id, "algorithm": "ed25519"}}
+
+
+def _verify_pack_signatures(model_path: Path, before_text: str | None, args: argparse.Namespace) -> None:
+    """R8.7: after a successful packAdd/packUpdate fetch (and after R8.6's tamper guard has already
+    passed), verify every REMOTE pack entry's detached Ed25519 signature against
+    npdev-trust.json's trusted keys before this npdev.lock is allowed to stand as what the app
+    trusts. Three DISTINCT, named refusals -- never conflated into one generic message, since a
+    caller needs to know which applies:
+
+      - UNSIGNED: no detached signature was published for this pack's digest. Accepted only with
+        --allow-unsigned -- and NEVER in trust.mode 'enforce', where no flag can bypass it. When
+        accepted, the acceptance is written into npdev.lock's own entry
+        (`signature: {status: "unsigned", allowedUnsigned: true}`) so a teammate reviewing a lock
+        diff sees the decision was made explicitly, never silently inherited (the done-when's own
+        "and the lock records it").
+      - UNKNOWN_SIGNER: a signature exists but its keyId is not in npdev-trust.json's trustedKeys.
+        NEVER bypassable by --allow-unsigned -- that flag is about the ABSENCE of a signature, not
+        an untrusted identity; forcing this through would defeat the point of signing entirely.
+      - BAD_SIGNATURE: a signature exists, its signer IS trusted, but it does not verify against
+        the pack's own locked digest -- tampering or a corrupted publish. NEVER bypassable.
+
+    On ANY refusal, npdev.lock is restored to `before_text` first (the same rollback discipline
+    `_guard_against_remote_pack_tamper` already established), so a caller never ends up with a lock
+    that trusts content this check just refused.
+
+    The actual per-entry decision lives in `_classify_pack_signature` (R8.3 factored this out so
+    `npdev pack verify` can reuse it read-only) -- this function's own job is just: loop, translate
+    a refusal classification into the CliError + rollback this command has always raised, and persist
+    an accepted classification's `signature` field exactly as before.
+    """
+    lock_path = _pack_lock_path(model_path)
+    if not lock_path.is_file():
+        return
+    try:
+        lock_doc = json.loads(lock_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return  # a malformed lock is not this function's job to diagnose -- PackLockFile owns that
+    packs = lock_doc.get("packs")
+    if not isinstance(packs, dict):
+        return
+
+    trust = _load_pack_trust_config(model_path)
+    allow_unsigned = bool(getattr(args, "allow_unsigned", False))
+
+    def _refuse(message: str) -> None:
+        if before_text is not None:
+            lock_path.write_text(before_text, encoding="utf-8")
+        else:
+            lock_path.unlink(missing_ok=True)
+        raise CliError(message)
+
+    changed = False
+    for pack_id in sorted(packs):
+        entry = packs[pack_id]
+        if not isinstance(entry, dict):
+            continue
+        result = _classify_pack_signature(pack_id, entry, trust, allow_unsigned)
+        if result["status"] == "LOCAL":
+            continue
+        if result["status"] in ("UNSIGNED_REFUSED", "UNKNOWN_SIGNER", "BAD_SIGNATURE"):
+            _refuse(result["message"])
+        entry["signature"] = result["signatureField"]
+        changed = True
+
+    if changed:
+        lock_path.write_text(json.dumps(lock_doc, indent=2) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------------------------
+# R8.3: `npdev pack verify` -- the pack conformance harness. Composes what already exists rather
+# than inventing a second notion of "is this pack ok": `_pack_content_digest`/
+# `_pack_content_digest_of_dir` (R8.6) for the digest, `_classify_pack_signature`/
+# `_load_pack_trust_config` (R8.7, factored out above) for signing/trust, and a small, DECLARED-
+# SHALLOW structural check against the real `NPDevContract/schemas/pack.schema.json` for shape.
+#
+# PREMISE CHECK: does a full JSON-Schema validation of a pack.json already exist anywhere this
+# module can reuse? `validate_json_schema` (this file) wraps the SAME ajv-based
+# `validate-json-schema.mjs` every model.schema.json check already uses -- tried it directly
+# against pack.schema.json first, before writing any of this: MissingRefError, because
+# pack.schema.json's concept/panel/flow/... items `$ref` into "model.schema.json#/$defs/..." by a
+# bare relative filename, and the Node validator (`scripts/quality/json-schema-validator/
+# validate-json-schema.mjs`) only ever `ajv.compile()`s the ONE schema file it was pointed at --
+# it never registers model.schema.json as a second schema ajv could resolve that $ref against.
+# Fixing that is a change to `validate-json-schema.mjs`, which is outside this module's owned
+# surface (NPDevCli/npdev_cli.py + its tests) -- so `_pack_schema_shallow_check` below deliberately
+# validates only the pack.json document's OWN top-level shape (required/type/pattern/const/enum/
+# minLength/additionalProperties, one level into a plain nested object like `forkedFrom`) and does
+# NOT attempt to validate INSIDE a `concepts`/`panels`/... array item, since those items are exactly
+# what the unreachable $refs describe. That deeper shape is not unchecked in practice: it is what
+# `npdev pack add`'s own Gradle-backed compile step already validates the moment the pack is
+# actually consumed -- duplicating it here in a second, necessarily-approximate form is the exact
+# "one place updated, its twin forgotten" hazard CLAUDE.md's REG-108/REG-104 note warns about, so
+# this deliberately stays a top-level check plus a pointer to where the deep one already lives.
+# ---------------------------------------------------------------------------------------------
+
+def _pack_schema_shallow_check_value(value: object, subschema: dict, path: str) -> list[str]:
+    violations: list[str] = []
+    expected_type = subschema.get("type")
+    if expected_type == "string":
+        if not isinstance(value, str):
+            violations.append(f"{path}: expected a string, got {type(value).__name__}")
+            return violations
+        min_length = subschema.get("minLength")
+        if min_length is not None and len(value) < min_length:
+            violations.append(f"{path}: shorter than minLength {min_length}")
+        pattern = subschema.get("pattern")
+        if pattern and not re.match(pattern, value):
+            violations.append(f"{path}: {value!r} does not match required pattern {pattern!r}")
+        const = subschema.get("const")
+        if const is not None and value != const:
+            violations.append(f"{path}: must equal {const!r}, got {value!r}")
+        enum = subschema.get("enum")
+        if enum and value not in enum:
+            violations.append(f"{path}: must be one of {enum}, got {value!r}")
+    elif expected_type == "array":
+        if not isinstance(value, list):
+            violations.append(f"{path}: expected an array, got {type(value).__name__}")
+            return violations
+        min_items = subschema.get("minItems")
+        if min_items is not None and len(value) < min_items:
+            violations.append(f"{path}: has {len(value)} entr(y/ies), fewer than minItems {min_items}")
+        # Deliberately no per-item validation -- see this section's own module comment: array items
+        # here are exactly the $ref-into-model.schema.json shapes this shallow checker cannot resolve.
+    elif expected_type == "object":
+        if not isinstance(value, dict):
+            violations.append(f"{path}: expected an object, got {type(value).__name__}")
+            return violations
+        if "$ref" not in subschema and ("properties" in subschema or "required" in subschema):
+            violations.extend(_pack_schema_shallow_check(value, subschema, _path=path))
+    return violations
+
+
+def _pack_schema_shallow_check(doc: object, schema: dict, *, _path: str = "") -> list[str]:
+    if not isinstance(doc, dict):
+        return [f"{_path or '/'}: expected a JSON object, got {type(doc).__name__}"]
+    violations: list[str] = []
+    for key in schema.get("required") or []:
+        if key not in doc:
+            violations.append(f"{_path}/{key}: required property is missing")
+    properties = schema.get("properties") or {}
+    if schema.get("additionalProperties") is False:
+        allowed = set(properties.keys())
+        for key in doc.keys():
+            if key not in allowed:
+                violations.append(f"{_path}/{key}: unexpected property (not declared by pack.schema.json)")
+    for key, subschema in properties.items():
+        if key in doc:
+            violations.extend(_pack_schema_shallow_check_value(doc[key], subschema, f"{_path}/{key}"))
+    return violations
+
+
+def _verify_pack_standalone(pack_path: Path, args: argparse.Namespace) -> dict:
+    """`--pack` mode: structural (shallow) schema check + content digest (always computed;
+    optionally checked against `--against-digest`) + an optional signature/trust check when
+    `--from` names an already-published git+ coordinate for this exact content."""
+    pack_dir: Path | None = None
+    if pack_path.is_dir():
+        pack_dir = pack_path
+        pack_json_path = pack_path / "pack.json"
+    else:
+        pack_json_path = pack_path
+    if not pack_json_path.is_file():
+        return {"ok": False, "mode": "pack", "pack": str(pack_json_path),
+                "reason": "NOT_FOUND", "message": f"no pack.json found at {pack_json_path}"}
+
+    try:
+        doc = read_json(pack_json_path)
+    except CliError as malformed:
+        return {"ok": False, "mode": "pack", "pack": str(pack_json_path),
+                "reason": "MALFORMED_JSON", "message": str(malformed)}
+
+    schema = read_json(repo_root() / "NPDevContract" / "schemas" / "pack.schema.json")
+    violations = _pack_schema_shallow_check(doc, schema)
+    schema_ok = not violations
+
+    computed_digest = (
+        _pack_content_digest_of_dir(pack_dir) if pack_dir is not None
+        else _pack_content_digest({"pack.json": pack_json_path.read_bytes()})
+    )
+    against_digest = getattr(args, "against_digest", None)
+    digest_ok = True
+    digest_reason = None
+    if against_digest and against_digest != computed_digest:
+        digest_ok = False
+        digest_reason = (f"DIGEST_MISMATCH: expected {against_digest}, computed {computed_digest} "
+                          f"-- the pack's content does not match what was declared/locked")
+
+    signature_result = None
+    signature_ok = True
+    from_coord = getattr(args, "from_coord", None)
+    if from_coord:
+        trust_override = getattr(args, "trust", None)
+        trust_path = Path(trust_override).expanduser().resolve() if trust_override else pack_json_path
+        trust = _load_pack_trust_config(trust_path)
+        allow_unsigned = bool(getattr(args, "allow_unsigned", False))
+        fake_entry = {"from": from_coord, "digest": computed_digest, "resolvedVersion": doc.get("version")}
+        signature_result = _classify_pack_signature(str(doc.get("pack") or "?"), fake_entry, trust, allow_unsigned)
+        signature_ok = signature_result["status"] in ("LOCAL", "VERIFIED", "UNSIGNED_ACCEPTED")
+
+    ok = schema_ok and digest_ok and signature_ok
+    return {
+        "ok": ok, "mode": "pack", "pack": str(pack_json_path),
+        "packId": doc.get("pack"), "version": doc.get("version"),
+        "schemaValid": schema_ok, "schemaViolations": violations,
+        "digest": computed_digest, "digestOk": digest_ok, "digestReason": digest_reason,
+        "signature": signature_result,
+    }
+
+
+def _verify_pack_model(model_path: Path, args: argparse.Namespace) -> dict:
+    """`--model` mode: read-only re-check of every REMOTE pack entry currently in `model_path`'s
+    npdev.lock against npdev-trust.json, via the exact same `_classify_pack_signature` `pack add`/
+    `pack update` use -- never mutates the lock (unlike `_verify_pack_signatures`), and reports
+    every pack's outcome instead of stopping at the first refusal."""
+    lock_path = _pack_lock_path(model_path)
+    if not lock_path.is_file():
+        return {"ok": False, "mode": "model", "model": str(model_path), "packs": [],
+                "reason": "NO_LOCK", "message": f"no {PACK_LOCK_FILE_NAME} found next to {model_path} "
+                                                 f"-- run `npdev pack add` first"}
+    try:
+        lock_doc = json.loads(lock_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as malformed:
+        return {"ok": False, "mode": "model", "model": str(model_path), "packs": [],
+                "reason": "MALFORMED_LOCK", "message": f"{lock_path} is not valid JSON: {malformed}"}
+    packs = lock_doc.get("packs")
+    if not isinstance(packs, dict):
+        packs = {}
+
+    trust = _load_pack_trust_config(model_path)
+    allow_unsigned = bool(getattr(args, "allow_unsigned", False))
+    results = []
+    ok = True
+    for pack_id in sorted(packs):
+        entry = packs[pack_id]
+        if not isinstance(entry, dict):
+            continue
+        classification = _classify_pack_signature(pack_id, entry, trust, allow_unsigned)
+        passed = classification["status"] in ("LOCAL", "VERIFIED", "UNSIGNED_ACCEPTED")
+        ok = ok and passed
+        results.append({
+            "pack": pack_id, "status": classification["status"], "ok": passed,
+            "resolvedVersion": entry.get("resolvedVersion"),
+            "reason": classification["message"] or None,
+        })
+    return {"ok": ok, "mode": "model", "model": str(model_path), "trustMode": trust["mode"], "packs": results}
+
+
+def run_pack_verify(args: argparse.Namespace) -> int:
+    """R8.3: `npdev pack verify` -- refuses a malformed/untrusted pack with a NAMED reason per
+    failure class (SCHEMA_INVALID's own violation strings, DIGEST_MISMATCH, UNSIGNED_REFUSED,
+    UNKNOWN_SIGNER, BAD_SIGNATURE -- see `_verify_pack_signatures`'s doc for what the last three
+    mean) and passes a conforming one -- exactly the done-when. Returns 0 when everything checked
+    passes, 2 on any structured refusal (same convention `pack publish` already uses), never
+    raising CliError for an ordinary "this pack failed a check" outcome.
+    """
+    pack = getattr(args, "pack", None)
+    model = getattr(args, "model", None)
+    if bool(pack) == bool(model):
+        raise CliError("`pack verify` requires exactly one of --pack or --model")
+
+    report = (
+        _verify_pack_standalone(Path(pack).expanduser().resolve(), args) if pack
+        else _verify_pack_model(Path(model).expanduser().resolve(), args)
+    )
+    print(json.dumps(report, indent=2))
+    if report.get("message"):
+        print(report["message"])
+    return 0 if report.get("ok") else 2
+
+
 def run_pack_add(args: argparse.Namespace) -> int:
-    return _run_pack_gradle_task("packAdd", Path(args.model))
+    from_catalog = getattr(args, "from_catalog", None)
+    if from_catalog:
+        _add_pack_from_catalog(Path(args.model), from_catalog, args)
+    return _run_pack_gradle_task_with_tamper_guard("packAdd", Path(args.model), args)
 
 
 def run_pack_update(args: argparse.Namespace) -> int:
-    return _run_pack_gradle_task("packUpdate", Path(args.model))
+    return _run_pack_gradle_task_with_tamper_guard("packUpdate", Path(args.model), args)
 
 
 def run_pack_list(args: argparse.Namespace) -> int:
@@ -5576,6 +7696,938 @@ def run_pack_list(args: argparse.Namespace) -> int:
 
 def run_pack_why(args: argparse.Namespace) -> int:
     return _run_pack_gradle_task("packWhy", Path(args.model), {"packId": args.pack_id})
+
+
+# ---------------------------------------------------------------------------------------------
+# R8.4: `npdev pack search` + the NPR catalog index.
+#
+# PREMISE CHECK (done before writing any of this): the fetch/cache/lock substrate this depends on
+# is real and already live -- PackDependencyGraphWalker.resolveRemotePackFile, RemotePackFetcher
+# and PackCache (PK-5) resolve a KNOWN `from` coordinate end to end, digest-verified, with
+# `npdev generate`/`validate` never touching the network at all (only `pack add`/`update` do,
+# gated by NetworkPolicy). What was actually missing is discovery: nothing let an author find a
+# coordinate by NAME. `PackDependencyGraphWalker.defaultPackFile` was confirmed to resolve a
+# TRANSITIVE dependency only as `<rootDir>/packs/<id>/pack.json` -- "still local files only, no
+# registry yet" -- which is why `_add_pack_from_catalog` below only ever writes a DIRECT `from`
+# entry into the app's own model; a transitive dependency published only in a pack's own `packs[]`
+# still needs a locally-vendored copy (or its own resolvable `from`) exactly as PACK-13 measured.
+#
+# NETWORK ACCESS AS A DESIGN DECISION (not an implementation detail, per this task's own brief):
+# `catalog-index.json` is fetched over plain read-only HTTPS (`urllib.request`, no credentials, no
+# write access to anything) and CACHED locally (`_pack_catalog_cache_path()`). A stale cache is
+# served with a loud, unmissable warning naming exactly why (`meta["fetchError"]`) -- never silent.
+# An empty `packs: []` result must always mean "the catalog is genuinely empty", never "the network
+# was unreachable and nobody said so" -- so `_load_pack_catalog` RAISES when there is neither a
+# fresh fetch nor a usable cache, rather than returning an empty list that would look identical to
+# a real empty catalog. This was verified against the REAL github.com/MarceloGiazzon/NPR repo while
+# building this feature: the repo and its one published pack (`packs/user/pack.json`, tagged
+# `v1.0.0` at the repo root) are real and fetchable, but no `catalog-index.json` exists there yet
+# (a live 404) -- `run_pack_build_catalog` below is the tool that produces one; publishing it to
+# NPR is left to the repo owner (or R8.5's future `pack publish --push`), not done by this command.
+# ---------------------------------------------------------------------------------------------
+
+PACK_LOCK_FILE_NAME = "npdev.lock"  # matches PackLockFile.FILE_NAME (Java) -- kept as a literal
+# here rather than shelled out to read: this string is a stable, documented file name, not a value
+# that can drift independently of the format checks in NPDevContract/dsl's own tests.
+PACK_CATALOG_SCHEMA_VERSION = "npdev-pack-catalog.v1"
+# The real NPR pack repo (github.com/MarceloGiazzon/NPR) -- confirmed live and reachable while this
+# was built (README.md + packs/user/pack.json fetched for real over HTTPS). It has no
+# catalog-index.json yet, so a fresh `pack search` against the default URL today reports a clean
+# 404-derived refusal (or a stale-cache warning on a second run) rather than a silent empty list --
+# exactly the "never fail open" contract this module documents above.
+DEFAULT_PACK_CATALOG_URL = "https://raw.githubusercontent.com/MarceloGiazzon/NPR/main/catalog-index.json"
+ENV_PACK_CATALOG_URL = "NPDEV_PACK_CATALOG_URL"
+ENV_PACK_CATALOG_CACHE = "NPDEV_PACK_CATALOG_CACHE"
+
+
+def _pack_catalog_cache_path() -> Path:
+    override = os.environ.get(ENV_PACK_CATALOG_CACHE)
+    if override:
+        return Path(override).expanduser()
+    return Path.home() / ".npdev" / "catalog-cache.json"
+
+
+def _pack_catalog_url(explicit: str | None) -> str:
+    return explicit or os.environ.get(ENV_PACK_CATALOG_URL) or DEFAULT_PACK_CATALOG_URL
+
+
+def _fetch_pack_catalog_http(url: str, *, timeout: float = 10.0) -> tuple[dict | None, str | None]:
+    """One real HTTPS GET, no credentials, no retries beyond urllib's own. Returns
+    (parsed_catalog, None) on success or (None, human-readable reason) on any failure -- never
+    raises, so the caller can decide whether a failure means "fall back to cache" or "refuse"."""
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(url, headers={"User-Agent": "npdev-cli", "Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        return None, f"HTTP {exc.code} from {url}"
+    except urllib.error.URLError as exc:
+        return None, f"could not reach {url}: {exc.reason}"
+    except (TimeoutError, OSError, ValueError) as exc:
+        return None, f"could not reach {url}: {exc}"
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return None, f"{url} did not return valid JSON: {exc}"
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("packs"), list):
+        return None, f"{url} is not a valid npdev pack catalog (expected an object with a 'packs' array)"
+    return parsed, None
+
+
+def _load_pack_catalog(url: str, *, refresh: bool) -> tuple[dict, dict]:
+    """Returns (catalog, meta). `meta` is `{"status": "fresh"|"stale", "source", "fetchedAt",
+    "fetchError", "cachePath"}` -- always present, always naming exactly what happened, so a
+    caller can print the same staleness warning `pack search` and `pack add --from-catalog` both
+    show. Raises CliError -- never returns an empty catalog -- when there is neither a fresh fetch
+    nor a usable cache: see this section's own module-level doc for why."""
+    cache_path = _pack_catalog_cache_path()
+    cached_catalog: dict | None = None
+    cached_source = None
+    cached_fetched_at = None
+    if cache_path.is_file():
+        try:
+            wrapper = json.loads(cache_path.read_text(encoding="utf-8"))
+            if isinstance(wrapper, dict) and isinstance(wrapper.get("catalog"), dict):
+                cached_catalog = wrapper["catalog"]
+                cached_source = wrapper.get("source")
+                cached_fetched_at = wrapper.get("fetchedAt")
+        except (OSError, json.JSONDecodeError):
+            cached_catalog = None  # a corrupt cache is treated as no cache, never a crash
+
+    fetch_error = "network not attempted (--offline)"
+    if refresh:
+        fetched, fetch_error = _fetch_pack_catalog_http(url)
+        if fetched is not None:
+            fetched_at = _utc_now()
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps(
+                {"source": url, "fetchedAt": fetched_at, "catalog": fetched},
+                indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            return fetched, {"status": "fresh", "source": url, "fetchedAt": fetched_at,
+                              "fetchError": None, "cachePath": str(cache_path)}
+
+    if cached_catalog is not None:
+        return cached_catalog, {
+            "status": "stale", "source": cached_source or url, "fetchedAt": cached_fetched_at,
+            "fetchError": fetch_error, "cachePath": str(cache_path),
+        }
+
+    raise CliError(
+        f"no cached pack catalog, and could not fetch a fresh one from {url}: {fetch_error}. "
+        f"(The cache would live at {cache_path} after a successful fetch.) Refusing rather than "
+        f"reporting zero results, which would look like 'no packs match' instead of 'could not check'."
+    )
+
+
+def run_pack_search(args: argparse.Namespace) -> int:
+    """R8.4: the pack ecosystem's missing front door. Filters the cached/fetched catalog by a
+    case-insensitive substring against pack id/description/category -- no query lists everything.
+    """
+    url = _pack_catalog_url(args.catalog_url)
+    catalog, meta = _load_pack_catalog(url, refresh=not args.offline)
+    query = (args.query or "").strip().lower()
+    entries = [e for e in catalog.get("packs", []) if isinstance(e, dict)]
+    matches = [
+        e for e in entries
+        if not query
+        or query in str(e.get("pack", "")).lower()
+        or query in str(e.get("description", "")).lower()
+        or query in str(e.get("category", "")).lower()
+    ]
+    if meta["status"] == "stale":
+        # To stderr (not stdout) so --json's stdout stays one clean parseable document, but ALWAYS
+        # printed, never conditional on --json -- staleness must never be silent either way.
+        print(f"WARNING: serving a CACHED catalog (fetched {meta.get('fetchedAt') or 'unknown time'}, "
+              f"{meta.get('cachePath')}) -- could not reach {meta.get('source')}: {meta.get('fetchError')}",
+              file=sys.stderr)
+    result = {
+        "schemaVersion": "npdev-pack-search.v1",
+        "command": "pack search",
+        "ok": True,
+        "query": args.query or "",
+        "catalogSource": meta.get("source"),
+        "catalogStatus": meta["status"],
+        "catalogFetchedAt": meta.get("fetchedAt"),
+        "catalogStaleReason": meta.get("fetchError") if meta["status"] == "stale" else None,
+        "count": len(matches),
+        "results": matches,
+    }
+    _print_result(result, args)
+    return 0
+
+
+def _scan_pack_catalog_entries(repo_dir: Path, repository_url: str, tag_template: str) -> tuple[list[dict], list[str]]:
+    """R8.4/R8.5 shared core: scans a local checkout of an NPR-shaped pack repo
+    (`packs/<name>/pack.json` per pack -- the layout github.com/MarceloGiazzon/NPR already uses)
+    and returns `(entries, problems)` in the exact shape `catalog-index.json`'s own `packs[]` uses.
+    Pulled out of `run_pack_build_catalog` (its sole caller until R8.5) so `pack publish --push`
+    reuses the SAME index-building logic instead of a second, drifting implementation -- both
+    commands must always compute an entry's `from` coordinate identically, since a discrepancy
+    there is exactly the kind of bug that only shows up as "catalog says X but git has Y".
+    """
+    packs_dir = repo_dir / "packs"
+    if not packs_dir.is_dir():
+        raise CliError(f"no packs/ directory under {repo_dir} -- expected {packs_dir}")
+
+    repo_url = repository_url.rstrip("/")
+    if repo_url.endswith(".git"):
+        repo_url = repo_url[: -len(".git")]
+
+    entries = []
+    problems = []
+    for pack_json in sorted(packs_dir.glob("*/pack.json")):
+        try:
+            data = read_json(pack_json)
+        except CliError as exc:
+            problems.append(f"{pack_json}: {exc} -- skipped")
+            continue
+        pack_id = data.get("pack")
+        version = data.get("version")
+        if not pack_id or not version:
+            problems.append(f"{pack_json}: missing 'pack' or 'version' -- skipped")
+            continue
+        tag = tag_template.format(pack=pack_id, version=version)
+        subpath = pack_json.parent.relative_to(repo_dir).as_posix()
+        coordinate = f"git+{repo_url}.git//{subpath}@{tag}"
+        entries.append({
+            "pack": pack_id,
+            "version": version,
+            "description": data.get("description", ""),
+            "category": data.get("category", "other"),
+            "author": data.get("author", ""),
+            "path": subpath,
+            "from": coordinate,
+        })
+    return entries, problems
+
+
+def _write_pack_catalog_index(out_path: Path, repository_url: str, entries: list[dict]) -> dict:
+    catalog = {
+        "schemaVersion": PACK_CATALOG_SCHEMA_VERSION,
+        "repository": repository_url,
+        "generatedAt": _utc_now(),
+        "packs": entries,
+    }
+    out_path.write_text(json.dumps(catalog, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return catalog
+
+
+def run_pack_build_catalog(args: argparse.Namespace) -> int:
+    """R8.4 (shared index format with R8.5): scans a local checkout of an NPR-shaped pack repo
+    (`packs/<name>/pack.json` per pack -- the layout github.com/MarceloGiazzon/NPR already uses)
+    and writes `catalog-index.json`, the artifact `pack search` fetches. Writes a LOCAL FILE ONLY
+    -- publishing it (committing + pushing to the catalog repo) is a separate, manual step today,
+    or via R8.5's `pack publish --push`; this command itself still never touches git or the network.
+
+    `--tag-template` exists because NPR's own convention today is a single repo-wide release tag
+    (`v1.0.0`), confirmed live -- there is exactly one published pack as of this writing, so a real
+    per-pack tagging scheme has never actually been exercised with two packs at different versions.
+    Stated plainly rather than invented: whoever publishes a second pack to NPR must decide that
+    scheme for real, and this template is the seam the decision plugs into.
+    """
+    repo_dir = Path(args.repo_dir).expanduser().resolve()
+    entries, problems = _scan_pack_catalog_entries(repo_dir, args.repository_url, args.tag_template)
+
+    out_path = Path(args.out).expanduser() if args.out else repo_dir / "catalog-index.json"
+    _write_pack_catalog_index(out_path, args.repository_url, entries)
+
+    report = {
+        "schemaVersion": "npdev-pack-catalog-build.v1",
+        "command": "pack build-catalog",
+        "ok": not problems,
+        "repoDir": str(repo_dir),
+        "outPath": str(out_path),
+        "packCount": len(entries),
+        "problems": problems,
+    }
+    print(json.dumps(report, indent=2))
+    return 0 if not problems else 2
+
+
+def _add_pack_from_catalog(model_path: Path, pack_name: str, args: argparse.Namespace) -> None:
+    """R8.4: `npdev pack add --from-catalog <name>` -- resolve `name` against the catalog and
+    write its `from` coordinate into the model's OWN `packs[]`, exactly the shape an author would
+    hand-write from a coordinate they looked up themselves. Everything after this point (the
+    network fetch, the digest, npdev.lock) is the ALREADY-PROVEN PK-5 machinery
+    (PackDependencyGraphWalker/RemotePackFetcher/PackCache) invoked by the `packAdd` Gradle task
+    `run_pack_add` runs immediately after calling this -- this function only ever edits JSON, never
+    touches the network or the pack cache itself, so there remains exactly ONE resolver in this
+    codebase, not a second one built alongside it.
+    """
+    model_path = Path(model_path).expanduser().resolve()
+    if not model_path.is_file():
+        raise CliError(f"model not found: {model_path}")
+    url = _pack_catalog_url(getattr(args, "catalog_url", None))
+    catalog, meta = _load_pack_catalog(url, refresh=not getattr(args, "offline", False))
+    if meta["status"] == "stale":
+        print(f"WARNING: resolving '{pack_name}' from a CACHED catalog (fetched "
+              f"{meta.get('fetchedAt') or 'unknown time'}) -- could not reach {meta.get('source')}: "
+              f"{meta.get('fetchError')}", file=sys.stderr)
+
+    entries = [e for e in catalog.get("packs", []) if isinstance(e, dict)]
+    match = next((e for e in entries if e.get("pack") == pack_name), None)
+    if match is None:
+        available = ", ".join(sorted(e.get("pack", "?") for e in entries)) or "(catalog is empty)"
+        raise CliError(f"no pack named {pack_name!r} in the catalog ({meta.get('source')}). "
+                        f"Available: {available}")
+    coordinate = match.get("from")
+    if not coordinate:
+        raise CliError(f"catalog entry for {pack_name!r} has no 'from' coordinate -- malformed catalog")
+
+    model = read_json(model_path)
+    packs = model.setdefault("packs", [])
+    if not isinstance(packs, list):
+        raise CliError(f"{model_path}: top-level 'packs' is not an array, refusing to append")
+    if any(isinstance(e, dict) and e.get("from") == coordinate for e in packs):
+        print(f"'{pack_name}' is already declared in {model_path} at this coordinate -- nothing to add.")
+        return
+    if any(isinstance(e, dict) and e.get("as") == pack_name for e in packs):
+        raise CliError(f"{model_path} already declares a pack aliased {pack_name!r} at a different "
+                        f"coordinate -- resolve the conflict by hand before --from-catalog")
+    packs.append({"from": coordinate})
+    model_path.write_text(json.dumps(model, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    print(f"added pack {pack_name!r} to {model_path}: {coordinate}")
+
+
+def _pack_export_reference_targets(concept: dict):
+    """Yields (fieldLabel, get, set) for every reference-bearing string this exporter rewrites:
+    each `fields[].reference` (either the shorthand string form or the `{target: ...}` object
+    form -- model.schema.json's `field.reference` is a `oneOf` of both) and the concept's own
+    `satelliteOf` (PK-6: a pack-qualified reference to a satellite's base concept). Deliberately
+    scoped to `concepts[]` only, matching both pre-existing single-concept export paths
+    (NPDevSamples/scripts/packs/export-concept-to-pack.ps1 and the generated
+    GeneratedPackCatalogController's /api/admin/packs/export) -- panels/queries/flows/etc. carry
+    their own much larger reference vocabulary (ModelSourceResolver.rewriteKnownMemberReferenceFields)
+    that no concept-export path has ever touched.
+    """
+    concept_name = concept.get("name", "?")
+    satellite_of = concept.get("satelliteOf")
+    if isinstance(satellite_of, str) and satellite_of:
+        def _get_sat():
+            return concept.get("satelliteOf")
+
+        def _set_sat(value):
+            concept["satelliteOf"] = value
+
+        yield f"{concept_name}.satelliteOf", _get_sat, _set_sat
+    for field in concept.get("fields", None) or []:
+        if not isinstance(field, dict):
+            continue
+        field_name = field.get("name", "?")
+        reference = field.get("reference")
+        if isinstance(reference, str) and reference:
+            def _get_str(f=field):
+                return f.get("reference")
+
+            def _set_str(value, f=field):
+                f["reference"] = value
+
+            yield f"{concept_name}.{field_name}.reference", _get_str, _set_str
+        elif isinstance(reference, dict) and isinstance(reference.get("target"), str) and reference.get("target"):
+            def _get_obj(f=field):
+                return f["reference"]["target"]
+
+            def _set_obj(value, f=field):
+                f["reference"]["target"] = value
+
+            yield f"{concept_name}.{field_name}.reference.target", _get_obj, _set_obj
+
+
+def _pack_export_classify_inline(exported_concepts: list[dict], export_set: set[str],
+                                 packs_root: Path) -> tuple[list[dict], list[dict], dict[str, str], list[dict]]:
+    """PACK-14 fallback: the inline reference classification, kept for a fresh checkout with no staged
+    npdev-ai-tools.jar (or no java). The primary path is _pack_export_classify -> the shared Java
+    PackExportReferenceClassifierMain."""
+    rewrites: list[dict] = []
+    cross_pack_versions: dict[str, str] = {}
+    unresolved: list[dict] = []
+    for concept in exported_concepts:
+        for field_label, get_target, set_target in _pack_export_reference_targets(concept):
+            target = get_target()
+            local_name = target.split("::", 1)[-1] if "::" in target else target
+            if local_name in export_set:
+                if target != local_name:
+                    set_target(local_name)
+                    rewrites.append({"field": field_label, "from": target, "to": local_name})
+                continue
+            if "::" in target:
+                prefix = target.split("::", 1)[0]
+                sibling_pack_json = packs_root / prefix / "pack.json"
+                if sibling_pack_json.exists():
+                    sibling = read_json(sibling_pack_json)
+                    version = str(sibling.get("version", "")).strip()
+                    parts = version.split(".")
+                    if len(parts) >= 2 and parts[0].isdigit() and parts[1].isdigit():
+                        cross_pack_versions[prefix] = f"^{parts[0]}.{parts[1]}"
+                    else:
+                        cross_pack_versions.setdefault(prefix, "^0.0")
+                    continue
+            unresolved.append({"field": field_label, "target": target})
+    return exported_concepts, rewrites, cross_pack_versions, unresolved
+
+
+def _pack_export_classify(exported_concepts: list[dict], export_set: set[str],
+                          packs_root: Path) -> tuple[list[dict], list[dict], dict[str, str], list[dict]]:
+    """PACK-14: the single reference-classification implementation is the Java
+    PackExportReferenceClassifier (entry point PackExportReferenceClassifierMain), shared with the
+    generated controller. Run it directly as `java -cp npdev-ai-tools.jar` when available; fall back to
+    the inline copy only when the jar/java is absent (R1.1's mandatory fallback)."""
+    command = _ai_tools_command("com.npdev.dsl.v1.cli.PackExportReferenceClassifierMain", [])
+    if command is not None:
+        payload = json.dumps({
+            "concepts": exported_concepts,
+            "exportSet": sorted(export_set),
+            "packsRoot": str(packs_root),
+        })
+        try:
+            completed = subprocess.run(command, input=payload, capture_output=True, text=True, timeout=120)
+            if completed.returncode == 0:
+                result = json.loads(completed.stdout)
+                return (result["concepts"], result["rewrites"],
+                        result["crossPackVersions"], result["unresolved"])
+        except (subprocess.SubprocessError, json.JSONDecodeError, KeyError, OSError):
+            pass  # fall through to the inline path
+    return _pack_export_classify_inline(exported_concepts, export_set, packs_root)
+
+
+def run_pack_export(args: argparse.Namespace) -> int:
+    """R8.2: a real `npdev pack export` verb, replacing the ONLY-previously-real path from a
+    working app concept to a reusable pack -- an external one-concept PowerShell script
+    (NPDevSamples/scripts/packs/export-concept-to-pack.ps1) that copied a concept's raw JSON
+    verbatim into a new pack.json with zero reference handling and zero schema validation.
+    (A second, equally single-concept, equally reference-blind path also existed: the generated
+    app's own `POST /api/admin/packs/export`, `GeneratedPackCatalogController.exportConceptToPack`
+    -- out of scope here since it lives in a mustache template this task does not own, but the
+    roadmap's "the ONLY path is a PowerShell script" premise was already false before this change.)
+
+    Multi-member: `--concepts A,B,C` exports several concepts from the same source `concepts[]`
+    array (an app model.json's own root-declared concepts, or another pack.json's) into one new
+    pack.json, together.
+
+    Reference handling is the substantive part (the roadmap's own framing). Every
+    `fields[].reference` / `satelliteOf` string among the exported concepts is classified:
+      - target's bare name is one of the OTHER exported concepts -> rewritten to INTRA-PACK form
+        (the bare name), regardless of what qualifier it carried before. This is what lets a
+        multi-concept subgraph compose cleanly under its new pack id.
+      - target already carries a `otherPack::Name` qualifier and `otherPack` is a real sibling
+        pack under NPDevContract/packs -- a genuine cross-pack dependency. Left AS-IS (cross-pack
+        references are qualifier-stable regardless of which pack does the referencing -- see
+        ModelSourceResolver's QUALIFIED_REF_NOOP), and `otherPack` is added to the new pack's
+        own `packs[]` (PK-3 transitive dependency) with a `^major.minor` constraint read from that
+        sibling pack's own current version, so composition can actually find it.
+      - anything else (a bare name that is not among the exported concepts, or a qualifier naming
+        an unknown pack) is NON-PORTABLE: it points at something that will not travel with the
+        pack, and a pack cannot reach back into the app that imports it (packs compose INTO apps,
+        never the reverse). Silently dropping such a reference, or silently leaving it dangling,
+        would produce a pack.json that LOOKS exported but fails to compose later with no context
+        connecting the failure back to this export. Consistent with this repo's house style
+        (MON-18: "unsupported dependencies reported BY NAME rather than silently skipped"), this
+        refuses the export by default, naming every offending concept.field -> target, unless the
+        caller passes --allow-unresolved-refs -- which still does not drop anything: the reference
+        is written through unchanged and the pack.json's own `metadata.unresolvedReferences`
+        records exactly what was left dangling, as a durable, honest audit trail, not silence.
+    """
+    model_path = Path(args.model).expanduser().resolve()
+    source = read_json(model_path)
+    if not isinstance(source.get("concepts"), list):
+        raise CliError(f"{model_path} has no top-level 'concepts' array to export from")
+
+    concept_names = [name.strip() for name in str(args.concepts).split(",") if name.strip()]
+    if not concept_names:
+        raise CliError("--concepts must name at least one concept (comma-separated)")
+    duplicate_requests = {name for name in concept_names if concept_names.count(name) > 1}
+    if duplicate_requests:
+        raise CliError(f"--concepts named the same concept more than once: {sorted(duplicate_requests)}")
+
+    by_name = {}
+    for candidate in source["concepts"]:
+        if isinstance(candidate, dict) and isinstance(candidate.get("name"), str):
+            by_name[candidate["name"]] = candidate
+    missing = [name for name in concept_names if name not in by_name]
+    if missing:
+        available = ", ".join(sorted(by_name)) or "(none)"
+        raise CliError(
+            f"Concept(s) not found in {model_path}: {', '.join(missing)}. Available concepts: {available}"
+        )
+
+    require_identifier(args.pack, "pack name", r"^[a-z][a-z0-9_-]*$")
+
+    root = repo_root()
+    pack_schema_path = root / "NPDevContract" / "schemas" / "pack.schema.json"
+    pack_schema = read_json(pack_schema_path)
+    valid_categories = pack_schema.get("properties", {}).get("category", {}).get("enum") or []
+    category = args.category or "other"
+    if valid_categories and category not in valid_categories:
+        raise CliError(f"category must be one of: {', '.join(valid_categories)}, got: {category}")
+
+    forked_pack = (args.forked_from_pack or "").strip()
+    forked_version = (args.forked_from_version or "").strip()
+    if bool(forked_pack) != bool(forked_version):
+        raise CliError("--forked-from-pack and --forked-from-version must both be set together "
+                        "(forkedFrom.version is required by pack.schema.json)")
+
+    packs_root = root / "NPDevContract" / "packs"
+    out_root = Path(args.out_dir).expanduser().resolve() if getattr(args, "out_dir", None) else packs_root
+    pack_dir = out_root / args.pack
+    pack_json_path = pack_dir / "pack.json"
+    if pack_json_path.exists():
+        raise CliError(f"Pack already exists, refusing to overwrite: {pack_json_path} "
+                        f"(choose a different --pack or remove it first)")
+
+    export_set = set(concept_names)
+    exported_concepts = [copy.deepcopy(by_name[name]) for name in concept_names]
+    # PACK-14: delegate to the shared Java classifier (with the inline fallback inside), so the CLI
+    # and the generated controller use one rule set.
+    exported_concepts, rewrites, cross_pack_versions, unresolved = _pack_export_classify(
+        exported_concepts, export_set, packs_root)
+
+    if unresolved and not getattr(args, "allow_unresolved_refs", False):
+        lines = "; ".join(f"{item['field']} -> {item['target']!r}" for item in unresolved)
+        raise CliError(
+            "Refusing to export: the following reference(s) point outside the exported concept set "
+            f"and outside any known sibling pack under {packs_root}: {lines}. "
+            "Either add the target concept to --concepts, restructure the source model to split the "
+            "dependency via `satelliteOf` before exporting (see the WmsOffice pack-extraction recipe: "
+            "packs cannot reach back into the app that imports them), or pass --allow-unresolved-refs "
+            "to export anyway with the reference left as-is and recorded in the pack's own "
+            "metadata.unresolvedReferences."
+        )
+
+    pack_doc: dict = {
+        "$schema": "../../schemas/pack.schema.json",
+        "dslVersion": "1.0.0",
+        "pack": args.pack,
+        "version": args.pack_version or "1.0.0",
+        "description": args.description or f"Exported from concept(s) {', '.join(concept_names)} in {model_path}.",
+        "category": category,
+        "author": args.author,
+    }
+    if args.namespace:
+        pack_doc["namespace"] = args.namespace
+    if forked_pack:
+        pack_doc["forkedFrom"] = {
+            "pack": forked_pack,
+            "version": forked_version,
+            "originAuthor": (args.forked_from_author or "").strip(),
+        }
+    if cross_pack_versions:
+        pack_doc["packs"] = [
+            {"pack": pack_id, "version": version} for pack_id, version in sorted(cross_pack_versions.items())
+        ]
+    if unresolved:
+        pack_doc["metadata"] = {"unresolvedReferences": unresolved}
+    pack_doc["concepts"] = exported_concepts
+
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    pack_json_path.write_text(json.dumps(pack_doc, indent=2) + "\n", encoding="utf-8")
+
+    if unresolved:
+        for item in unresolved:
+            print(f"WARNING  unresolved reference left as-is: {item['field']} -> {item['target']!r}",
+                  file=sys.stderr)
+
+    report = {
+        "exported": True,
+        "pack": args.pack,
+        "packJsonPath": str(pack_json_path),
+        "concepts": concept_names,
+        "rewrittenReferences": rewrites,
+        "crossPackDependencies": pack_doc.get("packs", []),
+        "unresolvedReferences": unresolved,
+    }
+    print(json.dumps(report, indent=2))
+    return 0
+
+
+def _add_known_names(resolved_model: dict, array_key: str) -> set[str]:
+    return {
+        member.get("name") for member in (resolved_model.get(array_key) or [])
+        if isinstance(member, dict) and isinstance(member.get("name"), str)
+    }
+
+
+def _add_bare_name(value: str) -> str:
+    return value.split("::", 1)[-1] if "::" in value else value
+
+
+def _add_normalize_step_type(value: object) -> str:
+    return (value or "").strip().lower() if isinstance(value, str) else ""
+
+
+def _add_flatten_steps(steps):
+    """Yield every step in a flow/procedure step list, including ones nested under branch/loop
+    containers (`then`/`else`/`steps` -- both $defs.flowStep and $defs.procedureStep in
+    model.schema.json use the identical nesting shape)."""
+    for step in steps or []:
+        if not isinstance(step, dict):
+            continue
+        yield step
+        yield from _add_flatten_steps(step.get("then"))
+        yield from _add_flatten_steps(step.get("else"))
+        yield from _add_flatten_steps(step.get("steps"))
+
+
+def _add_scan_concept_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    for label, get_target, _set_target in _pack_export_reference_targets(member):
+        target = get_target()
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
+            missing.append(f"{label} -> {target!r} (concept not found)")
+    for extra_field in ("extends", "specializes"):
+        target = member.get(extra_field)
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
+            missing.append(f"{member.get('name')}.{extra_field} -> {target!r} (concept not found)")
+    return missing
+
+
+def _add_scan_panel_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    panel_name = member.get("name", "?")
+    for data_source in member.get("dataSources", None) or []:
+        if not isinstance(data_source, dict):
+            continue
+        label = f"{panel_name}.dataSources[{data_source.get('name', '?')}]"
+        for field, kind_key, kind_label in (
+            ("concept", "concepts", "concept"),
+            ("query", "queries", "query"),
+            ("procedure", "procedures", "procedure"),
+            ("onRowLoad", "procedures", "procedure"),
+        ):
+            target = data_source.get(field)
+            if isinstance(target, str) and target and _add_bare_name(target) not in known[kind_key]:
+                missing.append(f"{label}.{field} -> {target!r} ({kind_label} not found)")
+    for action in member.get("actions", None) or []:
+        if not isinstance(action, dict):
+            continue
+        label = f"{panel_name}.actions[{action.get('name', '?')}]"
+        target = action.get("procedure")
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["procedures"]:
+            missing.append(f"{label}.procedure -> {target!r} (procedure not found)")
+        target = action.get("flow")
+        if isinstance(target, str) and target and _add_bare_name(target) not in known["flows"]:
+            missing.append(f"{label}.flow -> {target!r} (flow not found)")
+        if action.get("binding") == "conceptQuery":
+            target = action.get("concept")
+            if isinstance(target, str) and target and _add_bare_name(target) not in known["concepts"]:
+                missing.append(f"{label}.concept -> {target!r} (concept not found)")
+    return missing
+
+
+# FlowValidation.java's own switch (validateFlowSteps): these step types resolve their `scope` /
+# `procedure` / `capability` / `event` against the model exactly the way validated here -- see
+# validatePersistenceMutationAliasStep, validateCallProcedureStep, validateEventStep.
+_ADD_FLOW_CONCEPT_SCOPE_TYPES = {"createconcept", "updateconcept", "invariantcheck"}
+
+
+def _add_scan_flow_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    flow_name = member.get("name", "?")
+    concept = member.get("concept") or (member.get("input") or {}).get("concept")
+    if isinstance(concept, str) and concept and _add_bare_name(concept) not in known["concepts"]:
+        missing.append(f"{flow_name}.concept -> {concept!r} (concept not found)")
+    for step in _add_flatten_steps(member.get("steps")):
+        step_type = _add_normalize_step_type(step.get("type"))
+        label = f"{flow_name}.steps[{step.get('name', '?')}]"
+        if step_type in _ADD_FLOW_CONCEPT_SCOPE_TYPES:
+            scope = step.get("scope")
+            if isinstance(scope, str) and scope and _add_bare_name(scope) not in known["concepts"]:
+                missing.append(f"{label}.scope -> {scope!r} (concept not found)")
+        if step_type == "callprocedure":
+            procedure = step.get("procedure")
+            if isinstance(procedure, str) and procedure and _add_bare_name(procedure) not in known["procedures"]:
+                missing.append(f"{label}.procedure -> {procedure!r} (procedure not found)")
+        if step_type == "capabilitycall":
+            capability = step.get("capability")
+            if (isinstance(capability, str) and capability
+                    and capability.lower() not in ADD_BUILTIN_CAPABILITIES
+                    and _add_bare_name(capability) not in known["capabilities"]):
+                missing.append(f"{label}.capability -> {capability!r} (capability not found)")
+        if step_type in {"emitevent", "awaitevent", "scheduleevent"}:
+            event = step.get("event") or step.get("awaitEvent")
+            if isinstance(event, str) and event and _add_bare_name(event) not in known["events"]:
+                missing.append(f"{label}.event -> {event!r} (event not found)")
+    return missing
+
+
+# PackValidation.java's own PROCEDURE_*_STEP_TYPES constants -- mirrored here (lowercase, both the
+# hyphenated and camelCase spellings the DSL accepts) so the scan agrees exactly with which step
+# types actually get a concept/procedure/capability existence check at semantic-validation time.
+_ADD_PROCEDURE_CONCEPT_STEP_TYPES = {
+    "conceptquery", "readconcept", "read_concept", "listconcepts", "list_concepts",
+    "runquery", "run_query", "conceptcreate", "conceptupdate", "saveconcept", "save_concept",
+    "conceptdelete", "deleteconcept", "delete_concept", "patchconcept",
+}
+_ADD_PROCEDURE_CALL_STEP_TYPES = {"procedurecall", "callprocedure", "call_procedure"}
+_ADD_PROCEDURE_CAPABILITY_STEP_TYPES = {"capabilitycall", "callcapability", "call_capability"}
+
+
+def _add_scan_procedure_references(member: dict, known: dict[str, set[str]]) -> list[str]:
+    missing = []
+    procedure_name = member.get("name", "?")
+    for step in _add_flatten_steps(member.get("steps")):
+        step_type = _add_normalize_step_type(step.get("type"))
+        label = f"{procedure_name}.steps[{step.get('name', '?')}]"
+        if step_type in _ADD_PROCEDURE_CONCEPT_STEP_TYPES:
+            concept = step.get("concept")
+            if not (isinstance(concept, str) and _add_bare_name(concept) in known["concepts"]):
+                missing.append(f"{label}.concept -> {concept!r} (concept not found)")
+        if step_type in _ADD_PROCEDURE_CALL_STEP_TYPES:
+            procedure = step.get("procedure")
+            if not (isinstance(procedure, str) and _add_bare_name(procedure) in known["procedures"]):
+                missing.append(f"{label}.procedure -> {procedure!r} (procedure not found)")
+        if step_type in _ADD_PROCEDURE_CAPABILITY_STEP_TYPES:
+            capability = step.get("capability")
+            if not (isinstance(capability, str) and (
+                    capability.lower() in ADD_BUILTIN_CAPABILITIES
+                    or _add_bare_name(capability) in known["capabilities"])):
+                missing.append(f"{label}.capability -> {capability!r} (capability not found)")
+    return missing
+
+
+def _add_scan_member_references(kind: str, member: dict, resolved_model: dict) -> list[str]:
+    """--from's safety net: an exemplar copied out of another sample can carry references (a
+    concept's own `reference`/`extends`/`specializes`, a panel's dataSource/action, a flow's
+    concept/procedure/event, a procedure's concept/procedure/capability) that simply do not exist
+    in the model being added to. Writing such a member anyway would produce something
+    `npdev validate model` immediately rejects -- exactly what R1.5's own Done-When forbids
+    ("passes validation with zero errors on first try"). Returns every dangling reference, by
+    name, so the caller can refuse the same way MON-18/PACK-13 already do (named offenders, not a
+    silent drop or a silent write), rather than shipping a member that looks right and isn't.
+
+    Deliberately scoped to the reference shapes the real semantic validators (FlowValidation,
+    PackValidation, PanelValidation, ConceptValidation) actually enforce -- not every field a step
+    can carry (e.g. capabilityCall's operation-arity match is left to `npdev validate model`
+    itself), matching PACK-13's own precedent of not attempting the full ~20-member reference
+    vocabulary exhaustively.
+    """
+    known = {
+        "concepts": _add_known_names(resolved_model, "concepts"),
+        "queries": _add_known_names(resolved_model, "queries"),
+        "procedures": _add_known_names(resolved_model, "procedures"),
+        "flows": _add_known_names(resolved_model, "flows"),
+        "events": _add_known_names(resolved_model, "events"),
+        "capabilities": {c.get("name") for c in (resolved_model.get("capabilities") or [])
+                         if isinstance(c, dict) and isinstance(c.get("name"), str)},
+    }
+    if kind == "concept":
+        return _add_scan_concept_references(member, known)
+    if kind == "panel":
+        return _add_scan_panel_references(member, known)
+    if kind == "flow":
+        return _add_scan_flow_references(member, known)
+    if kind == "procedure":
+        return _add_scan_procedure_references(member, known)
+    raise CliError(f"unsupported member kind: {kind}")
+
+
+def _add_load_exemplar_member(root: Path, kind: str, from_spec: str, new_name: str) -> tuple[dict, str, Path]:
+    """Resolves --from `<sample>` or `<sample>::<MemberName>` against NPDevSamples/<sample>/Input/
+    model.json (the shape every sample but npdev-init-seed uses) or NPDevSamples/<sample>/
+    model.json (npdev-init-seed's own flat shape -- the same two-candidate lookup `npdev init
+    --from` already uses).
+
+    PREMISE CHECK (R1.5's own roadmap text): "with `--from` copying an exemplar out of the RAG
+    corpus" is FALSE as literally stated. `NPDevMcp/server.py`'s `tool_search_examples` reads
+    `<Build>/npdev-ai/rag-index.json` -- ranked TEXT CHUNKS for an AI agent to read, built by
+    `scripts/ai/build_knowledge.py` from `knowledge/cards/` + golden scenarios, and not guaranteed
+    to exist in a fresh checkout (a Build-root artifact -- CLAUDE.md's own "ephemeral" tier). There
+    is no structured concept/panel/flow/procedure JSON in it to copy; there is nothing there for
+    `--from` to extract a member out of. The real, in-repo, always-present, already-proven source
+    of a "real, working" member is `NPDevSamples/` -- the exact corpus `npdev init --from` already
+    draws whole-app seeds from, and the one CLAUDE.md itself names as the DSL-feature reference
+    corpus ("Adding a DSL feature? Add a real example to NPDevSamples/dsl-conformance-max").
+    """
+    sample = from_spec.split("::", 1)[0]
+    member_name = from_spec.split("::", 1)[1] if "::" in from_spec else None
+    sample_dir = root / "NPDevSamples" / sample
+    array_key = ADD_MEMBER_ARRAY_KEYS[kind]
+    candidate_paths = [sample_dir / "Input" / "model.json", sample_dir / "model.json"]
+    for candidate_model in candidate_paths:
+        if not candidate_model.exists():
+            continue
+        exemplar_model = read_json(candidate_model)
+        candidates = [m for m in (exemplar_model.get(array_key) or [])
+                      if isinstance(m, dict) and isinstance(m.get("name"), str)]
+        if member_name:
+            chosen = next((m for m in candidates if m["name"] == member_name), None)
+            if chosen is None:
+                available = ", ".join(sorted(m["name"] for m in candidates)) or "(none)"
+                raise CliError(
+                    f"--from {from_spec!r}: no {kind} named {member_name!r} in {candidate_model}. "
+                    f"Available {array_key}: {available}"
+                )
+        else:
+            if not candidates:
+                raise CliError(
+                    f"--from {from_spec!r}: {candidate_model} declares no {array_key} to copy from."
+                )
+            chosen = candidates[0]
+        member = copy.deepcopy(chosen)
+        source_name = member["name"]
+        member["name"] = new_name
+        # The member's own identity label is refreshed to match NAME (a concept named "Owner"
+        # should not keep displaying the exemplar's "Canary owner"); everything else -- invariant
+        # names, step names, field names -- is left exactly as copied. Those stay internally
+        # consistent regardless of the rename (an invariant's own name is only ever referenced
+        # from within its own concept, which is copied whole), so rewriting them would be
+        # cosmetic-only churn with no correctness payoff, unlike the top-level display label.
+        if kind == "concept" and isinstance(member.get("ui"), dict) and isinstance(member["ui"].get("label"), str):
+            member["ui"]["label"] = _add_humanize_label(new_name)
+        if kind == "panel" and isinstance(member.get("title"), str):
+            member["title"] = _add_humanize_label(new_name)
+        return member, source_name, candidate_model
+    raise CliError(
+        f"--from sample not found: {sample!r} "
+        f"(looked for {candidate_paths[0]} and {candidate_paths[1]})"
+    )
+
+
+def _add_default_stub(kind: str, name: str, concept: str | None) -> dict:
+    """No --from: a minimal, self-contained, schema-AND-semantically-valid member. Every shape
+    here is lifted verbatim in structure from a real, currently-passing corpus fixture (`concept`
+    from NPDevSamples/npdev-init-seed/model.json's own Patient; `flow`/`procedure` step shapes from
+    NPDevSamples/npdev-canary/Input/model.json's CreateCanaryTask/SaveCanaryTaskProcedure; `panel`
+    from dsl-conformance-max's WidgetOrderReviewPanel, which proves a concept-bound dataSource
+    needs neither `layout` nor `fieldBindings`) rather than hand-derived from schema alone, so a
+    subtle semantic-only rule (e.g. ConceptValidation's "must have exactly 1 id field",
+    FlowValidation's "flow.concept or flow.input.concept is required") can't be missed by reading
+    the JSON Schema in isolation.
+    """
+    if kind == "concept":
+        return {
+            "name": name,
+            "ui": {"label": _add_humanize_label(name)},
+            "fields": [
+                {"name": "id", "type": "uuid", "id": True, "required": True},
+                {"name": "label", "type": "string", "required": True, "ui": {"label": "Label"}},
+            ],
+        }
+    if kind == "panel":
+        return {
+            "name": name,
+            "route": _add_kebab_route(name),
+            "title": _add_humanize_label(name),
+            "dataSources": [
+                {"name": _add_lower_first(concept), "concept": concept},
+            ],
+        }
+    if kind == "flow":
+        return {
+            "name": name,
+            "input": {"concept": concept, "mode": "create"},
+            "steps": [
+                {"name": f"save-{_add_lower_first(concept)}", "type": "createConcept",
+                 "scope": concept, "input": "$input", "output": "$saved"},
+                {"name": "return-saved", "type": "return", "value": "$saved"},
+            ],
+        }
+    if kind == "procedure":
+        return {
+            "name": name,
+            "parameters": [{"name": "id", "type": "uuid", "required": True}],
+            "steps": [
+                {"name": f"read-{_add_lower_first(concept)}", "type": "readConcept",
+                 "concept": concept, "id": "$id", "target": "result"},
+                {"name": "return-result", "type": "return", "value": "$result"},
+            ],
+        }
+    raise CliError(f"unsupported member kind: {kind}")
+
+
+def run_add_member(args: argparse.Namespace, kind: str) -> int:
+    """R1.5: `npdev add concept|panel|flow|procedure NAME` writes one schema-valid member into the
+    correct top-level model array (MODEL_ARRAY_KEYS knowledge -- ADD_MEMBER_ARRAY_KEYS above),
+    seeding its required fields, refusing (naming the offender) rather than silently overwriting
+    when NAME already exists -- MON-18/PACK-13 house style. `--from <sample>[::<Member>]` copies a
+    real member out of NPDevSamples/ instead of writing a blank stub (see
+    _add_load_exemplar_member's docstring for why that is NOT the RAG corpus the roadmap named).
+
+    Existence checks (duplicate name, --concept, --from's reference scan) run against the
+    FRAGMENT-COMPOSED view (`resolve_split_model`, the same resolver `npdev inspect app`/`npdev
+    dev`'s watch-set use) rather than the raw root file alone, so a concept declared in a $ref'd
+    fragment (bounded-context style, S3) is correctly seen as already existing. The new member is
+    still appended to --model's OWN top-level array, never into a fragment -- authoring always
+    targets the file the caller named.
+    """
+    model_path = Path(args.model).expanduser().resolve()
+    if not model_path.exists():
+        raise CliError(f"model not found: {model_path}")
+    root_model = read_json(model_path)
+    array_key = ADD_MEMBER_ARRAY_KEYS[kind]
+
+    name = (args.name or "").strip()
+    if not name:
+        raise CliError(f"{kind} name must not be blank")
+    if "::" in name:
+        raise CliError(f"{kind} name must not contain '::' (that is the pack-qualifier separator): {name!r}")
+
+    uncomposed: list[str] = []
+    resolved_model = resolve_split_model(model_path, collect_uncomposed=uncomposed)
+
+    existing_names = _add_known_names(resolved_model, array_key)
+    if name in existing_names:
+        raise CliError(
+            f"Refusing to add: a {kind} named {name!r} already exists in {model_path} (composed "
+            f"view -- it may come from a $ref fragment, not the root file itself). Choose a "
+            f"different name, or edit the existing declaration directly."
+        )
+
+    concept = getattr(args, "concept", None)
+    from_spec = getattr(args, "from_exemplar", None)
+    source_note = None
+
+    if kind != "concept":
+        known_concepts = _add_known_names(resolved_model, "concepts")
+        if concept:
+            if concept not in known_concepts:
+                raise CliError(
+                    f"--concept {concept!r} not found in {model_path} (composed view). Existing "
+                    f"concepts: {', '.join(sorted(known_concepts)) or '(none)'} -- add it first "
+                    f"with `npdev add concept {concept}`."
+                )
+        elif not from_spec:
+            raise CliError(
+                f"--concept is required when scaffolding a {kind} without --from (every {kind} in "
+                f"this DSL binds to an existing concept -- model.schema.json's own {kind} "
+                f"definition and, for flow, JsonModelParser itself, both enforce it)."
+            )
+
+    if from_spec:
+        member, source_name, source_path = _add_load_exemplar_member(repo_root(), kind, from_spec, name)
+        missing = _add_scan_member_references(kind, member, resolved_model)
+        if missing:
+            raise CliError(
+                f"Refusing to add: --from {from_spec!r} (source {kind} {source_name!r} in "
+                f"{source_path}) references the following, which do not exist in {model_path}: "
+                + "; ".join(missing)
+                + f". Add the missing member(s) first (e.g. `npdev add concept <Name>`), or omit "
+                  f"--from and let scaffolding seed a self-contained stub instead."
+            )
+        source_note = f"{from_spec} (source {kind}: {source_name}, {source_path})"
+    else:
+        member = _add_default_stub(kind, name, concept)
+
+    root_model.setdefault(array_key, [])
+    if not isinstance(root_model.get(array_key), list):
+        raise CliError(f"{model_path}: top-level {array_key!r} is not an array, refusing to append")
+    root_model[array_key].append(member)
+    model_path.write_text(json.dumps(root_model, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+    report = {
+        "added": True,
+        "kind": kind,
+        "name": name,
+        "modelPath": str(model_path),
+        "arrayKey": array_key,
+        "concept": concept,
+        "from": source_note,
+        "uncomposedContributions": uncomposed,
+    }
+    print(json.dumps(report, indent=2))
+    return 0
 
 
 def _print_boundary_limits(report: dict) -> None:
@@ -5778,28 +8830,25 @@ def _usage_matches(edge: dict, target: str) -> bool:
     return False
 
 
-def inspect_usage(args: argparse.Namespace) -> int:
-    model_path = Path(args.model).expanduser().resolve()
-    report = load_model_xref(model_path)
-    edges = report.get("edges") or []
+def _select_usage_edges(edges: list[dict], of: str | None) -> tuple[list[dict], str]:
+    """The `--of`/no-`--of` half of `inspect usage`'s own selection rule, shared with `impact`
+    (R1.6) so the two commands can never drift into disagreeing about what "usages of X" means.
+    `--orphans` is NOT covered here -- it is `inspect usage`'s own mode, with no `impact` analogue
+    (impact always looks at the whole model's unresolved TOTAL instead, regardless of `--of`)."""
+    if of:
+        return [e for e in edges if _usage_matches(e, of)], f"usagesOf:{of}"
+    return edges, "all"
 
-    if args.orphans:
-        selected = [e for e in edges if e.get("resolution") != "RESOLVED"]
-        mode = "orphans"
-    elif args.of:
-        selected = [e for e in edges if _usage_matches(e, args.of)]
-        mode = f"usagesOf:{args.of}"
-    else:
-        selected = edges
-        mode = "all"
 
+def _usage_report(report: dict, model_path_label: str, of: str | None, selected: list[dict], mode: str) -> dict:
+    """The result shape `inspect usage` prints, built from an already-selected edge list -- shared
+    so `impact`'s xrefUsage section is byte-for-byte the same shape, not a second rendering."""
     unresolved = [e for e in selected if e.get("resolution") == "UNRESOLVED"]
     undecidable = [e for e in selected if e.get("resolution") == "UNDECIDABLE"]
-
-    result = {
-        "model": str(model_path),
+    return {
+        "model": model_path_label,
         "mode": mode,
-        "of": args.of,
+        "of": of,
         "counts": {
             "matched": len(selected),
             "resolved": len(selected) - len(unresolved) - len(undecidable),
@@ -5811,6 +8860,22 @@ def inspect_usage(args: argparse.Namespace) -> int:
         "modelTotals": report.get("summary"),
         "edges": selected,
     }
+
+
+def inspect_usage(args: argparse.Namespace) -> int:
+    model_path = Path(args.model).expanduser().resolve()
+    report = load_model_xref(model_path)
+    edges = report.get("edges") or []
+
+    if args.orphans:
+        selected = [e for e in edges if e.get("resolution") != "RESOLVED"]
+        mode = "orphans"
+    else:
+        selected, mode = _select_usage_edges(edges, args.of)
+
+    unresolved = [e for e in selected if e.get("resolution") == "UNRESOLVED"]
+
+    result = _usage_report(report, str(model_path), args.of, selected, mode)
 
     if args.diagram:
         diagram_path = Path(args.diagram).expanduser()
@@ -5830,6 +8895,173 @@ def inspect_usage(args: argparse.Namespace) -> int:
     if args.orphans and unresolved:
         return 2
     return 0
+
+
+IMPACT_SCHEMA_VERSION = "npdev-impact-report.v1"
+
+
+def _of_names_known_concept(resolved_model: dict, of: str) -> bool | None:
+    """Best-effort existence pre-check for `impact --of`, in the fragment-COMPOSED view
+    (resolve_split_model), matching `npdev add`'s own existence-check discipline (STEP 4 of this
+    item's brief) so a concept declared only inside a $ref'd bounded-context fragment is not
+    reported as a false miss. Returns True/False only for the two target shapes this can actually
+    check (a bare Concept name, or Concept.field) -- None for a `kind:Name` target (procedure:X,
+    query:Y, ...), which names something outside the `concepts` array and is left to `--of`'s own
+    established "an unreferenced target is an empty answer, not an error" behavior."""
+    wanted = of.strip()
+    if ":" in wanted and not wanted.startswith("::"):
+        prefix, _, _ = wanted.partition(":")
+        if prefix in USAGE_TARGET_KINDS:
+            return None
+    concept_name = wanted.split(".", 1)[0]
+    return concept_name in _add_known_names(resolved_model, "concepts")
+
+
+def _impact_section(status: str, reason: str | None, report: dict | None) -> dict:
+    return {"status": status, "reason": reason, "report": report}
+
+
+def run_impact(args: argparse.Namespace) -> int:
+    """R1.6: `npdev impact --baseline <p> --current <p> [--of <target>] [--manifest <j>]` -- ONE
+    typed report composing the four separate "what breaks if I change this?" invocations that used
+    to require four separate commands: migration classification (`migration diff`'s own
+    :generator:classifyModelChange, via the R1.1 warm-jar fast path), xref usage (`inspect usage`'s
+    own :NPDevContract:dsl:modelXref, shared selection logic), pack diff (`pack diff`'s own
+    :NPDevContract:dsl:packDiff), and the AI Authoring Contract's diff-gate (`author diff-gate`'s
+    own :generator:authorDiffGate). No new diffing/classification logic lives here -- every leg
+    calls the exact function its own standalone command calls, so `impact` can never drift from
+    what running the four commands separately would report.
+
+    Deliberately does NOT generate, build, or boot anything (that is `npdev loop run`'s job, which
+    already composes diff-gate + validate + classify + run + acceptance into the HEAVY pipeline);
+    this is the light, structural preview meant to run in seconds, before any of that.
+
+    subjectKind ('model' or 'pack') is read from --baseline/--current's own top-level shape
+    (_document_kind) and decides which legs apply: JsonModelParser (migration classification, xref,
+    authoring gate) cannot parse a pack.json, and PackDiffEngine (pack diff) has no model.json
+    input -- so exactly one of the two document kinds' legs runs per call, and the other kind's legs
+    report status 'notApplicable' with a reason, never silent omission (STEP 3 measurement honesty).
+    """
+    baseline_path = Path(args.baseline).expanduser().resolve()
+    current_path = Path(args.current).expanduser().resolve()
+    if not baseline_path.exists():
+        raise CliError(f"baseline not found: {baseline_path}")
+    if not current_path.exists():
+        raise CliError(f"current not found: {current_path}")
+
+    baseline_kind = _document_kind(read_json(baseline_path), baseline_path)
+    current_kind = _document_kind(read_json(current_path), current_path)
+    if baseline_kind != current_kind:
+        raise CliError(
+            f"--baseline ({baseline_path}) looks like a {baseline_kind}.json and --current "
+            f"({current_path}) looks like a {current_kind}.json -- both must be the same kind of "
+            f"document (a model.json pair, or a pack.json pair)."
+        )
+    subject_kind = current_kind
+    of = getattr(args, "of", None)
+    manifest = getattr(args, "manifest", None)
+    if subject_kind == "pack" and of:
+        raise CliError("--of only applies to a model.json pair (xref usage has no pack.json input).")
+    if subject_kind == "pack" and manifest:
+        raise CliError("--manifest only applies to a model.json pair (the AI Authoring Contract "
+                        "diff-gate has no pack.json input).")
+
+    import time  # local, matching _run_bounded/run_closed_loop's own convention
+
+    root = repo_root()
+    timeout = float(getattr(args, "timeout", 300) or 300)
+    deadline = time.monotonic() + timeout
+
+    limitations = [
+        "xref usage cannot see a reference embedded as a literal INSIDE an expression string, e.g. "
+        "nextNumber('name') inside a defaultExpression -- the target is real but invisible to "
+        "reference-rewriting/discovery (R5.3's finding, reproduced live for that exact case).",
+        "an UNDECIDABLE xref edge (an expression outside the interaction grammar, an untyped $var, "
+        "...) means 'could not be checked', never 'checked and safe' -- see this report's own "
+        "xrefUsage.report.counts.undecidable.",
+        "pack diff (PACK-13) refuses a broken reference by NAME rather than silently dropping it, "
+        "but only for references INSIDE the exported/diffed pack's own declared members -- a "
+        "reference from outside the pack pointing INTO it is outside this report's view entirely.",
+    ]
+    problems_found = False
+
+    if subject_kind == "model":
+        # STEP 4: existence checks against the fragment-COMPOSED view, like `npdev add` -- a model
+        # split into bounded-context fragments must not report a false "cannot compose" or a false
+        # miss for --of. resolve_split_model itself raises CliError (naming the offending file) if
+        # the CURRENT model cannot be composed at all, which is a much clearer failure than letting
+        # two separate Gradle subprocesses fail cryptically a few seconds later.
+        resolved_current = resolve_split_model(current_path)
+        if of:
+            known = _of_names_known_concept(resolved_current, of)
+            if known is False:
+                limitations.append(
+                    f"--of {of!r} does not name a concept found in --current's fragment-composed "
+                    f"view -- xrefUsage below will report 0 matches; this is not necessarily wrong "
+                    f"(an empty answer is a real answer), but check for a typo or a missing fragment "
+                    f"$ref first."
+                )
+
+        migration_report = _classify_model_change_report(root, baseline_path, current_path, deadline)
+        migration_section = _impact_section("ran", None, migration_report)
+
+        xref_report = load_model_xref(current_path)
+        edges = xref_report.get("edges") or []
+        selected, mode = _select_usage_edges(edges, of)
+        xref_section_report = _usage_report(xref_report, str(current_path), of, selected, mode)
+        xref_section = _impact_section("ran", None, xref_section_report)
+        whole_model_unresolved = int((xref_report.get("summary") or {}).get("unresolved", 0))
+        if whole_model_unresolved:
+            problems_found = True
+
+        diff_gate_args = argparse.Namespace(
+            previous=str(baseline_path), submitted=str(current_path), manifest=manifest, output=None,
+        )
+        authoring_report = _run_authoring_gate(diff_gate_args, archive_dir=None)
+        authoring_reason = None if manifest else (
+            "ran with no --manifest, so it reports the same AUTHORING_MANIFEST_MISSING refusal "
+            "`author diff-gate` itself would without one -- pass --manifest for a real compliance "
+            "check (renames/removals/security-relevant deltas all declared)."
+        )
+        authoring_section = _impact_section("ran", authoring_reason, authoring_report)
+        if authoring_report.get("status") != "passed":
+            problems_found = True
+
+        pack_section = _impact_section(
+            "notApplicable",
+            "--baseline/--current are model.json, not pack.json -- pack diff (PackDiffEngine) has "
+            "no model.json input. If this app depends on packs, diff their own pack.json files "
+            "directly with `npdev pack diff`.",
+            None,
+        )
+    else:
+        pack_report = _pack_diff_report(baseline_path, current_path, None)
+        pack_section = _impact_section("ran", None, pack_report)
+
+        not_applicable_reason = (
+            "--baseline/--current are pack.json, not model.json -- JsonModelParser cannot parse a "
+            "pack.json (different required top-level shape), so migration classification / xref "
+            "usage / the AI Authoring Contract diff-gate have no input here."
+        )
+        migration_section = _impact_section("notApplicable", not_applicable_reason, None)
+        xref_section = _impact_section("notApplicable", not_applicable_reason, None)
+        authoring_section = _impact_section("notApplicable", not_applicable_reason, None)
+
+    result = {
+        "schemaVersion": IMPACT_SCHEMA_VERSION,
+        "subjectKind": subject_kind,
+        "baseline": str(baseline_path),
+        "current": str(current_path),
+        "of": of,
+        "migrationClassification": migration_section,
+        "xrefUsage": xref_section,
+        "packDiff": pack_section,
+        "authoringGate": authoring_section,
+        "limitations": limitations,
+        "problemsFound": problems_found,
+    }
+    write_or_print_json(result, getattr(args, "output", None))
+    return 2 if problems_found else 0
 
 
 # -------------------------------------------------------------------------------------------------
@@ -5878,6 +9110,20 @@ def _human_summary(result: dict) -> str:
         for key in ("appDir", "opsDir", "modelPath", "jarPath", "dbFile", "superUserKeyFile", "logsDir"):
             if result.get(key):
                 lines.append(f"  {key:<18} {result[key]}")
+    elif command == "monitor hotswap":
+        status = "APPLIED" if result.get("ok") else f"REFUSED ({result.get('code')})"
+        lines.append(f"{status}: {result.get('message') or ''}")
+        if result.get("ok"):
+            lines.append(f"  metadataGeneration {result.get('metadataGeneration')}")
+            for cat in (result.get("catalogsUpdated") or []):
+                lines.append(f"  updated {cat}")
+            # RUN-24 gap 2: the REST catalogs above are half the story -- this line says whether the
+            # SERVED business-ui grid's own static manifest was also patched to match.
+            patch = result.get("uiManifestPatch") or {}
+            if patch.get("patched"):
+                lines.append(f"  served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
+            elif patch.get("reason"):
+                lines.append(f"  served UI manifest NOT patched: {patch['reason']}")
     elif "found" in result and "state" in result:
         lines.append(f"ScrapForAI engine: {result['state']}")
         lines.append(f"  via      : {result.get('via')}")
@@ -5933,7 +9179,16 @@ def run_monitor(args: argparse.Namespace) -> int:
         return _run_monitor_logs(args)
     if args.monitor_command == "ops":
         return _run_monitor_ops(args)
-    raise CliError("usage: npdev monitor {scan|probe|engine|engine-start|logs|ops}")
+    if args.monitor_command == "hotswap":
+        return _run_monitor_hotswap(args)
+    if args.monitor_command == "ingress":
+        return _run_monitor_ingress(args)
+    if args.monitor_command == "clone":
+        return _run_monitor_clone(args)
+    if args.monitor_command == "clone-remove":
+        return _run_monitor_clone_remove(args)
+    raise CliError(
+        "usage: npdev monitor {scan|probe|engine|engine-start|logs|ops|hotswap|ingress|clone|clone-remove}")
 
 
 def _run_monitor_engine_start(args: argparse.Namespace) -> int:
@@ -5964,7 +9219,8 @@ def _run_monitor_engine_start(args: argparse.Namespace) -> int:
     if not Path(argv[0]).exists():
         raise CliError(f"the engine launcher is missing: {argv[0]} -- run `npm install` in {root} once")
     env = dict(os.environ)
-    env.update(npdev_monitor.engine_start_env(args.port, args.allow_origin, api_key, str(artifact_dir)))
+    env.update(npdev_monitor.engine_start_env(args.port, args.allow_origin, api_key, str(artifact_dir),
+                                              allow_evaluate=args.allow_evaluate))
     emit({"kind": "starting", "root": str(root), "port": args.port,
           "allowedOrigins": sorted(set(args.allow_origin))})
     process = subprocess.Popen(argv, cwd=str(artifact_dir), env=env,
@@ -5991,6 +9247,289 @@ def _run_monitor_engine_start(args: argparse.Namespace) -> int:
         process.terminate()
         emit({"kind": "stopped", "exitCode": None, "detail": "interrupted"})
         return 0
+
+
+def _run_monitor_ingress(args: argparse.Namespace) -> int:
+    """R9.7: one shared reverse-proxy config for every app on THIS box, generated from the Monitor's
+    own inventory rather than hand-maintained. Read for discovery, write for the single artifact --
+    the same split `monitor logs export` already uses."""
+    paths = _split_paths(args.paths)
+    result = npdev_monitor.write_shared_ingress(
+        paths,
+        Path(args.out),
+        max_depth=args.depth,
+        mode=args.mode,
+        base_domain=args.base_domain,
+        upstream_host=args.upstream_host,
+        health_timeout=args.health_timeout,
+    )
+    if args.json:
+        print(json.dumps(result, indent=2))
+        return 0
+    print(f"wrote {result['outPath']}")
+    print(f"scanned {result['scannedApps']} app(s): {len(result['routed'])} routed, "
+          f"{len(result['skipped'])} skipped")
+    for entry in result["routed"]:
+        print(f"  ROUTE   {entry.get('slug')} -> {args.upstream_host}:{entry.get('port')}")
+    for entry in result["skipped"]:
+        print(f"  SKIP    {entry.get('name')}: {entry.get('reason')}")
+    return 0
+
+
+def _run_monitor_clone(args: argparse.Namespace) -> int:
+    """R3.8: isolated instances for parallel testers -- see `npdev_monitor.clone_app`'s own
+    docstring (and the module-level comment above it) for the concrete collision list this fixes
+    and why. Errors here are the caller's own mistakes (bad name, port taken, not an app) rather
+    than platform bugs, so they come back as an ordinary `ok: false` result, not a traceback."""
+    try:
+        result = npdev_monitor.clone_app(
+            Path(args.app_dir), Path(args.dest_root), name=args.name, port=args.port)
+    except (ValueError, FileExistsError, RuntimeError, TimeoutError) as exc:
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": "monitor clone", "ok": False,
+            "exitCode": 2, "error": {"message": str(exc)},
+        }
+        _print_result(result, args)
+        return 2
+    _print_result(result, args)
+    if not args.json:
+        print(f"cloned {result['originAppDir']} -> {result['cloneDir']}")
+        print(f"  port {result['originPort']} -> {result['port']}")
+        print(f"  data isolation: {result['dataIsolation']}")
+    return 0
+
+
+def _run_monitor_clone_remove(args: argparse.Namespace) -> int:
+    try:
+        result = npdev_monitor.remove_clone(Path(args.clone_dir))
+    except (ValueError, RuntimeError) as exc:
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": "monitor clone-remove", "ok": False,
+            "exitCode": 2, "error": {"message": str(exc)},
+        }
+        _print_result(result, args)
+        return 2
+    _print_result(result, args)
+    if not args.json:
+        print(f"removed {result['removed']} (ports released: {result['portsReleased']})")
+    return 0
+
+
+def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> dict:
+    """RUN-24 gap 2. `MetadataHotSwapController#apply` only refreshes the descriptive REST catalogs
+    `RuntimeMetadataService` serves -- the actual rendered grid at `/npdev-business-ui/` is built
+    client-side from a SEPARATE static file, `generated-ui-manifest.json`
+    (`business-ui-app.mustache`: `state.manifest = await fetchJson("./generated-ui-manifest.json")`),
+    which the REST call never touches. REG-109 already made that file externally overridable with no
+    restart (`StaticUiResourceConfig`'s `file:` resource location, resolved PER REQUEST, not cached
+    at boot -- verified live 2026-08-02) but nothing writes to it automatically; RUN-22's own
+    browser-routine proof had to hand-patch it to reach the served grid.
+
+    Patches ONLY the field labels the just-emitted `fields.manifest.json` (the SAME
+    `metadata_source_root` the REST call above was already given, from `--emitMetadataTo`)
+    disagrees with -- deliberately never regenerates the whole manifest from a bare model.json
+    compile, which has no access to the settings (`superUserRole`, auth mode, per-field
+    widget-cascade overrides, ...) the real generation pipeline resolves via `SettingResolver`, and
+    would silently revert any of them to a platform default for an app that customized one. That
+    also means it only ever matches TOP-LEVEL fields: `generated-ui-manifest.json`'s own
+    `concepts[].fields[]` list is `BusinessUiEmitter.manifestFields()`, which walks
+    `concept.getFields()` directly and has no entries for a nested object/array field's own
+    sub-paths (`fields.manifest.json`'s `"a.b"`-shaped `fieldPath` entries) -- matching those here
+    would silently do nothing, so they are skipped rather than attempted.
+
+    Read-modify-write, atomic (temp file + `os.replace`, same directory so the replace cannot cross
+    filesystems), and a no-op -- never an exception -- when either input file is missing: an app
+    generated before R1.7/REG-109, or a metadata source root the classifier refused to populate,
+    simply keeps today's behavior (served UI stays stale until the next full regenerate, exactly as
+    before this fix)."""
+    manifest_path = (app_root / "npdev-generated" / "src" / "main" / "resources" / "static"
+                      / "npdev-business-ui" / "generated-ui-manifest.json")
+    fields_manifest_path = (metadata_source_root / "src" / "main" / "resources" / "npdev"
+                             / "metadata" / "fields.manifest.json")
+    if not manifest_path.is_file() or not fields_manifest_path.is_file():
+        return {"patched": False,
+                "reason": "generated-ui-manifest.json or fields.manifest.json not found -- nothing to patch."}
+    try:
+        fields_catalog = json.loads(fields_manifest_path.read_text(encoding="utf-8"))
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"patched": False, "reason": f"could not read/parse manifest: {exc}"}
+
+    labels: dict[tuple[str, str], str] = {}
+    for item in fields_catalog.get("items") or []:
+        concept = item.get("concept")
+        field_path = item.get("fieldPath")
+        if concept and field_path and "." not in field_path:
+            labels[(concept, field_path)] = item.get("label", "")
+
+    changed: list[str] = []
+    for concept_node in manifest.get("concepts") or []:
+        concept_name = concept_node.get("conceptName")
+        for field_node in concept_node.get("fields") or []:
+            key = (concept_name, field_node.get("name"))
+            if key in labels and field_node.get("label") != labels[key]:
+                field_node["label"] = labels[key]
+                changed.append(f"{concept_name}.{field_node.get('name')}")
+
+    if not changed:
+        return {"patched": False, "reason": "no field label differed from the served manifest"}
+
+    tmp = manifest_path.with_name(manifest_path.name + ".tmp")
+    tmp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, manifest_path)
+    return {"patched": True, "fieldsChanged": changed}
+
+
+def _metadata_hotswap_apply(
+        base_url: str, super_user_key: str, classification: str, reasons: list[str],
+        metadata_source_root: Path, app_root: Path, timeout: float) -> dict:
+    """RUN-24: the shared HTTP core behind BOTH `npdev monitor hotswap` (CLI, discovers the app
+    itself via `probe_app`) and `npdev dev`'s own METADATA_ONLY fast path (already knows the app it
+    booted) -- one POST to `MetadataHotSwapController#apply`, plus RUN-24 gap 2's follow-up: patch
+    `generated-ui-manifest.json` (`_patch_generated_ui_manifest` above) so the SERVED business-ui
+    grid reflects the change too, no restart either way. Factored out so gap 2's fix lands ONCE and
+    both callers get it, rather than reimplementing the POST (and forgetting the manifest patch) a
+    second time in the dev loop.
+
+    Never raises for an ordinary refusal/failure -- returns `{"ok": False, "code": ..., "message":
+    ...}`, the same shape either caller can print or act on. The raw key is used only to build the
+    request header and is never placed in the returned dict."""
+    import urllib.error
+    import urllib.request
+
+    result: dict = {"ok": False, "code": None, "message": None}
+    body = json.dumps({
+        "classification": classification,
+        "classificationReasons": list(reasons or []),
+        "metadataSourceRoot": str(metadata_source_root),
+    }).encode("utf-8")
+    request = urllib.request.Request(
+        base_url + "/api/admin/runtime/metadata-hotswap/apply",
+        data=body, method="POST",
+        headers={"Content-Type": "application/json", "X-Super-User-Key": super_user_key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            payload = {}
+        if exc.code == 404:
+            result["code"] = "ENDPOINT_NOT_FOUND"
+            result["message"] = (
+                f"HTTP 404 from {base_url} -- this app predates R1.7's MetadataHotSwapController and "
+                "has no /metadata-hotswap/apply endpoint. Regenerate it, or fall back to a restart.")
+            return result
+        result["code"] = payload.get("code") or f"HTTP_{exc.code}"
+        result["message"] = payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}"
+        return result
+    except urllib.error.URLError as exc:
+        result["code"] = "UNREACHABLE"
+        result["message"] = f"could not reach {base_url}: {exc.reason}"
+        return result
+
+    result["ok"] = bool(payload.get("ok", True))
+    result["metadataGeneration"] = payload.get("metadataGeneration")
+    result["appliedAt"] = payload.get("appliedAt")
+    result["catalogsUpdated"] = payload.get("catalogsUpdated")
+    result["classificationReasons"] = payload.get("classificationReasons")
+    if result["ok"]:
+        result["code"] = "APPLIED"
+        result["message"] = f"metadata hot swap applied, generation {result['metadataGeneration']}"
+        # RUN-24 gap 2: the REST call above only refreshed RuntimeMetadataService's own catalogs.
+        result["uiManifestPatch"] = _patch_generated_ui_manifest(app_root, metadata_source_root)
+    else:
+        result["code"] = payload.get("code") or "UNKNOWN"
+        result["message"] = payload.get("message")
+    return result
+
+
+def _run_monitor_hotswap(args: argparse.Namespace) -> int:
+    """R1.7 dev-loop closer: the CLI trigger for `MetadataHotSwapController#apply`, pushing an
+    already-classified METADATA_ONLY change's descriptive catalogs (compiled-metadata.json,
+    metadata/*.manifest.json) into a RUNNING app's JVM with no restart -- and (RUN-24 gap 2) patching
+    the served business-ui's own static manifest to match, via `_metadata_hotswap_apply` above.
+    `Update-AppMetadata.ps1` already runs `:generator:classifyModelChange` and hands this verb its
+    report's own classification/classificationReasons plus the SAME `--emitMetadataTo` scratch
+    directory it wrote -- unchanged, matching `MetadataHotSwapController.ApplyRequest`'s own shape
+    exactly so a caller that already ran the classifier can pass its output straight through.
+
+    Reuses `npdev_monitor.probe_app` for the facts this needs -- is the app running, where is its
+    Super User key (`_ops/SUPER_USER_KEY.txt`, `SuperUserBootstrapper`'s own file, as relocated by
+    `Start-App.ps1`), and its real `finalAppRoot` (the directory actually holding `npdev-generated/`,
+    which is NOT always `app_dir` itself -- see `probe_app`'s own `opsLayout` handling for
+    pre-QUAL-3 apps) -- rather than re-deriving app discovery a second time. Authenticates with the
+    `X-Super-User-Key` header (`SuperUserCredentialAuthFilter`), never the business `X-Api-Key`
+    path: `/apply` requires SUPERUSER specifically because an `auth.mode=none` app grants ADMIN to
+    every anonymous caller.
+
+    Every expected outcome -- app not running, no key on disk, the endpoint refusing a non-
+    METADATA_ONLY classification, an app generated before R1.7 with no endpoint at all -- comes back
+    as a structured `ok: false` result (exit 2), same convention `monitor clone`/`monitor clone-
+    remove` already use, never a traceback. The raw Super User key is read only to build the request
+    header and is never placed in `result`, so `_print_result`'s redaction has nothing to catch and
+    nothing to miss."""
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    result: dict = {
+        "schemaVersion": "npdev-monitor-hotswap.v1", "command": "monitor hotswap",
+        "ok": False, "code": None, "message": None, "appDir": str(app_dir),
+    }
+
+    def _refuse(code: str, message: str) -> int:
+        result["code"] = code
+        result["message"] = message
+        _print_result(result, args)
+        return 2
+
+    if args.classification != "METADATA_ONLY":
+        return _refuse(
+            "NOT_METADATA_ONLY",
+            f"refusing locally: classification is {args.classification!r}, not METADATA_ONLY -- the "
+            "endpoint would refuse this too (HTTP 409), but there is no point making the call.")
+
+    source_root = Path(args.metadata_source_root).expanduser().resolve()
+    if not source_root.is_dir():
+        return _refuse("METADATA_SOURCE_ROOT_NOT_FOUND",
+                        f"--metadata-source-root does not exist: {source_root}")
+
+    app_record = npdev_monitor.probe_app(app_dir, origin="explicit",
+                                         health_timeout=min(args.timeout, 3.0))
+    if not app_record.get("isAppRoot"):
+        return _refuse("NOT_AN_APP", app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        return _refuse(
+            "APP_NOT_RUNNING",
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')} -- hot swap needs a RUNNING app; start it first.")
+
+    key_file = app_record.get("superUserKeyFile")
+    if not key_file:
+        return _refuse(
+            "SUPERUSER_KEY_NOT_FOUND",
+            "no SUPER_USER_KEY.txt found under this app's _ops directory -- either an app generated "
+            "before R1.7's SuperUserBootstrapper, or the key was already relocated/rotated elsewhere.")
+    try:
+        raw_key = Path(key_file).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return _refuse("SUPERUSER_KEY_UNREADABLE", f"found {key_file} but could not read it: {exc}")
+    if not raw_key:
+        return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
+
+    base_url = app_record.get("probeBaseUrl")
+    final_app_root = Path(app_record.get("finalAppRoot") or app_dir)
+    swap_result = _metadata_hotswap_apply(
+        base_url, raw_key, args.classification, list(args.reason or []),
+        source_root, final_app_root, args.timeout)
+    if swap_result.get("code") == "ENDPOINT_NOT_FOUND":
+        return _refuse("ENDPOINT_NOT_FOUND", swap_result.get("message"))
+    if swap_result.get("code") == "UNREACHABLE":
+        return _refuse("UNREACHABLE", swap_result.get("message"))
+    result.update(swap_result)
+    _print_result(result, args)
+    return 0 if result["ok"] else 2
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:
@@ -6110,6 +9649,564 @@ def _run_monitor_ops(args: argparse.Namespace) -> int:
     return 0 if code == 0 else 2
 
 
+# ---------------------------------------------------------------------------------------------
+# R9.5: `npdev package` + `npdev upgrade` -- deploy a generated app without the build toolchain.
+#
+# PREMISE CHECK (done before writing any of this):
+#   1. "There is no way today to deploy a generated app to a machine without the build toolchain."
+#      TRUE for producing a portable artifact -- nothing bundles a runnable jar + the minimal
+#      launcher into one distributable unit. FALSE as a claim about what RUNNING an already-built
+#      app needs: `App/_ops/Start-App.ps1` (read before writing any of this) launches it with
+#      `java -jar <FinalExec-*.jar> --server.port=... --spring.profiles.active=...` -- a JRE and
+#      PowerShell, never the Gradle wrapper and never a JDK. The gap this closes is packaging +
+#      an in-place upgrade that preserves data, not the ability to run without a build toolchain,
+#      which already existed for anyone who copied the right files by hand.
+#   2. "resolved-db-plan.json carries a DB password" -- TRUE, and confirmed by reading a real one
+#      under Build\generated-finalapps: `npdev_monitor.redact()` is reused here (not
+#      reimplemented) for the exact same reason `monitor logs export` already uses it.
+#   3. "resolved-db-plan.json is NOT what a running app connects to; the real datasource URL is
+#      baked into application-npdev-db.properties INSIDE the built jar." Independently confirmed
+#      here (not just cited): read `App/build/resources/main/application-npdev-db.properties` on a
+#      real built sample and the jar's own `BOOT-INF/classes/application-npdev-db.properties`
+#      (`jar tf`) -- both carry `spring.datasource.url`/username/password; the `_ops` plan does
+#      not feed the JVM at all, exactly the finding `npdev_monitor._detect_datasource_sharing`
+#      already made and documents for `monitor clone`. Consequence for `package`/`upgrade`:
+#      neither command can "retarget a database" by editing the plan -- doing so would change
+#      nothing about where the running JVM connects. Retargeting would require overriding Spring's
+#      OWN datasource properties at launch (`--spring.datasource.url=...` / `SPRING_DATASOURCE_*`
+#      env vars, ordinary Spring Boot property precedence) -- NOT attempted here; out of scope for
+#      this done-when, which only asks for install/upgrade, not re-pointing at a different DB.
+#
+# App discovery reuses `npdev_monitor.probe_app` -- the SAME resolution `npdev service
+# install/uninstall` already relies on (`_run_service_op`, a few hundred lines below): it tells
+# in-app (_ops inside the app) apart from the legacy-shared layout (_ops beside a separate App/
+# dir) and returns `finalAppRoot` (jar/data/logs/secrets) and `opsDir` (the toolbox) separately,
+# which is more correct than guessing a fixed relative layout a second time.
+# ---------------------------------------------------------------------------------------------
+
+PACKAGE_SCHEMA_VERSION = "npdev-package.v1"
+PACKAGE_MANIFEST_NAME = "npdev-package.json"
+UPGRADE_HISTORY_NAME = "npdev-upgrade-history.json"
+# The three directories a regeneration spares (CLAUDE.md's own three-seam rule, enforced across
+# Build-NpdevApp.ps1 / Build-ClaudeApp.ps1 / FinalAppAssembler.java) must never be bundled into a
+# distributable package and never overwritten by an upgrade. Reusing `npdev monitor clone`'s own
+# constant here rather than retyping the literal set a further time.
+PACKAGE_SPARED_DIR_NAMES = npdev_monitor._CLONE_SPARED_DIR_NAMES
+# Runtime STATE, not code/config -- excluded from the `_ops` tree `_copy_ops_tree` bundles/overlays.
+# resolved-db-plan.json is handled separately (always redacted, see run_package's own comment); the
+# rest are things only a RUNNING install should ever have (a tracked PID, a stderr scratch file, a
+# one-time bootstrap secret, and any rolled log file).
+_PACKAGE_OPS_STATE_EXCLUDES = {"resolved-db-plan.json", "app.pid", "app.stderr.log", "SUPER_USER_KEY.txt"}
+
+
+def _copy_ops_tree(ops_src: Path, ops_dest: Path) -> list[str]:
+    """Copies the WHOLE `_ops` toolbox, not a curated subset -- found live, the hard way: a first
+    cut of `run_package` bundled a hand-picked 5-script list (Start/Stop-App, Start/Stop-
+    Environment, Status-App), and the resulting package's OWN `Start-App.ps1` failed the moment it
+    was actually run, with `Create-Environment.ps1 is not recognized` -- `Start-Environment.ps1`
+    calls it, and it was not on the curated list. There is no declared, closed set of which `_ops`
+    script calls which other one, so the only bundling rule that cannot go stale the same way again
+    is "everything that is not runtime state" (`_PACKAGE_OPS_STATE_EXCLUDES` above). Also serves
+    `run_upgrade`'s overlay: copying a package's `_ops` tree onto an EXISTING target only overwrites
+    files the package actually carries, leaving target-only state (a live PID, a real
+    SUPER_USER_KEY.txt) untouched -- the same reason those names are excluded going INTO the package
+    in the first place."""
+    ops_dest.mkdir(parents=True, exist_ok=True)
+    copied: list[str] = []
+    for item in ops_src.rglob("*"):
+        if not item.is_file():
+            continue
+        rel = item.relative_to(ops_src)
+        if rel.name in _PACKAGE_OPS_STATE_EXCLUDES or rel.name.endswith(".log"):
+            continue
+        dest = ops_dest / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(item, dest)
+        copied.append(rel.as_posix())
+    return copied
+
+
+def _find_runnable_jar(final_app_root: Path) -> Path:
+    """The exact selection `App/_ops/Start-App.ps1` makes at launch time (read verbatim before
+    writing this): `build/libs/FinalExec-*.jar`, excluding `*-plain.jar` (Spring Boot's
+    dependency-free jar, not runnable stand-alone). Deliberately NOT `npdev_monitor._newest_jar`
+    -- that helper is for an informational display row and does not exclude `-plain.jar`, which
+    would be a real defect here since this jar is the one `upgrade` actually launches."""
+    candidates = [
+        p for p in final_app_root.rglob("FinalExec-*.jar")
+        if p.parent.name == "libs" and p.parent.parent.name == "build" and not p.name.endswith("-plain.jar")
+    ]
+    if not candidates:
+        raise CliError(
+            f"no runnable jar found under {final_app_root} (looked for build/libs/FinalExec-*.jar, "
+            f"excluding *-plain.jar) -- build the app first (Build-NpdevApp.ps1 / gradlew bootJar)"
+        )
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0]
+
+
+def _app_java_version(final_app_root: Path) -> str:
+    props_path = final_app_root / "gradle.properties"
+    if props_path.is_file():
+        value = npdev_monitor._read_properties_file(props_path).get("npdevAppJavaVersion")
+        if value:
+            return value
+    return "17"  # FinalAppAssembler#appendAppJavaVersionDefault's own default (CLAUDE.md)
+
+
+def _app_datasource_summary(final_app_root: Path) -> dict:
+    """Ground truth per `npdev_monitor._detect_datasource_sharing`'s own doc:
+    `application-npdev-db.properties` is baked INTO the built jar and is what the JVM actually
+    reads; `_ops/resolved-db-plan.json` is not. Informational only, and REDACTED before it ever
+    goes into a package manifest -- the properties file itself still carries the real credential
+    for a non-embedded engine (that is baked into the shipped jar regardless of anything this
+    command does; redacting the manifest's own copy of the URL does not remove it from the jar,
+    which is a real, separately-scoped limitation reported rather than hidden)."""
+    candidates = list(final_app_root.rglob("application-npdev-db.properties"))
+    if not candidates:
+        return {"engine": None, "url": None,
+                "note": "application-npdev-db.properties not found (app not yet built) -- "
+                        "database configuration unknown"}
+    props = npdev_monitor._read_properties_file(candidates[0])
+    return {
+        "engine": props.get("npdev.database.engine"),
+        "url": npdev_monitor.redact(props.get("spring.datasource.url", "")),
+    }
+
+
+def run_package(args: argparse.Namespace) -> int:
+    """R9.5: bundle an ALREADY-BUILT FinalApp's runnable jar + the minimal `_ops` launcher into a
+    self-contained artifact -- no Gradle wrapper, no JDK, no source, no source-machine data. See
+    this section's own module doc for what a target machine genuinely needs to RUN it.
+    """
+    app_record = npdev_monitor.probe_app(Path(args.app).expanduser().resolve(), include_info=False)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {args.app}")
+
+    final_app_root = Path(app_record["finalAppRoot"])
+    ops_dir = Path(app_record["opsDir"]) if app_record.get("opsDir") else final_app_root / "_ops"
+    jar_path = _find_runnable_jar(final_app_root)
+
+    plan_path = ops_dir / "resolved-db-plan.json"
+    plan = read_json(plan_path) if plan_path.is_file() else {}
+    app_id = app_record.get("name") or final_app_root.name
+
+    out_path = Path(args.out).expanduser().resolve()
+    as_zip = bool(getattr(args, "zip", False)) or out_path.suffix.lower() == ".zip"
+    if out_path.exists() and not getattr(args, "force", False):
+        raise CliError(f"{out_path} already exists -- pass --force to overwrite")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-package-") as staging_raw:
+        staging = Path(staging_raw)
+        package_app_dir = staging / "app"
+        (package_app_dir / "build" / "libs").mkdir(parents=True, exist_ok=True)
+        jar_dest = package_app_dir / "build" / "libs" / jar_path.name
+        shutil.copy2(jar_path, jar_dest)
+
+        # R9.5 real-boot finding (found by actually booting a packaged app, not by reading code):
+        # `npdev-generated/` is read off the FILESYSTEM at boot, twice over, never off the
+        # classpath/jar -- so a package that omits it does not run at all, on any profile:
+        #   1. `npdev.runtime.plugin-package-directory` (the `trial`/`filesystem`/`external-*`
+        #      profiles' `filesystem-folder` discovery mode) names
+        #      `./npdev-generated/src/main/resources/npdev/plugin-packages`, relative to the JVM's
+        #      cwd. A package bundling only the jar failed to boot a real sample
+        #      (r94-simple-user-registry) with `IllegalStateException: Runtime plugin package
+        #      directory does not exist`.
+        #   2. `StrictExecutionValidator` (application-prod.properties' own comment: "the strict
+        #      npdev-generated/ hash check ... stays ON") hashes the ENTIRE `npdev-generated/` tree
+        #      against `npdev-generated/src/main/resources/npdev/support/
+        #      generated-folder.signature.properties` and refuses to boot if it is missing or
+        #      altered -- bundling only the plugin-packages subfolder still failed, with
+        #      `StrictExecutionViolationException: Strict execution signature is missing`.
+        # The only bundling rule immune to a THIRD such surprise is "the whole directory, not a
+        # subpath of it" -- `npdev-generated/` is itself generator OUTPUT (never user data), so
+        # shipping all of it is no different in kind from shipping the jar.
+        npdev_generated_relpath = Path("npdev-generated")
+        npdev_generated_src = final_app_root / npdev_generated_relpath
+        bundled_npdev_generated = npdev_generated_src.is_dir()
+        if bundled_npdev_generated:
+            shutil.copytree(npdev_generated_src, package_app_dir / npdev_generated_relpath)
+
+        ops_dest = package_app_dir / "_ops"
+        copied_scripts = _copy_ops_tree(ops_dir, ops_dest)
+
+        # CLAUDE.md: resolved-db-plan.json carries a DB password -- anything that copies it off the
+        # machine (which is the entire point of `package`) MUST go through npdev_monitor.redact()
+        # first, exactly the rule `monitor logs export` already follows.
+        if plan_path.is_file():
+            (ops_dest / "resolved-db-plan.json").write_text(
+                json.dumps(npdev_monitor.redact(plan), indent=2) + "\n", encoding="utf-8")
+
+        for candidate in (final_app_root / ".npdev-root", ops_dir.parent / ".npdev-root"):
+            if candidate.is_file():
+                shutil.copy2(candidate, package_app_dir / ".npdev-root")
+                break
+
+        # Only *.example templates ship -- never a real secret, matching the platform's own
+        # "only agent-proxy.env.example is ever emitted" convention (CLAUDE.md's agent-proxy note).
+        secrets_dest = package_app_dir / "secrets"
+        secrets_dest.mkdir(parents=True, exist_ok=True)
+        example_names = []
+        secrets_src = final_app_root / "secrets"
+        if secrets_src.is_dir():
+            for example in secrets_src.glob("*.example"):
+                shutil.copy2(example, secrets_dest / example.name)
+                example_names.append(example.name)
+
+        # data/ and logs/ ship EMPTY -- a fresh install (or `upgrade`'s target) grows its own,
+        # exactly as a first-ever generation does. Shipping the source machine's data would defeat
+        # the entire point of a portable package.
+        (package_app_dir / "data").mkdir(parents=True, exist_ok=True)
+        (package_app_dir / "logs").mkdir(parents=True, exist_ok=True)
+
+        java_version = _app_java_version(final_app_root)
+        manifest = {
+            "schemaVersion": PACKAGE_SCHEMA_VERSION,
+            "packagedAt": _utc_now(),
+            "sourceAppRoot": str(final_app_root),
+            "appId": app_id,
+            "jarFileName": jar_dest.name,
+            "jarSha256": f"sha256:{hashlib.sha256(jar_dest.read_bytes()).hexdigest()}",
+            "javaVersionRequired": java_version,
+            "database": _app_datasource_summary(final_app_root),
+            "serverPort": plan.get("serverPort"),
+            "defaultSpringProfiles": plan.get("defaultSpringProfiles"),
+            "sparedDirectories": sorted(PACKAGE_SPARED_DIR_NAMES),
+            "opsScripts": copied_scripts,
+            "bundledNpdevGenerated": bundled_npdev_generated,
+            "secretsTemplates": example_names,
+            "runtimeRequirement": (
+                f"a JRE matching javaVersionRequired ({java_version}) on PATH as `java`, plus "
+                "PowerShell (pwsh or Windows PowerShell) to run _ops\\Start-App.ps1 -- NEITHER the "
+                "Gradle wrapper NOR a JDK NOR this repo's source are required to RUN a packaged "
+                "app (only to BUILD one in the first place)."
+            ),
+        }
+        (staging / PACKAGE_MANIFEST_NAME).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if as_zip:
+            if out_path.exists():
+                out_path.unlink()
+            with zipfile.ZipFile(out_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_path in staging.rglob("*"):
+                    if file_path.is_file():
+                        zf.write(file_path, file_path.relative_to(staging).as_posix())
+        else:
+            if out_path.exists():
+                shutil.rmtree(out_path)
+            shutil.copytree(staging, out_path)
+
+    result = {"ok": True, "out": str(out_path), "zip": as_zip, "manifest": manifest}
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+def _read_package_manifest(package_arg: str) -> tuple[dict, Path]:
+    """(manifest, packageAppDir). Accepts a directory (what `package` writes by default) or a
+    `.zip` (extracted to a throwaway temp dir this process leaks intentionally for the life of the
+    command -- `run_upgrade` reads it once before exiting, and cleaning it up mid-copy would be
+    more failure surface than a few extra MB in the OS temp dir)."""
+    package_path = Path(package_arg).expanduser().resolve()
+    if package_path.is_file() and package_path.suffix.lower() == ".zip":
+        extract_dir = Path(tempfile.mkdtemp(prefix="npdev-upgrade-extract-"))
+        with zipfile.ZipFile(package_path) as zf:
+            zf.extractall(extract_dir)
+        root = extract_dir
+    elif package_path.is_dir():
+        root = package_path
+    else:
+        raise CliError(f"{package_path} is not a package directory or .zip (produced by `npdev package`)")
+    manifest_path = root / PACKAGE_MANIFEST_NAME
+    if not manifest_path.is_file():
+        raise CliError(f"{root} has no {PACKAGE_MANIFEST_NAME} -- not a package `npdev package` produced")
+    manifest = read_json(manifest_path)
+    if manifest.get("schemaVersion") != PACKAGE_SCHEMA_VERSION:
+        raise CliError(f"{manifest_path}: unrecognized schemaVersion {manifest.get('schemaVersion')!r}, "
+                        f"expected {PACKAGE_SCHEMA_VERSION!r}")
+    return manifest, root / "app"
+
+
+def _hash_tree(root: Path) -> dict:
+    """relative-posix-path -> sha256 for every FILE under `root` -- used to prove a spared
+    directory (data/logs/secrets) is byte-identical before and after an upgrade, the done-when's
+    "without data loss" made checkable instead of merely asserted."""
+    out: dict = {}
+    if not root.is_dir():
+        return out
+    for path in root.rglob("*"):
+        if path.is_file():
+            out[path.relative_to(root).as_posix()] = hashlib.sha256(path.read_bytes()).hexdigest()
+    return out
+
+
+def run_upgrade(args: argparse.Namespace) -> int:
+    """R9.5: install `--package` onto `--target`, or upgrade it in place, WITHOUT touching
+    data/logs/secrets -- the same three directories a regeneration spares. `--target` not existing
+    (or not yet a discoverable app) is treated as a fresh install, not an error.
+    """
+    manifest, package_app_dir = _read_package_manifest(args.package)
+
+    target_input = Path(args.target).expanduser().resolve()
+    target_record = npdev_monitor.probe_app(target_input, include_info=False)
+    fresh_install = not target_record.get("isAppRoot")
+
+    if fresh_install:
+        target_final_app_root = target_input
+        target_final_app_root.mkdir(parents=True, exist_ok=True)
+        # A fresh target has nothing to preserve selectively -- seed it wholesale from the package,
+        # then let the same jar-swap/ops-copy logic below run over it (idempotent: it just re-copies
+        # what is already there).
+        shutil.copytree(package_app_dir, target_final_app_root, dirs_exist_ok=True)
+        target_ops_dir = target_final_app_root / "_ops"
+    else:
+        target_final_app_root = Path(target_record["finalAppRoot"])
+        target_ops_dir = (Path(target_record["opsDir"]) if target_record.get("opsDir")
+                          else target_final_app_root / "_ops")
+        if target_record.get("listening") and not getattr(args, "force", False):
+            raise CliError(
+                f"{target_final_app_root} looks like it is still running (pid "
+                f"{target_record.get('pid')} listening on port {target_record.get('port')}) -- "
+                f"stop it first (_ops/Stop-App.ps1) or pass --force to upgrade anyway (NOT "
+                f"recommended: files on disk would be swapped underneath the running JVM)."
+            )
+
+    spared_before = {name: _hash_tree(target_final_app_root / name) for name in sorted(PACKAGE_SPARED_DIR_NAMES)}
+
+    # Jar swap: remove every existing FinalExec-*.jar under target/build/libs first, so
+    # Start-App.ps1's own `Select-Object -First 1` over `FinalExec-*.jar` can never pick a stale
+    # jar left sitting alongside the new one.
+    target_libs = target_final_app_root / "build" / "libs"
+    target_libs.mkdir(parents=True, exist_ok=True)
+    removed_jars = []
+    if not fresh_install:
+        # On a fresh install the copytree above already placed the package's own jar and nothing
+        # else -- reporting it as "removed" would misleadingly suggest a stale jar existed.
+        for stale in target_libs.glob("FinalExec-*.jar"):
+            if stale.name not in removed_jars:
+                removed_jars.append(stale.name)
+            stale.unlink()
+    package_libs = package_app_dir / "build" / "libs"
+    new_jar = next(package_libs.glob("FinalExec-*.jar"), None)
+    if new_jar is None:
+        raise CliError(f"{package_app_dir} has no build/libs/FinalExec-*.jar -- not a usable package")
+    shutil.copy2(new_jar, target_libs / new_jar.name)
+
+    # `npdev-generated/` is CODE too -- see `run_package`'s own doc for why bundling the WHOLE
+    # directory (not just its plugin-packages subfolder) is load-bearing: the plugin discovery AND
+    # the strict-execution signature check both read it off disk, relative to the JVM's cwd, at
+    # boot. Refreshed on every upgrade like the jar and _ops scripts, never spared.
+    npdev_generated_relpath = Path("npdev-generated")
+    package_npdev_generated = package_app_dir / npdev_generated_relpath
+    updated_npdev_generated = False
+    if package_npdev_generated.is_dir():
+        target_npdev_generated = target_final_app_root / npdev_generated_relpath
+        if target_npdev_generated.exists():
+            shutil.rmtree(target_npdev_generated)
+        shutil.copytree(package_npdev_generated, target_npdev_generated)
+        updated_npdev_generated = True
+
+    # _ops scripts are CODE, always overwritten by an upgrade -- unlike resolved-db-plan.json below,
+    # which is INSTALL-SPECIFIC state (the port/engine this particular target was set up with).
+    # `_copy_ops_tree` is an OVERLAY here (target_ops_dir already exists): it only overwrites files
+    # the package itself carries, leaving target-only state (app.pid, SUPER_USER_KEY.txt, a live
+    # log) alone -- the same exclusion list that kept them out of the package in the first place.
+    package_ops_dir = package_app_dir / "_ops"
+    updated_scripts = _copy_ops_tree(package_ops_dir, target_ops_dir)
+
+    target_plan_path = target_ops_dir / "resolved-db-plan.json"
+    wrote_fresh_plan = False
+    if not target_plan_path.is_file() or fresh_install:
+        package_plan_path = package_ops_dir / "resolved-db-plan.json"
+        if package_plan_path.is_file():
+            shutil.copy2(package_plan_path, target_plan_path)
+            wrote_fresh_plan = True
+
+    marker_src = package_app_dir / ".npdev-root"
+    if marker_src.is_file() and not (target_final_app_root / ".npdev-root").is_file():
+        shutil.copy2(marker_src, target_final_app_root / ".npdev-root")
+
+    spared_after = {name: _hash_tree(target_final_app_root / name) for name in sorted(PACKAGE_SPARED_DIR_NAMES)}
+    data_preserved = spared_before == spared_after
+
+    history_path = target_ops_dir / UPGRADE_HISTORY_NAME
+    history = (read_json(history_path) if history_path.is_file()
+              else {"schemaVersion": "npdev-upgrade-history.v1", "entries": []})
+    history.setdefault("entries", []).append({
+        "at": _utc_now(),
+        "fromPackage": str(Path(args.package).expanduser().resolve()),
+        "removedJars": removed_jars,
+        "installedJar": new_jar.name,
+        "jarSha256": manifest.get("jarSha256"),
+        "freshInstall": fresh_install,
+        "dataPreserved": data_preserved,
+    })
+    history_path.write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+
+    result = {
+        "ok": True,
+        "target": str(target_final_app_root),
+        "freshInstall": fresh_install,
+        "removedJars": removed_jars,
+        "installedJar": new_jar.name,
+        "updatedOpsScripts": updated_scripts,
+        "updatedNpdevGenerated": updated_npdev_generated,
+        "wroteFreshDbPlan": wrote_fresh_plan,
+        "dataPreserved": data_preserved,
+        "sparedDirectories": sorted(PACKAGE_SPARED_DIR_NAMES),
+    }
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+# ---------------------------------------------------------------------------------------------
+# MON-22 follow-up: `npdev service install|uninstall` -- a THIN wrapper over the four scripts
+# OperationalRunbookEmitter (R9.6) already writes into every generated app's `_ops`
+# (Install-Service.ps1/Uninstall-Service.ps1 on Windows, install-service.sh/uninstall-service.sh
+# elsewhere). This locates and invokes them; it never reimplements OS-level supervision itself --
+# the same "wrap the launchers, do not reimplement them" rule those scripts document one layer
+# down for Start-App.ps1/run-final-app.sh.
+# ---------------------------------------------------------------------------------------------
+
+def run_service_install(args: argparse.Namespace) -> int:
+    return _run_service_op(args, "install")
+
+
+def run_service_uninstall(args: argparse.Namespace) -> int:
+    return _run_service_op(args, "uninstall")
+
+
+def _is_windows_platform() -> bool:
+    """A thin, separately-mockable wrapper around `os.name == "nt"`. Tests need to exercise the
+    POSIX branch of `_service_script`/`_run_service_op` on a real Windows dev machine -- monkey-
+    patching the actual `os.name` attribute globally is NOT safe for that (pathlib's own `Path()`
+    factory reads the same shared `os` module and refuses to instantiate a `PosixPath` while the
+    real OS is Windows, `pathlib._abc.UnsupportedOperation`, reproduced live while writing this
+    module's own tests) -- so this indirection is the seam a test patches instead."""
+    return os.name == "nt"
+
+
+def _service_script(app_record: dict, op: str) -> tuple[Path, list[str]]:
+    """The platform-appropriate emitted `_ops` service script for `op` ("install"/"uninstall"),
+    and the base command used to invoke it. `_ops` lives INSIDE the FinalApp root since QUAL-3
+    (`OperationalRunbookEmitter`: `finalAppRoot.resolve("_ops")`) -- the same anchor `npdev bench`
+    uses (`app_record["finalAppRoot"]`), not the discovery-only `app_record["opsDir"]`, which can
+    point at the pre-QUAL-3 legacy-shared location instead.
+    """
+    ops_dir = Path(app_record["finalAppRoot"]) / "_ops"
+    if _is_windows_platform():
+        name = "Install-Service.ps1" if op == "install" else "Uninstall-Service.ps1"
+        script = ops_dir / name
+        shell = _find_powershell()
+        if shell is None:
+            raise CliError(f"no PowerShell found (looked for `pwsh`, then `powershell`) -- {name} "
+                            "is a PowerShell script and needs one")
+        return script, [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
+    name = "install-service.sh" if op == "install" else "uninstall-service.sh"
+    script = ops_dir / name
+    return script, ["sh", str(script)]
+
+
+def _run_service_op(args: argparse.Namespace, op: str) -> int:
+    """Resolves the app exactly the way `npdev bench` does (`npdev_monitor.probe_app`), refuses
+    clearly if this is not a generated NPDev app or the script is missing (an app generated before
+    R9.6, or missing this platform's twin), and passes --dry-run/--start/--profile straight
+    through to the real script. Never touches OS service state itself.
+    """
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    app_record = npdev_monitor.probe_app(app_dir, include_info=False)
+    if not app_record.get("isAppRoot"):
+        raise CliError(app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+
+    script, command = _service_script(app_record, op)
+    if not script.is_file():
+        raise CliError(
+            f"{script} does not exist -- this app was generated before R9.6 (or this platform's "
+            "twin script was never emitted for it). Regenerate the app to pick up the _ops "
+            "service scripts, or supervise it another way (a Docker restart policy, an external "
+            "process supervisor)."
+        )
+
+    is_windows = _is_windows_platform()
+
+    if op == "uninstall" and args.dry_run:
+        # Neither Uninstall-Service.ps1 nor uninstall-service.sh has a native dry-run mode -- both
+        # are already an idempotent no-op when nothing is installed, which is the only case this
+        # command's own tests exercise for real (installing a service is privileged and hard to
+        # reverse). Rather than silently drop --dry-run or claim a flag the scripts do not have,
+        # print exactly what WOULD run and stop -- nothing is executed.
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": f"service {op}", "ok": True,
+            "dryRun": True, "script": str(script), "wouldRun": command,
+            "note": f"{script.name} has no native dry-run mode; nothing was executed. Without "
+                    "--dry-run this command is idempotent anyway: a no-op if nothing is installed "
+                    "for THIS app, a named refusal if a DIFFERENT app's install already claims the "
+                    "same name.",
+        }
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print(result["note"])
+            print("would run: " + " ".join(command))
+        return 0
+
+    profile = getattr(args, "profile", None)
+    if op == "install":
+        if profile and is_windows:
+            raise CliError(
+                "Install-Service.ps1 (Windows) has no --profile option -- it always wraps "
+                "Start-App.ps1 unchanged. --profile only applies to install-service.sh (systemd)."
+            )
+        if args.dry_run:
+            command = command + (["-DryRun"] if is_windows else ["--dry-run"])
+        if args.start:
+            command = command + (["-Start"] if is_windows else ["--start"])
+        if profile and not is_windows:
+            command = command + ["--profile", profile]
+
+    if not args.json:
+        print("running: " + " ".join(command))
+    completed = subprocess.run(command, cwd=str(script.parent), capture_output=True, text=True)
+    output = ((completed.stdout or "") + (completed.stderr or "")).strip()
+    result = {
+        "schemaVersion": "npdev-cli-result.v1",
+        "command": f"service {op}",
+        "ok": completed.returncode == 0,
+        "exitCode": completed.returncode,
+        "script": str(script),
+        "dryRun": bool(getattr(args, "dry_run", False)),
+        "output": output,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(output)
+        print(f"(exit {completed.returncode})")
+    return 0 if completed.returncode == 0 else 2
+
+
+def _explore_pairs(pairs: list[str]) -> dict:
+    """`--var NAME=VALUE` / `--credential NAME=VALUE` -> a dict. One parser for both flags and for
+    both `run` and `suite`, so a suite cannot interpret an override differently from a single run."""
+    parsed: dict = {}
+    for pair in pairs or []:
+        name, _, value = pair.partition("=")
+        if name:
+            parsed[name] = value
+    return parsed
+
+
+def _explore_emitter(as_json: bool):
+    """Progress events, streamed as they happen -- an exploration takes minutes and silence during
+    it is indistinguishable from a hang."""
+    if as_json:
+        return lambda event: print(json.dumps(event), flush=True)
+    return lambda event: print(
+        f"  [{event.get('kind')}] "
+        f"{event.get('phase') or event.get('state') or event.get('runId') or ''}"
+        f"{(' ' + event['name']) if event.get('name') else ''}", flush=True)
+
+
 def run_explore(args: argparse.Namespace) -> int:
     import npdev_explore
 
@@ -6128,27 +10225,23 @@ def run_explore(args: argparse.Namespace) -> int:
             result["schemaVersion"] = "npdev-exploration-preflight.v1"
             result["command"] = "explore preflight"
         elif args.explore_command == "run":
-            variables = {}
-            for pair in args.var:
-                name, _, value = pair.partition("=")
-                if name:
-                    variables[name] = value
-            credentials = {}
-            for pair in args.credential:
-                name, _, value = pair.partition("=")
-                if name:
-                    credentials[name] = value
-            emit = (lambda event: print(json.dumps(event), flush=True)) if args.json else \
-                   (lambda event: print(f"  [{event.get('kind')}] "
-                                        f"{event.get('phase') or event.get('state') or event.get('runId') or ''}",
-                                        flush=True))
             result = npdev_explore.run_exploration(
                 root, Path(args.app_dir), Path(args.file),
                 engine_port=args.engine_port, configured_root=args.engine_root, api_key=args.api_key,
-                driver=args.driver, variables=variables, credentials=credentials, ledger_id=args.ledger_id,
-                keep_engine=args.keep_engine, on_event=emit)
+                driver=args.driver, variables=_explore_pairs(args.var),
+                credentials=_explore_pairs(args.credential), ledger_id=args.ledger_id,
+                keep_engine=args.keep_engine, on_event=_explore_emitter(args.json))
             result["command"] = "explore run"
             result["ok"] = True
+        elif args.explore_command == "suite":
+            # R3.1. The roll-up decides the exit code (`ok` comes back False when anything is red,
+            # refused or skipped), which is why -- unlike `run` above -- nothing forces ok=True here.
+            result = npdev_explore.run_suite(
+                root, Path(args.app_dir), only=args.only, stop_on_red=args.stop_on_red,
+                engine_port=args.engine_port, configured_root=args.engine_root, api_key=args.api_key,
+                driver=args.driver, variables=_explore_pairs(args.var),
+                credentials=_explore_pairs(args.credential), ledger_id=args.ledger_id,
+                keep_engine=args.keep_engine, on_event=_explore_emitter(args.json))
         elif args.explore_command == "record":
             payload = read_json(Path(args.from_file))
             result = npdev_explore.record_external(
@@ -6166,15 +10259,25 @@ def run_explore(args: argparse.Namespace) -> int:
         elif args.explore_command == "pin":
             result = npdev_explore.pin_run(Path(args.app_dir), args.run, args.ledger, args.unpin)
         elif args.explore_command == "accept":
-            result = npdev_explore.accept_baseline(Path(args.app_dir), args.run)
+            result = npdev_explore.accept_baseline(
+                Path(args.app_dir), args.run, screenshot=getattr(args, "screenshot", None))
         elif args.explore_command == "context":
             result = npdev_explore.build_context_pack(root, Path(args.app_dir), args.exemplars)
         elif args.explore_command == "repair-payload":
             result = npdev_explore.build_repair_payload(
                 root, Path(args.app_dir), args.prompt, run_id=args.run,
                 include_page_text=args.include_page_text)
+        elif args.explore_command == "coverage":
+            result = npdev_explore.coverage(Path(args.app_dir))
+        elif args.explore_command == "generate":
+            result = npdev_explore.generate_routines(
+                Path(args.app_dir), concepts=args.concept or None,
+                out_dir=Path(args.out_dir) if args.out_dir else None,
+                write=not args.dry_run)
         else:
-            raise CliError("usage: npdev explore {list|show|validate|preflight|run|record|prune|pin|accept|context}")
+            raise CliError("usage: npdev explore "
+                           "{list|show|validate|preflight|run|suite|record|prune|pin|accept|context|"
+                           "coverage|generate}")
     except npdev_explore.ExploreError as exc:
         # A refusal is a DIAGNOSED problem, not a crash -- and never rendered like a failed
         # exploration (D4). Exit 2, structured, with the sentence that says what to do.
@@ -6221,6 +10324,23 @@ def _explore_human_summary(command: str, result: dict) -> str:
             lines.append(f"  why-not-green: {reason}")
         for excuse in verdict.get("excused", []):
             lines.append(f"  excused ({excuse['rule']}): {excuse['text'][:120]}")
+    elif command == "suite":
+        counts = result["counts"]
+        lines.append(f"{'GREEN' if result['green'] else 'RED'}  "
+                     f"{counts['green']}/{counts['total']} green, {counts['red']} red, "
+                     f"{counts['refused']} refused, {counts['skipped']} skipped "
+                     f"({result['durationMs']} ms)")
+        for entry in result["runs"]:
+            # `refused` and `skipped` stay visually distinct from `red`: a tool problem rendered as
+            # a test result is the QUAL-4 lesson, and a shortened list with no rows for what did not
+            # run is how a stopped suite gets misread as a smaller one.
+            lines.append(f"  [{entry['outcome']:<7}] {entry['name']:<32} {entry.get('runId') or ''}")
+            for reason in entry.get("reasons") or []:
+                lines.append(f"      {reason}")
+        if result.get("aborted"):
+            lines.append(f"  aborted: {result['aborted']}")
+        elif result.get("stoppedEarly"):
+            lines.append(f"  stopped early: {result['stoppedEarly']}")
     elif command == "preflight":
         for check in result["checks"]:
             lines.append(f"  [{check['status']}] {check['name']} -- {check.get('detail')}")
@@ -6230,6 +10350,39 @@ def _explore_human_summary(command: str, result: dict) -> str:
         lines.append(f"  {result['recordsNote']}")
         for run_id, why in list(result["keptBecause"].items())[:20]:
             lines.append(f"  kept {run_id}: {why}")
+    elif command == "coverage":
+        summary = result["summary"]
+        lines.append(f"concepts: {summary['conceptsCovered']}/{summary['conceptsTotal']} covered  "
+                     f"flows: {summary['flowsCovered']}/{summary['flowsTotal']} covered")
+        for concept in result["concepts"]:
+            last_green = concept.get("lastGreenRun")
+            status = "covered" if concept["covered"] else "UNCOVERED"
+            lines.append(f"  [{status:<9}] concept {concept['name']:<24} "
+                         f"routines={','.join(concept['referencingRoutines']) or '-'}  "
+                         f"lastGreenRun={last_green['runId'] if last_green else '-'}")
+        for flow in result["flows"]:
+            status = "covered" if flow["covered"] else "UNCOVERED"
+            lines.append(f"  [{status:<9}] flow    {flow['name']:<24} "
+                         f"scenarios={','.join(flow['referencingScenarios']) or '-'}")
+        if result["uncovered"]["concepts"] or result["uncovered"]["flows"]:
+            lines.append("  UNCOVERED:")
+            if result["uncovered"]["concepts"]:
+                lines.append(f"    concepts: {', '.join(result['uncovered']['concepts'])}")
+            if result["uncovered"]["flows"]:
+                lines.append(f"    flows:    {', '.join(result['uncovered']['flows'])}")
+        else:
+            lines.append("  UNCOVERED: none")
+    elif command == "generate":
+        summary = result["summary"]
+        lines.append(f"wrote {summary['written']} routine(s) ({summary['partial']} create+list only) "
+                     f"for {summary['conceptsTotal']} concept(s); {summary['skipped']} skipped "
+                     f"-- out: {result['outDir']}")
+        for entry in result["written"]:
+            note = f"  ({entry['partial']})" if entry.get("partial") else ""
+            lines.append(f"  [written] {entry['concept']:<28} {entry['stepCount']:>3} steps  "
+                         f"{Path(entry['file']).name}{note}")
+        for row in result["skipped"]:
+            lines.append(f"  [skipped] {row['concept']:<28} {row['reason']}")
     else:
         lines.append(json.dumps(result, indent=2, ensure_ascii=False))
     return "\n".join(lines)
@@ -6660,13 +10813,116 @@ def build_parser() -> argparse.ArgumentParser:
     pack_sub = pack.add_subparsers(dest="pack_command")
     pack_add = pack_sub.add_parser("add", help="Resolve the pack graph and write npdev.lock.")
     pack_add.add_argument("--model", required=True, help="path to the model.json to resolve")
+    # R8.4: resolve a pack by NAME against the catalog instead of hand-writing a 'from' coordinate.
+    pack_add.add_argument(
+        "--from-catalog", dest="from_catalog", default=None, metavar="<packId>",
+        help="resolve <packId> against the pack catalog (see `npdev pack search`) and add its "
+             "'from' coordinate to --model's own packs[] BEFORE resolving -- idempotent if already "
+             "declared. The catalog lookup itself honors --catalog-url/--offline below; the "
+             "resolve-and-lock step that follows always needs the network for a genuinely new pack "
+             "regardless of --offline.")
+    pack_add.add_argument("--catalog-url", dest="catalog_url", default=None,
+                          help=f"override the catalog URL used by --from-catalog (default: "
+                               f"${ENV_PACK_CATALOG_URL}, else {DEFAULT_PACK_CATALOG_URL})")
+    pack_add.add_argument("--offline", action="store_true",
+                          help="--from-catalog's own lookup only: never touch the network, use the "
+                               "cached catalog (refuses if none is cached). Has no effect without "
+                               "--from-catalog.")
+    # R8.7: signing/trust gate -- see _verify_pack_signatures. Required (every time, not just once)
+    # to accept ANY remote pack with no detached signature; has no effect on an UNKNOWN_SIGNER or
+    # BAD_SIGNATURE refusal (never bypassable), and no effect at all when npdev-trust.json's mode
+    # is 'enforce'.
+    pack_add.add_argument(
+        "--allow-unsigned", dest="allow_unsigned", action="store_true",
+        help="accept a remote pack with no detached signature. Recorded in npdev.lock "
+             "(signature.status='unsigned', allowedUnsigned=true). Ignored in trust mode 'enforce'.",
+    )
     pack_update = pack_sub.add_parser("update", help="Re-resolve the pack graph and rewrite npdev.lock.")
     pack_update.add_argument("--model", required=True, help="path to the model.json to resolve")
+    pack_update.add_argument(
+        "--allow-unsigned", dest="allow_unsigned", action="store_true",
+        help="accept a remote pack with no detached signature. Recorded in npdev.lock "
+             "(signature.status='unsigned', allowedUnsigned=true). Ignored in trust mode 'enforce'.",
+    )
     pack_list = pack_sub.add_parser("list", help="Print the current npdev.lock (or a live dry-run).")
     pack_list.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_why = pack_sub.add_parser("why", help="Explain why a pack resolved to its current version.")
     pack_why.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_why.add_argument("pack_id", metavar="<packId>", help="the pack id to explain")
+
+    # R8.4: discovery -- the ecosystem's missing front door. `search` reads a generated
+    # catalog-index.json (cached, offline-tolerant, never silently empty on a real fetch failure --
+    # see the module doc above `run_pack_search`); `build-catalog` produces that file from a local
+    # checkout of an NPR-shaped pack repo.
+    pack_search = pack_sub.add_parser(
+        "search", help="Search the NPR pack catalog by name/description/category (cached; offline-tolerant)."
+    )
+    pack_search.add_argument("query", nargs="?", default="",
+                             help="substring to match against pack id/description/category "
+                                  "(case-insensitive; default: list the whole catalog)")
+    pack_search.add_argument("--catalog-url", dest="catalog_url", default=None,
+                             help=f"override the catalog URL (default: ${ENV_PACK_CATALOG_URL}, "
+                                  f"else {DEFAULT_PACK_CATALOG_URL})")
+    pack_search.add_argument("--offline", action="store_true",
+                             help="never touch the network -- use the cached catalog only, or "
+                                  "refuse (never an empty result) if nothing is cached yet")
+    pack_search.add_argument("--json", action="store_true")
+
+    pack_build_catalog = pack_sub.add_parser(
+        "build-catalog",
+        help="Generate catalog-index.json from a local checkout of an NPR-shaped pack repo "
+             "(packs/<name>/pack.json per pack). Writes a local file only -- publishing it is a "
+             "separate, manual step today (or a future R8.5 `pack publish --push`).",
+    )
+    pack_build_catalog.add_argument("--repo-dir", dest="repo_dir", required=True,
+                                    help="local checkout containing packs/<name>/pack.json")
+    pack_build_catalog.add_argument("--repository-url", dest="repository_url",
+                                    default="https://github.com/MarceloGiazzon/NPR",
+                                    help="public repo URL baked into every entry's 'from' "
+                                         "coordinate (default: the NPR pack repo)")
+    pack_build_catalog.add_argument("--tag-template", dest="tag_template", default="v{version}",
+                                    help="how each pack's release tag is named, templated with "
+                                         "{pack}/{version} (default: v{version}, matching NPR's "
+                                         "current single repo-wide release-tag convention)")
+    pack_build_catalog.add_argument("--out", default="",
+                                    help="where to write catalog-index.json (default: "
+                                         "<repo-dir>/catalog-index.json)")
+
+    # R8.2: multi-member "export a working concept into a reusable pack" verb, replacing the
+    # external one-concept PowerShell script (NPDevSamples/scripts/packs/export-concept-to-pack.ps1)
+    # as the real path -- see run_pack_export's own docstring for the reference-rewriting rules.
+    pack_export = pack_sub.add_parser(
+        "export", help="Export one or more concepts from a model/pack into a new, reusable pack.json."
+    )
+    pack_export.add_argument("--model", required=True,
+                              help="path to the model.json (or pack.json) to export concepts from")
+    pack_export.add_argument("--concepts", required=True,
+                              help="comma-separated concept names to export together, e.g. Order,OrderLine")
+    pack_export.add_argument("--pack", required=True, help="new pack identifier (pack.schema.json's pattern)")
+    pack_export.add_argument("--author", required=True, help="attribution for who published this pack")
+    pack_export.add_argument("--category", default="other", help="pack.schema.json category (default: other)")
+    pack_export.add_argument("--description", default="", help="pack description (default: auto-generated)")
+    # dest is deliberately NOT "version" -- the top-level parser already owns a global --version
+    # (action="store_true", dest="version") and `main()` checks `if args.version:` before any
+    # command dispatch; a same-named subparser dest here would silently overwrite it in the shared
+    # Namespace and short-circuit every `pack export` call into the version banner (caught live).
+    pack_export.add_argument("--version", dest="pack_version", default="1.0.0",
+                              help="initial pack version (default: 1.0.0)")
+    pack_export.add_argument("--namespace", default="", help="optional Java/package namespace")
+    pack_export.add_argument("--out-dir", dest="out_dir", default="",
+                              help="directory to write <pack>/pack.json under "
+                                   "(default: NPDevContract/packs, the platform's own pack corpus)")
+    pack_export.add_argument("--forked-from-pack", dest="forked_from_pack", default="",
+                              help="attribution: pack this was forked from")
+    pack_export.add_argument("--forked-from-version", dest="forked_from_version", default="",
+                              help="attribution: version this was forked from")
+    pack_export.add_argument("--forked-from-author", dest="forked_from_author", default="",
+                              help="attribution: original author of the forked-from pack")
+    pack_export.add_argument("--allow-unresolved-refs", dest="allow_unresolved_refs", action="store_true",
+                              help="export even if a reference targets a concept outside the exported "
+                                   "set and outside any known sibling pack; the reference is left as-is "
+                                   "and recorded in the pack's own metadata.unresolvedReferences instead "
+                                   "of refusing the export")
 
     pack_diff = pack_sub.add_parser(
         "diff", help="Classify every difference between two pack.json documents as ADDITIVE/BREAKING/PATCH."
@@ -6685,6 +10941,170 @@ def build_parser() -> argparse.ArgumentParser:
         "--write", action="store_true",
         help="apply the change: write an empty migrations chain entry into <newPack.json> when the "
              "publish is allowed and non-breaking; without this flag, only reports what would happen",
+    )
+    # R8.5: once (and only once) the gate above reports `allowed`, commit <newPack.json> + a
+    # regenerated catalog-index.json (R8.4's own format) into a local git working copy of the
+    # catalog repo, and (with --push) push both the branch and the pack's own release tag.
+    pack_publish.add_argument(
+        "--push", action="store_true",
+        help="also commit (and push) <newPack.json> + a regenerated catalog-index.json into "
+             "--catalog-repo. Refuses -- locally, before any git add/commit/push -- a republish "
+             "that would change an already-published version's content. Requires --catalog-repo.",
+    )
+    pack_publish.add_argument(
+        "--catalog-repo", dest="catalog_repo", default=None,
+        help="path to a local git working copy of the catalog repo (e.g. a clone of "
+             "github.com/MarceloGiazzon/NPR) to publish into. Required with --push.",
+    )
+    pack_publish.add_argument(
+        "--repository-url", dest="repository_url", default=None,
+        help="public repo URL baked into the catalog's 'from' coordinates (default: read from "
+             "--catalog-repo's --remote remote)",
+    )
+    pack_publish.add_argument(
+        "--tag-template", dest="tag_template", default="v{version}",
+        help="how the pack's release tag is named, templated with {pack}/{version} "
+             "(default: v{version}, matching `pack build-catalog`'s own default)",
+    )
+    pack_publish.add_argument(
+        "--remote", default="origin", help="git remote name to push to (default: origin)",
+    )
+    pack_publish.add_argument(
+        "--branch", default=None,
+        help="branch to commit and push (default: --catalog-repo's currently checked-out branch)",
+    )
+    pack_publish.add_argument(
+        "--git-user-name", dest="git_user_name", default=None,
+        help="git author name for the publish commit (default: npdev-pack-publish)",
+    )
+    pack_publish.add_argument(
+        "--git-user-email", dest="git_user_email", default=None,
+        help="git author email for the publish commit (default: npdev-pack-publish@localhost)",
+    )
+    # R8.7: sign the pushed pack's content digest and publish the detached signature alongside it,
+    # in the SAME commit/tag -- see _push_pack_to_catalog's own doc for the signing digest and
+    # _fetch_pack_signature's for why the signature lives outside packs/<id>/.
+    pack_publish.add_argument(
+        "--sign-with", dest="sign_with", default=None, metavar="<keyfile>",
+        help="path to a keyfile written by `npdev pack sign-keygen` -- sign the pushed pack's "
+             "content digest with it and publish the detached signature alongside. Requires --push.",
+    )
+
+    pack_sign_keygen = pack_sub.add_parser(
+        "sign-keygen", help="Generate an Ed25519 keypair for `pack publish --sign-with` (R8.7)."
+    )
+    pack_sign_keygen.add_argument(
+        "--out", required=True, help="path to write the private keyfile (JSON) to",
+    )
+
+    # R8.3: the pack conformance harness -- composes R8.6's digest and R8.7's signature/trust
+    # machinery (`_classify_pack_signature`, factored out of `_verify_pack_signatures` for exactly
+    # this reuse) rather than a second notion of "is this pack ok". See `run_pack_verify`'s own doc.
+    pack_verify = pack_sub.add_parser(
+        "verify",
+        help="Conformance harness (R8.3): check a pack.json's structure/digest/signature, or "
+             "re-check every REMOTE pack a model's npdev.lock currently trusts, without mutating "
+             "anything.",
+    )
+    pack_verify.add_argument(
+        "--pack", default=None,
+        help="path to a pack.json file, or a directory containing one -- checks schema "
+             "conformance + content digest (and, with --from, its detached signature). Mutually "
+             "exclusive with --model.")
+    pack_verify.add_argument(
+        "--model", default=None,
+        help="path to a model.json -- re-checks every REMOTE pack entry in its npdev.lock against "
+             "npdev-trust.json, read-only (never rewrites the lock). Mutually exclusive with --pack.")
+    pack_verify.add_argument(
+        "--against-digest", dest="against_digest", default=None, metavar="<sha256:...>",
+        help="--pack only: fail with DIGEST_MISMATCH unless the pack's own recomputed content "
+             "digest equals this")
+    pack_verify.add_argument(
+        "--from", dest="from_coord", default=None, metavar="<git+coordinate>",
+        help="--pack only: also verify the pack's detached signature for this ALREADY-PUBLISHED "
+             "git+ coordinate, the same way `pack add` does")
+    pack_verify.add_argument(
+        "--trust", default=None,
+        help="--pack only: path to the npdev-trust.json to check the signature against "
+             "(default: sibling of --pack)")
+    pack_verify.add_argument(
+        "--allow-unsigned", dest="allow_unsigned", action="store_true",
+        help="treat an unsigned pack (or unsigned locked entry) as passing, same meaning as "
+             "`pack add --allow-unsigned`",
+    )
+
+    # R1.5 (roadmap 2026-08-18 R1.5): "npdev init" scaffolds a whole app; before this, growing one
+    # meant hand-editing model.json against the 4x-mirrored schema with no help until `npdev
+    # validate model` failed. `add` writes ONE schema-valid member into the correct top-level
+    # array, reusing the kind -> array-key agreement ModelSourceResolver.MODEL_ARRAY_KEYS already
+    # keys 18 ways (ADD_MEMBER_ARRAY_KEYS mirrors the 4 this verb supports).
+    add = subparsers.add_parser(
+        "add", help="Scaffold one schema-valid concept/panel/flow/procedure into an existing model.json."
+    )
+    add_sub = add.add_subparsers(dest="add_command")
+
+    add_concept = add_sub.add_parser(
+        "concept",
+        help="Add a concept with a minimal valid field set (an id field + one more), or --from an exemplar.",
+    )
+    add_concept.add_argument("name", help="New concept name. Refused if one already exists (by this name).")
+    add_concept.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_concept.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real concept out of NPDevSamples/<SAMPLE> (Input/model.json, or model.json for "
+             "npdev-init-seed's own flat layout -- the same lookup `npdev init --from` uses) instead "
+             "of writing a blank stub, renamed to NAME. Omit ::MEMBER to take the sample's first "
+             "concept. Refused if the exemplar references anything not already in --model.",
+    )
+
+    add_panel = add_sub.add_parser(
+        "panel", help="Add a panel with a concept-bound dataSource, or --from an exemplar."
+    )
+    add_panel.add_argument("name", help="New panel name. Refused if one already exists (by this name).")
+    add_panel.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_panel.add_argument(
+        "--concept", default=None,
+        help="Concept this panel's dataSource binds to -- must already exist in --model. Required "
+             "unless --from supplies its own concept-bound content.",
+    )
+    add_panel.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real panel out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
+             "renamed to NAME. Omit ::MEMBER to take the sample's first panel.",
+    )
+
+    add_flow = add_sub.add_parser(
+        "flow", help="Add a flow with a createConcept/return skeleton bound to --concept, or --from an exemplar."
+    )
+    add_flow.add_argument("name", help="New flow name. Refused if one already exists (by this name).")
+    add_flow.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_flow.add_argument(
+        "--concept", default=None,
+        help="Concept this flow operates on -- must already exist in --model (JsonModelParser "
+             "refuses any flow with neither flow.concept nor flow.input.concept). Required unless "
+             "--from supplies its own concept binding.",
+    )
+    add_flow.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real flow out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
+             "renamed to NAME. Omit ::MEMBER to take the sample's first flow.",
+    )
+
+    add_procedure = add_sub.add_parser(
+        "procedure",
+        help="Add a procedure with a readConcept/return skeleton bound to --concept, or --from an exemplar.",
+    )
+    add_procedure.add_argument("name", help="New procedure name. Refused if one already exists (by this name).")
+    add_procedure.add_argument("--model", required=True, help="path to the model.json to add into")
+    add_procedure.add_argument(
+        "--concept", default=None,
+        help="Concept this procedure reads -- must already exist in --model. Required unless --from "
+             "supplies its own concept-bound steps.",
+    )
+    add_procedure.add_argument(
+        "--from", dest="from_exemplar", default=None, metavar="SAMPLE[::MEMBER]",
+        help="Copy a real procedure out of NPDevSamples/<SAMPLE> instead of writing a blank stub, "
+             "renamed to NAME. Omit ::MEMBER to take the sample's first procedure.",
     )
 
     migration = subparsers.add_parser(
@@ -6757,6 +11177,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Also render the selected usages as a self-contained HTML page at this path.",
     )
     inspect_usage_parser.add_argument("--output")
+
+    # R1.6 (roadmap 2026-08-18 R1.6): "what breaks if I change this?" used to take four separate
+    # invocations (migration diff, inspect usage, author diff-gate, pack diff) -- composed here into
+    # ONE typed report. See run_impact's own docstring for exactly what each leg reuses.
+    impact = subparsers.add_parser(
+        "impact",
+        help="One change-preview report for a baseline/current pair: migration classification + "
+             "xref usage + the AI Authoring Contract diff-gate (model.json pair), or pack diff "
+             "(pack.json pair). No generate/build/boot -- see `npdev loop run` for the heavy pipeline.",
+    )
+    impact.add_argument("--baseline", required=True, help="Previous model.json or pack.json.")
+    impact.add_argument("--current", required=True, help="Current (candidate) model.json or pack.json.")
+    impact.add_argument(
+        "--of",
+        help="Model.json pairs only: narrow xref usage to WidgetOrder.lineCount / WidgetOrder / "
+             "kind:Name, same grammar as `inspect usage --of`.",
+    )
+    impact.add_argument(
+        "--manifest",
+        help="Model.json pairs only: a npdev-authoring-submission.v1 manifest, for a real AI "
+             "Authoring Contract compliance check. Omitting it still runs the authoring-gate leg, "
+             "which then reports its own manifest-missing refusal (same as `author diff-gate`).",
+    )
+    impact.add_argument("--output")
+    impact.add_argument("--timeout", type=float, default=300.0,
+                         help="Overall budget in seconds for the Gradle-backed legs (default 300).")
 
     generate = subparsers.add_parser(
         "generate", help="Generate a complete, runnable app (or a single screen) from a model."
@@ -6913,6 +11359,171 @@ def build_parser() -> argparse.ArgumentParser:
              "the prompt this command writes when --model-command is omitted.",
     )
 
+    # R3.4. No --scenarios, no --routines, no plan file: every input is discovered from the app the
+    # --app-dir names. An option here that a user HAD to set per app would be the per-app config this
+    # item exists to remove.
+    test = subparsers.add_parser(
+        "test",
+        help="Run all three layers against ONE booted app -- model-derived REST smoke over every "
+             "concept endpoint, *.scenario.json acceptance, and the browser routine suite -- and "
+             "write one report. Exits nonzero if any layer is red.",
+    )
+    test.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    test.add_argument("--report-out", default=None,
+                      help=f"Where to write the report. Default: <app-dir>/_ops/{TEST_REPORT_FILENAME}.")
+    test.add_argument("--engine-port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT,
+                      help="Browser layer: the ScrapForAI engine's port.")
+    test.add_argument("--engine-root", default=None, help="Browser layer: where the engine is installed.")
+    test.add_argument("--engine-api-key", default=None, help="Browser layer: the ENGINE's key, not the app's.")
+    test.add_argument("--json", action="store_true")
+
+    # R3.2: no new server-side surface -- a thin wrapper around DataSeedAdminController's existing
+    # GET /api/admin/seeds and POST /api/admin/seeds/<id>/run, same --app-dir + probe_app shape
+    # `test` uses above.
+    seed = subparsers.add_parser(
+        "seed",
+        help="List or run an app's declared seed/mock-data sets via its admin seed endpoints "
+             "(GET/POST /api/admin/seeds).",
+    )
+    seed_sub = seed.add_subparsers(dest="seed_command")
+
+    seed_list = seed_sub.add_parser("list", help="List the seeds this app declares.")
+    seed_list.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    seed_list.add_argument("--json", action="store_true")
+
+    seed_run = seed_sub.add_parser("run", help="Run one declared seed.")
+    seed_run.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    seed_run.add_argument("--id", required=True, help="The seed's id, as shown by `npdev seed list`.")
+    seed_run.add_argument("--tenant-id", default=None,
+                          help="SUPERUSER only: target a specific tenant's seed run instead of the caller's own.")
+    seed_run.add_argument("--timeout", type=float, default=120.0,
+                          help="HTTP timeout in seconds -- a large seed (thousands of records) can take a while.")
+    seed_run.add_argument("--json", action="store_true")
+
+    # R3.7. No plan file, same as `test`/`seed`: every endpoint is discovered from the app's own
+    # info.json + generated-ui-manifest.json.
+    bench = subparsers.add_parser(
+        "bench",
+        help="Probe a RUNNING app's concept-list and panel/query endpoints with repeated samples, "
+             "report p50/p95/mean/stdev per endpoint, and flag a regression against a saved per-app "
+             "baseline. Relative threshold, not an absolute ms budget -- an absolute one flaked "
+             "under ordinary machine load (RUN-16).",
+    )
+    bench.add_argument("--app-dir", required=True, help="A generated, RUNNING app (the one `npdev monitor probe` sees).")
+    bench.add_argument("--concept", action="append", default=[],
+                       help="Limit concept-list checks to this concept (repeatable). Default: every "
+                            "concept the app publishes.")
+    bench.add_argument("--panel", action="append", default=[],
+                       help="Limit panel checks to this panel (repeatable). Default: every panel the "
+                            "app declares.")
+    bench.add_argument("--samples", type=int, default=DEFAULT_BENCH_SAMPLES,
+                       help=f"GET requests per endpoint (default {DEFAULT_BENCH_SAMPLES}, matching "
+                            "the scale-proof ladder's own latency phase). More samples narrow the "
+                            "p95 estimate at the cost of run time.")
+    bench.add_argument("--timeout", type=float, default=30.0, help="Per-request timeout in seconds.")
+    bench.add_argument("--regression-threshold", type=float, default=DEFAULT_BENCH_REGRESSION_THRESHOLD,
+                       dest="regression_threshold",
+                       help="Flag a regression when the new p50 is at least this many times the "
+                            f"saved baseline p50 (default {DEFAULT_BENCH_REGRESSION_THRESHOLD}x -- "
+                            "relative, not an absolute ms budget; a fixed millisecond ceiling flaked "
+                            "under ordinary multi-agent machine load, see ledger RUN-16).")
+    bench.add_argument("--baseline-path", default=None,
+                       help=f"Default: <app-dir>/_ops/{BENCH_BASELINE_FILENAME}.")
+    bench.add_argument("--update-baseline", action="store_true",
+                       help="Promote this run's measurements to the saved baseline. The FIRST run "
+                            "against an app always establishes the baseline; after that, it is only "
+                            "overwritten explicitly, the same promotion discipline `explore accept` "
+                            "uses for one screenshot.")
+    bench.add_argument("--report-out", default=None,
+                       help=f"Where to write the report. Default: <app-dir>/_ops/{BENCH_REPORT_FILENAME}.")
+    bench.add_argument("--json", action="store_true")
+
+    # MON-22 follow-up: R9.6 (OperationalRunbookEmitter) writes Install-Service.ps1/
+    # Uninstall-Service.ps1 and install-service.sh/uninstall-service.sh into every generated app's
+    # _ops, but nothing in the CLI could reach them -- this is that thin wrapper. It locates the
+    # platform-appropriate script the same way `npdev bench` locates the app (npdev_monitor.probe_app)
+    # and never reimplements what the scripts do.
+    service = subparsers.add_parser(
+        "service",
+        help="Install/uninstall OS-level supervision for a generated app (wraps the R9.6-emitted "
+             "Install-Service.ps1/install-service.sh) -- restart-on-crash, start-at-boot.",
+    )
+    service_sub = service.add_subparsers(dest="service_command")
+
+    service_install = service_sub.add_parser(
+        "install",
+        help="Register OS-level supervision around this app's own launcher (Windows: a Scheduled "
+             "Task; Linux: a real systemd unit). PRIVILEGED and hard to reverse -- ALWAYS "
+             "--dry-run first.",
+    )
+    service_install.add_argument("--app-dir", required=True,
+                                 help="a generated NPDev app (the one `npdev monitor probe` sees)")
+    service_install.add_argument(
+        "--dry-run", action="store_true",
+        help="RECOMMENDED FIRST STEP, DO THIS BEFORE A REAL INSTALL: preview the exact "
+             "registration with zero side effects and no elevation needed. Without this flag, "
+             "install needs an elevated shell (Windows) or root (Linux/systemd) and actually "
+             "registers the supervisor.")
+    service_install.add_argument("--start", action="store_true",
+                                 help="also start the app/task immediately after a REAL "
+                                      "(non-dry-run) install")
+    service_install.add_argument("--profile", default=None,
+                                 help="Spring profile to pass through -- install-service.sh "
+                                      "(systemd) ONLY; Windows Install-Service.ps1 has no "
+                                      "--profile and this is refused on Windows")
+    service_install.add_argument("--json", action="store_true")
+
+    service_uninstall = service_sub.add_parser(
+        "uninstall",
+        help="Remove the OS-level supervision `service install` added for this app. Idempotent -- "
+             "a no-op if nothing is installed.",
+    )
+    service_uninstall.add_argument("--app-dir", required=True)
+    service_uninstall.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview only, execute nothing. The underlying Uninstall-Service.ps1/"
+             "uninstall-service.sh has no native dry-run mode -- both are already an idempotent "
+             "no-op when nothing is installed -- so this prints the command that WOULD run instead "
+             "of running it.")
+    service_uninstall.add_argument("--json", action="store_true")
+
+    # R9.5: deploy without the toolchain. `package` bundles an already-built app's runnable jar +
+    # minimal `_ops` launcher; `upgrade` installs (or in-place upgrades) that bundle onto a target,
+    # never touching data/logs/secrets. See `run_package`/`run_upgrade`'s own module doc for the
+    # premises checked before writing either.
+    package_parser = subparsers.add_parser(
+        "package",
+        help="Bundle an already-built FinalApp's runnable jar + minimal _ops launcher into a "
+             "self-contained, distributable artifact (R9.5) -- no Gradle wrapper, no JDK, no "
+             "source, no source-machine data.",
+    )
+    package_parser.add_argument(
+        "--app", required=True,
+        help="a generated, ALREADY-BUILT NPDev app directory (the one `npdev monitor probe` sees) "
+             "-- must already have a runnable jar under build/libs; this command never builds one")
+    package_parser.add_argument("--out", required=True,
+                                help="output directory, or a .zip path, to write the package to")
+    package_parser.add_argument("--zip", action="store_true",
+                                help="force a single .zip artifact even when --out has no .zip suffix")
+    package_parser.add_argument("--force", action="store_true", help="overwrite --out if it already exists")
+
+    upgrade_parser = subparsers.add_parser(
+        "upgrade",
+        help="Install or in-place upgrade a `npdev package` artifact onto a target app directory "
+             "(R9.5), WITHOUT touching data/logs/secrets -- the same three directories a "
+             "regeneration spares.",
+    )
+    upgrade_parser.add_argument("--package", required=True,
+                                help="a package directory or .zip produced by `npdev package`")
+    upgrade_parser.add_argument(
+        "--target", required=True,
+        help="the app directory to install into (created fresh if it does not yet exist) or "
+             "upgrade in place (if it does)")
+    upgrade_parser.add_argument(
+        "--force", action="store_true",
+        help="upgrade even though the target looks like it is still running (NOT recommended -- "
+             "stop it first with _ops/Stop-App.ps1)")
+
     report = subparsers.add_parser(
         "report", help="Produce or bootstrap the evidence and status reports."
     )
@@ -7005,6 +11616,11 @@ def build_parser() -> argparse.ArgumentParser:
                                            "need the union, and a caller that sends one origin "
                                            "silently breaks the other.")
     monitor_engine_start.add_argument("--api-key", default=None)
+    monitor_engine_start.add_argument("--allow-evaluate", action="store_true",
+                                      help="Opt-in: enable the engine's `evaluate` step "
+                                           "(ALLOW_EVALUATE=true) so a routine can stub window.prompt/"
+                                           "window.confirm. Powerful by design, so it stays off unless "
+                                           "the caller asks for it -- never a silent default.")
     monitor_engine_start.add_argument("--json", action="store_true")
 
     monitor_logs = monitor_sub.add_parser(
@@ -7023,6 +11639,23 @@ def build_parser() -> argparse.ArgumentParser:
                               help="export only: how many recent exploration runs to include.")
     monitor_logs.add_argument("--json", action="store_true")
 
+    monitor_ingress = monitor_sub.add_parser(
+        "ingress",
+        help="Generate ONE shared reverse-proxy config for every app on this box (R9.7).",
+    )
+    monitor_ingress.add_argument("--paths", required=True,
+                                 help="One or more directories to search, separated by ';' (or ':' on POSIX).")
+    monitor_ingress.add_argument("--out", required=True, help="The Caddyfile to write.")
+    monitor_ingress.add_argument("--depth", type=int, default=4)
+    monitor_ingress.add_argument("--mode", default="path", choices=["path", "hostname"],
+                                 help="Route each app by URL path prefix (default) or by hostname.")
+    monitor_ingress.add_argument("--base-domain", default="localhost",
+                                 help="hostname mode only: each app becomes <app>.<base-domain>.")
+    monitor_ingress.add_argument("--upstream-host", default="127.0.0.1",
+                                 help="Host the proxy dials each app on (default 127.0.0.1).")
+    monitor_ingress.add_argument("--health-timeout", type=float, default=1.0)
+    monitor_ingress.add_argument("--json", action="store_true")
+
     monitor_ops = monitor_sub.add_parser(
         "ops", help="Run one of the app's own generated _ops scripts (the Monitor's run-command strip)."
     )
@@ -7034,6 +11667,51 @@ def build_parser() -> argparse.ArgumentParser:
                              help="The acknowledgement token a destructive script demands. The window "
                                   "must be at least as careful as the terminal.")
     monitor_ops.add_argument("--json", action="store_true")
+
+    monitor_hotswap = monitor_sub.add_parser(
+        "hotswap",
+        help="R1.7: push an already-classified METADATA_ONLY change into a RUNNING app's own "
+             "metadata catalogs with no restart (MetadataHotSwapController#apply). "
+             "`Update-AppMetadata.ps1` calls this before falling back to a restart.",
+    )
+    monitor_hotswap.add_argument("--app-dir", required=True)
+    monitor_hotswap.add_argument(
+        "--classification", required=True,
+        help="Exactly `:generator:classifyModelChange`'s own report.classification. Anything other "
+             "than METADATA_ONLY is refused locally, with no HTTP call made.")
+    monitor_hotswap.add_argument(
+        "--reason", action="append", default=[],
+        help="Repeatable. report.classificationReasons, one per flag, passed through unchanged.")
+    monitor_hotswap.add_argument(
+        "--metadata-source-root", required=True,
+        help="The directory `:generator:classifyModelChange`'s own --emitMetadataTo wrote -- read "
+             "by the RUNNING APP's JVM (same machine), not uploaded over HTTP.")
+    monitor_hotswap.add_argument("--timeout", type=float, default=15.0)
+    monitor_hotswap.add_argument("--json", action="store_true")
+
+    monitor_clone = monitor_sub.add_parser(
+        "clone",
+        help="Copy a generated app into a new, independently runnable instance -- its own port and "
+             "database, so parallel testers stop stepping on each other (R3.8).",
+    )
+    monitor_clone.add_argument("--app-dir", required=True, help="The app to clone (its ORIGIN).")
+    monitor_clone.add_argument("--dest-root", required=True,
+                               help="Directory the clone is created UNDER, as a new subdirectory "
+                                    "named --name (or an auto-generated <appId>-clone-<token>).")
+    monitor_clone.add_argument("--name", default=None,
+                               help="Clone id / directory name. Auto-generated if omitted.")
+    monitor_clone.add_argument("--port", type=int, default=None,
+                               help="Use exactly this port (fails if it is not available) instead of "
+                                    "picking the next free one in the default 20000-20999 range.")
+    monitor_clone.add_argument("--json", action="store_true")
+
+    monitor_clone_remove = monitor_sub.add_parser(
+        "clone-remove",
+        help="Delete a clone `monitor clone` created (never an origin app) and release its "
+             "reserved port(s).",
+    )
+    monitor_clone_remove.add_argument("--clone-dir", required=True)
+    monitor_clone_remove.add_argument("--json", action="store_true")
 
     # ------------------------------------------------------------------------------------------
     # MONITOR_PLAN A4: `npdev explore`. The Scrap Manager screen calls these; so does the
@@ -7085,6 +11763,38 @@ def build_parser() -> argparse.ArgumentParser:
     explore_run.add_argument("--keep-engine", action="store_true",
                              help="Leave a self-started engine running (R2: it then needs stopping).")
     explore_run.add_argument("--json", action="store_true")
+
+    # R3.1. Same options as `run` minus `--file`, because a suite chooses its own files: it runs
+    # every definition `explore list` shows, in that order.
+    explore_suite = explore_sub.add_parser(
+        "suite",
+        help="Run EVERY routine the app declares, in `explore list` order, and roll the verdicts "
+             "up. Exits nonzero if any routine is red, refused or skipped.",
+    )
+    explore_suite.add_argument("--app-dir", required=True)
+    explore_suite.add_argument("--only", action="append", default=[], metavar="GLOB",
+                               help="Run only definitions whose name matches this fnmatch pattern "
+                                    "(e.g. --only 'login-*'), repeatable.")
+    explore_suite.add_argument("--stop-on-red", action="store_true",
+                               help="Stop at the first red routine. The rest are reported as "
+                                    "skipped, never silently dropped.")
+    explore_suite.add_argument("--engine-port", type=int, default=npdev_monitor.DEFAULT_ENGINE_PORT)
+    explore_suite.add_argument("--engine-root", default=None)
+    explore_suite.add_argument("--api-key", default=None)
+    explore_suite.add_argument("--driver", default="cli",
+                               choices=["cli", "monitor-ui", "harness", "ai-session", "playwright"])
+    explore_suite.add_argument("--var", action="append", default=[], metavar="NAME=VALUE",
+                               help="Runtime variable override applied to every routine, repeatable.")
+    explore_suite.add_argument("--credential", action="append", default=[], metavar="NAME=VALUE",
+                               help="Runtime credential override applied to every routine, "
+                                    "repeatable. Redacted from the engine's evidence, unlike --var.")
+    explore_suite.add_argument("--ledger-id", default=None,
+                               help="Link every run in this suite to a ledger item.")
+    explore_suite.add_argument("--keep-engine", action="store_true",
+                               help="Leave a self-started engine running, so routines 2..N reuse it "
+                                    "instead of paying the engine's startup each (R2: it then needs "
+                                    "stopping).")
+    explore_suite.add_argument("--json", action="store_true")
 
     explore_preflight = explore_sub.add_parser(
         "preflight", help="Report each precondition as its own row, without running anything (D4)."
@@ -7138,6 +11848,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     explore_accept.add_argument("--app-dir", required=True)
     explore_accept.add_argument("--run", required=True)
+    explore_accept.add_argument(
+        "--screenshot",
+        help="Re-baseline only this screenshot, leaving every other screenshot's existing baseline "
+             "untouched. Omit to replace the whole baseline (the default). Accepting one deliberate "
+             "visual change should not silently re-baseline every other screen a real regression "
+             "would have been caught on.",
+    )
     explore_accept.add_argument("--json", action="store_true")
 
     explore_context = explore_sub.add_parser(
@@ -7162,6 +11879,34 @@ def build_parser() -> argparse.ArgumentParser:
                                       "on a tester's or a customer's machine that text is their real "
                                       "data. Recorded on the run either way.")
     explore_payload.add_argument("--json", action="store_true")
+
+    explore_coverage = explore_sub.add_parser(
+        "coverage",
+        help="R3.5: per-app table, concept -> referencing routines -> last green run, plus "
+             "flow -> referencing acceptance scenarios, with an explicit UNCOVERED section. Static "
+             "(no engine, no HTTP call) -- reads info.json, routine/scenario files, and run history.",
+    )
+    explore_coverage.add_argument("--app-dir", required=True)
+    explore_coverage.add_argument("--json", action="store_true")
+
+    explore_generate = explore_sub.add_parser(
+        "generate",
+        help="R3.3: emit a create/list/edit/delete routine per concept, built from the app's own "
+             "generated-ui-manifest.json (the same resolved widget/enum/reference facts its "
+             "business UI renders from). Written into _ops/explorations by default, so `explore "
+             "suite` picks the result up immediately.",
+    )
+    explore_generate.add_argument("--app-dir", required=True)
+    explore_generate.add_argument("--concept", action="append", default=[],
+                                  help="Limit to this concept (repeatable). Default: every concept "
+                                       "in the manifest. A concept a selected one depends on via a "
+                                       "required reference must be included too, or it is skipped.")
+    explore_generate.add_argument("--out-dir", default=None,
+                                  help="Default: <app>/_ops/explorations (the mirror `explore suite` "
+                                       "already scans first).")
+    explore_generate.add_argument("--dry-run", action="store_true",
+                                  help="Report what would be written without writing any file.")
+    explore_generate.add_argument("--json", action="store_true")
 
     # ------------------------------------------------------------------------------------------
     # E2: the provider. The CLI owns the CALL as well as the payload, so a terminal user can do
@@ -7265,10 +12010,36 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_list(args)
         if args.command == "pack" and args.pack_command == "why":
             return run_pack_why(args)
+        if args.command == "pack" and args.pack_command == "export":
+            return run_pack_export(args)
         if args.command == "pack" and args.pack_command == "diff":
             return run_pack_diff(args)
         if args.command == "pack" and args.pack_command == "publish":
             return run_pack_publish(args)
+        if args.command == "pack" and args.pack_command == "sign-keygen":
+            return run_pack_sign_keygen(args)
+        if args.command == "pack" and args.pack_command == "verify":
+            return run_pack_verify(args)
+        if args.command == "pack" and args.pack_command == "search":
+            return run_pack_search(args)
+        if args.command == "pack" and args.pack_command == "build-catalog":
+            return run_pack_build_catalog(args)
+        if args.command == "service" and args.service_command == "install":
+            return run_service_install(args)
+        if args.command == "service" and args.service_command == "uninstall":
+            return run_service_uninstall(args)
+        if args.command == "package":
+            return run_package(args)
+        if args.command == "upgrade":
+            return run_upgrade(args)
+        if args.command == "add" and args.add_command == "concept":
+            return run_add_member(args, "concept")
+        if args.command == "add" and args.add_command == "panel":
+            return run_add_member(args, "panel")
+        if args.command == "add" and args.add_command == "flow":
+            return run_add_member(args, "flow")
+        if args.command == "add" and args.add_command == "procedure":
+            return run_add_member(args, "procedure")
         if args.command == "author" and args.author_command == "diff-gate":
             return run_author_diff_gate(args)
         if args.command == "author" and args.author_command == "submit":
@@ -7281,6 +12052,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "inspect" and args.inspect_command == "usage":
             return inspect_usage(args)
+        if args.command == "impact":
+            return run_impact(args)
         if args.command == "init":
             return run_init(args)
         if args.command == "setup":
@@ -7320,6 +12093,24 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "acceptance" and args.acceptance_command == "run":
             result = run_acceptance(args)
             print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 2
+        if args.command == "test":
+            result = run_test(args)
+            # R3.4's definition of done: nonzero when any layer is red. Same 0/2 mapping `run
+            # app`/`acceptance run`/`explore suite` already use -- 1 stays reserved for a refusal,
+            # which run_test raises as a CliError rather than reporting as a result.
+            print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
+                  else _test_human_summary(result))
+            return 0 if result.get("ok") else 2
+        if args.command == "seed":
+            result = run_seed(args)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
+                  else _seed_human_summary(result))
+            return 0 if result.get("ok") else 2
+        if args.command == "bench":
+            result = run_bench(args)
+            print(json.dumps(result, indent=2, ensure_ascii=False) if args.json
+                  else _bench_human_summary(result))
             return 0 if result.get("ok") else 2
         if args.command == "loop" and args.loop_command == "run":
             result = run_closed_loop(args)

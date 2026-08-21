@@ -1,0 +1,152 @@
+id: QUAL-20
+title: >-
+  Tooling jumped from `npdev init` (whole app) straight to hand-editing model.json against the
+  4x-mirrored schema, with no member-level scaffold and no help until `npdev validate model` failed
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R1 item R1.5 -- "A new verb writes a
+  schema-valid member into the correct model array (reusing MODEL_ARRAY_KEYS knowledge), seeding
+  required fields, with --from copying an exemplar out of the RAG corpus."
+surface: cli/add
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_add_member.py
+detail: |
+  `npdev add concept|panel|flow|procedure NAME --model <path> [--concept <Name>] [--from
+  <sample>[::<Member>]]` -- a new top-level verb alongside `init`/`pack`/`generate`, wired the same
+  nested-subparser way as `pack add|update|list|why|export|diff|publish`.
+
+  **PREMISE CHECK -- "--from copying an exemplar out of the RAG corpus" is FALSE as stated.**
+  `NPDevMcp/server.py`'s `tool_search_examples` reads `<Build>/npdev-ai/rag-index.json` -- ranked
+  TEXT CHUNKS for an AI agent to read, built by `scripts/ai/build_knowledge.py` from
+  `knowledge/cards/` + golden scenarios, and not guaranteed to exist in a fresh checkout (a
+  Build-root artifact -- CLAUDE.md's own "ephemeral" tier). There is no structured
+  concept/panel/flow/procedure JSON in it; there is nothing there for `--from` to copy a member out
+  of. The real, in-repo, always-present, already-proven source of a "real, working" member is
+  `NPDevSamples/` -- the exact corpus `npdev init --from` already draws whole-app seeds from, and
+  the one CLAUDE.md itself names as the DSL-feature reference corpus. `--from <sample>[::<Member>]`
+  resolves against `NPDevSamples/<sample>/Input/model.json` (every sample but one) or
+  `NPDevSamples/<sample>/model.json` (npdev-init-seed's own flat layout) -- the same two-candidate
+  lookup `npdev init --from` already uses -- picks the named member (or the array's first, if
+  `::Member` is omitted), deep-copies it, and renames it (plus its own `ui.label`/`title`) to NAME.
+
+  **R1.1 WAS ALREADY DONE** (a different session tonight, ledger QUAL-15/16/17/RUN-13 all cite R1
+  items): `run_validate_semantic` already resolves the AI-tools-jar warm path with no Gradle wrapper
+  process, confirmed live here too -- every `npdev validate model` call in this session's own
+  testing returned in well under a second with no Gradle output. R1.5's soft blocker was already
+  satisfied; nothing to unblock.
+
+  **THE SUBSTANTIVE PART: proving every scaffold actually validates, not just parses.** Read the
+  real schema ($defs.concept/panel/flow/procedure/flowStep/procedureStep in model.schema.json) AND
+  the real semantic validators (ConceptValidation, FlowValidation, PackValidation, PanelValidation)
+  before writing a single default template, because the schema alone is not the whole contract:
+    - ConceptValidation.java:155 requires a concept to have **exactly one** field with `id: true` --
+      not expressed in the JSON Schema at all (schema only requires `fields` non-empty).
+    - `JsonModelParser.java:470` throws (a PARSE-time failure, before semantic validation even
+      runs) if a flow declares neither `flow.concept` nor `flow.input.concept` -- also not a JSON
+      Schema requirement.
+    - `FlowValidation.java:91-100`'s `BUILTIN_CAPABILITY_OPERATIONS` seeds "persistence" -> {save,
+      delete, query, exists} for EVERY model, whether or not `capabilities[]` declares it -- so a
+      `createConcept` flow step needs no capability scaffolding, on even the barest
+      `npdev-init-seed`-shaped model (zero `capabilities[]`). Verified this by reading the operations
+      map construction (`resolveCapabilityOperations`), not by assuming a builtin existed.
+    - `PanelValidation.java` requires nothing beyond a concept-bound `dataSources[].concept`
+      resolving to a real concept -- `layout`/`fieldBindings`/`actions` are all optional, proven by
+      a real corpus fixture (`dsl-conformance-max`'s `WidgetOrderReviewPanel`, which has neither).
+  Every default stub's SHAPE is lifted from a real, currently-passing fixture rather than
+  hand-derived from the schema in isolation, so a semantic-only rule like the two above can't be
+  missed: `concept` from `npdev-init-seed`'s own `Patient`; `flow`/`procedure` step shapes from
+  `npdev-canary`'s `CreateCanaryTask`/`SaveCanaryTaskProcedure` (the T1 fast-gate canary, explicitly
+  "frozen" and "pipeline-complete... generate->build->boot->serve->flow->panel"); `panel` from
+  `dsl-conformance-max`'s `WidgetOrderReviewPanel`.
+
+  **`--concept` is required for panel/flow/procedure without `--from`** (refused, naming why and
+  listing available concepts, if omitted or unknown) -- every panel/flow/procedure in this DSL
+  binds to a concept, so there is no "blank" scaffold for these three kinds that doesn't beg the
+  question the roadmap itself set out to remove.
+
+  **`--from`'s safety net -- a generic reference scanner, not a full pack-composer.** An exemplar
+  copied from another sample can carry references (a concept's own `reference`/`extends`/
+  `specializes`, a panel's `dataSources[].concept|query|procedure|onRowLoad` and
+  `actions[].procedure|flow|concept`, a flow's `concept`/`input.concept`/step `scope`/`procedure`/
+  `capability`/`event`, a procedure's step `concept`/`procedure`/`capability`) that do not exist in
+  the destination model. Writing such a member anyway would hand back something `npdev validate
+  model` immediately rejects -- exactly what the roadmap's own Done-When forbids. The scan walks
+  every step including ones nested under `then`/`else`/`steps` (branches/loops), refuses BY NAME
+  (MON-18/PACK-13 house style) if anything is missing, and writes nothing on refusal. Deliberately
+  scoped to the reference shapes the real validators actually enforce (matching PACK-13's own
+  "not the full ~20-member reference vocabulary" precedent) -- e.g. `capabilityCall`'s
+  operation-ARITY match is left to the real `npdev validate model` run, only existence is checked
+  here, and the builtin-capability set (persistence/messaging/email/fiscal/signature/eventBus/
+  invariantEngine) is treated as always-available, matching `FlowValidation`'s own builtin seed.
+
+  **Existence checks run against the FRAGMENT-COMPOSED view**, not the raw root file: `--concept`,
+  the duplicate-name refusal, and `--from`'s reference scan all call the existing
+  `resolve_split_model` (the same $ref-composer `npdev inspect app`/`npdev dev`'s watch-set already
+  use) so a concept declared in a bounded-context fragment (S3, `$ref`-split models) is correctly
+  seen as already existing. The new member is still appended to `--model`'s OWN top-level array,
+  never into a fragment.
+
+  **Idempotence: refuse by name, never overwrite.** A duplicate member name (checked against the
+  composed view) raises before any write, naming the model file and the colliding name -- confirmed
+  the file is byte-identical after a refused call (both the duplicate-name and the dangling-reference
+  refusal paths).
+
+  A REAL BUG CAUGHT BY MY OWN TEST BEFORE THIS WAS FINALIZED: the first version of `--from` renamed
+  only the copied member's top-level `name`, leaving a concept renamed "Owner" still displaying the
+  exemplar's own `ui.label: "Canary owner"`. `test_from_exemplar_copies_and_renames_a_self_contained_
+  concept` caught this live (assertion failure, not a hunch) before any ledger entry was written;
+  fixed by also refreshing `ui.label` (concept) / `title` (panel) to match the new name, while
+  deliberately leaving nested content (field names, invariant names, step names) untouched -- an
+  invariant's own name is only ever referenced from within its own copied concept, so rewriting it
+  would be cosmetic churn with no correctness payoff, unlike the member's own display identity.
+
+  MEASURED, per member kind (the roadmap's own Done-When, run for real):
+    - `npdev add concept Order` (default stub) on a throwaway `npdev-init-seed`-shaped model, then
+      `npdev validate model`: **0 errors, 0 warnings, status "passed"**.
+    - `npdev add panel/flow/procedure <Name> --concept Order` (default stubs, same model), then
+      re-validated: **0 errors, 0 warnings, status "passed"** (all four members present).
+    - `--from npdev-canary` (bare, first-of-kind) and `--from npdev-canary::<Member>` (exact):
+      copied concepts, then a flow and procedure once their required concept existed by name;
+      re-validated the whole composed model: **0 errors, 0 warnings, status "passed"**.
+    - Refusal proven live: `--from npdev-canary::CreateCanaryTask` into a model that does not
+      declare `CanaryTask` refuses, naming `MakeThing.concept -> 'CanaryTask'` and both step
+      `.scope` offenders, and leaves the model file byte-identical to before the call.
+  NUMBERS: 10 new tests in `NPDevCli/tests/test_add_member.py` (8 fast unit-level calls straight
+  into `run_add_member`, 1 real round-trip through `run_validate_semantic` proving all four kinds +
+  a `--from` copy validate together with zero errors, ~1s total locally thanks to R1.1's warm
+  path). Full `NPDevCli/tests` suite: **335 passed, 0 regressions** (was 325 before this change).
+  Not breaking: purely additive CLI verb, no DSL/generated-code/API change, so no `npdev migrate`
+  codemod or BREAKING.md entry applies.
+
+  **NOT DONE, stated plainly**: no MCP tool wraps this (CLI-only, matching how `pack
+  add/update/list/why/diff/publish` are CLI-only today); `--from`'s reference scanner does not
+  attempt capability operation-ARITY checking or query-predicate validity (left to the real
+  validator); no Manager/editor surface calls it yet (the roadmap names that as a future consumer,
+  not this item's scope). Did not touch model.schema.json, pack.schema.json,
+  ModelSourceResolver.java, ModelResolver.java, the canonical JSON pair, or
+  dsl-conformance-max -- this is model CONTENT scaffolding, not a DSL feature, per this round's
+  explicit file-ownership boundary.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_add_member.py
+  asserts: >-
+    `npdev add concept|panel|flow|procedure` writes a member whose shape is proven (by a real
+    `npdev validate model` round trip, not a mock) to pass structural + semantic validation with
+    zero errors, both for the self-contained default stub and for a `--from`-copied real exemplar;
+    refuses (naming the offender, writing nothing) on a duplicate name, a missing/unknown
+    `--concept`, and a `--from` exemplar whose references do not resolve in the destination model.
+  provenRed: false
+  provenRedNote: >-
+    The verb did not exist, so nothing about it could have passed before -- same shape as
+    MON-18/PACK-13's own provenRedNote. One real defect WAS caught live by this guard's own test
+    before being recorded here: `--from`'s first implementation left a renamed concept's `ui.label`
+    stale (showing the exemplar's own label, e.g. "Canary owner" on a concept renamed "Owner") --
+    `test_from_exemplar_copies_and_renames_a_self_contained_concept` failed with a genuine
+    AssertionError against the real (not yet fixed) code, then passed after `ui.label`/`title` were
+    added to the rename step.

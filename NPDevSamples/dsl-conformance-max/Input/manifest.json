@@ -22,8 +22,12 @@
     "step: forEach (+ maxLoopIterations)",
     "step: onFailure (compensation)",
     "step: map",
-    "step: scheduleEvent (delaySeconds)",
-    "step: invariantCheck, createConcept, emitEvent, capabilityCall, return"
+    "step: scheduleEvent -- both delivery modes (delaySeconds: 0 publishes inline, delaySeconds: 3600 defers through npdev_scheduled_event)",
+    "step: invariantCheck, createConcept, emitEvent, capabilityCall, return",
+    "webhooks (inbound, HMAC-SHA256, POST /api/hooks/{source}) + step: awaitEvent resumed by it",
+    "sequences (declarative document numbering) + field.defaultExpression: nextNumber('name')",
+    "concept.softDelete (WidgetSupplier -- deletedAt-flip delete, deleted-row-excluding reads, restore, unique-among-live-rows)",
+    "concept.temporal (WidgetPriceListEntry -- effective-dated rows resolved by an asOf date against validFrom/validTo)"
   ],
   "inputFiles": [],
   "walkthrough": [

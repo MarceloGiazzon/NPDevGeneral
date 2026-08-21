@@ -1,0 +1,69 @@
+id: QUAL-25
+title: >-
+  12 AppGen corpus models left un-migrated when R5.1 retired procedures[]/queries[].auditPolicy
+type: PROCESS
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Surfaced by the clean T2 `run-all-gates.ps1` run that closed the 2026-08-19 roadmap session
+  (ai-knowledge gate step [10/36], `validate-corpus.py`): 45 of 57 corpus models parsed, the other
+  12 rejected on a property the schema no longer declares.
+surface: corpus/appgen-models
+files:
+  - NPDevCli/dsl_v2_migration.py
+detail: |
+  `validate-corpus.py` failed 12 of 57 models with, e.g.,
+  `$.procedures[0]: property 'auditPolicy' is not defined in the schema and the schema does not
+  allow additional properties`. Both object shapes carry `additionalProperties: false`, so a
+  retired key is a hard structural rejection rather than a warning.
+
+  **This was recorded in the session handoff as an owner decision -- "either restore `auditPolicy`
+  to the schema, or update the 12 apps" -- and it was neither.** The decision had already been made
+  and shipped: roadmap item **R5.1 retired the knob deliberately** because it was schema-declared
+  (`none|read|write`) but consumed by nothing -- no validator, compiler pass or kernel path ever
+  read the accessor beyond round-tripping it through the compiled-model JSON. The real audit trail
+  is unconditional and lives at the ConceptGateway/AuditLogStore layer plus the generated CRUD
+  service's field-diff trail, so there was never any live semantics this flag could control.
+  Per the standing stability-policy convention, R5.1 shipped its codemod in the SAME commit:
+  `_migrate_query_or_procedure_audit_policy` in `NPDevCli/dsl_v2_migration.py`, which strips the
+  dead key from an existing document precisely so it keeps validating.
+
+  What was missed is that the codemod was never RUN against layer 2. `AppGen/apps` is a separate
+  source-of-truth layer (app definitions, not version-controlled with this repo), so a codemod
+  landing in layer 1 does not reach it and no gate in this repo could have applied it -- only
+  reported it, which is what happened. The 12: `_official/AuxScreen`, `_official/Claude`,
+  `_official/Pigmentampa`, `_official/WmsOffice`, `_official/WordLab`, `_experiments/WmsOfficePackTest`,
+  `_scratch/bench-r37-proof`, `await-resume-rehearsal`, `invoice-bonds-demo`, `s1-scale-canary`,
+  `simple-log-mysql`, `simple-log-sqlserver`.
+
+  **Closed 2026-08-19** by running the shipped codemod, not by touching the schema:
+  `npdev migrate dsl-2 --input D:\WorkSpace\NPDev\AppGen\apps --write`. Dry-run first over the whole
+  tree: 288 JSON files scanned, exactly 12 changed, and **zero non-`auditPolicy` changes** in the
+  report -- so the write could not silently carry an unrelated DSL-2 rewrite into 276 other files.
+  Originals copied to
+  `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\appgen-auditpolicy-backup-2026-08-19\` first, since
+  layer 2 has no git history to recover from. Applied run: 292 scanned, 12 changed, 0 compiled-model,
+  276 already canonical, 0 invalid JSON. `grep -rl auditPolicy --include=model.json` over
+  `AppGen/apps` now returns nothing, and all 12 validate clean against the real
+  `NPDevContract/schemas/model.schema.json` (jsonschema Draft 2020-12, 0 errors each).
+
+  Two unrelated pre-existing ambiguities the codemod correctly refused to guess at were left
+  untouched and are NOT part of this item: `_official/WmsOffice` and `_experiments/WmsOfficePackTest`
+  both carry `flows[6] (AtivarCrossDocking).steps[1]: unrecognized step type 'callProcedure'`.
+  Neither blocks schema validation.
+
+  **Durable lesson, and the reason this is filed as PROCESS rather than a chore:** shipping a
+  codemod in the same commit as its breaking change satisfies the stability policy for layer 1 only.
+  Layer 2 needs the codemod actually executed against it, and nothing today reconciles the two --
+  the corpus gate can see the drift but has no authority to repair it.
+guard:
+  kind: script
+  ref: scripts/quality/validate-corpus.py
+  asserts: >-
+    Every AppGen/NPDevSamples corpus model parses against the current model.schema.json. Measured
+    RED 2026-08-19 (12 of 57 rejected on the retired `auditPolicy` key), GREEN after running the
+    R5.1 codemod over layer 2; the 12 individually re-validated at 0 schema errors each.
+  provenRed: true

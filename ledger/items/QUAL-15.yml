@@ -1,0 +1,105 @@
+id: QUAL-15
+title: >-
+  MCP-only agents cannot reach four authoring-context backends that already exist and work
+  (structural validate, constrained schemas, core context, per-app context)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R1 "Fast Inner Loop", item R1.3 --
+  "thin plumbing over four backends that already exist and work. MCP-only agents simply cannot reach
+  them today." Confirmed before any change: the MCP registry listed exactly 15 tools and none of the
+  four names appeared anywhere in the repo, so this was a genuine gap rather than a stale claim.
+surface: mcp/tool-registry
+files:
+  - NPDevMcp/server.py
+  - NPDevMcp/README.md
+  - NPDevCli/tests/test_mcp_agent_context_tools.py
+  - scripts/ai/build_core_context.py
+detail: |
+  A remote or sandboxed agent -- exactly the client an external adopter's AI tooling is -- reaches
+  NPDev only through MCP. Four capabilities existed and were exercised by the CLI or by scripts, but
+  had no MCP surface at all:
+
+    - `npdev_validate_structural` -> `npdev_cli.py`'s existing `validate model --structural-only`,
+      which calls `validate_official_model(...)` directly and is documented as invoking no Gradle.
+      The fast path was already built; it just wasn't reachable without a filesystem checkout.
+    - `npdev_get_constrained_schema` -> `scripts/ai/derive_constrained_schemas.py`, which strips the
+      JSON-Schema keywords structured-output APIs reject (`minLength`, `pattern`, `if/then`,
+      `oneOf`->`anyOf`) into `<Build>/npdev-ai/constrained/`.
+    - `npdev_core_context` -> `scripts/ai/build_core_context.py`'s prompt-cacheable prefix
+      (authoring contract + curated schemas + golden models) with a content hash.
+    - `npdev_app_context` -> had NO exact backend; it is the composition `build_core_context.py`'s
+      own docstring reserves as "the volatile per-app request" -- `inspect_app` output for one model
+      plus the constrained schema it needs.
+
+  Registry goes 15 -> 19 tools. Each new tool is a thin wrapper in the file's existing idiom; the
+  only change to an existing tool was extracting `tool_get_schema`'s 4-line schema-name
+  normalization into `_ai_schema_stem()` so the two schema-serving tools cannot drift on aliases.
+  Supporting additions: `run_ai_script()` (sibling of `run_cli`, deliberately SUBPROCESS rather than
+  import -- those builders print to stdout, which is the JSON-RPC channel) and
+  `_core_context_stale()` (compares each source the manifest names against the bundle's mtime, so a
+  cached prompt prefix is never silently stale).
+
+  **A hard repo rule was broken and then honoured properly, rather than papered over.** The first
+  implementation served the core-context bundle with `bundle.md.read_text()`, which tripped
+  `check-no-markdown-reads.py` -- CLAUDE.md's standing "NO SCRIPT MAY READ A .md FILE" rule, whose
+  exemption list is pinned at `frozenCount: 5` and whose own text says a 6th exemption "is an owner
+  decision, never a checker change". Neither the checker nor the exemption list was touched. The
+  coupling was INVERTED at the point of production instead, which is the rule's own prescribed
+  answer: `build_core_context.py` now also emits `bundle.json` carrying the identical text as a JSON
+  string, and the MCP tool reads that. `bundle.md` is unchanged in role -- the human-facing artifact.
+
+  That inversion also fixed a real latent defect found while implementing: `build_core_context.py`
+  wrote `bundle.md` with `write_text`, which on Windows translates "\n" to "\r\n" -- so the file on
+  disk was 53,994 bytes while the manifest advertised `bytes: 51772` and a `contentSha256` computed
+  over the LF form. Anyone verifying the bundle's integrity got a false mismatch on Windows and a
+  match on Linux. Now written with `write_bytes`; measured after the fix: file 51,772 bytes,
+  file sha256 == manifest contentSha256 == the JSON payload's sha256, and the JSON payload is
+  byte-identical to the .md.
+
+  TESTS: there was NO MCP test harness anywhere in the repo before this
+  (`scripts/policy/coverage-baseline.json`'s own NPDevMcp note says so, with a placeholder 0.0).
+  Added `NPDevCli/tests/test_mcp_agent_context_tools.py` -- placed there because `NPDevCli/tests` is
+  the only Python tree any gate discovers (`run-ai-knowledge-gate.ps1` step [18/35]). It stubs at
+  the subprocess boundary and covers the registry invariant (TOOLS <-> TOOL_HANDLERS key sets equal,
+  every handler callable, `tools/list` shape), the exact delegated argv per tool, staleness/refresh/
+  caching, schema-alias normalization, and every failure path.
+
+  VERIFIED LIVE, not inferred: a real JSON-RPC stdio session against `server.py` returned 19 tools
+  including all four; `npdev_validate_structural` passed a real sample and returned the precise ajv
+  detail (`/concepts/0 required: must have required property 'fields'`) for an invalid fixture;
+  `npdev_core_context` rebuilt for a genuine reason (an authoring-contract source was newer than the
+  bundle) then reported fresh on the next call; `npdev_get_constrained_schema` derived `ai-model` for
+  the first time on this machine with the deriver's own `find_remaining_unsupported` returning `[]`;
+  `npdev_app_context` returned namespace/counts plus the schema. Independently re-verified after the
+  bundle.json inversion: registry still 19 with TOOLS == TOOL_HANDLERS, tool still serves 51,718
+  chars beginning "# NPDev core authoring context", and `manifest_only` still returns the hash.
+
+  GATES: `check-no-markdown-reads.py` OK (0 scripts, exemptions still 5); `check-doc-inventory.py`
+  0 findings; full `python -m unittest discover -s NPDevCli/tests` -> **Ran 244 tests, OK**.
+
+  NOT done here: R1.1 (the warm standalone validator that removes the Gradle fork these tools
+  inherit) is a separate item -- `npdev_validate` and `npdev_validate_structural` get faster for free
+  when it lands, with no MCP change needed.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_mcp_agent_context_tools.py
+  asserts: >-
+    the MCP registry exposes npdev_validate_structural, npdev_get_constrained_schema,
+    npdev_core_context and npdev_app_context; TOOLS and TOOL_HANDLERS have identical key sets with
+    every handler callable (so a tool can never be advertised without a dispatch target, or vice
+    versa); each tool delegates the exact argv its backend expects; and the core-context bundle is
+    served from bundle.json rather than bundle.md, which is what keeps
+    check-no-markdown-reads.py's frozen 5-exemption list from needing a sixth entry.
+  provenRed: false
+  provenRedNote: >-
+    The gap direction is trivially demonstrable rather than inferred -- the four tool names did not
+    exist anywhere in the repo before this change, so the registry assertions could not have passed.
+    Not recorded as provenRed because the tests were written alongside the implementation rather than
+    executed against the pre-change tree first. The markdown-read half WAS observed red for real:
+    check-no-markdown-reads.py failed with "NPDevMcp/server.py:294: .read_text() on a path resolving
+    to .md" before the bundle.json inversion, and passes after it.

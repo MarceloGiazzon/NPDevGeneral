@@ -8,14 +8,22 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
   - npdev_validate       : full structural + semantic validation -> typed diagnostic report
                            (the self-correction loop -- catches cross-reference errors at author
                            time, not build time)
+  - npdev_validate_structural : the fast half of the above -- JSON-Schema shape only, no Gradle
   - npdev_inspect_app    : what concepts/flows/events already exist (avoid duplicating)
   - npdev_inspect_bonds  : bond/anchor/onDelete analysis + migration risks
   - npdev_get_schema     : exact authoring grammar for an object type
+  - npdev_get_constrained_schema : that same grammar as a structured-output constraint
   - npdev_list_schemas   : discover available schemas
+  - npdev_core_context   : the stable, prompt-cacheable authoring prefix (contract + schemas +
+                           golden models)
+  - npdev_app_context    : the volatile per-app half -- what THIS app already contains, plus the
+                           shape its emitted JSON must satisfy
   - npdev_search_examples: retrieve real, working example snippets (RAG; reads the Phase 3 index)
   - npdev_search_fix      : given a validator diagnostic, retrieve precedent fixes by failure signature
   - npdev_check_support   : is a feature a known gap/constraint/lifted boundary? (queries the ledger projection)
   - npdev_migration_diff : classify a schema change as safe-additive vs destructive
+  - npdev_impact         : ONE change-preview report -- migration classification + xref usage + the
+                           authoring diff-gate (model.json pair), or pack diff (pack.json pair)
   - npdev_generate       : run the real generator (slow/mutating -- gate in your client)
   - npdev_build_and_run  : GENERATE + BUILD + BOOT + health-check in one call (Move 10 D1)
 
@@ -81,6 +89,34 @@ def run_cli(args: list[str], timeout: int = 600) -> dict[str, Any]:
     }
 
 
+def run_ai_script(script: str, args: list[str], timeout: int = 300) -> dict[str, Any]:
+    """Invoke one of the scripts/ai/ artifact builders as a SUBPROCESS, never by import.
+
+    Those builders print their manifest to stdout, and this server's stdout IS the JSON-RPC
+    channel -- an in-process call would interleave a manifest into the protocol stream and break
+    the session. Same envelope shape as run_cli, minus its exit-code-2 special case (these scripts
+    have no "reported errors" exit code: 0 or a real failure).
+    """
+    cmd = [sys.executable, str(repo_root() / "scripts" / "ai" / script), *args]
+    try:
+        completed = subprocess.run(
+            cmd,
+            cwd=str(repo_root()),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"{script} timed out after {timeout}s", "args": args}
+    return {
+        "ok": completed.returncode == 0,
+        "exitCode": completed.returncode,
+        "stdout": completed.stdout,
+        "stderr": completed.stderr,
+    }
+
+
 def schema_dir() -> Path:
     return repo_root() / "schemas" / "ai"
 
@@ -117,6 +153,21 @@ def tool_validate(arguments: dict[str, Any]) -> dict[str, Any]:
         # stdout is the typed npdev-validation-report.v2 JSON -- pass it through verbatim.
         return _text(stdout)
     return _text_error(result.get("stderr") or result.get("error") or "validation produced no report")
+
+
+def tool_validate_structural(arguments: dict[str, Any]) -> dict[str, Any]:
+    """The fast half of npdev_validate: JSON-Schema shape only, no Gradle invocation.
+
+    For the tight edit->check loop while a model is still being assembled (a missing required
+    property, a misspelled key, a wrong-typed value). It CANNOT see cross-reference errors, so a
+    pass here is not a green light -- finish with npdev_validate before generating, which the
+    CLI's own success line says out loud.
+    """
+    model = arguments.get("model_path")
+    if not model:
+        return _text_error("model_path is required")
+    result = run_cli(["validate", "model", model, "--structural-only"])
+    return _passthrough(result)
 
 
 def tool_inspect_app(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -175,14 +226,146 @@ def tool_get_schema(arguments: dict[str, Any]) -> dict[str, Any]:
     if name in ("model", "model.schema", "full-model"):
         candidate = repo_root() / "NPDevContract" / "schemas" / "model.schema.json"
     else:
-        safe = name.replace("\\", "/").split("/")[-1]
-        if safe.endswith(".schema.json"):
-            safe = safe[: -len(".schema.json")]
-        safe = SCHEMA_ALIASES.get(safe, safe)
-        candidate = schema_dir() / f"{safe}.schema.json"
+        candidate = schema_dir() / f"{_ai_schema_stem(name)}.schema.json"
     if not candidate.exists():
         return _text_error(f"schema not found: {name} (looked at {candidate})")
     return _text(candidate.read_text(encoding="utf-8"))
+
+
+def _ai_schema_stem(name: str) -> str:
+    """Normalize a caller-supplied name to a schemas/ai/<stem>.schema.json stem -- one copy, so the
+    plain and the constrained schema tools cannot drift on which aliases/suffixes they tolerate."""
+    safe = name.replace("\\", "/").split("/")[-1]
+    if safe.endswith(".schema.json"):
+        safe = safe[: -len(".schema.json")]
+    return SCHEMA_ALIASES.get(safe, safe)
+
+
+def tool_get_constrained_schema(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Serve the structured-output-safe subset of an authoring schema, deriving it on demand.
+
+    Thin plumbing over scripts/ai/derive_constrained_schemas.py, which strips the keywords
+    structured-output APIs reject (pattern/minLength/if-then/not, oneOf -> anyOf, ...) into
+    <Build>/npdev-ai/constrained/. Derived on first request and re-derived whenever the source
+    schema is newer than the derived copy, so a caller never has to know the script exists.
+    """
+    name = arguments.get("schema_name")
+    if not name:
+        return _text_error("schema_name is required (use npdev_list_schemas to discover names)")
+    if name in ("model", "model.schema", "full-model"):
+        return _text_error(
+            "the full canonical model schema has no constrained form (it is authoring-strict and "
+            "recursive) -- fetch it with npdev_get_schema, or ask for 'ai-model' here"
+        )
+    stem = _ai_schema_stem(name)
+    source = schema_dir() / f"{stem}.schema.json"
+    if not source.exists():
+        return _text_error(f"schema not found: {name} (looked at {source})")
+    derived = build_root() / "npdev-ai" / "constrained" / f"{stem}.constrained.schema.json"
+    if arguments.get("refresh") or not derived.exists() \
+            or source.stat().st_mtime > derived.stat().st_mtime:
+        result = run_ai_script("derive_constrained_schemas.py", [stem])
+        if not result.get("ok") or not derived.exists():
+            detail = (result.get("stderr") or result.get("error") or result.get("stdout") or "").strip()
+            return _text_error(f"could not derive constrained schema for {stem}: {detail}")
+    return _text(derived.read_text(encoding="utf-8"))
+
+
+def tool_core_context(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Serve the prompt-cacheable authoring prefix (contract + curated schemas + golden models).
+
+    Thin plumbing over scripts/ai/build_core_context.py, whose output is a STABLE-order bundle --
+    put it first in the prompt behind a cache_control breakpoint and the per-app request (see
+    npdev_app_context) after it. Rebuilt when absent, or when any source the manifest names is
+    newer than the bundle, so the cached prefix is never silently stale.
+    """
+    out_dir = build_root() / "npdev-ai" / "core-context"
+    # bundle.json, never bundle.md. The builder writes the same text to both; the .md is the
+    # human-facing artifact and the .json is the machine one, because this repo's standing rule is
+    # that no script reads a .md file (CLAUDE.md / md-zero-2026-08-11 -- the exemption list is
+    # frozen at 5 and widening it is an owner decision, not something a new feature does to itself).
+    # Reading the JSON is also byte-exact: newlines inside a JSON string are escaped, so this does
+    # not inherit the CRLF-vs-contentSha256 mismatch the .md had on Windows.
+    bundle = out_dir / "bundle.json"
+    manifest_path = out_dir / "manifest.json"
+    if arguments.get("refresh") or _core_context_stale(bundle, manifest_path):
+        result = run_ai_script("build_core_context.py", [])
+        if not result.get("ok") or not bundle.exists():
+            detail = (result.get("stderr") or result.get("error") or result.get("stdout") or "").strip()
+            return _text_error(f"could not build the core-context bundle: {detail}")
+    if arguments.get("manifest_only"):
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        # The hash + section list alone, for a caller that only needs to decide whether the prefix
+        # it already cached is still current -- the bundle itself is ~50 KB.
+        manifest["bundle"] = str(bundle)
+        return _text(json.dumps(manifest, indent=2))
+    return _text(json.loads(bundle.read_text(encoding="utf-8"))["markdown"])
+
+
+def _core_context_stale(bundle: Path, manifest_path: Path) -> bool:
+    """True when the bundle is missing, unreadable, or older than a source it was built from."""
+    if not bundle.exists() or not manifest_path.exists():
+        return True
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    bundle_mtime = bundle.stat().st_mtime
+    root = repo_root()
+    for section in manifest.get("sections") or []:
+        # Recorded relative to the repo root, with the separator of whatever OS built it.
+        rel = str(section.get("source") or "").replace("\\", "/")
+        if not rel:
+            continue
+        source = root / rel
+        if source.exists() and source.stat().st_mtime > bundle_mtime:
+            return True
+    return False
+
+
+def tool_app_context(arguments: dict[str, Any]) -> dict[str, Any]:
+    """The VOLATILE per-app half of the authoring prompt, the companion npdev_core_context's
+    builder reserves but does not produce: what this ONE model already contains (so the AI extends
+    it instead of duplicating), plus the constrained schema its emitted JSON must satisfy.
+
+    A composition of two existing surfaces (`npdev inspect app` + the derived constrained schema),
+    deliberately not a new backend -- it exists so a caller does not have to know that the stable
+    and volatile halves come from two different places.
+    """
+    model = arguments.get("model_path")
+    if not model:
+        return _text_error("model_path is required")
+    result = run_cli(["inspect", "app", "--model", model])
+    stdout = (result.get("stdout") or "").strip()
+    if not result.get("ok") or not stdout:
+        return _text_error(
+            (result.get("stderr") or result.get("error") or stdout or "inspect app failed").strip())
+    try:
+        app = json.loads(stdout)
+    except ValueError:
+        return _text_error(f"inspect app did not return JSON: {stdout[:500]}")
+
+    payload: dict[str, Any] = {
+        "app": app,
+        "note": (
+            "Volatile per-app context. Place AFTER the npdev_core_context bundle (behind the cache "
+            "breakpoint). Extend the concepts/flows listed here rather than adding duplicates, and "
+            "validate the result with npdev_validate before generating."
+        ),
+    }
+    if arguments.get("include_schema", True):
+        schema_name = arguments.get("schema_name") or "ai-model"
+        schema_result = tool_get_constrained_schema({"schema_name": schema_name})
+        schema_text = schema_result["content"][0]["text"]
+        if schema_result.get("isError"):
+            # Reported, never swallowed: an agent must be able to tell "no shape constraint was
+            # applied" from "the shape constraint says anything goes".
+            payload["constrainedSchema"] = None
+            payload["constrainedSchemaError"] = schema_text
+        else:
+            payload["constrainedSchema"] = json.loads(schema_text)
+            payload["constrainedSchemaName"] = schema_name
+    return _text(json.dumps(payload, indent=2))
 
 
 def tool_search_examples(arguments: dict[str, Any]) -> dict[str, Any]:
@@ -359,6 +542,24 @@ def tool_author_diff_gate(arguments: dict[str, Any]) -> dict[str, Any]:
     return _passthrough(result)
 
 
+def tool_impact(arguments: dict[str, Any]) -> dict[str, Any]:
+    """R1.6: thin wrapper over `npdev impact` -- the CLI is the real implementation (testable
+    without an MCP client, see NPDevCli/tests/test_impact_cli.py); this tool just runs it and passes
+    its structured JSON straight through, same pattern as tool_migration_diff/tool_author_diff_gate.
+    """
+    baseline = arguments.get("baseline")
+    current = arguments.get("current")
+    if not (baseline and current):
+        return _text_error("baseline and current are required")
+    args = ["impact", "--baseline", baseline, "--current", current]
+    if arguments.get("of"):
+        args += ["--of", arguments["of"]]
+    if arguments.get("manifest"):
+        args += ["--manifest", arguments["manifest"]]
+    result = run_cli(args)
+    return _passthrough(result)
+
+
 def tool_generate(arguments: dict[str, Any]) -> dict[str, Any]:
     model = arguments.get("model")
     config = arguments.get("config")
@@ -490,6 +691,24 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "npdev_validate_structural",
+        "description": (
+            "FAST shape-only check of a draft model.json: JSON-Schema structure, no semantic pass "
+            "and no Gradle invocation (seconds, not a build). Use it in the tight edit loop while "
+            "the model is still being assembled -- misspelled keys, missing required properties, "
+            "wrong-typed values. It CANNOT see cross-reference errors (an invariant naming a field "
+            "that doesn't exist, a bond to an unknown concept), so a pass here is not a green "
+            "light: finish with npdev_validate before generating."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model_path": {"type": "string", "description": "Absolute or repo-relative path to model.json."}
+            },
+            "required": ["model_path"],
+        },
+    },
+    {
         "name": "npdev_inspect_app",
         "description": (
             "Read-only summary of an existing app model: concepts (with fields), flows, events, "
@@ -530,6 +749,76 @@ TOOLS: list[dict[str, Any]] = [
             "type": "object",
             "properties": {"schema_name": {"type": "string"}},
             "required": ["schema_name"],
+        },
+    },
+    {
+        "name": "npdev_get_constrained_schema",
+        "description": (
+            "The same authoring grammar as npdev_get_schema, mechanically reduced to the subset a "
+            "structured-output API accepts (no pattern/minLength/if-then/not; oneOf rewritten to "
+            "anyOf; additionalProperties:false everywhere) -- feed it as a generation constraint so "
+            "structurally-illegal JSON is impossible to emit. Constrains SHAPE only: cross-document "
+            "semantics still need npdev_validate. Note a schema reported as recursive is safe for "
+            "leaf/object-level use but not as a whole-document constraint. Derived on demand into "
+            "the build root and refreshed automatically when the source schema changes."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "schema_name": {
+                    "type": "string",
+                    "description": "e.g. 'ai-model', 'custom-panel', 'custom-procedure' (same names/aliases npdev_get_schema takes).",
+                },
+                "refresh": {"type": "boolean", "description": "Force re-derivation even if the cached copy looks current."},
+            },
+            "required": ["schema_name"],
+        },
+    },
+    {
+        "name": "npdev_core_context",
+        "description": (
+            "The STABLE, prompt-cacheable NPDev authoring prefix in one call: the authoring "
+            "contract, the curated authoring schemas, and golden verified example models, "
+            "concatenated in a fixed order. Put it FIRST in the prompt behind a cache_control "
+            "breakpoint and the per-app request (npdev_app_context) after it. Pass manifest_only "
+            "to get just the content hash + section list, so you can tell whether a prefix you "
+            "already cached is still current without re-reading ~50 KB."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "manifest_only": {
+                    "type": "boolean",
+                    "description": "Return the manifest (contentSha256, bytes, sections) instead of the bundle text.",
+                },
+                "refresh": {"type": "boolean", "description": "Force a rebuild even if the bundle looks current."},
+            },
+        },
+    },
+    {
+        "name": "npdev_app_context",
+        "description": (
+            "The VOLATILE per-app half of the authoring prompt, the companion to "
+            "npdev_core_context: what THIS model already contains (concepts with fields, flows, "
+            "events, panels, procedures, counts -- so you extend it instead of duplicating) plus "
+            "the constrained schema the JSON you emit must satisfy. One call instead of "
+            "npdev_inspect_app + npdev_get_constrained_schema. Place it AFTER the core-context "
+            "bundle, behind the cache breakpoint."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "model_path": {"type": "string", "description": "Absolute or repo-relative path to the app's model.json."},
+                "schema_name": {
+                    "type": "string",
+                    "description": "Which constrained schema to include. Default 'ai-model'.",
+                },
+                "include_schema": {
+                    "type": "boolean",
+                    "description": "Set false to get the app summary alone (default true).",
+                },
+            },
+            "required": ["model_path"],
         },
     },
     {
@@ -642,6 +931,32 @@ TOOLS: list[dict[str, Any]] = [
                 "archive_dir": {"type": "string", "description": "Where the previous model is archived on acceptance. Default: <app root>/model-history/."},
             },
             "required": ["previous", "submitted", "manifest"],
+        },
+    },
+    {
+        "name": "npdev_impact",
+        "description": (
+            "R1.6: ONE change-preview report for a baseline/current document pair, composing four "
+            "checks that used to need four separate calls. For a model.json pair: migration "
+            "classification (same as npdev_migration_diff), xref usage (who references what, "
+            "narrowed by 'of' when given), and the AI Authoring Contract diff-gate (same as "
+            "npdev_author_diff_gate -- runs even with no manifest, reporting its own refusal). For "
+            "a pack.json pair: pack diff (ADDITIVE/BREAKING/PATCH classification) instead -- "
+            "baseline and current must be the SAME kind of document. Does NOT generate/build/boot "
+            "anything. The report always carries a 'limitations' list (forms of reference it cannot "
+            "see, e.g. nextNumber('name') embedded inside an expression string) and a 'problemsFound' "
+            "boolean (true when xref usage has an unresolved reference, or the authoring gate "
+            "refused)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "baseline": {"type": "string", "description": "Previous model.json or pack.json."},
+                "current": {"type": "string", "description": "Current (candidate) model.json or pack.json."},
+                "of": {"type": "string", "description": "model.json pairs only: narrow xref usage to Concept.field / Concept / kind:Name."},
+                "manifest": {"type": "string", "description": "model.json pairs only: a npdev-authoring-submission.v1 manifest, for a real authoring-gate compliance check."},
+            },
+            "required": ["baseline", "current"],
         },
     },
     {
@@ -786,16 +1101,21 @@ TOOLS: list[dict[str, Any]] = [
 
 TOOL_HANDLERS = {
     "npdev_validate": tool_validate,
+    "npdev_validate_structural": tool_validate_structural,
     "npdev_inspect_app": tool_inspect_app,
     "npdev_inspect_bonds": tool_inspect_bonds,
     "npdev_list_schemas": tool_list_schemas,
     "npdev_get_schema": tool_get_schema,
+    "npdev_get_constrained_schema": tool_get_constrained_schema,
+    "npdev_core_context": tool_core_context,
+    "npdev_app_context": tool_app_context,
     "npdev_search_examples": tool_search_examples,
     "npdev_search_fix": tool_search_fix,
     "npdev_check_support": tool_check_support,
     "npdev_migration_diff": tool_migration_diff,
     "npdev_author_diff_gate": tool_author_diff_gate,
     "npdev_author_submit": tool_author_submit,
+    "npdev_impact": tool_impact,
     "npdev_generate": tool_generate,
     "npdev_build_and_run": tool_build_and_run,
     "npdev_build_review_pack": tool_build_review_pack,

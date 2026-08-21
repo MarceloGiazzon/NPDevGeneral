@@ -30,9 +30,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -58,6 +60,7 @@ class DevOptions:
     profile: str = "dev"
     timeout: int = 420
     json_events: bool = False
+    force_clean: bool = False
 
     @property
     def state_dir(self) -> Path:
@@ -255,6 +258,75 @@ def boot(options: DevOptions, jar: Path, cli) -> AppProcess | None:
 
 
 # =====================================================================================
+# RUN-24 gap 1: METADATA_ONLY -> hot swap the ALREADY-RUNNING app instead of restarting it
+# =====================================================================================
+
+def _super_user_key(app_root: Path) -> str | None:
+    """`SuperUserBootstrapper` writes `SUPER_USER_KEY.txt` straight into the booted process's OWN
+    working directory (`Path.of("SUPER_USER_KEY.txt")`, resolved against whatever the process's CWD
+    is) -- `boot()` above launches `java -jar` with `cwd=str(options.output)` directly, never through
+    `Start-App.ps1`, which is the ONLY thing that relocates the file into `_ops/`. So a dev-loop app's
+    key lives at `<options.output>/SUPER_USER_KEY.txt`, checked first; the `_ops/`-relocated location
+    is checked second so this also works if `--output` happens to point at an app someone already
+    started with the AppGen tooling.
+
+    Returns `None` (never raises) when no key file exists -- the ordinary case for the default
+    in-memory dev database: `SuperUserBootstrapper` itself skips issuing any SUPERUSER credential
+    when `npdev.superuser`'s `CredentialRegistryService.issue` has no physical database to persist it
+    in ("no physical database configured"), so an in-memory `npdev dev` session never gets a key at
+    all. That is an existing, documented precondition of R1.7's whole mechanism, not a bug this item
+    introduces -- `_try_hot_swap` below reports it as an ordinary, named fallback reason."""
+    for candidate in (app_root / "SUPER_USER_KEY.txt", app_root / "_ops" / "SUPER_USER_KEY.txt"):
+        try:
+            key = candidate.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if key:
+            return key
+    return None
+
+
+def _try_hot_swap(options: DevOptions, current: AppProcess, out: "Output", cli, deadline: float) -> tuple[bool, str]:
+    """RUN-24 gap 1: METADATA_ONLY's own fast path -- push the change straight into the
+    ALREADY-RUNNING app via `MetadataHotSwapController#apply` (through `cli._metadata_hotswap_apply`,
+    the same core `npdev monitor hotswap` uses) instead of the unconditional stop/generate/build/boot
+    cycle `run_cycle` falls back to below. RUN-24 gap 2 rides along for free: `_metadata_hotswap_apply`
+    also patches `generated-ui-manifest.json` so the SERVED business-ui grid picks up the change, not
+    just the REST metadata catalogs.
+
+    Same safe-fallback-never-silent contract `npdev monitor hotswap`/`Update-AppMetadata.ps1` already
+    follow: ANY refusal -- no key issued (e.g. the default in-memory dev DB never issues one), the
+    classifier not reporting METADATA_ONLY (it is asked fresh here rather than trusting the earlier
+    `fast` flag, which could theoretically go stale if the model changed again mid-cycle), the
+    endpoint missing (an app generated before R1.7), a 409 from the endpoint itself, or any I/O
+    failure -- returns `(False, reason)` and NEVER raises, so the caller can fall back to a full
+    restart exactly as before this item existed."""
+    key = _super_user_key(options.output)
+    if key is None:
+        return False, ("no SUPER_USER_KEY.txt found -- an in-memory dev database never issues one; "
+                        "set database.engine to H2Local in db.definition.json to enable hot swap")
+    root = cli.repo_root()
+    scratch = Path(tempfile.mkdtemp(prefix="npdev-dev-hotswap-"))
+    try:
+        classification, emitted, detail = cli._emit_metadata_only_catalogs(
+            root, options.baseline, options.model, deadline, scratch)
+        if not emitted:
+            return False, detail or f"classifier did not report METADATA_ONLY (got {classification!r})"
+        base_url = f"http://127.0.0.1:{options.port}"
+        remaining = max(1.0, min(15.0, deadline - time.monotonic()))
+        result = cli._metadata_hotswap_apply(
+            base_url, key, "METADATA_ONLY", [], scratch, options.output, remaining)
+        if not result.get("ok"):
+            return False, f"{result.get('code')}: {result.get('message')}"
+        patch = result.get("uiManifestPatch") or {}
+        if patch.get("patched"):
+            out.note(f"served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
+        return True, "applied"
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
+# =====================================================================================
 # One cycle
 # =====================================================================================
 
@@ -264,6 +336,7 @@ class CycleResult:
     phase: str
     fast: bool = False
     elapsed: float = 0.0
+    build_seconds: float = 0.0
 
 
 def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cli) -> tuple[CycleResult, AppProcess | None]:
@@ -295,6 +368,25 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
         except Exception:  # noqa: BLE001
             fast = False
     out.classification(fast)
+
+    # --- RUN-24 gap 1: METADATA_ONLY + an app already running -> hot swap, no restart -
+    # Previously `fast` fed only `out.classification()`/`CycleResult.fast` -- the swap below ran
+    # unconditionally regardless of it, so `npdev dev` restarted (new PID) on EVERY save, the exact
+    # opposite of R1.7's own done-when ("... updates the served UI with the same app PID"). Tried
+    # FIRST, before GENERATE/BUILD (which this path skips entirely -- a metadata-only change needs
+    # neither), and before the Windows stop-first special case just below (irrelevant here: a hot
+    # swap never touches the built jar). Any refusal falls through to the unchanged
+    # generate+build+restart path beneath it, with the reason printed, never silent.
+    if fast and current is not None and current.alive():
+        out.phase("hotswap")
+        swapped, swap_detail = _try_hot_swap(options, current, out, cli, deadline)
+        if swapped:
+            out.result("ok")
+            options.state_dir.mkdir(parents=True, exist_ok=True)
+            options.baseline.write_bytes(options.model.read_bytes())
+            return CycleResult(True, "READY", True, time.monotonic() - started), current
+        out.result("skipped")
+        out.note(f"hot swap not applied -- falling back to restart: {swap_detail}")
 
     # --- generate + build ------------------------------------------------------------
     # On POSIX the old app keeps serving through GENERATE and BUILD, and only dies at the
@@ -329,17 +421,27 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
     out.result("ok")
 
     out.phase("build")
+    build_started = time.monotonic()
     try:
-        build_ok, build_output, jar = cli._build_phase(options.output, deadline)
+        # R1.2: incremental (`build -x test` on a warm daemon) by default, falling back to `clean`
+        # automatically on failure -- `_build_phase` owns that fallback so this loop never has to.
+        # `--clean-build` forces every cycle to skip straight to a clean build.
+        build_ok, build_output, jar, fell_back = cli._build_phase(
+            options.output, deadline, clean=options.force_clean)
     except Exception as exc:  # noqa: BLE001
-        build_ok, build_output, jar = False, str(exc), None
+        build_ok, build_output, jar, fell_back = False, str(exc), None, False
+    build_seconds = time.monotonic() - build_started
     if not build_ok or jar is None:
         out.result("FAILED")
+        if fell_back:
+            out.note("an incremental build failed and the automatic `clean build` retry failed too")
         classified = cli._classify_build_failure(build_output) if build_output else None
         out.detail((classified or {}).get("message") or (build_output or "")[-800:])
         out.note("app left running on the previous build.")
-        return CycleResult(False, "BUILD", fast, time.monotonic() - started), current
+        return CycleResult(False, "BUILD", fast, time.monotonic() - started, build_seconds), current
     out.result("ok")
+    if fell_back:
+        out.note("incremental build failed -- automatically retried with `clean build` (fell back)")
 
     # --- the swap: only now does the old app die -------------------------------------
     out.phase("restart")
@@ -353,12 +455,12 @@ def run_cycle(options: DevOptions, current: AppProcess | None, out: "Output", cl
         if previous_jar and Path(previous_jar).exists():
             out.note("restoring the previous build")
             app = boot(options, Path(previous_jar), cli)
-        return CycleResult(False, "BOOT", fast, time.monotonic() - started), app
+        return CycleResult(False, "BOOT", fast, time.monotonic() - started, build_seconds), app
     out.result("ok")
 
     options.state_dir.mkdir(parents=True, exist_ok=True)
     options.baseline.write_bytes(options.model.read_bytes())
-    return CycleResult(True, "READY", fast, time.monotonic() - started), app
+    return CycleResult(True, "READY", fast, time.monotonic() - started, build_seconds), app
 
 
 # =====================================================================================
@@ -441,6 +543,18 @@ class Output:
     def ready(self, r: CycleResult, port: int) -> None:
         self.note(f"ready in {r.elapsed:.1f}s   http://localhost:{port}")
         self.event(kind="ready", seconds=round(r.elapsed, 1), metadataOnly=r.fast)
+
+    def build_timing(self, seconds: float, previous: float | None) -> None:
+        """R1.2's own done-when: a before/after pair, so the incremental speedup is observable
+        rather than asserted. `previous is None` on the very first cycle -- there is no "before" yet,
+        so it says so instead of printing a lone number that looks like the whole feature."""
+        if previous is None:
+            self.note(f"build: {seconds:.1f}s (first build this session -- later saves reuse a warm daemon)")
+        else:
+            speedup = f", {previous / seconds:.1f}x faster" if seconds > 0 else ""
+            self.note(f"build: {seconds:.1f}s   (previous: {previous:.1f}s{speedup})")
+        self.event(kind="buildTiming", seconds=round(seconds, 1),
+                   previousSeconds=round(previous, 1) if previous is not None else None)
 
 
 # =====================================================================================
@@ -532,6 +646,7 @@ def dev(args: argparse.Namespace, cli) -> int:
         output=Path(args.output).expanduser().resolve(),
         port=args.port, profile=args.profile, timeout=args.timeout,
         json_events=getattr(args, "json", False),
+        force_clean=getattr(args, "clean_build", False),
     )
     if not options.model.exists():
         print(f"npdev dev: model not found: {options.model}", file=sys.stderr)
@@ -556,11 +671,17 @@ def dev(args: argparse.Namespace, cli) -> int:
     holder: dict[str, AppProcess | None] = {"app": None}
     stop.bind(lambda: holder["app"].stop() if holder["app"] else None)
     stop.install()
+    # R1.2's own done-when: `npdev dev` prints a before/after timing pair, so the incremental
+    # speedup is observable rather than just asserted. `None` on cycle 1 -- there is no "before" yet.
+    previous_build_seconds: float | None = None
     try:
         out.banner(options, _is_persistent(options.config))
         _reclaim_orphan(options, out)
         result, app = run_cycle(options, None, out, cli)
         holder["app"] = app
+        if result.build_seconds > 0:
+            out.build_timing(result.build_seconds, previous_build_seconds)
+            previous_build_seconds = result.build_seconds
         if result.ok:
             out.ready(result, options.port)
             # Printed once, on the first successful boot only -- every later cycle in this same
@@ -581,6 +702,9 @@ def dev(args: argparse.Namespace, cli) -> int:
             out.changed(changed)
             result, app = run_cycle(options, app, out, cli)
             holder["app"] = app
+            if result.build_seconds > 0:
+                out.build_timing(result.build_seconds, previous_build_seconds)
+                previous_build_seconds = result.build_seconds
             if result.ok:
                 out.ready(result, options.port)
         return 0
@@ -603,5 +727,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", default="dev", help="Spring profile (default 'dev').")
     parser.add_argument("--timeout", type=int, default=420,
                         help="Wall-clock budget per GENERATE+BUILD cycle, in seconds.")
+    parser.add_argument(
+        "--clean-build", action="store_true",
+        help="R1.2: force a full `clean build` every cycle instead of the default incremental "
+             "`build` on a warm daemon. The default already falls back to `clean` automatically "
+             "when an incremental build fails -- this flag is for when you want every cycle clean, "
+             "not for recovering from a failure.",
+    )
     parser.add_argument("--json", action="store_true",
                         help="Emit one JSON event per phase transition on stdout.")

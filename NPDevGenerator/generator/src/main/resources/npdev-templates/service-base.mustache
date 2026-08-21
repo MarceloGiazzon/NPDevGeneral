@@ -15,7 +15,7 @@ import com.npdev.kernel.concepts.ConceptListRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
-import {{entityPackage}}.{{entityName}};
+import {{entityPackage}}.{{entityTypeName}};
 import com.npdev.kernel.ports.PersistenceCapability;
 import com.npdev.kernel.ports.ConceptStore;
 import {{dtoPackage}}.{{entityName}}CreateRequest;
@@ -23,6 +23,7 @@ import {{dtoPackage}}.{{entityName}}UpdateRequest;
 
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -33,7 +34,7 @@ import java.util.UUID;
 
 public class {{entityName}}ServiceBase {
 
-    protected final PersistenceCapability<{{entityName}}, UUID> persistence;
+    protected final PersistenceCapability<{{entityTypeName}}, UUID> persistence;
     protected final GeneratedCrudRuntimeSupport runtimeSupport;
     protected final ConceptGateway conceptGateway;
     protected final ConceptStore conceptStore;
@@ -107,7 +108,7 @@ public class {{entityName}}ServiceBase {
         );
     }
 
-    public Optional<{{entityName}}> getById(UUID id) {
+    public Optional<{{entityTypeName}}> getById(UUID id) {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "READ", generatedCrudExecutionContext());
 {{/kernelControlled}}
@@ -122,7 +123,7 @@ public class {{entityName}}ServiceBase {
      * that must know whether the cap actually cut anything should call {@link #listCapped()}
      * instead -- this method has no channel to report that and never has (see BREAKING.md).
      */
-    public List<{{entityName}}> list() {
+    public List<{{entityTypeName}}> list() {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
 {{/kernelControlled}}
@@ -138,7 +139,7 @@ public class {{entityName}}ServiceBase {
      * free-text-filter fallback, {@code listBy*} reference finders below) since neither has a
      * channel for a second return value.
      */
-    public com.npdev.kernel.concepts.ConceptListSlice<{{entityName}}> listCapped() {
+    public com.npdev.kernel.concepts.ConceptListSlice<{{entityTypeName}}> listCapped() {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
 {{/kernelControlled}}
@@ -176,7 +177,7 @@ public class {{entityName}}ServiceBase {
      * them, so this stays unbounded rather than being silently, incorrectly capped as a side effect
      * of sharing a helper method.
      */
-    public List<{{entityName}}> listBy{{capName}}(Object value) {
+    public List<{{entityTypeName}}> listBy{{capName}}(Object value) {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
 {{/kernelControlled}}
@@ -188,7 +189,7 @@ public class {{entityName}}ServiceBase {
 {{/referenceFinders}}
 
     @Transactional
-    public {{entityName}} create({{entityName}}CreateRequest dto) {
+    public {{entityTypeName}} create({{entityName}}CreateRequest dto) {
         if (dto == null) {
             throw new IllegalArgumentException("Request body is required");
         }
@@ -196,14 +197,14 @@ public class {{entityName}}ServiceBase {
     }
 
     @Transactional
-    public {{entityName}} create(Map<String, Object> request) {
+    public {{entityTypeName}} create(Map<String, Object> request) {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "CREATE", generatedCrudExecutionContext());
 {{/kernelControlled}}
         return createFromSource(validateMapRequest(request, false, null));
     }
 
-    private {{entityName}} createFromSource(Object source) {
+    private {{entityTypeName}} createFromSource(Object source) {
         ExecutionContext crudCtx = generatedCrudExecutionContext();
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "CREATE", crudCtx);
@@ -213,7 +214,7 @@ public class {{entityName}}ServiceBase {
             String existingId = runtimeSupport.checkCrudIdempotency(crudCtx.tenantId(), "{{conceptName}}", idempotencyKey).orElse(null);
             if (existingId != null && !existingId.isBlank()) {
                 try {
-                    java.util.Optional<{{entityName}}> cached = getById(UUID.fromString(existingId));
+                    java.util.Optional<{{entityTypeName}}> cached = getById(UUID.fromString(existingId));
                     if (cached.isPresent()) return cached.get();
                 } catch (IllegalArgumentException ignored) {
                     // malformed stored id — fall through to create
@@ -224,6 +225,9 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", createPayload, crudCtx);
         UUID generatedId = runtimeSupport.ensureGeneratedId("{{conceptName}}", createPayload);
         enforceWithKernel("{{conceptName}}", createPayload);
+{{#softDelete}}
+        enforceSoftDeleteUniqueFields(createPayload, null);
+{{/softDelete}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeCreate("{{conceptName}}", createPayload, crudCtx));
 {{/codaAllowed}}
@@ -255,7 +259,7 @@ public class {{entityName}}ServiceBase {
 {{/hasCreateFlow}}
 
 {{^hasCreateFlow}}
-        {{entityName}} e = new {{entityName}}();
+        {{entityTypeName}} e = new {{entityTypeName}}();
         runtimeSupport.assignGeneratedId("{{conceptName}}", e, generatedId);
         runtimeSupport.applyCreateFields("{{conceptName}}", source, e);
         // Tenant isolation: the row is owned by whoever creates it, from the verified auth
@@ -263,7 +267,7 @@ public class {{entityName}}ServiceBase {
         // tenantId field (DtoEmitter only emits DSL-declared fields).
         e.setTenantId(currentTenantId());
 
-        {{entityName}} created = saveWithIntegrityMapping(e);
+        {{entityTypeName}} created = saveWithIntegrityMapping(e);
 {{/hasCreateFlow}}
 {{#hasCreateFlow}}
         // REG-120: enforceWithCreateFlow's own createConcept step already persisted this row through
@@ -274,7 +278,7 @@ public class {{entityName}}ServiceBase {
         // wasted duplicate write). The flow's write is authoritative -- it already ran
         // invariantCheck/authorization/side effects in the declared order -- so fetch what it wrote
         // instead of writing it again.
-        {{entityName}} created = persistence.findById(generatedId)
+        {{entityTypeName}} created = persistence.findById(generatedId)
                 .orElseThrow(() -> new IllegalStateException(
                         "Create flow \"{{createFlowName}}\" for {{conceptName}} did not persist id " + generatedId));
 {{/hasCreateFlow}}
@@ -282,7 +286,10 @@ public class {{entityName}}ServiceBase {
         codaHook.ifPresent(hook -> hook.afterCreate("{{conceptName}}", created, crudCtx));
 {{/codaAllowed}}
 {{#kernelControlled}}
-        runtimeSupport.auditCrudMutation("{{conceptName}}", "CREATE", String.valueOf(created.getId()), "ALLOW", crudCtx);
+        // R5.1: CREATE has no "before" -- the after-snapshot is the saved entity's own field data,
+        // the same conversion mapFromEntity already performs for existsUnique/conceptStore.save.
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "CREATE", String.valueOf(created.getId()), "ALLOW", crudCtx,
+                null, mapFromEntity(created));
 {{/kernelControlled}}
         runtimeSupport.recordCrudIdempotencySuccess(crudCtx.tenantId(), "{{conceptName}}", String.valueOf(created.getId()), idempotencyKey);
 {{#emitCreatedEvent}}
@@ -297,7 +304,7 @@ public class {{entityName}}ServiceBase {
     }
 
     @Transactional
-    public Optional<{{entityName}}> update(UUID id, {{entityName}}UpdateRequest dto) {
+    public Optional<{{entityTypeName}}> update(UUID id, {{entityName}}UpdateRequest dto) {
         if (dto == null) {
             throw new IllegalArgumentException("Request body is required");
         }
@@ -305,27 +312,34 @@ public class {{entityName}}ServiceBase {
     }
 
     @Transactional
-    public Optional<{{entityName}}> update(UUID id, Map<String, Object> request) {
+    public Optional<{{entityTypeName}}> update(UUID id, Map<String, Object> request) {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "UPDATE", generatedCrudExecutionContext());
 {{/kernelControlled}}
         return updateFromSource(id, validateMapRequest(request, true, id));
     }
 
-    private Optional<{{entityName}}> updateFromSource(UUID id, Object source) {
+    private Optional<{{entityTypeName}}> updateFromSource(UUID id, Object source) {
         ExecutionContext crudCtx = generatedCrudExecutionContext();
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "UPDATE", crudCtx);
 {{/kernelControlled}}
-        Optional<{{entityName}}> opt = persistence.findById(id);
+        Optional<{{entityTypeName}}> opt = persistence.findById(id);
         if (opt.isEmpty()) return Optional.empty();
 
-        {{entityName}} existing = opt.get();
+        {{entityTypeName}} existing = opt.get();
+        // R5.1: snapshot the pre-update field data BEFORE applyUpdateFields mutates `existing` in
+        // place below (the same "capture before the in-place mutation" need HARDEN-GC-P2 already
+        // documents for file fields specifically) -- this is the audit trail's "before" half.
+        Map<String, Object> auditBefore = mapFromEntity(existing);
         runtimeSupport.checkOptimisticVersion("{{conceptName}}", existing, source);
         String previousLifecycleStatus = runtimeSupport.captureLifecycleStatus("{{conceptName}}", existing);
         Map<String, Object> updatePayload = runtimeSupport.buildUpdateInvariantPayload("{{conceptName}}", id, existing, source);
         runtimeSupport.enforceBondTargetTenant("{{conceptName}}", updatePayload, crudCtx);
         enforceWithKernel("{{conceptName}}", updatePayload);
+{{#softDelete}}
+        enforceSoftDeleteUniqueFields(updatePayload, id);
+{{/softDelete}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeUpdate("{{conceptName}}", id, updatePayload, crudCtx));
 {{/codaAllowed}}
@@ -348,7 +362,7 @@ public class {{entityName}}ServiceBase {
         runtimeSupport.applyUpdateFields("{{conceptName}}", source, existing);
         existing.setVersion((existing.getVersion() == null ? 0L : existing.getVersion()) + 1);
 
-        {{entityName}} updated = saveWithIntegrityMapping(existing);
+        {{entityTypeName}} updated = saveWithIntegrityMapping(existing);
 {{#hasFileFields}}
         // HARDEN-GC-P2: only after a successful save -- a failed save must never orphan the
         // still-referenced old file. Store-delete failures are logged and tolerated (see
@@ -362,7 +376,8 @@ public class {{entityName}}ServiceBase {
         codaHook.ifPresent(hook -> hook.afterUpdate("{{conceptName}}", updated, crudCtx));
 {{/codaAllowed}}
 {{#kernelControlled}}
-        runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx);
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "UPDATE", String.valueOf(updated.getId()), "ALLOW", crudCtx,
+                auditBefore, mapFromEntity(updated));
 {{/kernelControlled}}
         runtimeSupport.publishLifecycleTransitionEvent("{{conceptName}}", previousLifecycleStatus, updated, updatePayload);
 {{#emitUpdatedEvent}}
@@ -382,13 +397,11 @@ public class {{entityName}}ServiceBase {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
 {{/kernelControlled}}
-{{#hasFileFields}}
-        Optional<{{entityName}}> toDelete = persistence.findById(id);
+        // R5.1: fetched unconditionally now, not only for concepts with file fields to
+        // cascade-delete -- the audit trail's "before" snapshot needs the row's own field data
+        // regardless.
+        Optional<{{entityTypeName}}> toDelete = persistence.findById(id);
         if (toDelete.isEmpty()) return false;
-{{/hasFileFields}}
-{{^hasFileFields}}
-        if (!persistence.existsById(id)) return false;
-{{/hasFileFields}}
 {{#codaAllowed}}
         codaHook.ifPresent(hook -> hook.beforeDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}
@@ -415,7 +428,22 @@ public class {{entityName}}ServiceBase {
         codaHook.ifPresent(hook -> hook.afterDelete("{{conceptName}}", id, crudCtx));
 {{/codaAllowed}}
 {{#kernelControlled}}
-        runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx);
+        // R5.1: "before" is the row's own field data (the audit trail's only record of what a
+        // deleted row looked like); "after" is null either way -- a soft delete's row survives in
+        // the database, but is excluded from every read the same as a physical delete, so there is
+        // no "after" state visible through this API to record. The operation name itself is what
+        // tells the two apart (SOFT_DELETE pairs with a later RESTORE event; a plain DELETE never
+        // gets one -- {{^softDelete}}this concept has no restore() endpoint at all{{/softDelete}}
+        // {{#softDelete}}see #restore below{{/softDelete}}), so a soft delete is never
+        // mistaken for -- or double-counted as -- an unrecoverable physical one.
+{{#softDelete}}
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "SOFT_DELETE", String.valueOf(id), "ALLOW", crudCtx,
+                mapFromEntity(toDelete.get()), null);
+{{/softDelete}}
+{{^softDelete}}
+        runtimeSupport.auditCrudMutation("{{conceptName}}", "DELETE", String.valueOf(id), "ALLOW", crudCtx,
+                mapFromEntity(toDelete.get()), null);
+{{/softDelete}}
 {{/kernelControlled}}
 {{#emitDeletedEvent}}
         publishMutationEvent("deleted", id, null);
@@ -428,6 +456,39 @@ public class {{entityName}}ServiceBase {
         return true;
     }
 
+{{#softDelete}}
+    /**
+     * R5.4: clears the {@code deletedAt} timestamp {@link #delete} set, making the row visible to
+     * every read again (list/page/aggregate/existsUnique/reference finders) and freeing any unique
+     * value it held for reuse. Delegates directly to {@link ConceptStore#restore} -- unlike delete
+     * (which also runs through {@code conceptGateway} for row-level access.write + semantic-rule
+     * enforcement before the store ever sees it), restore is deliberately a narrower, direct
+     * capability-store call: no declared {@code access.write}/invariant rule profile applies to it in
+     * this round, gated only by the same coarse-grained DELETE CRUD permission the delete path checks.
+     */
+    @Transactional
+    public boolean restore(UUID id) {
+        ExecutionContext crudCtx = generatedCrudExecutionContext();
+{{#kernelControlled}}
+        runtimeSupport.checkCrudPermission("{{conceptName}}", "DELETE", crudCtx);
+{{/kernelControlled}}
+        boolean restored = conceptStore.restore(currentTenantId(), CONCEPT_NAME, String.valueOf(id));
+{{#kernelControlled}}
+        if (restored) {
+            // R5.1: "before" is deliberately omitted (null) -- the row was excluded from every read
+            // while soft-deleted, so there is no "before" snapshot this API ever saw; "after" is the
+            // now-visible-again row's own field data, re-fetched through the same JPA repository
+            // every other audit snapshot in this class uses (mapFromEntity), pairing this RESTORE
+            // event with the SOFT_DELETE event #delete recorded for the same resource id.
+            Map<String, Object> restoredData = persistence.findById(id).map(this::mapFromEntity).orElse(null);
+            runtimeSupport.auditCrudMutation("{{conceptName}}", "RESTORE", String.valueOf(id), "ALLOW", crudCtx,
+                    null, restoredData);
+        }
+{{/kernelControlled}}
+        return restored;
+    }
+
+{{/softDelete}}
 {{#manyToManyBonds}}
     public List<Object> list{{capName}}Members(UUID id) {
 {{#kernelControlled}}
@@ -653,7 +714,41 @@ public class {{entityName}}ServiceBase {
         }
     }
 
-    private {{entityName}} saveWithIntegrityMapping({{entityName}} entity) {
+{{#softDelete}}
+    /**
+     * R5.4: {@link #enforceWithKernel} above ONLY calls {@link #existsUniqueInConceptStore} when an
+     * author-declared invariant expression actually invokes {@code unique(field)} -- a bare {@code
+     * unique: true} field with no such invariant is (today, for every OTHER concept) enforced solely
+     * by the DATABASE's own unique constraint, never by a JVM precheck. For a {@code softDelete}
+     * concept that constraint is deliberately NOT a plain unfiltered unique index on an engine with no
+     * {@code PARTIAL_UNIQUE_INDEX} capability (see {@code StorageCapability}'s javadoc) -- exactly so
+     * a soft-deleted row's value can be reused -- which means NOTHING enforces uniqueness among live
+     * rows for such a field unless this method exists. Measured live (soft-delete-r54-proof,
+     * 2026-08-19): without it, a second row with an already-live unique value saved successfully (201,
+     * not 409) the moment the DB-level index was downgraded. Runs unconditionally for every {@code
+     * softDelete} concept's unique field, independent of whether the model ALSO declares an explicit
+     * unique invariant (harmless if it does -- existsUnique is read-only) and independent of engine
+     * (a cheap, uniform safety net even where the DB-level filtered index also enforces it).
+     */
+    private void enforceSoftDeleteUniqueFields(Map<String, Object> payload, UUID excludeId) {
+        List<GeneratedCrudRuntimeSupport.InvariantViolationDetail> violations = new ArrayList<>();
+{{#uniqueFields}}
+        {
+            Object value = payload.get("{{name}}");
+            if (value != null && existsUniqueInConceptStore("{{name}}", value, excludeId)) {
+                violations.add(new GeneratedCrudRuntimeSupport.InvariantViolationDetail(
+                        "unique_integrity_failed", "{{conceptName}}", "soft_delete_unique_field",
+                        "{{name}}", "A unique value already exists for {{conceptName}}.{{name}}", true));
+            }
+        }
+{{/uniqueFields}}
+        if (!violations.isEmpty()) {
+            throw new GeneratedCrudRuntimeSupport.InvariantViolationException(violations);
+        }
+    }
+
+{{/softDelete}}
+    private {{entityTypeName}} saveWithIntegrityMapping({{entityTypeName}} entity) {
         try {
             return persistence.save(entity);
         } catch (RuntimeException exception) {
@@ -827,7 +922,7 @@ public class {{entityName}}ServiceBase {
     // declared row-level access.read rule is enforced on this generated CRUD surface the same way
     // it already was on writes (see enforceWithConceptGateway/enforceDeleteWithConceptGateway) --
     // conceptStore itself has no notion of row-level scoping, only the gateway/semantic-policy layer does.
-    private Optional<{{entityName}}> findByIdFromConceptStore(UUID id) {
+    private Optional<{{entityTypeName}}> findByIdFromConceptStore(UUID id) {
         if (id == null) {
             return Optional.empty();
         }
@@ -837,7 +932,7 @@ public class {{entityName}}ServiceBase {
         ).map(this::entityFromRecord);
     }
 
-    private List<{{entityName}}> findAllFromConceptStore() {
+    private List<{{entityTypeName}}> findAllFromConceptStore() {
         return findAllSliceFromConceptStore().records();
     }
 
@@ -850,13 +945,13 @@ public class {{entityName}}ServiceBase {
      * {@link #findAllUnboundedFromConceptStore()}'s own javadoc for why capping a filter-after-fetch
      * read would silently drop matches instead of just being slow.
      */
-    private com.npdev.kernel.concepts.ConceptListSlice<{{entityName}}> findAllSliceFromConceptStore() {
+    private com.npdev.kernel.concepts.ConceptListSlice<{{entityTypeName}}> findAllSliceFromConceptStore() {
         com.npdev.kernel.concepts.ConceptListSlice<ConceptRecord> slice = conceptGateway.listCapped(
                 new ConceptListRequest(CONCEPT_NAME, currentTenantId()),
                 generatedCrudExecutionContext(),
                 com.npdev.kernel.concepts.ConceptQuery.MAX_LIMIT
         );
-        List<{{entityName}}> entities = slice.records().stream()
+        List<{{entityTypeName}}> entities = slice.records().stream()
                 .map(this::entityFromRecord)
                 .toList();
         return new com.npdev.kernel.concepts.ConceptListSlice<>(entities, slice.truncated());
@@ -871,7 +966,7 @@ public class {{entityName}}ServiceBase {
      * caller without re-deriving whether that caller can tolerate a silently-partial result the way
      * a post-fetch equality filter can (it cannot signal truncation -- it returns a raw {@code List}).
      */
-    private List<{{entityName}}> findAllUnboundedFromConceptStore() {
+    private List<{{entityTypeName}}> findAllUnboundedFromConceptStore() {
         return conceptGateway.list(
                 new ConceptListRequest(CONCEPT_NAME, currentTenantId()),
                 generatedCrudExecutionContext()
@@ -880,7 +975,7 @@ public class {{entityName}}ServiceBase {
                 .toList();
     }
 
-    private {{entityName}} saveToConceptStore({{entityName}} entity) {
+    private {{entityTypeName}} saveToConceptStore({{entityTypeName}} entity) {
         UUID id = entity.getId();
         if (id == null) {
             throw new IllegalArgumentException("Generated CRUD cannot save {{conceptName}} without an id.");
@@ -901,56 +996,48 @@ public class {{entityName}}ServiceBase {
         }
     }
 
+    /**
+     * R5.2 (closes RUN-1 item 4): delegates to {@link ConceptStore#existsUnique}, which pushes an
+     * indexed candidate-narrowing SQL {@code WHERE} down to the JDBC store instead of this method's
+     * old strategy -- {@code conceptStore.findAll(...)}, materializing the WHOLE tenant table into
+     * the JVM for every single create/update, the platform's worst remaining data-scale landmine.
+     * The comparison semantics are UNCHANGED: {@link ConceptStore#uniqueValuesCollide} is the exact
+     * same trim/case-insensitive-when-either-side-is-a-String, cross-type-tolerant rule this method's
+     * inline loop used to apply by calling {@link #uniqueValuesEqual} (still defined below, and still
+     * used by {@code listBy*} reference finders, which are a different call site with a different
+     * fetch-then-filter shape RUN-1's own scope never covered).
+     */
     private boolean existsUniqueInConceptStore(String fieldName, Object value, UUID excludeId) {
         if (fieldName == null || fieldName.isBlank() || value == null) {
             return false;
         }
-        String normalizedField = fieldName.trim();
-        for (ConceptRecord record : conceptStore.findAll(currentTenantId(), CONCEPT_NAME)) {
-            if (excludeId != null && String.valueOf(excludeId).equalsIgnoreCase(record.id())) {
-                continue;
-            }
-            Object existingValue = record.data().get(normalizedField);
-            if (uniqueValuesEqual(existingValue, value)) {
-                return true;
-            }
-        }
-        return false;
+        return conceptStore.existsUnique(
+                currentTenantId(), CONCEPT_NAME,
+                List.of(fieldName.trim()), List.of(value),
+                excludeId == null ? null : String.valueOf(excludeId));
     }
 
-    // LIFT-UNIQUE-P3: compound-unique pre-check, same full-scan-of-the-tenant strategy as
-    // existsUniqueInConceptStore above, extended to require every (field, value) pair to match
-    // the same candidate row (an AND across columns, not an OR of independent field checks).
+    // LIFT-UNIQUE-P3 / R5.2: compound-unique pre-check -- same delegation as
+    // existsUniqueInConceptStore above, extended to require every (field, value) pair to match the
+    // same candidate row (an AND across columns, not an OR of independent field checks). See that
+    // method's javadoc for why this no longer scans the tenant table itself.
     private boolean existsUniqueCompoundInConceptStore(List<String> fieldNames, List<Object> values, UUID excludeId) {
         if (fieldNames == null || fieldNames.isEmpty() || values == null || fieldNames.size() != values.size()) {
             return false;
         }
-        for (ConceptRecord record : conceptStore.findAll(currentTenantId(), CONCEPT_NAME)) {
-            if (excludeId != null && String.valueOf(excludeId).equalsIgnoreCase(record.id())) {
-                continue;
-            }
-            boolean allMatch = true;
-            for (int i = 0; i < fieldNames.size(); i++) {
-                Object existingValue = record.data().get(fieldNames.get(i));
-                if (!uniqueValuesEqual(existingValue, values.get(i))) {
-                    allMatch = false;
-                    break;
-                }
-            }
-            if (allMatch) {
-                return true;
-            }
-        }
-        return false;
+        return conceptStore.existsUnique(
+                currentTenantId(), CONCEPT_NAME,
+                fieldNames, values,
+                excludeId == null ? null : String.valueOf(excludeId));
     }
 
-    private {{entityName}} entityFromRecord(ConceptRecord record) {
+    private {{entityTypeName}} entityFromRecord(ConceptRecord record) {
         Map<String, Object> data = new LinkedHashMap<>(record.data());
         data.putIfAbsent(ID_FIELD_NAME, record.id());
-        return OBJECT_MAPPER.convertValue(data, {{entityName}}.class);
+        return OBJECT_MAPPER.convertValue(data, {{entityTypeName}}.class);
     }
 
-    private Map<String, Object> mapFromEntity({{entityName}} entity) {
+    private Map<String, Object> mapFromEntity({{entityTypeName}} entity) {
         return new LinkedHashMap<>(OBJECT_MAPPER.convertValue(entity, MAP_TYPE));
     }
 
@@ -964,7 +1051,7 @@ public class {{entityName}}ServiceBase {
         return left.equals(right) || String.valueOf(left).equals(String.valueOf(right));
     }
 
-    private void publishMutationEvent(String action, UUID id, {{entityName}} snapshot) {
+    private void publishMutationEvent(String action, UUID id, {{entityTypeName}} snapshot) {
         String topic = "{{entityName}}." + action;
         if (!ALLOWED_MUTATION_TOPICS.contains(topic)) {
             throw new IllegalStateException("Undeclared mutation event topic: " + topic);

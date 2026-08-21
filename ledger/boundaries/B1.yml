@@ -1,9 +1,12 @@
 id: B1
 title: "No automatic rename inference -- a rename must be declared via renamedFrom"
 kind: HITTABLE
-userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6) -- see docs/adr or PLAN.md §12
+userFacingText: "This concept appears to have been renamed. Add a 'renamedFrom' field pointing to the original name, or rename it back."
 workaround: "Declare renamedFrom by hand, or rename via NPDevEditor's Field Details panel (stamps it automatically)."
-enforcingDiagnosticCodes: []
-codeLinked: false
-codeLinkedNote: "ConceptValidation.java builds raw error strings (errors.add), wrapped later into a generic semantic_validation_error ValidationDiagnostic with no rule-specific code -- not yet distinguishable from any other semantic error by code alone. Needs a dedicated code before boundaryId can be populated here."
+enforcingDiagnosticCodes:
+  - "B1:rename_self_reference"
+  - "B1:rename_source_missing"
+  - "B1:rename_ambiguous"
+codeLinked: true
+codeLinkedNote: "ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B1"

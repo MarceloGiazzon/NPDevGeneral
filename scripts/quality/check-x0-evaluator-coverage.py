@@ -36,7 +36,7 @@ WHAT IT DELIBERATELY DOES NOT DO
 It does not require a "must error" test for OPEN/ACCEPTED/NOT_AUDITED/NOT_BUILT entries -- forcing a
 test that proves behavior the code does not have yet would just be a second, uglier way to lie. Those
 verdicts stay visible in the registry (so they cannot quietly vanish); fixing them is tracked work
-(REG-96, LC-P0, the expression-cel audit), not something this gate can or should force.
+(REG-96, LC-P0, the runtime-support audit), not something this gate can or should force.
 
 USAGE
 -----

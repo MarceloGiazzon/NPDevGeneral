@@ -1,0 +1,101 @@
+id: EDIT-6
+title: >-
+  A fresh generated app looks dead and its grids cannot be filtered -- an empty grid renders a bare
+  "No records", the existing seed machinery is invisible, and Export CSV ignores the search entirely
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R7 items R7.2 (empty-state
+  onboarding CTAs) and R7.3 (structured per-column filters + filter-honoring export). Done together
+  because both live in the same template.
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache
+detail: |
+  MEASURED BEFORE-STATE, all four claims verified in source rather than assumed:
+    - `renderTable`'s zero-row branch rendered a bare "No records" `<td>`. (A second generic
+      renderer, `renderDeclaredPanelValueGeneric`, renders "(empty)" for declared-panel data
+      sources -- left untouched, since no create action is tied to it.)
+    - `DataSeedAdminController` (`GET/POST /api/admin/seeds`, ADMIN/SUPERUSER-gated) already
+      existed and **nothing in the UI had ever called it** -- the roadmap's "the machinery exists
+      but is invisible" is literally true.
+    - The grid sent only a substring `filter` param, while the generated CRUD controller already
+      accepted a `where=field:op:value` DSL (`eq`/`ne`/`contains`) pushed down to SQL.
+    - Export CSV hit a **different endpoint** (`ConceptQueryController./export.csv`) whose parser
+      ignores `filter`/`where` entirely -- so the disclosed "export ignores your search" mismatch was
+      structural, not cosmetic.
+
+  R7.2: `buildEmptyStateCta` renders "No X yet" + a Create button, plus one "Load sample data"
+  button per declared seed when `canManageSeeds()` (ADMIN/SUPERUSER) and seeds exist
+  (`loadAvailableSeeds`/`runSeed`, wired into `bootstrap()`).
+
+  R7.3: a per-column filter row in `renderTable`'s `<thead>` with type-appropriate operator+value
+  controls, gated on the server's existing `filterable` flag, feeding the SAME `where` DSL the list
+  endpoint already accepts -- no server change.
+
+  **Export CSV was rewritten to walk the grid's own list endpoint page-by-page and build the CSV
+  client-side**, which makes it provably the same query as the grid rather than a second query that
+  must be kept in sync. It carries a JS mirror of the server's `CsvCells` formula-injection guard, so
+  the security property survives the move. **A tradeoff to know about:** a client-side export pulls
+  every page through the browser, so a very large concept now exports slower and under the browser's
+  memory rather than the server's. That was the price of not changing `ConceptQueryController`; if it
+  ever bites, the honest fix is teaching the export endpoint the `where` DSL and switching back.
+
+  BROWSER-VERIFIED, real and in the foreground, against `http://127.0.0.1:8199` on a full
+  `Rebuild-And-Restage.ps1` (generator-runtime refresh included -- which caught a real mistake where
+  an earlier edit had shipped against a stale generator-runtime cache):
+    - `r7-2-empty-state-seed-cta.json`: **24/24 steps passed**. Fresh zero-row grid -> CTA visible ->
+      clicked "Demo users" -> toast "3 sample record(s) loaded." -> grid populated with all three
+      seeded names, CTA gone.
+    - `r7-3-column-filters-and-export.json`: **39/39 steps passed**. `name contains "Grace"` -> 1
+      row; cleared -> 3 rows; `email != grace.hopper@...` -> 2 rows; **Export CSV -> "export ready:
+      2 row(s)"**, matching the filtered on-screen count exactly. That equality IS the item's
+      definition of done.
+
+  **Both runs carry `green: false`, and that is MON-12, not a defect in this work.** Every step and
+  every assertion passed in both routines; the red verdict comes purely from pre-auth console noise
+  (401s on `/api/me` before the API-key reload, plus a `theme.css` 404), of which the default rule
+  excuses only some. No blanket console excuse was added to force green -- which is the correct
+  refusal, since a blanket "401"/"404" would blind every future routine to a real one.
+
+  Bugs found during verification were in the ROUTINES, not the shipped template: Playwright
+  strict-mode multi-match locators, and a `.status` selector wrongly scoped inside `#concept-User`
+  when it is actually a sibling.
+
+  A PLATFORM BUG FOUND AND DELIBERATELY NOT FIXED HERE, filed as REG-189: with exactly ONE
+  `definition/seeds/*.json`, PowerShell collapses the manifest array to a bare object and
+  `SeedDataService.listAvailable()` silently returns `[]`. Worked around by authoring a second seed
+  file rather than editing `Build-NpdevApp.ps1` (outside a business-UI item's scope) -- so the
+  workaround is invisible and will not survive deleting the spare seed. R7.2 is what makes this
+  reachable at all, since nothing previously called that endpoint.
+
+  SCOPE + GATES: the frozen T1 canary fixture (`NPDevSamples/npdev-canary`) was **not** touched --
+  confirmed by the orchestrator; all seeds, routines and the port change live under
+  `AppGen/apps/simple-user-registry-h2local/` (app-definition layer 2).
+  `check-deterministic-generation.ps1` **passed, 562/562 files, 0 differing**.
+guard:
+  kind: manual
+  ref: >-
+    D:\WorkSpace\NPDev\AppGen\apps\simple-user-registry-h2local\explorations\
+    {r7-2-empty-state-seed-cta.json, r7-3-column-filters-and-export.json} -- run with
+    `npdev explore run --app-dir <generated app>`. DELIBERATELY `manual`: the routines live with an
+    AppGen app, which CLAUDE.md defines as source-of-truth layer 2 ("not a git repo"), so no
+    repo-rooted path can name them -- the same reason EDIT-5's guard is manual. Promoting them into
+    the in-repo corpus (`NPDevSamples/**/browser-routines/`) would make them automated guards but
+    requires retargeting at an NPDevSamples app.
+  asserts: >-
+    a zero-row grid renders a "No X yet" CTA with a Create button and, for a permitted user with
+    declared seeds, a working "Load sample data" action that populates the grid; per-column filters
+    round-trip against the concept API's `where` DSL; and Export CSV returns exactly the filtered
+    on-screen row count rather than the unfiltered set.
+  provenRed: false
+  provenRedNote: >-
+    Not run against the pre-change template, so the red direction is not recorded as measured. The
+    before-state was however read directly from source for all four claims -- the bare "No records"
+    branch, the never-called seed endpoint, the substring-only filter param, and the separate export
+    endpoint whose parser ignores filter/where -- so they are observations, not inferences.

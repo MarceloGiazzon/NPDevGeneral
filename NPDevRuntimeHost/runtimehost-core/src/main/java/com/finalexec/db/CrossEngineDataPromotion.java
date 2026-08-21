@@ -1,10 +1,12 @@
 package com.finalexec.db;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.boundary.*;
 import org.postgresql.util.PGobject;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.time.Instant;
 import com.npdev.kernel.storage.sql.PostgresDialect;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -134,9 +136,13 @@ public final class CrossEngineDataPromotion {
         try (Connection sourceConnection = source.getConnection(); Connection targetConnection = target.getConnection()) {
             long sourceCount = tableExistsLive(sourceConnection, table) ? countRows(sourceConnection, table) : 0L;
             if (!tableExistsLive(targetConnection, table)) {
-                return new TableCopyResult(table, sourceCount, 0, 0, false,
-                        "target table does not exist -- realize the schema on the target first "
-                                + "(boot the app normally pointed at the target database), then promote data");
+                // B10 (H2→Postgres): schema reconciliation is out of scope for data promotion --
+                // the target schema must already exist. Refuse with a boundary violation.
+                throw new BoundaryBootException(new BoundaryViolation("B10", "promotion",
+                        "Cross-engine promotion refused: target table '" + table + "' does not exist. "
+                                + "Realize the schema on the target first (boot the app pointed at the target database), "
+                                + "then promote data. Schema reconciliation is not supported.",
+                        Instant.now()));
             }
             Set<String> sourceColumns = SchemaLifecycleExecutor.readActualColumns(sourceConnection.getMetaData(), table);
             Set<String> targetColumns = SchemaLifecycleExecutor.readActualColumns(targetConnection.getMetaData(), table);

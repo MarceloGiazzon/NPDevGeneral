@@ -3,8 +3,12 @@
     "Triage verdicts for scripts/quality/security-pattern-sweep.py. Each entry means: a human looked at this",
     "exact code and decided it is safe, and here is the reason. The key is a fingerprint of the matched TEXT,",
     "so EDITING that code invalidates the verdict and the hit resurfaces -- which is the point.",
-    "Rationale for each rule id lives in docs/SECURITY_PATTERN_SWEEP_2026-07.md.",
-    "Never clear a hit here without recording why in that document."
+    "Record the WHY in the entry itself. The original per-rule-id rationale doc is now",
+    "docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md, classified historical -- read it for the A*/B*/F*/I*",
+    "rule-id narrative behind older entries, never for current status, and do not add to it: process",
+    "documents are banned from this repo (CLAUDE.md), so a verdict that lives only in prose is a verdict",
+    "that goes stale unnoticed. Newer entries therefore set \"rule\" to the sweep pattern name and carry",
+    "their full reasoning inline in \"why\"."
   ],
   "cleared": {
     "005d6a4b2834": {
@@ -24,7 +28,7 @@
     },
     "015998481669": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "01ce4dd9c3d6": {
@@ -109,7 +113,7 @@
     },
     "0d68c1f7e9c9": {
       "rule": "H1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5080",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5080",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3."
     },
     "0d7971df9c25": {
@@ -174,7 +178,7 @@
     },
     "14a1d1a98155": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "15422a3c1f67": {
@@ -214,7 +218,7 @@
     },
     "1ab54d1ebdd5": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "1bb50f2f3e23": {
@@ -224,7 +228,7 @@
     },
     "1d32f96c3dcd": {
       "rule": "I4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:62",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:62",
       "why": "Payload/attribute columns rather than index key material: an oversized value costs storage governed by the upstream request-size limit, and cannot break a btree entry the way REG-36's key did."
     },
     "1d9186ef3758": {
@@ -274,7 +278,7 @@
     },
     "238fe69c056c": {
       "rule": "H1/H2",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:3870; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:3128; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java:289; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/TenantStoragePartitioningService.java:284; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:109; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:186,327",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:3870; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:3128; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java:289; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/TenantStoragePartitioningService.java:284; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:109; NPDevRuntimeHost/src/main/java/com/finalexec/db/SchemaHistoryStore.java:186,327",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision. Relocated verbatim by T2.B.4's SchemaLifecycleExecutor split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.4) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at SchemaLifecycleExecutor.java is now orphaned by the move, not removed."
     },
     "2398627d24ee": {
@@ -289,7 +293,7 @@
     },
     "23ae2360bcea": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:45",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
     },
     "2530555f6c3f": {
@@ -314,7 +318,7 @@
     },
     "26b5021c0ac0": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "2753ed78d3c5": {
@@ -349,12 +353,12 @@
     },
     "2a74888d0504": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:745; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSql.java:14",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:745; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSql.java:14",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. || Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
     },
     "2a93dc71f91d": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "2b925411d01b": {
@@ -369,7 +373,7 @@
     },
     "2c0035c89c2d": {
       "rule": "A1",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java:70; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:161,297",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java:70; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:161,297",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. || Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "2c14e74117a5": {
@@ -424,12 +428,12 @@
     },
     "2fa2af4f60a5": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4697",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4697",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
     },
     "30082f8cd5cb": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "30167dcce5a5": {
@@ -544,7 +548,7 @@
     },
     "3e2fd16c94f6": {
       "rule": "H1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2671",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2671",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3."
     },
     "3f9661468cab": {
@@ -599,7 +603,7 @@
     },
     "445198cca66a": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5013",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "44e1b4b3cd9c": {
@@ -639,7 +643,7 @@
     },
     "4a8d5b2b4011": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/sqlnaming/SqlNamingSupport.java:50",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint; the original entry at GeneratedCrudRuntimeSupport.java is now orphaned by the move, not removed."
     },
     "4b19297e432a": {
@@ -719,12 +723,12 @@
     },
     "51d640d9d5f0": {
       "rule": "A4/H1/H2",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/auth/PasswordHasher.java:55; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2162; NPDevRuntimeHost/src/main/java/com/finalexec/api/StorageSummaryController.java:95; NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:306; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:250",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/auth/PasswordHasher.java:55; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2162; NPDevRuntimeHost/src/main/java/com/finalexec/api/StorageSummaryController.java:95; NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java:306; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:250",
       "why": "Fail-closed: a hash that cannot be verified is not a match. Returning false is the only safe answer and no other outcome is reachable. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
     },
     "521ff9d7e861": {
       "rule": "I4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:537",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:537",
       "why": "Payload/attribute columns rather than index key material: an oversized value costs storage governed by the upstream request-size limit, and cannot break a btree entry the way REG-36's key did."
     },
     "52624b5f22f5": {
@@ -794,7 +798,7 @@
     },
     "5d54606198ae": {
       "rule": "I4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2499",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2499",
       "why": "Payload/attribute columns rather than index key material: an oversized value costs storage governed by the upstream request-size limit, and cannot break a btree entry the way REG-36's key did."
     },
     "5d943e97bb9b": {
@@ -834,7 +838,7 @@
     },
     "6179cd7bed39": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4659",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4659",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
     },
     "61950fe6ddf2": {
@@ -909,7 +913,7 @@
     },
     "688c459ccec8": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:710",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:710",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "699576bd4b0b": {
@@ -974,7 +978,7 @@
     },
     "708f2dd719a3": {
       "rule": "A1/A5/H1",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198; NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130; NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539; NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java:372; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161; NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198; NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130; NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539; NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java:372; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. || Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint. || Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "71c2527ac682": {
@@ -1029,7 +1033,7 @@
     },
     "7a2a981c92df": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "7ad9d469c120": {
@@ -1054,7 +1058,7 @@
     },
     "7e700fa66e6c": {
       "rule": "A2",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:130",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:130",
       "why": "IdentityRoleLookup.isTokenRevoked/rejectTvlessTokensNow: a malformed `tv` claim cannot be attacker-produced -- the claim is inside the JWT the server itself signed, so reaching the catch means the server emitted a non-numeric tv, not that a caller chose one. The system-property cutover parse is validated at boot by StartupValidator."
     },
     "7eafcdd1222c": {
@@ -1064,7 +1068,7 @@
     },
     "7ec3c873a3d0": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4375",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "7ec82fa52170": {
@@ -1349,7 +1353,7 @@
     },
     "9b2a394bdea3": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2141",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2141",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "9b89a663f664": {
@@ -1394,7 +1398,7 @@
     },
     "a1db3de87640": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:533",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:533",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "a21b21e9ae16": {
@@ -1454,7 +1458,7 @@
     },
     "aa2adaca7e53": {
       "rule": "A2/A5",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:116; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:116; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395",
       "why": "IdentityRoleLookup.isTokenRevoked/rejectTvlessTokensNow: a malformed `tv` claim cannot be attacker-produced -- the claim is inside the JWT the server itself signed, so reaching the catch means the server emitted a non-numeric tv, not that a caller chose one. The system-property cutover parse is validated at boot by StartupValidator. || Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25."
     },
     "aaeb9131a3f1": {
@@ -1474,12 +1478,12 @@
     },
     "ad3a4af05c1b": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:199,231,248",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:199,231,248",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "adaf1f087189": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "adf88c76ac38": {
@@ -1504,12 +1508,12 @@
     },
     "b11714148a61": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:5008",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "b1caf0f0b32b": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:675",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:675",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "b2ce70311f70": {
@@ -1529,7 +1533,7 @@
     },
     "b3eff2b843a5": {
       "rule": "H1/H2",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:765; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:236",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:765; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java:236",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. || Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
     },
     "b4538270b3c0": {
@@ -1579,7 +1583,7 @@
     },
     "b8e1b1a379d4": {
       "rule": "A1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4626",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4626",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here."
     },
     "b92d28b35625": {
@@ -1639,12 +1643,12 @@
     },
     "c0798a725af0": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2187",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2187",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "c18694f35655": {
       "rule": "G1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4269",
       "why": "Round 3 sections 4.1/4.2 (R3-F4, R3-F5): reference-existence and conflict probes. The cross-tenant case is refused earlier by enforceBondTargetTenant, which reports it identically to a genuine miss, so no oracle is exposed. Recorded INFO there because the defence is positional rather than local."
     },
     "c23f4d2e25de": {
@@ -1724,7 +1728,7 @@
     },
     "c9897a622262": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:654",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "c9af2387ae0f": {
@@ -1859,7 +1863,7 @@
     },
     "ddbcb35ee7ee": {
       "rule": "H4",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:156",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/IdentityRoleLookup.java:156",
       "why": "rolesFor returns an EMPTY role set when the lookup fails -- the closed direction: the caller ends up with no roles rather than borrowed ones. Worth a WARN so an operator can tell 'lost all permissions' from 'has no roles'; recorded, not a bypass."
     },
     "df5764fd885e": {
@@ -2014,7 +2018,7 @@
     },
     "ec4e2835b626": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:692",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:692",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "ed357d6ffbf3": {
@@ -2104,7 +2108,7 @@
     },
     "f603d95a667b": {
       "rule": "F3",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:4497",
       "why": "Runtime SQL whose only spliced parts are table/column identifiers derived from the compiled model via SqlIdentifierSupport.toSnake -- a whitelist, so quotes and semicolons cannot survive it. Every value is bound. Rounds 3 and 5."
     },
     "f6185e69d721": {
@@ -2144,7 +2148,7 @@
     },
     "fa1ab287a9e9": {
       "rule": "H1",
-      "where": "NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSupport.java:154",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/scheduling/ScheduledEventSupport.java:154",
       "why": "Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "faf1818efeba": {
@@ -2311,6 +2315,196 @@
       "rule": "sql-string-building",
       "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceIndex.java:911",
       "why": "False positive on the literal string \"select.\", which is a JSON PATH SEGMENT, not SQL. XREF-1's ReferenceIndex builds an edge path naming the procedure step key a `$var.field` read came from, and a `select` step's entries are addressed as `steps[n].select.<key>` -- that path is what `npdev migrate rename --cascade` edits, so it has to spell the real model key. There is no database access anywhere in this class: it walks an in-memory ModelAst and emits a JSON report. Renaming the segment to dodge the pattern would make the emitted path wrong, which is why this is triaged rather than reworded. Triaged 2026-08-18, XREF-1."
+    },
+    "c529595ddbd8": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FieldValueValidation.java:156",
+      "why": "Not SQL. This is a validator DIAGNOSTIC MESSAGE whose English text contains the word 'drop' (\"or drop 'requiredField' from that schema's required[]\"). FieldValueValidation is a compile-time AST check with no JDBC, no DataSource and no SQL anywhere in the class. Rewording the message to dodge the regex would make the guidance worse, so this is triaged rather than reworded. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "07f5821b1f1a": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java:331",
+      "why": "Not SQL. Same shape as FieldValueValidation:156 -- a compile-time validator's suggestedFix prose (\"drop the join into <concept> from this query's where\") containing the English word 'drop'. PackValidation walks an in-memory ModelAst; it has no database access of any kind. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "16c01ca0297b": {
+      "rule": "false-positive",
+      "where": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PackValidation.java:538",
+      "why": "Not SQL. Same shape as FieldValueValidation:156 -- a compile-time validator's suggestedFix prose (\"drop the join into <concept> from this query's groupBy\") containing the English word 'drop'. PackValidation walks an in-memory ModelAst; it has no database access of any kind. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "2836a0ac2799": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1120",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "31722e4494aa": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1240",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "2ef856160e29": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1287",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "91f949450996": {
+      "rule": "false-positive",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java:1538",
+      "why": "Not SQL and not a read. These are the emitted PowerShell bodies for the _ops toolbox (Start-App / Run-FinalApp / Stop-App / the scheduled-task registrar). The sweep's case-insensitive SQL_VERB regex matches the 'Select' in PowerShell's Select-Object / Where-Object cmdlets. There is no query, no connection and no tenant concept in emitted shell text. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "a8b9caa45f4c": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:475",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (GET_LOCK) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "6d47054d6a70": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:480",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (RELEASE_LOCK) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "59b891dd85e2": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:347",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (pg_try_advisory_lock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "7bb58098a75b": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:352",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (pg_advisory_unlock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "9e4b747a216e": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:619",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (sp_getapplock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "6c65fc92ca9d": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:626",
+      "why": "Tenant-independent BY CONSTRUCTION: this SELECT reads no table. It is the engine's session-scoped ADVISORY LOCK primitive (sp_releaseapplock) wrapped in a SELECT purely because that is how each engine exposes the call's return value. There is no row set, so there is nothing a tenant predicate could scope. It backs the cross-instance migration/boot mutex, which is per-DATABASE and must span all tenants -- scoping it per tenant would defeat the exclusion it exists to provide. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "5c3dd99975cf": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:309; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:293",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "b6003aed3caa": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java:319; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:456; NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java:303",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "0242d861e0f8": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:428",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "47321fbcd807": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:431",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "da8a3123f677": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:431",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "37109ec97021": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:564",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "f480a43ce887": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java:593",
+      "why": "Safe, and this package is the DECLARED home for exactly this construct. CLAUDE.md / STOR-1: all dialect-bound SQL lives in NPDevKernel/kernel/.../storage/sql/, and check-dialect-sites.py fails the ai-knowledge gate if it appears anywhere else -- so a hit here is the policy working as intended, not a leak. These are DDL guard helpers (guardedDropIndexIfExists / guardedCreateSchema / guardedCreateIndex): DDL cannot bind identifiers as JDBC parameters on ANY engine, so parameterisation is not an available alternative. The values are platform-computed schema/index/table names derived from the compiled model at GENERATION time (never runtime caller input), and the literal-bearing variants escape through the class's own escapeLiteral()/quoteSqlLiteral() before interpolation. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "8190055dc038": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:343",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "1281f2a67c06": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:614",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "0ccc4400a893": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:631",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "cda17ae4b3d5": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:665",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "32fa9cc38f5e": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:675",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "04de065b10dc": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:754",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "e5938c29200b": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:759",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "b5dbedcef317": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java:1922",
+      "why": "Safe: generation-time DDL, not a runtime query. SchemaRealizationEmitter writes the app's migration text once, during codegen, from the COMPILED MODEL -- there is no connection, no caller and no request in scope, so there is no untrusted value to bind. Every identifier goes through sqlId(engine, raw), which delegates to engine.dialect().identifier(raw) and quotes per engine; and DDL cannot bind identifiers as parameters on any engine regardless. The only reachable author is whoever writes the model, who by definition already controls the entire emitted application. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "46d2a7718810": {
+      "rule": "sql-string-building",
+      "where": "NPDevKernel/adapters/webhook-http/src/main/java/com/npdev/adapters/webhook/http/WebhookDeliveryRecordStore.java:54",
+      "why": "Safe: a fixed CREATE TABLE for the adapter's own private delivery-record table. Every interpolated value is a COLUMN TYPE returned by the SqlDialect (keyableTextColumnType / portableColumnType / jsonColumnType) -- dialect-chosen constants, not data, and not bindable as JDBC parameters in DDL. The table name is a compile-time constant in this class. No caller input reaches this statement. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "efe76f33facf": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:317",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "2f73a3c8e89d": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:427",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "fa14d9c47683": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:436",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "93f3b48a6032": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java:436",
+      "why": "Safe: the tenant predicate IS present -- the regex just cannot see it, because it is appended to a dynamically built whereClauses list several lines above rather than sitting in the concatenated literal. existsUnique() adds \"tenant_id = ?\" at line 287 and query() adds baseAlias + \".tenant_id = ?\" at line 402, both with tenantId bound as a real JDBC parameter. All identifiers are quoted through sqlId(); every VALUE in the predicate is bound via bindParams(), never interpolated. Reported as new only because this class MOVED into runtimehost-core in this branch's split. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "68882326294f": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MigrationClaimStore.java:222",
+      "why": "Tenant-independent BY DESIGN, and tenant-scoping it would be the bug. The migration claim table is the per-DATABASE boot mutex holding exactly ONE canonical row (WHERE claim_key = ?, a compile-time constant): it records which instance is running schema migrations for the whole database. Schema migration is not a per-tenant operation -- adding a tenant predicate would let two instances migrate the same schema concurrently, which is precisely what REG-91 was. Same reasoning already cleared for CronFireClaimStore. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "a8a3075d001f": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/api/WebhookInboundController.java:267; NPDevKernel/adapters/messaging-http/src/main/java/com/npdev/adapters/messaging/http/HttpMessagingCapabilityAdapter.java:622",
+      "why": "Safe -- this is fail-CLOSED, the opposite of REG-39's shape. The catch is on HexFormat.of().parseHex(presented) inside verifySignature(): the ONLY way it throws is that the attacker-supplied signature header is not valid hex. A signature that cannot even be parsed IS an invalid signature, so returning false is the correct verdict, not an infrastructure fault misreported as one. Logging it would be an unauthenticated-caller-controlled log write. Both sites are the same idiom and share this fingerprint by design; both were read. Note the deliberate MessageDigest.isEqual constant-time compare immediately after, which is the real security-relevant decision in these methods. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "f515d5658fbc": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/api/DocumentRenderController.java:277",
+      "why": "Safe: not a security verdict. resolveLogoDataUri() returns the document's LOGO as a data URI; the catch is on fileStore.head() for a handle that no longer resolves, and returning null means 'render this document without a logo' -- the method's javadoc states that degrade-rather-than-fail intent explicitly. The null is consumed as an optional presentation asset, never as an authorization answer, and the caller has already passed every access check before the render begins. No permission decision derives from it. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "78f0d6cee88f": {
+      "rule": "unbounded-caller-input",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/scheduler/CronFireClaimStore.java:131",
+      "why": "Safe: no asymmetry, and not caller-reachable. The checker's own guidance is to look for a value bound WITHOUT a bound while its pair HAS one -- here flowName (param 1) and tenantId (param 2) are treated identically, so the asymmetry that made REG-36 a bug is absent. Both are bound as real JDBC parameters on a PreparedStatement, so length is enforced by the column definition, not by string handling. Neither value comes from a request: ensureRowExists() is called only by the in-process cron scheduler, with the flow name from the compiled model and the tenant id from the schedule's own registration. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "f7010af151a9": {
+      "rule": "conditional-guard-no-else",
+      "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:459",
+      "why": "Safe: there is no unguarded arm because there is no other arm. The checkCrudPermission call sits inside restore(), and the ENTIRE restore() method -- javadoc, signature, body and all -- is wrapped in the same {{#softDelete}} section. When softDelete is falsey the method is not emitted at all, so no generated code path reaches a restore without the check. This is the inverse of LNCH13-F1, where a guard was emitted in one arm of a conditional whose OTHER arm still emitted the operation. Both delete arms ({{#softDelete}} SOFT_DELETE and {{^softDelete}} DELETE) are likewise fully symmetric a few lines above. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
     }
   }
 }

@@ -81,20 +81,12 @@ jobs:
         working-directory: NPDevContract/dsl
         timeout-minutes: 15
         run: |
-          # gradle.properties hardcodes org.gradle.projectcachedir to a D:\WorkSpace\NPDev\Build
-          # path (this repo's own Windows-local build-output policy, docs/BUILD_OUTPUT_LOCATION_POLICY.md)
-          # -- meaningless on a Linux runner. Gradle reads this from gradle.properties during its
-          # own wrapper bootstrap, before a --project-cache-dir CLI override can take effect
-          # (confirmed live: the CLI flag alone did not fix this) -- strip the line instead so
-          # Gradle falls back to its own default (<project>/.gradle), which works on any OS.
-          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
           ./gradlew check --no-daemon --console=plain
 
       - name: Kernel inproc adapter tests
         working-directory: NPDevKernel
         timeout-minutes: 20
         run: |
-          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
           ./gradlew \
             :kernel:test \
             :adapters:audit-inproc:test \
@@ -103,6 +95,8 @@ jobs:
             :adapters:events-inproc:test \
             :adapters:flowinstance-inproc:test \
             :adapters:idempotency-inproc:test \
+            :adapters:messaging-http:test \
+            :adapters:messaging-inproc:test \
             :adapters:notification-inproc:test \
             :adapters:persistence-inproc:test \
             :adapters:tracing-inproc:test \
@@ -135,11 +129,42 @@ jobs:
         working-directory: NPDevKernel
         timeout-minutes: 15
         run: |
-          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
           ./gradlew \
             :adapters:persistence-postgres:test \
             :adapters:idempotency-postgres:test \
             :adapters:bulkhead-postgres:test \
+            --no-daemon --console=plain
+
+      # QUAL-23 (2026-08-19): the same 17 previously-CI-uncovered adapters added to
+      # npdev-ci-validation.yml's Linux job, mirrored here so a regression in any of them shows red
+      # on the PR itself instead of waiting for that job's nightly/push-to-main-only schedule (its
+      # Linux job does not run on `pull_request`). None need Docker/Postgres -- plain H2/in-memory/
+      # loopback-socket unit tests, verified per-module (no testcontainers import or dependency)
+      # before adding. `file-store-objectstore` is the one exception: it needs a real MinIO
+      # Testcontainers container, so it stays in npdev-ci-validation.yml only, alongside that job's
+      # existing Postgres Testcontainers step, rather than adding a second container pull to every PR.
+      - name: "Kernel adapter tests (previously CI-uncovered, QUAL-23)"
+        working-directory: NPDevKernel
+        timeout-minutes: 20
+        run: |
+          ./gradlew \
+            :adapters:auth-context-jwt:test \
+            :adapters:authz-default:test \
+            :adapters:document-render-inproc:test \
+            :adapters:document-render-stub:test \
+            :adapters:runtime-support:test \
+            :adapters:external-ai-inproc:test \
+            :adapters:external-ai-http:test \
+            :adapters:external-ai-pack-core:test \
+            :adapters:json-jackson:test \
+            :adapters:mail-inproc:test \
+            :adapters:mail-smtp:test \
+            :adapters:metrics-micrometer:test \
+            :adapters:resume-bootstrap-spring:test \
+            :adapters:runtime-validation:test \
+            :adapters:schema-validator-default:test \
+            :adapters:tracing-redaction-default:test \
+            :adapters:webhook-http:test \
             --no-daemon --console=plain
 
       - name: Generator unit tests
@@ -151,7 +176,6 @@ jobs:
         # still fits comfortably.
         timeout-minutes: 45
         run: |
-          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
           ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
           # REG-176 follow-up: NPDevGenerator/gradle.properties sets org.gradle.parallel=true, so a
           # single invocation naming both :generator:test and :generator:packagedProofTest as
@@ -184,20 +208,19 @@ jobs:
             -BuildLocalJars \
             -RuntimeHostLibsDir "$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs"
 
-      - name: Generate simple-contact-intake sample (InMemory, fast RuntimeHost smoke)
+      - name: Generate canonical-demo sample (InMemory, fast RuntimeHost smoke)
         timeout-minutes: 15
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass \
             -File "$GITHUB_WORKSPACE/NPDevSamples/scripts/generate-sample-app.ps1" \
-            -SampleId simple-contact-intake \
+            -SampleId canonical-demo \
             -NPDevRoot "$GITHUB_WORKSPACE"
 
       - name: RuntimeHost generated-app test suite
-        working-directory: NPDevSamples/simple-contact-intake/Output/App
+        working-directory: NPDevSamples/canonical-demo/Output/App
         timeout-minutes: 20
         run: |
           chmod +x ./gradlew
-          sed -i '/org\.gradle\.projectcachedir/d' gradle.properties
           ./gradlew test \
             -PnpdevRuntimeHostLibsDir="$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs" \
             --no-daemon --console=plain
@@ -244,6 +267,6 @@ jobs:
           path: |
             ci-evidence/**/test-results/test
             ci-evidence/**/reports/tests/test
-            NPDevSamples/simple-contact-intake/Output/App/build/test-results/test
+            NPDevSamples/canonical-demo/Output/App/build/test-results/test
           if-no-files-found: warn
           retention-days: 14

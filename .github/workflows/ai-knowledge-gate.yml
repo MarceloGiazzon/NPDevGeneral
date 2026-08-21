@@ -65,15 +65,6 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # CI-1 pattern (npdev-ci-validation.yml, npdev-pr-gate.yml): the committed gradle.properties
-      # files hardcode a dev-machine org.gradle.projectcachedir (D:\WorkSpace\...), which does not
-      # exist on Linux -- gradle aborts before any task runs, and a --project-cache-dir CLI override
-      # does NOT fix it (gradle.properties is read during wrapper bootstrap, before the CLI flag can
-      # take effect). This gate never ran gradle before check 11/12 (validate-corpus.py) existed, so
-      # this had never been hit here. Strip the line so gradle falls back to its own portable default.
-      - name: Neutralize dev-machine gradle projectcachedir (portability)
-        run: sed -i '/org\.gradle\.projectcachedir/d' gradle.properties NPDevContract/dsl/gradle.properties
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:

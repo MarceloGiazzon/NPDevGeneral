@@ -80,8 +80,7 @@ class ContractSurfaceSupportTest {
                           "value": "result"
                         }
                       ],
-                      "returns": { "type": "object", "properties": { "id": { "type": "uuid" } } },
-                      "auditPolicy": "write"
+                      "returns": { "type": "object", "properties": { "id": { "type": "uuid" } } }
                     }
                   ],
                   "panels": [

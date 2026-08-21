@@ -95,10 +95,13 @@ class PackCacheTest {
      * {@code pack.json} but DIFFERENT fragment content silently aliased to the SAME cache entry --
      * the second {@code store()} became a no-op (its fragment content was simply discarded), and
      * {@code read()} would report the surviving entry as digest-verified while permanently serving
-     * the FIRST tree's fragments. Not reachable through the real pipeline today (a separate,
-     * already-disclosed "escapes the model root" bug blocks any remote+fragment pack from resolving
-     * at all -- see PACK-8.yml), but a landmine in a brand-new shared, machine-wide cache primitive
-     * whose own class doc claims "a same-digest entry can never legitimately differ".
+     * the FIRST tree's fragments. Was not reachable through the real pipeline when this test was
+     * written (a separate "escapes the model root" bug blocked any remote+fragment pack from
+     * resolving at all -- see PACK-8.yml / R8.1, fixed in {@code ModelSourceResolver}'s
+     * {@code resolveJsonRefUnderRoot}), but a landmine in a brand-new shared, machine-wide cache
+     * primitive whose own class doc claims "a same-digest entry can never legitimately differ" --
+     * and now that R8.1 is fixed, IS reachable, so this coverage was load-bearing rather than
+     * defensive. See {@code PackFromCoordinateResolutionTest} for the fragment-resolution proof.
      */
     @Test
     void identicalPackJsonWithDifferentFragmentContentProducesDifferentDigests() throws Exception {
