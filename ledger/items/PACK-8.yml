@@ -262,3 +262,30 @@ resolution: |
 
   Remaining deferred steps: (5) signatures/cosign, (6) npdev pack publish,
   corpus coverage for `packs[].from`.
+deferredFollowUps:
+  - step: 5
+    description: "Signatures/cosign trust vocabulary (trust:{mode,source,level}, --allow-unsigned lockfile recording)"
+    closedAs: WONTFIX
+    reason: >-
+      Requires importing a cosign dependency and designing the trust-key vocabulary (per-pack
+      signing keys, key rollover, revocation); no corpus model or app links it yet, so it would be
+      maintained and trusted on speculation. Deferred to post-beta when a distribution trust model
+      is actually needed. Roadmap close-out 2026-08-21.
+    closedDate: 2026-08-21
+  - step: 6
+    description: "npdev pack publish producing an OCI-artifact-shaped LOCAL output (pack JSON + chain + signature bundle)"
+    closedAs: WONTFIX
+    reason: >-
+      OCI publication needs a registry integration (FakeOciRegistry is test-only) and produces an
+      artifact nobody pulls today -- local pack cache + git+file:// fetch + npdev pack add/search
+      (steps 1-4, 7) already cover the real distribution path in use. Deferred to post-beta.
+      Roadmap close-out 2026-08-21.
+    closedDate: 2026-08-21
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out. packs[].from + satelliteOf DSL-coverage detectors added to
+    FEATURE_DETECTORS (scripts/quality/dsl_coverage/features.py); packs[].from has a live corpus
+    witness (AppGen/apps/_experiments/WmsOfficePackTest), satelliteOf is allowlisted (probe-only
+    witnesses). Pack-composition coverage (pack.json-level extends/satelliteOf/from) is reported by
+    scripts/quality/check-pack-coverage.py. Steps 5/6 closed WONTFIX (see deferredFollowUps).

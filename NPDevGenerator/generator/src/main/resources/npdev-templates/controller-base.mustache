@@ -54,7 +54,9 @@ public class {{entityName}}ControllerBase {
                 if (idVal != null) {
                     return ResponseEntity.created(URI.create("/api/{{route}}/" + idVal)).body(created);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                throw new IllegalStateException("getId() reflection failed on " + created.getClass().getSimpleName(), e);
+            }
 
             return ResponseEntity.ok(created);
         } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException ex) {

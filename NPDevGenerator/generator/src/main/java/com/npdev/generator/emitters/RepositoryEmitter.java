@@ -40,8 +40,7 @@ public final class RepositoryEmitter extends AbstractEmitter {
         HashSet<String> added = new HashSet<>();
 
         for (CompiledField f : e.getFields()) {
-            boolean isUnique = false;
-            try { isUnique = f.isUnique(); } catch (Exception ignored) {}
+            boolean isUnique = f.isUnique();
             if (!isUnique) continue;
 
             if (added.contains(f.getName())) continue;

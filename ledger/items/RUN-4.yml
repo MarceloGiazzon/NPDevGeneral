@@ -185,3 +185,8 @@ guard:
     HttpExternalAiCapabilityAdapterTest#requestTimesOutAndRetriesTheConfiguredNumberOfTimesAgainstAHangingServer
     and its mail-smtp sibling, both described in detail above.
   provenRed: true
+
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out (2026-08-21): adapter-level deadlines (HTTP+SMTP), kernel backstop timeout, dedicated npdev-capability-N worker pool. No remaining deferred sub-work.

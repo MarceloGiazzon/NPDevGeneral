@@ -133,3 +133,13 @@ resolution: |
   `extends` keyword produced a unified concept at runtime, not just at compile time; and the RED
   control -- a Patient created WITHOUT the extension field succeeds, proving the extension is genuinely
   additive and optional (the base concept's contract is not broken).
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out. Step 4 (UI composition, panel/section merge with app-owned ordering) is
+    verified PRESENT and WIRED, not still deferred: PackExtensionComposer.composeExtensionsWithOrdering()
+    computes per-field extension provenance (extensionFieldOrigins) + applies the app's own
+    metadata.fieldOrder directive; it is called by GeneratorMain (line 399), consumed by
+    BusinessUiEmitter for "+extensionPack" field attribution, and covered by
+    PackExtensionComposerOrderingTest ("PACK-10 step 4... fully unit-tested") and
+    GeneratorMainPackExtensionCompositionTest. Marked complete at roadmap close-out.

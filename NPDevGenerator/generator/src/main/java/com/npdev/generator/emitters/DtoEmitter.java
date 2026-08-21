@@ -44,8 +44,7 @@ public final class DtoEmitter extends AbstractEmitter {
                 fm.put("boxedJavaType", boxedJavaType);
                 boolean isId = f.isId();
                 fm.put("id", isId);
-                boolean required = false;
-                try { required = f.isRequired(); } catch (Exception ignored) {}
+                boolean required = f.isRequired();
                 fm.put("required", required);
                 responseFields.add(fm);
                 // Allow caller-supplied IDs on create (optional) while keeping update IDs path-driven.

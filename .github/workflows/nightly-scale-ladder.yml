@@ -90,19 +90,6 @@ jobs:
         with:
           python-version: '3.11'
 
-      # CI-1 (2026-07-23): the committed gradle.properties for the 4 platform modules (never for
-      # NPDevRuntimeHost/runtimehost-core, which already ship with none per REG-10/BT-1) hardcode a
-      # dev-machine org.gradle.projectcachedir. Mirrors npdev-ci-validation.yml.
-      - name: Neutralize dev-machine gradle projectcachedir (portability)
-        run: |
-          foreach ($f in @("gradle.properties", "NPDevContract/dsl/gradle.properties", "NPDevGenerator/gradle.properties", "NPDevKernel/gradle.properties", "NPDevRuntimeHost/gradle.properties")) {
-            if (Test-Path -LiteralPath $f) {
-              (Get-Content -LiteralPath $f) | Where-Object { $_ -notmatch 'org\.gradle\.projectcachedir' } | Set-Content -LiteralPath $f -Encoding UTF8
-            }
-          }
-
-      # Deterministic, not cache-dependent (Shared-root fix, 2026-07-24): builds+stages
-      # kernel/generator/dsl/runtimehost-core jars this rung's own `build` phase needs.
       - name: Stage RuntimeHost libs
         timeout-minutes: 30
         run: pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars

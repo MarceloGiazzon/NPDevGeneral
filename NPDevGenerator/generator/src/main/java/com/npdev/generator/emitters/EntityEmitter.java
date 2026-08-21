@@ -91,8 +91,7 @@ public final class EntityEmitter extends AbstractEmitter {
             fm.put("jsonField", jsonField);
             hasJsonFields = hasJsonFields || jsonField;
 
-            boolean required = false;
-            try { required = f.isRequired(); } catch (Exception ignored) {}
+            boolean required = f.isRequired();
             fm.put("required", required);
 
             fields.add(fm);
