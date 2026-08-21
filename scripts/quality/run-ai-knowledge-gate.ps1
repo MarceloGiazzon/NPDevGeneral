@@ -488,6 +488,15 @@ try {
         $failures += "a storage conformance container image is a moving tag, or the Java map and the workflow env block disagree: see scripts/quality/check-container-images-pinned.py output above (re-resolve with --resolve)"
     }
 
+    # PACK-8: every `from` coordinate in model.json or pack.json must be pinned (digest or semver
+    # tag), never a mutable branch name. Same defect class as the container-image pinning check
+    # above: a gate on a moving tag cannot distinguish "we broke it" from "the upstream changed".
+    Write-Host "[22b/36] Checking pack `from` coordinates are pinned (no mutable tags)..."
+    & $py "scripts/quality/check-pack-coordinates-pinned.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a pack `from` coordinate uses a mutable tag (latest/main/master): see scripts/quality/check-pack-coordinates-pinned.py output above -- pin to a digest or semver tag"
+    }
+
     # [22/35] storage/FULL_SUPPORT_PLAN.md W3, and the mechanical half of STOR-2. A storage message
     # that ASSERTS "nothing persisted" / "was rolled back" is a claim about the database's state, and
     # it is FALSE on every engine that commits implicitly on DDL (H2 today, MySQL now). A false

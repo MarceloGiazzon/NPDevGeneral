@@ -308,6 +308,82 @@ class PackFromCoordinateResolutionTest {
         assertTrue(failure.getMessage().contains("CORRUPT"), failure.getMessage());
     }
 
+    /**
+     * PACK-8: a pack's OWN packs[] dependencies can use `from` to resolve transitively from a
+     * remote coordinate, not just the app-level direct imports. This test creates:
+     * - An "identity" pack repo (the transitive dependency)
+     * - A "crm" pack repo that depends on identity via `from` (the intermediate pack)
+     * - An app model that imports crm via `from`
+     * The identity pack is resolved transitively through crm's `from` declaration.
+     */
+    @Test
+    void transitivePackFromResolvesThroughCacheOffline() throws Exception {
+        // The transitive dependency: identity pack
+        Path identityRepo = initRepo(temp.resolve("identity-repo"));
+        Files.writeString(identityRepo.resolve("pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "identity",
+                  "version": "1.0.0",
+                  "concepts": [
+                    { "name": "User", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        commitAndTag(identityRepo, "v1.0.0");
+        String identityFrom = fileCoordinate(identityRepo, "v1.0.0");
+
+        // The intermediate pack: crm, which depends on identity via `from`
+        Path crmRepo = initRepo(temp.resolve("crm-repo"));
+        Files.writeString(crmRepo.resolve("pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "crm",
+                  "version": "1.0.0",
+                  "packs": [
+                    { "pack": "identity", "version": "1.0.0", "from": "%s" }
+                  ],
+                  "concepts": [
+                    { "name": "Account", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """.formatted(identityFrom));
+        commitAndTag(crmRepo, "v1.0.0");
+        String crmFrom = fileCoordinate(crmRepo, "v1.0.0");
+
+        // The app model: imports crm via `from`
+        Path model = write("model.json", """
+                {
+                  "namespace": "pk8.transitive.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "from": "%s" } ]
+                }
+                """.formatted(crmFrom));
+
+        // Phase 1: "npdev pack add" -- fetches crm (and transitively identity) into cache
+        ModelSourceResolver.PackCliResolution resolution =
+                new ModelSourceResolver().resolvePackGraphForCli(model, NetworkPolicy.ALLOWED);
+        assertTrue(resolution.lockEntries().containsKey("crm"), "crm should be in the lock");
+        assertTrue(resolution.lockEntries().containsKey("identity"), "identity should be in the lock (resolved transitively)");
+        PackLockFile.of(resolution.lockEntries()).write(resolution.rootDirectory());
+
+        // Delete BOTH source repos -- if the generate path tries to re-fetch, it fails
+        deleteRecursively(identityRepo);
+        deleteRecursively(crmRepo);
+
+        // Phase 2: "npdev generate" -- resolves entirely from cache
+        ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
+        assertTrue(containsConceptNamed(resolved.resolvedRoot(), "crm::Account"),
+                "the intermediate pack's concept must be merged");
+        assertTrue(containsConceptNamed(resolved.resolvedRoot(), "identity::User"),
+                "the transitively-resolved pack's concept must be merged via transitive `from`");
+    }
+
     private static boolean containsConceptNamed(JsonNode resolvedRoot, String name) {
         JsonNode concepts = resolvedRoot.get("concepts");
         if (concepts == null) {

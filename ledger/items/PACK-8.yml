@@ -136,12 +136,14 @@ detail: |
     (analogous to git+file://'s role for the git substrate) is a legitimate option for the next slice
     but was judged not worth the added scope here given the git substrate already proves the
     fetch->cache->offline-read pipeline end to end.
-  - `from` is direct-app-import-only -- a pack's OWN transitive packs[] dependencies (discovered via
-    PackDependencyGraphWalker.defaultPackFile's local-file convention) cannot yet use `from`.
-    pack.schema.json is untouched.
+  - `from` was direct-app-import-only until 2026-08-20: a pack's OWN transitive packs[]
+    dependencies (discovered via PackDependencyGraphWalker.discover) now support `from` and `$ref`
+    fields in pack.schema.json's packs[] items, mirroring model.schema.json's packRef pattern.
   - check-container-images-pinned.py is NOT yet extended to pack coordinates (the card's own "Breaks"
-    section asks for this) -- `from` accepts a mutable tag today (matching the card's own worked
-    example, `identity:2.1.0`), not only a pinned digest.
+    section asks for this) -- instead a SEPARATE script (check-pack-coordinates-pinned.py) was
+    created and wired into run-ai-knowledge-gate.ps1. It scans all model.json and pack.json files
+    for `from` fields and refuses mutable tags (latest/main/master/etc.), requiring either a digest
+    or semver tag.
   - PackListMain's no-lock dry-run fails entirely (rather than partially reporting local packs) the
     moment ANY packs[] entry uses `from` with no lock yet -- acceptable degradation, not fixed.
   - `packs[].from` has zero NPDevSamples/dsl-conformance-max corpus coverage -- check-dsl-coverage.py
@@ -222,5 +224,24 @@ resolution: |
   and blobs from a local directory tree. RemotePackFetcherOciLiveTest proves the full fetch→cache→
   offline-read pipeline end-to-end, plus NetworkPolicy.DENIED refusal before any HTTP call.
   OciDistributionClientTest covers manifest/blob fetch and 404 handling. All tests pass.
+
+  2026-08-20 (transitive `from` support): pack.schema.json's packs[] items (both copies:
+  NPDevContract/schemas/ and NPDevContract/dsl/src/main/resources/schema/) gained optional `from`
+  and `$ref` fields mirroring model.schema.json's packRef pattern -- same coordinate grammar, same
+  $ref local-file pattern. PackDependencyGraphWalker.discover() now checks each transitive
+  dependency for `from` or `$ref` before falling back to the defaultPackFile() convention; a `from`
+  coordinate goes through the same resolveRemotePackFile() path as direct imports (lock+cache on
+  DENIED, fetch on ALLOWED), and the coordinate is recorded in fromByPackId for lock/digest
+  tracking. PackFromCoordinateResolutionTest gained transitivePackFromResolvesThroughCacheOffline:
+  a real git+file:// crm pack that depends on identity via `from`, both repos deleted after
+  `pack add`, generate still resolves both concepts from cache.
+
+  2026-08-20 (mutable tag pinning): scripts/quality/check-pack-coordinates-pinned.py scans every
+  model.json and pack.json in the repo for `from` fields, classifies each coordinate as
+  pinned-digest/semver-tag/mutable-tag, and refuses any `from` using a known mutable tag name
+  (latest, main, master, head, develop, dev, stable, nightly). Wired into run-ai-knowledge-gate.ps1
+  alongside the existing check-container-images-pinned.py. Currently passes clean (no `from` fields
+  with mutable tags in the repo).
+
   Remaining deferred steps: (5) signatures/cosign, (6) npdev pack publish, (7) static JSON index,
-  transitive pack `from`, mutable tag pinning, corpus coverage for `packs[].from`.
+  corpus coverage for `packs[].from`.
