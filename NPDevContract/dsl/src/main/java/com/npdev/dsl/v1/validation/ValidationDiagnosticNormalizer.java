@@ -45,6 +45,14 @@ final class ValidationDiagnosticNormalizer {
             "selectorRef", "B16"
     );
 
+    // B1, B13: boundary-prefixed diagnostic codes. The validator embeds `B1:<code>:` at the start
+    // of the message string; this map extracts the boundary id and strips the prefix so downstream
+    // patterns (CONCEPT_PATTERN, etc.) still match the rest of the message.
+    private static final Map<String, String> BOUNDARY_PREFIX_IDS = Map.of(
+            "B1:", "B1",
+            "B13:", "B13"
+    );
+
     /**
      * R1.4: the ONE text that means "this diagnostic shipped bare". Every ERROR diagnostic must
      * carry an actionable fix, so this string is a failure signal, not a fallback anyone should be
@@ -110,6 +118,16 @@ final class ValidationDiagnosticNormalizer {
             );
         }
 
+        // Extract boundary prefix (B1:, B13:) if present, stripping it so downstream patterns match
+        String boundaryId = null;
+        for (Map.Entry<String, String> entry : BOUNDARY_PREFIX_IDS.entrySet()) {
+            if (safeMessage.startsWith(entry.getKey())) {
+                boundaryId = entry.getValue();
+                safeMessage = safeMessage.substring(entry.getKey().length());
+                break;
+            }
+        }
+
         Matcher conceptFieldMatcher = CONCEPT_FIELD_PATTERN.matcher(safeMessage);
         if (conceptFieldMatcher.matches()) {
             String concept = conceptFieldMatcher.group(1);
@@ -128,7 +146,8 @@ final class ValidationDiagnosticNormalizer {
                     "concepts",
                     null,
                     suggestedFixFor(safeMessage, code, concept, field, null),
-                    helpKeyFor(safeMessage, "validation.semantic." + code)
+                    helpKeyFor(safeMessage, "validation.semantic." + code),
+                    boundaryId
             );
         }
 
@@ -150,7 +169,8 @@ final class ValidationDiagnosticNormalizer {
                     "concepts",
                     ruleName,
                     suggestedFixFor(safeMessage, code, concept, null, ruleName),
-                    helpKeyFor(safeMessage, "validation.semantic." + code)
+                    helpKeyFor(safeMessage, "validation.semantic." + code),
+                    boundaryId
             );
         }
 
@@ -172,7 +192,8 @@ final class ValidationDiagnosticNormalizer {
                     "concepts",
                     ruleName,
                     suggestedFixFor(safeMessage, code, concept, null, ruleName),
-                    helpKeyFor(safeMessage, "validation.semantic." + code)
+                    helpKeyFor(safeMessage, "validation.semantic." + code),
+                    boundaryId
             );
         }
 
@@ -193,7 +214,8 @@ final class ValidationDiagnosticNormalizer {
                     "flows",
                     flowName,
                     suggestedFixFor(safeMessage, code, null, null, flowName),
-                    helpKeyFor(safeMessage, "validation.semantic." + code)
+                    helpKeyFor(safeMessage, "validation.semantic." + code),
+                    boundaryId
             );
         }
 
@@ -218,7 +240,8 @@ final class ValidationDiagnosticNormalizer {
                     "capabilities",
                     operation == null ? capability : operation,
                     suggestedFixFor(safeMessage, code, null, operation, capability),
-                    helpKeyFor(safeMessage, "validation.semantic." + code)
+                    helpKeyFor(safeMessage, "validation.semantic." + code),
+                    boundaryId
             );
         }
 
@@ -239,7 +262,8 @@ final class ValidationDiagnosticNormalizer {
                     "events",
                     eventName,
                     suggestedFixFor(safeMessage, code, null, null, eventName),
-                    helpKeyFor(safeMessage, "validation.semantic." + code)
+                    helpKeyFor(safeMessage, "validation.semantic." + code),
+                    boundaryId
             );
         }
 
@@ -258,7 +282,8 @@ final class ValidationDiagnosticNormalizer {
                     "concepts",
                     null,
                     "Rename one of the duplicate concepts so each concept name is unique.",
-                    "validation.semantic.duplicate_concept_name"
+                    "validation.semantic.duplicate_concept_name",
+                    boundaryId
             );
         }
 
@@ -277,7 +302,8 @@ final class ValidationDiagnosticNormalizer {
                     "capabilities",
                     capability,
                     "Rename or merge the duplicate capability declaration.",
-                    "validation.semantic.duplicate_capability_name"
+                    "validation.semantic.duplicate_capability_name",
+                    boundaryId
             );
         }
 
@@ -296,7 +322,8 @@ final class ValidationDiagnosticNormalizer {
                     "events",
                     event,
                     "Rename one of the duplicate events so event names stay unique.",
-                    "validation.semantic.duplicate_event_name"
+                    "validation.semantic.duplicate_event_name",
+                    boundaryId
             );
         }
 
@@ -315,7 +342,8 @@ final class ValidationDiagnosticNormalizer {
                     "bindings",
                     capability,
                     "Declare the capability before binding it, or fix the binding capability name.",
-                    "validation.semantic.unknown_binding_capability"
+                    "validation.semantic.unknown_binding_capability",
+                    boundaryId
             );
         }
 
@@ -334,7 +362,8 @@ final class ValidationDiagnosticNormalizer {
                     "bindings",
                     capability,
                     "Keep only one binding per capability in the model.",
-                    "validation.semantic.duplicate_binding_capability"
+                    "validation.semantic.duplicate_binding_capability",
+                    boundaryId
             );
         }
 
@@ -354,7 +383,8 @@ final class ValidationDiagnosticNormalizer {
                 // package's 362 error sites. It used to hand all of them one generic sentence.
                 suggestedFixFor(safeMessage, "semantic_validation_" + severity.getExternalName(),
                         null, null, null),
-                helpKeyFor(safeMessage, "validation.semantic")
+                helpKeyFor(safeMessage, "validation.semantic"),
+                boundaryId
         );
     }
 
