@@ -187,8 +187,9 @@ class ServiceInstallRealDryRunTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             app = make_service_app(Path(tmp))
             captured = io.StringIO()
-            with redirect_stdout(captured):
-                code = npdev_cli.run_service_install(install_args(app, dry_run=True))
+            with mock.patch.object(npdev_cli, "_is_windows_platform", return_value=True):
+                with redirect_stdout(captured):
+                    code = npdev_cli.run_service_install(install_args(app, dry_run=True))
             self.assertEqual(0, code)
             result = json.loads(captured.getvalue())
             self.assertTrue(result["ok"])
@@ -202,8 +203,9 @@ class ServiceInstallRealDryRunTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             app = make_service_app(Path(tmp))
             captured = io.StringIO()
-            with redirect_stdout(captured):
-                npdev_cli.run_service_install(install_args(app, dry_run=True, start=True))
+            with mock.patch.object(npdev_cli, "_is_windows_platform", return_value=True):
+                with redirect_stdout(captured):
+                    npdev_cli.run_service_install(install_args(app, dry_run=True, start=True))
             result = json.loads(captured.getvalue())
             self.assertIn("Start=True", result["output"])
 
@@ -211,7 +213,8 @@ class ServiceInstallRealDryRunTest(unittest.TestCase):
     def test_profile_on_windows_is_refused_before_running_anything(self):
         with tempfile.TemporaryDirectory() as tmp:
             app = make_service_app(Path(tmp))
-            with mock.patch.object(npdev_cli, "subprocess") as fake_subprocess:
+            with mock.patch.object(npdev_cli, "_is_windows_platform", return_value=True), \
+                 mock.patch.object(npdev_cli, "subprocess") as fake_subprocess:
                 with self.assertRaises(npdev_cli.CliError) as ctx:
                     npdev_cli.run_service_install(install_args(app, dry_run=True, profile="prod"))
                 fake_subprocess.run.assert_not_called()

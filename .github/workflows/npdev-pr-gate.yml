@@ -162,7 +162,7 @@ jobs:
             :adapters:authz-default:test \
             :adapters:document-render-inproc:test \
             :adapters:document-render-stub:test \
-            :adapters:expression-cel:test \
+            :adapters:runtime-support:test \
             :adapters:external-ai-inproc:test \
             :adapters:external-ai-http:test \
             :adapters:external-ai-pack-core:test \
@@ -219,16 +219,16 @@ jobs:
             -BuildLocalJars \
             -RuntimeHostLibsDir "$GITHUB_WORKSPACE/../NPDev_General__OutsideRepo/runtimehost-libs"
 
-      - name: Generate simple-contact-intake sample (InMemory, fast RuntimeHost smoke)
+      - name: Generate canonical-demo sample (InMemory, fast RuntimeHost smoke)
         timeout-minutes: 15
         run: |
           pwsh -NoProfile -ExecutionPolicy Bypass \
             -File "$GITHUB_WORKSPACE/NPDevSamples/scripts/generate-sample-app.ps1" \
-            -SampleId simple-contact-intake \
+            -SampleId canonical-demo \
             -NPDevRoot "$GITHUB_WORKSPACE"
 
       - name: RuntimeHost generated-app test suite
-        working-directory: NPDevSamples/simple-contact-intake/Output/App
+        working-directory: NPDevSamples/canonical-demo/Output/App
         timeout-minutes: 20
         run: |
           chmod +x ./gradlew
@@ -279,6 +279,6 @@ jobs:
           path: |
             ci-evidence/**/test-results/test
             ci-evidence/**/reports/tests/test
-            NPDevSamples/simple-contact-intake/Output/App/build/test-results/test
+            NPDevSamples/canonical-demo/Output/App/build/test-results/test
           if-no-files-found: warn
           retention-days: 14

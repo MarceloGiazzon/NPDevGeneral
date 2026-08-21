@@ -5,6 +5,7 @@ type: GAP
 severity: MEDIUM
 status: DONE
 opened: 2026-08-12
+closed: 2026-08-20
 verification: VERIFIED_LIVE
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md card PK-6). Today, producing a hospital
