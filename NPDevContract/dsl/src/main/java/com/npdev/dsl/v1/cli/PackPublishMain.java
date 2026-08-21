@@ -161,6 +161,9 @@ public final class PackPublishMain {
                 System.err.println("Wrote empty migration chain entry '" + oldVersion + " -> " + newVersion + "' into " + newArg);
                 changed = true;
             }
+            // REG-151: stamp/propagate the firstPublishedVersion trust anchor on every successful
+            // --write, not only when a migration entry is also written -- a pack with no chain yet
+            // still needs its anchor pinned the first time it publishes at all.
             JsonNode beforeAnchor = updated;
             updated = PackPublishGate.withFirstPublishedVersionAnchor(oldPack, updated);
             if (!updated.equals(beforeAnchor)) {
