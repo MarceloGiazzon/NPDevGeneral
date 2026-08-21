@@ -224,7 +224,7 @@ dependencies {
     testImplementation 'com.h2database:h2:2.2.224'
     testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
     testImplementation 'org.testcontainers:postgresql:1.21.4'
-    testImplementation 'org.postgresql:postgresql:42.7.4'
+    testImplementation 'org.postgresql:postgresql:42.7.13'
     testImplementation 'org.flywaydb:flyway-core:10.10.0'
     testImplementation 'org.flywaydb:flyway-database-postgresql:10.10.0'
 
