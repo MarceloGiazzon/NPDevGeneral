@@ -7,9 +7,10 @@ status: DONE
 opened: 2026-08-12
 closed: 2026-08-20
 decision: >-
-  Remaining R11 scope (gate-manifest.json, gaps.yml v2) deferred to post-roadmap-backlog -- the
-  legacy gaps.yml format has all entries DONE/CLOSED, and a gate manifest needs a design pass on
-  what gates to track before any implementation.
+  R11 scope completed 2026-08-20: knowledge/gate-manifest.json maps all 9 gate scripts (7 local +
+  1 CI workflow + 1 orchestrator) to stable IDs; gaps.yml migrated to v2 (clean slate, all v1
+  entries were DONE/CLOSED); consumer scripts (extract_platform_status.py, generate_gaps_roadmap.py)
+  updated to accept both v1 and v2 schema versions.
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F6, ROADMAP.md card R11). A DONE claim in the
   ledger is a sentence, not a proof -- nothing forces it to name the test or script that verifies it.
@@ -44,8 +45,12 @@ resolution: |
   it in the output. The ledger README documents it as optional for non-WONTFIX/OBSOLETE statuses to
   record deliberate deferral or scope decisions. Still required for WONTFIX/OBSOLETE (unchanged).
 
-  2026-08-20 (closed): the item's core title ("no ledger status can express not-doing") is now fully
-  addressed -- the `decision:` field lets any item record deliberate deferral, and the guard schema
-  enforces falsifiable DONE claims. Remaining R11 scope (gate-manifest.json for derived gate numbers,
-  gaps.yml v2 redesign) is post-roadmap-backlog: the legacy gaps.yml has all entries DONE/CLOSED,
-  and a gate manifest needs a design pass on what gates to track before any implementation.
+  2026-08-20 (R11 scope completed):
+  - knowledge/gate-manifest.json created (gate-manifest.v1): 9 gates mapped (GENERATOR, RUNTIMEHOST,
+    AI-KNOWLEDGE, AI-BETA, BETA-RELEASE, BETA0-CLOSURE, FAST, PR-GATE, ALL-GATES).
+  - ledger/gaps.yml migrated to gaps-ledger.v2: clean slate with entries: [] (all 31 priorityIndex
+    + 12 fixedEngineBugs v1 entries were DONE/CLOSED, preserved in git history).
+  - schemas/ai/gaps-ledger.schema.json updated to v2 (accepts entries[] with id/title/status).
+  - scripts/ai/extract_platform_status.py and scripts/docs/generate_gaps_roadmap.py updated to
+    accept both v1 and v2 schema versions (v2 returns empty items / empty tables).
+  - knowledge/platform-status.json regenerated (0 items, as expected from empty v2 entries).
