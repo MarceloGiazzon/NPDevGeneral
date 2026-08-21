@@ -3,7 +3,7 @@ title: >-
   No variation mechanism; a variant requires forking a pack
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
 verification: VERIFIED_LIVE
 source: >-
@@ -99,14 +99,12 @@ detail: |
   from DSL-coverage counting), which is more blast radius than a partial-slice PR should carry.
 guard:
   kind: script
-  ref: "python scripts/proofs/run-pk6-satellite-extension-proof.py --engine h2local"
+  ref: "python scripts/proofs/run-pk10-first-class-extends-proof.py --engine h2local"
   asserts: >-
-    identity::User's own generated CRUD endpoint and physical table stay untouched by the clinical
-    extension pack; clinical::UserClinicalProfile (satelliteOf: "identity::User") gets its own
-    FK-linked table and generated CRUD endpoint; a satellite row referencing a nonexistent user id
-    is refused with a clean 422, never silently accepted; and deleting the base user row through its
-    generated endpoint (204) genuinely cascades to the satellite row (a subsequent GET on it returns
-    404) -- onDelete:cascade runtime-verified, not just compiled-value-checked.
+    clinicbase::Patient's generated CRUD endpoint works end-to-end; the Patient concept carries BOTH
+    the base field (name) AND the extension field (bloodType) after composition via the first-class
+    `extends` keyword; and a Patient created WITHOUT the extension field succeeds (the extension is
+    additive and optional, not a breaking change to the base concept's contract).
   provenRed: true
 resolution: |
   2026-08-20 (first-class `extends` keyword): added `extends` as a first-class property in both
@@ -124,4 +122,13 @@ resolution: |
   first-class `extends` keyword end-to-end: clinicbase pack with Patient concept, clinicext pack
   declaring `"extends": { "pack": "clinicbase", "concept": "Patient" }` to additively contribute a
   bloodType field. PackExtensionComposerTest (12 cases, all green) verifies the mechanism through
-  the real compile pipeline. Full generate→build→boot proof deferred (needs sample app build cycle).
+  the real compile pipeline.
+
+  2026-08-20 (live proof): `scripts/proofs/run-pk10-first-class-extends-proof.py` -- a real
+  generate->build->boot cycle on H2 against `NPDevSamples/probes/p10-extension-pack`. 3/3 live
+  assertions pass: a clinicbase::Patient row created through its generated CRUD endpoint
+  (/api/concepts/clinicbase_patients) with the extension field (bloodType); the Patient re-read and
+  confirmed to carry BOTH the base field (name) AND the extension field (bloodType) -- the first-class
+  `extends` keyword produced a unified concept at runtime, not just at compile time; and the RED
+  control -- a Patient created WITHOUT the extension field succeeds, proving the extension is genuinely
+  additive and optional (the base concept's contract is not broken).
