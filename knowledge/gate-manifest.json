@@ -1,0 +1,59 @@
+{
+  "schemaVersion": "gate-manifest.v1",
+  "gates": [
+    {
+      "id": "GENERATOR",
+      "script": "scripts/quality/run-generator-gate.ps1",
+      "description": "Generator codegen engine: builds DSL + generator, runs tests (JaCoCo coverage), verifies deterministic generation (byte-identical across runs), and validates generated app structure.",
+      "surface": "NPDevGenerator"
+    },
+    {
+      "id": "RUNTIMEHOST",
+      "script": "scripts/quality/run-runtimehost-gate.ps1",
+      "description": "RuntimeHost gate: generates a sample app, syncs runtimehost libs, runs the assembled app's test suite (JaCoCo coverage), and validates runtime surface evidence (controller allowlists, namespace convergence).",
+      "surface": "NPDevRuntimeHost"
+    },
+    {
+      "id": "AI-KNOWLEDGE",
+      "script": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "description": "AI knowledge substrate gate: proves derived corpora cannot silently drift from sources, validates knowledge cards, runs failure-signature normalizer self-check, security pattern sweep, and all check-*.py static instruments (including coverage ratchet).",
+      "surface": "knowledge/, ledger/, scripts/quality/check-*.py"
+    },
+    {
+      "id": "AI-BETA",
+      "script": "scripts/quality/run-ai-beta-gate.ps1",
+      "description": "AI beta scenario gate: validates golden AI scenarios against scope policy, verifies scenario pack structure and model schema conformance.",
+      "surface": "golden-ai-scenarios/, scripts/policy/beta0-scope.json"
+    },
+    {
+      "id": "BETA-RELEASE",
+      "script": "scripts/quality/run-beta-release-gate.ps1",
+      "description": "Beta release evidence gate: evaluates 36 required reports from ~18 producer scripts against beta-release-gate-policy.json. Distinguishes precondition-unmet (exit 2) from check-failed (exit 1). Opt-in -GenerateReports runs producers first.",
+      "surface": "scripts/policy/beta-release-gate-policy.json, scripts/reports/out/"
+    },
+    {
+      "id": "BETA0-CLOSURE",
+      "script": "scripts/quality/run-beta0-final-closure-gate.ps1",
+      "description": "Beta0 final closure gate: verifies all beta-0 release blockers are resolved, checks evidence completeness, and validates closure criteria before final release.",
+      "surface": "Release readiness"
+    },
+    {
+      "id": "FAST",
+      "script": "scripts/quality/run-fast-gate.ps1",
+      "description": "T1 fast gate (Fast Lane): T0 checks plus generate + build + boot one frozen canary app (npdev-canary) with REST smoke (health, one flow, one panel), plus T1-scoped corpus checks. Target < 3 min. Records results to verification-cadence-state.json.",
+      "surface": "NPDevSamples/npdev-canary, model validation"
+    },
+    {
+      "id": "PR-GATE",
+      "script": ".github/workflows/npdev-pr-gate.yml",
+      "description": "CI PR gate: runs on every pull_request. DSL checks (includes ReleaseGateValidatorTest), kernel inproc adapters, generator build+test, and RuntimeHost smoke via a real generated sample app's test task. Linux (ubuntu-latest).",
+      "surface": "DSL, kernel, generator, RuntimeHost (CI)"
+    },
+    {
+      "id": "ALL-GATES",
+      "script": "scripts/quality/run-all-gates.ps1",
+      "description": "Orchestrator: runs every quality gate in dependency order (generator -> runtimehost -> ai-knowledge -> beta-release) and reports one aggregate verdict. Beta-release deferred by default (T3 release-ceremony tier); opt-in via -IncludeReleaseGate.",
+      "surface": "All gates (orchestrator)"
+    }
+  ]
+}
