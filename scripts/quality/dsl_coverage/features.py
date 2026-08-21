@@ -84,6 +84,31 @@ FEATURE_DETECTORS = {
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
     "fragments": lambda m: _nonempty(m, "fragments"),
     "packs": lambda m: _nonempty(m, "packs"),
+    # PACK-8 (PACK-ROADMAP card PK-5): a remote pack import via packs[].from -- an OCI/git+...
+    # coordinate (PackCoordinate/OciCoordinate/GitCoordinate). The plain "packs" detector above is
+    # satisfied by a local $ref pack, so without this entry the ONLY supported remote-import syntax
+    # could regress while this gate stays green. The corpus has no remote-import witness (generation
+    # must never fetch, so a fixture needs a committed lock+cache or a vendored git repo -- recorded
+    # in PACK-8 as deliberate non-trivial CI work), hence the allowlist entry below.
+    "packs.from": lambda m: any(
+        isinstance(p, dict) and bool(p.get("from"))
+        for p in (m.get("packs") or [])
+    ),
+    # PACK-10 (PACK-ROADMAP card PK-6): a concept declaring satelliteOf -- a pack-qualified 1:1
+    # satellite extension of a base concept owned by another pack. Distinct from concept.extends
+    # (single-model field-merge inheritance). Live witnesses live in NPDevSamples/probes/p6-...,
+    # which are excluded from DSL coverage, so it is tracked (registered) + allowlisted here rather
+    # than co-opting a probe into counting as corpus coverage.
+    "satelliteOf": lambda m: any(
+        isinstance(c, dict) and c.get("satelliteOf")
+        for c in (m.get("concepts", None) or [])
+    ),
+    # pack-level `extends` (pack inherits another pack) is declared in pack.json, which this gate's
+    # find_models() does not walk (it scans model.json + context fragments only). A vacuous
+    # `lambda: False` detector here would be dead weight the maintainers explicitly reject, so it is
+    # deliberately NOT a FEATURE_DETECTOR entry; pack-composition coverage (extends/satelliteOf/
+    # from across the pack.json + model.json corpus) is checked by scripts/quality/check-pack-coverage.py
+    # instead -- see that file.
     # B20 (S2, ADR-0011): bounded-context declarations -- a new top-level array sibling of
     # packs/fragments, composed the same way.
     "contexts": lambda m: _nonempty(m, "contexts"),

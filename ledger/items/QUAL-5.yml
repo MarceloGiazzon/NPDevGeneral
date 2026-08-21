@@ -149,3 +149,8 @@ files:
   - NPDevRuntimeHost/build.gradle.template
   - NPDevRuntimeHost/src/test/java/com/finalexec/api/ConceptQueryControllerExportCsvVolumeTest.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out (2026-08-21): all 5 stages verified complete; test counts grew 110->119; uniqueness pre-checks were closed via RUN-16. Guards pass.

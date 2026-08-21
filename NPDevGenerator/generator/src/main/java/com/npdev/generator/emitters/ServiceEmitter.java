@@ -102,8 +102,7 @@ public final class ServiceEmitter extends AbstractEmitter {
                 String javaType = bond.map(Bond::effectiveJavaType).orElse(f.getJavaType());
                 String boxedJavaType = boxedType(javaType);
                 boolean isString = javaType != null && javaType.trim().equals("String");
-                boolean required = false;
-                try { required = f.isRequired(); } catch (Exception ignored) {}
+                boolean required = f.isRequired();
 
                 Map<String, Object> fm = new HashMap<>();
                 fm.put("name", f.getName());
@@ -127,8 +126,7 @@ public final class ServiceEmitter extends AbstractEmitter {
                     fileFields.add(ffm);
                 }
 
-                boolean unique = false;
-                try { unique = f.isUnique(); } catch (Exception ignored) {}
+                boolean unique = f.isUnique();
                 if (unique) {
                     // IMPORTANT: uniqueFields must carry isString/capName/name for the template logic
                     uniqueFields.add(fm);

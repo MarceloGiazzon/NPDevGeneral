@@ -204,6 +204,29 @@ tasks.register('packWhy', JavaExec) {
     args cliArgs
 }
 
+// BUILD-2 follow-up: `npdev pack seal <pack.json>` -- certifies a pack is sealed (eligible to ship
+// as a precompiled jar) by running PackSealednessAnalyzer across the whole transitive closure when
+// the pack declares its own packs[]. Writes a .sealed marker on success; exits non-zero on a named
+// violation. Same JavaExec-wrapping-a-small-Main-class convention as packList/packWhy above.
+tasks.register('packSeal', JavaExec) {
+    group = 'verification'
+    description = 'Certify a pack is sealed (analyze + write .sealed marker); composed packs are verified across the whole transitive closure from a local packs root.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackSealMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('packPath')) {
+        cliArgs << project.getProperty('packPath')
+    }
+    if (project.hasProperty('packsRoot')) {
+        cliArgs << '--packs-root' << project.getProperty('packsRoot')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
 // PK-4 Stage A: `npdev pack diff <old> <new>` -- a pure, no-database, no-app-build classification
 // of every difference between two pack.json documents into ADDITIVE/BREAKING/PATCH
 // (com.npdev.dsl.v1.pack.PackDiffEngine). Purely informational: never refuses, unlike packPublish

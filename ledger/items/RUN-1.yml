@@ -135,3 +135,8 @@ guard:
   provenRedNote: >-
     See ledger/items/RUN-16.yml's provenRedNote -- the same guard test compares live against the
     still-present old findAll() path rather than reproducing a reverted checkout.
+
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out (2026-08-21): capped lists with truncation headers; existsUnique over 100k rows proven 3x faster. No remaining deferred sub-work.

@@ -60,17 +60,6 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # Mirrors npdev-ci-validation.yml's own neutralization: the committed gradle.properties
-      # hardcode a dev-machine absolute Windows org.gradle.projectcachedir.
-      - name: Neutralize dev-machine gradle projectcachedir (portability)
-        run: |
-          for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
-            [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
-          done
-
-      # --build-local: this job's OWN job is to produce the artifact everyone else downloads --
-      # it must never itself try to download a (possibly stale, possibly this-tag's-own-not-yet-
-      # published) release.
       - name: Build runtimehost jars for this tag (never a download)
         run: |
           chmod +x ./npdev

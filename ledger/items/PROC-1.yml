@@ -54,3 +54,8 @@ resolution: |
   - scripts/ai/extract_platform_status.py and scripts/docs/generate_gaps_roadmap.py updated to
     accept both v1 and v2 schema versions (v2 returns empty items / empty tables).
   - knowledge/platform-status.json regenerated (0 items, as expected from empty v2 entries).
+
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out (2026-08-21): gate-manifest.json shipped, gaps.yml migrated to v2, consumer scripts updated. No remaining deferred sub-work.

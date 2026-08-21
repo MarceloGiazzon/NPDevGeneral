@@ -100,16 +100,6 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # CI-1 (2026-07-23): the committed gradle.properties hardcode a dev-machine
-      # org.gradle.projectcachedir pointing at an absolute Windows path, which does not exist on
-      # Linux -> gradle aborts before any test. Strip it (mirrors npdev-pr-gate.yml) so gradle uses
-      # its portable default project cache.
-      - name: Neutralize dev-machine gradle projectcachedir (portability)
-        run: |
-          for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
-            [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
-          done
-
       - name: DSL contract check
         working-directory: NPDevContract/dsl
         timeout-minutes: 15
