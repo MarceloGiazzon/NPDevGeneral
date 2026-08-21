@@ -12,10 +12,10 @@ source: >-
   Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R4 item R4.2 -- "the one-grammar
   promise the docs already make becomes true". Sibling of R4.1 (RUN-12), which widened the
   default/derived expression path earlier the same day.
-surface: kernel/flow-branches, adapters/expression-cel, dsl/validation
+surface: kernel/flow-branches, adapters/runtime-support, dsl/validation
 files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/OrchestrationValidation.java
   - NPDevSamples/dsl-conformance-max
@@ -79,7 +79,7 @@ detail: |
   GATES (orchestrator re-ran the kernel suite): `:kernel:test` **538 tests, 0 failures** -- the
   agent's own run showed 1 failure, the documented load-sensitive
   `abortsWhenCapabilityCallTimesOut`, which cleared on an isolated re-run under lighter load.
-  `:adapters:expression-cel:test` green. `:NPDevContract:dsl:test` 777 with only the known-red
+  `:adapters:runtime-support:test` green. `:NPDevContract:dsl:test` 777 with only the known-red
   pre-existing `AiModelToDslMappingTest`. `check-dsl-coverage.py` OK with the new feature covered.
 
   **NO BREAKING.md ENTRY -- this is purely permissive.** Every existing condition still parses

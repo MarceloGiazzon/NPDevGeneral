@@ -21,7 +21,7 @@ detail: |
   MEASURED vs the roadmap: the substrate was complete as claimed -- `claimScheduledEvent` is a real
   compare-and-set on `status`, and `NpdevScheduledEventTable` declares `due_at` plus a
   `(status, due_at)` index. One detail was wrong: `processDueScheduledEvents` lives on
-  `GeneratedCrudRuntimeSupport` (expression-cel adapter), NOT on `KernelRunner`. It returns a
+  `GeneratedCrudRuntimeSupport` (runtime-support adapter), NOT on `KernelRunner`. It returns a
   summary map (scanned/processed/skipped/failed/status) and swallows its own SQL errors.
 
   CONFIRMED UNCALLED BY ANY TIMER: its only production caller was `RuntimeSchedulesController`'s
@@ -43,7 +43,7 @@ detail: |
   NOT invented: it would be undocumented and unvalidated by `StartupValidator`.
 
   The `@Bean` binding `runtimeSupport::processDueScheduledEvents` lives in `NpdevSchedulerConfig`
-  because `expression-cel` and `resume-bootstrap-spring` are SIBLING adapters -- the RuntimeHost is
+  because `runtime-support` and `resume-bootstrap-spring` are SIBLING adapters -- the RuntimeHost is
   the only place that has both. The runner therefore takes a one-method `ScheduledEventDrain` seam
   rather than creating an adapter-to-adapter dependency.
 

@@ -16,7 +16,7 @@ surface: kernel/flow-steps
 files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/DeferredEventScheduler.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/adapters/expression/cel/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/adapters/runtime/support/GeneratedCrudRuntimeSupport.java
   - NPDevKernel/adapters/tracing-redaction-default/
   - NPDevSamples/dsl-conformance-max
   - BREAKING.md
@@ -60,14 +60,14 @@ detail: |
   step would be the only event step whose redacted trace cannot name its own event.
 
   TESTS (independently re-run by the orchestrator with `--rerun-tasks`, not taken on trust):
-  `:kernel:test` **535/0**, `:adapters:expression-cel:test` **127/0**,
+  `:kernel:test` **535/0**, `:adapters:runtime-support:test` **127/0**,
   `:adapters:resume-bootstrap-spring:test` **2/0** (R2.3's drain intact),
   `:adapters:tracing-redaction-default:test` 11/0. Six new kernel tests -- delay routes to the
   scheduler with a due-at inside a measured window while publishing and storing NOTHING; zero-delay
   publishes and stores and never touches the scheduler; zero-delay **resumes a parked AWAIT_EVENT
   instance inside the same `execute()` call** (the back-compat guard that must be able to fail);
   delayed leaves it parked and `resumeAllWaitingExecutions` returns 0; two failure modes. Three
-  expression-cel tests on real H2 with DDL copied from `ScheduledEventDrainRunnerIT`: assert every
+  runtime-support tests on real H2 with DDL copied from `ScheduledEventDrainRunnerIT`: assert every
   column, drain once (`no_due_records`, still PENDING, nothing published), seed `due_at` into the
   past, drain again -> PROCESSED / `processed_at` / `attempt_count=1` and the event published by the
   REAL drain.
@@ -88,7 +88,7 @@ detail: |
   had counted every `SCHEDULE_EVENT` as a synchronous waiter-wake.
 guard:
   kind: test
-  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/ (the six R2.4 scheduleEvent tests) + NPDevKernel/adapters/expression-cel (three H2 drain round-trip tests)
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/ (the six R2.4 scheduleEvent tests) + NPDevKernel/adapters/runtime-support (three H2 drain round-trip tests)
   asserts: >-
     a scheduleEvent step with delay > 0 writes a PENDING npdev_scheduled_event row with a correct
     due_at and publishes nothing, stores nothing, and resumes no waiter during execution -- while a

@@ -17,8 +17,8 @@ source: >-
 surface: kernel/gateway-persistence-path, dsl/schema, dsl/compiled-model, generator/templates,
   samples/corpus-migration, cli/migration-codemod
 files:
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
-  - NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java
   - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/QueryAst.java
   - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureAst.java
@@ -222,7 +222,7 @@ detail: |
       from before this item.
 guard:
   kind: test
-  ref: NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java#auditCrudMutation_withBeforeAndAfter_recordsOnlyChangedFieldsInDiff
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java#auditCrudMutation_withBeforeAndAfter_recordsOnlyChangedFieldsInDiff
   asserts: >-
     The 7-arg auditCrudMutation overload records an AuditRecord whose meta.fieldDiff contains exactly
     the changed field ("status: OPEN -> CLOSED") and omits every unchanged field (priority, id) --

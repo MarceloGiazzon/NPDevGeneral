@@ -173,7 +173,7 @@ jobs:
       # named them, and no blanket `./gradlew test` covers the kernel root. None of these need
       # Docker/Postgres (plain H2/in-memory/loopback-socket unit tests -- verified per-module before
       # adding: no org.testcontainers import, no build.gradle testcontainers dependency). Includes
-      # expression-cel (CelInvariantEngine / GeneratedCrudRuntimeSupport, core runtime) and the two
+      # runtime-support (CelInvariantEngine / GeneratedCrudRuntimeSupport, core runtime) and the two
       # adapters carrying RUN-4's hanging-socket deadline/retry proofs (external-ai-http, mail-smtp;
       # their "hanging endpoint" is a loopback ServerSocket the test owns with a 300ms/50ms deadline,
       # not a real network call). scripts/quality/check-ci-adapter-coverage.py reconciles this list
@@ -187,7 +187,7 @@ jobs:
             :adapters:authz-default:test \
             :adapters:document-render-inproc:test \
             :adapters:document-render-stub:test \
-            :adapters:expression-cel:test \
+            :adapters:runtime-support:test \
             :adapters:external-ai-inproc:test \
             :adapters:external-ai-http:test \
             :adapters:external-ai-pack-core:test \

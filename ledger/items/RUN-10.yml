@@ -11,9 +11,9 @@ verification: UNIT_TESTED
 source: >-
   Found while implementing R2.4 (RUN-9) -- disclosed by the implementer rather than left for a user
   to discover, and deliberately filed instead of being fixed inside that item.
-surface: kernel/scheduler, adapters/expression-cel
+surface: kernel/scheduler, adapters/runtime-support
 files:
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/adapters/expression/cel/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/adapters/runtime/support/GeneratedCrudRuntimeSupport.java
 detail: |
   `processDueScheduledEvents` ignores the row's stored `trigger_correlation_id` and publishes the due
   event under a fresh correlation id. So a deferred event does not match an `AWAIT_EVENT` step that
@@ -55,7 +55,7 @@ detail: |
   `SchemaRealizationEmitterScheduledEventTest`, and `ScheduledEventDrainRunnerIT` (DDL updated) all green.
 guard:
   kind: test
-  ref: NPDevKernel/adapters/expression-cel/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDeferredFlowEventTest.java
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDeferredFlowEventTest.java
   asserts: >-
     After processDueScheduledEvents drains a due row, the published event is readable by
     readByCorrelation(trigger_correlation_id) -- the drain echoes the SAME correlation id it was

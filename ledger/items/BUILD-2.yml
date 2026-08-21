@@ -131,7 +131,7 @@ detail: |
   Step 4 (partial -- ABI declaration/refusal only, app-linking wiring deferred): `KernelAbi
   .CURRENT_ABI_VERSION` (new, `com.npdev.kernel.abi`, kernel module) is a manually-bumped contract
   version for the `com.npdev.kernel.*`/`com.npdev.runtime.support.*` surface (incl.
-  `GeneratedCrudRuntimeSupport`, verified still 3,701 lines in `expression-cel` -- CLAUDE.md's own
+  `GeneratedCrudRuntimeSupport`, verified still 3,701 lines in `runtime-support` -- CLAUDE.md's own
   "the card's number may be stale" caveat checked and found NOT stale). `PackAbiManifest` (record,
   `META-INF/npdev-pack.properties` shape, round-trip tested) + `PackAbiCompatibility.checkLinkable`
   (throws `PackAbiIncompatibleException` naming both ABI versions on mismatch, live-proven both
@@ -148,7 +148,7 @@ detail: |
   proves (a) byte-identical relative file paths and source text for all 10 emitted .java files (5
   entities + 5 repositories), and (b) byte-identical COMPILED .class bytes for all 5 entity classes,
   via a real in-process `javax.tools.JavaCompiler` run (`jakarta.persistence-api:3.1.0`, the exact
-  version `expression-cel`'s build.gradle already pins, added as a `testImplementation`-only
+  version `runtime-support`'s build.gradle already pins, added as a `testImplementation`-only
   dependency to `NPDevGenerator/generator/build.gradle` -- compile-time-only, nothing runtime/network
   touches it). Repository interfaces are proven byte-identical at the SOURCE level only (compiling
   `JpaRepository` needs `spring-data-jpa` on the classpath, a materially heavier dependency not added
