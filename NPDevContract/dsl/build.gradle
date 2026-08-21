@@ -227,6 +227,27 @@ tasks.register('packDiff', JavaExec) {
     args cliArgs
 }
 
+// PACK-8 Step 7: `npdev pack search` -- searches a pack catalog JSON for packs matching a
+// query and/or category. Same JavaExec convention as the other pack CLI tasks.
+tasks.register('packSearch', JavaExec) {
+    group = 'verification'
+    description = 'Search a pack catalog for packs matching a query and/or category.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackSearchMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('catalog')) {
+        cliArgs << '--catalog' << project.getProperty('catalog')
+    }
+    if (project.hasProperty('query')) {
+        cliArgs << '--query' << project.getProperty('query')
+    }
+    if (project.hasProperty('category')) {
+        cliArgs << '--category' << project.getProperty('category')
+    }
+    args cliArgs
+}
+
 // PK-4 Stage B: `npdev pack publish <old> <new>` -- wraps packDiff's classification with the
 // version-bump-size refusal rule (com.npdev.dsl.v1.pack.PackPublishGate) and, with -Pwrite, writes
 // an empty migrations chain entry into the new pack.json for a non-BREAKING publish. ignoreExitValue

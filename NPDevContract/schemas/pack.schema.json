@@ -445,6 +445,30 @@
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "description": "REG-151: the pack's own true first-ever-published version, pinned once by `npdev pack publish --write` (either at this pack's first publish under this field's existence, backfilled from its migrations chain's own earliest hop, or -- for a pack with no chain yet -- copied from its own current `version`) and immutable thereafter, exactly like a migrations hop (see PackPublishGate's chain-immutability check). Exists as a trust anchor independent of the migrations chain's own current content: PackDependencyGraphWalker's untracked-pack fallback prefers this field over PackMigrationChain.earliestFromVersion() (which can be fooled if the chain's own earliest hop is later removed/truncated by a hand-edit that bypasses the publish gate)."
+    },
+    "signature": {
+      "type": "object",
+      "description": "PACK-8 Step 5: cryptographic signature of the pack's content digest. The digest is the same SHA-256 tree hash PackCache computes for content-addressed storage; the signature is that digest signed with a keypair (Ed25519 or SHA256withRSA). The public key is embedded so a consumer can verify without out-of-band key distribution. When present, `npdev pack add` verifies the signature against the cached digest and refuses on mismatch.",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["Ed25519", "SHA256withRSA"]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "value": {
+          "type": "string",
+          "description": "Base64-encoded signature of the digest"
+        },
+        "publicKey": {
+          "type": "string",
+          "description": "Base64-encoded public key for verification"
+        }
+      },
+      "required": ["algorithm", "digest", "value", "publicKey"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
