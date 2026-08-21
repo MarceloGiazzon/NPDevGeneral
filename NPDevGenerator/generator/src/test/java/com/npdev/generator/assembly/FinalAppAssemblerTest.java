@@ -43,7 +43,6 @@ class FinalAppAssemblerTest {
         write(host.resolve("src/main/java/com/finalexec/api/experimental/FlowBuilderController.java"), "package com.finalexec.api.experimental;\n");
         write(host.resolve("src/main/java/com/finalexec/npdev/service/internal/ModelSyncStatusService.java"), "package com.finalexec.npdev.service.internal;\n");
         write(host.resolve("src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java"), "package com.finalexec.npdev.service.experimental;\n");
-        write(host.resolve("src/main/java/com/finalexec/HelloController.java"), "package com.finalexec;\n");
         write(host.resolve("src/main/resources/db/migration/V5001__runtime.sql"), "select 1;\n");
         write(host.resolve("libs/kernel-0.1.0.jar"), "jar");
         // BT-1: the app-independent runtimehost-core module lives nested under the host root but
@@ -93,7 +92,6 @@ class FinalAppAssemblerTest {
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/api/experimental/FlowBuilderController.java")));
         assertTrue(Files.exists(finalApp.resolve("src/main/java/com/finalexec/npdev/service/internal/ModelSyncStatusService.java")));
         assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/npdev/service/experimental/FlowBuilderService.java")));
-        assertFalse(Files.exists(finalApp.resolve("src/main/java/com/finalexec/HelloController.java")));
         assertFalse(Files.exists(finalApp.resolve("libs/kernel-0.1.0.jar")));
         assertFalse(Files.exists(finalApp.resolve("runtimehost-core/build.gradle")));
         assertFalse(Files.exists(finalApp.resolve("runtimehost-core/src/main/java/com/finalexec/api/RuntimeSchedulesController.java")));

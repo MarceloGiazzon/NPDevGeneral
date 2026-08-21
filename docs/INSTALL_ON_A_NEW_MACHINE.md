@@ -92,7 +92,7 @@ These are the six entries in the dropdown, in the order they appear there:
 |---|---|---|
 | **H2Local** | **No** | **Start here.** It is the first entry and the default. Saves to a file beside your app; nothing to install. |
 | H2Server | No | Special case: more than one process sharing one database. Ignore for now. |
-| Postgres · MySQL · SqlServer | **Yes** | You already know you need one of these. MySQL and SqlServer are marked *(experimental)* in the list, and the Manager explains why under the dropdown. |
+| Postgres · MySQL · SqlServer | **Yes** | You already know you need one of these. Postgres is the engine the schema engine was built against; MySQL and SqlServer are fully supported with caveats the Manager explains under the dropdown — see `docs/reference/USING_MYSQL_AND_SQL_SERVER.md`. |
 | InMemory | No | Nothing is kept when the app stops. Demos only. |
 
 If you pick Postgres, MySQL or SqlServer, you must install
