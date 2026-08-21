@@ -1,0 +1,25 @@
+id: PACK-16
+title: >-
+  R8.7 -- pack signing + trust policy (Ed25519)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-21
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R8.7.
+surface: dsl/pack-signing
+detail: |
+  Detached Ed25519 signatures, trust:{mode} config (strict|warn|off), --allow-unsigned recorded
+  in npdev.lock. Implemented as PACK-8 Step 5.
+resolution: >-
+  Implemented in PACK-8 Step 5 (commit e3386dc0). PackSignature/PackSigner provide pure-Java
+  Ed25519/SHA256withRSA signing. PackAddMain verifies on fetch (warn-by-default).
+  Ledger item filed retroactively.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/cli/PackCliMainTest.java
+  asserts: >-
+    Pack signing and verification round-trips correctly; unsigned packs require --allow-unsigned
+  provenRed: true
