@@ -91,7 +91,9 @@
     "RuntimePluginProfileDiagnostics",
     "RuntimeTopologyExplorerService",
     "FlowBuilderService",
-    "GovernanceWorkspaceService"
+    "GovernanceWorkspaceService",
+    "BetaOnboardingService",
+    "CapabilityIntegrationPanelService"
   ],
   "supportedCoreServicePatterns": [
     "*ArtifactRealizationProvider",

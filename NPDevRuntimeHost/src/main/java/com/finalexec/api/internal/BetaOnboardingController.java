@@ -3,7 +3,7 @@ package com.finalexec.api.internal;
 import com.finalexec.api.*;
 import com.finalexec.api.internal.*;
 
-import com.finalexec.npdev.service.experimental.BetaOnboardingService;
+import com.finalexec.npdev.service.internal.BetaOnboardingService;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
