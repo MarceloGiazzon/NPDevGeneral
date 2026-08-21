@@ -4,13 +4,15 @@
 // R3 (MASTER-ROADMAP.md Step 9 / ledger QUAL-6): the -PenableCoverage=true JaCoCo gate lives ONLY in
 // the sibling build.gradle.template (the file that actually ships, and the one
 // scripts/quality/run-runtimehost-gate.ps1 exercises via an assembled app) -- not duplicated here.
-// This file is already a separately-drifting copy (Spring Boot 3.3.2 vs .template's 3.5.16, kept only
-// for a direct bare-checkout GATE-H2/GATE-PG run), and no gate builds it directly.
+// Bare-checkout pin: kept in sync with the sibling build.gradle.template (Spring Boot 3.5.16).
+// Both files must be bumped together when updating Spring Boot; no gate builds this file directly.
 
 import groovy.json.JsonSlurper
 
 plugins {
-    id 'org.springframework.boot' version '3.3.2'
+    // BARE-CHECKOUT PIN — keep in sync with build.gradle.template. Dependabot can only scan this
+    // file, so manual sync to the template is required when either is bumped.
+    id 'org.springframework.boot' version '3.5.16'
     id 'io.spring.dependency-management' version '1.1.6'
     id 'java'
     id 'org.flywaydb.flyway' version '10.10.0'
@@ -214,8 +216,6 @@ tasks.named('compileJava') {
 // TOGETHER, so deleting both keeps that rule's sibling-group check trivially satisfied (both absent).
 def modelSpecificGeneratedAppTests = [
         'com/finalexec/AsyncWaitResumeE2EIT.java',
-        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
-        'com/finalexec/InvariantApiIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         // REG-163: NonDefaultRuntimeSurfaceProfileIntegrationTest REVIVED 2026-08-15 -- the compile-
@@ -230,15 +230,15 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/RuntimeMetadataControllerStandaloneTest.java',
         'com/finalexec/RuntimeMetadataValidationControllerStandaloneTest.java',
-        'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
-        'com/finalexec/RuntimePluginStatusControllerIntegrationTest.java',
         'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
         'com/finalexec/RuntimeUiMetadataControllerStandaloneTest.java',
-        'com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java',
-        'com/finalexec/SupportedRuntimeSurfaceAllowlistIntegrationTest.java',
+        // QUAL-5 Stage 3 (2026-08-20): RuntimePluginStatusControllerIntegrationTest,
+        // RuntimePluginFilesystemDiscoveryIntegrationTest, and SupportedRuntimeSurfaceAllowlistIntegrationTest
+        // are REVIVED -- each passes against the assembled simple-contact-intake sample.
+        // SupportedCoreControllerBlackBoxIntegrationTest is also REVIVED (REG-196 fix): discovery
+        // switched from filesystem walk to classpath scan of com.finalexec.api, matching the manifest's
+        // actual two-module scope (RuntimeHost + runtimehost-core jar).
         'com/finalexec/Stage12UiModelRuntimeIT.java',
-        'com/finalexec/Step01MultiConceptIntegrationTest.java',
-        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/TenantIsolationE2EIT.java'
 ]
 
@@ -247,21 +247,16 @@ def generatedRuntimeIntegrationTestSources = [
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/TenantIsolationE2EIT.java',
-        // R1 Stage 4 (MASTER-ROADMAP.md Track C item C3): 2 of the 6 remaining
-        // AbstractScenarioIntegrationTest subclasses -- confirmed via a real `integrationTest`
-        // compile+run against superuser-admin-console (the actual sample
-        // .github/workflows/npdev-ci-validation.yml's "RuntimeHost generated-app Postgres
-        // integration tests" step generates and runs integrationTest against, per that workflow's
-        // own NEW-1 comment) that they compile and pass there.
-        // The other 4 -- CanonicalDemoBusinessE2EIT, InvariantApiIntegrationTest,
-        // Step01MultiConceptIntegrationTest, Step03NestedJsonbIntegrationTest -- import
-        // com.npdev.generated.entities.{Patient,Provider,Appointment,InsuranceClaim} /
-        // repositories.{PatientRepository,ProviderRepository,AppointmentRepository,
-        // InsuranceClaimRepository}, none of which superuser-admin-console's model declares --
-        // confirmed as real `compileIntegrationTestJava` errors ("cannot find symbol") against
-        // that sample. Routing them here would BREAK the currently-passing CI integrationTest job,
-        // not fix a dead test, so they stay in modelSpecificGeneratedAppTests only (excluded from
-        // both test and integrationTest) pending a fixture that actually has these entities.
+        // QUAL-5 (2026-08-20): the 4 deferred AbstractScenarioIntegrationTest subclasses are now
+        // routed here. They import com.npdev.generated.entities.{Patient,Provider,Appointment,
+        // InsuranceClaim} / repositories.{PatientRepository,ProviderRepository,AppointmentRepository,
+        // InsuranceClaimRepository}, which only the canonical-demo sample declares -- so the CI
+        // integrationTest step (.github/workflows/npdev-ci-validation.yml) now generates
+        // canonical-demo instead of superuser-admin-console.
+        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
+        'com/finalexec/InvariantApiIntegrationTest.java',
+        'com/finalexec/Step01MultiConceptIntegrationTest.java',
+        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/AsyncWaitResumeE2EIT.java',
         'com/finalexec/Stage12UiModelRuntimeIT.java',
         // LNCH-1 Phase 7 (task 7.2): the Postgres Testcontainers twin of the H2 schema-evolution
@@ -415,12 +410,29 @@ def referencesAnExcludedService = { File sourceFile ->
     excludedServiceSimpleNames.any { simpleName -> text =~ /\b${java.util.regex.Pattern.quote(simpleName)}\b/ }
 }
 
+// Shipped no-op when the generated-runtime mount is present (the assembled-app gate -- the only
+// path that actually compiles and runs these controllers). Applied ONLY when the mount is absent
+// (a bare-template checkout), mirroring testsReferencingExcludedMainSources above: a controller
+// whose service dependency is itself excluded because it imports com.npdev.generated.* can no more
+// compile than that service can. Without this, unsupportedRuntimeHostServiceSources' generated-
+// mount exclusion leaves such a controller referenced-but-uncompiled, and compileJava fails with
+// "cannot find symbol" (confirmed live: RuntimeTopologyExplorerController -> RuntimeTopology
+// ExplorerService -> KernelFacade).
+def referencesMountExcludedMainClass = { File sourceFile ->
+    if (generatedRuntimeMountPresent() || excludedMainSimpleNames.isEmpty()) {
+        return false
+    }
+    String text = stripJavaComments(sourceFile.text)
+    excludedMainSimpleNames.any { simpleName -> text =~ /\b${java.util.regex.Pattern.quote(simpleName)}\b/ }
+}
+
 def unsupportedRuntimeHostControllerSources = fileTree('src/main/java/com/finalexec/api') {
     include '**/*Controller.java'
 }.files
         .findAll { sourceFile ->
             String simpleName = sourceFile.name.replace('.java', '')
             !compiledControllerNames.contains(simpleName) || referencesAnExcludedService(sourceFile)
+                    || referencesMountExcludedMainClass(sourceFile)
         }
         .collect(toRelativeSourcePath)
 
@@ -429,7 +441,6 @@ sourceSets {
         java {
             srcDir 'src/main/java'
             srcDir 'npdev-generated/src/main/java'
-            exclude 'com/finalexec/HelloController.java'
             unsupportedRuntimeHostControllerSources.each { exclude it }
             unsupportedRuntimeHostServiceSources.each { exclude it }
             if (!generatedRuntimeMountPresent()) {

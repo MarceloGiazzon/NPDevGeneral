@@ -1,0 +1,285 @@
+id: RUN-20
+title: >-
+  Zero soft-delete support -- concept.softDelete:true now flips deletedAt instead of a physical
+  DELETE, every read excludes a deleted row, restore exists, and uniqueness applies among live rows
+  only, with the additive migration reaching an ALREADY-migrated app
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18, R5.4 -- "Physical deletes are wrong for most business records...
+  concept.softDelete:true adds a deletedAt column (the schema lifecycle must classify it on
+  regeneration of an EXISTING app, not boot-once); delete flips the timestamp; queries/pickers/
+  reference resolution exclude deleted rows; a restore action exists; uniqueness applies among live
+  rows only." Blocked-by premise (R5.2/RUN-16, "unique-among-live-rows must reuse that pushdown's
+  decided semantics") verified DONE before any change and reused exactly: existsUnique's trim/
+  case-insensitive/cross-type/tenant-scoping semantics are untouched; this item only adds a
+  "deleted_at IS NULL" predicate alongside them.
+surface: dsl/schema, dsl/compiled-model, generator/schema-lifecycle, generator/emitters,
+  generator/templates, kernel/storage-sql, kernel/ports, runtimehost/db, samples/dsl-conformance-max
+files:
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConceptAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConcept.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ReservedColumnNames.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ServiceEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ControllerEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/controller-base.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/controller-custom.mustache
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/PlatformColumnContractTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/StorageCapabilityGateTest.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/StorageCapability.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/ConceptStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/AuditingConceptStoreDecorator.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/TenantControlledConceptStoreDecorator.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/DesiredSchemaFactory.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreSoftDeleteTest.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevSamples/dsl-conformance-max/Input/manifest.json
+  - scripts/quality/dsl_coverage/detectors_model.py
+  - scripts/quality/dsl_coverage/features.py
+detail: |
+  PREMISE VERIFIED FIRST: grepped the whole repo for "softDelete"/"deletedAt"/"deleted_at" before
+  touching anything -- zero hits anywhere except RUN-16's own text noting it deferred "unique among
+  live rows" semantics specifically so a future soft-delete feature "makes this decision once rather
+  than inheriting an accidental one." The roadmap's premise (zero soft-delete support) was true.
+
+  THE THREADING (REG-104's four-place chain, done for a concept-level scalar not a top-level array --
+  verified REG-108's pack-composition four-place chain does NOT apply, since concepts[] already flows
+  whole objects through pack composition regardless of which properties they carry): ConceptAst/
+  CompiledConcept gain `softDelete` (boolean, default false) via a new widest constructor overload,
+  matching the existing telescoping-constructor house style (renamedFrom/satelliteOf/origin). Threaded
+  through JsonModelParser (parses the concept-level key), ModelCompiler (passes concept.isSoftDelete()
+  into the new CompiledConcept constructor), ModelResolver (sanitizeConcept passes it through;
+  mergeConcept uses STICKY-TRUE, not "specialization wins" -- a base concept's softDelete durability
+  guarantee cannot be silently undone by a specialization, though a specialization may still opt IN on
+  its own), and the canonical JSON writer/reader pair. All four model.schema.json mirrors updated and
+  verified via check-schema-mirror-consistency.py.
+
+  THE SCHEMA LIFECYCLE (the roadmap's own "hardest part," and REG-193 was read first as instructed --
+  its exact failure class, V1-only vs R__-repeatable, is what this item had to get right for a
+  BUSINESS-table column rather than an internal table): `deleted_at` (nullable, no default -- NULL
+  means "live", the correct value for every pre-existing row) is added to
+  appendBusinessTableShape (V1 fresh CREATE + the R__ self-heal shape) AND appendAdditiveColumns (R__
+  repeatable ALTER TABLE ADD COLUMN, the one that reaches an ALREADY-migrated app -- this is the line
+  that makes "regenerate migrates the schema" true). The generator's OWN manifest
+  (fullColumnNames/additiveColumnNames/columnTypes, feeding SchemaLifecycleExecutor's Trigger B
+  unexplained-extra-column detection) gets the same conditional addition.
+  SchemaLifecycleExecutor.PLATFORM_MANAGED_COLUMNS gains "deleted_at" so Trigger B never flags it as
+  unexplained; PlatformColumnContractTest's own fixture was changed to build a softDelete concept
+  (not a second fixture) specifically so this contract test does not stay blind to the one platform
+  column that is CONDITIONAL, unlike the other three.
+
+  A LATENT BUG FOUND AND FIXED BEFORE IT SHIPPED: SchemaLifecycleExecutor's
+  assertPlatformColumnSetsAgree() class-load assertion required "PLATFORM_MANAGED_COLUMNS minus id ==
+  REPAIRABLE_PLATFORM_COLUMNS" -- true for the pre-existing 3-column set, false the instant deleted_at
+  (platform-managed but NEVER repairable-to-NOT-NULL, unlike version/row_version/tenant_id) joined it;
+  left unfixed, EVERY app's boot (not just softDelete ones) would have thrown at class-init. Fixed by
+  introducing NON_REPAIRABLE_PLATFORM_COLUMNS={id, deleted_at} and rewriting the invariant.
+  Downstream of that, DesiredSchemaFactory#toDesiredColumn's "nullable = !required && !platformManaged"
+  would have computed nullable=false for deleted_at (since platformManaged is now true for it),
+  which SchemaDiffEngine#compareColumn reads as "desired NOT NULL, live NULL" and turns into a
+  TIGHTEN_PLATFORM diff item -- wrong, deleted_at must stay nullable forever. Fixed via a new
+  SchemaLifecycleExecutor#isNullablePlatformColumn(column) helper consulted at that one call site.
+  Neither bug was hit by any pre-existing test (both are genuinely new interactions this feature
+  introduces); both were found by code-reading the consumer side of PLATFORM_MANAGED_COLUMNS before
+  trusting the addition, not by a test failure.
+
+  UNIQUENESS AMONG LIVE ROWS -- TWO REAL DEFECTS FOUND ONLY BY THE LIVE PROOF, NEITHER CAUGHT BY ANY
+  UNIT TEST (recorded here because the roadmap explicitly warned this class of item hides until the
+  artifact a user runs is actually built):
+
+  Defect 1 (DB layer): a NEW StorageCapability.PARTIAL_UNIQUE_INDEX (Postgres/SQL Server: yes,
+  documented since Postgres 8.0 / SQL Server 2008; H2/MySQL: no -- H2's "no" is EMPIRICALLY PROVEN
+  live, 2026-08-19, H2 2.2.224 raises a syntax error on WHERE attached to CREATE INDEX) gates whether
+  SchemaRealizationEmitter emits a genuinely filtered unique index (`... WHERE deleted_at IS NULL`)
+  or, on an incapable engine, a PLAIN (non-unique) index instead of the plain-but-still-UNIQUE index a
+  first cut of this work emitted -- an unfiltered unique index would keep rejecting reuse of a
+  soft-deleted row's value forever, on the two engines with the largest install base (every local dev
+  machine defaults to H2). Measured RED live (soft-delete-r54-proof, an app whose Supplier concept
+  already had `unique: true` on `code` BEFORE softDelete was added): regenerating left the OLD
+  unfiltered `ux_suppliers_code` index in place -- a guarded CREATE only ever no-ops on an
+  already-existing SAME NAME, it never adjusts what that name points at -- and reusing a deleted row's
+  code failed with a raw H2 JdbcSQLIntegrityConstraintViolationException (surfaced as an HTTP 500) instead
+  of the 2xx the DoD requires. Fixed with a NEW cross-dialect primitive,
+  SqlDialect#guardedDropIndexIfExists (H2/Postgres: native DROP INDEX IF EXISTS; SQL Server: native
+  since 2016; MySQL: the same catalog-lookup + PREPARE/EXECUTE idiom guardedConstraintDdl already
+  uses, inverted polarity), called immediately before the guarded (re)CREATE for a softDelete
+  concept's per-field unique index. Re-measured after the fix: the identical reuse request returned
+  201. DELIBERATELY NOT extended to the compound-unique-invariant or explicit-index-unique paths (see
+  below) -- narrower scope, not proven live.
+
+  Defect 2 (JVM layer, the more surprising one): existsUnique's JVM precheck is ONLY invoked by
+  service-base.mustache's enforceWithKernel when the model declares an EXPLICIT "unique"-typed
+  invariant referencing the field (matching simple-product-h2local's pattern) -- a field carrying
+  JUST `unique: true` with no such invariant is, for every OTHER concept today, enforced SOLELY by the
+  raw DB constraint. Combined with Defect 1's fix (downgrading that constraint to a plain index on an
+  incapable engine), this meant NOTHING enforced uniqueness among live rows at all for the common
+  `unique: true`-only declaration style. Measured RED live: a second supplier with an already-LIVE
+  code ("INITECH") saved successfully (201, not 409) against the deployed fix for Defect 1 alone.
+  Fixed with a new, unconditional (for softDelete concepts only, independent of whether the model also
+  declares an explicit invariant) enforceSoftDeleteUniqueFields(payload, excludeId) call in both
+  create and update, looping every {{#uniqueFields}} and calling existsUniqueInConceptStore --
+  read-only and idempotent, so harmless alongside an explicit invariant that already checks the same
+  field. Re-measured after the fix: the identical duplicate request returned 409
+  (unique_integrity_failed), and the legitimate reuse request still returned 201.
+
+  READ EXCLUSION (queries/pickers/reference resolution): achieved with a SINGLE mechanism, not one
+  per surface. JdbcBusinessConceptStore.findById/findByIdForUpdate/findAll/findAllCapped/query/
+  existsUnique, and aggregate's BASE-concept predicate, all append "AND deleted_at IS NULL" (or the
+  whereClauses-list equivalent) when the concept's own CompiledModel-derived shape says
+  softDelete=true. Because DefaultConceptGateway.read/list/listCapped/query all call straight through
+  to these same store methods, EVERY consumer built on the gateway (the generated CRUD service's
+  list()/page()/getById(), and listBy* reference finders, which are literally conceptGateway.list()
+  with a post-filter) inherits the exclusion with ZERO template changes -- confirmed by reading
+  DefaultConceptGateway's own source, not assumed. deleted_at itself is excluded from
+  ConceptRecord.data() (same treatment as row_version/tenant_id) because the generated JPA entity has
+  no matching field and entityFromRecord's Jackson conversion is strict (no
+  FAIL_ON_UNKNOWN_PROPERTIES=false) -- confirmed this would otherwise throw
+  UnrecognizedPropertyException on every read of a soft-delete concept's row.
+
+  DELETE / RESTORE: JdbcBusinessConceptStore#deleteById branches on shape.softDelete() -- UPDATE
+  ... SET deleted_at = ? ... AND deleted_at IS NULL (guards a double-delete into a harmless no-op)
+  instead of DELETE FROM. Because every write path (service-base.mustache's delete(), the kernel
+  ConceptGateway's own delete()) already funnels through this ONE method, delete() needed ZERO
+  template changes to soft-delete correctly. restore() is new on the ConceptStore port (default
+  false -- "not supported here" is the honest answer for a store with no schema knowledge, unlike
+  existsUnique's generic default; forwarded by both decorators, same "wrapping silently downgrades a
+  capability" trap RUN-16 already documented for existsUnique/query/aggregate); JdbcBusinessConceptStore's
+  real implementation is a direct UPDATE ... SET deleted_at = NULL ... AND deleted_at IS NOT NULL
+  (never a findById-then-save round trip, since findById deliberately excludes a deleted row). A new
+  generated REST endpoint, POST /api/{route}/{id}/restore, backed by a new ServiceBase#restore(id)
+  method -- gated only by the DELETE CRUD permission (deliberately narrower than delete's full
+  ConceptGateway row-level-access/semantic-rule pipeline; restore is a direct capability-store call,
+  see "deliberately not done" below).
+
+  CONFORMANCE + DSL COVERAGE: NPDevSamples/dsl-conformance-max gained a 12th concept, WidgetSupplier
+  (softDelete: true, a unique supplierCode field) -- a NEW concept rather than modifying one of the 11
+  existing ones, to avoid perturbing whatever else already depends on their exact shape. A new
+  detector (_has_concept_soft_delete) and features.py entry ("concept.softDelete") wired in the same
+  commit; check-dsl-coverage.py and validate-corpus.py both re-run and green (51/51 models parse, the
+  new feature shows 1 model(s) [OK]).
+
+  LIVE PROOF (soft-delete-r54-proof, AppGen/apps, H2Local, port 8391 -- outside this repo per the
+  source-of-truth layering): PHASE 1 generated a Supplier concept WITHOUT softDelete, built, booted,
+  and created 3 suppliers (ACME/GLOBEX/INITECH) via real POST /api/suppliers calls -- establishing
+  genuine pre-existing data in a real H2 file (App/data/npdev_soft_delete_r54_proof.mv.db). App
+  stopped. PHASE 2 added softDelete: true to the SAME concept and regenerated + rebuilt AGAINST THE
+  SAME DATABASE FILE (schemaLifecycle.strategy: KeepExistingIfCompatible; Build-NpdevApp.ps1's
+  preserve-App/data behavior confirmed live, not assumed). Booted again: GET /api/suppliers still
+  listed all 3 pre-existing suppliers with their original ids/data -- the additive R__ migration
+  reached the already-migrated table. Sequence proven live end to end (final, post-both-fixes run):
+    - DELETE /api/suppliers/{acmeId} -> 204; GET excludes it (grid exclusion)
+    - POST {code: "ACME", ...} (the just-deleted row's code) -> 201, not 409 (live value reuse)
+    - DELETE /api/suppliers/{globexId} -> 204; GET excludes it; POST .../restore -> 204; GET includes
+      it again with its ORIGINAL data ("Globex Corporation") -- restore
+    - POST {code: "INITECH", ...} while the original INITECH row is still LIVE -> 409
+      unique_integrity_failed (uniqueness among live rows still enforced)
+  Both defects above were found DURING this exact sequence (first pass: reuse failed 500; second pass,
+  after Defect 1's fix: a live-collision duplicate wrongly succeeded 201) and re-proven clean only
+  after both fixes landed -- the sequence above is the THIRD and final run, all five steps green.
+
+  A NEW AUTOMATED TEST, JdbcBusinessConceptStoreSoftDeleteTest (10 methods, real H2 datasource, same
+  house pattern as JdbcBusinessConceptStoreExistsUniqueTest/FindAllCappedTest): proves deleteById
+  flips deleted_at without physically removing the row (verified via a RAW SQL read the store methods
+  themselves never expose deleted_at through); the STORE-layer backward-compatibility case
+  (nonSoftDeleteConceptStillPhysicallyDeletes -- a concept WITHOUT softDelete: true still does a real
+  DELETE FROM, byte-for-byte the pre-existing behavior); findById/findAll/findAllCapped/query all
+  exclude a deleted row; existsUnique excludes a deleted row's value AND still catches a live one;
+  restore clears the flag and the row's own data survives untouched; restoring an already-live row
+  or a non-softDelete concept is a harmless no-op; a double-delete is idempotent; deletedAt never
+  leaks into ConceptRecord.data(). Run against the assembled soft-delete-r54-proof app's own Gradle
+  project (NPDevRuntimeHost/src/test tests require an assembled app per QUAL-19 -- this class does NOT
+  reference com.npdev.generated., so it is not excluded by build.gradle.template's blanket filter for
+  tests that do). NOTE: this test operates at the JdbcBusinessConceptStore layer and could NOT, on its
+  own, have caught Defect 2 above (a service-layer/mustache-template wiring gap, not a store-logic
+  gap) -- that is exactly why the live proof matters as independent evidence, not a redundant one.
+
+  BACKWARD COMPATIBILITY: nonSoftDeleteConceptStillPhysicallyDeletes (above) plus every pre-existing
+  SchemaRealizationEmitter/PlatformColumnContract/kernel-storage-sql test re-run green after the
+  change (16 SchemaRealizationEmitter*.xml files + PlatformColumnContractTest: all tests=N failures=0
+  errors=0; DialectConformanceTierA/B, GuardedDdlConformance, PartialApplicationTruth,
+  PostgresDialectGoldenSql: all green). Zero occurrences of "deletedAt"/"deleted_at" as a field name
+  anywhere in the known corpus (NPDevSamples + AppGen/apps, grepped before writing a line) confirm
+  ReservedColumnNames' new reservation collides with nothing today.
+
+  NO CODEMOD, NO BREAKING.md ENTRY: this is purely additive -- a new optional concept-level boolean,
+  default false, with every touched code path gated on concept.isSoftDelete(). A concept that does not
+  declare it is provably unaffected (see backward-compatibility test above and the full green
+  regression run). The standing "every breaking change ships its npdev migrate codemod in the same
+  commit" rule does not apply because there is no break to migrate.
+
+  DELIBERATELY NOT DONE THIS ROUND:
+    - The DROP-then-CREATE fix for a stale pre-existing unique index (Defect 1) covers ONLY the
+      per-field unique: true case, which is what the live proof exercises. A concept that already had
+      a COMPOUND-unique invariant or an author-declared explicit unique index (indexes: [{unique:
+      true}]) BEFORE turning on softDelete: true will keep its old, unfiltered ADD CONSTRAINT UNIQUE
+      from before the change on regeneration -- a table-level CONSTRAINT (unlike a plain INDEX)
+      cannot always be dropped via a portable DROP INDEX (Postgres specifically refuses to drop a
+      constraint-owned index directly; it requires ALTER TABLE ... DROP CONSTRAINT). A brand-new
+      compound-unique + softDelete concept (never had the old shape) is unaffected. Follow-up:
+      SqlDialect#guardedDropConstraintIfExists, mirroring guardedDropIndexIfExists added this round.
+    - aggregate()'s JOIN target rows (a groupBy join through a reference field into ANOTHER concept)
+      are not filtered by the TARGET's own softDelete state -- only the base concept's rows are
+      excluded. A joined reference into a soft-deleted row still contributes to the aggregate.
+    - InMemoryConceptStore (the *-inproc dev/test adapter, wired only under
+      npdev.storage.mode=in-memory, which no AppGen/production FinalApp with a real database engine
+      uses) still physically deletes regardless of softDelete, and its restore() returns the port
+      default (false, unsupported). Deliberately out of scope: representing deletedAt cleanly there
+      without touching ConceptRecord's shape (used everywhere) was a larger, riskier change than this
+      round's budget allowed, and it is not the code path any real generated app's business data uses.
+    - restore() does not run through ConceptGateway's row-level access.write / semantic-rule-profile
+      pipeline the way create/update/delete do -- it is a direct conceptStore-level call gated only by
+      the coarse DELETE CRUD permission. A more complete implementation would add
+      ConceptGateway#restore(...); deferred since the DoD only requires the capability to exist and
+      work, not full parity with delete's authorization depth.
+    - No "include deleted rows" escape hatch (a withDeleted()-style query mode) was added anywhere --
+      not requested by the DoD, and findAll's existing "unbounded, for a flow forEach/reconciliation
+      job" contract now also means "excludes soft-deleted rows" for a softDelete concept, a deliberate
+      default-scope choice matching every mainstream soft-delete implementation's convention.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreSoftDeleteTest.java
+  asserts: >-
+    Against a real H2 datasource: deleteById flips deleted_at (row still physically present, proven
+    via a raw SQL read) instead of removing the row for a softDelete concept, and still does a real
+    DELETE FROM for one that isn't (backward compatibility); findById/findAll/findAllCapped/query all
+    exclude a deleted row; existsUnique excludes a deleted row's unique value (freeing it for reuse)
+    while still catching a live row's; restore clears the flag, the row's own data survives
+    untouched, and restoring an already-live row or a non-softDelete concept is a harmless no-op; a
+    double-delete is idempotent; deletedAt never leaks into ConceptRecord.data(). Complements, not
+    duplicates, the live HTTP proof against soft-delete-r54-proof (an existing app with pre-existing
+    data) described in this item's detail -- the live proof is what caught the second of two real
+    defects this test's own layer could not have seen (a service-template wiring gap, not a
+    store-logic one).
+  provenRed: true
+  provenRedNote: >-
+    Two independent real REDs were watched live during implementation, both now fixed and re-proven
+    green (see detail): (1) reusing a soft-deleted row's unique value against soft-delete-r54-proof
+    failed with a raw H2 JdbcSQLIntegrityConstraintViolationException (HTTP 500) before
+    SqlDialect#guardedDropIndexIfExists existed to remove the stale pre-existing unique index; (2)
+    after fixing (1) alone, a duplicate of a still-LIVE row's unique value was wrongly accepted (HTTP
+    201, not 409) before enforceSoftDeleteUniqueFields existed to compensate for existsUnique's JVM
+    precheck never being wired for a bare `unique: true` field with no explicit invariant. Both REDs
+    were observed against the real running app, not a reverted checkout, matching the class of proof
+    RUN-16's own provenRedNote used for its "before" measurement.

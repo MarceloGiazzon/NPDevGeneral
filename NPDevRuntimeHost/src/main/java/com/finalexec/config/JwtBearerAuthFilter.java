@@ -80,6 +80,23 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
                 || uri.equals("/api/auth/password-reset/confirm") || uri.equals("/api/v1/auth/password-reset/confirm")) {
             return true;
         }
+        // R6.2: an inbound webhook door has its OWN independent authentication -- an HMAC-SHA256
+        // signature WebhookInboundController itself verifies, using a secret named per-webhook in
+        // the model. A third party posting e.g. a payment confirmation holds no NPDev bearer token
+        // at all and never will, so this filter must not demand one -- the same "no NPDev credential
+        // ever" reasoning as the RuntimeApiKeyAuthFilter template's identical exemption.
+        if (uri.startsWith("/api/hooks/")) {
+            return true;
+        }
+        // R6.4: the cross-app messaging inbound door has its OWN independent authentication -- an
+        // HMAC-SHA256 signature HttpMessagingCapabilityAdapter itself verifies (MessagingDeliveryController
+        // calls HttpMessagingCapabilityAdapter#receiveInboundDelivery directly, in-process -- no second
+        // HTTP server, no loopback hop), using a secret named per-peer via npdev.messaging.http.peers. A
+        // peer app posting a delivery holds no NPDev bearer token at all and never will -- same "no
+        // NPDev credential ever" reasoning as the webhook exemption just above.
+        if (uri.equals(com.npdev.adapters.messaging.http.HttpMessagingCapabilityAdapter.INBOUND_PATH)) {
+            return true;
+        }
         // An earlier filter in the chain (SuperUserCredentialAuthFilter, order -110) may already
         // have authenticated this request via a completely independent credential (the ControlPanel's
         // X-Super-User-Key, unrelated to business auth.mode). This filter must not clobber that with

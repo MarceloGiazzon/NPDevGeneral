@@ -12,7 +12,6 @@ public record QueryAst(
         List<ProcedureParameterAst> parameters,
         List<String> permissionRequirements,
         String tracePolicy,
-        String auditPolicy,
         Map<String, Object> metadata,
         List<GroupByFieldAst> groupBy,
         List<AggregateFunctionAst> aggregates,
@@ -38,13 +37,12 @@ public record QueryAst(
             List<ProcedureParameterAst> parameters,
             List<String> permissionRequirements,
             String tracePolicy,
-            String auditPolicy,
             Map<String, Object> metadata,
             List<GroupByFieldAst> groupBy,
             List<AggregateFunctionAst> aggregates,
             String having
     ) {
-        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy, auditPolicy,
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
                 metadata, groupBy, aggregates, having, null);
     }
 

@@ -262,7 +262,7 @@ tasks.register('validateScenarioCoherence') {
                 reason: failures.join('; '),
                 evidence: [
                         activeScenarioCount: scenarioDirs.size(),
-                        expectedActiveScenarioCount: 28,
+                        expectedActiveScenarioCount: 30,
                         deferredRootExcluded: 'golden-ai-scenarios/deferred'
                 ],
                 details: [failures: failures]

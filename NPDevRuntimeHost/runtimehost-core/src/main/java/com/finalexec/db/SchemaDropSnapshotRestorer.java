@@ -2,9 +2,11 @@ package com.finalexec.db;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.boundary.*;
 
 import javax.sql.DataSource;
 import java.io.IOException;
+import java.time.Instant;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -126,10 +128,11 @@ public final class SchemaDropSnapshotRestorer {
         List<String> conflicts = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             if (!tableExistsLive(connection, table)) {
-                throw new IllegalStateException("Table '" + table + "' does not exist in the live database -- "
-                        + "restore only re-inserts DATA into an ALREADY-RECREATED table (boot the app normally "
-                        + "first so its schema is created, then restore this snapshot's rows -- see "
-                        + "docs/SCHEMA_EVOLUTION.md#snapshots-and-restore).");
+                // B9 (snapshot restore): bulk restore refused -- target table must exist first.
+                throw new BoundaryBootException(new BoundaryViolation("B9", "restore",
+                        "Snapshot restore refused: table '" + table + "' does not exist in the live database. "
+                                + "Boot the app normally first so its schema is created, then restore.",
+                        Instant.now()));
             }
             for (Map<String, Object> row : snapshotRows) {
                 Optional<Map<String, Object>> live = readLiveRow(connection, table, idValue(row));

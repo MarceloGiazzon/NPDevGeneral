@@ -12,7 +12,6 @@ public record CompiledProcedure(
         CompiledSchema returns,
         List<String> permissionRequirements,
         String tracePolicy,
-        String auditPolicy,
         CompiledGeneratedActionDescriptorSpec actionDescriptor,
         Map<String, Object> metadata
 ) {
@@ -25,7 +24,6 @@ public record CompiledProcedure(
             CompiledSchema returns,
             List<String> permissionRequirements,
             String tracePolicy,
-            String auditPolicy,
             Map<String, Object> metadata
     ) {
         this(
@@ -37,7 +35,6 @@ public record CompiledProcedure(
                 returns,
                 permissionRequirements,
                 tracePolicy,
-                auditPolicy,
                 null,
                 metadata
         );

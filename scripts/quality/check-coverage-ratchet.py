@@ -152,6 +152,13 @@ def save_baseline(repo_root: Path, baseline: dict) -> None:
 
 DEFAULT_REPORT_FORMAT = "jacoco-xml"
 
+# QUAL-27: a PARTIAL test run empties whole classes (each class goes 0% covered), so the fraction of
+# classes that are FULLY uncovered is a strong partial-run signal -- a real coverage regression moves
+# the percentage without emptying whole classes. Measured live: a partial :generator:test report had
+# 116/148 classes fully uncovered (~78%) while the real full run had 7/148 (~5%). A report above this
+# fraction is refused as partial rather than treated as a real measurement.
+PARTIAL_UNCOVERED_CLASS_FRACTION = 0.5
+
 
 def _jacoco_line_counts(report_path: Path) -> tuple[int, int] | None:
     """JaCoCo's <report> root carries <counter type="..."/> elements as DIRECT children summarizing
@@ -165,6 +172,33 @@ def _jacoco_line_counts(report_path: Path) -> tuple[int, int] | None:
         if counter.get("type") == "LINE":
             return int(counter.get("covered", "0")), int(counter.get("missed", "0"))
     return None
+
+
+def _jacoco_class_fully_uncovered_fraction(report_path: Path) -> float | None:
+    """QUAL-27: JaCoCo's root <counter type=\"CLASS\"> reports how many classes are FULLY uncovered
+    (missed) vs partially/fully covered (covered). Returns missed/(missed+covered), or None if there
+    is no CLASS counter (non-jacoco, or a report truncated before class summaries were written)."""
+    try:
+        tree = ET.parse(report_path)
+    except (ET.ParseError, OSError):
+        return None
+    for counter in tree.getroot().findall("counter"):
+        if counter.get("type") == "CLASS":
+            covered = int(counter.get("covered", "0"))
+            missed = int(counter.get("missed", "0"))
+            total = covered + missed
+            return (missed / total) if total else None
+    return None
+
+
+def _report_is_partial(report_path: Path, report_format: str) -> bool:
+    """QUAL-27: a single-report jacoco measurement whose fully-uncovered class fraction exceeds
+    PARTIAL_UNCOVERED_CLASS_FRACTION is a partial test run (most tests never executed), not a real
+    coverage measurement -- it must be skipped, never treated as a regression or a ratchet-up."""
+    if report_format != "jacoco-xml":
+        return False
+    fraction = _jacoco_class_fully_uncovered_fraction(report_path)
+    return fraction is not None and fraction > PARTIAL_UNCOVERED_CLASS_FRACTION
 
 
 def _istanbul_json_summary_line_counts(report_path: Path) -> tuple[int, int] | None:
@@ -279,6 +313,11 @@ def measure_module(
         p = Path(override_path)
         if not p.is_file():
             return None, None
+        if _report_is_partial(p, report_format):
+            print(f"    (QUAL-27: refusing partial report for {module_name or p}: "
+                  f"{_jacoco_class_fully_uncovered_fraction(p):.1%} of classes fully uncovered)",
+                  file=sys.stderr)
+            return None, None
         return parse_line_coverage_percent(p, report_format), str(p)
 
     globs = module_cfg.get("reportGlobs", [])
@@ -311,6 +350,11 @@ def measure_module(
         return pct, evidence
 
     newest = max(candidates, key=lambda p: p.stat().st_mtime)
+    if _report_is_partial(newest, report_format):
+        print(f"    (QUAL-27: refusing partial report for {module_name}: "
+              f"{_jacoco_class_fully_uncovered_fraction(newest):.1%} of classes fully uncovered)",
+              file=sys.stderr)
+        return None, None
     return parse_line_coverage_percent(newest, report_format), str(newest)
 
 
@@ -586,6 +630,30 @@ def run_calibration() -> int:
         pass6 = rc_regress == 1
         print(f"  [{'PASS' if pass6 else 'FAIL'}] main() exits 1 when a fresh measurement falls below the (now 90%) floor (exit={rc_regress})")
         ok = ok and pass6
+
+        # Control 7 (QUAL-27): a partial report (most classes fully uncovered) must be REFUSED as
+        # partial, while a full report (few classes fully uncovered) is accepted.
+        partial_xml = tmp / "partial.xml"
+        partial_xml.write_text(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<report name=\"fixture\">\n"
+            "  <counter type=\"CLASS\" missed=\"116\" covered=\"32\"/>\n"
+            "  <counter type=\"LINE\" missed=\"90\" covered=\"10\"/>\n"
+            "</report>\n",
+            encoding="utf-8",
+        )
+        full_xml = tmp / "full.xml"
+        full_xml.write_text(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<report name=\"fixture\">\n"
+            "  <counter type=\"CLASS\" missed=\"7\" covered=\"141\"/>\n"
+            "  <counter type=\"LINE\" missed=\"10\" covered=\"90\"/>\n"
+            "</report>\n",
+            encoding="utf-8",
+        )
+        pass7 = _report_is_partial(partial_xml, "jacoco-xml") and not _report_is_partial(full_xml, "jacoco-xml")
+        print(f"  [{'PASS' if pass7 else 'FAIL'}] a partial report (116/148 classes fully uncovered) is refused; a full one (7/148) is not")
+        ok = ok and pass7
 
     if not ok:
         print("\nFAIL: calibration did not reproduce the expected PASS/FAIL pairs.", file=sys.stderr)

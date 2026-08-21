@@ -378,11 +378,21 @@ function Test-NpdevServerReachable {
         if (apiKey == null || apiKey.isBlank()) {
             apiKey = "dev-key";
         }
+        // R9.4: the default Spring profile a GUARDED background start (Start-App.ps1/start-app.sh)
+        // boots with. Read from the same config.runtime.springProfile the AppGen PowerShell layer's
+        // own (now-deleted) Start-App.ps1 used, via app-plan.json's springProfiles -- so an app that
+        // relies on it (dev,step0,trial's trial-mode seed data) keeps the same default now that this
+        // emitter, not that PowerShell block, owns the launcher. Deliberately NOT Run-FinalApp.ps1's
+        // 'dev'-only default: that script is unrelated and unchanged by this item.
+        String springProfile = readText(config, "runtime", "springProfile");
+        if (springProfile == null || springProfile.isBlank()) {
+            springProfile = "dev,step0,trial";
+        }
         boolean hasUserConcept = hasConcept(model, "User");
         Path runtimeHostLibs = resolveRuntimeHostLibs(normalizedFinalAppRoot);
 
         Map<String, Object> resolvedPlan = resolvedPlan(model, normalizedFinalAppRoot, opsRoot, runtimeHostLibs,
-                plan, serverPort, apiKey, hasUserConcept);
+                plan, serverPort, apiKey, hasUserConcept, springProfile);
         writeJson(opsRoot.resolve("resolved-db-plan.json"), resolvedPlan);
         write(opsRoot.resolve("Create-Environment.ps1"), createEnvironmentScript());
         write(opsRoot.resolve("Start-Environment.ps1"), startEnvironmentScript());
@@ -391,6 +401,25 @@ function Test-NpdevServerReachable {
         write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript());
         write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(serverPort));
         writeExecutable(opsRoot.resolve("run-final-app.sh"), runFinalAppScriptPosix(serverPort));
+        // R9.4: guarded background Start/Stop, promoted here from the AppGen PowerShell layer so
+        // every generation path gets the duplicate-PID guard, the port-conflict guard and
+        // restart-safe log handling -- not only apps built through Build-NpdevApp.ps1.
+        write(opsRoot.resolve("Start-App.ps1"), startAppScript());
+        writeExecutable(opsRoot.resolve("start-app.sh"), startAppScriptPosix(serverPort, springProfile));
+        write(opsRoot.resolve("Stop-App.ps1"), stopAppScript());
+        writeExecutable(opsRoot.resolve("stop-app.sh"), stopAppScriptPosix());
+        // R9.6: install/uninstall a supervisor around the launchers above, so a crash or a reboot is
+        // recovered from with nobody watching -- "unattended hosting... without Docker". This wraps
+        // the EXISTING launchers rather than reimplementing them: the systemd unit's ExecStart is
+        // run-final-app.sh itself (native process supervision, Restart=always); the Windows side has
+        // no way to register an arbitrary script as a true SCM service without bundling a third-party
+        // wrapper binary, so it drives the already-guarded, already-idempotent Start-App.ps1 on a
+        // recurring Scheduled Task heartbeat instead -- see installServiceScript()'s Javadoc for why.
+        String safeAppId = slugForServiceName(plan.appId());
+        write(opsRoot.resolve("Install-Service.ps1"), installServiceScript());
+        write(opsRoot.resolve("Uninstall-Service.ps1"), uninstallServiceScript());
+        writeExecutable(opsRoot.resolve("install-service.sh"), installServiceScriptPosix(safeAppId));
+        writeExecutable(opsRoot.resolve("uninstall-service.sh"), uninstallServiceScriptPosix(safeAppId));
         write(opsRoot.resolve("Smoke-Test.ps1"), smokeTestScript());
         write(opsRoot.resolve("Print-DbConnectionInfo.ps1"), printDbConnectionInfoScript());
         write(opsRoot.resolve("Reset-Environment.ps1"), resetEnvironmentScript());
@@ -459,7 +488,8 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
             GeneratedDatabasePlan plan,
             int serverPort,
             String apiKey,
-            boolean hasUserConcept
+            boolean hasUserConcept,
+            String defaultSpringProfiles
     ) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("appId", plan.appId());
@@ -501,6 +531,10 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
         out.put("runtimeHostLibsDir", runtimeHostLibs == null ? "" : slash(runtimeHostLibs));
         out.put("serverPort", serverPort);
         out.put("apiKey", apiKey);
+        // R9.4: the Spring profile(s) Start-App.ps1/start-app.sh boot with by default (overridable
+        // via -Profile / a positional argument). NOT read by Run-FinalApp.ps1/run-final-app.sh,
+        // which keep their own long-standing 'dev' default unrelated to this field.
+        out.put("defaultSpringProfiles", defaultSpringProfiles);
         out.put("schemaFingerprint", plan.schemaFingerprint());
         // MON-9: the DB posture travels with the plan, so the Monitor can say whether this app
         // KEEPS its data. Measured 2026-08-17: `_ops/resolved-db-plan.json` is the single file
@@ -1071,6 +1105,12 @@ exit $LASTEXITCODE
      * has no seeded key of its own (see {@code application-prod.properties}), so it needs the same
      * generated {@code secrets/api-key.env} key dev already relies on, or StartupValidator refuses
      * to boot.
+     *
+     * <p>R9.2: also PRUNES {@code app-*.log} down to the newest 20 before this run's own file is
+     * written. D10 gave every run a persisted log; nothing since then ever removed one, so the
+     * directory grew by one file per run for as long as the app existed. This is the launcher-side
+     * half of R9.2's three-path fix -- the runtime host's own {@code logs/app.log} (application.
+     * properties) rolls and caps itself independently of how many times this script has run.
      */
     private static String runFinalAppScript(int serverPort) {
         return """
@@ -1086,6 +1126,21 @@ Set-Location $appRoot
 # rebuild that destroys the only thing worth having.
 $logDir = Join-Path $appRoot 'logs'
 if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+
+# R9.2: retention pruning. Every run names a NEW timestamped file (D10 above), so without this the
+# count grows without bound across the app's lifetime -- unlike Spring's own logs/app.log (rolled
+# and capped by the runtime host itself), nothing inside the app ever revisits this directory.
+# Pruned BEFORE this run's own file is created (and so before java is even launched), not after
+# exit, so a crash mid-run -- the exact run whose evidence a tester most wants to keep -- still
+# leaves a bounded directory rather than deferring cleanup to a graceful exit that may never come.
+# $NpdevLogRetentionCount counts this run's file too, so -Skip keeps one fewer of the EXISTING
+# files: after this run's file lands, at most $NpdevLogRetentionCount remain.
+$NpdevLogRetentionCount = 20
+Get-ChildItem -LiteralPath $logDir -Filter 'app-*.log' -File -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -Skip ($NpdevLogRetentionCount - 1) |
+  Remove-Item -Force -ErrorAction SilentlyContinue
+
 $logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '.log')
 Write-Host "Logging this run to $logFile"
 """ + API_KEY_PROVISIONER + """
@@ -1134,6 +1189,17 @@ cd "$APP_ROOT"
 # failed is a rebuild that destroys the only thing worth having.
 LOG_DIR="$APP_ROOT/logs"
 mkdir -p "$LOG_DIR"
+
+# R9.2 (POSIX twin): retention pruning, same contract as Run-FinalApp.ps1's -- pruned to the
+# newest (NPDEV_LOG_RETENTION_COUNT - 1) EXISTING files BEFORE this run's own file is created (and
+# before java is launched), so a crash mid-run still leaves a bounded directory. `ls -1t` lists
+# newest-first; `tail -n +N` keeps everything from the Nth entry onward, i.e. drops the newest
+# (N-1) and deletes the rest.
+NPDEV_LOG_RETENTION_COUNT=20
+ls -1t "$LOG_DIR"/app-*.log 2>/dev/null | tail -n +"$NPDEV_LOG_RETENTION_COUNT" | while IFS= read -r old_log; do
+  rm -f "$old_log"
+done
+
 LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
 echo "Logging this run to $LOG_FILE"
 """ + API_KEY_PROVISIONER_SH + """
@@ -1147,6 +1213,615 @@ echo "Active Spring profile: $PROFILE"
 java -jar "$APP_ROOT/build/libs/FinalExec-0.1.0.jar" --server.port=__NPDEV_SERVER_PORT__ "--spring.profiles.active=$PROFILE" 2>&1 | tee "$LOG_FILE"
 """;
         return script.replace("__NPDEV_SERVER_PORT__", Integer.toString(serverPort));
+    }
+
+    /**
+     * R9.4: promoted from the AppGen PowerShell layer -- Build-NpdevApp.ps1 used to emit its OWN,
+     * separate {@code Start-App.ps1} into this same {@code _ops} directory (overwriting nothing of
+     * this emitter's, since this emitter never wrote one), so the duplicate-PID guard, the
+     * port-conflict guard and restart-safe log handling existed ONLY on that one pipeline. A bare
+     * {@code npdev generate} app -- or any future generation path -- had no guarded background
+     * launcher at all, only the foreground, blocking {@link #runFinalAppScript}.
+     *
+     * <p>Log handling composes with R9.2's pruning rather than reintroducing the PowerShell
+     * original's separate, UNBOUNDED {@code app.out.history.log} (appended to on every restart,
+     * never pruned): this writes into the SAME {@code logs/app-*.log} pool, pruned to the SAME
+     * newest-20 by the SAME rule {@link #runFinalAppScript} uses, so a background run and a
+     * foreground run share one bounded budget instead of two independently-growing ones. That also
+     * satisfies the original archive's actual purpose -- a first-boot Super User key banner is never
+     * at risk of being overwritten by a later restart, because each run already gets its own
+     * timestamped file.
+     */
+    private static String startAppScript() {
+        return """
+param([string]$Profile = '')
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + """
+$appRoot = Get-NpdevAppRoot -Plan $plan
+
+# Ensures the database environment first, same as the PowerShell original -- now available on every
+# generation path because Start-Environment.ps1 is always emitted here too (Test-Path kept as a
+# defensive no-op for an app generated by an older build of this emitter).
+$startEnvScript = Join-Path $PSScriptRoot 'Start-Environment.ps1'
+if (Test-Path -LiteralPath $startEnvScript) { & $startEnvScript }
+
+$pidFile = Join-Path $PSScriptRoot 'app.pid'
+# Duplicate-PID guard: refuse a second Start while the tracked process is still alive. Without this,
+# a second launch overwrites app.pid with the new PID and Stop-App.ps1 loses track of the first,
+# still-running JVM entirely.
+if (Test-Path -LiteralPath $pidFile) {
+  $existingPidValue = 0
+  [void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$existingPidValue)
+  if ($existingPidValue -gt 0) {
+    $existingProcess = Get-Process -Id $existingPidValue -ErrorAction SilentlyContinue
+    if ($null -ne $existingProcess) {
+      Write-Host "Already running (PID $existingPidValue). Stop it first with Stop-App.ps1."
+      exit 0
+    }
+  }
+}
+# Port-conflict guard: a listener on this app's port that app.pid does not account for is either
+# someone else's service or a JVM this toolbox lost track of -- either way, starting a second one on
+# the same port produces an unexplained bind failure instead of this sentence.
+$portBusy = Get-NetTCPConnection -LocalPort ([int]$plan.serverPort) -State Listen -ErrorAction SilentlyContinue
+if ($portBusy) {
+  $owners = (@($portBusy.OwningProcess) | Sort-Object -Unique) -join ', '
+  Write-Host "Port $($plan.serverPort) is already in use (PID $owners). Stop that first with Stop-App.ps1 to avoid a duplicate." -ForegroundColor Yellow
+  exit 0
+}
+
+# R9.2/R9.4: the SAME bounded pool Run-FinalApp.ps1 writes into.
+$logDir = Join-Path $appRoot 'logs'
+if (-not (Test-Path -LiteralPath $logDir)) { New-Item -ItemType Directory -Force -Path $logDir | Out-Null }
+$NpdevLogRetentionCount = 20
+Get-ChildItem -LiteralPath $logDir -Filter 'app-*.log' -File -ErrorAction SilentlyContinue |
+  Sort-Object LastWriteTime -Descending |
+  Select-Object -Skip ($NpdevLogRetentionCount - 1) |
+  Remove-Item -Force -ErrorAction SilentlyContinue
+$logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yyyyMMddTHHmmssZ') + '.log')
+$errFile = Join-Path $PSScriptRoot 'app.stderr.log'
+
+""" + API_KEY_PROVISIONER + """
+Ensure-NpdevApiKey -AppRoot $appRoot
+""" + SECRETS_ENV_LOADER + """
+
+$jar = Get-ChildItem -LiteralPath $appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
+       Where-Object { $_.FullName -like '*\\build\\libs\\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-FinalApp.ps1 first.' -ForegroundColor Red; exit 1 }
+
+$effectiveProfile = if ([string]::IsNullOrWhiteSpace($Profile)) { [string]$plan.defaultSpringProfiles } else { $Profile }
+Write-Host "Starting $($plan.appId) on http://localhost:$($plan.serverPort) (profiles: $effectiveProfile)"
+Write-Host "Logging this run to $logFile"
+try {
+  $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'BOOT'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
+  ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $appRoot 'npdev-run-app-progress.json') -Encoding UTF8
+} catch { }
+
+$procArgs = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$effectiveProfile")
+$proc = Start-Process -FilePath 'java' -ArgumentList $procArgs -WorkingDirectory $appRoot -PassThru -RedirectStandardOutput $logFile -RedirectStandardError $errFile -WindowStyle Hidden
+$proc.Id | Set-Content -LiteralPath $pidFile -Encoding ascii
+Write-Host "Started PID $($proc.Id). Logs: $logFile"
+
+$ok = $false
+for ($i = 0; $i -lt 60; $i++) {
+  Start-Sleep -Seconds 2
+  try { $h = Invoke-RestMethod -Method GET -Uri "http://localhost:$($plan.serverPort)/actuator/health" -TimeoutSec 3; if ($h.status -eq 'UP') { $ok = $true; break } } catch { }
+}
+if ($ok) {
+  Write-Host "App is UP at http://localhost:$($plan.serverPort)/actuator/health"
+  try {
+    $npdevProgress = [ordered]@{ schemaVersion = 'npdev-run-app-progress.v1'; phase = 'READY'; updatedAt = (Get-Date).ToUniversalTime().ToString('o'); pid = $PID }
+    ($npdevProgress | ConvertTo-Json) | Set-Content -LiteralPath (Join-Path $appRoot 'npdev-run-app-progress.json') -Encoding UTF8
+  } catch { }
+} else {
+  Write-Host 'App did not report healthy in time; check logs.' -ForegroundColor Yellow
+}
+
+# On a first-ever boot, SuperUserBootstrapper writes the one-time Super User key to
+# SUPER_USER_KEY.txt in the app's own working directory (it doesn't know about _ops). Relocate it
+# here so there's exactly ONE fixed, documented place to look.
+$keyFileSource = Join-Path $appRoot 'SUPER_USER_KEY.txt'
+if (Test-Path -LiteralPath $keyFileSource) {
+  $keyFileDest = Join-Path $PSScriptRoot 'SUPER_USER_KEY.txt'
+  Move-Item -LiteralPath $keyFileSource -Destination $keyFileDest -Force
+  Write-Host ''
+  Write-Host "First boot: your Super User key is saved at $keyFileDest" -ForegroundColor Green
+  Write-Host 'Open that file and paste its contents into control-panel.html to unlock it.' -ForegroundColor Green
+}
+exit 0
+""";
+    }
+
+    /**
+     * T3: the POSIX twin of {@link #startAppScript}. No POSIX twin of Start-Environment.ps1 exists
+     * yet (the toolbox's environment orchestration -- Docker profiles, the H2Server jar search -- is
+     * PowerShell-only today, same as before this item), so unlike the PowerShell version this does
+     * NOT attempt to start one; it degrades honestly to "the app process only," which already covers
+     * H2Local (no environment step needed) and matches {@code run-final-app.sh}'s own long-standing
+     * scope.
+     *
+     * <p>The port and default Spring profile are baked as plain tokens, not read from the plan's
+     * JSON at runtime -- {@code sh} has no JSON parser, the same reason {@link #runFinalAppScriptPosix}
+     * bakes its port. The port-conflict guard is best-effort: it uses {@code nc} when present and
+     * says so plainly when it is not, rather than silently skipping the check or guessing.
+     */
+    private static String startAppScriptPosix(int serverPort, String defaultSpringProfiles) {
+        String script = """
+#!/bin/sh
+# NPDev generated FinalApp guarded background launcher -- POSIX twin of Start-App.ps1.
+# Usage: ./start-app.sh [profile]
+set -e
+PROFILE="${1:-__NPDEV_DEFAULT_PROFILE__}"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+SERVER_PORT=__NPDEV_SERVER_PORT__
+PID_FILE="$SCRIPT_DIR/app.pid"
+
+# Duplicate-PID guard (POSIX twin of Start-App.ps1's).
+if [ -f "$PID_FILE" ]; then
+  existing_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+  if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+    echo "Already running (PID $existing_pid). Stop it first with ./stop-app.sh."
+    exit 0
+  fi
+fi
+
+# Port-conflict guard (POSIX twin). Best-effort: degrades honestly when `nc` is not on PATH rather
+# than silently skipping the check or guessing.
+if command -v nc >/dev/null 2>&1; then
+  if nc -z 127.0.0.1 "$SERVER_PORT" 2>/dev/null; then
+    echo "Port $SERVER_PORT is already in use. Stop that first with ./stop-app.sh to avoid a duplicate."
+    exit 0
+  fi
+else
+  echo "Note: 'nc' not found on PATH -- skipping the port-conflict check." >&2
+fi
+
+# R9.2/R9.4 (POSIX twin): the SAME bounded pool run-final-app.sh writes into (logs/app-*.log, newest
+# 20 kept) -- a background run and a foreground run share one retention budget.
+LOG_DIR="$APP_ROOT/logs"
+mkdir -p "$LOG_DIR"
+NPDEV_LOG_RETENTION_COUNT=20
+ls -1t "$LOG_DIR"/app-*.log 2>/dev/null | tail -n +"$NPDEV_LOG_RETENTION_COUNT" | while IFS= read -r old_log; do
+  rm -f "$old_log"
+done
+LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
+ERR_FILE="$SCRIPT_DIR/app.stderr.log"
+
+""" + API_KEY_PROVISIONER_SH + """
+ensure_npdev_api_key "$APP_ROOT"
+""" + SECRETS_ENV_LOADER_SH + """
+load_npdev_agent_proxy_env "$APP_ROOT"
+
+JAR=$(find "$APP_ROOT" -path '*/build/libs/*' -name 'FinalExec-*.jar' ! -name '*-plain.jar' 2>/dev/null | head -n 1)
+if [ -z "$JAR" ]; then
+  echo "Runnable jar not found. Build this app first (gradlew clean build, or ./Build-FinalApp.ps1)."
+  exit 1
+fi
+
+echo "Starting on http://localhost:$SERVER_PORT (profile: $PROFILE)"
+echo "Logging this run to $LOG_FILE"
+nohup java -jar "$JAR" "--server.port=$SERVER_PORT" "--spring.profiles.active=$PROFILE" >"$LOG_FILE" 2>"$ERR_FILE" &
+APP_PID=$!
+echo "$APP_PID" > "$PID_FILE"
+echo "Started PID $APP_PID. Logs: $LOG_FILE"
+
+ok=0
+i=0
+while [ "$i" -lt 60 ]; do
+  sleep 2
+  if curl -fsS "http://localhost:$SERVER_PORT/actuator/health" 2>/dev/null | grep -q '"status":"UP"'; then
+    ok=1
+    break
+  fi
+  i=$((i + 1))
+done
+if [ "$ok" = "1" ]; then
+  echo "App is UP at http://localhost:$SERVER_PORT/actuator/health"
+else
+  echo "App did not report healthy in time; check logs."
+fi
+
+KEY_FILE_SOURCE="$APP_ROOT/SUPER_USER_KEY.txt"
+if [ -f "$KEY_FILE_SOURCE" ]; then
+  KEY_FILE_DEST="$SCRIPT_DIR/SUPER_USER_KEY.txt"
+  mv -f "$KEY_FILE_SOURCE" "$KEY_FILE_DEST"
+  echo ""
+  echo "First boot: your Super User key is saved at $KEY_FILE_DEST"
+  echo "Open that file and paste its contents into control-panel.html to unlock it."
+fi
+exit 0
+""";
+        return script.replace("__NPDEV_SERVER_PORT__", Integer.toString(serverPort))
+                .replace("__NPDEV_DEFAULT_PROFILE__", defaultSpringProfiles);
+    }
+
+    /**
+     * R9.4: promoted from the AppGen PowerShell layer, same story as {@link #startAppScript}. Stops
+     * the tracked process (if any) and the database environment.
+     */
+    private static String stopAppScript() {
+        return """
+$ErrorActionPreference = 'Stop'
+$pidFile = Join-Path $PSScriptRoot 'app.pid'
+if (-not (Test-Path -LiteralPath $pidFile)) { Write-Host 'No app.pid; nothing to stop.'; exit 0 }
+$appPidValue = 0
+[void][int]::TryParse((Get-Content -Raw -LiteralPath $pidFile).Trim(), [ref]$appPidValue)
+$appProcess = if ($appPidValue -gt 0) { Get-Process -Id $appPidValue -ErrorAction SilentlyContinue } else { $null }
+if ($null -ne $appProcess) { Stop-Process -Id $appPidValue -Force; Write-Host "Stopped PID $appPidValue." }
+else { Write-Host "Process $appPidValue was not running." }
+Remove-Item -LiteralPath $pidFile -Force
+$stopEnvScript = Join-Path $PSScriptRoot 'Stop-Environment.ps1'
+if (Test-Path -LiteralPath $stopEnvScript) { & $stopEnvScript }
+exit 0
+""";
+    }
+
+    /** T3: the POSIX twin of {@link #stopAppScript}. */
+    private static String stopAppScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp guarded background stopper -- POSIX twin of Stop-App.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PID_FILE="$SCRIPT_DIR/app.pid"
+if [ ! -f "$PID_FILE" ]; then
+  echo 'No app.pid; nothing to stop.'
+  exit 0
+fi
+APP_PID=$(cat "$PID_FILE" 2>/dev/null || true)
+if [ -n "$APP_PID" ] && kill -0 "$APP_PID" 2>/dev/null; then
+  kill "$APP_PID"
+  echo "Stopped PID $APP_PID."
+else
+  echo "Process $APP_PID was not running."
+fi
+rm -f "$PID_FILE"
+exit 0
+""";
+    }
+
+    /**
+     * R9.6: the systemd unit name / Windows Scheduled Task name derived from the app id -- one
+     * function rather than two, restricted to the character set both targets accept unconditionally
+     * (systemd unit names: {@code [A-Za-z0-9:_.-]}; Task Scheduler names are far less restrictive,
+     * but sharing one safe charset means an operator never has to quote either name specially).
+     */
+    private static String slugForServiceName(String rawAppId) {
+        String id = rawAppId == null ? "" : rawAppId;
+        String slug = id.replaceAll("[^A-Za-z0-9_.-]", "-");
+        return slug.isBlank() ? "app" : slug;
+    }
+
+    /**
+     * R9.6: "Outside Docker's restart policy, nothing restarts a crashed app or starts one at boot."
+     * Registers a Windows Scheduled Task that starts this app at boot and re-checks it every minute,
+     * calling the ALREADY-GUARDED {@code Start-App.ps1} rather than launching {@code java} itself --
+     * per the standing "supervise the existing launchers, do not write new ones" rule, and because
+     * {@code Start-App.ps1} already has the duplicate-PID guard (R9.4) this supervisor leans on: a
+     * tick that finds the app already running is a no-op, and a tick that finds it gone starts it.
+     *
+     * <p><b>This is NOT a true Windows Service (SCM) and says so in its own output.</b> {@code
+     * sc.exe}/{@code New-Service} can only register a binary that implements the Service Control
+     * Manager protocol (responds to START/STOP control codes); an arbitrary script or {@code java
+     * -jar} does not, and {@code sc start} on one fails after a timeout ("did not respond in a timely
+     * fashion", error 1053) rather than actually supervising anything. The only way to make an
+     * arbitrary process a real SCM service is a compiled service-host wrapper (NSSM, WinSW, ...) --
+     * exactly the kind of external binary dependency this platform does not bundle. A Scheduled Task
+     * with an {@code AtStartup} trigger, a repeating heartbeat trigger, and a {@code SYSTEM} principal
+     * is the standard no-third-party-binary way to get "starts at boot, supervised, no one logged in"
+     * on Windows, and is what this emits -- it will not appear in {@code services.msc}, and the
+     * README says so.
+     *
+     * <p>Heartbeat interval is 1 minute: worst-case detection latency for a crash, traded for reusing
+     * proven, already-live-verified guard logic (MON-17) instead of depending on {@code
+     * Run-FinalApp.ps1}'s exit code, which a piped foreground launcher does not always propagate
+     * faithfully (see {@link #installServiceScriptPosix} for the POSIX side, where this exact
+     * exit-code fragility is why systemd is configured {@code Restart=always} rather than {@code
+     * Restart=on-failure}).
+     *
+     * <p>Idempotent and refuses a name conflict rather than clobbering it, the MON-18/PACK-13 house
+     * style: re-running against the SAME app is a no-op; a task of the same name pointed at a
+     * DIFFERENT app's launcher is refused, naming both. {@code -DryRun} prints the would-be
+     * registration with zero side effects -- the verification path that does not require actually
+     * installing anything.
+     */
+    private static String installServiceScript() {
+        return """
+param(
+  [switch]$DryRun,
+  [switch]$Start
+)
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+""" + DATA_ROOT_HELPER + """
+$appRoot = Get-NpdevAppRoot -Plan $plan
+$safeName = ([string]$plan.appId) -replace '[^A-Za-z0-9_.-]', '-'
+if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = 'app' }
+$taskName = "npdev-$safeName"
+$startScript = Join-Path $PSScriptRoot 'Start-App.ps1'
+
+if (-not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+  Write-Host 'The ScheduledTasks module is not available on this machine (needs Windows 8 / Server 2012 or newer). Cannot install.' -ForegroundColor Red
+  exit 1
+}
+
+# Idempotent / refuse-and-name-the-conflict (MON-18/PACK-13 house style), checked before -DryRun even
+# branches so a dry run against a real conflict reports the refusal instead of a misleading preview.
+$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+if ($existingTask) {
+  $existingArgs = [string]($existingTask.Actions | Select-Object -First 1).Arguments
+  if ($existingArgs -like "*$startScript*") {
+    Write-Host "Scheduled task '$taskName' is already installed for this app. Nothing to do -- run Uninstall-Service.ps1 first to reinstall."
+    exit 0
+  }
+  Write-Host "Refused: a scheduled task named '$taskName' already exists but supervises a DIFFERENT app:" -ForegroundColor Red
+  Write-Host "  existing task action : $existingArgs"
+  Write-Host "  this app's launcher  : $startScript"
+  Write-Host "This app's id collides with another app's task name. Rename one of them (a different appId), or remove the conflicting task by hand: Unregister-ScheduledTask -TaskName '$taskName'" -ForegroundColor Red
+  exit 1
+}
+
+$psExe = (Get-Command pwsh.exe -ErrorAction SilentlyContinue).Source
+if (-not $psExe) { $psExe = (Get-Command powershell.exe -ErrorAction SilentlyContinue).Source }
+if (-not $psExe) { Write-Host 'Neither pwsh.exe nor powershell.exe found on PATH.' -ForegroundColor Red; exit 1 }
+$argList = "-NoProfile -ExecutionPolicy Bypass -File `"$startScript`""
+
+if ($DryRun) {
+  Write-Host "[dry run] Would register scheduled task '$taskName':"
+  Write-Host "  executable  : $psExe"
+  Write-Host "  arguments   : $argList"
+  Write-Host "  working dir : $appRoot"
+  Write-Host '  triggers    : at system startup, then every 1 minute thereafter'
+  Write-Host '  runs as     : SYSTEM'
+  Write-Host '  behaviour   : each tick calls the already-guarded Start-App.ps1 -- a no-op while the'
+  Write-Host '                app is already running, a start when it is not. A crash is picked up on'
+  Write-Host '                the next tick (worst case ~1 minute); the app also comes up at boot with'
+  Write-Host '                no one logged in, because it runs as SYSTEM.'
+  Write-Host '  NOTE: this is a Scheduled Task, not a true SCM service -- it will not appear in'
+  Write-Host '  services.msc. See README_RUNBOOK.md for why.'
+  Write-Host 'Nothing was installed.'
+  exit 0
+}
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+  Write-Host 'Install-Service.ps1 must run elevated (as Administrator) to register a SYSTEM-level scheduled task.' -ForegroundColor Red
+  exit 1
+}
+
+$action = New-ScheduledTaskAction -Execute $psExe -Argument $argList -WorkingDirectory $appRoot
+$triggerBoot = New-ScheduledTaskTrigger -AtStartup
+$triggerHeartbeat = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration ([TimeSpan]::MaxValue)
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit ([TimeSpan]::Zero)
+$principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -LogonType ServiceAccount -RunLevel Highest
+
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger @($triggerBoot, $triggerHeartbeat) -Settings $settings -Principal $principal -Description "NPDev supervisor for $($plan.appId) (R9.6). Starts at boot and re-checks every minute via the already-guarded Start-App.ps1; not a true SCM service -- see README_RUNBOOK.md." | Out-Null
+
+Write-Host "Installed scheduled task '$taskName': starts '$($plan.appId)' at boot (as SYSTEM) and re-checks every minute, restarting it via Start-App.ps1 if it is not running."
+if ($Start) {
+  Start-ScheduledTask -TaskName $taskName
+  Write-Host "Triggered an immediate run of '$taskName'."
+}
+exit 0
+""";
+    }
+
+    /**
+     * R9.6: clean removal counterpart to {@link #installServiceScript} -- "an install with no
+     * documented removal is a trap." Idempotent: no task, nothing to do, exit 0. Does NOT stop the
+     * app itself if it happens to be running; that is {@code Stop-App.ps1}'s job, named explicitly in
+     * the output so an operator does not assume one implies the other.
+     */
+    private static String uninstallServiceScript() {
+        return """
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
+$safeName = ([string]$plan.appId) -replace '[^A-Za-z0-9_.-]', '-'
+if ([string]::IsNullOrWhiteSpace($safeName)) { $safeName = 'app' }
+$taskName = "npdev-$safeName"
+
+if (-not (Get-Command Get-ScheduledTask -ErrorAction SilentlyContinue)) {
+  Write-Host 'The ScheduledTasks module is not available on this machine. Nothing to remove.'
+  exit 0
+}
+
+$existingTask = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+if (-not $existingTask) {
+  Write-Host "No scheduled task named '$taskName'. Nothing to do."
+  exit 0
+}
+
+$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdmin) {
+  Write-Host 'Uninstall-Service.ps1 must run elevated (as Administrator) to remove a SYSTEM-level scheduled task.' -ForegroundColor Red
+  exit 1
+}
+
+Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+Write-Host "Removed scheduled task '$taskName'. This did NOT stop the app itself if it is currently running -- use Stop-App.ps1 for that."
+exit 0
+""";
+    }
+
+    /**
+     * R9.6: the POSIX twin of {@link #installServiceScript}, and the stronger half of the pair --
+     * Linux has a real init-system supervisor, so this registers an actual systemd unit around {@code
+     * run-final-app.sh} instead of polling. {@code Restart=always} rather than {@code on-failure} is
+     * deliberate, not a stronger-than-needed default: {@code run-final-app.sh}'s last pipeline stage
+     * is {@code tee}, and in POSIX {@code sh} (no {@code pipefail}) a pipeline's exit status is its
+     * LAST command's status -- so the script reports success (exit 0) even when {@code java} was
+     * killed out from under it, because {@code tee} itself exited cleanly on EOF. {@code
+     * Restart=on-failure} would trust that misleading exit 0 and never restart it; {@code
+     * Restart=always} restarts on ANY exit except an explicit {@code systemctl stop}, which is the
+     * correct semantics for "keep this app running" regardless of {@code run-final-app.sh}'s exit-code
+     * fidelity. {@code StartLimitIntervalSec}/{@code StartLimitBurst} cap a genuinely broken app's
+     * restart loop rather than hammering it forever.
+     *
+     * <p>{@code appId} arrives pre-sanitized ({@link #slugForServiceName}) and BAKED as a literal
+     * token, the same reason {@link #startAppScriptPosix} bakes its port and profile: {@code sh} has
+     * no JSON parser, so this script never reads {@code resolved-db-plan.json} at runtime at all.
+     *
+     * <p>Idempotent and refuse-and-name-the-conflict, same as the Windows side: the unit file carries
+     * a {@code # NPDEV_APP_ROOT=<path>} marker comment, checked by exact string match (not a regex
+     * against a path, which could contain characters a regex would interpret) before anything is
+     * written. {@code --dry-run} prints the would-be unit file content with zero side effects, and
+     * works without root -- installing for real requires root (writing under {@code
+     * /etc/systemd/system} and calling {@code systemctl}), refused with a plain message rather than a
+     * permission-denied stack trace.
+     */
+    private static String installServiceScriptPosix(String appId) {
+        String script = """
+#!/bin/sh
+# NPDev generated FinalApp -- register a systemd unit that supervises run-final-app.sh: starts at
+# boot, restarts automatically (Restart=always) if the app process ever exits. POSIX twin of
+# Install-Service.ps1 -- unlike the Windows side, this is a REAL init-system service, not a polling
+# heartbeat, because systemd can track the process directly.
+# Usage: sudo ./install-service.sh [--dry-run] [--start] [--profile <name>]
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+
+DRY_RUN=0
+START_NOW=0
+PROFILE=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    --start) START_NOW=1; shift ;;
+    --profile) PROFILE="$2"; shift 2 ;;
+    *) echo "Unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "systemctl not found -- this machine does not appear to run systemd. Cannot install a systemd unit." >&2
+  exit 1
+fi
+
+UNIT_NAME="npdev-__NPDEV_SAFE_APP_ID__"
+UNIT_PATH="/etc/systemd/system/$UNIT_NAME.service"
+RUN_USER=$(id -un)
+# Falls back to the numeric GID: `id -gn` fails outright ("cannot find name for group ID ...") on any
+# account whose primary group has no /etc/group entry -- a real failure hit live while testing this
+# script, not a theoretical one, and common on minimal containers as well as this dev machine. systemd's
+# Group= directive accepts a numeric GID exactly as well as a name, so there is no loss of correctness.
+#
+# `|| true` (not `|| id -g`): under `set -e`, a plain `X=$(cmd)` assignment DOES abort the script when
+# `cmd` exits non-zero -- `|| true` is what keeps that from happening, checked SEPARATELY from what
+# the fallback should be, because `id -gn`'s failure-path stdout is not consistent across `id`
+# implementations. GNU coreutils prints NOTHING to stdout on this failure (empty, correctly triggering
+# the fallback below); the MSYS `id` this exact failure was reproduced against prints the numeric GID
+# to stdout anyway, so `id -gn 2>/dev/null || id -g` was measured live to run `id -g` a SECOND time and
+# duplicate the line. Checking emptiness after the fact is correct under both behaviours.
+RUN_GROUP=$(id -gn 2>/dev/null) || true
+if [ -z "$RUN_GROUP" ]; then
+  RUN_GROUP=$(id -g)
+fi
+
+UNIT_CONTENT="[Unit]
+Description=NPDev generated app: __NPDEV_SAFE_APP_ID__ (installed by install-service.sh, R9.6)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+# NPDEV_APP_ROOT=$APP_ROOT
+Type=simple
+WorkingDirectory=$APP_ROOT
+ExecStart=/bin/sh $APP_ROOT/_ops/run-final-app.sh $PROFILE
+Restart=always
+RestartSec=5
+User=$RUN_USER
+Group=$RUN_GROUP
+
+[Install]
+WantedBy=multi-user.target
+"
+
+if [ -f "$UNIT_PATH" ]; then
+  existing_root=$(grep -m1 '^# NPDEV_APP_ROOT=' "$UNIT_PATH" 2>/dev/null | sed 's/^# NPDEV_APP_ROOT=//')
+  if [ "$existing_root" = "$APP_ROOT" ]; then
+    echo "Unit '$UNIT_NAME' is already installed for this app ($UNIT_PATH). Nothing to do -- run uninstall-service.sh first to reinstall."
+    exit 0
+  fi
+  echo "Refused: '$UNIT_PATH' already exists and supervises a DIFFERENT app." >&2
+  echo "  existing app root : ${existing_root:-<unknown -- not an npdev-managed unit>}" >&2
+  echo "  this app's root   : $APP_ROOT" >&2
+  echo "This app's id collides with another app's unit name. Rename one of them (a different appId), or remove the conflicting unit by hand: sudo systemctl disable --now $UNIT_NAME && sudo rm $UNIT_PATH && sudo systemctl daemon-reload" >&2
+  exit 1
+fi
+
+if [ "$DRY_RUN" = "1" ]; then
+  echo "[dry run] Would write $UNIT_PATH:"
+  echo "---"
+  printf '%s\\n' "$UNIT_CONTENT"
+  echo "---"
+  echo "Would then run: systemctl daemon-reload && systemctl enable $UNIT_NAME"
+  if [ "$START_NOW" = "1" ]; then echo "Would then run: systemctl start $UNIT_NAME"; fi
+  echo "Nothing was installed."
+  exit 0
+fi
+
+if [ "$(id -u)" != "0" ]; then
+  echo "install-service.sh must run as root (sudo) to write $UNIT_PATH and register the unit with systemd." >&2
+  exit 1
+fi
+
+printf '%s\\n' "$UNIT_CONTENT" > "$UNIT_PATH"
+systemctl daemon-reload
+systemctl enable "$UNIT_NAME"
+echo "Installed and enabled '$UNIT_NAME' ($UNIT_PATH): starts at boot and restarts automatically (Restart=always) if the app process exits for any reason."
+if [ "$START_NOW" = "1" ]; then
+  systemctl start "$UNIT_NAME"
+  echo "Started '$UNIT_NAME' now."
+fi
+exit 0
+""";
+        return script.replace("__NPDEV_SAFE_APP_ID__", appId);
+    }
+
+    /**
+     * R9.6: clean removal counterpart to {@link #installServiceScriptPosix}. Idempotent: no unit
+     * file, nothing to do, exit 0. Stops the unit before disabling/removing it (systemd's own job,
+     * not a duplicate of {@code stop-app.sh}'s PID-file logic), so this alone is a complete teardown
+     * -- unlike the Windows side, which relies on the separately-documented {@code Stop-App.ps1}.
+     */
+    private static String uninstallServiceScriptPosix(String appId) {
+        String script = """
+#!/bin/sh
+# NPDev generated FinalApp -- stop, disable and remove the systemd unit install-service.sh created.
+# POSIX twin of Uninstall-Service.ps1. Usage: sudo ./uninstall-service.sh
+set -e
+UNIT_NAME="npdev-__NPDEV_SAFE_APP_ID__"
+UNIT_PATH="/etc/systemd/system/$UNIT_NAME.service"
+
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "systemctl not found -- nothing to remove."
+  exit 0
+fi
+
+if [ ! -f "$UNIT_PATH" ]; then
+  echo "No unit at $UNIT_PATH ('$UNIT_NAME'). Nothing to do."
+  exit 0
+fi
+
+if [ "$(id -u)" != "0" ]; then
+  echo "uninstall-service.sh must run as root (sudo) to stop/disable/remove $UNIT_PATH." >&2
+  exit 1
+fi
+
+systemctl stop "$UNIT_NAME" 2>/dev/null || true
+systemctl disable "$UNIT_NAME" 2>/dev/null || true
+rm -f "$UNIT_PATH"
+systemctl daemon-reload
+echo "Removed '$UNIT_NAME' ($UNIT_PATH). If the app was running, systemctl stop above already stopped it."
+exit 0
+""";
+        return script.replace("__NPDEV_SAFE_APP_ID__", appId);
     }
 
     private static String smokeTestScript() {
@@ -1336,9 +2011,10 @@ Run every command below **from this `_ops` directory** -- it lives inside the ap
 the paths are relative to it and stay correct wherever you copy the app to.
 
 `pwsh` is the cross-platform PowerShell binary name (Windows, Linux and macOS all install it as
-`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; step 3
-(Run FinalApp) also has a POSIX shell twin, `run-final-app.sh`, for a machine with no PowerShell at
-all.
+`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; steps 3,
+3a and 3b also have POSIX shell twins (`run-final-app.sh`, `start-app.sh`/`stop-app.sh`,
+`install-service.sh`/`uninstall-service.sh`) for a machine with no PowerShell at all -- 3b's two
+sides are not the same mechanism, see that section.
 
 ```sh
 cd <this app>/_ops
@@ -1382,6 +2058,56 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File ./Run-FinalApp.ps1 -Profile prod
 
 `prod` seeds no admin API key of its own; either launcher provisions/reuses the same
 `secrets/api-key.env` key regardless of profile (see `X-Api-Key` in the console output on first run).
+
+3a. Start/Stop FinalApp (background, guarded)
+
+An alternative to step 3 for a launcher you can script against: `Start-App.ps1` runs the jar in the
+BACKGROUND, tracks its PID in `app.pid`, and waits for `/actuator/health` before returning. It
+refuses a second Start while a tracked process is still alive or something else already listens on
+this app's port (R9.4), rather than producing a second JVM `app.pid` no longer tracks.
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Start-App.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Stop-App.ps1
+```
+
+```sh
+./start-app.sh
+./stop-app.sh
+```
+
+Same log handling as step 3: each run gets its own `logs/app-<timestamp>.log`, pruned to the newest
+20 across BOTH launchers -- a background run and a foreground run share one bounded pool.
+
+3b. Supervise as a service (optional -- survives a crash or a reboot, no Docker required)
+
+Outside Docker's restart policy, nothing restarts a crashed app or starts one at boot. `Install-Service.ps1`
+/ `install-service.sh` register a supervisor around the launchers above so this app comes back on its
+own. **Installing writes outside this app** (a systemd unit under `/etc/systemd/system`, or a Windows
+Scheduled Task) and needs elevated privileges (root / Administrator) -- pass `-DryRun` / `--dry-run`
+first to see exactly what would be registered with zero side effects. Re-running against the same app
+is a no-op; a name collision with a DIFFERENT app's service is refused, naming both.
+
+**The two platforms are NOT the same mechanism**, stated plainly rather than implied:
+- Linux/systemd gets a REAL unit (`Type=simple`, `Restart=always`) wrapping `run-final-app.sh` --
+  systemd tracks the process directly, so a crash is noticed immediately.
+- Windows has no way to register an arbitrary script as a true SCM service without a third-party
+  wrapper binary (NSSM, WinSW, ...), which this platform does not bundle. Instead this registers a
+  Scheduled Task (SYSTEM principal, starts at boot, and re-checks every minute) that calls the
+  already-guarded `Start-App.ps1` -- a no-op if the app is already running, a start if it is not. It
+  will **not** appear in `services.msc`; worst-case crash-recovery latency is ~1 minute, not instant.
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Install-Service.ps1 -DryRun   # preview only
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Install-Service.ps1          # needs an elevated shell
+pwsh -NoProfile -ExecutionPolicy Bypass -File ./Uninstall-Service.ps1
+```
+
+```sh
+sudo ./install-service.sh --dry-run   # preview only
+sudo ./install-service.sh
+sudo ./uninstall-service.sh
+```
 
 4. Smoke-test FinalApp
 

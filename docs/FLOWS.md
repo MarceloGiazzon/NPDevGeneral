@@ -60,18 +60,32 @@ method that returns a **new** record — there is no in-place mutation to get wr
          ┌───────────▼──────────┐
          │     WAITING_EVENT     │
          └──┬────────────────┬──┘
-   resumeExecution finds     │ resume attempted, event still missing
-   the matching event,       │ (or a transient error) -- retried with
-   steps proceed             │ exponential backoff, 5s .. 300s cap
+   resumeExecution finds     │ resume attempted -- retried with
+   the matching event,       │ exponential backoff, 5s .. 300s cap
+   steps proceed             │
             │                │
             ▼                ▼
          RUNNING        WAITING_EVENT (retry)
                               │
+                              │ ONLY a real resume failure
+                              │ (exception:*) counts; its
                               │ resumeAttemptCount reaches
                               │ RESUME_MAX_ATTEMPTS = 20
                               ▼
                             STUCK
 ```
+
+**A quiet wait never becomes STUCK (R2.1).** The retry arrow above covers two very different
+situations, and only one of them can end in `STUCK`. A resume that finds *no event yet* — the
+ordinary state of a flow parked on an approval nobody has given — records `missing_event` and is
+measured against **no cap at all**, so it stays resumable indefinitely and keeps only the backoff
+delay. A resume that genuinely **throws** records `exception:*` and still counts toward
+`RESUME_MAX_ATTEMPTS = 20`. Before R2.1 both shared the cap, and since `resumeDelayMillis`'s ladder
+(5s, doubling, capped at 300s) sums to 4,515s across 20 misses, roughly **75 minutes of pure quiet
+permanently killed exactly the long human waits this document advertises** — with no later event
+able to revive the instance. The two tallies share one `resumeAttemptCount` field, so the counter is
+reset at the quiet→real changeover (`FlowInstance.withResumeStreakReset`); otherwise the first real
+fault after a long wait would be an instant STUCK.
 
 Every arrow above is a real call site in `KernelRunner.java`:
 
@@ -83,8 +97,8 @@ Every arrow above is a real call site in `KernelRunner.java`:
 | RUNNING → COMPLETED | `KernelRunner.java:1086-1098`, `1170-1173` | all steps done, or resume past the end |
 | RUNNING → FAILED / FAILED_PERMANENT / STUCK | `KernelRunner.java:1149-1161`, `1197-1204` | a step fails; `resolveFailureTerminalStatus` (`:2641-2665`) picks the terminal status — compensation (if declared) runs first, then the same status applies either way |
 | WAITING_EVENT → RUNNING | guard at `KernelRunner.java:876-892` | `resumeExecution` finds the awaited event |
-| WAITING_EVENT → WAITING_EVENT | `KernelRunner.java:982-1011`, `2610-2617` | resume attempted, nothing found yet — backoff |
-| WAITING_EVENT → STUCK | `FlowInstance.java:180-186` | `resumeAttemptCount + 1 >= RESUME_MAX_ATTEMPTS` (constant `20`, `KernelRunner.java:90`) |
+| WAITING_EVENT → WAITING_EVENT | `KernelRunner.java:982-1011`, `2610-2617` | resume attempted, nothing found yet — backoff, **no attempt cap** (R2.1) |
+| WAITING_EVENT → STUCK | `FlowInstance.java:180-186` | `resumeAttemptCount + 1 >= RESUME_MAX_ATTEMPTS` (constant `20`) — reached **only** on real `exception:*` resume failures; `missing_event` passes `RESUME_NO_ATTEMPT_CAP = 0`, which `markResumeFailure` treats as never-exhausted (`ResumeCoordinator.applyResumeBackoff`) |
 
 **Terminal-status selection** (`resolveFailureTerminalStatus`, `KernelRunner.java:2641-2665`):
 
@@ -96,10 +110,18 @@ EVENT_PERSIST_FAILED, FAILED                                        → FAILED
 ```
 
 **`COMPLETED`, `FAILED`, and `FAILED_PERMANENT` are true dead ends** — nothing in `KernelRunner.java`
-ever transitions an instance back out of them. **`STUCK` is a dead end in practice, not by explicit
-design**: `resumeExecution`'s status guard (`KernelRunner.java:882`) accepts `RUNNING` and
-`WAITING_EVENT` but not `STUCK`, so a stuck instance cannot self-heal through the normal resume path.
-There is no coded "un-stick" operation today — see §9 for what inspecting one actually looks like.
+ever transitions an instance back out of them. **`STUCK` does not self-heal**: `resumeExecution`'s
+status guard (`KernelRunner.java:882`) accepts `RUNNING` and `WAITING_EVENT` but not `STUCK`, so no
+sweep will ever pick a stuck instance back up on its own.
+
+**But `STUCK` is no longer a dead end (R2.2).** `KernelRunner.unstickExecution(executionId)` returns
+the instance to `WAITING_EVENT`, zeroes `resumeAttemptCount` and clears the eligibility timestamp so
+the very next sweep considers it, via the `FlowInstance.withUnstuck(now)` factory. It deliberately
+does **not** resume inline — the ordinary sweep path then carries it, with its usual idempotency and
+correlation checks. Exposed as `POST /api/executions/{id}/unstick`, **SUPERUSER-gated** (not ADMIN;
+see §9). Refuses with `NOT_STUCK` on any other status, and refuses a `STUCK` row carrying no
+`waitingForEventName` — `STUCK` is reachable from `RUNNING`, and such a row cannot legally hold
+`WAITING_EVENT`.
 
 ## 3. The 9 step kinds
 
@@ -111,7 +133,7 @@ values, each with its own factory method:
 | `INVARIANT_CHECK` | `invariant(name, scope, checkpoint, invariants)` | Evaluates named invariants at a `PRE` or `POST` checkpoint (`checkpoint` is a field *of* this step, not its own step kind) |
 | `CAPABILITY_CALL` | `capabilityCall(...)` | Dispatches to a capability adapter (a concept's generated CRUD, or a platform capability like `notification.send`) |
 | `EMIT_EVENT` | `emitEvent(name, eventName, payloadRef, eventDataRefs)` | Publishes an event immediately |
-| `SCHEDULE_EVENT` | `scheduleEvent(..., delaySeconds)` | Publishes an event immediately, stamped with delay metadata for a consumer to honor (§7) |
+| `SCHEDULE_EVENT` | `scheduleEvent(..., delaySeconds)` | **delay 0:** publishes immediately (identical to `EMIT_EVENT`'s path). **delay > 0 (R2.4):** writes a PENDING `npdev_scheduled_event` row and publishes NOTHING during this execution — the drain publishes it once `due_at` passes (§7) |
 | `BRANCH` | `branch(name, condition, thenSteps, elseSteps)` | Evaluates a string expression, runs one nested step list |
 | `AWAIT_EVENT` | `awaitEvent(name, eventName, awaitRef, ...)` | Suspends until a matching event arrives — §4 |
 | `MAP` | `map(name, fromRef, toRef)` | Copies a value from one flow-state reference to another |
@@ -463,11 +485,29 @@ Tracked as accepted boundaries B15(A) (closed, Move 16) / B15(B) (closed, S6, th
 
 ## 7. Scheduling — two mechanisms, same name, don't confuse them
 
-**`SCHEDULE_EVENT` (a flow step, §3)** publishes an event **immediately** — the "delay" is metadata
-(`delaySeconds`, `scheduledForEpochMs`) stamped onto the event envelope for a consumer to honor, not a
-kernel-enforced deferred dispatch (`KernelRunner.java:1689-1811`). It calls the exact same
-`resumeWaitingExecutionsFor` an `EMIT_EVENT` step does (`KernelRunner.java:1802` vs. `:1682`) — zero
-special-casing in the `AWAIT_EVENT`/correlation machinery.
+**`SCHEDULE_EVENT` (a flow step, §3)** branches on the delay, as of R2.4:
+
+- **`delaySeconds: 0`** — publishes immediately, calling the exact same `resumeWaitingExecutionsFor`
+  an `EMIT_EVENT` step does, with zero special-casing in the `AWAIT_EVENT`/correlation machinery.
+  This path is unchanged.
+- **`delaySeconds > 0`** — hands the envelope to a `DeferredEventScheduler`, which writes a PENDING
+  `npdev_scheduled_event` row, and returns. It publishes nothing, appends nothing to the event
+  store, resumes no waiters, and adds nothing to `emittedEvents`. R2.3's `ScheduledEventDrainRunner`
+  publishes it once `due_at` passes.
+
+  **Not appending to the store is load-bearing, not an oversight:**
+  `ResumeCoordinator.findAwaitedEvent` reads the STORE, so a stored-but-unpublished envelope would
+  wake a waiter on the very next sweep and defeat the delay entirely.
+
+  Before R2.4 this step published immediately and merely stamped `delaySeconds`/
+  `scheduledForEpochMs` onto the envelope as metadata "for a consumer to honor" — i.e. the
+  canonical demo's 24-hour reminder fired instantly. See `BREAKING.md` (2026-08-18).
+
+  **Known limitation:** the drain publishes with a FRESH correlation id (it ignores the row's stored
+  `trigger_correlation_id`), so a deferred event does not satisfy an `AWAIT_EVENT` declaring
+  `matchCorrelation: true`. This predates R2.4 — the orchestration `scheduleEvent` action has the
+  same behaviour — and fixing it needs tenant propagation the table has no column for. Tracked
+  separately; do not model a delayed self-wake against a correlated await until it is closed.
 
 **Flow-level cron scheduling (LNCH-12)** is a completely different, model-top-level feature: a
 `flowSchedule` declaration with a `cron` expression and a `tenantScope`. Full doc:
@@ -503,7 +543,7 @@ flow at all. Each has a trigger event, an optional condition expression over `$e
 actions (`create`, `callCapability`, `scheduleEvent`). The runtime is a **genuinely separate mechanism**
 from `KernelRunner`'s flow-step execution: `GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers`
 subscribes directly to the event bus per orchestration
-(`NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java:1188-1210`), sitting alongside
+(`NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java:1188-1210`), sitting alongside
 the flow engine's own subscribers, not routed through `FlowStepDefinition`/`executeSteps`. Each firing
 claims an exactly-once execution slot (`OrchestrationExecutionRegistry`, keyed by orchestration name +
 source event id) before running its actions. Worked example:
@@ -528,20 +568,35 @@ now.
 **Where instances live:** `npdev_flow_instance` is the sole system of record for every in-flight or
 terminal execution; `npdev_correlation_owner` is the adjacent ownership table (§4).
 
-**Inspecting a `STUCK` instance.** The store layer has a purpose-built query —
-`ExecutionSummaryStore.listStuckSummaries` (implemented by both `JdbcFlowInstanceStore` and
-`InProcFlowInstanceStore`) — but as of this writing **no REST controller calls it**; the capability
-exists at the store/port layer without a wired endpoint. Today's actual operator-facing surfaces are:
-`GET /api/executions/active` / `.../history` (`ExecutionMonitorController.java`, which does flag
-`STUCK` as `NEEDS_ATTENTION` alongside `FAILED`/`FAILED_PERMANENT`), and the `npdev-cli`'s
-`printTrace`/`resumeExecution` subcommands for direct, single-instance inspection or a forced retry.
+**Inspecting and recovering a `STUCK` instance (R2.2).** `ExecutionSummaryStore.listStuckSummaries`
+(implemented by both `JdbcFlowInstanceStore` and `InProcFlowInstanceStore`) is now wired to
+`GET /api/executions/stuck`, and `POST /api/executions/{id}/unstick` recovers one (§2). Both live on
+`ExecutionMonitorController.java`, which also flags `STUCK` as `NEEDS_ATTENTION` on
+`GET /api/executions/active` / `.../history`. The `npdev-cli`'s `printTrace`/`resumeExecution`
+subcommands remain for direct single-instance inspection or a forced retry.
+
+**Two things to know before you reach for these:**
+
+- **They need DIFFERENT credentials today, which is a wart, not a design.** `unstick` is
+  SUPERUSER-gated on purpose — in an `auth.mode=none` app the generated `RuntimeContextService`
+  grants ADMIN to every anonymous caller, so ADMIN would be no gate at all. But the `stuck` LISTING
+  goes through `canReadFailures`, which a SUPERUSER-only principal fails. So an operator currently
+  lists with an ADMIN key and un-sticks with the Super User key. Verified live: `POST .../unstick`
+  with an ADMIN key returns **403**.
+- **Since R2.1, reaching `STUCK` at all means a resume kept THROWING.** A merely-quiet wait no
+  longer counts toward the cap (§2), so a stuck instance is always a real, repeating failure — fix
+  the cause before un-sticking, or it will simply exhaust the cap again.
 
 **What actually triggers a resume attempt**, in order of how often each fires:
 
 1. **Any event publish**, from anywhere — an external event, an `EMIT_EVENT` step, or a
-   `SCHEDULE_EVENT` step — synchronously tries to wake matching waiters in the same call.
+   **zero-delay** `SCHEDULE_EVENT` step — synchronously tries to wake matching waiters in the same
+   call. A `SCHEDULE_EVENT` with `delaySeconds > 0` does NOT (R2.4, §7): it publishes nothing now,
+   so it triggers no resume until the drain publishes it at `due_at`.
 2. **The recurring poller** — `ResumeSchedulerRunner`, `@Scheduled` every 2s by default
    (`npdev.scheduler.tick-millis` / `npdev.resume.pollMs`), calling `resumeAllWaitingExecutions`.
+   **`ScheduledEventDrainRunner`** (R2.3) runs on the same cadence and is what publishes a due
+   deferred event, making it an indirect fifth trigger.
 3. **Boot** — `ResumeBootstrapRunner`, once, on `ApplicationReadyEvent` (§4).
 4. **A generated action endpoint** — an authenticated caller submitting the awaited event's payload
    through a generated REST action is itself a resume trigger (`TrustedSourceEmitter`-generated code
@@ -579,8 +634,11 @@ See §11 for the review that found this.
 - No real sample model exercises `FOR_EACH`, `onFailure`/compensation, or hooks — only test code and
   hand-written spec snippets do (§3, §5, §8). If you're authoring one of these for the first time,
   there's no worked model to copy from yet.
-- `STUCK` has no coded "un-stick" operation; `listStuckSummaries` exists at the store layer with no
-  wired REST endpoint (§2, §9).
+- ~~`STUCK` has no coded "un-stick" operation; `listStuckSummaries` exists at the store layer with
+  no wired REST endpoint~~ — **closed by R2.2**: both are now wired (§2, §9). What remains is a
+  smaller wart: listing and un-sticking need different credentials (ADMIN and SUPERUSER
+  respectively), because the listing goes through `canReadFailures` while the un-stick is
+  deliberately SUPERUSER-gated (§9).
 - Resume authorization did not originally consider the originating actor (only the tenant) — found and
   dispositioned as `REG-45` (§11).
 

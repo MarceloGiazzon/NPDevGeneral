@@ -1,5 +1,6 @@
 package com.npdev.kernel;
 
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.kernel.events.EventEnvelope;
 import com.npdev.kernel.capability.CapabilityPolicyOverride;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
@@ -18,6 +19,7 @@ import com.npdev.kernel.ports.CircuitBreakerStateStore;
 import com.npdev.kernel.ports.EventBus;
 import com.npdev.kernel.ports.EventStore;
 import com.npdev.kernel.ports.CorrelationOwnershipStore;
+import com.npdev.kernel.ports.DeferredEventScheduler;
 import com.npdev.kernel.ports.FlowDefinitionProvider;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import com.npdev.kernel.ports.IdProvider;
@@ -42,6 +44,7 @@ import com.npdev.kernel.security.PermissionRequirement;
 import com.npdev.kernel.security.PermissionSubject;
 
 
+import java.util.AbstractMap;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Collections;
@@ -54,8 +57,12 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
 import java.util.logging.Logger;
 
 /**
@@ -90,11 +97,52 @@ final EventBus eventBus;
     // to know about; CallProcedureStep fails cleanly with NO_PROCEDURE_RUNNER when unset.
     private ProcedureExecutor procedureExecutor;
     private Map<String, ProcedureDefinition> procedureRegistry = Map.of();
+    // R2.4: optional, set-after-construction for the same reason procedureExecutor above is -- the
+    // durable scheduled-event table lives in an adapter that depends on this module, so the binding
+    // arrives from outside. Left null, a scheduleEvent step with delaySeconds > 0 fails cleanly
+    // (see ScheduleEventStep); it is never treated as "publish now".
+    DeferredEventScheduler deferredEventScheduler;
     private final ThreadLocal<String> currentFlowContext = new ThreadLocal<>();
     private static final Object UNRESOLVED = new Object();
     private static final int CIRCUIT_FAILURE_THRESHOLD = 5;
     private static final long CIRCUIT_OPEN_DURATION_MS = 30_000L;
     private static final int BULKHEAD_MAX_CONCURRENT = 10;
+
+    // R2.6 (RUN-4): the kernel-wide capability timeout backstop. Before this,
+    // CapabilityExecutionPolicy.defaults() returned timeoutMs=0 and a model that declared a
+    // capabilityPolicy without a timeout got 0 too, so invokeCapabilityOnce took the synchronous
+    // branch and a capability adapter that never returned hung the calling thread forever. The
+    // adapter-level deadlines shipped for RUN-4 cover the two NPDev network adapters only -- a
+    // custom or third-party CapabilityAdapter still has no deadline at all, which is what this
+    // backstop is for. Resolved with the same "0 means unset -> hardcoded constant" precedence
+    // resolveEffectiveCapabilityPolicy already uses for circuit/bulkhead, so a host-supplied
+    // override of exactly 0 still disables the timeout (and restores the old synchronous path).
+    //
+    // 10 minutes is deliberately far above any legitimate capability duration rather than a tuned
+    // SLA: external-ai-http alone can legitimately spend maxRetries(2)+1 attempts x 120s request
+    // timeout plus backoff, so anything under ~6 minutes would turn a hang backstop into a
+    // functional limit on a working adapter.
+    private static final long DEFAULT_CAPABILITY_TIMEOUT_MS = 600_000L;
+
+    private static final AtomicInteger CAPABILITY_THREAD_SEQUENCE = new AtomicInteger();
+
+    // R2.6 (RUN-4): the timeout branch used to be CompletableFuture.supplyAsync(supplier) with no
+    // Executor, which per the JDK contract runs on ForkJoinPool.commonPool(). That pool's workers
+    // are shared, pre-existing and reused, so they do not carry the calling thread's thread-local
+    // state -- and this kernel HAS such state on the capability call stack: currentFlowContext is
+    // set for the whole flow-step loop (see execute) and read by assertCrudInvariantPathAllowed,
+    // which is what stops the deprecated CRUD invariant path from being re-entered during flow
+    // execution. On a commonPool worker that read returns null, so the guard silently stops
+    // guarding instead of throwing. Cancelling on timeout also interrupts a SHARED pool thread.
+    // A dedicated cached pool of daemon threads fixes both: it is sized by demand exactly as the
+    // synchronous path was (one thread per in-flight capability), the threads are named so a stack
+    // dump is readable, daemon so they never hold the JVM open, and interrupting one on timeout
+    // affects nothing but that capability.
+    private static final ExecutorService CAPABILITY_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        Thread thread = new Thread(runnable, "npdev-capability-" + CAPABILITY_THREAD_SEQUENCE.incrementAndGet());
+        thread.setDaemon(true);
+        return thread;
+    });
     private static final int IDEMPOTENCY_RESULT_MAX_CHARS = 16_384;
 
     public KernelRunner withEventSchemaProvider(EventSchemaProvider provider) {
@@ -118,6 +166,17 @@ final EventBus eventBus;
     ) {
         this.procedureExecutor = procedureExecutor;
         this.procedureRegistry = procedureRegistry == null ? Map.of() : Map.copyOf(procedureRegistry);
+        return this;
+    }
+
+    /**
+     * R2.4: binds the durable scheduled-event table to the {@code scheduleEvent} flow step, so a
+     * declared delay is honoured rather than stamped on an event that fires immediately. Follows
+     * {@link #withProcedureExecutor}'s precedent -- an optional collaborator none of this class's
+     * 16 constructors needs to know about.
+     */
+    public KernelRunner withDeferredEventScheduler(DeferredEventScheduler deferredEventScheduler) {
+        this.deferredEventScheduler = deferredEventScheduler;
         return this;
     }
 
@@ -933,6 +992,35 @@ final EventBus eventBus;
         );
     }
 
+    /**
+     * R2.2: return a STUCK execution to the resume sweep. This is the operator's recovery path for
+     * the one status nothing else moves out of -- {@code ResumeCoordinator.resumeAllWaitingExecutions}
+     * only ever claims WAITING_EVENT rows, and {@link #resumeExecution} refuses anything that is
+     * neither WAITING_EVENT nor RUNNING, so before this method the only way out of STUCK was SQL.
+     *
+     * <p>It deliberately does NOT resume inline. The instance goes back to WAITING_EVENT with a
+     * cleared eligibility timestamp, and the next sweep (2s by default) picks it up through the
+     * ordinary path -- including its idempotency and correlation checks -- rather than this method
+     * re-implementing any of that. A caller that wants the retry to happen now can publish the
+     * awaited event, which resumes matching waiters synchronously.
+     *
+     * @return the persisted post-transition instance, or empty if no such execution exists
+     * @throws IllegalStateException if the execution is not un-stickable -- see
+     *         {@link FlowInstance#withUnstuck(long)} for the two cases
+     */
+    public Optional<FlowInstance> unstickExecution(String executionId) {
+        if (executionId == null || executionId.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<FlowInstance> instanceOpt = flowInstanceStore.findByExecutionId(executionId);
+        if (instanceOpt.isEmpty()) {
+            return Optional.empty();
+        }
+        FlowInstance unstuck = instanceOpt.get().withUnstuck(nowEpochMillis());
+        flowInstanceStore.update(unstuck);
+        return Optional.of(unstuck);
+    }
+
     @Override
     public FlowEngine.ResumeOutcome resumeFlow(String correlationId, EventEnvelope eventEnvelope) {
         if (eventEnvelope == null) {
@@ -1471,7 +1559,13 @@ final EventBus eventBus;
                 override.retryMaxDelayMs(),
                 Math.max(retryBaseDelayMs, safeBase.retryDelayMs())
         );
-        long timeoutMs = nonNegativeOrDefault(override.timeoutMs(), safeBase.timeoutMs());
+        // R2.6 (RUN-4): 0 means unset here exactly as it does for circuit/bulkhead below, so an
+        // undeclared timeout -- whether from CapabilityExecutionPolicy.defaults() or from a model
+        // that declared a capabilityPolicy but no timeoutMs -- resolves to the hardcoded backstop
+        // instead of "no deadline at all". A host-supplied override of exactly 0 still wins and
+        // disables the timeout, which is the escape hatch back to the synchronous path.
+        long timeoutMsBase = safeBase.timeoutMs() > 0 ? safeBase.timeoutMs() : DEFAULT_CAPABILITY_TIMEOUT_MS;
+        long timeoutMs = nonNegativeOrDefault(override.timeoutMs(), timeoutMsBase);
         // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5 / capabilityPolicy): a declared model
         // policy's circuitOpenAfterFailures/circuitOpenMs/bulkheadMaxConcurrent now sit BETWEEN the
         // host-supplied override and the hardcoded constant -- the same 3-tier precedence retry/
@@ -2338,7 +2432,8 @@ CapabilityCall call = new CapabilityCall(
         }
 
         CompletableFuture<CapabilityResult> future = CompletableFuture.supplyAsync(
-                () -> capabilityDispatcher.invoke(call, finalContextState)
+                capabilityInvocationPropagatingCurrentFlow(call, finalContextState),
+                CAPABILITY_EXECUTOR
         );
         try {
             return future.get(timeoutMs, TimeUnit.MILLISECONDS);
@@ -2611,6 +2706,43 @@ CapabilityCall call = new CapabilityCall(
         return System.currentTimeMillis();
     }
 
+    /**
+     * R2.6 (RUN-4): runs capabilityDispatcher.invoke on a CAPABILITY_EXECUTOR worker while making it
+     * observe the calling thread's currentFlowContext, so the timeout branch and the synchronous
+     * branch behave identically as far as this kernel's own thread-local state is concerned.
+     * Without this, assertCrudInvariantPathAllowed reads null on the worker and stops rejecting the
+     * deprecated CRUD invariant path re-entered from inside a capability during flow execution.
+     *
+     * Only this kernel's own thread-local is propagated. SLF4J's MDC (correlationId, stamped by
+     * CorrelationIdFilter) and Spring's RequestContextHolder are the other two thread-bound things
+     * a capability can care about, but neither slf4j nor Spring is on the kernel's compile
+     * classpath -- adding either as a dependency just to copy a context map is not something this
+     * item needs, and the host owns those seams.
+     */
+    private Supplier<CapabilityResult> capabilityInvocationPropagatingCurrentFlow(
+            CapabilityCall call,
+            Map<String, Object> contextState
+    ) {
+        String callerFlowContext = currentFlowContext.get();
+        return () -> {
+            String workerPrevious = currentFlowContext.get();
+            if (callerFlowContext == null) {
+                currentFlowContext.remove();
+            } else {
+                currentFlowContext.set(callerFlowContext);
+            }
+            try {
+                return capabilityDispatcher.invoke(call, contextState);
+            } finally {
+                if (workerPrevious == null) {
+                    currentFlowContext.remove();
+                } else {
+                    currentFlowContext.set(workerPrevious);
+                }
+            }
+        };
+    }
+
     private void assertCrudInvariantPathAllowed() {
         String flowName = currentFlowContext.get();
         if (flowName != null && !flowName.isBlank()) {
@@ -2822,11 +2954,29 @@ CapabilityCall call = new CapabilityCall(
         return Map.of("value", rawPayload);
     }
 
+    /**
+     * R4.2 (roadmap): a BRANCH step's {@code condition} used to be a hand-rolled {@code ==}/
+     * {@code !=}-only matcher -- no {@code &&}, {@code ||}, {@code >}, or arithmetic. Now tries the
+     * full {@link ComputedExpression} grammar FIRST, falling through to the legacy matcher below on
+     * {@link ComputedExpression.ExpressionException} (a parse failure, or a top-level result that
+     * isn't a {@code Boolean} -- e.g. a bare truthy field reference whose value is a non-boolean
+     * String) -- the same ordering {@code CelInvariantEngine.evaluateExpression} already established
+     * for invariant expressions (LIFT-EXPR-P2), so a condition this evaluator cannot make sense of
+     * always falls back rather than throwing. {@link ConditionScope} resolves each {@code $ref}/
+     * bare-token through the SAME {@link #resolveReferenceStrict} the legacy matcher below uses, so
+     * a condition that parses under both engines resolves its operands identically either way.
+     */
     static boolean evaluateCondition(String expression, Map<String, Object> state, Object input) {
         if (expression == null || expression.isBlank()) {
             return false;
         }
         String trimmed = expression.trim();
+
+        try {
+            return ComputedExpression.evaluateBoolean(trimmed, new ConditionScope(state, input));
+        } catch (ComputedExpression.ExpressionException notComputedExpression) {
+            // fall through to the legacy matcher below.
+        }
 
         if ("true".equalsIgnoreCase(trimmed)) return true;
         if ("false".equalsIgnoreCase(trimmed)) return false;
@@ -2891,6 +3041,43 @@ CapabilityCall call = new CapabilityCall(
         return !("false".equalsIgnoreCase(text)
                 || "0".equals(text)
                 || "null".equalsIgnoreCase(text));
+    }
+
+    /**
+     * R4.2: bridges a {@link ComputedExpression} variable lookup to the SAME {@link
+     * #resolveReferenceStrict} the legacy condition matcher uses, so {@code $saved.status} /
+     * {@code $input.qty} / a bare state key resolve identically under either engine. {@code
+     * containsKey} always answers {@code true} (mirroring {@code CelInvariantEngine.FieldPathScope})
+     * so {@link ComputedExpression.Node#eval} always takes the {@code get} branch instead of trying
+     * its own dotted-map walk over this synthetic view.
+     */
+    private static final class ConditionScope extends AbstractMap<String, Object> {
+        private final Map<String, Object> state;
+        private final Object input;
+
+        ConditionScope(Map<String, Object> state, Object input) {
+            this.state = state;
+            this.input = input;
+        }
+
+        @Override
+        public Object get(Object key) {
+            if (!(key instanceof String token)) {
+                return null;
+            }
+            Object resolved = resolveReferenceStrict(token, state, input);
+            return resolved == UNRESOLVED ? null : resolved;
+        }
+
+        @Override
+        public boolean containsKey(Object key) {
+            return true;
+        }
+
+        @Override
+        public Set<Entry<String, Object>> entrySet() {
+            return Set.of();
+        }
     }
 
     static Object resolveReference(String reference, Map<String, Object> state, Object input) {

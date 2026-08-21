@@ -22,7 +22,10 @@ import java.util.Set;
  */
 public final class ReservedColumnNames {
 
-    public static final Set<String> RESERVED_BUSINESS_COLUMN_NAMES = Set.of("version", "row_version", "tenant_id");
+    // "deleted_at" reserved unconditionally (R5.4), like the other three, even though the column is
+    // only actually emitted for a concept declaring softDelete: true -- so a model author cannot pick
+    // a field name that collides the moment that concept later turns softDelete on.
+    public static final Set<String> RESERVED_BUSINESS_COLUMN_NAMES = Set.of("version", "row_version", "tenant_id", "deleted_at");
 
     private ReservedColumnNames() {
     }
@@ -36,7 +39,8 @@ public final class ReservedColumnNames {
                                 + "' whose column name '" + column + "' collides with a platform-reserved "
                                 + "business-table column (every generated table implicitly gets 'version' "
                                 + "for optimistic concurrency, 'row_version' for LNCH-16 CAS updates through "
-                                + "ConceptGateway, and 'tenant_id' for tenant isolation). "
+                                + "ConceptGateway, 'tenant_id' for tenant isolation, and -- for a concept "
+                                + "declaring softDelete: true -- 'deleted_at' for R5.4 soft delete). "
                                 + "Rename this field in the model to something else (e.g. '"
                                 + field.getName() + "Ref').");
             }

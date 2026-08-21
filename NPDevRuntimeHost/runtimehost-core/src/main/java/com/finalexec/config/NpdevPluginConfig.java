@@ -42,6 +42,7 @@ import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.capabilities.CapabilityBindingResolver;
+import com.npdev.kernel.ports.ConceptStore;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
@@ -303,11 +304,14 @@ public class NpdevPluginConfig {
 
     @Bean
     public RuntimePluginRealizationProvider persistenceInMemoryRuntimePluginRealizationProvider(
-            CompiledModel compiledModel
+            CompiledModel compiledModel,
+            ConceptStore conceptStore
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistenceInMemoryCapabilityAdapter",
-                () -> new InMemoryPersistenceCapabilityAdapter(compiledModel)
+                // REG-187: inject the SAME ConceptStore the generated service's CRUD reads, so a
+                // flow-driven create is visible to the service's post-flow findById under InMemory.
+                () -> new InMemoryPersistenceCapabilityAdapter(compiledModel, conceptStore)
         );
     }
 
@@ -315,14 +319,15 @@ public class NpdevPluginConfig {
     public RuntimePluginRealizationProvider persistencePostgresRuntimePluginRealizationProvider(
             ObjectProvider<DataSource> dataSourceProvider,
             @Value("${npdev.storage.mode:in-memory}") String storageMode,
-            CompiledModel compiledModel
+            CompiledModel compiledModel,
+            ConceptStore conceptStore
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistencePostgresCapabilityAdapter",
                 () -> {
                     DataSource dataSource = dataSourceProvider.getIfAvailable();
                     if ("in-memory".equalsIgnoreCase(storageMode)) {
-                        return new InMemoryPersistenceCapabilityAdapter(compiledModel);
+                        return new InMemoryPersistenceCapabilityAdapter(compiledModel, conceptStore);
                     }
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");

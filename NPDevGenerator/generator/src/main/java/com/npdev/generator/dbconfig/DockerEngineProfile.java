@@ -52,7 +52,9 @@ public record DockerEngineProfile(
         List<String> quirks,
         String dataVolumePath,
         String composeImage,
-        String backupCommand
+        String backupCommand,
+        String restoreCommand,
+        Map<String, String> backupClientEnv
 ) {
 
     public enum Kind {
@@ -136,6 +138,28 @@ public record DockerEngineProfile(
         // guiLabel is asserted above for every kind, not here -- see the PORT-3 note.
         require(dataVolumePath != null && !dataVolumePath.isBlank(), "dataVolumePath");
         require(composeImage != null && !composeImage.isBlank(), "composeImage");
+        // R9.1: backupCommand and restoreCommand move together. A profile with one and not the
+        // other would let DockerDeploymentEmitter ship a backup.sh with no way to ever restore what
+        // it dumped (or vice versa) -- exactly the "appears to work" trap this method exists to
+        // catch at generation time instead of in an operator's hands during an actual incident.
+        boolean hasBackup = backupCommand != null && !backupCommand.isBlank();
+        boolean hasRestore = restoreCommand != null && !restoreCommand.isBlank();
+        if (hasBackup != hasRestore) {
+            throw new IllegalStateException(
+                    "DockerEngineProfile for " + engine + " has backupCommand=" + hasBackup
+                    + " but restoreCommand=" + hasRestore + " -- they must both be present or both "
+                    + "absent. An engine that can be dumped but never restored (or restored from a "
+                    + "dump nothing can produce) is worse than declaring neither.");
+        }
+        // R9.9: the scheduled-backup sidecar and its scratch-restore verify mode both run as
+        // SEPARATE containers on the compose network (not `docker compose exec` into `database`
+        // like backup.sh/restore.sh), so they need the connection facts backupClientEnv supplies.
+        // Required exactly when backupCommand/restoreCommand are -- an engine that can be dumped by
+        // hand but never on a schedule (because the sidecar has no way to reach the database) is the
+        // same "appears to work, fails in an operator's hands" trap the R9.1 comment above describes.
+        if (hasBackup) {
+            require(backupClientEnv != null && !backupClientEnv.isEmpty(), "backupClientEnv");
+        }
     }
 
     private void require(boolean condition, String field) {

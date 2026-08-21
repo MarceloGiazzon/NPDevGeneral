@@ -9,13 +9,24 @@ param(
   [string]$PostgresPassword = 'npdev',
   [string]$PostgresDatabase = 'npdev_item20',
   [switch]$KeepContainer,
-  [switch]$StartDockerDesktop
+  [switch]$StartDockerDesktop,
+  [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
 
 if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
   $WorkspaceRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+}
+
+if ($env:CI -ne 'true' -and -not $Force) {
+  $localProfilePath = Join-Path $WorkspaceRoot 'scripts\policy\local-test-profile.json'
+  $localProfile = Get-Content $localProfilePath -Raw | ConvertFrom-Json
+  $dockerAllowed = ($localProfile.enabledEngines -contains 'postgres') -or ($localProfile.enabledEngines -contains 'mysql')
+  if (-not $dockerAllowed) {
+    Write-Host "SKIPPED: disabled by scripts/policy/local-test-profile.json (pass -Force to override, or add postgres/mysql to enabledEngines)"
+    exit 0
+  }
 }
 
 if (-not $EvidenceDir) {

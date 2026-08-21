@@ -3,17 +3,12 @@
   "sizeToleranceFraction": 0.25,
   "entries": [
     {
-      "path": "NPDevGenerator/.../npdev-templates/static-react/assets/app.js",
-      "approxSizeKB": 141,
-      "note": "Sibling chunks AuthoringApp.js/ReactWorkbenchApp.js live in the same assets/ dir. Generated bundle, ignore entirely."
-    },
-    {
       "path": "NPDevGenerator/.../npdev-templates/business-ui-app.mustache",
-      "approxSizeKB": 169,
-      "note": null
+      "approxSizeKB": 260,
+      "note": "Was 169 KB; grown to ~260 KB by R7.6/R7.8/R7.10/R8.11 (CSV import, bulk actions, responsive pass, extension-contributed field ordering) -- policy entry refreshed 2026-08-19, was never updated as those items landed."
     },
     {
-      "path": "NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java",
+      "path": "NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java",
       "approxSizeKB": 158,
       "note": null
     },

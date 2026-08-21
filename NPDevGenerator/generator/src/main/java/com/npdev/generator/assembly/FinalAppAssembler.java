@@ -1,8 +1,11 @@
 package com.npdev.generator.assembly;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.generator.packs.PackAbiCompatibility;
+import com.npdev.generator.packs.PackAbiManifest;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,6 +20,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
 import java.util.regex.Pattern;
 
 public final class FinalAppAssembler {
@@ -63,7 +68,6 @@ public final class FinalAppAssembler {
             "NO_BUILD_ARTIFACTS.policy"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_CONTROLLER_SOURCES = List.of(
-            "com/finalexec/HelloController.java",
             "com/finalexec/api/experimental/*.java"
     );
     private static final List<String> UNSUPPORTED_RUNTIME_HOST_SERVICE_SOURCES = List.of(
@@ -139,6 +143,7 @@ public final class FinalAppAssembler {
         appendRuntimeHostLibsDirDefault(normalized);
         appendAppJavaVersionDefault(normalized);
         int webAssetsCopied = mountWebAssets(normalized);
+        linkSealedPacks(normalized);
 
         return new AssemblyResult(
                 normalized.finalAppRoot(),
@@ -162,12 +167,13 @@ public final class FinalAppAssembler {
      * here already requires) -- fails loud rather than silently mounting nothing.
      */
     // REG-167: reserved relative paths under static/ that the platform's own generated bundle
-    // writes unconditionally (BusinessUiEmitter, InfoPageEmitter) into the SAME static/ tree
-    // mountWebAssets copies into -- see those classes' own literal path strings. Two of the four
-    // reserved names are whole DIRECTORIES (npdev-business-ui/, npdev-workbench/) rather than a
-    // fixed file list, because npdev-workbench/<panel>.html is emitted once per model panel and so
-    // cannot be enumerated statically here.
-    private static final Set<String> RESERVED_WEB_ASSET_FILES = Set.of("shell.js", "shell.css", "info.html", "info.json");
+    // writes unconditionally (BusinessUiEmitter, InfoPageEmitter, ModelSurfaceEmitter) into the SAME
+    // static/ tree mountWebAssets copies into -- see those classes' own literal path strings. Two of
+    // the four reserved names are whole DIRECTORIES (npdev-business-ui/, npdev-workbench/) rather
+    // than a fixed file list, because npdev-workbench/<panel>.html is emitted once per model panel
+    // and so cannot be enumerated statically here.
+    private static final Set<String> RESERVED_WEB_ASSET_FILES =
+            Set.of("shell.js", "shell.css", "info.html", "info.json", "model-surface.html", "model-authoring.html");
     private static final Set<String> RESERVED_WEB_ASSET_DIRECTORIES = Set.of("npdev-business-ui", "npdev-workbench");
 
     private static int mountWebAssets(Options options) throws IOException {
@@ -212,6 +218,138 @@ public final class FinalAppAssembler {
                             + RESERVED_WEB_ASSET_DIRECTORIES + "): " + collisions
                             + " -- rename the author-supplied file(s) or remove the collision");
         }
+    }
+
+    /**
+     * BUILD-2 (BT-2's own "the linking" follow-on, ledger item BUILD-2): links each of {@code
+     * options.sealedPackLinks()}'s pre-built sealed pack jars (see {@code
+     * com.npdev.generator.packs.SealedPackJarBuilder}) into the assembled app -- WITHOUT this app
+     * ever generating that pack's own entity/repository/controller sources. Two things happen, both
+     * skipped entirely (zero cost, zero files touched) when the list is empty, which is every existing
+     * caller today (GeneratorMain, every sample/AppGen app):
+     *
+     * <ol>
+     *   <li>The jar is copied into {@code <finalAppRoot>/libs/sealed-packs/}, after refusing (via the
+     *       ALREADY-shipped {@link PackAbiCompatibility#checkLinkable}) to link a jar built against an
+     *       incompatible kernel ABI -- a named build-time failure, not a runtime {@code
+     *       NoSuchMethodError} discovered later.</li>
+     *   <li>A companion {@code @Configuration} class, {@code
+     *       src/main/java/com/finalexec/config/SealedPackLinkageConfig.java}, is generated with an
+     *       {@code @EntityScan}/{@code @ComponentScan} naming every linked pack's own namespace
+     *       ({@code com.npdev.pack.<packId>.v<major>}, see {@link PackAbiManifest#packageName()}).
+     *       This lives under {@code com.finalexec}, which {@code FinalExecApplication}'s own {@code
+     *       @ComponentScan(basePackages = {"com.finalexec", ...})} already covers -- so Spring
+     *       auto-detects this generated configuration with NO edit to {@code
+     *       FinalExecApplication.java} needed for any number of linked packs.</li>
+     * </ol>
+     *
+     * <p><b>What this does NOT do (an honest, named limitation, not a silent gap).</b> This method
+     * only performs the ASSEMBLY-time half of linking -- copying the jar and wiring Spring to find its
+     * classes. It does not, by itself, stop the app's own generation pipeline from ALSO emitting that
+     * pack's entity/repository sources (that is {@code GeneratorFacade}'s {@code linkedSealedPacks}
+     * parameter's job, upstream of assembly -- see {@code LinkedSealedPack}) -- a caller that links a
+     * pack's jar here without ALSO excluding that pack's ENTITY at generation time would get both: the
+     * jar's entity class under {@code com.npdev.pack.<id>.v<major>} AND the app's own duplicate entity
+     * under {@code com.npdev.generated.entities}, with no shared identity between them (harmless to
+     * compile, since the packages/class names differ, but not what "linking instead of generating"
+     * means). The pack's DTO/service/controller sources ARE still generated by the app either way --
+     * that is what makes a linked concept reachable over HTTP at all.
+     */
+    private static void linkSealedPacks(Options options) throws IOException {
+        List<SealedPackLink> links = options.sealedPackLinks();
+        if (links.isEmpty()) {
+            return;
+        }
+
+        // Validate (existence, ABI compatibility) for EVERY link before copying or writing anything --
+        // one incompatible jar among several must refuse cleanly with nothing partially staged, not
+        // leave whichever links were already copied sitting in the assembled app.
+        Map<SealedPackLink, PackAbiManifest> manifestsByLink = new LinkedHashMap<>();
+        for (SealedPackLink link : links) {
+            if (link == null || link.jarFile() == null || !Files.isRegularFile(link.jarFile())) {
+                throw new IOException("Sealed pack link for '" + (link == null ? "?" : link.packId())
+                        + "' names a jar that does not exist: " + (link == null ? null : link.jarFile()));
+            }
+            PackAbiManifest manifest = readSealedPackManifest(link.jarFile());
+            PackAbiCompatibility.checkLinkable(manifest);
+            manifestsByLink.put(link, manifest);
+        }
+
+        Path sealedPackJarsDir = options.finalAppRoot().resolve("libs").resolve("sealed-packs");
+        Files.createDirectories(sealedPackJarsDir);
+
+        List<String> packagesToScan = new ArrayList<>();
+        for (Map.Entry<SealedPackLink, PackAbiManifest> entry : manifestsByLink.entrySet()) {
+            PackAbiManifest manifest = entry.getValue();
+            Path destination = sealedPackJarsDir.resolve(manifest.packId() + "-" + manifest.packVersion() + ".jar");
+            Files.copy(entry.getKey().jarFile(), destination, StandardCopyOption.REPLACE_EXISTING);
+            packagesToScan.add(manifest.packageName());
+        }
+
+        writeSealedPackLinkageConfig(options, packagesToScan);
+    }
+
+    private static PackAbiManifest readSealedPackManifest(Path jarFile) throws IOException {
+        try (JarFile jar = new JarFile(jarFile.toFile())) {
+            JarEntry entry = jar.getJarEntry("META-INF/npdev-pack.properties");
+            if (entry == null) {
+                throw new IOException("Jar " + jarFile + " has no META-INF/npdev-pack.properties -- "
+                        + "not a sealed pack jar (see com.npdev.generator.packs.SealedPackJarBuilder)");
+            }
+            try (InputStream in = jar.getInputStream(entry)) {
+                return PackAbiManifest.readFrom(in);
+            }
+        }
+    }
+
+    private static void writeSealedPackLinkageConfig(Options options, List<String> packagesToScan) throws IOException {
+        // Sorted + de-duplicated: deterministic generated output regardless of the caller's own list
+        // order, same discipline as every other emitted manifest in this class.
+        List<String> sortedPackages = packagesToScan.stream().distinct().sorted().toList();
+
+        StringBuilder basePackages = new StringBuilder();
+        for (int i = 0; i < sortedPackages.size(); i++) {
+            if (i > 0) {
+                basePackages.append(", ");
+            }
+            basePackages.append('"').append(sortedPackages.get(i)).append('"');
+        }
+
+        String source = "package com.finalexec.config;\n"
+                + "\n"
+                + "import org.springframework.boot.autoconfigure.domain.EntityScan;\n"
+                + "import org.springframework.context.annotation.ComponentScan;\n"
+                + "import org.springframework.context.annotation.Configuration;\n"
+                + "\n"
+                + "/**\n"
+                + " * BUILD-2 (npdev generate app): generated -- do not hand-edit. Extends Spring's\n"
+                + " * component/entity scanning to every sealed pack jar this app links (see\n"
+                + " * libs/sealed-packs/), instead of this app generating that pack's own sources.\n"
+                + " * Auto-detected: this class lives under com.finalexec, already covered by\n"
+                + " * FinalExecApplication's own @ComponentScan -- no edit to that file is needed.\n"
+                + " */\n"
+                + "@Configuration\n"
+                + "@EntityScan(basePackages = {" + basePackages + "})\n"
+                + "@ComponentScan(basePackages = {" + basePackages + "})\n"
+                + "public class SealedPackLinkageConfig {\n"
+                + "}\n";
+
+        Path destination = options.finalAppRoot()
+                .resolve("src").resolve("main").resolve("java")
+                .resolve("com").resolve("finalexec").resolve("config")
+                .resolve("SealedPackLinkageConfig.java");
+        Files.createDirectories(destination.getParent());
+        Files.writeString(destination, source, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * BUILD-2: one entry in {@link Options#sealedPackLinks()} -- a pre-built sealed pack jar (from
+     * {@code com.npdev.generator.packs.SealedPackJarBuilder}) this app should link instead of
+     * generating that pack's own sources. {@code packId} is informational (used only in error
+     * messages) -- the jar's own {@code META-INF/npdev-pack.properties} is the source of truth for
+     * the pack id actually written into the assembled app.
+     */
+    public record SealedPackLink(String packId, Path jarFile) {
     }
 
     private static void validate(Options options) throws IOException {
@@ -874,8 +1012,36 @@ public final class FinalAppAssembler {
              * Build-ClaudeApp.ps1, {@code npdev generate app}) gets the identical result instead of
              * each maintaining its own copy.
              */
-            Path webAssetsRoot
+            Path webAssetsRoot,
+            /**
+             * BUILD-2 (BT-2's own "the linking" follow-on): pre-built sealed pack jars to link into
+             * this app instead of generating their sources -- see {@link #linkSealedPacks(Options)}.
+             * Empty (never null after {@link #normalized()}) for every caller that doesn't pass one --
+             * zero behavior change, same opt-in discipline {@link #webAssetsRoot} already established.
+             */
+            List<SealedPackLink> sealedPackLinks
     ) {
+        /**
+         * Backward-compatible constructor for every caller written before {@link #sealedPackLinks}
+         * existed (GeneratorMain, every existing test) -- delegates with an empty link list, so none
+         * of them need editing for this record to grow a tenth component.
+         */
+        public Options(
+                Path runtimeHostRoot,
+                Path generatedArtifactRoot,
+                Path finalAppRoot,
+                Path canonicalMigrationsDir,
+                String generatedFolderName,
+                String metaFolderName,
+                boolean deleteBeforeMount,
+                int javaVersion,
+                Path webAssetsRoot
+        ) {
+            this(runtimeHostRoot, generatedArtifactRoot, finalAppRoot, canonicalMigrationsDir,
+                    generatedFolderName, metaFolderName, deleteBeforeMount, javaVersion, webAssetsRoot,
+                    List.of());
+        }
+
         Options normalized() {
             return new Options(
                     normalize(runtimeHostRoot),
@@ -886,7 +1052,8 @@ public final class FinalAppAssembler {
                     normalizeName(metaFolderName, "npdev-meta"),
                     deleteBeforeMount,
                     javaVersion <= 0 ? 17 : javaVersion,
-                    webAssetsRoot == null ? null : normalize(webAssetsRoot)
+                    webAssetsRoot == null ? null : normalize(webAssetsRoot),
+                    sealedPackLinks == null ? List.of() : List.copyOf(sealedPackLinks)
             );
         }
 

@@ -99,7 +99,9 @@ public final class DockerEngineProfiles {
                 stringList(node.path("quirks")),
                 text(node, "dataVolumePath"),
                 text(node, "composeImage"),
-                text(node, "backupCommand"));
+                text(node, "backupCommand"),
+                text(node, "restoreCommand"),
+                stringMap(node.path("backupClientEnv")));
     }
 
     private static DockerEngineProfile.Probe probe(JsonNode node) {

@@ -1,9 +1,9 @@
 id: B10
 title: "H2->Postgres data promotion is a real, operator-driven command -- schema reconciliation is out of scope"
 kind: HITTABLE
-userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+userFacingText: "H2 to Postgres promotion copies data only. Boot against Postgres first to create the schema, then promote data."
 workaround: "Call /promote/preview first, review type-mapping notes, realize the target schema by booting normally against Postgres, then call /promote/apply."
-enforcingDiagnosticCodes: []
-codeLinked: false
+enforcingDiagnosticCodes: ["B10:data_only_promotion"]
+codeLinked: true
 codeLinkedNote: "Enforced by an admin REST endpoint (CrossEngineDataPromotion's preview/apply pair), not the DSL ValidationDiagnostic pipeline -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B10"

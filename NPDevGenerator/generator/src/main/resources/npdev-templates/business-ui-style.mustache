@@ -229,6 +229,93 @@ textarea {
   color: #a32424;
 }
 
+/* R7.1. The toast host must outrank .modal-backdrop (z-index 10): the .status line above lives
+   inside #app, which the backdrop covers, so a save rejected from a modal form used to report onto
+   an invisible line. pointer-events is off on the host and back on for each toast, so the empty
+   column never swallows clicks on the page beneath it. */
+.toast-host {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 60;
+  display: grid;
+  gap: 8px;
+  width: min(380px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 10px 11px 13px;
+  border: 1px solid #d8dee7;
+  border-left: 4px solid #4c5a69;
+  border-radius: 6px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(24, 32, 42, .22);
+  color: #1c2333;
+  font-size: 14px;
+  pointer-events: auto;
+}
+
+.toast.is-success {
+  border-left-color: #1f7a4d;
+}
+
+.toast.is-error {
+  border-left-color: #a32424;
+}
+
+/* R7.7: a flow-backed invocation that returned 202 (or the panel-action equivalent, status
+   "WAITING") is shown as a pending toast, never a synchronous "completed" -- see
+   business-ui-app.mustache's trackFlowExecution. The spinner is CSS-only against the toast's own
+   ::before so it survives resolveToast() swapping the class to is-success/is-error later without
+   any extra DOM bookkeeping. */
+.toast.is-pending {
+  border-left-color: #a3720f;
+}
+
+.toast.is-pending .toast-message::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 8px;
+  vertical-align: -1px;
+  border: 2px solid #eadcb8;
+  border-top-color: #a3720f;
+  border-radius: 50%;
+  animation: npdev-toast-spin .8s linear infinite;
+}
+
+@keyframes npdev-toast-spin {
+  to { transform: rotate(360deg); }
+}
+
+.toast-message {
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  min-height: 22px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #4c5a69;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.toast-close:hover {
+  border-color: transparent;
+  background: #eef1f5;
+  color: #1c2333;
+}
+
 .api-key-field {
   display: grid;
   gap: 4px;
@@ -303,6 +390,55 @@ textarea {
   width: min(360px, 100%);
 }
 
+/* R7.4: the saved-views toolbar and column-visibility toggle, rendered only when a concept opts
+   in (savedViewsSupported) -- mirrors .filters' own flex-row rhythm. */
+.views-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.views-bar-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4c5a69;
+}
+
+.views-select {
+  min-height: 34px;
+  padding: 2px 8px;
+  max-width: 260px;
+}
+
+.columns-toggle {
+  padding: 8px 16px 0;
+}
+
+.columns-toggle summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #4c5a69;
+}
+
+.columns-toggle-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 8px 0 12px;
+  font-size: 13px;
+}
+
+.columns-toggle-list label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 .records {
   width: 100%;
   border-collapse: collapse;
@@ -338,6 +474,62 @@ textarea {
   cursor: pointer;
 }
 
+/* R7.8: the leading bulk-select checkbox column (renderTable) -- narrow and centered so it never
+   competes with .records' own table-layout:fixed column-width split across the real data fields. */
+.records .bulk-select-col {
+  width: 36px;
+  text-align: center;
+}
+
+/* R7.8: the bulk actions bar (buildBulkActionsBar), rendered directly above the grid only once at
+   least one row is checked. Mirrors .filters' flex-row rhythm and .views-bar's border/padding. */
+.bulk-actions-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--np-grid-head-bg, #f9fafc);
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.bulk-actions-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4c5a69;
+}
+
+/* R7.3: the per-column filter row rendered directly under the header row -- kept visually
+   distinct (its own background, no border-bottom to double up with the header's) so it reads as
+   "controls for this column" rather than a second header line. */
+.records tr.filter-row td {
+  padding: 6px 10px;
+  background: var(--np-grid-head-bg, #f9fafc);
+  border-bottom: 1px solid #e7ebf0;
+  vertical-align: middle;
+}
+
+.column-filter {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.column-filter-op {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 2px 4px;
+  font-size: 12px;
+}
+
+.column-filter-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 28px;
+  padding: 2px 6px;
+  font-size: 12.5px;
+}
+
 .records .row-actions {
   justify-content: flex-end;
 }
@@ -346,6 +538,25 @@ textarea {
   padding: 24px;
   color: #6b7786;
   text-align: center;
+}
+
+/* R7.2: a fresh/filtered-empty grid's onboarding call-to-action -- "(empty)" used to be the whole
+   message, indistinguishable from a broken app. */
+.empty-state {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+}
+
+.empty-state-message {
+  margin: 0;
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
 }
 
 .pager {
@@ -412,6 +623,52 @@ textarea {
   font-size: 13px;
 }
 
+.field-label-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* PACK-10 step 4: marks a field an extension pack additively merged onto a base pack's concept
+   (PackExtensionComposer) -- purely attribution, never a control (ordering is decided server-side,
+   before the manifest is ever written; this badge cannot be dragged or reordered). Shown next to
+   the grid column header, the read-only detail view's label, and the form field's label -- the
+   SAME `field.extensionSource` value drives all three, so the responsive card-collapse view (which
+   reuses the desktop table's `<th>` markup, just visually reflowed below 768px -- see the
+   `data-label`/`::before` rule further down) shows it too, with no separate code path. */
+.ext-field-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--np-accent, #1769aa);
+  background: color-mix(in srgb, var(--np-accent, #1769aa) 14%, transparent);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* R5.5/GAP-2: a courtesy hint next to a create/edit form field's label when the model declares a
+   field.access.write rule for it (see BusinessUiEmitter.manifestFields' accessWriteScoped and
+   business-ui-app.mustache's isFieldReadonlyByCondition/appendAccessBadge). The field always
+   renders read-only whenever this badge is shown -- this generic UI has no evaluator for the
+   declared rule (it may depend on the caller's role/tenant/row-owner), so it never guesses; the
+   SERVER remains the only real enforcement point regardless of this badge or the input's disabled
+   state. */
+.access-restricted-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--np-warning, #95620a);
+  background: color-mix(in srgb, var(--np-warning, #95620a) 14%, transparent);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
 .detail-row {
   grid-template-columns: 180px 1fr;
   align-items: start;
@@ -472,6 +729,117 @@ textarea {
 
 .field-hidden {
   display: none !important;
+}
+
+/* R7.1. A rejected save marks the offending field here and appends a .field-error note; no
+   control's value is ever rewritten, so everything the user typed survives the rejection. */
+.form-field.has-error input,
+.form-field.has-error select,
+.form-field.has-error textarea {
+  border-color: #a32424;
+  outline-color: #a32424;
+}
+
+.form-field.has-error .field-label-text {
+  color: #a32424;
+}
+
+.field-error {
+  margin-top: 2px;
+  color: #a32424;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* R7.6: the CSV import dialog (openImportDialog, business-ui-app.mustache). Deliberately reuses
+   .modal/.modal-backdrop/.modal-actions as-is (no width override) -- the preview table gets its OWN
+   horizontal scroll container instead of widening the dialog, so it never fights the 720px modal
+   every other dialog in this app already uses. */
+.import-modal-body {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.import-intro {
+  margin: 0;
+  color: #4c5a69;
+  font-size: 13px;
+}
+
+.import-file-label,
+.import-paste-label {
+  display: grid;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 13px;
+  color: #1c2333;
+}
+
+.import-paste-area {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  resize: vertical;
+}
+
+.import-preview-wrap {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid #e7ebf0;
+  border-radius: 6px;
+}
+
+.import-error {
+  padding: 10px 12px;
+  color: #a32424;
+  font-size: 13px;
+}
+
+.import-summary {
+  font-size: 13px;
+  color: #4c5a69;
+}
+
+.import-preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.import-preview-table th,
+.import-preview-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e7ebf0;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.import-preview-table th {
+  position: sticky;
+  top: 0;
+  background: var(--np-grid-head-bg, #f9fafc);
+  color: var(--np-grid-head-text, #4c5a69);
+}
+
+.import-row-invalid td,
+.import-row-rejected td {
+  background: rgba(163, 36, 36, .06);
+}
+
+.import-row-created td {
+  background: rgba(31, 122, 77, .06);
+}
+
+.import-row-skipped td {
+  background: rgba(163, 114, 15, .05);
+  color: #8a97a8;
+}
+
+.import-row-note td {
+  white-space: normal;
+  color: #a32424;
+  font-size: 11px;
+  padding-top: 0;
 }
 
 .enum-value {
@@ -540,7 +908,12 @@ textarea {
   font-style: italic;
 }
 
-@media (max-width: 760px) {
+/* R7.10: the one small-viewport threshold this file's responsive rules key off -- 768 matches
+   shell.js.mustache's MOBILE_BREAKPOINT_PX (its sidebar drawer) and workbench-page.html.mustache's
+   own breakpoint, so a boot at either 390px or 768px sees the sidebar, grid, form and workbench
+   responses land together instead of three different templates disagreeing about where "mobile"
+   starts. */
+@media (max-width: 768px) {
   .side-nav {
     display: none;
   }
@@ -558,16 +931,185 @@ textarea {
     width: 100%;
   }
 
-  .records {
-    min-width: 720px;
-  }
-
+  /* R7.10: this used to be `overflow-x: auto` alongside a `.records { min-width: 720px }` --
+     forcing the grid to keep its desktop table shape and scroll sideways. That is exactly what the
+     card collapse below replaces: a card has no fixed min-width to scroll past, and forcing one
+     back on here would just add a dead horizontal scrollbar under content that no longer needs it. */
   .concept-panel {
-    overflow-x: auto;
+    overflow-x: visible;
   }
 
   .detail-row {
     grid-template-columns: 1fr;
+  }
+
+  /* R7.10: a model can declare `formColumns > 1` (and a per-field `column`/`columnSpan`), which
+     business-ui-app.mustache's openForm() applies as an INLINE style
+     (`grid.style.gridTemplateColumns`, `wrapper.style.gridColumn`) -- inline styles outrank
+     anything this stylesheet can say without `!important`, so a multi-column form declared in the
+     model would otherwise keep its desktop column count squeezed into a phone-width modal. This is
+     the one deliberate `!important` in this file, and it exists only to win against an inline style
+     the generated JS itself sets, not against another stylesheet rule. */
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .form-field {
+    grid-column: auto !important;
+  }
+
+  /* R7.10 touch targets: every generic form/grid control grows to a >=44px hit area below the
+     breakpoint. Desktop keeps the denser 34/36px sizing (unchanged) -- this block only widens the
+     controls a thumb, not a mouse, has to hit. `.form-tab` and `.lookup-clear` are named
+     explicitly (not just covered by the bare `button` rule below) because both declare their own
+     smaller `min-height` elsewhere in this file with a CLASS selector -- a class always outranks a
+     bare tag selector on specificity regardless of which rule comes later in the file, so without
+     naming them here directly they would silently keep their 32px/34px desktop sizing on mobile. */
+  button,
+  .panel-actions a,
+  input,
+  select,
+  textarea,
+  .views-select,
+  .form-tab,
+  .lookup-clear {
+    min-height: 44px;
+  }
+
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* R7.10: a nested object-group's fixed 2-column grid (business-ui-style.mustache's own
+     .object-group-grid rule, unconditional today) is exactly the kind of "two-up form" this item
+     retires -- collapses to one column, same as .form-grid/.record-form already are unconditionally
+     (a bare `display:grid` with no declared grid-template-columns is single-column by default, so
+     only this explicitly-multi-column nested grid needed the override). */
+  .object-group-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* ---- R7.10: grid rows collapse to cards below the breakpoint ------------------------------ */
+  /* Each <tr> becomes its own card; each <td> becomes a labelled row inside it via
+     `data-label` (set by renderTable() in business-ui-app.mustache) rendered through
+     `::before { content: attr(data-label) }` -- the one CSS-only way to recover a column's header
+     text once the header row itself is hidden. The bulk-select checkbox (R7.8) and the row-action
+     buttons keep their own layout since neither reads naturally as a "label: value" pair. */
+  .records,
+  .records tbody,
+  .records tr {
+    display: block;
+    width: 100%;
+  }
+
+  .records thead tr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+  }
+
+  /* The column-header text and the per-column filter row have no home in a card layout (there is
+     no shared header row to hang them off of) -- hidden here rather than half-rendered. The
+     leading bulk-select header cell is the one exception: it stays, so "select all on this page"
+     (R7.8) is still reachable without opening every card. */
+  .records thead th:not(.bulk-select-col),
+  .records tr.filter-row {
+    display: none;
+  }
+
+  .records thead th.bulk-select-col {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: auto;
+    min-height: 44px;
+  }
+
+  .records thead th.bulk-select-col::after {
+    content: "Select all";
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .records tbody tr {
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid #d8dee7;
+    border-radius: 8px;
+    background: #ffffff;
+  }
+
+  .records tbody tr:nth-child(even) {
+    background: #ffffff;
+  }
+
+  .records tbody td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid #f1f3f6;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .records tbody td:last-child {
+    border-bottom: none;
+  }
+
+  .records tbody td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    margin-right: 10px;
+    text-align: left;
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--np-grid-head-text, #4c5a69);
+  }
+
+  /* The bulk-select checkbox (no natural "label: value" reading) and the row-actions cell (its
+     buttons already say what they do) both opt out of the generic label treatment above. */
+  .records tbody td.bulk-select-col,
+  .records tbody td.row-actions {
+    justify-content: flex-start;
+  }
+
+  .records tbody td.bulk-select-col::before,
+  .records tbody td.row-actions::before {
+    content: none;
+  }
+
+  .records tbody td.bulk-select-col {
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid #f1f3f6;
+  }
+
+  .records tbody td.row-actions {
+    flex-wrap: wrap;
+  }
+
+  .records .bulk-select-col input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+  }
+
+  /* R7.2's empty-state colspan cell reads fine as a single unlabelled block -- excluded from the
+     label/value treatment above by virtue of not being inside a card-rendered data row. */
+  .records tbody td.empty {
+    display: block;
+    text-align: center;
+  }
+
+  .records tbody td.empty::before {
+    content: none;
   }
 }
 
@@ -879,9 +1421,18 @@ textarea.declared-panel-edit-input {
   cursor: pointer;
 }
 
-.picker-row:hover td {
+.picker-row:hover td,
+.picker-row:focus-visible td {
   background: color-mix(in srgb, var(--np-accent, #1769aa) 10%, transparent);
   color: var(--np-accent, #1769aa);
+}
+
+/* R7.9: box-shadow (the shell's own :focus-visible ring, shell.css.mustache) is unreliable on a
+   <tr> under table layout in some engines -- the :hover-matching background above is the
+   guaranteed-visible fallback for keyboard focus on a picker row (see openPickerDialog). */
+.picker-row:focus-visible {
+  outline: 2px solid var(--np-accent, #1769aa);
+  outline-offset: -2px;
 }
 
 .array-table-editor {

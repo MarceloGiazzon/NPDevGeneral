@@ -1,0 +1,17 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.pack9rolebindingb",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "PACK-9 live two-app role-binding proof (repro-case, paired with NPDevSamples/pack9-role-binding-a). Composes the SAME labeling pack that dsl-conformance-max and pack9-role-binding-a use, but binds its role('curator') token to a DIFFERENT concrete role name -- proving PackRoleBindingRewriter's rewrite is per-app, and that the runtime actually enforces whatever concrete role THIS app bound, not a name baked into the pack."
+  },
+  "packs": [
+    { "$ref": "packs/labeling/pack.json", "as": "labeling" }
+  ],
+  "provides": {
+    "roleBindings": {
+      "curator": "CURATOR_B"
+    }
+  }
+}

@@ -630,27 +630,18 @@ probe_editor_surface() {
          "no manifest at $editor_manifest -- cannot know what the build actually shipped"
   fi
 
-  # REG-139: a 200 on index.html AND every manifested chunk resolving is not proof the page
-  # rendered anything -- the model editor's default tab crashed on a genuinely fresh boot because
-  # the draft endpoint served the wrong SHAPE (the compiled model verbatim, no `entities` key at
-  # all), which neither of the two checks above can see since they never look at the app's own
-  # JSON responses. Hit the same endpoint the default tab's own first render depends on and check
-  # the shape directly -- this is the harness-level check REG-139 says was missing.
-  local editor_draft
-  editor_draft=$(curl -sS "$base/api/admin/model/editor/draft" -H "X-Api-Key: $api_key" 2>/dev/null)
-  if printf '%s' "$editor_draft" | python3 -c "
-import json, sys
-try:
-    body = json.load(sys.stdin)
-except Exception:
-    sys.exit(1)
-sys.exit(0 if isinstance(body, dict) and isinstance(body.get('entities'), list) else 1)
-" 2>/dev/null; then
-    pass "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim"
+  # R10.1/EDIT-3: the model editor draft endpoint (and its rule/orchestration siblings) was deleted
+  # outright -- server-side draft state that never wrote back into model.json, a one-way door that
+  # dropped 14 DSL sections on round-trip. REG-139's old check here asserted a real ModelEditorDraft
+  # shape; that shape no longer exists by design, so this now asserts the endpoint is gone.
+  local editor_draft_status
+  editor_draft_status=$(curl -sS -o /dev/null -w '%{http_code}' "$base/api/admin/model/editor/draft" -H "X-Api-Key: $api_key" 2>/dev/null)
+  if [ "$editor_draft_status" = "404" ]; then
+    pass "editor: model editor draft endpoint is gone (R10.1 -- read-only editor, no draft write-back)"
   else
-    fail "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[]), not the compiled model verbatim" \
-         "response was not a JSON object with an 'entities' array -- the default tab will crash on a fresh boot (REG-139)" \
-         "body: $(printf '%s' "$editor_draft" | tail -c 300)"
+    fail "editor: model editor draft endpoint is gone (R10.1 -- read-only editor, no draft write-back)" \
+         "expected 404, got '$editor_draft_status' -- the draft write-back endpoint should have been deleted" \
+         "check npdev-runtime-admin-controller.mustache for a reintroduced /model/editor/draft mapping"
   fi
 }
 
@@ -782,7 +773,7 @@ else
        "npdev run app did not reach READY, so there is no live app to probe (see the failure above)"
   skip "editor: every manifested asset resolves (not just index.html)" \
        "npdev run app did not reach READY, so there is no live app to probe"
-  skip "editor: model editor draft endpoint returns a real ModelEditorDraft shape (entities[])" \
+  skip "editor: model editor draft endpoint is gone (R10.1 -- read-only editor, no draft write-back)" \
        "npdev run app did not reach READY, so there is no live app to probe"
 fi
 

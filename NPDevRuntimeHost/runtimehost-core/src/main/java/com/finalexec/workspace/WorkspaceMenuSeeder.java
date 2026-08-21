@@ -224,14 +224,31 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
         }
     }
 
+    // Always returns an ArrayNode so every caller can safely iterate elements. Guards against the
+    // REG-189 hazard: Build-NpdevApp.ps1 writes workspace-menu-pages-seed.json via the same
+    // `+=` / ConvertTo-Json pattern that collapses a single-element manifest to a bare object. The
+    // writer now forces array serialization (-AsArray), but this stays permissive so an app built
+    // before that fix still seeds correctly without regeneration -- JsonNode.forEach() on a bare
+    // ObjectNode iterates its FIELD VALUES, not the row itself, which silently corrupted (rather
+    // than merely emptied) the seeded row set.
     private JsonNode readSeedResource(String location, boolean required) throws Exception {
         Resource resource = resourceLoader.getResource(location);
         if (!required && !resource.exists()) {
             return objectMapper.createArrayNode();
         }
+        JsonNode raw;
         try (var inputStream = resource.getInputStream()) {
-            return objectMapper.readTree(inputStream);
+            raw = objectMapper.readTree(inputStream);
         }
+        if (raw.isArray()) {
+            return raw;
+        }
+        if (raw.isObject()) {
+            return objectMapper.createArrayNode().add(raw);
+        }
+        throw new IllegalStateException(
+                "WorkspaceMenuSeeder: seed resource " + location + " is neither a JSON array nor an object (found "
+                        + raw.getNodeType() + ")");
     }
 
     private void insertMenuRow(Connection connection, JsonNode row, UUID id, UUID parentId) throws Exception {

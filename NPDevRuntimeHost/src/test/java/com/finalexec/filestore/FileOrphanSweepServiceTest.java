@@ -35,7 +35,7 @@ import static org.mockito.Mockito.when;
  * past-grace-window object; leaves a referenced object alone regardless of age; and leaves a fresh
  * (still-within-grace-window) unreferenced object alone. The reclamation algorithm itself
  * (including the no-file-fields and null-model edge cases) is exercised with fakes and gate-tested
- * coverage by {@code FileOrphanSweeperTest} in {@code :adapters:expression-cel:test} -- this class
+ * coverage by {@code FileOrphanSweeperTest} in {@code :adapters:runtime-support:test} -- this class
  * intentionally does not re-test those cases, only the real-adapter wiring.
  */
 class FileOrphanSweepServiceTest {

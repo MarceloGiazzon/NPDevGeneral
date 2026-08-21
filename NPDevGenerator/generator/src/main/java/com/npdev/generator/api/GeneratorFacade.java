@@ -14,6 +14,8 @@ import com.npdev.generator.emitters.EntityEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.InfoPageEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
+import com.npdev.generator.emitters.ModelAuthoringEmitter;
+import com.npdev.generator.emitters.ModelSurfaceEmitter;
 import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
 import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
@@ -21,6 +23,7 @@ import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.emitters.XrefEmitter;
+import com.npdev.generator.packs.LinkedSealedPack;
 import com.npdev.generator.dbconfig.ConversionHookEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
@@ -38,6 +41,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 
 public final class GeneratorFacade {
 
@@ -75,6 +79,42 @@ public final class GeneratorFacade {
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, Path modelSourcePath) throws Exception {
         generate(model, outRoot, schemaRealizationDir, modelSourcePath, legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath));
+    }
+
+    /**
+     * BUILD-2: convenience twin of the 4-arg {@link #generate(CompiledModel, Path, Path, Path)}
+     * above, for callers/tests that want {@code linkedSealedPacks} without also having to
+     * construct a real {@link ResolvedModelSource}/{@link GeneratedDatabasePlan} -- see the widest
+     * overload's own doc for what the link list does.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            Path modelSourcePath,
+            List<LinkedSealedPack> linkedSealedPacks
+    ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
+                legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
+                List.of(), null, linkedSealedPacks, Map.of());
+    }
+
+    /**
+     * GAP-1: convenience twin of the 5-arg overload directly above, for callers/tests that ALSO want
+     * {@code extensionFieldOrigins} (see the 9-arg overload's own doc) threaded into the generated UI
+     * manifest without constructing a real {@link ResolvedModelSource}/{@link GeneratedDatabasePlan}.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            Path modelSourcePath,
+            List<LinkedSealedPack> linkedSealedPacks,
+            Map<String, Map<String, String>> extensionFieldOrigins
+    ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
+                legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
+                List.of(), null, linkedSealedPacks, extensionFieldOrigins);
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, GeneratedDatabasePlan databasePlan) throws Exception {
@@ -143,10 +183,87 @@ public final class GeneratorFacade {
                 outRoot,
                 schemaRealizationDir,
                 resolvedModelSource,
+                databasePlan,
+                migrationPlanDestructiveItemStableStrings,
+                destructiveAcknowledgmentToken,
+                List.of()
+        );
+    }
+
+    /**
+     * BUILD-2 (BT-2's own "the linking" follow-on, ledger item BUILD-2): {@code linkedSealedPacks}
+     * names the packs (see {@link LinkedSealedPack}) whose concepts this app links as a precompiled
+     * sealed jar (see {@code com.npdev.generator.packs.SealedPackJarBuilder}) rather than generating
+     * their own entity/repository sources. Empty for every existing caller -- zero behavior change.
+     *
+     * <p><b>Narrow by design, not by accident.</b> Only {@link EntityEmitter} and {@link
+     * BusinessUiEmitter} skip a linked pack's concepts entirely -- the entity class already exists
+     * in the sealed jar (re-emitting it would collide at compile time), and business-UI generation
+     * for a linked concept is deferred (BUILD-2's own ledger item names it explicitly). {@link
+     * DtoEmitter}, {@link ServiceEmitter}, {@link ControllerEmitter} and {@link RuntimeApiEmitter}
+     * see the FULL model INCLUDING linked concepts -- a linked concept still needs its own generated
+     * DTO/service/controller (referencing the sealed jar's REAL entity package/class name via {@link
+     * LinkedSealedPack#resolve}, not the app's own default) to actually be reachable over HTTP, and
+     * its CRUD permission grants/compiled-model metadata (both {@link RuntimeApiEmitter} concerns)
+     * must cover it or every request 403s / "unknown entity"s at runtime even once a controller
+     * exists. Every OTHER emitter in this method (schema realization, the model-xref, the model
+     * surface, the metadata manifest, ...) already saw the FULL model before BUILD-2 touched
+     * anything, because a linked pack's physical tables/DDL and cross-catalog metadata are unrelated
+     * to whether its Java sources are generated locally or linked from a jar.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            GeneratedDatabasePlan databasePlan,
+            List<String> migrationPlanDestructiveItemStableStrings,
+            String destructiveAcknowledgmentToken,
+            List<LinkedSealedPack> linkedSealedPacks
+    ) throws Exception {
+        generate(
+                model,
+                outRoot,
+                schemaRealizationDir,
+                resolvedModelSource,
+                databasePlan,
+                migrationPlanDestructiveItemStableStrings,
+                destructiveAcknowledgmentToken,
+                linkedSealedPacks,
+                Map.of()
+        );
+    }
+
+    /**
+     * PACK-10 step 4/GAP-1 wiring: {@code extensionFieldOrigins} is {@code
+     * com.npdev.generator.packs.PackExtensionComposer.ExtensionComposition#extensionFieldOrigins()} --
+     * per-concept, per-field attribution of which extension pack added a field, threaded straight into
+     * {@link BusinessUiEmitter}'s {@code extensionSource} manifest attribute. Empty for every existing
+     * caller (the 8-arg overload above delegates here with {@code Map.of()}) -- zero behavior change
+     * when the app composes no extension packs.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            GeneratedDatabasePlan databasePlan,
+            List<String> migrationPlanDestructiveItemStableStrings,
+            String destructiveAcknowledgmentToken,
+            List<LinkedSealedPack> linkedSealedPacks,
+            Map<String, Map<String, String>> extensionFieldOrigins
+    ) throws Exception {
+        generate(
+                model,
+                outRoot,
+                schemaRealizationDir,
+                resolvedModelSource,
                 resolvedModelSource == null ? null : resolvedModelSource.rootModelPath(),
                 databasePlan,
                 migrationPlanDestructiveItemStableStrings,
-                destructiveAcknowledgmentToken
+                destructiveAcknowledgmentToken,
+                linkedSealedPacks,
+                extensionFieldOrigins
         );
     }
 
@@ -158,7 +275,8 @@ public final class GeneratorFacade {
             Path modelSourcePath,
             GeneratedDatabasePlan databasePlan
     ) throws Exception {
-        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, modelSourcePath, databasePlan, List.of(), null);
+        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, modelSourcePath, databasePlan,
+                List.of(), null, List.of(), Map.of());
     }
 
     private void generate(
@@ -169,7 +287,9 @@ public final class GeneratorFacade {
             Path modelSourcePath,
             GeneratedDatabasePlan databasePlan,
             List<String> migrationPlanDestructiveItemStableStrings,
-            String destructiveAcknowledgmentToken
+            String destructiveAcknowledgmentToken,
+            List<LinkedSealedPack> linkedSealedPacks,
+            Map<String, Map<String, String>> extensionFieldOrigins
     ) throws Exception {
         // REG-44: fail BEFORE emitting anything. A model that declares row-level access rules while
         // crud.kernelControlled is false would generate an app that silently enforces neither them nor
@@ -181,15 +301,31 @@ public final class GeneratorFacade {
         String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());
         boolean internalTablesEnabled = settingResolver.value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app());
 
-        new EntityEmitter(templates, writer).emit(model);
+        // BUILD-2: EntityEmitter and BusinessUiEmitter below see a NARROWER model when a pack is
+        // linked as a sealed jar (its entity class already exists in the jar; business UI for it is
+        // deferred) -- Dto/Service/Controller/RuntimeApi see the FULL `model` instead, since a linked
+        // concept still needs those to actually be reachable over HTTP. See this method's own
+        // overload doc for exactly why.
+        CompiledModel appOwnedSourceModel = excludeLinkedSealedPackConcepts(model, linkedSealedPacks);
+
+        new EntityEmitter(templates, writer).emit(appOwnedSourceModel);
         new DtoEmitter(templates, writer).emit(model);
-        new ServiceEmitter(templates, writer).emit(model, kernelControlled, settingResolver);
-        new ControllerEmitter(templates, writer).emit(model);
+        new ServiceEmitter(templates, writer).emit(model, kernelControlled, settingResolver, linkedSealedPacks);
+        new ControllerEmitter(templates, writer).emit(model, linkedSealedPacks);
 
         new RuntimeApiEmitter(templates, writer).emit(model, resolvedModelSource, modelSourcePath, superUserRole);
         new InfoPageEmitter(templates, writer).emit(model, databasePlan);
+        // R10.2: schema-driven model surface, emitted unconditionally (like info.html) rather than
+        // gated on UI_GENERATE_BUSINESS_UI -- it walks the canonical model JSON itself, not the
+        // business UI's panels, so it has no dependency on that flag being on.
+        new ModelSurfaceEmitter(templates, writer).emit(model);
+        // EDIT-12: minimal client-side model-authoring replacement for AuthoringApp.js's
+        // scaffolding/import-export capability -- also unconditional, also independent of
+        // UI_GENERATE_BUSINESS_UI, for the same reason as ModelSurfaceEmitter above.
+        new ModelAuthoringEmitter(templates, writer).emit(model);
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
-            new BusinessUiEmitter(templates, writer).emit(model, superUserRole, settingResolver);
+            new BusinessUiEmitter(templates, writer).emit(
+                    appOwnedSourceModel, superUserRole, settingResolver, extensionFieldOrigins);
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
             // since they are only reachable through its super-user admin nav.
             new BoxManifestEmitter().emit(model, writer);
@@ -236,6 +372,68 @@ public final class GeneratorFacade {
         new ConversionHookEmitter(databasePlan == null ? null : databasePlan.engine())
                 .emit(model, modelSourcePath, outRoot);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
+    }
+
+    /**
+     * BUILD-2: returns {@code model} unchanged when {@code linkedSealedPacks} is empty (every
+     * existing caller) -- otherwise a copy with every concept whose qualified name starts with one
+     * of the links' {@link LinkedSealedPack#conceptPrefix()} (the SAME alias-prefix convention
+     * {@code BuiltinPackComposer} already establishes for {@code identity::User}-style names)
+     * removed, so {@link EntityEmitter}/{@link BusinessUiEmitter} (the only two callers of this
+     * method) never see that pack's concepts.
+     */
+    private static CompiledModel excludeLinkedSealedPackConcepts(CompiledModel model, List<LinkedSealedPack> linkedSealedPacks) {
+        if (linkedSealedPacks == null || linkedSealedPacks.isEmpty()) {
+            return model;
+        }
+        List<String> prefixes = linkedSealedPacks.stream()
+                .filter(link -> link != null)
+                .map(LinkedSealedPack::conceptPrefix)
+                .toList();
+        if (prefixes.isEmpty()) {
+            return model;
+        }
+
+        java.util.LinkedHashMap<String, com.npdev.dsl.v1.compiled.CompiledConcept> filtered = new java.util.LinkedHashMap<>();
+        for (com.npdev.dsl.v1.compiled.CompiledConcept concept : model.getConcepts()) {
+            String name = concept.getName();
+            boolean linked = name != null && prefixes.stream().anyMatch(name::startsWith);
+            if (!linked) {
+                filtered.put(name, concept);
+            }
+        }
+
+        // Same widest constructor BuiltinPackComposer.merge already uses (and the same comment about
+        // WHY it must be the widest one -- a narrower overload has silently dropped whole model
+        // catalogs in the past, see that class's own note): every OTHER catalog is carried over
+        // unchanged, only `concepts` differs.
+        return new CompiledModel(
+                model.getNamespace(),
+                model.getDslVersion(),
+                model.getVersion(),
+                filtered,
+                model.getDomainTypes(),
+                model.getCapabilities(),
+                model.getBindings(),
+                model.getEvents(),
+                model.getFlows(),
+                model.getOrchestrationRules(),
+                model.getQueries(),
+                model.getRuleProfiles(),
+                model.getProcedures(),
+                model.getPanels(),
+                model.getGuidePages(),
+                model.getAggregates(),
+                model.getAutoPanels(),
+                model.getDocuments(),
+                model.getExternalAi(),
+                model.getSettings(),
+                model.getRoles(),
+                model.getPropertyScopes(),
+                model.getProperties(),
+                model.getContexts(),
+                model.getConversions()
+        );
     }
 
     private static GeneratedDatabasePlan legacyInMemoryPlan(

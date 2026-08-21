@@ -8,6 +8,7 @@ import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
 import com.finalexec.npdev.service.SandboxedPluginExecutionResult;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -290,13 +291,18 @@ class SandboxedPluginExecutionEngineTest {
         }
     }
 
+    @Disabled("Malicious plugin containment requires a real sandbox with SecurityManager or process isolation. "
+            + "The 6 existing tests in this class verify the happy path, error handling, timeout, interrupt "
+            + "safety, overload disambiguation, and policy denial.")
     @Test
     void maliciousPluginVectorsRemainContained() {
-        // filesystem access outside sandbox should be blocked
-        // network connections should be blocked
-        // memory and cpu should be bounded
-        // infinite loop, System.exit, and reflection attack attempts remain contained
-        assertTrue(true);
+        // Original aspirational vectors:
+        // - Filesystem access outside the sandbox blocked
+        // - Network connections blocked
+        // - Memory/CPU bounded
+        // - Infinite loop terminated by timeout
+        // - System.exit contained
+        // - Reflection containment
     }
 
     @Test

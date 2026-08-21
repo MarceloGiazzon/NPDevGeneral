@@ -1,0 +1,12 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "npdev.probes.p10extensionpack",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "PACK-10 probe (first-class extends): the clinicbase pack composed with a throwaway extension pack ('clinicext') that uses the first-class `extends` keyword to additively contribute a bloodType field onto clinicbase::Patient. Proves: the extension mechanism works end-to-end through the real compile pipeline, the Patient concept ends up with both name (from base) and bloodType (from extension), and the first-class `extends` keyword is accepted by the schema."
+  },
+  "packs": [
+    { "$ref": "packs/clinicext/pack.json" }
+  ]
+}

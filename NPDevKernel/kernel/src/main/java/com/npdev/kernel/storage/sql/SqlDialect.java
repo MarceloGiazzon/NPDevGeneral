@@ -344,6 +344,29 @@ public interface SqlDialect {
     }
 
     /**
+     * R5.2 (RUN-1 item 4): {@code expression} with leading/trailing whitespace stripped, portably.
+     *
+     * <p><b>Why not the single-argument ANSI {@code TRIM(expression)}.</b> It looks like the obvious
+     * spelling and is wrong on one engine: {@code TRIM(x)} (no {@code BOTH}/{@code LEADING}/
+     * {@code TRAILING FROM}) was only added to T-SQL in <b>SQL Server 2017</b>, and this dialect's own
+     * class javadoc targets SQL Server 2016+ -- so the obvious spelling is a syntax error on the
+     * oldest engine version this platform claims to support. {@code LTRIM(RTRIM(expression))} has no
+     * such gap: both single-sided trims are plain ANSI SQL every version of H2, Postgres, MySQL and
+     * SQL Server (including 2016) has always had.
+     *
+     * <p><b>Why this is a default method, not a per-dialect one.</b> Same reasoning as {@link
+     * #nullsFirstAscending}: every engine answers "strip whitespace from both ends" with the
+     * identical nested expression, so there is no per-engine fact to encode -- the default IS the
+     * dialect answer, uniformly.
+     *
+     * @param expression the already-safe SQL expression to trim (a column reference, or the result
+     *                    of another dialect call such as {@link #cast})
+     */
+    default String trimmedText(String expression) {
+        return "LTRIM(RTRIM(" + expression + "))";
+    }
+
+    /**
      * A {@code SELECT} that takes a write lock on the rows it reads, so a check-then-act is atomic.
      *
      * <p><b>Built here rather than suffixed, because the lock is not always a suffix.</b> Three
@@ -649,6 +672,28 @@ public interface SqlDialect {
     String guardedCreateIndex(String indexName, String tableName, String createStatement);
 
     /**
+     * {@code DROP INDEX indexName}, made idempotent (a no-op when it does not exist) and reduced to a
+     * single statement the caller need not branch on.
+     *
+     * <p><b>R5.4: why this exists, distinct from {@link #guardedCreateIndex}.</b> A guarded CREATE
+     * only ever no-ops on an ALREADY-EXISTING same-named object -- it never adjusts that object's
+     * definition. A concept that already had {@code unique: true} before it also turned on {@code
+     * softDelete: true} left behind a real, unfiltered {@code ux_...} unique index/constraint from
+     * before that change; a guarded {@code CREATE UNIQUE INDEX ux_... WHERE deleted_at IS NULL} (or
+     * the plain-index fallback on an engine with no {@link StorageCapability#PARTIAL_UNIQUE_INDEX})
+     * would see that name already taken and silently leave the STALE, wrong-shaped index in place --
+     * still blocking reuse of a soft-deleted row's value, the exact defect this feature exists to fix.
+     * Measured live (2026-08-19): regenerating {@code soft-delete-r54-proof} after adding {@code
+     * softDelete: true} to an already-unique field left {@code ux_suppliers_code} in place on H2,
+     * and reusing a deleted row's code failed with a raw {@code JdbcSQLIntegrityConstraintViolationException}
+     * instead of the 2xx the DoD requires. {@code SchemaRealizationEmitter} calls this to drop the
+     * stale name immediately before (re)creating the correctly-shaped one, every time a soft-delete
+     * concept's unique-field DDL is emitted -- a no-op on every boot after the one where the shape
+     * actually changed, since Flyway only re-runs a repeatable migration whose checksum changed.
+     */
+    String guardedDropIndexIfExists(String indexName, String tableName);
+
+    /**
      * {@code alterStatement} ({@code ALTER TABLE t ADD COLUMN c TYPE}) made idempotent.
      *
      * <p><b>Also normalises the keyword.</b> T-SQL has no {@code COLUMN} in {@code ALTER TABLE t ADD
@@ -656,6 +701,203 @@ public interface SqlDialect {
      * that sits underneath the {@code IF NOT EXISTS} one and would have surfaced as its own CI round.
      */
     String guardedAddColumn(String tableName, String columnName, String alterStatement);
+
+    /**
+     * {@code CREATE SCHEMA <name>} made idempotent.
+     *
+     * <p>Added for R9.3's migration mutex, whose H2 fallback has to put its lock table in a schema
+     * Flyway does not manage (see {@link StorageCapability#SESSION_ADVISORY_LOCK}). Implemented on
+     * all four engines rather than only H2 -- the guard shape is exactly {@link
+     * #guardedCreateTable}'s, and leaving three of them to throw would be a fifth engine's problem
+     * discovered at its first boot rather than here.
+     *
+     * @param schemaName the schema, for engines that need a catalog lookup rather than a keyword
+     */
+    String guardedCreateSchema(String schemaName);
+
+    // ------------------------------------------------------- session-scoped migration mutex
+
+    /*
+     * ------------------------------------------------------------------------------------------
+     * R9.3. NPDev serializes concurrent boots on a named mutex held across the whole
+     * migrate/realize window. Three engines have a real advisory lock; H2 has none and falls back
+     * to a row lock (MigrationMutex). These three methods exist so the FALLBACK is chosen by
+     * capability, and so no caller ever spells `pg_try_advisory_lock` -- which is precisely what
+     * MigrationClaimStore used to do inline, undetected by check-dialect-sites.py only because it
+     * had no pattern for advisory locks yet. It has one now.
+     *
+     * Every implementation returns ONE statement with ONE `?` placeholder, yielding ONE row whose
+     * first column is 1 (acquired/released) or 0. Normalising to an integer in SQL is deliberate:
+     * the three engines disagree three ways -- Postgres returns a boolean, MySQL returns 1/0/NULL,
+     * SQL Server returns a procedure code that is >= 0 on success and negative on failure -- and
+     * the kernel is JDBC-free by design (see PaginationClause), so it cannot hand back a reader.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    /**
+     * The value to bind to {@link #tryAdvisoryLockSql()}/{@link #releaseAdvisoryLockSql()} for a
+     * logical lock name, ready for {@code PreparedStatement.setObject}.
+     *
+     * <p>{@code Object} rather than {@code String} because Postgres keys advisory locks by
+     * {@code bigint} while MySQL and SQL Server key them by name -- a single Java type would force
+     * one of them to a cast at the call site, and a cast is dialect-bound SQL.
+     *
+     * @throws UnsupportedStorageCapabilityException when this engine has no advisory lock
+     */
+    default Object advisoryLockKey(String lockName) {
+        require(StorageCapability.SESSION_ADVISORY_LOCK);
+        return lockName;
+    }
+
+    /**
+     * A NON-BLOCKING attempt at the session-scoped mutex: one row, first column 1 when this session
+     * now holds it, 0 when someone else does.
+     *
+     * <p><b>Non-blocking on purpose, on every engine.</b> MySQL, SQL Server and H2 can all wait
+     * server-side with a timeout; Postgres cannot ({@code lock_timeout} does not apply to advisory
+     * locks, and {@code pg_advisory_lock} waits forever). Rather than let one engine's boot hang
+     * indefinitely while the other three time out, the WAITING is done by the caller as a bounded
+     * retry, so the deadline is one number with identical meaning everywhere.
+     *
+     * @throws UnsupportedStorageCapabilityException when this engine has no advisory lock
+     */
+    default String tryAdvisoryLockSql() {
+        require(StorageCapability.SESSION_ADVISORY_LOCK);
+        throw new UnsupportedStorageCapabilityException(name(), StorageCapability.SESSION_ADVISORY_LOCK);
+    }
+
+    /**
+     * Releases the session-scoped mutex: one row, first column 1 when it was held and is now
+     * released.
+     *
+     * <p>Belt and braces only -- every engine here releases a session-scoped lock by itself when
+     * the connection dies, which is what makes a mutex leaked by a crashed boot self-healing rather
+     * than a deadlock every future boot inherits.
+     *
+     * @throws UnsupportedStorageCapabilityException when this engine has no advisory lock
+     */
+    default String releaseAdvisoryLockSql() {
+        require(StorageCapability.SESSION_ADVISORY_LOCK);
+        throw new UnsupportedStorageCapabilityException(name(), StorageCapability.SESSION_ADVISORY_LOCK);
+    }
+
+    // ------------------------------------------------------- predicate grammar v2 (R4.3)
+
+    /*
+     * ------------------------------------------------------------------------------------------
+     * R4.3 (Roadmap Wave 1): the escaping/binding primitives a `contains`/`startsWith`/`in`
+     * predicate needs to render correctly on every engine WITHOUT string-concatenating a caller's
+     * value into SQL text. Every method here is a default, uniform across engines -- the same shape
+     * as #nullsFirstAscending/#trimmedText above, and for the same reason: `LIKE ... ESCAPE '\'` and
+     * `IN (?, ?, ...)` are plain ANSI SQL every engine this platform supports has always accepted
+     * identically, so there is no per-engine fact to encode. What VARIES per engine (whether LOWER()
+     * accepts a non-text column outright, as Postgres refuses and H2 silently coerces -- see
+     * JdbcBusinessConceptStore's own CAST-first comment) is a call-site concern for whichever WHERE
+     * builder consumes these, not something this seam can answer without knowing the column's type.
+     *
+     * These are additive and not yet called by any WHERE builder in this codebase -- see
+     * QueryPredicateGrammar's "PREDICATE GRAMMAR V2" section header for exactly why (a real WHERE
+     * builder for `contains`/`startsWith`/`in` lives in NPDevRuntimeHost's JdbcBusinessConceptStore,
+     * outside this change's owned surface). They exist so that work does not start from zero: the
+     * pattern/placeholder text they return is BOUND as a query parameter by the caller, never
+     * embedded in the SQL string itself -- the whole point of the "parameter binding, not string
+     * interpolation" rule this feature is built around.
+     * ------------------------------------------------------------------------------------------
+     */
+
+    /**
+     * Escapes {@code term} so it is matched LITERALLY inside a {@code LIKE} pattern this engine
+     * evaluates with {@link #likeEscapeClause()} -- escapes the engine's own escape character first
+     * (so it cannot itself be mistaken for an escape), then {@code %} and {@code _}, the two SQL
+     * wildcard characters every engine here recognises identically.
+     *
+     * <p>Returns the escaped TERM only, not a full pattern -- see {@link #containsPattern} /
+     * {@link #startsWithPattern} for the {@code %}-wrapped forms callers actually bind.
+     */
+    /**
+     * The expression to compare against a case-insensitive {@code LIKE} pattern: lower-cased, and
+     * CAST to text first so a {@code contains}/{@code startsWith} filter also works against a
+     * numeric/UUID/date column.
+     *
+     * <p><b>Unlike the escaping primitives below, this one IS a per-engine fact, and getting it
+     * wrong fails in two different silent ways.</b> The obvious spelling,
+     * {@code LOWER(CAST(col AS VARCHAR))}, is what this codebase used inline before R4.3:
+     *
+     * <ul>
+     *   <li><b>MySQL rejects it outright.</b> {@code CAST} accepts {@code CHAR}, not {@code VARCHAR}
+     *       -- {@code CAST(col AS VARCHAR)} is a syntax error, so every contains/startsWith filter
+     *       would fail at query time.</li>
+     *   <li><b>SQL Server silently truncates.</b> A length-less {@code CAST(col AS VARCHAR)} defaults
+     *       to <b>30 characters</b> in T-SQL (unlike a declaration, where it defaults to 1). A
+     *       "contains" against anything longer than 30 characters would quietly match nothing --
+     *       no error, just wrong rows.</li>
+     * </ul>
+     *
+     * <p>The CAST is not optional on any engine: Postgres's {@code LOWER()} rejects non-text input
+     * outright, while H2 silently coerces it -- so without it a filter works in H2 dev and fails in
+     * Postgres production.</p>
+     *
+     * @param expression an already-safe SQL expression (a column reference, never caller text)
+     */
+    default String caseInsensitiveTextExpression(String expression) {
+        return "LOWER(CAST(" + expression + " AS VARCHAR))";
+    }
+
+    default String likeWildcardEscape(String term) {
+        if (term == null) {
+            return "";
+        }
+        return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+    }
+
+    /**
+     * The {@code ESCAPE} clause fragment to append after a {@code LIKE ?} predicate whose bound
+     * parameter came from {@link #containsPattern}/{@link #startsWithPattern} -- {@code ESCAPE '\'},
+     * identical on every engine this platform supports (Postgres, H2, MySQL and SQL Server all
+     * accept a backslash escape character in a {@code LIKE} predicate with no syntax difference).
+     */
+    default String likeEscapeClause() {
+        return "ESCAPE '\\'";
+    }
+
+    /**
+     * The full pattern for a case-normalised {@code contains} match -- {@code %term%}, with
+     * {@code term} wildcard-escaped by {@link #likeWildcardEscape}. Bind this as the {@code LIKE ?}
+     * parameter; never splice it into SQL text. Case folding (typically {@code LOWER(...)} on both
+     * sides) is the caller's job, since it depends on the column's declared type.
+     */
+    default String containsPattern(String term) {
+        return "%" + likeWildcardEscape(term) + "%";
+    }
+
+    /**
+     * The full pattern for a {@code startsWith} (prefix) match -- {@code term%}, with {@code term}
+     * wildcard-escaped by {@link #likeWildcardEscape}. Bind this as the {@code LIKE ?} parameter;
+     * never splice it into SQL text.
+     */
+    default String startsWithPattern(String term) {
+        return likeWildcardEscape(term) + "%";
+    }
+
+    /**
+     * {@code count} bind-marker placeholders for an {@code IN (?, ?, ...)} predicate, comma-joined
+     * -- e.g. {@code inPlaceholders(3)} returns {@code "?, ?, ?"}. Callers bind each value
+     * positionally, in the SAME order the {@code IN} list's own values are bound -- this method
+     * never sees or touches a value, only how many there are, which is what keeps an {@code IN}
+     * list a bind-parameter list rather than a string-concatenation surface.
+     *
+     * @throws IllegalArgumentException if {@code count} is not positive -- an empty {@code IN} list
+     *         is a caller bug (refused earlier, at the grammar layer -- see
+     *         {@code QueryPredicateGrammar.PredicateLiteral.Values}), not a "no rows match" answer
+     *         this method should render silently
+     */
+    default String inPlaceholders(int count) {
+        if (count <= 0) {
+            throw new IllegalArgumentException(
+                    "engine '" + name() + "': an IN list needs at least one bound value, got " + count);
+        }
+        return String.join(", ", java.util.Collections.nCopies(count, "?"));
+    }
 
     // ------------------------------------------------------------------ honesty
 

@@ -1,0 +1,347 @@
+id: EDIT-12
+title: >-
+  R10.3 is blocked: AuthoringApp's scaffolding/import-export studio has no replacement
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-20
+source: >-
+  R10.3 (Roadmap Collection 2026-08-18) attempted 2026-08-19. The frozen bundle was deleted, then
+  restored after a proper per-chunk audit found a capability nothing else serves.
+surface: editor/frozen-bundle
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/static-react/assets/AuthoringApp.js
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ModelAuthoringEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/model-authoring.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/model-surface.mustache
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ModelAuthoringEmitterTest.java
+detail: |
+  **R10.3 (delete `static-react/`) cannot proceed yet.** The deletion was performed and then fully
+  reverted from git on the same day, once the three JS chunks were audited by grepping their actual
+  minified content rather than inferring coverage from filenames, the manifest and CLAUDE.md prose.
+
+  Per-chunk findings:
+
+  - **`app.js` (144 KB)** -- React runtime plus a router shell with two hash routes
+    (`#/authoring/home`, `#/workbench`) that lazy-load the other two chunks. No substantive API
+    surface of its own.
+  - **`ReactWorkbenchApp.js` (44 KB)** -- ALREADY mostly dead. Its Model/Rule editor tabs call
+    `/api/admin/model/editor/draft` and `/api/admin/model/rules/draft`, which **404 since R10.1**
+    (EDIT-4) removed the draft write-back endpoints. Its remaining live surface (correlation
+    timeline, audit timeline, operator console, capability calls, events) duplicates the vanilla
+    Operator UI at `/npdev-ui/`, which is unconditionally emitted and untouched.
+  - **`AuthoringApp.js` (240 KB) -- the blocker.** A full client-side model-authoring studio, NOT a
+    viewer: starter templates (`Business Record Starter`, `Approval Workflow Starter`), scaffolding
+    (`Add concept`/`Add field`/`Add flow`/`Add panel`/`Add invariant`/`Add state`/`Add transition`),
+    and an Import/Export screen (`#/authoring/exchange`) that reads and writes a LOCAL folder through
+    `window.showDirectoryPicker` (File System Access API, two call sites). ~594 distinct capitalised
+    UI labels of that shape.
+
+  **Crucially, AuthoringApp is unaffected by R10.1.** Its API calls are
+  `/api/admin/model/sync-status`, `/api/runtime/metadata/validate`, `/api/admin/ui-model`,
+  `/api/admin/runtime/metadata/{validation-support,index}` and
+  `/api/runtime/metadata/ui/preview/*` -- none of them the draft endpoints R10.1 deleted. So it was
+  still functional right up to the moment it was deleted.
+
+  **R10.2's `model-surface.html` does not replace it, and is not a subset of it.** The emitted
+  surface is a read-only dump of THIS app's own compiled model, embedded at generation time.
+  AuthoringApp builds and edits an ARBITRARY model from starter templates and hands it to a local
+  folder. Different capability, different direction of data flow.
+
+  R10.0 (EDIT-3) did anticipate this loss, naming CLI/MCP authoring as the intended replacement
+  ("reviving hand-maintained editor source ... is the costlier path ... once CLI/MCP authoring (R1)
+  exists as the real write path"). Whether CLI/MCP maturity makes the trade acceptable is the owner
+  call R10.0 itself flagged as "not engineering" -- it is NOT something a code audit can certify,
+  which is why this item is OPEN rather than WONTFIX.
+
+  **A second, separate loss is already unrecoverable and should not be mistaken for R10.3 fallout.**
+  The three routines
+  `NPDevSamples/scripts/browser/browser-routines/editor-open-{model-folder,model-only,wmsoffice-model}-verify-routine.json`
+  all target `http://localhost:5173/npdev-ui-react/#/authoring/exchange` -- **NPDevEditor's own Vite
+  dev server**, not a generated app's port. That dev server has had no in-repo producer since
+  2026-08-17 (BREAKING.md), so those routines were already unrunnable before R10.3 was attempted.
+  They were the only automated proof this capability ever worked end to end.
+
+  **What must be true before R10.3 can proceed** (any one of):
+  1. An owner decision that CLI/MCP authoring is an acceptable replacement for the browser
+     scaffolding + local-folder handoff flow, recorded as a ledger decision; or
+  2. The scaffolding/import-export capability re-emitted from the generator (R10.2's surface
+     extended from read-only to model-authoring, which is a substantially larger item); or
+  3. Evidence that no one uses it -- which cannot come from this repo, since the only automated
+     coverage was the three already-dead routines.
+
+  `ReactWorkbenchApp.js` alone could arguably be dropped today (its editor half is 404 and its
+  remainder is duplicated by `/npdev-ui/`), but the manifest ships the three chunks together and
+  `app.js` lazy-loads both by name, so a partial deletion needs the router shell edited too -- and
+  that file has no producer.
+
+  2026-08-19, later same session: option 2 above (re-emit the scaffolding/import-export capability
+  from the generator) SHIPPED a real, minimal slice -- `ModelAuthoringEmitter`
+  (`NPDevGenerator/generator/.../emitters/ModelAuthoringEmitter.java`) + `model-authoring.mustache`,
+  wired into `GeneratorFacade` right after `ModelSurfaceEmitter` and reserved in
+  `FinalAppAssembler.RESERVED_WEB_ASSET_FILES`. Every generated app now also ships
+  `static/model-authoring.html`, a second self-contained page alongside `model-surface.html` (linked
+  from it), unconditional and independent of `UI_GENERATE_BUSINESS_UI` like its sibling.
+
+  What it does, matching the owner's "minimal replacement" framing: (1) import an arbitrary
+  `model.json` from a local folder via `window.showDirectoryPicker`, rendering its top-level shape
+  with the SAME generic array/object/scalar walk `model-surface.mustache` uses for the compiled
+  model it embeds -- copied into this page rather than shared, so a DSL section this page has never
+  heard of still renders once imported, the same "enumerated, not named" property; (2) ONE
+  scaffolding action, "Add concept" (name + N typed fields from a small dropdown --
+  string/int/decimal/boolean/datetime/uuid -- every new concept auto-gets a standard `id:uuid`
+  field), mutating the in-browser model object and re-rendering; (3) export back to `model.json` in
+  the SAME chosen folder via `createWritable()`/`write()`/`close()`. Zero `fetch()`/XHR anywhere in
+  the page's script, and critically zero call to any `/api/...` path -- R10.1's deleted draft
+  write-back door stays shut by construction, mechanically guarded by
+  `ModelAuthoringEmitterTest.neverCallsBackIntoThisAppsOwnServer` (asserts no `"/api/"` substring
+  anywhere in the emitted HTML, not just the script body).
+
+  Deliberately NOT built this slice, same discipline as BUILD-2's own deferred list: starter
+  templates (Business Record / Approval Workflow), the other six scaffolding actions
+  (field/flow/panel/invariant/state/transition -- only "concept" shipped), reference-typed fields in
+  the Add-concept form (dropdown offers only scalar types), and any richer editing UI (rename/delete
+  a concept, edit an existing field). AuthoringApp.js's own ~594-label surface is not remotely
+  matched; this is a proof that the capability CLASS (local-folder round trip + at least one
+  scaffolding action) works end to end through the generator, not a feature-complete port.
+
+  Verified for real, not just unit-tested:
+  - `:generator:test`: 435 tests, 0 failures attributable to this change (`ModelAuthoringEmitterTest`'s
+    3 new cases + `ModelSurfaceEmitterTest`'s existing 4, all green). Confirmed on an ISOLATED private
+    Gradle build root (`NPDEV_BUILD_ROOT` override) after the shared worktree build root
+    (`.claude/worktrees/Build`) produced non-reproducible cross-agent corruption
+    (`NoClassDefFoundError`/`ClassNotFoundException`/jacoco execution-data mismatches) under
+    concurrent sibling-worktree agents -- confirmed NOT this change's fault by reproducing the same
+    corruption on a fully clean git-stash baseline. Two PRE-EXISTING, unrelated failures remain on a
+    clean isolated run: `ModelChangeClassifierTest`'s two corpus property tests choke on
+    `NPDevSamples/pack9-role-binding-a/Input/model.json` (today's earlier PACK-9 commit, `340ed423` --
+    that model has no top-level `"concepts"` key, composing it entirely via `packs[]`, and the test
+    parses the raw JSON directly rather than through `ModelSourceResolver`'s pack-composition path).
+    Confirmed pre-existing and unrelated by reproducing on a clean stash with no EDIT-12 changes
+    present. Not fixed here -- out of scope for this item, filed for whoever picks up PACK-9
+    follow-through.
+  - Generated, built (`gradlew clean build -x test` -- the generated app's OWN full `:test` suite has
+    unrelated pre-existing failures of its own, see below), and BOOTED the real `npdev-canary` sample
+    from this change (H2Local, dev+trial profiles), confirming `GET /model-authoring.html` returns 200
+    with the expected content (14312 bytes, `showDirectoryPicker` present) from the running app's
+    static resource handler -- not just present on disk. `model-surface.html`'s new cross-link to it
+    also confirmed live. The old `static-react/` bundle (`AuthoringApp.js` included) still serves
+    unchanged at `/npdev-ui-react/`, confirmed 200 -- this slice added a page, it did not touch or
+    replace the old bundle's own delivery. Skipped the generated app's OWN `:test` task: three
+    unrelated pre-existing failures (`RuntimeMetadataServiceHotSwapTest`,
+    `SandboxedPluginExecutionEngineTest`, `SchemaLifecycleExecutorProofMatrixTest` -- the last throwing
+    a raw H2 `JdbcSQLSyntaxErrorException`, consistent with concurrent-agent DB contention on this
+    machine) have nothing to do with this change; `:generator:test` above is the module actually
+    touched.
+  - Real browser round-trip proof (Playwright, headless Chromium, both against the static file on
+    disk AND against the live running app's served URL): import(seed model, 1 concept) -> Add concept
+    "Invoice" (fields amount:decimal, issuedAt:datetime) -> export -> re-import the SAME exported
+    file. All 20 assertions passed both times: exported "Widget" byte-identical to the original
+    (nothing else touched), new "Invoice" concept present with its auto id field plus both
+    user-entered fields, and the re-import (an independent re-parse of the exported bytes, not the
+    mutated in-memory object) shows both concepts. `window.showDirectoryPicker` itself was NOT
+    exercised -- it opens a native OS dialog with no Playwright automation surface (unlike
+    `<input type=file>`), so the test injects a fake `FileSystemDirectoryHandle`-shaped object via
+    `page.addInitScript()` BEFORE the page's own script runs; the page's own
+    `import()`/`export()`/`onAddConcept()` functions run completely unmodified against it. What this
+    does NOT prove: that the real native folder-picker dialog opens and grants permission correctly --
+    inherently un-automatable without OS-level input injection, stated honestly rather than hidden.
+  - `scripts/hygiene/check-deterministic-generation.ps1`: PASSED (two independent generations of the
+    default sample, byte-identical).
+
+  EDIT-12 moves OPEN -> PARTIAL, not DONE, not closed: this ships a real, working instance of option
+  2, proving the mechanism (generator-emitted, model-authoring capability, local-folder round trip)
+  end to end -- but AuthoringApp.js's actual surface (starter templates, 6 more scaffolding actions,
+  richer editing) remains unreplaced by a wide margin. **R10.3 (delete `static-react/`) is explicitly
+  NOT safe to attempt on the strength of this alone** -- AuthoringApp.js is still the only place a
+  user can scaffold a field/flow/panel/invariant/state/transition or start from a template. The guard
+  below is UNCHANGED for that reason: the manifest must keep listing all five bundle assets and
+  `AuthoringApp.js` must keep existing until a future slice (or an owner decision per option 1)
+  closes the remaining gap.
+  2026-08-19/20, slice 2: **both starter templates and the remaining SIX scaffolding actions
+  shipped**, so the page now covers all seven action types (concept, field, flow, panel, invariant,
+  state, transition) plus `Business Record Starter` and `Approval Workflow Starter` -- the two the
+  frozen bundle named. Same emitter/template pair, same constraints: still one self-contained page,
+  still zero `fetch()`/XHR and zero `/api/` substring anywhere in the emitted HTML (R10.1's deleted
+  write-back door stays shut by construction, still mechanically asserted).
+
+  **The point of this slice is that a scaffold has to produce a model the platform ACCEPTS.** Three
+  real defects were found by validating the page's own exported output through the real validator
+  (`npdev validate model`), not by inspection, and none would have been caught by a unit test that
+  greps the emitted HTML for labels:
+
+  1. **A `string` status field is not a lifecycle.** `LifecycleValidation` requires
+     `lifecycle.statusField` to name a field of type `enum` whose `enumValues` cover EVERY declared
+     state, and a transition may only name values among them. The first draft created it as
+     `{ name: 'status', type: 'string' }` -- structurally fine, semantically dead: `statusField
+     'status' must be enum`, on both the starter's concept and the hand-scaffolded one. Fixed by
+     making the states the single source of truth and rebuilding the enum field from them on every
+     change (`syncStatusEnum`), so the two cannot drift; the starter routes through the same helper
+     rather than hand-writing its status field, so a template cannot emit a shape the manual path
+     would not. `enumValues` also carries `minItems: 1`, so the field is created with the first
+     state rather than empty.
+  2. **A flow that declares a mode but never persists.** `Flow X: input mode 'update' does not imply
+     persistence by name or mode alone.` The scaffold emitted a lone `return $input` step. Now it
+     emits the persistence step the chosen mode implies (`createConcept`/`updateConcept`, `scope` =
+     the chosen concept) and returns `$saved`.
+  3. **Every scaffolded concept and field generated a ux-metadata warning** for having no
+     user-visible label. A scaffolding tool that emits a warning per item it adds trains its user to
+     ignore the validator, so every concept/field now goes through `labelled()`.
+
+  Two further validator rules the page cannot satisfy on the user's behalf -- exactly one initial
+  state, at least one transition -- are surfaced as live guidance (`lifecycleAdvice`) while the
+  lifecycle is still incomplete, rather than left for a later failed build to report.
+
+  Verified:
+  - `:generator:test --tests '*ModelAuthoringEmitterTest*'` green on an isolated private Gradle
+    build root (`NPDEV_BUILD_ROOT`/`-PnpdevBuildRoot`), per the cross-agent-corruption lesson slice 1
+    recorded. Four cases now: capabilities (all seven action labels + both starter names present),
+    the no-server-callback guard, byte-for-byte determinism, and two new ones -- the DSL-shape guard
+    (`scaffoldedShapesMatchWhatTheDslRequires`) and `everyRenderedButtonIsWiredToAHandler`.
+  - Real headless-Chromium round trip against the page the REAL emitter wrote: import a seeded
+    folder -> apply a starter (twice, proving re-application skips rather than duplicates) -> all
+    seven scaffolding actions -> export -> re-import the exported bytes. **43/43 assertions**,
+    including the negative paths (duplicate concept refused, second initial state refused,
+    self-transition refused) and that the untouched seed concept survives byte-identical. As in
+    slice 1, `window.showDirectoryPicker` is a `page.addInitScript`-injected fake -- it opens a
+    native OS dialog with no automation surface -- while the page's own import/export/scaffold
+    functions run unmodified against it. Still NOT proven: that the real native picker opens and
+    grants permission.
+  - **The exported model then run through the real validator: `status: warning`, ZERO errors.** The
+    only two remaining warnings are `missing_concept_label`/`missing_field_label` on the proof
+    harness's own hand-written seed concept, which is deliberately unlabelled -- nothing the page
+    scaffolded produces a single diagnostic.
+
+  **One real bug in this slice was found ONLY by driving a browser**, and it is the reason
+  `everyRenderedButtonIsWiredToAHandler` now exists: the Export button shipped for one revision with
+  no `addEventListener`. The markup was right, the handler function was right, every grep-the-HTML
+  assertion passed -- and clicking it did nothing. A control that renders and is inert is invisible
+  to any test that only checks its label is present.
+
+  **EDIT-12 stays PARTIAL.** Two of the guard's three named criteria are now met (starter templates;
+  all seven scaffolding action types). The third is not: this page still only ADDS. Renaming or
+  deleting a concept, changing an existing field's type, removing a state, reference-typed and enum
+  fields in the add-field forms, and multi-step flow authoring all remain AuthoringApp.js-only.
+  **R10.3 is therefore still not safe to attempt on engineering grounds alone** -- but the gap is now
+  specifically "editing what exists", not "scaffolding at all", which is a materially different and
+  much smaller owner decision than the one slice 1 left open.
+  2026-08-20, slice 3: **the editing surface -- the guard's remaining third criterion -- shipped.**
+  Six actions on what already exists: rename/delete a concept, rename/retype/remove a field, remove
+  a lifecycle state. That closes the "this page only ADDS" gap slice 2 left open.
+
+  **Renaming is the dangerous operation and is treated as one.** NPDev's schema lifecycle classifies
+  a concept or field rename as a RENAME only if the model declares `renamedFrom`; without it the
+  regeneration sees an unrelated drop-and-create and the table's or column's DATA IS DESTROYED. So
+  the page stamps it -- and three separate decisions had to be right for the stamp to be correct
+  rather than merely present:
+
+  1. **Only for something that is actually on disk.** The model AS IMPORTED is snapshotted
+     (`snapshotOnDisk`); a concept or field created during the session is deliberately NOT stamped,
+     because there is no table or column for `renamedFrom` to name.
+  2. **The stamp keeps naming the ORIGINAL.** Across `A -> B -> C` it stays `A` -- an existing value
+     is never overwritten -- because `A` is the name on disk.
+  3. **A field's stamp is looked up by its CONCEPT'S on-disk name.** Keying it by the concept's
+     current name loses the field-level stamp entirely once the concept has itself been renamed --
+     silently turning a column rename back into the drop-and-add the stamp exists to prevent.
+     **This one was found only by driving a real browser**; it passed every unit assertion.
+
+  References to a renamed concept are repointed by the same generic walk the structure view uses --
+  every string sitting under a concept-naming key, so a DSL section this page has never heard of is
+  still updated rather than left dangling. Deletes and removals are REFUSED, naming the blocker,
+  when something still points at the target, when it is the concept's `id` field, or when it backs a
+  lifecycle. Free-text expressions (invariants, guards) that mention a renamed field are REPORTED,
+  never silently rewritten -- this page will not parse an expression language it does not own.
+
+  **A second defect the validator caught, not inspection:** `lifecycle.transitions` carries
+  `minItems: 1` and `lifecycle` requires the key, so a lifecycle with zero transitions is not merely
+  undesirable, it is *unrepresentable*. Removing a state that dropped the last transition wrote a
+  `model.json` that would not even parse. Now a removal that empties either the states or the
+  transitions collapses the whole lifecycle (and the status field it required) and says exactly why.
+
+  Verified:
+  - `:generator:test --tests '*ModelAuthoringEmitterTest*'` green on an isolated private Gradle build
+    root. Six cases, adding `renamesRecordRenamedFromOnlyWhenThereIsSomethingOnDiskToRename`, which
+    pins all three stamp decisions above plus the generic repoint and the report-don't-rewrite rule.
+  - The headless-Chromium round trip extended to **66/66 assertions**, now covering every editing
+    action and its refusals: delete refused while referenced, retyping the lifecycle's status field
+    refused, removing the `id` field refused, the transition that used a removed state dropped, the
+    status enum rebuilt, both the stamped and the deliberately-unstamped rename paths, and a rename
+    round-tripped back with no `renamedFrom` residue.
+  - **The edited model through the real validator: `status: warning`, ZERO errors.** The only two
+    warnings are `missing_concept_label`/`missing_field_label` on the proof harness's own
+    deliberately-unlabelled seed concept.
+
+  A third process point worth keeping: a syntax error in the emitted script (introduced while
+  normalising typographic apostrophes into ASCII ones *inside single-quoted JS strings*) leaves every
+  handler unattached, and the only downstream symptom is a 30-second timeout waiting for a status
+  line nothing can set any more. The browser proof now asserts "loads without a script error" FIRST
+  and fatally, so the failure names its own cause.
+
+  **All three of this guard's criteria are now met.** What remains is genuinely smaller and named in
+  the page itself: reference-typed and enum fields in the add-field forms, multi-step flow authoring,
+  and editing a flow's or panel's internals once created. Whether that residue still blocks R10.3 is
+  now an owner call of the kind option 1 always described -- it is no longer a claim engineering can
+  settle by pointing at a capability nothing replaces.
+
+  DRAFT OWNER MESSAGE (go/no-go for R10.3, ready to send):
+
+  Subject: R10.3 go/no-go -- the frozen AuthoringApp bundle now has a verified replacement
+
+  The original reason R10.3 (delete `static-react/`) was blocked was a capability nothing else served:
+  a client-side model-authoring studio (starter templates, scaffolding, import/export). That reason no
+  longer holds. The generator now emits `model-authoring.html`, which meets all three criteria this
+  item named:
+
+    1. Starter templates (Business Record Starter, Approval Workflow Starter).
+    2. All seven scaffolding action types (add concept/field/flow/panel/invariant/state/transition).
+    3. A real editing surface (rename/delete a concept, rename/retype/remove a field, remove a state),
+       with `renamedFrom` recorded so a rename is not a data-destroying drop-and-create.
+
+  It is verified end-to-end: a headless-Chromium round trip (66/66 assertions) covering every editing
+  action and its refusals, and the edited model passes the real validator with `status: warning` and
+  zero errors.
+
+  What remains (the residue, named in the page itself): reference-typed and enum fields in the
+  add-field forms, multi-step flow authoring, and editing a flow's or panel's internals once created.
+
+  Decision requested: does that residue still block R10.3, or can R10.3 proceed now?
+
+    Option 1 (recommended) -- proceed: lift the guard, delete `static-react/`, and close EDIT-12 in the
+    same change; track the three residue items as a separate, additive authoring item. The original
+    "nothing replaces this" blocker is gone; the residue is additive refinement, not a capability gap.
+
+    Option 2 -- wait: hold R10.3 until the three residue items land. Cost: the frozen bundle (~430 KB of
+    minified JS across three chunks, including a dead Workbench and a duplicated Operator-UI surface)
+    keeps decaying for another cycle.
+
+  Engineering recommendation: Option 1.
+guard:
+  kind: manual
+  ref: NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
+  asserts: >-
+    The manifest still lists all five bundle assets, and `static-react/assets/AuthoringApp.js` still
+    exists. When R10.3 is finally executed, this item must close in the same change -- and if the
+    manifest is emptied while AuthoringApp's capability still has no replacement, that is the
+    regression this item exists to prevent. All three criteria this guard originally named are now
+    met by `model-authoring.html`: starter templates, all seven scaffolding action types, and (slice
+    3) an editing surface -- rename/delete a concept, rename/retype/remove a field, remove a state,
+    with `renamedFrom` recorded so a rename is not a data-destroying drop-and-create. The residue is
+    named in the page itself: reference-typed and enum fields in the add-field forms, multi-step flow
+    authoring, and editing a flow's or panel's internals. Removing this guard is therefore now an
+    OWNER decision (option 1), not a further engineering prerequisite.
+  provenRed: false
+resolution: |
+  2026-08-20 (R10.3 executed, owner decision: Option 1): deleted the frozen `static-react/` bundle
+  (6 files: app.css, app.js, AuthoringApp.js, ReactWorkbenchApp.js, index.html, static-react-manifest.json).
+  Removed `emitOptionalReactUiAssets()` from RuntimeApiEmitter, removed `/npdev-ui-react` redirect from
+  the UI redirect controller, and cleaned up 4 test files (GeneratorFacadeBusinessUiToggleTest,
+  CanonicalDemoGenerationSmokeTest, OfficialSamplesGenerationSmokeTest, GeneratorTestModelLoaderTest)
+  that asserted the bundle's presence. Updated comments in ModelSurfaceEmitter and ModelAuthoringEmitter.
+  The replacement `model-authoring.html` (emitted by ModelAuthoringEmitter) covers starter templates,
+  all 7 scaffolding actions, and the editing surface. Residue (reference/enum fields, multi-step flows,
+  flow/panel internal editing) tracked as additive follow-up, not a blocker.

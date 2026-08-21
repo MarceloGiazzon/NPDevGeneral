@@ -310,6 +310,7 @@ public final class CompiledMetadataCanonicalJson {
         node.put("intent", safe(flow.getMode()));
         String label = flow.getAction() == null ? "" : safe(flow.getAction().getLabel());
         node.put("label", label.isBlank() ? safe(flow.getName()) : label);
+        node.set("labelLocales", toStringMap(flow.getAction() == null ? Map.of() : flow.getAction().getLabelLocales()));
         node.put("method", "POST");
         node.put("path", "/api/v1/flows/" + safe(flow.getName()) + "/execute");
         node.set("pathAliases", toStringArray(List.of("/api/flows/" + safe(flow.getName()) + "/execute")));
@@ -393,6 +394,7 @@ public final class CompiledMetadataCanonicalJson {
         node.put("panel", safe(panel.name()));
         node.put("action", safe(action.name()));
         node.put("label", safe(firstNonBlank(action.label(), action.name())));
+        node.set("labelLocales", toStringMap(action.labelLocales()));
         node.put("binding", binding.isBlank() ? "conceptmutation" : binding);
         node.put("method", "POST");
         if ("flow".equals(binding)) {
@@ -550,7 +552,9 @@ public final class CompiledMetadataCanonicalJson {
             node.put("className", safe(entity.getClassName()));
             node.put("tableName", safe(entity.getTableName()));
             node.put("label", conceptLabel(entity));
+            node.set("labelLocales", toStringMap(entity.getUi() == null ? Map.of() : entity.getUi().getLabelLocales()));
             node.put("shortLabel", conceptUiText(entity.getUi(), "shortLabel", ""));
+            node.set("shortLabelLocales", toStringMap(entity.getUi() == null ? Map.of() : entity.getUi().getShortLabelLocales()));
             node.put("description", conceptUiText(entity.getUi(), "description", ""));
             node.put("helpText", conceptUiText(entity.getUi(), "helpText", ""));
             node.put("group", conceptUiText(entity.getUi(), "group", ""));
@@ -613,7 +617,6 @@ public final class CompiledMetadataCanonicalJson {
             node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
             node.put("returnsType", procedure.returns() == null ? "" : safe(procedure.returns().getType()));
             node.put("tracePolicy", safe(procedure.tracePolicy()));
-            node.put("auditPolicy", safe(procedure.auditPolicy()));
             entries.add(node);
         }
         entries.sort(Comparator.comparing(node -> text(node, "name")));
@@ -745,6 +748,7 @@ public final class CompiledMetadataCanonicalJson {
             node.set("normalizationRules", toStringArray(domainType.getNormalizationRules()));
             node.set("examples", toStringArray(domainType.getExamples()));
             node.put("label", domainType.getUi() == null ? "" : safe(domainType.getUi().getLabel()));
+            node.set("labelLocales", toStringMap(domainType.getUi() == null ? Map.of() : domainType.getUi().getLabelLocales()));
             node.put("placeholder", domainType.getUi() == null ? "" : safe(domainType.getUi().getPlaceholder()));
             node.put("helpText", domainType.getUi() == null ? "" : safe(domainType.getUi().getHelpText()));
             node.put("widget", domainType.getUi() == null ? "" : safe(domainType.getUi().getWidget()));
@@ -844,6 +848,7 @@ public final class CompiledMetadataCanonicalJson {
                             node.put("fieldPath", safe(field.getName()));
                             node.put("value", safe(option.getValue()));
                             node.put("label", safe(firstNonBlank(option.getLabel(), humanizeSegment(option.getValue()))));
+                            node.set("labelLocales", toStringMap(option.getLabelLocales()));
                             if (option.getOrder() == null) {
                                 node.putNull("order");
                             } else {
@@ -1365,6 +1370,7 @@ public final class CompiledMetadataCanonicalJson {
 
     private static void putActionMetadata(ObjectNode node, CompiledActionMetadata action, String fallbackLabel) {
         node.put("label", safe(firstNonBlank(action == null ? null : action.getLabel(), fallbackLabel)));
+        node.set("labelLocales", toStringMap(action == null ? Map.of() : action.getLabelLocales()));
         node.put("confirmationText", safe(action == null ? null : action.getConfirmationText()));
         node.put("successMessage", safe(action == null ? null : action.getSuccessMessage()));
         node.put("failureHint", safe(action == null ? null : action.getFailureHint()));
@@ -1622,6 +1628,7 @@ public final class CompiledMetadataCanonicalJson {
         node.put("description", description);
         JsonNode uiNode = firstPresentationNode(presentationNode(ui), rawUi(rawSchemaNode));
         node.put("label", readUiText(uiNode, domainUiNode(domainType), "label", labelFromPath(fieldPath)));
+        node.set("labelLocales", toStringMap(labelLocalesFor(ui, domainType)));
         node.put("shortLabel", readUiText(uiNode, "shortLabel", ""));
         node.put("helpText", readUiText(uiNode, domainUiNode(domainType), "helpText", ""));
         node.put("placeholder", readUiText(uiNode, domainUiNode(domainType), "placeholder", ""));
@@ -1704,6 +1711,7 @@ public final class CompiledMetadataCanonicalJson {
         node.put("concept", safe(concept));
         node.put("fieldPath", safe(fieldPath));
         node.put("label", readUiText(effectiveUiNode, domainUiNode, "label", labelFromPath(fieldPath)));
+        node.set("labelLocales", toStringMap(labelLocalesFor(ui, domainType)));
         node.put("shortLabel", readUiText(effectiveUiNode, "shortLabel", ""));
         node.put("description", readUiText(effectiveUiNode, "description", ""));
         node.put("widget", readUiText(effectiveUiNode, domainUiNode, "widget", defaultWidget(schemaType, dslType, domainType, referenceTarget, enumValues)));
@@ -2109,6 +2117,34 @@ public final class CompiledMetadataCanonicalJson {
 
     private static String conceptUiText(CompiledPresentationMetadata metadata, String key, String defaultValue) {
         return readUiText(presentationNode(metadata), key, defaultValue);
+    }
+
+    /**
+     * R5.6/EDIT-13: the closing half of the "authoring exists, nothing reaches an app" gap -- this
+     * writer previously called {@code getLabel()} at every site and never {@code getLabelLocales()}.
+     * Returns the per-locale map to emit alongside a "label"/"shortLabel" key, sourced from whichever
+     * object actually supplied that label's text: {@code ui} (a {@link CompiledPresentationMetadata})
+     * first, falling back to a domain type's own {@code ui.label} locales only when {@code ui} itself
+     * carried no label (mirrors {@link #readUiText(JsonNode, JsonNode, String, String)}'s own primary/
+     * fallback order). Deliberately does NOT attempt to read locale data out of raw model JSON --
+     * {@code CompiledPresentationMetadata}/{@code CompiledDomainTypeUi} already carry the fully
+     * resolved locale map by the time this writer runs (R5.6 threaded it through parse/compile/resolve),
+     * so the raw-JSON fallback path (used only when the compiled object itself has no label) has no
+     * locale data to lose. Always non-null; empty when the winning source declared no locale overrides.
+     */
+    private static Map<String, String> labelLocalesFor(CompiledPresentationMetadata ui, CompiledDomainType domainType) {
+        if (ui != null && ui.getLabel() != null && !ui.getLabel().isBlank()
+                && ui.getLabelLocales() != null && !ui.getLabelLocales().isEmpty()) {
+            return ui.getLabelLocales();
+        }
+        if (domainType != null && domainType.getUi() != null) {
+            String domainLabel = domainType.getUi().getLabel();
+            if (domainLabel != null && !domainLabel.isBlank()
+                    && domainType.getUi().getLabelLocales() != null && !domainType.getUi().getLabelLocales().isEmpty()) {
+                return domainType.getUi().getLabelLocales();
+            }
+        }
+        return Map.of();
     }
 
     private static String inferSchemaType(String dslType, CompiledSchema schema) {
@@ -2530,6 +2566,7 @@ public final class CompiledMetadataCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(action.name()));
             node.put("label", safe(action.label()));
+            node.set("labelLocales", toStringMap(action.labelLocales()));
             node.put("binding", safe(action.binding()));
             node.put("concept", safe(action.concept()));
             node.put("operation", safe(action.operation()));

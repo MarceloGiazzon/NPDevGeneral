@@ -204,6 +204,10 @@
     "scripts/quality/cadence_state.py": {
       "invocation": "orchestrated"
     },
+    "scripts/quality/test_profile.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/quality/check-adr-decision-implementation.py": {
       "invocation": "ci-gate"
     },
@@ -211,6 +215,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-cadence-coverage.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-ci-adapter-coverage.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-closeable-streams.py": {
@@ -580,6 +587,14 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/beta/ai-only-beta-0-release-runbook.md"
     },
+    "scripts/release/New-SourceZip.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/release/New-Source-npx.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/runtimehost/sync-runtimehost-libs.ps1": {
       "invocation": "ci-gate"
     },
@@ -663,6 +678,13 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-done-item-guards.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/proofs/run-pk10-first-class-extends-proof.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "ledger/items/PACK-10.yml"
+    },
+    "scripts/quality/check-pack-coordinates-pinned.py": {
       "invocation": "ci-gate"
     }
   }

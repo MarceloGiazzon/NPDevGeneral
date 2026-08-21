@@ -78,7 +78,11 @@ public final class SqlServerDialect implements SqlDialect {
             // R8c: no SKIP LOCKED keyword, but WITH (..., READPAST) is the documented, long-
             // standing equivalent -- it skips rows locked by another transaction rather than
             // blocking on them, which is the semantic this capability names.
-            StorageCapability.SKIP_LOCKED_READS);
+            StorageCapability.SKIP_LOCKED_READS,
+            // R9.3: sp_getapplock with @LockOwner='Session', needing no table.
+            StorageCapability.SESSION_ADVISORY_LOCK,
+            // R5.4: filtered index (CREATE UNIQUE INDEX ... WHERE ...) -- documented since SQL Server 2008.
+            StorageCapability.PARTIAL_UNIQUE_INDEX);
 
     private final UpsertStrategy upsert = new SqlServerUpsertStrategy();
     private final ReturningStrategy returning = new SqlServerReturningStrategy();
@@ -86,6 +90,17 @@ public final class SqlServerDialect implements SqlDialect {
     private SqlServerDialect() {
     }
 
+    /**
+     * R4.3: T-SQL's {@code CAST(expr AS varchar)} without a length defaults to <b>30 characters</b>
+     * (the CAST default, distinct from the length-1 default in a declaration). The interface default
+     * would therefore truncate silently -- a contains filter on anything longer than 30 characters
+     * matches nothing, with no error. {@code NVARCHAR(MAX)} also keeps non-BMP unicode intact, which
+     * STOR-3 already proves this engine must handle.
+     */
+    @Override
+    public String caseInsensitiveTextExpression(String expression) {
+        return "LOWER(CAST(" + expression + " AS NVARCHAR(MAX)))";
+    }
     @Override
     public String name() {
         return "sqlserver";
@@ -541,6 +556,15 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropIndexIfExists(String indexName, String tableName) {
+        // Native since SQL Server 2016 -- this class already targets 2016+ (see trimmedText's own
+        // javadoc for the sibling fact about single-argument TRIM), so no sys.indexes IF-wrapper is
+        // needed here the way guardedCreateIndex above needs one (SQL Server has no
+        // "CREATE INDEX IF NOT EXISTS", but it does have "DROP INDEX IF EXISTS").
+        return "DROP INDEX IF EXISTS " + indexName + " ON " + tableName + ";";
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         // COL_LENGTH returns null for a column that does not exist -- the cheapest existence test
         // here, and it does not need the schema spelled out.
@@ -555,6 +579,51 @@ public final class SqlServerDialect implements SqlDialect {
                 + escapeLiteral(columnName) + "') IS NULL\nBEGIN\n"
                 + indent(SqlDdlGuards.stripAddColumnKeyword(SqlDdlGuards.stripIfNotExists(alterStatement)))
                 + "\nEND;\n";
+    }
+
+    /**
+     * R9.3. T-SQL has no {@code CREATE SCHEMA IF NOT EXISTS}, and {@code CREATE SCHEMA} must be the
+     * FIRST statement in its batch -- so it cannot simply be wrapped in {@code IF ... BEGIN ... END}
+     * the way {@link #guardedCreateTable} wraps a table. {@code EXEC} puts it in a batch of its own,
+     * which is the documented way to issue it conditionally.
+     */
+    @Override
+    public String guardedCreateSchema(String schemaName) {
+        return "IF SCHEMA_ID(N'" + escapeLiteral(schemaName) + "') IS NULL\nBEGIN\n"
+                + indent("EXEC(N'CREATE SCHEMA " + escapeLiteral(schemaName) + "');")
+                + "\nEND;\n";
+    }
+
+    /** R9.3. SQL Server keys application locks by NAME, not by number as Postgres does. */
+    @Override
+    public Object advisoryLockKey(String lockName) {
+        return lockName;
+    }
+
+    /**
+     * R9.3. {@code sp_getapplock} with {@code @LockOwner='Session'}, which is what ties the lock to
+     * the connection rather than to a transaction -- the migration mutex is held across DDL that
+     * commits implicitly on two of the four engines, so a transaction-scoped lock would be dropped
+     * mid-migration.
+     *
+     * <p>Normalised to 1/0 from a PROCEDURE RETURN CODE, which is neither a boolean nor an error:
+     * 0 and 1 both mean acquired (granted immediately / granted after waiting), and the failure
+     * codes are NEGATIVE (-1 timeout, -3 deadlock victim). A caller testing {@code == 1} would read
+     * the ordinary immediate grant, 0, as a refusal.
+     */
+    @Override
+    public String tryAdvisoryLockSql() {
+        return "DECLARE @npdevLockResult INT; "
+                + "EXEC @npdevLockResult = sp_getapplock @Resource = ?, @LockMode = N'Exclusive', "
+                + "@LockOwner = N'Session', @LockTimeout = 0; "
+                + "SELECT CASE WHEN @npdevLockResult >= 0 THEN 1 ELSE 0 END;";
+    }
+
+    @Override
+    public String releaseAdvisoryLockSql() {
+        return "DECLARE @npdevUnlockResult INT; "
+                + "EXEC @npdevUnlockResult = sp_releaseapplock @Resource = ?, @LockOwner = N'Session'; "
+                + "SELECT CASE WHEN @npdevUnlockResult >= 0 THEN 1 ELSE 0 END;";
     }
 
     private static String indent(String statement) {

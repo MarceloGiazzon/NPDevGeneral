@@ -216,6 +216,15 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
                 );
                 out.set(builtSizeBefore, out.get(builtSizeBefore).withOnFailure(onFailureSteps));
             }
+
+            // R2.5: attach a durable await deadline + timeout-branch steps onto an "await" step the
+            // same way LNCH-17 attaches onFailureSteps above -- only AWAIT_EVENT ever sets this.
+            if ("await".equals(type) && step.getTimeoutSeconds() != null) {
+                List<FlowStepDefinition> onTimeoutSteps = toFlowSteps(
+                        step.getOnTimeoutSteps(), flowConcept, adapterIdByCapability, capabilityOperationsByCapability
+                );
+                out.set(builtSizeBefore, out.get(builtSizeBefore).withTimeout(step.getTimeoutSeconds(), onTimeoutSteps));
+            }
         }
         return out;
     }

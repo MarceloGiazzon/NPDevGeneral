@@ -1,6 +1,6 @@
 package {{packageName}};
 
-import {{entityPackage}}.{{entityName}};
+import {{entityPackage}}.{{entityTypeName}};
 import {{servicePackage}}.{{entityName}}Service;
 import {{dtoPackage}}.{{entityName}}CreateRequest;
 import {{dtoPackage}}.{{entityName}}UpdateRequest;
@@ -21,7 +21,7 @@ public class {{entityName}}ControllerBase {
     }
 
     protected ResponseEntity<?> getByIdBase(UUID id) {
-        Optional<{{entityName}}> opt = service.getById(id);
+        Optional<{{entityTypeName}}> opt = service.getById(id);
         return opt.<ResponseEntity<?>>map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
@@ -36,8 +36,8 @@ public class {{entityName}}ControllerBase {
      * ({@code GET /api/concepts/{conceptName}}, which pushes filter/sort/page down to SQL via
      * {@code ServiceBase#page}).
      */
-    protected ResponseEntity<List<{{entityName}}>> listBase() {
-        com.npdev.kernel.concepts.ConceptListSlice<{{entityName}}> slice = service.listCapped();
+    protected ResponseEntity<List<{{entityTypeName}}>> listBase() {
+        com.npdev.kernel.concepts.ConceptListSlice<{{entityTypeName}}> slice = service.listCapped();
         return ResponseEntity.ok()
                 .header("X-List-Truncated", String.valueOf(slice.truncated()))
                 .header("X-List-Limit", String.valueOf(com.npdev.kernel.concepts.ConceptQuery.MAX_LIMIT))
@@ -46,7 +46,7 @@ public class {{entityName}}ControllerBase {
 
     protected ResponseEntity<?> createBase({{entityName}}CreateRequest request) {
         try {
-            {{entityName}} created = service.create(request);
+            {{entityTypeName}} created = service.create(request);
 
             try {
                 java.lang.reflect.Method getId = created.getClass().getMethod("getId");
@@ -54,7 +54,9 @@ public class {{entityName}}ControllerBase {
                 if (idVal != null) {
                     return ResponseEntity.created(URI.create("/api/{{route}}/" + idVal)).body(created);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                throw new IllegalStateException("getId() reflection failed on " + created.getClass().getSimpleName(), e);
+            }
 
             return ResponseEntity.ok(created);
         } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException ex) {
@@ -68,7 +70,7 @@ public class {{entityName}}ControllerBase {
 
     protected ResponseEntity<?> updateBase(UUID id, {{entityName}}UpdateRequest request) {
         try {
-            Optional<{{entityName}}> updated = service.update(id, request);
+            Optional<{{entityTypeName}}> updated = service.update(id, request);
             return updated.<ResponseEntity<?>>map(ResponseEntity::ok)
                     .orElseGet(() -> ResponseEntity.notFound().build());
         } catch (com.npdev.runtime.support.GeneratedCrudRuntimeSupport.InvariantViolationException ex) {
@@ -91,4 +93,17 @@ public class {{entityName}}ControllerBase {
             return ResponseEntity.badRequest().body(ex.getMessage());
         }
     }
+
+{{#softDelete}}
+    /** R5.4: 404 when the id does not exist OR is not currently soft-deleted (restore is a no-op
+     *  either way at the store layer -- see {@code ConceptStore#restore}'s javadoc) -- a caller
+     *  cannot distinguish "never existed" from "already live" from this response alone, matching
+     *  {@link #deleteBase}'s own not-found-vs-already-gone ambiguity. */
+    protected ResponseEntity<?> restoreBase(UUID id) {
+        boolean restored = service.restore(id);
+        if (!restored) return ResponseEntity.notFound().build();
+        return ResponseEntity.noContent().build();
+    }
+
+{{/softDelete}}
 }

@@ -498,6 +498,33 @@ def _migrate_transaction_band_pickers(transaction: dict, where: str, result: Mig
     result.changes.append(message)
 
 
+def _migrate_query_or_procedure_audit_policy(entries, kind: str, result: MigrationResult) -> None:
+    """R5.1 (roadmap 2026-08-18, "retire the inert auditPolicy knob"): `queries[].auditPolicy` and
+    `procedures[].auditPolicy` were schema-declared (none|read|write) but consumed by nothing at
+    runtime -- no validator, compiler pass, or kernel code path ever read the accessor beyond
+    round-tripping it through the compiled-model JSON. The REAL, always-on audit trail lives at the
+    ConceptGateway/AuditLogStore layer (every concept read/write/delete is logged there regardless
+    of this flag) and, as of the same change that retires this knob, at the generated CRUD service's
+    own field-diff audit trail (create/update/delete/restore). Both are unconditional per-operation,
+    not opt-in per query/procedure, so there was no live semantics this flag could have controlled.
+    Retired from schema (all 4 model.schema.json mirrors); this strips the dead key from an existing
+    document so it keeps validating (`additionalProperties: false` on both object shapes would
+    otherwise reject it)."""
+    if not isinstance(entries, list):
+        return
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            continue
+        if "auditPolicy" not in entry:
+            continue
+        value = entry.pop("auditPolicy")
+        result.changed = True
+        result.changes.append(
+            f"{kind}[{i}] ({entry.get('name', '?')}): dropped inert 'auditPolicy' ({value!r}) -- "
+            f"retired, consumed by nothing (R5.1)"
+        )
+
+
 def _migrate_autopanel(autopanel: dict, where: str, result: MigrationResult) -> None:
     if not isinstance(autopanel, dict):
         return
@@ -509,6 +536,151 @@ def _migrate_autopanel(autopanel: dict, where: str, result: MigrationResult) -> 
     _migrate_transaction_actions(transaction, where, result)
     _migrate_transaction_visible_when(transaction, where, result)
     _migrate_transaction_band_pickers(transaction, where, result)
+
+
+# =================================================================================================
+# R5.6: per-locale label maps -- widens a label site's plain string to the per-locale object form.
+#
+# NOT required by the schema change itself: R5.6's non-negotiable is "string stays valid", so
+# every existing model keeps validating and behaving exactly as before with zero changes. This
+# codemod exists anyway per the standing stability-policy convention ("every breaking change ships
+# its `npdev migrate` codemod in the same commit") and to satisfy R5.6's done-when of a lossless,
+# structural corpus conversion -- the deadline logic being that this team's own apps are authored
+# in Portuguese against English platform defaults, and it is far cheaper to declare that split
+# NOW, mechanically, than to retrofit it by hand once more apps exist.
+# =================================================================================================
+
+def _widen_label_site(obj: dict, key: str, locale: str, where: str, result: MigrationResult) -> None:
+    """Converts obj[key] from a plain string to {"default": <text>, "<locale>": <text>} IN PLACE.
+    Lossless: the original string survives byte-for-byte as BOTH the terminal 'default' fallback
+    (so a reader that predates R5.6, or simply never authored a locale override, sees exactly the
+    same text as before) and as the `locale` entry itself (the app's existing text IS that
+    locale's text -- this does not invent a translation). Idempotent and structural, not a blind
+    string replace: only a bare string value is touched; a missing key, a non-string value, or a
+    value that is already the object form (however it got there) is left completely alone, so
+    running this twice -- or against a model where some sites are already widened by hand -- never
+    double-wraps or corrupts anything."""
+    if key not in obj:
+        return
+    value = obj[key]
+    if not isinstance(value, str) or not value.strip():
+        return
+    obj[key] = {"default": value, locale: value}
+    result.changed = True
+    result.changes.append(f"{where}.{key}: widened plain string to per-locale form (tagged {locale!r})")
+
+
+def migrate_label_locales(doc: dict, locale: str) -> MigrationResult:
+    """Widens every label site `migrate_document`'s DSL-2.0 pass does not touch -- a completely
+    separate, independently-callable pass (not part of `migrate_document`, and not run by it)
+    because it needs one extra piece of information `migrate_document` never requires: which
+    locale the app's EXISTING plain-string text is actually written in. `doc.settings.locale` is
+    deliberately NOT read for this -- its own schema description says it is "informational...
+    does not itself select translations", so trusting it here would silently mislabel text for any
+    app that set it loosely. The caller (an author, or a future CLI flag) supplies `locale`
+    explicitly instead.
+
+    A falsy/blank `locale` makes this a hard no-op (returns an unchanged, empty `MigrationResult`)
+    rather than guessing -- consistent with `migrate_document`'s "reports, does not guess"
+    design principle.
+
+    Walks the exact shapes the label-site schema (`$defs/localizableLabel`) and
+    `JsonModelParser`'s corresponding parse sites recognize: top-level `properties[]`,
+    `domainTypes[].ui`, `concepts[].ui` / `concepts[].fields[].ui` (label + shortLabel),
+    `concepts[].fields[].enumValues[]` (label + displayLabel), `concepts[].lifecycle.states[]` /
+    `.transitions[]` (actionLabel), `panels[].actions[]`, and every `autoPanels[].<surface>`
+    (selection/detail/transaction/prompt) actions/bandPickers/derivedFields/uiState. Does NOT
+    reach a nested `actionMetadata` block's own `label` (e.g. a lifecycle transition's `action`
+    object, or an orchestration action's `action`) -- narrower than the full 13-site inventory on
+    purpose for this first pass; those are still valid to widen by hand and this codemod will not
+    touch them either way (schema stays additive either way).
+    """
+    result = MigrationResult()
+    if not isinstance(locale, str) or not locale.strip():
+        return result
+    locale = locale.strip()
+    if not isinstance(doc, dict):
+        return result
+
+    for i, prop in enumerate(doc.get("properties", None) or []):
+        if isinstance(prop, dict):
+            _widen_label_site(prop, "label", locale, f"properties[{i}] ({prop.get('name', '?')})", result)
+
+    for i, domain_type in enumerate(doc.get("domainTypes", None) or []):
+        if not isinstance(domain_type, dict):
+            continue
+        ui = domain_type.get("ui")
+        if isinstance(ui, dict):
+            _widen_label_site(ui, "label", locale, f"domainTypes[{i}] ({domain_type.get('name', '?')}).ui", result)
+
+    for i, concept in enumerate(doc.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        cwhere = f"concepts[{i}] ({concept.get('name', '?')})"
+        ui = concept.get("ui")
+        if isinstance(ui, dict):
+            _widen_label_site(ui, "label", locale, f"{cwhere}.ui", result)
+            _widen_label_site(ui, "shortLabel", locale, f"{cwhere}.ui", result)
+        for j, field in enumerate(concept.get("fields", None) or []):
+            if not isinstance(field, dict):
+                continue
+            fwhere = f"{cwhere}.fields[{j}] ({field.get('name', '?')})"
+            field_ui = field.get("ui")
+            if isinstance(field_ui, dict):
+                _widen_label_site(field_ui, "label", locale, fwhere, result)
+                _widen_label_site(field_ui, "shortLabel", locale, fwhere, result)
+            for k, option in enumerate(field.get("enumValues", None) or []):
+                if isinstance(option, dict):
+                    owhere = f"{fwhere}.enumValues[{k}]"
+                    _widen_label_site(option, "label", locale, owhere, result)
+                    _widen_label_site(option, "displayLabel", locale, owhere, result)
+        lifecycle = concept.get("lifecycle")
+        if isinstance(lifecycle, dict):
+            for j, state in enumerate(lifecycle.get("states", None) or []):
+                if isinstance(state, dict):
+                    _widen_label_site(state, "label", locale, f"{cwhere}.lifecycle.states[{j}]", result)
+            for j, transition in enumerate(lifecycle.get("transitions", None) or []):
+                if isinstance(transition, dict):
+                    _widen_label_site(
+                        transition, "actionLabel", locale, f"{cwhere}.lifecycle.transitions[{j}]", result)
+
+    for i, panel in enumerate(doc.get("panels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        pwhere = f"panels[{i}] ({panel.get('name', '?')})"
+        for j, action in enumerate(panel.get("actions", None) or []):
+            if isinstance(action, dict):
+                _widen_label_site(action, "label", locale, f"{pwhere}.actions[{j}]", result)
+
+    for i, autopanel in enumerate(doc.get("autoPanels", None) or []):
+        if not isinstance(autopanel, dict):
+            continue
+        awhere = f"autoPanels[{i}] ({autopanel.get('name') or autopanel.get('aggregate') or '?'})"
+        for surface_name in ("selection", "detail", "transaction", "prompt"):
+            surface = autopanel.get(surface_name)
+            if not isinstance(surface, dict):
+                continue
+            swhere = f"{awhere}.{surface_name}"
+            for j, action in enumerate(surface.get("actions", None) or []):
+                if isinstance(action, dict):
+                    _widen_label_site(action, "label", locale, f"{swhere}.actions[{j}]", result)
+            band_pickers = surface.get("bandPickers")
+            if isinstance(band_pickers, dict):
+                for name, picker in band_pickers.items():
+                    if isinstance(picker, dict):
+                        _widen_label_site(picker, "label", locale, f"{swhere}.bandPickers.{name}", result)
+            derived_fields = surface.get("derivedFields")
+            if isinstance(derived_fields, dict):
+                for name, field in derived_fields.items():
+                    if isinstance(field, dict):
+                        _widen_label_site(field, "label", locale, f"{swhere}.derivedFields.{name}", result)
+            ui_state = surface.get("uiState")
+            if isinstance(ui_state, dict):
+                for name, control in ui_state.items():
+                    if isinstance(control, dict):
+                        _widen_label_site(control, "label", locale, f"{swhere}.uiState.{name}", result)
+
+    return result
 
 
 def migrate_document(doc: dict) -> MigrationResult:
@@ -539,6 +711,9 @@ def migrate_document(doc: dict) -> MigrationResult:
 
     for i, autopanel in enumerate(doc.get("autoPanels", None) or []):
         _migrate_autopanel(autopanel, f"autoPanels[{i}] ({autopanel.get('name') or autopanel.get('aggregate') or '?'})", result)
+
+    _migrate_query_or_procedure_audit_policy(doc.get("queries", None) or [], "queries", result)
+    _migrate_query_or_procedure_audit_policy(doc.get("procedures", None) or [], "procedures", result)
 
     return result
 

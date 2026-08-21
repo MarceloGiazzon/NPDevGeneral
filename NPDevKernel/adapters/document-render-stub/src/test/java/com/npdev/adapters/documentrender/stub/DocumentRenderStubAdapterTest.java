@@ -1,9 +1,15 @@
 package com.npdev.adapters.documentrender.stub;
 
+import com.npdev.kernel.CapabilityCall;
+import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ports.DocumentRenderContract;
 import com.npdev.kernel.ports.DocumentRenderContract.RenderOptions;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -19,5 +25,59 @@ class DocumentRenderStubAdapterTest {
                 () -> adapter.render("<html><body>irrelevant</body></html>", RenderOptions.defaults()));
 
         assertTrue(exception.getMessage().contains("stub"), exception.getMessage());
+    }
+
+    /**
+     * R6.3 (RUN-18): the capability dispatch path must fail exactly as loudly as the direct
+     * {@link DocumentRenderContract#render} call always has -- a deliberately-disabled adapter must
+     * never silently succeed with empty/fake PDF bytes just because it was reached through a flow's
+     * capabilityCall step instead of the REST controller.
+     */
+    @Test
+    void invokeViaCapabilityCallAlsoRefusesToRender() {
+        DocumentRenderStubAdapter adapter = new DocumentRenderStubAdapter();
+        CapabilityCall call = new CapabilityCall(
+                "documentRender", "DocumentRenderCapability", "document-render-stub", "render",
+                List.of("<html><body>irrelevant</body></html>")
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(!result.ok());
+        assertEquals("DOCUMENT_RENDER_FAILED", result.error().code());
+        assertTrue(result.error().message().contains("stub"), result.error().message());
+    }
+
+    /**
+     * R5.7 (Roadmap Wave 1 2026-08-19): {@code renderAggregate} (document-render-inproc's
+     * aggregate/bands/logo document shape) must fail the same way {@code render} always has -- an
+     * app opting out of PDF rendering opts out of all of it, not just the pre-R5.7 flat-grid shape.
+     */
+    @Test
+    void invokeRefusesTheAggregateOperationTooRatherThanSilentlySucceeding() {
+        DocumentRenderStubAdapter adapter = new DocumentRenderStubAdapter();
+        CapabilityCall call = new CapabilityCall(
+                "documentRender", "DocumentRenderCapability", "document-render-stub", "renderAggregate",
+                List.of(Map.of("title", "t", "tree", Map.of(), "bands", List.of()))
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(!result.ok());
+        assertEquals("DOCUMENT_RENDER_FAILED", result.error().code());
+        assertTrue(result.error().message().contains("stub"), result.error().message());
+    }
+
+    @Test
+    void invokeRejectsUnsupportedOperation() {
+        DocumentRenderStubAdapter adapter = new DocumentRenderStubAdapter();
+        CapabilityCall call = new CapabilityCall(
+                "documentRender", "DocumentRenderCapability", "document-render-stub", "delete", List.of()
+        );
+
+        CapabilityResult result = adapter.invoke(call, Map.of());
+
+        assertTrue(!result.ok());
+        assertEquals("DOCUMENT_RENDER_OPERATION_UNSUPPORTED", result.error().code());
     }
 }

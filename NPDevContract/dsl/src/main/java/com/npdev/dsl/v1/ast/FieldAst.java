@@ -22,6 +22,7 @@ public final class FieldAst {
     private final FileMetadataAst file;
     private final boolean sensitive;
     private final FieldPickerAst picker;
+    private final FieldAccessAst access;
 
     public FieldAst(String name, String type, boolean id, boolean required, boolean unique) {
         this(name, type, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -189,6 +190,33 @@ public final class FieldAst {
             boolean sensitive,
             FieldPickerAst picker
     ) {
+        this(name, type, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, sensitive, picker, null);
+    }
+
+    /** R5.5: {@code access} declares this field's own {read, write} authorization rule, the
+     *  field-scope rung of the role-ceiling -> row-scope -> field-scope ladder (see
+     *  {@link FieldAccessAst}). Null when the field declares no field-level rule. */
+    public FieldAst(
+            String name,
+            String type,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            ReferenceSemanticsAst referenceSemantics,
+            String domainType,
+            SchemaAst schema,
+            List<EnumOptionAst> enumOptions,
+            PresentationMetadataAst ui,
+            String connectable,
+            String renamedFrom,
+            FileMetadataAst file,
+            boolean sensitive,
+            FieldPickerAst picker,
+            FieldAccessAst access
+    ) {
         this.name = name;
         this.type = type;
         this.id = id;
@@ -206,6 +234,7 @@ public final class FieldAst {
         this.file = file;
         this.sensitive = sensitive;
         this.picker = picker;
+        this.access = access;
     }
 
     public String getName() { return name; }
@@ -230,4 +259,6 @@ public final class FieldAst {
     public boolean isSensitive() { return sensitive; }
     /** B16/B19 (Move 9 A3): this field's declared picker filter/multiSelect, or null if undeclared. */
     public FieldPickerAst getPicker() { return picker; }
+    /** R5.5: this field's declared {read, write} authorization rule, or null if undeclared. */
+    public FieldAccessAst getAccess() { return access; }
 }

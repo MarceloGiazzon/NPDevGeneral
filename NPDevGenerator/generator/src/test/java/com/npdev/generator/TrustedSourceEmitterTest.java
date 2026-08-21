@@ -126,7 +126,6 @@ class TrustedSourceEmitterTest {
                 null,
                 List.of("admin"),
                 "summary",
-                "write",
                 Map.of("trustedSourceEntrypoint", "procedure/CreateUsersProcedure.java")
         );
         CompiledPanel panel = new CompiledPanel(

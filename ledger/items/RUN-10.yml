@@ -1,0 +1,67 @@
+id: RUN-10
+title: >-
+  The scheduled-event drain publishes with a FRESH correlation id, so a deferred event never
+  satisfies an AWAIT_EVENT declaring matchCorrelation:true
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-20
+verification: UNIT_TESTED
+source: >-
+  Found while implementing R2.4 (RUN-9) -- disclosed by the implementer rather than left for a user
+  to discover, and deliberately filed instead of being fixed inside that item.
+surface: kernel/scheduler, adapters/runtime-support
+files:
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/adapters/runtime/support/GeneratedCrudRuntimeSupport.java
+detail: |
+  `processDueScheduledEvents` ignores the row's stored `trigger_correlation_id` and publishes the due
+  event under a fresh correlation id. So a deferred event does not match an `AWAIT_EVENT` step that
+  declares `matchCorrelation: true` -- the waiter it was scheduled to wake stays parked.
+
+  **This predates R2.4**: the orchestration-level `scheduleEvent` action has always behaved this way,
+  and while the flow step fired instantly nobody could hit it through that path. R2.4 makes the flow
+  step genuinely deferred, which routes far more traffic through this drain and therefore makes the
+  limitation reachable and worth naming.
+
+  WHY IT WAS NOT FIXED INSIDE R2.4, recorded so the next person does not rediscover the wall: simply
+  propagating the stored correlation id is not sufficient. `enforceCorrelationOwnership` needs a
+  tenant, the `npdev_scheduled_event` table has **no tenant column**, and publishing with a
+  correlation id whose ownership cannot be verified would throw. So the honest fix is a schema
+  addition plus tenant propagation through the drain -- a real slice with its own migration, not a
+  line change smuggled into a behaviour-change item that already carries a BREAKING.md entry.
+
+  USER-VISIBLE CONSEQUENCE, and the reason this is filed rather than merely noted in a comment: the
+  most natural thing an author will now model on top of R2.4 -- "schedule a reminder in 24h, and have
+  this same flow instance wake on it" -- silently does not work if the await is correlated. It does
+  work with an uncorrelated await. Documented in docs/FLOWS.md §7 under R2.4's entry so the trap is
+  visible at the point of authoring, not only here.
+
+  Relevant to R2.5 (durable await timeouts + onTimeout), which the roadmap sequences next and which
+  is exactly the "wait for approval, escalate after N hours" shape most likely to want a correlated
+  delayed wake. Worth closing before or alongside it.
+
+  2026-08-20 (fix): added an optional `tenant_id` column to `npdev_scheduled_event` (NpdevScheduledEventTable,
+  the V1 schema the generator emits -- additive, so existing apps gain it via the normal schema-lifecycle
+  path). `ScheduledEventRecord` now carries `tenantId`; `ScheduledEventSql`/`ScheduledEventSupport` read
+  and write it; both the flow-level `scheduleDeferredFlowEvent` and the orchestration-level `scheduleEvent`
+  write the envelope's tenant. The drain's `processDueScheduledEvents` now publishes via a new
+  `publishScheduledDueEvent` that passes the row's stored `trigger_correlation_id` and `tenant_id` to
+  `kernelRunner.publishExternalEvent`, so a correlated `AWAIT_EVENT` (matchCorrelation:true) is satisfied.
+  `enforceCorrelationOwnership` only throws on a tenant MISMATCH (it claims otherwise), so echoing the
+  stored (correlation, tenant) pair is safe. Tests: `GeneratedCrudRuntimeSupportDeferredFlowEventTest`
+  gained a `readByCorrelation("corr-r24-adapter")` assertion (the drain republishes with the stored
+  correlation id); the flow + SQL tests, `NpdevInternalTablesSourceOfTruthTest`,
+  `SchemaRealizationEmitterScheduledEventTest`, and `ScheduledEventDrainRunnerIT` (DDL updated) all green.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDeferredFlowEventTest.java
+  asserts: >-
+    After processDueScheduledEvents drains a due row, the published event is readable by
+    readByCorrelation(trigger_correlation_id) -- the drain echoes the SAME correlation id it was
+    scheduled with (and its tenant), so a correlated AWAIT_EVENT (matchCorrelation:true) is satisfied.
+  provenRed: false
+  provenRedNote: >-
+    The defect was a code-cited observation (the drain ignored trigger_correlation_id and published a
+    fresh id), not a captured failing run. The fix is pinned by the new readByCorrelation assertion,
+    which fails if the drain reverts to a fresh correlation id.

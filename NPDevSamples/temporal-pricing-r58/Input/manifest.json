@@ -1,0 +1,14 @@
+{
+  "id": "temporal-pricing-r58", "title": "Temporal Pricing (R5.8)", "complexity": "repro-case",
+  "purpose": "R5.8 (Roadmap Collection 2026-08-18, 'Effective-dated values'): live proof that concept.temporal + the generic concept-CRUD read endpoint's asOf query param resolve the price of a product that changed over time. Deliberately minimal -- one concept, no flows/panels/UI (see ledger RUN-22 for the decided shape and its stated boundaries).",
+  "inputFiles": [],
+  "walkthrough": [
+    "Generate and boot via NPDevSamples/scripts/generate-sample-app.ps1 -SampleId temporal-pricing-r58, then run-sample-app.ps1 -SampleId temporal-pricing-r58.",
+    "Seed two WidgetPrice rows for the SAME productCode with non-overlapping validFrom/validTo windows, e.g. POST /api/concepts/widgetPrice {productCode:'WIDGET-1', amount:10.00, validFrom:'2026-01-01', validTo:'2026-06-30'} and {productCode:'WIDGET-1', amount:15.00, validFrom:'2026-07-01', validTo:'2099-12-31'}.",
+    "GET /api/concepts/widgetPrice?where=productCode:eq:WIDGET-1&asOf=2026-03-15 resolves the row effective on that date (amount 10.00); GET .../widgetPrice?where=productCode:eq:WIDGET-1&asOf=2026-08-01 resolves the later row (amount 15.00)."
+  ],
+  "expectedOutcomes": [
+    "The as-of read returns a DIFFERENT amount for the same productCode depending on the asOf date supplied, proving validFrom<=asOf<=validTo resolution composes with an ordinary where= identity filter.",
+    "asOf absent on a temporal concept defaults to today's date (concept.temporal's documented default-scope convention, mirroring concept.softDelete's own default-excludes-noncurrent-rows behavior)."
+  ]
+}

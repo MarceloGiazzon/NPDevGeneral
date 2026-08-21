@@ -36,6 +36,8 @@ public final class CompiledFlowStep {
     private final List<CompiledFlowStep> onFailureSteps;
     private final String procedureName;
     private final Boolean parallelAwait;
+    private final Long timeoutSeconds;
+    private final List<CompiledFlowStep> onTimeoutSteps;
 
     public CompiledFlowStep(
             String name,
@@ -244,6 +246,48 @@ public final class CompiledFlowStep {
             String procedureName,
             Boolean parallelAwait
     ) {
+        this(name, type, checkpoint, scope, invariants, eventName, payloadRef, eventDataRefs, condition, thenSteps,
+                elseSteps, awaitEventName, awaitRef, awaitMatchCorrelation, awaitPayloadMatch, delaySeconds,
+                mapFromRef, mapToRef, returnValueRef, capabilityCall, action, generatedActionName, collectionRef,
+                itemKey, loopSteps, maxLoopIterations, onFailureSteps, procedureName, parallelAwait, null, List.of());
+    }
+
+    /** R2.5 (durable await timeouts): canonical constructor, adding {@code timeoutSeconds} +
+     * {@code onTimeoutSteps} -- the compiled counterpart of {@link
+     * com.npdev.dsl.v1.ast.StepAst#getTimeoutSeconds()}/{@code getOnTimeoutSteps()}. */
+    public CompiledFlowStep(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String eventName,
+            String payloadRef,
+            Map<String, String> eventDataRefs,
+            String condition,
+            List<CompiledFlowStep> thenSteps,
+            List<CompiledFlowStep> elseSteps,
+            String awaitEventName,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String mapFromRef,
+            String mapToRef,
+            String returnValueRef,
+            CompiledCapabilityCall capabilityCall,
+            CompiledActionMetadata action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<CompiledFlowStep> loopSteps,
+            Integer maxLoopIterations,
+            List<CompiledFlowStep> onFailureSteps,
+            String procedureName,
+            Boolean parallelAwait,
+            Long timeoutSeconds,
+            List<CompiledFlowStep> onTimeoutSteps
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -273,6 +317,8 @@ public final class CompiledFlowStep {
         this.onFailureSteps = onFailureSteps == null ? List.of() : new ArrayList<>(onFailureSteps);
         this.procedureName = procedureName;
         this.parallelAwait = parallelAwait;
+        this.timeoutSeconds = timeoutSeconds;
+        this.onTimeoutSteps = onTimeoutSteps == null ? List.of() : new ArrayList<>(onTimeoutSteps);
     }
 
     public String getName() { return name; }
@@ -349,4 +395,13 @@ public final class CompiledFlowStep {
      *  step's loop body into N-way parallel waiting instead of B15(A)'s default sequential
      *  behavior. {@code null}/absent means sequential -- fully backward compatible. */
     public Boolean getParallelAwait() { return parallelAwait; }
+
+    /** R2.5: an {@code awaitEvent} step's optional durable wait deadline, in seconds -- {@code null}
+     *  means no timeout. */
+    public Long getTimeoutSeconds() { return timeoutSeconds; }
+
+    /** R2.5: escalation steps run once {@link #getTimeoutSeconds()}'s deadline has passed. */
+    public List<CompiledFlowStep> getOnTimeoutSteps() {
+        return Collections.unmodifiableList(onTimeoutSteps);
+    }
 }

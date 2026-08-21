@@ -26,7 +26,9 @@ A schema, parser, or compiler change that broke any of those would have passed t
 `externalAi` (`egress: "denied"` — declared, inert, no vendor opt-in) · `domainTypes` · `selectors` ·
 `aggregates` · `autoPanels` · `documents` · `guidePages` · `queries` · `procedures` · `panels` ·
 `ruleProfiles` · `flow.schedule` (cron) · `flow.specializes` + `flow.hooks` · steps `forEach`
-(with `maxLoopIterations`), `onFailure`, `map`, `scheduleEvent` (with `delaySeconds`),
+(with `maxLoopIterations`), `onFailure`, `map`, `scheduleEvent` (BOTH delivery modes — R2.4 made
+these two different code paths, so `delaySeconds: 0` publishes inline and `delaySeconds: 3600`
+writes a durable `npdev_scheduled_event` row instead; one witness each is required),
 `invariantCheck`, `createConcept`, `emitEvent`, `capabilityCall`, `return`, **`generatedAction`**
 (`PlaceWidgetOrder`'s `score-order-risk` step — see below, fixed 2026-07-29).
 

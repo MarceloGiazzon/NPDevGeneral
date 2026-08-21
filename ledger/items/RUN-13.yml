@@ -1,0 +1,99 @@
+id: RUN-13
+title: >-
+  The two places business logic actually branches accept only `==`/`!=` -- a flow branch or
+  orchestration condition cannot express `amount > 1000 && category == "travel"`
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R4 item R4.2 -- "the one-grammar
+  promise the docs already make becomes true". Sibling of R4.1 (RUN-12), which widened the
+  default/derived expression path earlier the same day.
+surface: kernel/flow-branches, adapters/runtime-support, dsl/validation
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FlowValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/OrchestrationValidation.java
+  - NPDevSamples/dsl-conformance-max
+  - scripts/quality/dsl_coverage/
+detail: |
+  **THE EVALUATOR CENSUS WAS DONE FIRST, because R4.1 had just been burned by exactly that.** RUN-12
+  found the roadmap's "the runtime already evaluates it" premise true for one evaluator and false for
+  the one that actually persists. So here the count was established before anything was replaced:
+    - `KernelRunner.evaluateCondition` (~2885) -- flow branches. Confirmed via
+      `ModelBackedKernelRuntimeFactory` wiring that `KernelRunner` (NOT the sibling
+      `MvpKernelRunner`/`CompiledModelKernelRunner`, which are test-only and unwired into
+      RuntimeHost) is what a real generated app's flows execute.
+    - `GeneratedCrudRuntimeSupport.evaluateOrchestrationCondition` (~1840) -- orchestration rules.
+  Both genuinely hand-rolled `==`/`!=`-only matchers, as the roadmap claimed.
+
+  **A THIRD, structurally identical evaluator was found and deliberately NOT touched**:
+  `evaluateStateMachineGuard` (~3656), for lifecycle transition guards, sharing
+  `ConditionValueSupport`'s token grammar per that class's own javadoc. It is outside the roadmap's
+  explicit scope ("flow branches and orchestration conditions"), so it was flagged rather than
+  folded in -- the same call R4.1 made about `ValueExpressionEvaluator`. **Anyone widening guards
+  later should start here**: it is the last hand-rolled condition evaluator on this grammar.
+
+  IMPLEMENTATION -- first-try/fallback, mirroring the invariant engine rather than inventing a third
+  arrangement. Both sites now try `ComputedExpression.evaluateBoolean(...)` over a small bridging
+  scope (`KernelRunner.ConditionScope`, `GeneratedCrudRuntimeSupport.OrchestrationConditionScope`)
+  whose variable lookup delegates to **the exact same resolvers the legacy code already used**
+  (`resolveReferenceStrict`, `ConditionValueSupport.resolveConditionValue`) -- so an operand resolves
+  identically under either engine, which is what makes the regression claim credible. On
+  `ExpressionException` (parse failure, or a non-boolean top-level result) it falls through to the
+  untouched legacy body. Same ordering `CelInvariantEngine.evaluateExpression` established.
+
+  **A refusal that would have blocked the feature, caught and fixed**:
+  `OrchestrationValidation.validateOrchestrationCondition` enforced "exactly one `==`/`!=`" -- so
+  the newly-evaluable `&&`/`>` grammar would have validated at the flow level and been REFUSED at the
+  orchestration level. Rewritten to `ComputedExpression.referencedFields(condition)` plus the
+  existing per-field event-payload check. `FlowValidation.validateBranchStep` gained
+  `ComputedExpression.validate(condition)` for the compile-time refusal the DoD asks for.
+
+  REGRESSION PROOF, done concretely rather than asserted: every `"condition":` string in the repo
+  (NPDevSamples + NPDevGenerator resources) was enumerated -- 5 occurrences, 3 unique strings, all
+  plain `==` comparisons -- and those exact literals are now pinned in
+  `KernelRunnerTest.existingCorpusBranchConditionsEvaluateIdenticallyUnderComputedExpression` and
+  `GeneratedCrudRuntimeSupportOrchestrationConditionTest.existingCorpusOrchestrationConditionsEvaluateIdentically`,
+  each asserting BOTH the matched and the unmatched outcome. The pre-existing
+  `executeSupportsBranchEventDataAndReturnStep` also still passes unmodified.
+
+  NEW CAPABILITY: `executeSupportsBranchConditionWithLogicalAndAndOrderedComparison` runs
+  `"$input.qty > 5 && $input.status == 'open'"` through a real `KernelRunner.execute`, proving both
+  `&&` operands are independently required; a matching orchestration-side test does the same.
+
+  COMPILE-TIME REFUSAL verified live through the `validateModel` Gradle task: a malformed branch
+  condition (`"$saved.qty >"`) and a malformed orchestration condition both refuse with an ERROR
+  carrying a real `suggestedFix` rather than R1.4's `UNCLASSIFIED_SUGGESTED_FIX` sentinel, and
+  `DiagnosticSuggestedFixCoverageTest` passed unchanged. A `&&`/`>` orchestration condition that the
+  old validator would have rejected now validates clean.
+
+  CONFORMANCE: `step.branch.condition.widenedGrammar` added to the coverage detectors and
+  **RED-proven first** (`0 model(s) [ZERO]`, gate exit 1), then satisfied by a branch step
+  (`$saved.lineCount > 5 && $saved.status == "open"`) in `dsl-conformance-max`.
+
+  GATES (orchestrator re-ran the kernel suite): `:kernel:test` **538 tests, 0 failures** -- the
+  agent's own run showed 1 failure, the documented load-sensitive
+  `abortsWhenCapabilityCallTimesOut`, which cleared on an isolated re-run under lighter load.
+  `:adapters:runtime-support:test` green. `:NPDevContract:dsl:test` 777 with only the known-red
+  pre-existing `AiModelToDslMappingTest`. `check-dsl-coverage.py` OK with the new feature covered.
+
+  **NO BREAKING.md ENTRY -- this is purely permissive.** Every existing condition still parses
+  (legacy fallback retained, and the corpus strings are pinned as evaluating identically); what
+  changes is that conditions previously REFUSED now validate and evaluate. Nothing that worked
+  stops working, so the stability policy's breaking-change clause does not apply.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerTest.java
+  asserts: >-
+    a branch condition using `&&` and `>` executes correctly through a real KernelRunner.execute with
+    both operands independently required, while the three condition strings actually present in the
+    corpus evaluate identically to before on BOTH their matched and unmatched paths -- the
+    regression half. A malformed condition refuses at validate time with an actionable suggestedFix,
+    and the coverage detector step.branch.condition.widenedGrammar (RED-proven) keeps a widened
+    example in the corpus.
+  provenRed: true

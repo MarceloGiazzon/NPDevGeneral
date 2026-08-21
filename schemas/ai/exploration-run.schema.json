@@ -141,7 +141,23 @@
         "green": { "type": "boolean" },
         "allowedConsoleErrorSubstrings": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["urlContains"],
+                "description": "MON-12: names the exact request a routine intends to fail, rather than a substring of the generic console TEXT. `urlContains` is required -- an entry with none is a blanket rule wearing an object, not a narrower one.",
+                "properties": {
+                  "urlContains": { "type": "string", "minLength": 1 },
+                  "status": { "type": "integer" },
+                  "textContains": { "type": "string" },
+                  "note": { "type": "string" }
+                }
+              }
+            ]
+          },
           "description": "The allowlist that was IN FORCE for this run, recorded on the run. Not a global constant read at display time -- the run has to carry what it was judged by."
         },
         "excused": {
@@ -176,7 +192,7 @@
     "baselineDiff": {
       "type": ["object", "null"],
       "additionalProperties": false,
-      "description": "C3: hash compare only, never pixel diffing -- a 'green but the screen changed' signal that costs nothing because the blobs are already content-addressed.",
+      "description": "R3.6: sha256 is the cheap first filter (an unchanged screenshot is never decoded); a screenshot whose hash changed is pixel-diffed against its baseline with a per-channel tolerance, and a differing-pixel fraction over the per-screenshot threshold marks it regressed and writes a diff PNG into the content-addressed blob dir. Was hash-equality only through C3, which cried wolf on any anti-aliasing change.",
       "properties": {
         "comparedTo": { "type": ["string", "null"], "description": "runId of the accepted baseline." },
         "screenshotsChanged": { "type": "integer", "minimum": 0 },

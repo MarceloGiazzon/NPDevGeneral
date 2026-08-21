@@ -24,6 +24,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.finalexec.boundary.*;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -78,7 +80,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * {@code PLATFORM_MANAGED_COLUMNS = Set.of("a", "b", ...)} shape the test's regex expects.
      */
     private static final Set<String> PLATFORM_MANAGED_COLUMNS =
-            Set.of("id", "version", "row_version", "tenant_id");
+            Set.of("id", "version", "row_version", "tenant_id", "deleted_at");
 
     /**
      * The platform-managed columns that carry a FIXED, known default and are therefore repairable by
@@ -97,6 +99,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      */
     static final List<String> REPAIRABLE_PLATFORM_COLUMNS =
             List.of("version", "row_version", "tenant_id");
+
+    /**
+     * R5.4: the OTHER kind of non-repairable platform column, alongside {@code id} -- {@code
+     * deleted_at} carries no fixed platform default at all. NULL means "live", which is the
+     * permanently-correct value for a row that has never been soft-deleted; unlike version/
+     * row_version/tenant_id there is no wrong/missing state for {@link PlatformColumnPass} to
+     * backfill-then-NOT-NULL, so it must stay OUT of {@link #REPAIRABLE_PLATFORM_COLUMNS} while still
+     * being a member of {@link #PLATFORM_MANAGED_COLUMNS} (Trigger B must not treat it as an
+     * unexplained extra column on a table that has it). {@link #assertPlatformColumnSetsAgree} needs
+     * this named explicitly now that "platform-managed minus id" is no longer the same set as
+     * "repairable".
+     */
+    private static final Set<String> NON_REPAIRABLE_PLATFORM_COLUMNS = Set.of("id", "deleted_at");
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -152,12 +167,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             throw new IllegalStateException("REG-6 platform-column drift: REPAIRABLE_PLATFORM_COLUMNS "
                     + repairable + " is not a subset of PLATFORM_MANAGED_COLUMNS " + PLATFORM_MANAGED_COLUMNS);
         }
-        Set<String> managedMinusId = new LinkedHashSet<>(PLATFORM_MANAGED_COLUMNS);
-        managedMinusId.remove("id");
-        if (!managedMinusId.equals(repairable)) {
-            throw new IllegalStateException("REG-6 platform-column drift: PLATFORM_MANAGED_COLUMNS minus 'id' "
-                    + managedMinusId + " must equal REPAIRABLE_PLATFORM_COLUMNS " + repairable
-                    + " (every non-id platform column carries a fixed default and is repairable)");
+        Set<String> managedMinusNonRepairable = new LinkedHashSet<>(PLATFORM_MANAGED_COLUMNS);
+        managedMinusNonRepairable.removeAll(NON_REPAIRABLE_PLATFORM_COLUMNS);
+        if (!managedMinusNonRepairable.equals(repairable)) {
+            throw new IllegalStateException("REG-6 platform-column drift: PLATFORM_MANAGED_COLUMNS minus "
+                    + NON_REPAIRABLE_PLATFORM_COLUMNS + " " + managedMinusNonRepairable
+                    + " must equal REPAIRABLE_PLATFORM_COLUMNS " + repairable
+                    + " (every platform column other than id/deleted_at carries a fixed default and is repairable)");
         }
     }
 
@@ -167,6 +183,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     static boolean isPlatformManagedColumn(String column) {
         return column != null && PLATFORM_MANAGED_COLUMNS.contains(column.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * R5.4: the one platform-managed column {@link DesiredSchemaFactory} must NOT fold into its
+     * blanket "every platform column is always NOT NULL" rule (Section 6 -- true for id/version/
+     * row_version/tenant_id, false for {@code deleted_at}, whose whole point is usually-null).
+     * Package-private and named the negative of {@link #isPlatformManagedColumn} on purpose: a caller
+     * that only checks {@code isPlatformManagedColumn} and assumes "therefore NOT NULL" is exactly
+     * the bug this exists to prevent from creeping back in at a future call site.
+     */
+    static boolean isNullablePlatformColumn(String column) {
+        return column != null && NON_REPAIRABLE_PLATFORM_COLUMNS.contains(column.toLowerCase(Locale.ROOT))
+                && !"id".equalsIgnoreCase(column);
     }
 
     /** REG-6: the platform-managed column names, as the single set the passes subtract from live
@@ -386,19 +415,28 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // fingerprint (only afterMigrate does, at its very end) and no path drops npdev_schema_metadata,
         // so this read is the true pre-boot value even after a destructive beforeMigrate.
         String storedAtBootStart = readFingerprint(dataSource);
-        // B4 (Move 9 A1, docs/ACCEPTED_BOUNDARIES.md): claim the single migration slot for this boot
-        // BEFORE any schema work, so a second instance racing against the same database refuses
-        // loudly instead of interleaving renames/widenings/drops. freshDatabase=true (no fingerprint
-        // stored yet -- a genuinely virgin database) is passed through, not used to skip the call
-        // outright: on Postgres, MigrationClaimStore.claim now protects this case too (a
-        // pg_advisory_lock needs no table to exist), closing the one race the old row-only claim could
-        // never cover. On H2 the fresh-database case is still skipped internally, exactly as before
-        // REG-7.2's fix required (claiming unconditionally would self-bootstrap
-        // npdev_schema_migration_claim before flyway.migrate() ever runs on a fresh schema, which
-        // makes Flyway see a non-empty "public" schema with no history table and refuse outright).
-        // See MigrationClaimStore's class javadoc for the full engine-by-engine scope.
+        // B4 (Move 9 A1) / R9.3: take the single migration slot for this boot BEFORE any schema
+        // work, so a second instance racing against the same database WAITS instead of interleaving
+        // renames/widenings/drops. R9.3 changed what "take" means: this used to refuse on collision
+        // (and, on every engine but Postgres, not to lock a virgin database at all), which turned two
+        // simultaneous boots into one migrated database and one dead process. It now blocks until the
+        // slot is free, on all four engines and including the first-ever boot.
+        //
+        // freshDatabase is still passed through and still matters, but only for the BOOKKEEPING ROW:
+        // writing it means creating npdev_schema_migration_claim, and creating any table in Flyway's
+        // schema before flyway.migrate() runs on a virgin schema makes Flyway see a non-empty
+        // "public" schema with no history table and refuse outright (REG-7.2). The LOCK itself is
+        // taken either way -- see MigrationMutex for how it avoids needing a table at all on three
+        // engines, and keeps its table out of Flyway's schema on the fourth.
         boolean freshDatabase = storedAtBootStart == null || storedAtBootStart.isBlank();
-        MigrationClaimStore.Claim claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+        MigrationClaimStore.Claim claim;
+        try {
+            claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+        } catch (RuntimeException lockFailure) {
+            throw new BoundaryBootException(new BoundaryViolation("B4", "boot",
+                    "Another app instance holds the migration lock. Wait for it to finish or clear the claim.",
+                    Instant.now()));
+        }
         try {
             boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
                     && !storedAtBootStart.equals(manifest.schemaFingerprint());
@@ -638,15 +676,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         Optional<SchemaHistoryStore.HistoryPoint> aheadOfBuild = SchemaHistoryStore.databaseMigratedPastThisBuild(dataSource, manifest);
         if (aheadOfBuild.isPresent()) {
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
-            throw new IllegalStateException("This database was migrated PAST this build. Schema history shows "
-                    + "fingerprint " + aheadOfBuild.get().toFingerprint() + " was successfully applied at "
-                    + aheadOfBuild.get().appliedAtUtc() + " (epoch ms), newer than this build's own target ("
-                    + manifest.schemaFingerprint() + "). Rolling an older build back onto a database a newer "
-                    + "build already migrated is unsupported and can silently lose data (REG-8) -- roll forward "
-                    + "to the newer build, restore from backup/snapshot, or -- if you deliberately intend this "
-                    + "older build to take over -- mark fingerprint " + aheadOfBuild.get().toFingerprint()
-                    + " done (see docs/SCHEMA_EVOLUTION.md#marking-a-migration-as-done) and redeploy. See "
-                    + "docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.");
+            throw new BoundaryBootException(new BoundaryViolation("B5", "boot",
+                    "This database was migrated by a newer build. Downgrade is not supported.",
+                    Instant.now()));
         }
 
         // SER-P4.8: classify's COLUMN-level decision is now ClassificationReducer over the live diff
@@ -1443,6 +1475,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             DatabaseMetaData metadata, DataSource dataSource, SchemaManifest manifest) throws SQLException {
         Set<String> owned = readOwnedBusinessTables(dataSource);
         if (owned == null || owned.isEmpty()) {
+            // B8 (ownership history): no ownership evidence recorded -- cannot prove any live table is
+            // NPDev-owned, so skipping drop of unowned tables. Warn so the operator sees the boundary.
+            System.out.println("NPDev schema lifecycle: WARNING [B8] no ownership history recorded -- "
+                    + "skipping drop of unowned tables (no ownership evidence to act on).");
             return Set.of();
         }
         Set<String> stillDeclared = new LinkedHashSet<>();

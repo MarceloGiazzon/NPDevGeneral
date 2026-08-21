@@ -51,7 +51,7 @@ resolution: |
 
   Also found and fixed while correcting the record: this item's own `files:` field named the wrong
   path for ConfiguredConceptGatewaySemanticPolicy.java (said
-  NPDevKernel/adapters/expression-cel/.../expressioncel/..., which does not exist -- the real path,
+  NPDevKernel/adapters/runtime-support/.../expressioncel/..., which does not exist -- the real path,
   now corrected above, is NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/...). A second,
   small instance of the same "wrong anchor sent the next reader to the wrong file" class this item is
   itself about.

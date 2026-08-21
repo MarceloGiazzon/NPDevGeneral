@@ -39,7 +39,7 @@ class DefaultProcedureExecutorRunQueryTest {
     void runQueryAppliesDeclaredWhere() {
         Map<String, CompiledQuery> queries = Map.of(
                 "OrdersByCliente", new CompiledQuery(
-                        "OrdersByCliente", "Order", "cliente == 'acme'", List.of(), null, List.of(), List.of(), null, null, Map.of(),
+                        "OrdersByCliente", "Order", "cliente == 'acme'", List.of(), null, List.of(), List.of(), null, Map.of(),
                         List.of(), List.of(), null)
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
@@ -64,7 +64,7 @@ class DefaultProcedureExecutorRunQueryTest {
         Map<String, CompiledQuery> queries = Map.of(
                 "OrdersByCliente", new CompiledQuery(
                         "OrdersByCliente", "Order", "cliente == 'acme'", List.of("total desc"), null,
-                        List.of(), List.of(), null, null, Map.of(), List.of(), List.of(), null)
+                        List.of(), List.of(), null, Map.of(), List.of(), List.of(), null)
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(
                 seededGateway(), NOOP_DISPATCHER, NOOP_BUS, Map.of(), ProcedureExecutionLimits.defaults(), queries);
@@ -86,7 +86,7 @@ class DefaultProcedureExecutorRunQueryTest {
     void runQueryAppliesDeclaredLimit() {
         Map<String, CompiledQuery> queries = Map.of(
                 "AllOrders", new CompiledQuery(
-                        "AllOrders", "Order", null, List.of(), 1, List.of(), List.of(), null, null, Map.of(),
+                        "AllOrders", "Order", null, List.of(), 1, List.of(), List.of(), null, Map.of(),
                         List.of(), List.of(), null)
         );
         DefaultProcedureExecutor executor = new DefaultProcedureExecutor(

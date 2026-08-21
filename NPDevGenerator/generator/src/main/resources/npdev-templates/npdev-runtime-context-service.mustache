@@ -11,10 +11,17 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Enumeration;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
 public class RuntimeContextService {
+    // R5.6/EDIT-13: the one supported header for requesting a per-locale label, per the existing
+    // "any X-Tag-* header becomes an ExecutionContext tag" convention (ExecutionContext#locale()
+    // reads tags.get("locale")). Kept as a constant so the dev/no-auth branch below and the
+    // authenticated branch's header synthesis never drift from each other.
+    private static final String LOCALE_TAG_HEADER = "X-Tag-locale";
+
     private final AuthenticatedContextResolver authenticatedContextResolver;
     private final RuntimeSettings runtimeSettings;
 
@@ -28,7 +35,10 @@ public class RuntimeContextService {
 
     public ExecutionContext currentContext(HttpServletRequest request) {
         if (runtimeSettings != null && !runtimeSettings.authEnabled()) {
-            return ExecutionContext.of("dev", "developer").withRoles(java.util.Set.of("USER", "DEBUG", "ADMIN"));
+            ExecutionContext devContext = ExecutionContext.of("dev", "developer")
+                    .withRoles(java.util.Set.of("USER", "DEBUG", "ADMIN"));
+            String requestedLocale = request == null ? null : resolveRequestedLocale(request);
+            return requestedLocale == null ? devContext : devContext.withTag("locale", requestedLocale);
         }
         if (request == null) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "unauthorized");
@@ -59,24 +69,72 @@ public class RuntimeContextService {
     private static Map<String, String> extractHeaders(HttpServletRequest request) {
         Map<String, String> headers = new LinkedHashMap<>();
         Enumeration<String> names = request.getHeaderNames();
-        if (names == null) {
-            return Map.of();
+        boolean sawLocaleTag = false;
+        if (names != null) {
+            while (names.hasMoreElements()) {
+                String name = names.nextElement();
+                if (name == null) {
+                    continue;
+                }
+                String normalized = name.trim();
+                if (normalized.isBlank()) {
+                    continue;
+                }
+                String lower = normalized.toLowerCase(Locale.ROOT);
+                if (!lower.startsWith("x-tag-")) {
+                    continue;
+                }
+                if (lower.equals(LOCALE_TAG_HEADER.toLowerCase(Locale.ROOT))) {
+                    sawLocaleTag = true;
+                }
+                headers.put(normalized, request.getHeader(name));
+            }
         }
-        while (names.hasMoreElements()) {
-            String name = names.nextElement();
-            if (name == null) {
-                continue;
+        // R5.6/EDIT-13: an explicit X-Tag-locale header always wins (it is the generic mechanism
+        // AuthenticatedContextResolver already turns into ExecutionContext's "locale" tag); when the
+        // caller sent none, fall back to deriving one from the standard Accept-Language header so a
+        // browser's normal language negotiation is enough to get a localized label without the
+        // caller knowing about the X-Tag-* convention at all.
+        if (!sawLocaleTag) {
+            String derivedLocale = resolveRequestedLocale(request);
+            if (derivedLocale != null) {
+                headers.put(LOCALE_TAG_HEADER, derivedLocale);
             }
-            String normalized = name.trim();
-            if (normalized.isBlank()) {
-                continue;
-            }
-            String lower = normalized.toLowerCase();
-            if (!lower.startsWith("x-tag-")) {
-                continue;
-            }
-            headers.put(normalized, request.getHeader(name));
         }
         return Map.copyOf(headers);
+    }
+
+    /** {@code X-Tag-locale} (case-insensitive) first, else the first language tag off
+     * {@code Accept-Language} (stripping any {@code ;q=} weight). Returns {@code null} when neither
+     * header is present -- callers treat that as "no locale requested", matching
+     * {@link ExecutionContext#locale()}'s own null contract. */
+    private static String resolveRequestedLocale(HttpServletRequest request) {
+        if (request == null) {
+            return null;
+        }
+        String explicit = firstNonBlank(request.getHeader("X-Tag-locale"), request.getHeader("X-Tag-Locale"));
+        if (explicit != null) {
+            return explicit.trim();
+        }
+        String acceptLanguage = request.getHeader("Accept-Language");
+        if (acceptLanguage == null || acceptLanguage.isBlank()) {
+            return null;
+        }
+        String primary = acceptLanguage.split(",")[0].trim();
+        int weightSeparator = primary.indexOf(';');
+        if (weightSeparator >= 0) {
+            primary = primary.substring(0, weightSeparator).trim();
+        }
+        return primary.isBlank() ? null : primary;
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        if (first != null && !first.isBlank()) {
+            return first;
+        }
+        if (second != null && !second.isBlank()) {
+            return second;
+        }
+        return null;
     }
 }

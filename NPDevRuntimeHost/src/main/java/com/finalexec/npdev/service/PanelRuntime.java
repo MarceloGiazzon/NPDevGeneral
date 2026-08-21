@@ -10,6 +10,7 @@ import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.generated.runtime.service.KernelFacade;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
+import com.npdev.kernel.i18n.LabelResolver;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGatewayTraceRecord;
 import com.npdev.kernel.concepts.ConceptPage;
@@ -279,8 +280,8 @@ public class PanelRuntime {
         response.put("dataSources", dataSourceSummaries);
         response.put("data", data);
         response.put("fields", panelFields(panel));
-        response.put("fieldBindings", panelFieldBindings(panel));
-        response.put("actions", panelActions(panel));
+        response.put("fieldBindings", panelFieldBindings(panel, effectiveContext));
+        response.put("actions", panelActions(panel, effectiveContext));
         // AW-P2: echo the compiled panel's own metadata (e.g. a selectors[]-expanded panel's
         // multiSelect/returnMapping/filters) so a caller referencing this panel as a bandPicker
         // source can consume the selector's declared pick contract instead of guessing from columns.
@@ -967,7 +968,15 @@ public class PanelRuntime {
         return List.copyOf(fields);
     }
 
-    private static List<Map<String, Object>> panelFieldBindings(CompiledPanel panel) {
+    /** R5.6: {@code binding.ui().getLabel()}/{@code getLabelLocales()} is one of the 12 compiled
+     * AST/Compiled pairs R5.6 threaded a per-locale map through, resolved here (via {@code context})
+     * because this is a TYPED read path -- unlike {@code RuntimeMetadataService}'s raw-JSON catalogs,
+     * there is no {@code labelLocales} sibling key to strip; the map lives on the compiled object
+     * itself and never reaches the response at all. {@code context == null} (the no-locale-requested
+     * case, and every existing caller before this) resolves to {@code getLabel()} unchanged, since
+     * {@link LabelResolver#resolve(String, java.util.Map, ExecutionContext)} returns the default text
+     * verbatim for a null context -- so a plain-string-labeled model is unaffected. */
+    private static List<Map<String, Object>> panelFieldBindings(CompiledPanel panel, ExecutionContext context) {
         List<Map<String, Object>> bindings = new ArrayList<>();
         for (CompiledPanelFieldBinding binding : panel.fieldBindings()) {
             String source = safe(binding.source());
@@ -979,19 +988,23 @@ public class PanelRuntime {
             item.put("dataSource", dataSource);
             item.put("sourceField", sourceField);
             item.put("editable", binding.editable());
-            item.put("label", binding.ui() == null ? "" : safe(binding.ui().getLabel()));
+            item.put("label", binding.ui() == null
+                    ? ""
+                    : LabelResolver.resolve(safe(binding.ui().getLabel()), binding.ui().getLabelLocales(), context));
             item.put("order", binding.ui() == null ? null : binding.ui().getOrder());
             bindings.add(item);
         }
         return List.copyOf(bindings);
     }
 
-    private static List<Map<String, Object>> panelActions(CompiledPanel panel) {
+    /** R5.6: same locale-resolution contract as {@link #panelFieldBindings} above, for
+     * {@code CompiledPanelAction.label()}/{@code labelLocales()} (a panel button's own label). */
+    private static List<Map<String, Object>> panelActions(CompiledPanel panel, ExecutionContext context) {
         List<Map<String, Object>> actions = new ArrayList<>();
         for (CompiledPanelAction action : panel.actions()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("name", safe(action.name()));
-            item.put("label", safe(action.label()));
+            item.put("label", LabelResolver.resolve(safe(action.label()), action.labelLocales(), context));
             item.put("binding", safe(action.binding()));
             item.put("procedure", safe(action.procedure()));
             item.put("concept", safe(action.concept()));

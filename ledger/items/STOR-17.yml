@@ -1,0 +1,126 @@
+id: STOR-17
+title: >-
+  Concurrent boots race the migration window -- MigrationClaimStore's javadoc claimed "a real lock,
+  not detect-and-refuse" while actually being a non-blocking probe that killed one process, and a
+  virgin database had no lock at all on three of four engines
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R9 item R9.3 -- sequenced BEFORE R9.5
+  (`npdev package`/`upgrade`) and R9.6 (`npdev service install`) precisely because those multiply
+  simultaneous boots. Both list it as their blocker; it is now unblocked.
+surface: runtimehost/schema-lifecycle, kernel/storage-sql
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MigrationClaimStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/
+  - NPDevKernel/adapters/bulkhead-postgres/src/main/java/com/npdev/adapters/bulkhead/postgres/PostgresAdvisoryBulkheadStore.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationLockConcurrentBootTest.java
+  - scripts/quality/check-dialect-sites.py
+detail: |
+  WHAT THE EXISTING HANDLING REALLY DID -- worse than the roadmap's "detect-and-refuse, explicitly
+  not a lock": `MigrationClaimStore`'s own javadoc claimed it WAS "a real lock, not
+  detect-and-refuse". It was not. Postgres used `pg_try_advisory_lock`, a NON-BLOCKING probe that
+  threw on contention; other engines locked the claim row, read the holder, and threw. Two
+  simultaneous boots produced one migrated database and **one dead process**.
+
+  The roadmap's "first-ever boots are unprotected" is HALF right, corrected in code comments:
+  `claim(ds, freshDatabase)` returned null -- no lock at all -- on a virgin database for
+  H2/MySQL/SQL Server, but **Postgres was covered**, because an advisory lock needs no table. A test
+  literally asserted the gap (`freshBootNeverAttemptsAClaim`). The cause is real and load-bearing:
+  creating any table in Flyway's schema before `migrate()` triggers REG-7.2 ("Found non-empty
+  schema(s) 'public' but no schema history table").
+
+  DESIGN: new `MigrationMutex` wrapping the whole migrate/realize window. **Waiting is one bounded
+  Java retry loop over a never-blocking probe**, because Postgres cannot wait with a timeout
+  (`lock_timeout` does not apply to advisory locks) -- a server-side wait would hang one engine while
+  three timed out. Budget 300 s via `-Dnpdev.schema.lock.waitSeconds`.
+
+  **Release is connection-scoped, not a lease, and that is deliberate.** A migration has no safe
+  maximum duration (it is bounded by user data), so any expiry short enough to recover a crash is
+  short enough to hand the lock over mid-DDL. A crashed boot releases when its socket dies -- no
+  timer, no operator step. The tradeoff (a HUNG boot holds it) is stated in the timeout message
+  rather than hidden.
+
+  FOUR ENGINES, and not "Postgres plus three fallbacks": **3 native + 1 fallback, dispatched by
+  CAPABILITY, never by engine name** -- which is exactly why `check-engine-parity.py` passes.
+  Postgres `pg_advisory_lock`, MySQL `GET_LOCK`, SQL Server `sp_getapplock @LockOwner='Session'` --
+  all session-scoped and TABLE-FREE, so the virgin-boot window needs no special case at all. H2 has
+  no advisory lock, so it uses a row lock held open in a transaction inside a dedicated
+  `npdev_lock` schema **Flyway does not manage** -- that one decision is what keeps REG-7.2 shut.
+  Added `StorageCapability.SESSION_ADVISORY_LOCK`, `tryAdvisoryLockSql()`,
+  `releaseAdvisoryLockSql()`, `advisoryLockKey(name)`, `guardedCreateSchema(name)`. Every probe
+  normalises to 1/0 IN SQL (Postgres returns boolean, MySQL 1/0/**NULL**, SQL Server a code that is
+  >= 0 on success) because the kernel is JDBC-free.
+
+  FOUR DEFECTS FOUND ON THE WAY, all fixed:
+    1. A SECOND inline dialect site -- the new checker rule (below) caught the pre-existing
+       `PostgresAdvisoryBulkheadStore`; routed through the dialect, **adopting its FNV-1a hash rather
+       than String.hashCode so its existing lock ids stay byte-identical**.
+    2. **`SqlDialects.active()` defaults to Postgres.** The first version therefore believed an H2
+       app had advisory locks and fired `pg_try_advisory_lock` at H2 -- **10 gate tests red**. Fixed
+       to `forConnection()`. A latent trap for anyone else reaching for `active()`.
+    3. **H2's `CREATE SCHEMA IF NOT EXISTS` is not atomic** -- the racing loser gets
+       `object already exists`. Found ONLY by the two-thread test; fixed by retry, not by
+       `synchronized`, which would have masked it in-process while leaving real processes racing.
+    4. `release()` could create the claim table on a still-virgin database after an early failure --
+       a latent REG-7.2 re-opening, now skipped precisely.
+
+  THE CHECKER WAS MADE STRICTER, NOT WIDENED -- the right response to a gate that missed something.
+  `check-dialect-sites.py` gained an `advisory-lock` construct pattern
+  (`pg_(try_)?advisory_(xact_)?(un)?lock`, `GET_LOCK`, `RELEASE_LOCK`, `sp_(get|release)applock`).
+  Its own comment records why: the first implementation spelled `SELECT pg_try_advisory_lock(?)`
+  inline behind a `getDatabaseProductName().contains("postgresql")` branch and **no existing rule
+  matched it** -- "not a rule anyone broke, a rule that was never written down, in the one file whose
+  job is writing them down."
+
+  TESTS -- `MigrationLockConcurrentBootTest`, 5 tests, two real threads on one latch, WITH a control:
+    - two threads claiming a FRESH database's lock never hold it at once
+    - **CONTROL: with the lock removed the same harness DOES observe two boots overlapping** -- so
+      the locked assertion cannot be vacuous
+    - two simultaneous FIRST-EVER boots both complete (serializing means WAITING, not refusing one)
+    - REG-7.2 stays fixed: locking a virgin database adds nothing to Flyway's own schema
+    - a crashed instance's leftover claim row does not block the next boot
+  RED control observed: with the lock removed,
+  `expected: <1> but was: <2>` -- "two boots were inside the migration window at the same time".
+
+  VERIFIED IN THE AUTHENTIC LOCATION, independently by the orchestrator: the assembled sample app's
+  own `build/test-results` shows **5 tests, 0 failures, 0 errors, 0 skipped**, inside a full
+  **122-class / 564-test suite with 0 failures**. This matters because RuntimeHost tests are widely
+  excluded from gate runs -- the concern was whether this test ran at all; it did, in the real
+  assembled app.
+
+  **A verification-hygiene incident worth recording, because the artifact it left was actively
+  misleading.** For fast feedback the implementer temporarily copied this test into
+  `runtimehost-core` (an independent Gradle build with H2+Flyway on its test classpath, build dir
+  redirected to `Build/gradle/runtimehost-core/root`), ran the green suite there at 20:06:31Z, then
+  ran a **deliberately sabotaged copy** (main test rewired to `runTwoThreads(false)`) for the RED
+  proof at 20:07:13Z **into the same results directory** -- overwriting the green artifact -- and
+  finally deleted the copy, so nothing ever refreshed it. The surviving XML therefore showed the
+  headline test FAILING with the control's message, contradicting both the report and the repo
+  source, and could not be reproduced from either. Correct practice: capture a sabotage experiment to
+  a separate output path, or preserve the green artifact first. Recorded here so the next reader of a
+  stray results directory has the explanation.
+
+  **ENGINES ACTUALLY EXERCISED: H2 ONLY.** The Postgres/MySQL/SQL Server advisory-lock SQL is
+  unexercised locally per `scripts/policy/local-test-profile.json` (the bulkhead's Postgres tests
+  reported `skipped="2"`) and rides CI. This item is recorded DONE on H2 evidence; the other three
+  engines' native paths are asserted by construction (capability dispatch + dialect conformance),
+  not by a local run.
+
+  LEFT OPEN, filed separately: `NPDevCli/npdev_cli.py`'s doctor advice still suggests `clear-claim`,
+  which can no longer free a live mutex (REG-188). That file was held by a concurrent workstream.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationLockConcurrentBootTest.java
+  asserts: >-
+    two real threads entering the migration window against ONE fresh database never overlap (peak
+    occupancy 1) yet BOTH complete -- serializing means waiting, not refusing one -- while the
+    accompanying control proves the harness genuinely runs them concurrently by observing peak 2
+    with the lock removed; locking a virgin database adds nothing to Flyway's schema (REG-7.2); and a
+    crashed instance's leftover claim row does not block the next boot.
+  provenRed: true

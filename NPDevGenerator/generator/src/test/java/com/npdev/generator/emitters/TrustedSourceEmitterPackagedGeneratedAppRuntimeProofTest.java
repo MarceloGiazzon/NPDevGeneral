@@ -436,7 +436,6 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 null,
                 List.of("ADMIN"),
                 "record",
-                "write",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateItem12User",
                         List.of("Item12User"),
@@ -1021,7 +1020,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         // below) -- both jars must exist or the generated app fails to compile.
                         ":adapters:document-render-inproc:jar",
                         ":adapters:document-render-stub:jar",
-                        ":adapters:expression-cel:jar",
+                        ":adapters:runtime-support:jar",
                         ":adapters:external-ai-http:jar",
                         ":adapters:external-ai-inproc:jar",
                         ":adapters:external-ai-pack-core:jar",
@@ -1037,12 +1036,15 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         // clean CI runner only explicitly-built adapters exist -> compile error. Build them.
                         ":adapters:mail-inproc:jar",
                         ":adapters:mail-smtp:jar",
+                        ":adapters:messaging-http:jar",
+                        ":adapters:messaging-inproc:jar",
                         ":adapters:persistence-inproc:jar",
                         ":adapters:persistence-postgres:jar",
                         ":adapters:resume-bootstrap-spring:jar",
                         ":adapters:runtime-validation:jar",
                         ":adapters:schema-validator-default:jar",
                         ":adapters:tracing-redaction-default:jar",
+                        ":adapters:webhook-http:jar",
                         ":adapters:webhook-inproc:jar",
                         "--no-daemon",
                         "--console=plain"

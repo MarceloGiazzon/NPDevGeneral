@@ -46,6 +46,62 @@ tasks.register('classifyModelChange', JavaExec) {
     args = cliArgs
 }
 
+// R1.1 (warm standalone validator): ONE jar carrying both standalone Main classes the AI-authoring
+// loop re-invokes on every single model edit -- ModelValidatorMain (lives in :dsl) and
+// ModelChangeClassifierMain (lives here) -- plus their runtime dependencies, so NPDevCli can run
+// `java -cp <jar> <MainClass>` directly instead of forking the Gradle wrapper. Both classes are pure
+// stdlib+Jackson+dsl; :generator already depends on :dsl, so its own runtimeClasspath is a superset
+// of what either main needs and one jar covers both.
+//
+// Measured on this machine (canonical-demo, 2026-08-18, 8 interleaved A/B pairs of
+// `npdev validate model --semantic`): median 4.61s -> 2.24s wall clock, 2.1x, and the first call of
+// a session was 24.4s because it also paid for starting the Gradle daemon. The emitted
+// npdev-validation-report.v2 is byte-identical between the two paths (verified over five corpus
+// models including failing ones -- see _default_ai_tools_jar in NPDevCli/npdev_cli.py).
+//
+// The saving is NOT the JVM launch: this call already reuses a warm daemon (gradle.properties sets
+// org.gradle.daemon=true and validateModel passes no --no-daemon). It is the Gradle client
+// bootstrap plus configuring the project graph on every single call, to reach a main class whose
+// real work takes well under a second.
+//
+// No Shadow plugin: nothing in this repo uses one, and a plain Jar task with zipTree does the job.
+// No Main-Class manifest attribute either -- there are two entry points and the caller names the one
+// it wants on the command line.
+tasks.register('aiToolsJar', Jar) {
+    group = 'build'
+    description = 'Single self-contained jar with the standalone AI-loop entry points (ModelValidatorMain, ModelChangeClassifierMain) and their runtime deps, so NPDevCli can skip the Gradle fork.'
+    archiveFileName = 'npdev-ai-tools.jar'
+    // Deliberately NOT build/libs. scripts/runtimehost/sync-runtimehost-libs.ps1 stages EVERY jar it
+    // discovers under a `*/libs/*` path into runtimehost-libs, and build.gradle.template line 219
+    // puts that entire directory on a generated FinalApp's compile classpath via
+    // `fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])`. A fat jar landing there would
+    // shadow every thin platform jar with its own embedded copy of the same classes. Keeping it out
+    // of `libs/` means the existing discovery cannot pick it up by accident; the sync script stages
+    // it explicitly, to its own sibling directory, instead.
+    destinationDirectory = layout.buildDirectory.dir('ai-tools')
+    // First writer wins, and sourceSets.main.output is declared first, so :generator's own classes
+    // and resources beat anything a dependency happens to ship under the same path.
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from {
+        configurations.runtimeClasspath.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+    // A signed dependency's signature files do not survive being unpacked into another jar -- the
+    // JVM then refuses the whole archive at class-load time ("invalid signature file digest").
+    exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'META-INF/*.EC'
+    // Reproducible bytes for unchanged inputs: sync-runtimehost-libs.ps1's staging decision is
+    // size+mtime, and its REG-162 safety net then hashes source against staged. A jar whose bytes
+    // churned on every rebuild would make that comparison meaningless noise.
+    // Verified 2026-08-18 by two back-to-back `--rerun-tasks` builds: 3351 entries each, identical
+    // names, identical entry ORDER, identical per-entry CRCs, and 0 differing bytes in the whole
+    // 6.18 MB file. (A third build earlier the same day did NOT match -- it had picked up a
+    // concurrent edit to :dsl/:generator sources, i.e. a genuine input change, which is the only
+    // sense in which this claim is ever meant.)
+    preserveFileTimestamps = false
+    reproducibleFileOrder = true
+}
+
 // Wave 2, E2 (AI_AUTHORING_CONTRACT-2026-07-31.md Part 9, "the load-bearing piece"): the
 // Custodian's diff gate as a real, callable command. Own JavaExec task for the same reason as
 // classifyModelChange above -- GeneratorMain's arg parser is not where this belongs.
@@ -153,7 +209,7 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
     // BT-2 (PACK-ROADMAP.md): SealedPackBuilderTest compiles a sealed pack's emitted JPA entity
     // sources with an in-process javac to get real, diffable .class bytes for the byte-identical
-    // proof -- compile-time only, same version expression-cel already pins for GeneratedCrudRuntimeSupport.
+    // proof -- compile-time only, same version runtime-support already pins for GeneratedCrudRuntimeSupport.
     testImplementation 'jakarta.persistence:jakarta.persistence-api:3.1.0'
     testImplementation project(':adapters:audit-inproc')
     testImplementation project(':adapters:audit-postgres')
@@ -179,7 +235,7 @@ dependencies {
     testImplementation 'org.testcontainers:minio:1.21.4'
 
     // behaviorTest: isolated from the above on purpose -- see the sourceSets note.
-    behaviorTestImplementation project(':adapters:expression-cel')
+    behaviorTestImplementation project(':adapters:runtime-support')
     behaviorTestImplementation 'org.springframework:spring-web:6.1.12'
     behaviorTestImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
     behaviorTestImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2'

@@ -97,6 +97,27 @@ CONSTRUCTS = {
     # error 1101. Both were found at Flyway time on first boot, in CI run 31284450437 -- the
     # layer no unit test reaches, one ~12-minute round each.
     # -----------------------------------------------------------------------------------------
+    # -----------------------------------------------------------------------------------------
+    # R4.3. `LOWER(CAST(col AS VARCHAR))` -- the obvious spelling of a case-insensitive
+    # contains/startsWith filter -- was assembled inline in JdbcBusinessConceptStore, outside this
+    # package, and this gate did not catch it: no construct here matched a CAST/LIKE site. It is
+    # wrong on two of the four supported engines, in two different SILENT ways. MySQL's CAST has no
+    # VARCHAR target at all (syntax error, so every contains filter fails). T-SQL's length-less CAST
+    # defaults to 30 CHARACTERS -- not the length-1 default a declaration gets -- so a contains
+    # against anything longer quietly matches nothing. Neither reproduces under H2 or Postgres,
+    # which is exactly where the inline version was written and tested.
+    # -----------------------------------------------------------------------------------------
+    "case-insensitive-text-cast": (
+        r"LOWER\s*\(\s*CAST\s*\(|\bAS\s+VARCHAR\s*\)\s*\)\s*(?:LIKE|\")",
+        "dialect.caseInsensitiveTextExpression(columnRef) -- MySQL's CAST takes CHAR not VARCHAR, "
+        "and T-SQL's length-less CAST silently truncates to 30 characters",
+    ),
+    "like-escape-clause": (
+        r"\bLIKE\s+\?\s+ESCAPE\b",
+        "dialect.likeEscapeClause() with dialect.containsPattern(...) -- keep the escape character "
+        "and the pattern in one place, and BIND the pattern instead of concatenating it",
+    ),
+
     "text-key-column": (
         r"\bTEXT\s+PRIMARY\s+KEY\b|\bTEXT\s+UNIQUE\b|\bTEXT\s+NOT\s+NULL\s+PRIMARY\s+KEY\b",
         "dialect.keyableTextColumnType() -- MySQL error 1170 (no key length), and SQL Server "
@@ -150,6 +171,24 @@ CONSTRUCTS = {
     "introspection": (
         r"\binformation_schema\b|\bpg_catalog\b|\bpg_indexes\b|\bpg_class\b|\bpg_attribute\b",
         "dialect.listTablesSql/listColumnsSql/listIndexesSql/constraintExistsSql/systemSchemas",
+    ),
+
+    # R9.3. A named session mutex is spelled four different ways and EXISTS on only three of the
+    # four engines -- pg_advisory_lock takes a bigint, GET_LOCK takes a name and a timeout,
+    # sp_getapplock takes four named arguments and returns a procedure code that is >= 0 on success,
+    # and H2 has none at all.
+    #
+    # This pattern is here because its absence is what let the previous one through:
+    # MigrationClaimStore spelled `SELECT pg_try_advisory_lock(?)` and `SELECT pg_advisory_unlock(?)`
+    # inline, guarded by a getDatabaseProductName().contains("postgresql") branch, and no check in
+    # this file matched either line. It was not a rule anyone broke -- it was a rule that was never
+    # written down, in the one file whose job is writing them down.
+    "advisory-lock": (
+        r"\bpg_(?:try_)?advisory_(?:xact_)?(?:un)?lock\b|\bGET_LOCK\s*\(|\bRELEASE_LOCK\s*\("
+        r"|\bsp_(?:get|release)applock\b",
+        "dialect.tryAdvisoryLockSql()/releaseAdvisoryLockSql()/advisoryLockKey(name), gated on "
+        "StorageCapability.SESSION_ADVISORY_LOCK -- H2 has no advisory lock at all, so an inline "
+        "one is not merely unportable, it is absent",
     ),
     "cast": (
         r"::\s*(?:text|int|integer|bigint|uuid|jsonb|timestamptz|boolean|numeric)\b",

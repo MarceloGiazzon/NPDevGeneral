@@ -278,7 +278,6 @@ final class TrustedSourceEmitterGeneratedActionTest {
                 null,
                 List.of("ADMIN"),
                 "detailed",
-                "write",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateUser",
                         includeSideEffectConcept ? List.of("User") : List.of(),

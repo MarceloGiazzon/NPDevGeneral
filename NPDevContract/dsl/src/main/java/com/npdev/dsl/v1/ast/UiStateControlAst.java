@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Move 11 W6 (C1, docs/MOVE3_G2_CHECKLISTS.md): a declared, addressable piece of TRANSIENT UI state
@@ -26,12 +27,14 @@ public record UiStateControlAst(
         String name,
         String label,
         List<String> values,
-        String defaultValue
+        String defaultValue,
+        Map<String, String> labelLocales
 ) {
     public UiStateControlAst {
         values = values == null ? List.of() : List.copyOf(values);
         if ((defaultValue == null || defaultValue.isBlank()) && !values.isEmpty()) {
             defaultValue = values.get(0);
         }
+        labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 }

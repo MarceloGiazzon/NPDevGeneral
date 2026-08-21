@@ -1,0 +1,96 @@
+id: MON-17
+title: >-
+  The duplicate-PID, port-conflict and log-archiving guards live only in the AppGen PowerShell layer
+  -- a two-writers split, so only AppGen-built apps get guarded launchers and no app has POSIX ones
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R9 item R9.4 -- "one _ops contract
+  everywhere; Monitor/Manager Start/Stop working identically on all apps; non-Docker Linux
+  operation; the launcher R9.6 supervises."
+surface: generator/ops-emitters, appgen/build
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - scripts/appgen/Build-NpdevApp.ps1
+  - scripts/appgen/New-AppConsole.ps1
+  - BREAKING.md
+detail: |
+  BEFORE-STATE, measured: the duplicate-PID guard, port-conflict guard and log archiving lived only
+  in `Build-NpdevApp.ps1`'s `$StartApp` text block (~90 lines), written into an AppGen-built app's
+  OUTER `<OutRoot>\_ops\Start-App.ps1`. `OperationalRunbookEmitter` -- the emitter every generation
+  path calls via `GeneratorMain` -- had no background Start/Stop pair at all, only the blocking
+  foreground `Run-FinalApp.ps1`/`run-final-app.sh`. The toolbox had exactly one POSIX script, as the
+  roadmap claimed (verified by grep, not assumed).
+
+  **A complication found mid-implementation that makes this item less mechanical than it reads**: an
+  AppGen-built app has **TWO** `_ops` directories -- `<OutRoot>\App\_ops` (Java-emitted, the one
+  `npdev monitor`'s `.npdev-root` pairing uses) and `<OutRoot>\_ops` (Build-NpdevApp.ps1's own older
+  toolbox, on a different `app-plan.json`/`resolved-db-plan.json` schema). `Rebuild-And-Restage.ps1`,
+  `New-AppConsole.ps1`'s Start/Stop buttons and `Update-AppMetadata.ps1` all invoke
+  `Start-App.ps1`/`Stop-App.ps1` **by name at the outer path**. A first pass that simply deleted the
+  PowerShell copies -- which is what the roadmap literally asks for -- broke all three
+  ("term ... not recognized"). Resolved by making the outer scripts 2-line delegating shims to
+  `App\_ops`, the same pattern the file already used for `Run-FinalApp.ps1`/`Build-FinalApp.ps1`. So
+  the guard logic now lives in exactly one place while every existing caller keeps working unchanged.
+
+  PROMOTED: `startAppScript()`/`stopAppScript()` plus POSIX twins into `OperationalRunbookEmitter`,
+  emitted as `Start-App.ps1`/`Stop-App.ps1`/`start-app.sh`/`stop-app.sh` into every generated app's
+  `App\_ops`. Duplicate-PID guard checks `app.pid` + `Get-Process`; port-conflict guard uses
+  `Get-NetTCPConnection`, with the POSIX side best-effort via `nc -z` and **degrading honestly when
+  `nc` is absent** rather than pretending to have checked.
+
+  **Log handling COMPOSES with R9.2 (MON-16) rather than reintroducing what it removed**: instead of
+  the old unbounded `app.out.log`/`app.out.history.log` pair, background launches write into the same
+  `logs/app-<UTC timestamp>.log` pool, pruned to the same newest-20 that `Run-FinalApp.ps1` already
+  prunes -- one shared retention budget across foreground and background launches, not two competing
+  ones.
+
+  A `defaultSpringProfiles` plan field was added (reads `config.runtime.springProfile`, falling back
+  to `dev,step0,trial`) so trial-mode apps keep their profile set now that the emitter, not the
+  AppGen script, owns the launcher. `New-AppConsole.ps1`'s status tail was also fixed -- it read a
+  fixed `_ops\app.out.log` and now finds the latest `logs\app-*.log`.
+
+  LIVE DUPLICATE-PID EVIDENCE (built via `Rebuild-And-Restage.ps1 -SkipLibs`, `simple-user-registry`,
+  H2Local, port 8317):
+    1st Start -> `Started PID 5072 ... App is UP at http://localhost:8317/actuator/health`
+    2nd Start -> `Already running (PID 5072). Stop it first with Stop-App.ps1.` -- refused, exit 0,
+                 no duplicate JVM
+    Stop      -> `Stopped PID 5072.`, port confirmed free via Get-NetTCPConnection
+    3rd Start -> new PID 3796, new timestamped log file, App is UP again
+  That sequence is the point of the item: the guard has to refuse the second start AND not poison the
+  third.
+
+  GATES, all re-verified by the orchestrator: `check-deterministic-generation.ps1` held across two
+  runs; `check-engine-parity.py` 0 unpaired branches; `run-engine-toolbox-parity.py` -- the five
+  operations still **byte-identical across Postgres/MySQL/SQL Server**, which is what proves the new
+  launchers did not smuggle in an engine special-case; `check-twin-pair-consistency.py` 23/23;
+  `run-script-inventory-check.ps1` 199/199 (no files added or removed under `scripts/`, so no policy
+  entries needed).
+
+  BREAKING.md entry shipped in the same change (2026-08-19), because the emitted log-file location
+  moved -- see there for what a caller scripting against the old paths must know.
+
+  Unblocks R9.6 (`npdev service install`), which the roadmap sequences after this precisely because a
+  service wrapper needs a launcher worth supervising.
+guard:
+  kind: manual
+  ref: >-
+    Generate any app, then run `App\_ops\Start-App.ps1` twice: the second invocation must refuse
+    naming the live PID rather than starting a second JVM, and `Stop-App.ps1` followed by a third
+    Start must succeed with a new PID. Verify `start-app.sh`/`stop-app.sh` exist alongside. Emitted
+    by OperationalRunbookEmitter, so every generation path gets them -- not only AppGen's.
+  asserts: >-
+    every generated app -- not just AppGen-built ones -- gets duplicate-PID-guarded and
+    port-conflict-guarded Start/Stop with POSIX twins, from ONE emitter rather than a PowerShell
+    copy that only one build path writes
+  provenRed: false
+  provenRedNote: >-
+    The before-state was read directly from source (the guards existed only in Build-NpdevApp.ps1's
+    $StartApp block; OperationalRunbookEmitter emitted no background pair at all; exactly one POSIX
+    script existed), so the gap is an observation rather than an inference. The guard behaviour
+    itself was then measured live -- second Start refused naming the live PID, third Start succeeded
+    with a new one.

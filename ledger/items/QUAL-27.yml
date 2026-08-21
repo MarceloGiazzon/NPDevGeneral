@@ -1,0 +1,93 @@
+id: QUAL-27
+title: >-
+  The coverage ratchet trusts any fresh jacoco report, including one from a partial test run, and
+  the T2 gate ordering hides it
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-20
+closed: 2026-08-20
+verification: VERIFIED_LIVE
+source: >-
+  Found 2026-08-20 running `run-all-gates.ps1 -Only aiKnowledge` immediately after a full T2 suite,
+  to confirm QUAL-26's fix. The gate failed on a third, unrelated check -- the coverage ratchet --
+  reporting the generator module at 10.8623% against a 76.6203% floor.
+surface: quality/coverage-ratchet
+files:
+  - scripts/quality/check-coverage-ratchet.py
+  - scripts/policy/coverage-baseline.json
+detail: |
+  **There was no coverage regression.** A real, full `:generator:test` + `:generator:jacocoTestReport`
+  in the same (default) build root measures **81.5562%** -- comfortably above the 76.6203% floor --
+  with 7 of 148 classes fully uncovered. The report the ratchet read measured 10.8623% with **116 of
+  148 classes fully uncovered**: the signature of a report written by a run in which most tests did
+  not execute.
+
+  Two separate problems combine here, and only one of them is the ratchet's own:
+
+  **1. The ratchet cannot tell a partial report from a complete one.** REG-168 already taught it to
+  skip a report that is STALE (older than the module's newest source file), and that check worked
+  correctly here -- it skipped eight kernel adapter reports. But a report can be perfectly fresh and
+  still describe only a fraction of the suite. Nothing distinguishes "this run covered 10% of the
+  code" from "this run only ran 10% of the tests". A plausible discriminator already sits in the data:
+  a sudden jump in the fully-uncovered class count (7 -> 116) is a far stronger partial-run signal
+  than the percentage itself, because real coverage regressions move the percentage without emptying
+  whole classes.
+
+  **2. The T2 suite's ordering hides it.** `run-all-gates.ps1` runs `aiKnowledge` FIRST, then
+  `generator`. So in a full suite the ratchet reads whatever jacoco was left by a PREVIOUS run and
+  never sees the report the current run's generator gate is about to write. The failure only appears
+  when `aiKnowledge` runs alone after a `generator` gate -- which is exactly the shape of a
+  confirmation re-run. The T2 suite therefore reports the ratchet green while measuring a report that
+  has nothing to do with the code under test.
+
+  **A second, self-inflicted finding worth recording.** The same run also failed NPDevCli at 58.7887%
+  against a 58.8398% floor -- a floor raised 40 minutes earlier by this session's own T2 run, because
+  the ratchet prints "Updated coverage-baseline.json -- commit the result to keep the higher floor"
+  and that advice was followed. Four runs of IDENTICAL code measured **58.1878 / 58.8398 / 58.7887 / 58.8602** -- the fourth
+  observed after this item was filed, when the confirming gate run rewrote the baseline again.
+  The measurement is noisy at the sub-0.1pp level (NPDevCli's suite has known
+  environment-sensitive tests -- `test_seed_cli` fails if anything is listening on 8099), so banking a
+  single run's high-water mark makes the NEXT run red. Had the raise not been committed, 58.7887 would
+  have cleared the standing 58.1878 floor and passed.
+
+  **Action taken 2026-08-20:** reverted NPDevCli's floor to 58.1878, and deliberately did NOT bank
+  either auto-raise (the generator's 81.5562 included), leaving both at their last stable committed
+  values. Both are cleared by a real full run, so nothing is lost, and no landmine is left for the
+  next session. `check-coverage-ratchet.py` exits 0 against these floors, and the full
+  `aiKnowledge` gate then PASSED end to end (2722 s). That passing run promptly rewrote the
+  baseline yet again -- generator to 81.5562, NPDevCli to 58.8602 -- and those raises were
+  discarded rather than committed, for the same reason. **The script rewrites the file on EVERY
+  run, so `git checkout -- scripts/policy/coverage-baseline.json` is the normal post-gate step
+  until this item is closed.**
+
+  **Not fixed here**, because both fixes are design decisions rather than patches: whether the ratchet
+  should refuse a report whose fully-uncovered class count jumps (and what the threshold is), and
+  whether `run-all-gates.ps1` should order the ratchet after the build gates or the ratchet should
+  demand a report newer than the current run's start. Either would have caught this; picking between
+  them is an owner call.
+
+  A related open item already exists for a different arm of the same weakness: MON-21 records that
+  `npdev bench`'s regression verdict compares across runs, so ambient machine load alone can produce
+  one. Same root shape -- a cross-run comparison with no control for the measurement's own variance.
+
+  2026-08-20 (fix, both recommended arms): (a) check-coverage-ratchet.py now REFUSES a jacoco report
+  whose fully-uncovered class fraction exceeds 0.5 (PARTIAL_UNCOVERED_CLASS_FRACTION) -- read from the
+  report's root <counter type="CLASS"> -- treating it as "not measured" rather than a regression or a
+  ratchet-up; the observed partial report was 116/148 (~78%) vs the full run's 7/148 (~5%). Pinned by
+  calibration Control 7 (RED->GREEN via --calibrate). (b) run-all-gates.ps1 now runs generator and
+  runtimeHost BEFORE aiKnowledge, so the ratchet reads the current run's fresh reports instead of a
+  previous run's leftovers; the docstring records why.
+guard:
+  kind: script
+  ref: scripts/quality/check-coverage-ratchet.py
+  asserts: >-
+    The ratchet's --calibrate self-test (Control 7) proves a partial report (116/148 classes fully
+    uncovered) is refused as partial while a full one (7/148) is accepted, so a partial test run cannot
+    produce a false regression or ratchet the floor; and run-all-gates.ps1 runs generator+runtimeHost
+    before aiKnowledge so the ratchet reads the current run's fresh reports.
+  provenRed: true
+  provenRedNote: >-
+    The false regression was observed live (10.8623% vs a 76.6203% floor, from a 116/148-partial
+    report, recorded in the source note). The refusal is now pinned by Control 7, which fails if the
+    partial-detection check is removed.

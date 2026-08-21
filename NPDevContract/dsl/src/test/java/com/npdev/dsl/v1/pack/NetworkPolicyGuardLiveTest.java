@@ -67,30 +67,31 @@ class NetworkPolicyGuardLiveTest {
     }
 
     @Test
-    void deniedRefusesAnOciCoordinateTheSameWayBeforeDispatchingToTheUnimplementedFetcher() throws Exception {
+    void deniedRefusesAnOciCoordinateBeforeAnyNetworkCall() throws Exception {
         PackCoordinate coordinate = PackCoordinate.parse("oci://127.0.0.1:1/unreachable/repo:1.0.0");
         PackCache cache = new PackCache(work.resolve("cache"));
 
-        // The guard applies uniformly regardless of whether the scheme's fetch is even implemented
-        // -- DENIED must throw the guard's own exception type, never reach (and therefore never be
-        // masked by) OCI's "not implemented in this slice" IOException.
+        // DENIED must throw the guard's own exception type before any HTTP call is made.
         assertThrows(NetworkPolicyViolationException.class,
                 () -> RemotePackFetcher.fetch(coordinate, NetworkPolicy.DENIED, cache));
     }
 
     @Test
-    void allowedPassesTheGuardForOciAndReachesTheDocumentedNotImplementedStub() throws Exception {
-        PackCoordinate coordinate = PackCoordinate.parse("oci://127.0.0.1:1/unreachable/repo:1.0.0");
-        PackCache cache = new PackCache(work.resolve("cache"));
+    void allowedPassesTheGuardForOciAndReachesTheRealHttpClient() throws Exception {
+        try (ServerSocket closedSocket = new ServerSocket(0)) {
+            int port = closedSocket.getLocalPort();
+            closedSocket.close();
 
-        // IOException, not NetworkPolicyViolationException and not an unchecked type -- post-review
-        // fix (PR #70 review finding): the OCI "not implemented" stub used to throw
-        // UnsupportedOperationException, which every CLI Main's `catch (IOException failure)` block
-        // does NOT catch, crashing with a raw stack trace instead of this CLI's documented JSON
-        // {"status":"failed",...} + exit 2 contract.
-        IOException failure = assertThrows(IOException.class,
-                () -> RemotePackFetcher.fetch(coordinate, NetworkPolicy.ALLOWED, cache));
-        assertFalse(failure instanceof NetworkPolicyViolationException);
-        assertTrue(failure.getMessage().contains("not implemented"), failure.getMessage());
+            PackCoordinate coordinate = PackCoordinate.parse(
+                    "oci://127.0.0.1:" + port + "/unreachable/repo:1.0.0");
+            PackCache cache = new PackCache(work.resolve("cache"));
+
+            // IOException, not NetworkPolicyViolationException and not an unchecked type -- the
+            // OCI fetch now reaches the real HttpClient, which fails with a connection error
+            // against the unreachable port. The old "not implemented" stub is gone (PACK-8).
+            IOException failure = assertThrows(IOException.class,
+                    () -> RemotePackFetcher.fetch(coordinate, NetworkPolicy.ALLOWED, cache));
+            assertFalse(failure instanceof NetworkPolicyViolationException);
+        }
     }
 }

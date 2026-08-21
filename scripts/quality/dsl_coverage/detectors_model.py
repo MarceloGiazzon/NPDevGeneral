@@ -5,6 +5,8 @@ how a split silently changes what a gate covers.
 """
 from __future__ import annotations
 
+import re
+
 from .constants import FLOW_STEP_TYPES
 
 def _walk_steps(steps):
@@ -107,6 +109,133 @@ def _has_concept_access(model: dict) -> bool:
     return False
 
 
+def _has_field_access(model: dict) -> bool:
+    # R5.5: field-level authorization (field.access.read/write) -- the next rung on the ladder
+    # below concept.access (row scope): role ceiling -> row scope -> field scope.
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if not isinstance(field, dict):
+                continue
+            access = field.get("access")
+            if isinstance(access, dict) and (access.get("read") or access.get("write")):
+                return True
+    return False
+
+
+_LABEL_SITE_KEYS = ("label", "shortLabel", "displayLabel", "actionLabel")
+
+
+def _is_locale_label_object(value) -> bool:
+    """R5.6: a widened label site -- the object form `{"default": "...", "<locale>": "...", ...}`
+    the schema's `$defs/localizableLabel` accepts alongside the still-valid plain string. Detected
+    structurally (dict with a "default" key), not by checking for any specific locale tag, since
+    the whole point is that authors declare whatever locale tags they need."""
+    return isinstance(value, dict) and isinstance(value.get("default"), str) and value.get("default").strip() != ""
+
+
+def _iter_label_site_values(obj):
+    if isinstance(obj, dict):
+        for key in _LABEL_SITE_KEYS:
+            if key in obj:
+                yield obj[key]
+
+
+def _has_locale_label(model: dict) -> bool:
+    """R5.6: true when at least one label site anywhere in the model uses the per-locale object
+    form rather than a plain string -- proves the widened schema/DSL/canonical-JSON chain actually
+    carries a locale map, not just that a plain string still parses (which every OTHER model in
+    the corpus already proves and would make this detector vacuous)."""
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        ui = concept.get("ui")
+        if isinstance(ui, dict):
+            for value in _iter_label_site_values(ui):
+                if _is_locale_label_object(value):
+                    return True
+        for field in (concept.get("fields", None) or []):
+            if not isinstance(field, dict):
+                continue
+            field_ui = field.get("ui")
+            if isinstance(field_ui, dict):
+                for value in _iter_label_site_values(field_ui):
+                    if _is_locale_label_object(value):
+                        return True
+            for option in (field.get("enumValues", None) or []):
+                if isinstance(option, dict):
+                    for value in _iter_label_site_values(option):
+                        if _is_locale_label_object(value):
+                            return True
+        lifecycle = concept.get("lifecycle")
+        if isinstance(lifecycle, dict):
+            for state in (lifecycle.get("states", None) or []):
+                if isinstance(state, dict):
+                    for value in _iter_label_site_values(state):
+                        if _is_locale_label_object(value):
+                            return True
+            for transition in (lifecycle.get("transitions", None) or []):
+                if isinstance(transition, dict):
+                    for value in _iter_label_site_values(transition):
+                        if _is_locale_label_object(value):
+                            return True
+    for prop in (model.get("properties", None) or []):
+        if isinstance(prop, dict):
+            for value in _iter_label_site_values(prop):
+                if _is_locale_label_object(value):
+                    return True
+    for panel in (model.get("panels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        for action in (panel.get("actions", None) or []):
+            if isinstance(action, dict):
+                for value in _iter_label_site_values(action):
+                    if _is_locale_label_object(value):
+                        return True
+    for autopanel in (model.get("autoPanels", None) or []):
+        if not isinstance(autopanel, dict):
+            continue
+        for surface_name in ("selection", "detail", "transaction", "prompt"):
+            surface = autopanel.get(surface_name)
+            if not isinstance(surface, dict):
+                continue
+            for action in (surface.get("actions", None) or []):
+                if isinstance(action, dict):
+                    for value in _iter_label_site_values(action):
+                        if _is_locale_label_object(value):
+                            return True
+            for bucket_key in ("bandPickers", "derivedFields", "uiState"):
+                bucket = surface.get(bucket_key)
+                if isinstance(bucket, dict):
+                    for entry in bucket.values():
+                        if isinstance(entry, dict):
+                            for value in _iter_label_site_values(entry):
+                                if _is_locale_label_object(value):
+                                    return True
+    return False
+
+
+def _has_concept_soft_delete(model: dict) -> bool:
+    """R5.4 (Roadmap Collection 2026-08-18): a concept declaring softDelete: true -- deletedAt-flip
+    delete, deleted-row-excluding reads, and unique-among-live-rows semantics instead of a physical
+    DELETE."""
+    return any(
+        isinstance(c, dict) and c.get("softDelete") is True
+        for c in (model.get("concepts", None) or [])
+    )
+
+
+def _has_concept_temporal(model: dict) -> bool:
+    """R5.8 (Roadmap Collection 2026-08-18): a concept declaring temporal: true -- effective-dated
+    rows resolved by an as-of date against validFrom/validTo, instead of one current value per
+    logical entity."""
+    return any(
+        isinstance(c, dict) and c.get("temporal") is True
+        for c in (model.get("concepts", None) or [])
+    )
+
+
 def _has_composite_index(model: dict) -> bool:
     for concept in (model.get("concepts", None) or []):
         if not isinstance(concept, dict):
@@ -207,6 +336,26 @@ def _has_groupby_multi_hop_join(model: dict) -> bool:
     return False
 
 
+def _has_query_where_v2(model: dict) -> bool:
+    """R4.3 lockstep fix (Roadmap Wave 1 gap closure): a query.where using the v2 predicate grammar
+    (QueryPredicateGrammar#parseGroups) -- an OR-group (||), `in (...)`, `contains`/`startsWith`, or
+    `is null`/`is not null` -- distinct from the plain v1 AND-only "queries" feature already tracked
+    above. PackValidation#validateQueryWhereCompiles only started accepting this grammar once
+    DefaultProcedureExecutor#runQuery was rewired onto ConceptQueryPredicateCompiler
+    #compileToConceptQueryFilters in the same change; a where using v2 syntax with zero corpus
+    coverage would have let that lockstep silently regress back to v1-only with no gate noticing."""
+    for q in (model.get("queries", None) or []):
+        where = q.get("where")
+        if not isinstance(where, str) or not where.strip():
+            continue
+        if "||" in where:
+            return True
+        for keyword in (" in (", " contains ", " startsWith ", " is null", " is not null"):
+            if keyword in where:
+                return True
+    return False
+
+
 def _has_aggregate_on_validate(model: dict) -> bool:
     return any(
         isinstance(a, dict) and a.get("onValidate")
@@ -231,6 +380,57 @@ def _has_settings(model: dict) -> bool:
 
 def _has_on_failure(model: dict) -> bool:
     return any("onFailure" in s and s["onFailure"] for s in _all_steps(model))
+
+
+def _schedule_event_delay_seconds(step: dict):
+    """The delay a scheduleEvent step resolves to, mirroring JsonModelParser's own precedence
+    (delaySeconds, else delayMinutes * 60, else delayMs rounded up). Returns None when the step
+    declares no delay at all -- which FlowValidation rejects, so it only happens mid-edit."""
+    raw = step.get("delaySeconds")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return int(raw)
+    raw = step.get("delayMinutes")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return int(raw) * 60
+    raw = step.get("delayMs")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return max(0, (int(raw) + 999) // 1000)
+    return None
+
+
+def _has_schedule_event_with_delay(model: dict, deferred: bool) -> bool:
+    """R2.4: the two delivery modes of scheduleEvent are now genuinely different code paths, so
+    each needs its own corpus witness -- the plain "step.scheduleEvent" feature is satisfied by
+    either one alone. A delay > 0 writes a durable npdev_scheduled_event row and publishes nothing
+    until it comes due; a delay of 0 still publishes inline and resumes waiters synchronously.
+    Before R2.4 both spellings did the same thing (fire now, label it scheduled), which is exactly
+    why the corpus only ever carried the deferred spelling and nothing noticed it was not deferred.
+    """
+    for step in _all_steps(model):
+        if str(step.get("type", "")).lower() != "scheduleevent":
+            continue
+        delay = _schedule_event_delay_seconds(step)
+        if delay is None:
+            continue
+        if (delay > 0) == deferred:
+            return True
+    return False
+
+
+def _has_await_timeout(model: dict) -> bool:
+    """R2.5 (durable await timeouts + onTimeout): an awaitEvent/awaitMatch step declaring a
+    durable wait deadline plus its escalation branch -- distinct from the plain "step.awaitEvent"
+    feature (satisfied by any await, timed or not), the same reasoning "step.onFailure" already
+    applies to onFailure. Requires BOTH timeout and a non-empty onTimeout, matching
+    FlowValidation.validateAwaitStep's own pairing rule (onTimeout without timeout is rejected;
+    timeout without onTimeout is legal but leaves the escalation half of this feature unexercised).
+    A regression that silently drops `timeout`/`onTimeout` from the compiled model on their way to
+    the generator's canonical JSON (REG-104's exact shape) would go unnoticed without this.
+    """
+    return any(
+        str(s.get("type", "")).lower() == "awaitevent" and s.get("timeout") and s.get("onTimeout")
+        for s in _all_steps(model)
+    )
 
 
 def _has_parallel_await_foreach(model: dict) -> bool:
@@ -269,6 +469,65 @@ def _nonempty(model: dict, key: str) -> bool:
     if isinstance(value, (list, dict)):
         return len(value) > 0
     return True
+
+
+_QUOTED_LITERAL = re.compile(r"'[^']*'|\"[^\"]*\"")
+_ARITHMETIC_OPERATORS = ("+", "-", "*", "/", "%")
+
+
+def _has_arithmetic_derived_expression(model: dict) -> bool:
+    """R4.1 (roadmap): a field's default/derivedExpression exercising the arithmetic grammar
+    (+ - * / %) -- e.g. "quantity * unitPrice" -- rather than the identifier/literal/five-
+    whitelisted-string-function shape FieldValueValidation.analyzeValueBehaviorExpression used to
+    cap author-time validation at. That validator now delegates to the same ComputedExpression
+    grammar the runtime (SchemaExpressionSupport.evaluateSchemaExpression, called from
+    GeneratedCrudRuntimeSupport.applySchemaValueBehaviors) already evaluated for every default/
+    derived expression -- this was a validator-only ceiling, not a runtime gap. Zero corpus
+    coverage before this: every existing default/derivedExpression example in the corpus used only
+    concat/coalesce/trim/uppercase/lowercase or a bare literal/identifier. Strips quoted string
+    literals first so an operator character inside a string argument (e.g. concat(a, '-', b))
+    doesn't produce a false positive.
+    """
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if not isinstance(field, dict):
+                continue
+            for key in ("defaultExpression", "derivedExpression"):
+                expr = field.get(key)
+                if not isinstance(expr, str) or not expr.strip():
+                    continue
+                stripped = _QUOTED_LITERAL.sub("", expr)
+                if any(op in stripped for op in _ARITHMETIC_OPERATORS):
+                    return True
+    return False
+
+
+_ORDERED_COMPARISON_OPERATORS = ("&&", "||", ">=", "<=", ">", "<")
+
+
+def _has_widened_branch_condition(model: dict) -> bool:
+    """R4.2 (roadmap): a flow BRANCH step's {@code condition} exercising the ComputedExpression
+    grammar KernelRunner.evaluateCondition widened to (&&, ||, or an ordered comparison) rather
+    than the {@code ==}/{@code !=}-only shape every prior corpus branch condition used. Zero corpus
+    coverage before this: every existing branch step in the corpus (dsl-conformance-max's own
+    "step.branch" example included) used a bare equality/truthy check. Strips quoted string
+    literals first so an operator character inside a string operand doesn't produce a false
+    positive, then checks for `>=`/`<=` before the bare `>`/`<` they contain so a plain `>=` is not
+    also miscounted as a lone `>` -- moot for this any()-over-tuple check today, but keeps the tuple
+    order meaningful if a future caller ever needs the specific operator matched.
+    """
+    for step in _all_steps(model):
+        if str(step.get("type", "")).lower() != "branch":
+            continue
+        condition = step.get("condition")
+        if not isinstance(condition, str) or not condition.strip():
+            continue
+        stripped = _QUOTED_LITERAL.sub("", condition)
+        if any(op in stripped for op in _ORDERED_COMPARISON_OPERATORS):
+            return True
+    return False
 
 
 def _has_conversion_op(model: dict, op: str) -> bool:

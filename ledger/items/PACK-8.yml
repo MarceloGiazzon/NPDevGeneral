@@ -3,7 +3,7 @@ title: >-
   Packs cannot be distributed; $ref is local-only by schema
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
 source: >-
   Full-repo maturity audit 2026-08-12 (PACK-ROADMAP.md §1 ground truth, card PK-5). Confirmed this
@@ -29,6 +29,11 @@ files:
   - NPDevContract/schemas/authoring/model.schema.json
   - NPDevContract/dsl/src/main/resources/schema/model.schema.json
   - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - schemas/ai/pack-catalog.schema.json
+  - scripts/quality/generate-pack-catalog.py
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/PackSearchMain.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/cli/PackSearchMainTest.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/cli/PackCatalogGeneratorTest.java
 detail: |
   MASTER-ROADMAP.md Step 14 (PM4), PACK-ROADMAP.md card PK-5, branch step14-pk5-distribution. Card
   has 7 steps; this pass ships steps 1+2+4 fully, step 3 fully for the model-authoring/parsing half
@@ -136,20 +141,14 @@ detail: |
     (analogous to git+file://'s role for the git substrate) is a legitimate option for the next slice
     but was judged not worth the added scope here given the git substrate already proves the
     fetch->cache->offline-read pipeline end to end.
-  - `from` is direct-app-import-only -- a pack's OWN transitive packs[] dependencies (discovered via
-    PackDependencyGraphWalker.defaultPackFile's local-file convention) cannot yet use `from`.
-    pack.schema.json is untouched.
-  - A remote pack containing fragments ($ref-based sub-files alongside pack.json, valid for a LOCAL
-    pack today) will fail resolution with a confusing "... escapes the model root" error --
-    resolvePackFragment's containment check (ModelSourceResolver.resolveJsonRefUnderRoot) always
-    validates a fragment against the APP's own rootDirectory in addition to the pack's own directory,
-    and a PackCache-resident file is never under the app's root. Not hit by this slice's own proof
-    (single-file pack.json, no fragments) but a real limitation for a remote pack that uses
-    fragments. Needs that check widened to skip the app-root boundary specifically for cache-resident
-    packs, keeping only the pack's-own-directory boundary -- next slice's first fix.
+  - `from` was direct-app-import-only until 2026-08-20: a pack's OWN transitive packs[]
+    dependencies (discovered via PackDependencyGraphWalker.discover) now support `from` and `$ref`
+    fields in pack.schema.json's packs[] items, mirroring model.schema.json's packRef pattern.
   - check-container-images-pinned.py is NOT yet extended to pack coordinates (the card's own "Breaks"
-    section asks for this) -- `from` accepts a mutable tag today (matching the card's own worked
-    example, `identity:2.1.0`), not only a pinned digest.
+    section asks for this) -- instead a SEPARATE script (check-pack-coordinates-pinned.py) was
+    created and wired into run-ai-knowledge-gate.ps1. It scans all model.json and pack.json files
+    for `from` fields and refuses mutable tags (latest/main/master/etc.), requiring either a digest
+    or semver tag.
   - PackListMain's no-lock dry-run fails entirely (rather than partially reporting local packs) the
     moment ANY packs[] entry uses `from` with no lock yet -- acceptable degradation, not fixed.
   - `packs[].from` has zero NPDevSamples/dsl-conformance-max corpus coverage -- check-dsl-coverage.py
@@ -191,6 +190,23 @@ detail: |
   No unrelated bugs found and filed separately this session -- every limitation and fix recorded
   above is a direct, in-scope consequence of this exact feature (found while building or reviewing
   it), not a pre-existing defect, so all of it is recorded here rather than as standalone REG items.
+
+  R8.1 fix (Roadmap Collection 2026-08-18, "pull forward" item, this session): the fragment-escape
+  limitation above is FIXED. resolveJsonRefUnderRoot now detects when a fragment's containment
+  directory (the pack's own directory) is itself outside the app's rootDirectory -- the signature of
+  a cache-resident (remote) pack -- and skips the app-root boundary check for that call, enforcing
+  only the pack's-own-directory boundary. A LOCAL pack's containment directory is always under the
+  model root, so this changes nothing for it. Live-verified: PackFromCoordinateResolutionTest gained
+  `aFragmentStructuredRemotePackFetchesAndGeneratesFullyOfflineFromCache` (a real git+file:// pack
+  with a `fragments[]` entry fetches via `pack add`, the source repo is then deleted, and `generate`
+  still merges both the pack's own concept and its fragment's concept) and
+  `aFragmentEscapingItsOwnPackDirectoryStillRefusesEvenWhenThePackIsCacheResident` (a RED control: a
+  NESTED fragment -- one reached from another fragment, since pack.json's own $ref values are
+  schema-regex-refused for literal ".." before ever reaching this code -- that tries to climb out of
+  its own cache entry still refuses, naming "escapes the pack directory"). Both tests were confirmed
+  to fail without the fix (verified by stashing it and re-running) before being confirmed to pass
+  with it. PackCacheTest's digest-collision test doc comment updated to stop calling this "not
+  reachable through the real pipeline" now that it is.
 guard:
   kind: test
   ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackFromCoordinateResolutionTest.java
@@ -204,3 +220,72 @@ guard:
     the guard itself trips before any socket/process for both coordinate schemes, against a real
     closed TCP port.
   provenRed: false
+resolution: |
+  2026-08-20 (OCI Distribution API v2 pull implemented): OciDistributionClient.java provides a
+  minimal OCI Distribution API v2 HTTP client (manifest fetch, blob fetch, Bearer token auth dance).
+  RemotePackFetcher.fetchOci() replaces the previous IOException stub -- fetches manifest, parses
+  layer digest, fetches zip blob, extracts to temp dir (with zip-slip protection), stores in
+  PackCache for digest verification. FakeOciRegistry.java (test-only HTTP server) serves manifests
+  and blobs from a local directory tree. RemotePackFetcherOciLiveTest proves the full fetch→cache→
+  offline-read pipeline end-to-end, plus NetworkPolicy.DENIED refusal before any HTTP call.
+  OciDistributionClientTest covers manifest/blob fetch and 404 handling. All tests pass.
+
+  2026-08-20 (transitive `from` support): pack.schema.json's packs[] items (both copies:
+  NPDevContract/schemas/ and NPDevContract/dsl/src/main/resources/schema/) gained optional `from`
+  and `$ref` fields mirroring model.schema.json's packRef pattern -- same coordinate grammar, same
+  $ref local-file pattern. PackDependencyGraphWalker.discover() now checks each transitive
+  dependency for `from` or `$ref` before falling back to the defaultPackFile() convention; a `from`
+  coordinate goes through the same resolveRemotePackFile() path as direct imports (lock+cache on
+  DENIED, fetch on ALLOWED), and the coordinate is recorded in fromByPackId for lock/digest
+  tracking. PackFromCoordinateResolutionTest gained transitivePackFromResolvesThroughCacheOffline:
+  a real git+file:// crm pack that depends on identity via `from`, both repos deleted after
+  `pack add`, generate still resolves both concepts from cache.
+
+  2026-08-20 (mutable tag pinning): scripts/quality/check-pack-coordinates-pinned.py scans every
+  model.json and pack.json in the repo for `from` fields, classifies each coordinate as
+  pinned-digest/semver-tag/mutable-tag, and refuses any `from` using a known mutable tag name
+  (latest, main, master, head, develop, dev, stable, nightly). Wired into run-ai-knowledge-gate.ps1
+  alongside the existing check-container-images-pinned.py. Currently passes clean (no `from` fields
+  with mutable tags in the repo).
+
+  2026-08-20 (static JSON index + pack search CLI, Step 7): pack-catalog.schema.json defines the
+  catalog shape (schemaVersion, generatedAt, packs[] with packId/version/description/author/category/
+  coordinate/digest/signature/concepts). generate-pack-catalog.py scans NPDevContract/packs/, reads
+  each pack.json, extracts metadata + concept names, computes a content digest (sha256 of all files
+  sorted by path, .git excluded), validates against the schema, and outputs pack-catalog.json to
+  scripts/reports/out/. PackSearchMain.java implements `npdev pack search` with --query (substring
+  match on packId/description/concepts), --category (exact match), and --catalog (local path or URL).
+  Prints a formatted table; exit 0 = results, exit 1 = no matches, exit 2 = usage error. Gradle
+  JavaExec task `packSearch` wired with -Pcatalog/-Pquery/-Pcategory properties. PackSearchMainTest
+  covers query filtering (packId, description, concepts), category filtering, combined filters, empty
+  results, missing args. PackCatalogGeneratorTest covers catalog JSON structure validation.
+
+  Remaining deferred steps: (5) signatures/cosign, (6) npdev pack publish,
+  corpus coverage for `packs[].from`.
+deferredFollowUps:
+  - step: 5
+    description: "Signatures/cosign trust vocabulary (trust:{mode,source,level}, --allow-unsigned lockfile recording)"
+    closedAs: WONTFIX
+    reason: >-
+      Requires importing a cosign dependency and designing the trust-key vocabulary (per-pack
+      signing keys, key rollover, revocation); no corpus model or app links it yet, so it would be
+      maintained and trusted on speculation. Deferred to post-beta when a distribution trust model
+      is actually needed. Roadmap close-out 2026-08-21.
+    closedDate: 2026-08-21
+  - step: 6
+    description: "npdev pack publish producing an OCI-artifact-shaped LOCAL output (pack JSON + chain + signature bundle)"
+    closedAs: WONTFIX
+    reason: >-
+      OCI publication needs a registry integration (FakeOciRegistry is test-only) and produces an
+      artifact nobody pulls today -- local pack cache + git+file:// fetch + npdev pack add/search
+      (steps 1-4, 7) already cover the real distribution path in use. Deferred to post-beta.
+      Roadmap close-out 2026-08-21.
+    closedDate: 2026-08-21
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out. packs[].from + satelliteOf DSL-coverage detectors added to
+    FEATURE_DETECTORS (scripts/quality/dsl_coverage/features.py); packs[].from has a live corpus
+    witness (AppGen/apps/_experiments/WmsOfficePackTest), satelliteOf is allowlisted (probe-only
+    witnesses). Pack-composition coverage (pack.json-level extends/satelliteOf/from) is reported by
+    scripts/quality/check-pack-coverage.py. Steps 5/6 closed WONTFIX (see deferredFollowUps).

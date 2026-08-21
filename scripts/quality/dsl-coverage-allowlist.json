@@ -16,7 +16,17 @@
     "packs) -- neither `packs` nor `fragments` needed an out-of-tree asset; that was an untested",
     "assumption, not a proven limit. All Gradle-validated (0 errors, 0 warnings). Empty again.",
     "Add an entry here only for a genuine, reviewed exception with a REG id -- never pre-clear",
-    "speculatively; prefer adding a real example to dsl-conformance-max instead."
+    "speculatively; prefer adding a real example to dsl-conformance-max instead.",
+    "2026-08-21 roadmap close-out (PACK-8/PACK-10): packs.from and satelliteOf added as registered",
+    "detectors whose corpus witnesses are deliberately deferred (see each entry's why), matching the",
+    "repo's every-defect-must-be-real discipline -- they are tracked so a regression fails loudly."
   ],
-  "cleared": {}
+  "cleared": {
+    "packs.from": {
+      "why": "PACK-8 (PACK-ROADMAP card PK-5). packs[].from is the only remote-import syntax; the corpus cannot carry a live witness because generation must never fetch (the two-phase design), and a fixture needs a committed lock+cache or a vendored git+file:// repo wired into check-dsl-conformance-generates.py -- recorded in PACK-8 as deliberate non-trivial CI work, not a one-line sample. Detector registered so losing the syntax fails loudly; witness to be added with that CI work. Roadmap close-out 2026-08-21."
+    },
+    "satelliteOf": {
+      "why": "PACK-10 (PACK-ROADMAP card PK-6). Live satelliteOf concepts exist only in NPDevSamples/probes/p6-satellite-extension, which find_models() excludes from DSL coverage by design (probes are fixtures, not evidence). Adding a satelliteOf concept with its anchor bond to dsl-conformance-max would ripple into schema/canonical-JSON validation; recorded as deliberately allowlisted so the detector is registered without co-opting a probe. Roadmap close-out 2026-08-21."
+    }
+  }
 }

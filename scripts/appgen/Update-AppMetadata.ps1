@@ -3,7 +3,11 @@
 Wave 1.3 (LC-C2, MASTER_AI_PLATFORM_PROGRAMME_v2.md): apply a METADATA_ONLY model change to an
 already-built, already-running AppGen FinalApp without a Gradle build -- classify the change first
 (REG-102's fix, :generator:classifyModelChange), refuse anything that isn't METADATA_ONLY, then
-overwrite the app's external compiled-model.json and restart the existing jar.
+overwrite the app's external compiled-model.json. R1.7 (roadmap Wave 1): before restarting, tries
+`npdev monitor hotswap` against the ALREADY-RUNNING app -- MetadataHotSwapController#apply swaps the
+descriptive metadata catalogs into the live JVM atomically, no restart. Only falls back to the
+original stop/start cycle when the app isn't running, has no endpoint (pre-R1.7), or the swap is
+otherwise refused -- and always says why before falling back.
 
 .DESCRIPTION
 Reuses three things that already exist rather than re-deriving them:
@@ -155,7 +159,9 @@ New-Item -ItemType Directory -Force -Path $metadataCatalogDestDir | Out-Null
 Get-ChildItem -LiteralPath $metadataCatalogScratchDir -File | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $metadataCatalogDestDir $_.Name) -Force
 }
-Remove-Item -LiteralPath $metadataScratchDir -Recurse -Force -ErrorAction SilentlyContinue
+# NOTE: $metadataScratchDir is NOT removed here anymore -- R1.7's hot-swap attempt below needs it
+# to still exist (it is the exact --emitMetadataTo directory MetadataHotSwapController#apply reads
+# from, server-side, on the SAME machine). Cleaned up after that attempt, whichever way it goes.
 Write-Host "compiled-metadata.json + metadata/*.manifest.json catalogs updated: $appNpdevRoot" -ForegroundColor Green
 
 $generatedRoot = Join-Path $appRoot "npdev-generated"
@@ -172,8 +178,63 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if ($SkipRestart) {
+    Remove-Item -LiteralPath $metadataScratchDir -Recurse -Force -ErrorAction SilentlyContinue
     $sw.Stop()
     Write-Host "Elapsed (no restart, -SkipRestart): $($sw.Elapsed.TotalSeconds.ToString('0.0'))s"
+    exit 0
+}
+
+# R1.7 (roadmap Wave 1): try the atomic, no-restart hot swap first -- `npdev monitor hotswap` drives
+# MetadataHotSwapController#apply against the ALREADY-RUNNING app, pushing exactly the descriptive
+# metadata catalogs (compiled-metadata.json, metadata/*.manifest.json) into its live JVM. This is
+# the whole point: a pure label/hint edit no longer pays for a Stop-App/Start-App cycle.
+#
+# Silent-safe, not silent (this script's own contract): every refusal reason -- app not running, no
+# SUPER_USER_KEY.txt on disk, the endpoint rejecting the classification, or the endpoint simply not
+# existing on an app generated before R1.7 -- is printed before falling back, never swallowed.
+$py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+$cliScript = Join-Path $repo "NPDevCli\npdev_cli.py"
+$hotswapApplied = $false
+
+if (Test-Path -LiteralPath $cliScript) {
+    $hotswapArgs = @(
+        $cliScript, "monitor", "hotswap",
+        "--app-dir", $appRoot,
+        "--classification", $report.classification,
+        "--metadata-source-root", $metadataScratchDir,
+        "--json"
+    )
+    foreach ($reason in $report.classificationReasons) { $hotswapArgs += @("--reason", $reason) }
+
+    Write-Host ""
+    Write-Host "Attempting metadata hot swap into the running app (no restart)..."
+    $hotswapOutput = & $py @hotswapArgs 2>&1
+    $hotswapExit = $LASTEXITCODE
+    $hotswapResult = $null
+    try { $hotswapResult = ($hotswapOutput -join "`n") | ConvertFrom-Json -ErrorAction Stop } catch { }
+
+    if ($hotswapExit -eq 0 -and $hotswapResult -and $hotswapResult.ok) {
+        $hotswapApplied = $true
+        Write-Host "HOT SWAP APPLIED (generation $($hotswapResult.metadataGeneration)) -- no restart needed." -ForegroundColor Green
+        foreach ($cat in $hotswapResult.catalogsUpdated) { Write-Host "  updated: $cat" }
+    } elseif ($hotswapResult -and $hotswapResult.code) {
+        Write-Host "Hot swap not applied ($($hotswapResult.code)): $($hotswapResult.message)" -ForegroundColor Yellow
+        Write-Host "Falling back to restart." -ForegroundColor Yellow
+    } else {
+        Write-Host "Hot swap not applied -- 'npdev monitor hotswap' exited $hotswapExit with unparsed output:" -ForegroundColor Yellow
+        $hotswapOutput | ForEach-Object { Write-Host "  $_" }
+        Write-Host "Falling back to restart." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "Hot swap skipped: $cliScript not found -- falling back to restart." -ForegroundColor Yellow
+}
+
+Remove-Item -LiteralPath $metadataScratchDir -Recurse -Force -ErrorAction SilentlyContinue
+
+if ($hotswapApplied) {
+    $sw.Stop()
+    Write-Host ""
+    Write-Host "TOTAL ELAPSED (classify + emit + hot swap, no restart): $($sw.Elapsed.TotalSeconds.ToString('0.0'))s" -ForegroundColor Cyan
     exit 0
 }
 

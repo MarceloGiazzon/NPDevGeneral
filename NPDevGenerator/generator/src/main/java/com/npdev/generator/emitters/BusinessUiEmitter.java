@@ -63,9 +63,31 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      *     declare an override.
      */
     public void emit(CompiledModel model, String superUserRole, SettingResolver settingResolver) {
+        emit(model, superUserRole, settingResolver, Map.of());
+    }
+
+    /**
+     * PACK-10 step 4: same as the three-argument {@link #emit(CompiledModel, String,
+     * SettingResolver)}, plus {@code extensionFieldOrigins} -- per-concept, per-field extension
+     * provenance (as returned by {@code PackExtensionComposer.ExtensionComposition
+     * .extensionFieldOrigins()}), threaded into the generated UI manifest so the business UI can
+     * visually attribute an extension-added field to the pack that added it (e.g. a small
+     * "+clinicext" badge). An empty map (every existing caller's implicit default) reproduces prior
+     * behavior exactly -- no field carries an {@code extensionSource}.
+     *
+     * @param extensionFieldOrigins pack-qualified concept name -> (field name -> extension pack
+     *                              alias); {@code null} is treated as empty.
+     */
+    public void emit(
+            CompiledModel model,
+            String superUserRole,
+            SettingResolver settingResolver,
+            Map<String, Map<String, String>> extensionFieldOrigins
+    ) {
         SettingResolver resolver = settingResolver == null
                 ? new SettingResolver(com.npdev.dsl.v1.settings.SettingStore.empty())
                 : settingResolver;
+        Map<String, Map<String, String>> fieldOrigins = extensionFieldOrigins == null ? Map.of() : extensionFieldOrigins;
         List<CompiledConcept> persistedConcepts = persistedConcepts(model);
         Map<String, CompiledConcept> conceptsByName = conceptsByName(persistedConcepts);
         Map<String, Object> ctx = new LinkedHashMap<>();
@@ -118,7 +140,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
-                manifestJson(model, persistedConcepts, superUserRole, resolver)
+                manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
         );
 
         // The shared frame (top bar + left nav) is now the platform default for EVERY generated
@@ -259,6 +281,10 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             view.put("endpointBase", javaString(endpointBase(concept, contexts)));
             view.put("className", concept.getClassName());
             view.put("serviceVariable", uncap(concept.getClassName()) + "Service");
+            // R5.8: threaded into ConceptMetadata so the generic controller's list() endpoint knows
+            // whether an asOf query param applies to this concept -- see business-concept-crud-
+            // controller.mustache's register_{{serviceVariable}} and list() for the consumer.
+            view.put("temporal", concept.isTemporal());
             view.put("fields", fieldTemplateModels(concept, conceptsByName, settingResolver, contexts));
             out.add(view);
         }
@@ -296,7 +322,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             CompiledModel model,
             List<CompiledConcept> concepts,
             String superUserRole,
-            SettingResolver settingResolver
+            SettingResolver settingResolver,
+            Map<String, Map<String, String>> extensionFieldOrigins
     ) {
         Map<String, Object> root = new LinkedHashMap<>();
         root.put("schemaVersion", "npdev-generated-ui-manifest.v1");
@@ -362,7 +389,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("formPresentation", formPresentation(concept));
             node.put("frameMode", resolveFrameMode(concept, settingResolver));
             node.put("guidePage", resolveGuidePage(concept, settingResolver, knownGuidePageNames, guidePages.defaultGuidePage()));
-            node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver, contexts));
+            node.put("fields", manifestFields(concept, conceptsByName(concepts), settingResolver, contexts,
+                    extensionFieldOrigins.getOrDefault(concept.getName(), Map.of())));
             node.put("list", manifestList(concept, idField));
             node.put("documents", documentsByConcept.getOrDefault(concept.getName(), List.of()));
             Map<String, Object> actions = new LinkedHashMap<>();
@@ -387,13 +415,19 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             CompiledConcept concept,
             Map<String, CompiledConcept> conceptsByName,
             SettingResolver settingResolver,
-            List<CompiledContext> contexts
+            List<CompiledContext> contexts,
+            Map<String, String> extensionFieldOrigins
     ) {
         List<Map<String, Object>> fields = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("name", field.getName());
             node.put("concept", concept.getName());
+            // PACK-10 step 4: non-blank only for a field an extension pack ADDED (see
+            // PackExtensionComposer.ExtensionComposition) -- empty string (never omitted) so every
+            // field node has a uniform shape and business-ui-app.mustache can test it with a plain
+            // truthiness check.
+            node.put("extensionSource", extensionFieldOrigins.getOrDefault(field.getName(), ""));
             node.put("label", fieldLabel(field));
             node.put("columnName", toSnake(field.getName()));
             node.put("type", manifestType(field));
@@ -402,6 +436,23 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("readOnly", field.isId());
             node.put("sortable", isSortable(field));
             node.put("filterable", isFilterable(field));
+            // R5.5/GAP-2: R5.5 shipped SERVER enforcement of `field.access {read, write}` -- a
+            // denied write throws FIELD_SCOPE_DENIED, a denied read is stripped from the response
+            // entirely -- but left the generated UI with no idea a field was gated at all, so it
+            // rendered a normal editable input the server would then reject. These two flags are
+            // the "resolved" (DSL-declared -> UI-consumable boolean) form of that rule, never the
+            // rule itself: this generic UI has no evaluator for the declared expression (it may
+            // reference the caller's role/tenant/row-owner, none of which the tiny values-only
+            // evaluator in business-ui-app.mustache's evaluateWhen() has access to), so a field
+            // that declares ANY access.write rule is flagged unconditionally -- the UI is a
+            // courtesy that renders it read-only rather than guessing who the rule would actually
+            // allow; the SERVER remains the only real enforcement point regardless of these flags.
+            // accessReadScoped is exposed for symmetry/future use (e.g. a "restricted" hint) --
+            // a denied READ is already simply absent from the record the server returns, so no
+            // client-side gating is needed for it; every field-value renderer here already
+            // tolerates `undefined` (see renderFieldValue/createInput's null-or-undefined checks).
+            node.put("accessReadScoped", field.getAccess() != null && field.getAccess().getRead() != null);
+            node.put("accessWriteScoped", field.getAccess() != null && field.getAccess().getWrite() != null);
             node.put("showInDefaultWebUi", isShowInUi(field));
             node.put("tab", firstNonBlank(fieldUiString(field, CompiledPresentationMetadata::getTab), ""));
             node.put("column", fieldUiInt(field, CompiledPresentationMetadata::getColumn));

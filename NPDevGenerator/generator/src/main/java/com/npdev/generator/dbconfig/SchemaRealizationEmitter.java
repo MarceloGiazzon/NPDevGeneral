@@ -18,6 +18,7 @@ import com.npdev.generator.bonds.BondModelSupport;
 import com.npdev.generator.bonds.BondModelSupport.Bond;
 import com.npdev.generator.bonds.BondModelSupport.Cardinality;
 import com.npdev.kernel.storage.sql.SqlDialect;
+import com.npdev.kernel.storage.sql.StorageCapability;
 import com.npdev.kernel.dbschema.InternalColumnDefinition;
 import com.npdev.kernel.dbschema.InternalColumnType;
 import com.npdev.kernel.dbschema.InternalIndexDefinition;
@@ -158,18 +159,28 @@ public final class SchemaRealizationEmitter {
             // problems that cannot happen.
             additive.append("-- Engine: ").append(plan.engine().externalName()).append("\n");
             additive.append("-- Adds new non-bond columns to already-existing tables (internal + business) without\n");
-            additive.append("-- destructive recreation, and self-heals a business table (or bond junction table)\n");
-            additive.append("-- that doesn't exist yet on this database -- CREATE TABLE IF NOT EXISTS is a no-op\n");
-            additive.append("-- the instant it does (REG-40 tactical hotfix). Scope boundary: internal tables stay\n");
-            additive.append("-- V1-only (platform-fixed, not model-driven); column/table removal and type changes\n");
-            additive.append("-- remain structural changes handled by the schema-fingerprint destructive-recreate path.\n\n");
+            additive.append("-- destructive recreation, and self-heals a business OR internal table (or bond\n");
+            additive.append("-- junction table) that doesn't exist yet on this database -- CREATE TABLE IF NOT\n");
+            additive.append("-- EXISTS is a no-op the instant it does (REG-40 tactical hotfix, extended to internal\n");
+            additive.append("-- tables by REG-193 once the platform itself started growing that set post-deploy).\n");
+            additive.append("-- Column/table removal and type changes remain structural changes handled by the\n");
+            additive.append("-- schema-fingerprint destructive-recreate path.\n\n");
 
             // Ordering rule (REG-40 tactical hotfix): all CREATE TABLE blocks -> all ADD COLUMN
             // blocks -> all constraint blocks. A brand-new table must exist before its additive
             // columns run against it, and a bond FK must come after both endpoint tables exist --
             // which this ordering guarantees regardless of which tables/columns are actually new.
 
-            // 1. CREATE TABLE IF NOT EXISTS blocks (business tables, then their bond junction tables).
+            // 1. CREATE TABLE IF NOT EXISTS blocks (internal tables, then business tables, then their
+            // bond junction tables). REG-193: internal tables' shape-only half moved here so a
+            // platform-added internal table self-heals onto an already-migrated database exactly like
+            // a platform-added business table already did -- see appendTableShape's javadoc for why
+            // this must stay shape-only (no indexes) and run before section 2/3 below.
+            if (plan.createInternalTables()) {
+                for (InternalTableDefinition table : NpdevInternalTables.all()) {
+                    appendTableShape(additive, table, plan.engine());
+                }
+            }
             if (plan.createBusinessTables()) {
                 Map<String, CompiledConcept> conceptsByName = BondModelSupport.conceptsByName(model);
                 for (CompiledConcept concept : model.getConcepts()) {
@@ -321,6 +332,17 @@ public final class SchemaRealizationEmitter {
         appendGuardedAddColumn(sql, engine, table, "version",
                 "ALTER TABLE " + sqlId(engine, table) + " ADD COLUMN version "
                         + renderType("BIGINT", engine) + " DEFAULT 0;");
+        // R5.4 (REG-193's own lesson applied on arrival, not found the hard way a second time): a
+        // concept that turns on softDelete: true AFTER an app's first deployment must still reach an
+        // ALREADY-MIGRATED database -- this repeatable migration (unlike V1__, which only ever runs
+        // once, against a virgin schema) is what makes that true. No DEFAULT: unlike tenant_id/
+        // row_version/version above, NULL ("live") is deleted_at's own correct backfill for every
+        // pre-existing row -- there is nothing to migrate a row's soft-delete state FROM.
+        if (concept.isSoftDelete()) {
+            appendGuardedAddColumn(sql, engine, table, "deleted_at",
+                    "ALTER TABLE " + sqlId(engine, table) + " ADD COLUMN deleted_at "
+                            + renderType("TIMESTAMP WITH TIME ZONE", engine) + ";");
+        }
         // DELIBERATE ASYMMETRY (LNCH-1 T2, do not "fix" by adding NOT NULL here): the three platform
         // columns above are emitted with a DEFAULT but WITHOUT NOT NULL, while appendBusinessTable's
         // fresh CREATE TABLE emits them NOT NULL DEFAULT. Adding NOT NULL to an ADD COLUMN against a
@@ -399,6 +421,38 @@ public final class SchemaRealizationEmitter {
     }
 
     private static void appendTable(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
+        appendTableShape(sql, table, engine);
+        for (InternalIndexDefinition index : table.indexes()) {
+            StringBuilder createIndex = new StringBuilder("CREATE ")
+                    .append(index.unique() ? "UNIQUE " : "")
+                    .append("INDEX ")
+                    .append(index.name())
+                    .append(" ON ")
+                    .append(table.name())
+                    .append(" (")
+                    .append(String.join(", ", index.columns()))
+                    .append(");");
+            appendGuardedCreateIndex(sql, engine, index.name(), table.name(), createIndex.toString());
+        }
+        sql.append("\n");
+    }
+
+    /**
+     * REG-193: the CREATE-TABLE-only half of {@link #appendTable}, split out so the R__ repeatable
+     * migration can self-heal a platform-added internal table that does not exist yet on an
+     * already-migrated database -- mirroring exactly how {@link #appendBusinessTableShape} is the
+     * shape-only half of {@link #appendBusinessTable} for business tables (REG-40 tactical hotfix).
+     * {@link #appendTable} (V1, fresh-database-only) still calls this immediately followed by index
+     * emission, in the same order as before this split -- V1's output is unchanged.
+     *
+     * <p>Indexes are deliberately NOT emitted here: {@link #appendInternalTableAdditiveIndexes}
+     * already emits every internal table's indexes in R__ section 3 (after the additive-column
+     * section), so calling {@link #appendTable}'s combined shape+index form from R__ section 1 would
+     * (a) duplicate index emission and (b) run an index over a newly added internal column before
+     * the additive-column section that adds it has run -- the exact ordering hazard REG-193's own
+     * diagnosis named.
+     */
+    private static void appendTableShape(StringBuilder sql, InternalTableDefinition table, DatabaseEngine engine) {
         // Platform tables carry platform-chosen names, so nothing here is reserved today and this
         // emits byte-identically. It goes through sqlId anyway so the rule is uniform -- EVERY
         // identifier that reaches emitted SQL asks the dialect -- rather than a rule with an
@@ -424,19 +478,6 @@ public final class SchemaRealizationEmitter {
         lines.add("  PRIMARY KEY (" + String.join(", ", table.primaryKey().columns()) + ")");
         create.append(String.join(",\n", lines)).append("\n);");
         appendGuardedCreateTable(sql, engine, table.name(), create.toString());
-        for (InternalIndexDefinition index : table.indexes()) {
-            StringBuilder createIndex = new StringBuilder("CREATE ")
-                    .append(index.unique() ? "UNIQUE " : "")
-                    .append("INDEX ")
-                    .append(index.name())
-                    .append(" ON ")
-                    .append(table.name())
-                    .append(" (")
-                    .append(String.join(", ", index.columns()))
-                    .append(");");
-            appendGuardedCreateIndex(sql, engine, index.name(), table.name(), createIndex.toString());
-        }
-        sql.append("\n");
     }
 
     // "version" and "tenant_id" are platform-reserved business-table columns: every generated
@@ -511,6 +552,12 @@ public final class SchemaRealizationEmitter {
         // existing mechanism.
         lines.add("  row_version BIGINT NOT NULL DEFAULT 0");
         lines.add("  tenant_id " + renderType("VARCHAR(120)", engine) + " NOT NULL DEFAULT 'default'");
+        if (concept.isSoftDelete()) {
+            // R5.4: NULL means "live"; a non-null timestamp is when the row was soft-deleted. Always
+            // nullable, on a fresh CREATE exactly as on the additive path below -- there is no
+            // required-with-default story for a column whose whole point is usually-null.
+            lines.add("  deleted_at " + renderType("TIMESTAMP WITH TIME ZONE", engine));
+        }
         lines.add("  PRIMARY KEY (" + sqlId(engine, idColumn) + ")");
         // The `table` argument stays RAW on purpose: SQL Server's guard puts it inside
         // OBJECT_ID(N'...'), a string literal, where a quote would become part of the name.
@@ -541,15 +588,49 @@ public final class SchemaRealizationEmitter {
                         + " ADD CONSTRAINT " + constraint
                         + " UNIQUE (" + sqlId(engine, column) + ")";
                 sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
+            } else if (concept.isSoftDelete() && !supportsFilteredUniqueIndex(engine)) {
+                // R5.4: this engine cannot filter a unique index (see PARTIAL_UNIQUE_INDEX's javadoc
+                // for which ones can), and a plain UNFILTERED unique index would keep rejecting reuse
+                // of a soft-deleted row's still-physically-present value even after existsUnique's own
+                // JVM precheck (which DOES exclude deleted rows) says it is fine -- silently
+                // contradicting the DoD this feature exists for. So on H2/MySQL a soft-delete
+                // concept's unique field gets a PLAIN (non-unique) index instead -- still real, for
+                // query/existsUnique performance -- and existsUnique becomes the SOLE uniqueness
+                // enforcement, tenant-scoped and live-rows-only exactly like it always was. Declared
+                // via a capability, not silently degraded (X0): PARTIAL_UNIQUE_INDEX's own javadoc and
+                // this ledger item both say so plainly.
+                //
+                // The DROP first is load-bearing, not defensive decoration: measured live
+                // (soft-delete-r54-proof, 2026-08-19) against a concept that already had
+                // unique: true BEFORE softDelete was added -- without it, the OLD ux_... unique
+                // index from before the change survives regeneration untouched (a guarded CREATE
+                // only ever no-ops on an already-existing NAME, it never adjusts what that name
+                // points at), and reusing a deleted row's value fails with a raw H2
+                // JdbcSQLIntegrityConstraintViolationException instead of the 2xx the DoD requires.
+                String staleUniqueIndex = truncate("ux_" + table + "_" + column);
+                appendGuardedDropIndex(sql, engine, staleUniqueIndex, table);
+                String plainIndex = truncate("ix_" + table + "_" + column);
+                appendGuardedCreateIndex(sql, engine, plainIndex, table,
+                        "CREATE INDEX " + plainIndex + " ON " + sqlId(engine, table)
+                                + " (tenant_id, " + sqlId(engine, column) + ");");
             } else {
                 // Ordinary unique fields are unique WITHIN a tenant, not across the whole database:
                 // two separate tenants may each have a user with email 'alice@x.com', and a global
                 // index would both forbid that and leak cross-tenant existence via 409 collisions.
                 // This also aligns the DB constraint with the per-tenant existsUnique pre-check.
                 String uniqueIndex = truncate("ux_" + table + "_" + column);
+                if (concept.isSoftDelete()) {
+                    // R5.4: same "a guarded CREATE never adjusts an existing same-named object" gap
+                    // as the plain-index branch above -- here the OLD index (from before softDelete)
+                    // and the NEW one share this exact name, so the drop makes the guarded CREATE
+                    // that follows actually rebuild it with the WHERE clause instead of silently
+                    // keeping the unfiltered original.
+                    appendGuardedDropIndex(sql, engine, uniqueIndex, table);
+                }
                 appendGuardedCreateIndex(sql, engine, uniqueIndex, table,
                         "CREATE UNIQUE INDEX " + uniqueIndex + " ON " + sqlId(engine, table)
-                                + " (tenant_id, " + sqlId(engine, column) + ");");
+                                + " (tenant_id, " + sqlId(engine, column) + ")"
+                                + softDeleteFilterClause(concept, engine) + ";");
             }
         }
 
@@ -574,17 +655,62 @@ public final class SchemaRealizationEmitter {
             if (columns.size() < 2) {
                 continue;
             }
-            String constraint = truncate("uq_" + table + "_" + String.join("_", columns));
             List<String> quotedColumns = columns.stream().map(c -> sqlId(engine, c)).toList();
-            String constraintSql = "ALTER TABLE " + sqlId(engine, table)
-                    + " ADD CONSTRAINT " + constraint
-                    + " UNIQUE (tenant_id, " + String.join(", ", quotedColumns) + ")";
-            sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
+            if (concept.isSoftDelete() && !supportsFilteredUniqueIndex(engine)) {
+                // R5.4: same reasoning as the per-field branch above -- no DB-level uniqueness at all
+                // on an engine that cannot filter it, a plain index instead, existsUnique is the sole
+                // enforcement.
+                String plainIndex = truncate("ixq_" + table + "_" + String.join("_", columns));
+                appendGuardedCreateIndex(sql, engine, plainIndex, table,
+                        "CREATE INDEX " + plainIndex + " ON " + sqlId(engine, table)
+                                + " (tenant_id, " + String.join(", ", quotedColumns) + ");");
+            } else if (concept.isSoftDelete()) {
+                // R5.4: a table-level UNIQUE CONSTRAINT cannot carry a WHERE predicate in ANSI SQL --
+                // only an INDEX can -- so a soft-deletable concept's compound-unique invariant emits
+                // as a filtered unique INDEX instead of the CONSTRAINT the non-soft-delete path below
+                // still uses. Same idempotent-guard family (appendGuardedCreateIndex) as the ordinary
+                // per-field case above.
+                String uniqueIndex = truncate("uq_" + table + "_" + String.join("_", columns));
+                appendGuardedCreateIndex(sql, engine, uniqueIndex, table,
+                        "CREATE UNIQUE INDEX " + uniqueIndex + " ON " + sqlId(engine, table)
+                                + " (tenant_id, " + String.join(", ", quotedColumns) + ")"
+                                + softDeleteFilterClause(concept, engine) + ";");
+            } else {
+                String constraint = truncate("uq_" + table + "_" + String.join("_", columns));
+                String constraintSql = "ALTER TABLE " + sqlId(engine, table)
+                        + " ADD CONSTRAINT " + constraint
+                        + " UNIQUE (tenant_id, " + String.join(", ", quotedColumns) + ")";
+                sql.append(addConstraintIfMissing(engine, table, constraint, constraintSql));
+            }
         }
 
         appendSecondaryIndexes(sql, concept, table, implicitIndexFields, engine);
         appendExplicitIndexes(sql, concept, table, engine);
         sql.append("\n");
+    }
+
+    /**
+     * R5.4: the WHERE clause that makes a unique index enforce "unique among LIVE rows only" at the
+     * database itself, not merely in {@code ConceptStore#existsUnique}'s JVM precheck -- empty string
+     * when the concept is not soft-deletable, or when this engine has no partial/filtered-index
+     * feature at all ({@link StorageCapability#PARTIAL_UNIQUE_INDEX}; see that constant's javadoc for
+     * which engines answer yes). Capability-gated, not silently degraded (X0): on an engine that
+     * answers no, this returns "" and the index stays the SAME plain tenant-scoped index a
+     * non-soft-delete concept already gets -- correct SQL on every engine, just not yet the
+     * live-rows-only guarantee at the database layer on that engine (existsUnique's own deleted-row
+     * exclusion is unaffected either way).
+     */
+    private static String softDeleteFilterClause(CompiledConcept concept, DatabaseEngine engine) {
+        if (!concept.isSoftDelete() || !supportsFilteredUniqueIndex(engine)) {
+            return "";
+        }
+        return " WHERE deleted_at IS NULL";
+    }
+
+    /** R5.4: whether this engine can filter a unique index at all -- see
+     *  {@link StorageCapability#PARTIAL_UNIQUE_INDEX}'s javadoc for the per-engine answer and why. */
+    private static boolean supportsFilteredUniqueIndex(DatabaseEngine engine) {
+        return engine.dialect().supports(StorageCapability.PARTIAL_UNIQUE_INDEX);
     }
 
     /**
@@ -620,7 +746,20 @@ public final class SchemaRealizationEmitter {
             String baseName = (index.getName() != null && !index.getName().isBlank())
                     ? index.getName()
                     : String.join("_", columns);
-            if (index.isUnique()) {
+            if (index.isUnique() && concept.isSoftDelete() && !supportsFilteredUniqueIndex(engine)) {
+                // R5.4: same reasoning as appendBusinessTableConstraints's two unique branches --
+                // no DB-level uniqueness on an engine that cannot filter it, a plain index instead.
+                String plainIndex = truncate("ixx_" + table + "_" + baseName);
+                appendGuardedCreateIndex(sql, engine, plainIndex, table,
+                        "CREATE INDEX " + plainIndex + " ON " + sqlId(engine, table) + " (tenant_id, "
+                                + String.join(", ", sqlIds(engine, columns)) + ");");
+            } else if (index.isUnique() && concept.isSoftDelete()) {
+                String uniqueIndex = truncate("uqx_" + table + "_" + baseName);
+                appendGuardedCreateIndex(sql, engine, uniqueIndex, table,
+                        "CREATE UNIQUE INDEX " + uniqueIndex + " ON " + sqlId(engine, table) + " (tenant_id, "
+                                + String.join(", ", sqlIds(engine, columns)) + ")"
+                                + softDeleteFilterClause(concept, engine) + ";");
+            } else if (index.isUnique()) {
                 String constraint = truncate("uqx_" + table + "_" + baseName);
                 String constraintSql = "ALTER TABLE " + sqlId(engine, table)
                         + " ADD CONSTRAINT " + constraint
@@ -791,6 +930,14 @@ public final class SchemaRealizationEmitter {
         columns.add("version");
         columns.add("row_version");
         columns.add("tenant_id");
+        if (concept.isSoftDelete()) {
+            // R5.4: conditional, unlike the three above -- keep in lockstep with
+            // appendBusinessTableShape/appendAdditiveColumns, which only emit deleted_at for a
+            // concept declaring softDelete: true. SchemaLifecycleExecutor.PLATFORM_MANAGED_COLUMNS
+            // still lists it UNCONDITIONALLY (same as version/row_version/tenant_id) -- Trigger B
+            // asks "is this column NAME platform-managed", never "does every table have it".
+            columns.add("deleted_at");
+        }
         return List.copyOf(columns);
     }
 
@@ -809,6 +956,11 @@ public final class SchemaRealizationEmitter {
         // whole-schema wipe. 'id' is deliberately NOT additive -- it is the primary key, present by
         // construction on any table that exists at all.
         columns.add("version");
+        if (concept.isSoftDelete()) {
+            // R5.4: this IS the additive path that reaches an already-migrated app (REG-193's own
+            // lesson) -- appendAdditiveColumns emits the matching ADD COLUMN IF NOT EXISTS above.
+            columns.add("deleted_at");
+        }
         for (CompiledField field : concept.getFields()) {
             if (isAdditiveEligible(concept, field, conceptsByName)) {
                 columns.add(SqlIdentifierSupport.columnName(field));
@@ -843,6 +995,9 @@ public final class SchemaRealizationEmitter {
         types.put("version", "BIGINT");
         types.put("row_version", "BIGINT");
         types.put("tenant_id", "VARCHAR(120)");
+        if (concept.isSoftDelete()) {
+            types.put("deleted_at", "TIMESTAMP WITH TIME ZONE");
+        }
         return types;
     }
 
@@ -989,9 +1144,23 @@ public final class SchemaRealizationEmitter {
      * paths those two methods' existing golden tests already cover -- kept honest by
      * {@code SchemaRealizationEmitterUniqueConstraintManifestParityTest}, which cross-checks this
      * method's output against the actual generated SQL for the same concepts.
+     *
+     * <p><b>R5.4: a soft-delete concept's unique fields are deliberately excluded entirely</b> --
+     * unlike every other unique kind here, whether they end up DB-enforced at all now depends on the
+     * TARGET ENGINE ({@link StorageCapability#PARTIAL_UNIQUE_INDEX}), which this method has no engine
+     * parameter to ask, and even when they are, it is a filtered index a plain {@link
+     * UniqueConstraintDecl} (always a bare {@code ADD CONSTRAINT UNIQUE}, no WHERE support) cannot
+     * represent. Rather than have {@code UniqueConstraintPass} apply a real, unfiltered constraint
+     * behind the DDL emitter's back -- silently reintroducing the "still blocks reuse of a deleted
+     * row's value" defect this feature exists to fix -- the direct DDL path ({@link
+     * #appendBusinessTableConstraints}, engine-aware and already correct) stays the SOLE source of
+     * truth for these columns; this manifest-driven pass simply never learns about them.
      */
     private static List<UniqueConstraintDecl> collectUniqueConstraints(CompiledConcept concept, String table) {
         List<UniqueConstraintDecl> specs = new ArrayList<>();
+        if (concept.isSoftDelete()) {
+            return specs;
+        }
         for (CompiledField field : concept.getFields()) {
             if (!field.isUnique()) {
                 continue;
@@ -1744,6 +1913,13 @@ public final class SchemaRealizationEmitter {
                                                  String index, String table, String createStatement) {
         sql.append(guard(engine, d -> d.guardedCreateIndex(index, table, createStatement),
                 createStatement)).append("\n");
+    }
+
+    /** R5.4: {@link SqlDialect#guardedDropIndexIfExists}'s own javadoc explains why this is needed
+     *  alongside {@link #appendGuardedCreateIndex} rather than instead of it. */
+    private static void appendGuardedDropIndex(StringBuilder sql, DatabaseEngine engine, String index, String table) {
+        sql.append(guard(engine, d -> d.guardedDropIndexIfExists(index, table),
+                "DROP INDEX IF EXISTS " + index + ";")).append("\n");
     }
 
     /** {@code ALTER TABLE t ADD COLUMN c TYPE} -> the engine's idempotent form. */

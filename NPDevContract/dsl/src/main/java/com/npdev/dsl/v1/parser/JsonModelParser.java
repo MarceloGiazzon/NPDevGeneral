@@ -192,6 +192,7 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.PropertyScopeAst> propertyScopes = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.PropertyAst> properties = new ArrayList<>();
         List<com.npdev.dsl.v1.ast.ContextAst> contexts = new ArrayList<>();
+        List<com.npdev.dsl.v1.ast.WebhookAst> webhooks = new ArrayList<>();
         List<String> parserWarnings = new ArrayList<>(sourceWarnings == null ? List.of() : sourceWarnings);
         Map<String, ConceptAst> conceptsByLowerName = new LinkedHashMap<>();
 
@@ -282,6 +283,8 @@ public final class JsonModelParser {
                 );
                 FileMetadataAst fileMetadata = parseFileMetadata(f.get("file"));
                 FieldPickerAst picker = parseFieldPicker(f.get("picker"));
+                FieldAccessAst fieldAccess = parseFieldAccess(
+                        f.get("access"), "concepts[" + name + "].fields[" + fname + "].access");
 
                 fields.add(new FieldAst(
                         fname,
@@ -300,7 +303,8 @@ public final class JsonModelParser {
                         renamedFrom,
                         fileMetadata,
                         sensitive,
-                        picker
+                        picker,
+                        fieldAccess
                 ));
             }
 
@@ -403,7 +407,9 @@ public final class JsonModelParser {
             String module = readText(ent, "module");
             String conceptRenamedFrom = readText(ent, "renamedFrom");
             String conceptSatelliteOf = readText(ent, "satelliteOf");
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name));
+            boolean conceptSoftDelete = ent.has("softDelete") && ent.get("softDelete").asBoolean(false);
+            boolean conceptTemporal = ent.has("temporal") && ent.get("temporal").asBoolean(false);
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete, conceptTemporal);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }
@@ -590,6 +596,9 @@ public final class JsonModelParser {
         properties.addAll(parseProperties(root.get("properties")));
         contexts.addAll(parseContexts(root.get("contexts")));
         List<com.npdev.dsl.v1.ast.ConversionAst> conversions = parseConversions(root.get("conversions"));
+        webhooks.addAll(parseWebhooks(root.get("webhooks")));
+        List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
+        List<com.npdev.dsl.v1.ast.SeedAst> seeds = parseSeeds(root.get("seeds"));
 
         return new ModelAst(
                 namespace,
@@ -619,7 +628,10 @@ public final class JsonModelParser {
                 properties,
                 contexts,
                 conversions,
-                physicalQualifierByConceptName
+                physicalQualifierByConceptName,
+                webhooks,
+                sequences,
+                seeds
         );
     }
 
@@ -744,6 +756,108 @@ public final class JsonModelParser {
         return out;
     }
 
+    /** R6.2: parses the optional top-level {@code webhooks} array -- {@code source} +
+     *  {@code hmacSecretEnvVar} + {@code eventName} + optional {@code fieldMapping}. No pack-origin
+     *  lookup (unlike {@code roles}/{@code events}/...): a webhook's identity ({@code source}) is a
+     *  wire path segment, deliberately never namespace-qualified by pack composition -- see
+     *  {@link com.npdev.dsl.v1.ast.WebhookAst}'s own javadoc. */
+    private static List<com.npdev.dsl.v1.ast.WebhookAst> parseWebhooks(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.WebhookAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("webhooks must be an array");
+        }
+        for (JsonNode webhookNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.WebhookAst(
+                    requiredText(webhookNode, "source"),
+                    requiredText(webhookNode, "hmacSecretEnvVar"),
+                    requiredText(webhookNode, "eventName"),
+                    parseStringMap(webhookNode.get("fieldMapping"))
+            ));
+        }
+        return out;
+    }
+
+    /** R5.3: parses the optional top-level {@code sequences} array -- {@code name} + {@code format}
+     *  + optional {@code scope}. No pack-origin lookup (same reasoning as webhooks above): a
+     *  sequence's identity ({@code name}) is referenced as an opaque literal argument to {@code
+     *  nextNumber('name')} inside another field's defaultExpression TEXT, deliberately never
+     *  namespace-qualified by pack composition -- see {@link com.npdev.dsl.v1.ast.SequenceAst}'s
+     *  own javadoc. */
+    private static List<com.npdev.dsl.v1.ast.SequenceAst> parseSequences(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.SequenceAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("sequences must be an array");
+        }
+        for (JsonNode sequenceNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.SequenceAst(
+                    requiredText(sequenceNode, "name"),
+                    requiredText(sequenceNode, "format"),
+                    readText(sequenceNode, "scope")
+            ));
+        }
+        return out;
+    }
+
+    /** R8.8: parses the optional top-level {@code seeds} array -- {@code concept} + optional
+     *  {@code alias}/{@code id}/{@code data}/{@code repeatOver}/{@code count}, the EXISTING
+     *  app-level seed record shape ({@code NPDevContract/schemas/seed.schema.json}'s {@code
+     *  $defs/record}). No pack-origin lookup here (unlike {@code roles}/{@code events}/...): a
+     *  seed record has no {@code name} to key an origin lookup by, and its {@code concept} field
+     *  was already rewritten to pack-qualified form (when pack/context-declared) upstream by
+     *  {@code ModelSourceResolver.mergeQualifiedNonConceptArrays}'s own "seeds" branch, which also
+     *  enforces that a pack/context may only seed a concept it owns. Declaration order is
+     *  preserved -- see {@link com.npdev.dsl.v1.ast.SeedAst}'s own javadoc for why. */
+    private static List<com.npdev.dsl.v1.ast.SeedAst> parseSeeds(JsonNode node) throws IOException {
+        List<com.npdev.dsl.v1.ast.SeedAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException("seeds must be an array");
+        }
+        for (JsonNode seedNode : node) {
+            out.add(new com.npdev.dsl.v1.ast.SeedAst(
+                    requiredText(seedNode, "concept"),
+                    readText(seedNode, "alias"),
+                    readText(seedNode, "id"),
+                    parseObjectMap(seedNode.get("data")),
+                    parseSeedRepeatOverVars(seedNode.get("repeatOver")),
+                    seedNode.has("count") && !seedNode.get("count").isNull() ? seedNode.get("count").asInt() : null
+            ));
+        }
+        return out;
+    }
+
+    /** R8.8: parses {@code seeds[].repeatOver.vars} -- an object of {@code [min, max]} inclusive
+     *  integer pairs, the same bulk-generation shape {@code SeedDataService.expandSmartRecord}
+     *  already reads from the app-level convention's JSON directly. */
+    private static Map<String, List<Integer>> parseSeedRepeatOverVars(JsonNode repeatOverNode) throws IOException {
+        Map<String, List<Integer>> out = new LinkedHashMap<>();
+        if (repeatOverNode == null || repeatOverNode.isNull()) {
+            return out;
+        }
+        JsonNode varsNode = repeatOverNode.get("vars");
+        if (varsNode == null || !varsNode.isObject()) {
+            return out;
+        }
+        Iterator<String> varNames = varsNode.fieldNames();
+        while (varNames.hasNext()) {
+            String varName = varNames.next();
+            JsonNode range = varsNode.get(varName);
+            if (range == null || !range.isArray() || range.size() != 2) {
+                throw new IOException("seeds[].repeatOver.vars." + varName + " must be a [min, max] pair");
+            }
+            out.put(varName, List.of(range.get(0).asInt(), range.get(1).asInt()));
+        }
+        return out;
+    }
+
     /** Wave 6 (RC-A1): parses the optional top-level {@code propertyScopes} array -- {@code name} +
      *  an optional {@code from} (blank/absent for the implicit root/tenant scope). */
     private static List<com.npdev.dsl.v1.ast.PropertyScopeAst> parsePropertyScopes(JsonNode node) throws IOException {
@@ -779,8 +893,9 @@ public final class JsonModelParser {
                     requiredText(propertyNode, "type"),
                     parseJsonValue(propertyNode.get("default")),
                     parseTextArray(propertyNode.get("settableAt")),
-                    readText(propertyNode, "label"),
-                    readBooleanFlag(propertyNode, "securityRelevant")
+                    readLabelText(propertyNode, "label"),
+                    readBooleanFlag(propertyNode, "securityRelevant"),
+                    readLabelLocales(propertyNode, "label")
             ));
         }
         return out;
@@ -855,7 +970,6 @@ public final class JsonModelParser {
                     parseProcedureParameters(queryNode.get("parameters"), "queries[" + name + "].parameters"),
                     parseTextArray(queryNode.get("permissionRequirements")),
                     readText(queryNode, "tracePolicy"),
-                    readText(queryNode, "auditPolicy"),
                     parseObjectMap(queryNode.get("metadata")),
                     parseGroupByFields(queryNode.get("groupBy")),
                     parseAggregateFunctions(queryNode.get("aggregates")),
@@ -950,7 +1064,6 @@ public final class JsonModelParser {
                     parseSchema(procedureNode.get("returns"), "procedures[" + name + "].returns"),
                     parseTextArray(procedureNode.get("permissionRequirements")),
                     readText(procedureNode, "tracePolicy"),
-                    readText(procedureNode, "auditPolicy"),
                     parseGeneratedActionDescriptor(procedureNode.get("actionDescriptor"), "procedures[" + name + "].actionDescriptor"),
                     parseObjectMap(procedureNode.get("metadata"))
             ));
@@ -1112,16 +1225,62 @@ public final class JsonModelParser {
             throw new IOException("documents must be an array");
         }
         for (JsonNode documentNode : node) {
+            String name = requiredText(documentNode, "name");
             out.add(new DocumentAst(
-                    requiredText(documentNode, "name"),
+                    name,
                     requiredText(documentNode, "concept"),
                     readText(documentNode, "title"),
                     readText(documentNode, "pageSize"),
                     readOptionalDouble(documentNode, "marginMm"),
-                    parseObjectMap(documentNode.get("metadata"))
+                    parseObjectMap(documentNode.get("metadata")),
+                    readText(documentNode, "aggregate"),
+                    parseDocumentBands(documentNode.get("bands"), "documents[" + name + "].bands"),
+                    parseDocumentLogo(documentNode.get("logo"), "documents[" + name + "].logo")
             ));
         }
         return out;
+    }
+
+    /**
+     * R5.7: a document band's {@code fields} reuses {@link #parsePanelFieldBindings} verbatim -- the
+     * same bare property-name-plus-{@code ui} shape a panel's {@code fieldBindings} already parses,
+     * per R5.7's "reuse the existing panel-binding shapes" mandate.
+     */
+    private static List<DocumentBandAst> parseDocumentBands(JsonNode node, String fieldPath) throws IOException {
+        List<DocumentBandAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(fieldPath + " must be an array");
+        }
+        for (JsonNode bandNode : node) {
+            String name = requiredText(bandNode, "name");
+            out.add(new DocumentBandAst(
+                    name,
+                    requiredText(bandNode, "kind"),
+                    readText(bandNode, "collection"),
+                    readLabelText(bandNode, "label"),
+                    readLabelLocales(bandNode, "label"),
+                    parsePanelFieldBindings(bandNode.get("fields"), fieldPath + "[" + name + "].fields")
+            ));
+        }
+        return out;
+    }
+
+    /**
+     * R5.7: {@code logo.field} names a property on the document's bound concept -- never a URL, so
+     * there is nothing here for a malicious model to point at an internal host. See
+     * {@link DocumentLogoAst}'s javadoc.
+     */
+    private static DocumentLogoAst parseDocumentLogo(JsonNode node, String fieldPath) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException(fieldPath + " must be an object");
+        }
+        return new DocumentLogoAst(requiredText(node, "field"));
     }
 
     private static List<AggregateAst> parseAggregates(JsonNode node) throws IOException {
@@ -1141,7 +1300,32 @@ public final class JsonModelParser {
                             "aggregates[" + name + "].collections"),
                     readText(aggregateNode, "onCommit"),
                     parseObjectMap(aggregateNode.get("metadata")),
-                    readText(aggregateNode, "onValidate")
+                    readText(aggregateNode, "onValidate"),
+                    // R4.4/npdev-aggregate-invariant-four-place: parser -> compiler -> canonical
+                    // writer+reader, mirroring ast-compiled-four-place's chain for a per-member field.
+                    parseAggregateInvariants(aggregateNode.get("invariants"),
+                            "aggregates[" + name + "].invariants")
+            ));
+        }
+        return out;
+    }
+
+    /** R4.4: aggregates[].invariants[] -- {name, expression, message?}, evaluated against the
+     *  whole aggregate draft tree pre-commit. See AggregateInvariantAst's javadoc. */
+    private static List<AggregateInvariantAst> parseAggregateInvariants(JsonNode node, String path)
+            throws IOException {
+        List<AggregateInvariantAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(path + " must be an array");
+        }
+        for (JsonNode invariantNode : node) {
+            out.add(new AggregateInvariantAst(
+                    requiredText(invariantNode, "name"),
+                    requiredText(invariantNode, "expression"),
+                    readText(invariantNode, "message")
             ));
         }
         return out;
@@ -1258,9 +1442,10 @@ public final class JsonModelParser {
             JsonNode stateNode = node.get(name);
             out.put(name, new UiStateControlAst(
                     name,
-                    readText(stateNode, "label"),
+                    readLabelText(stateNode, "label"),
                     parseTextArray(stateNode.get("values")),
-                    readText(stateNode, "default")
+                    readText(stateNode, "default"),
+                    readLabelLocales(stateNode, "label")
             ));
         }
         return out;
@@ -1293,11 +1478,12 @@ public final class JsonModelParser {
         for (JsonNode actionNode : node) {
             out.add(new WorkbenchActionAst(
                     requiredText(actionNode, "procedure"),
-                    readText(actionNode, "label"),
+                    readLabelText(actionNode, "label"),
                     parseTextArray(actionNode.get("inputFields")),
                     parseWorkbenchActionApplyTo(actionNode.get("applyTo")),
                     readText(actionNode, "afterAction"),
-                    readText(actionNode, "visibleWhen")
+                    readText(actionNode, "visibleWhen"),
+                    readLabelLocales(actionNode, "label")
             ));
         }
         return out;
@@ -1349,10 +1535,11 @@ public final class JsonModelParser {
             // the single source of truth for "panel is still required" (not relaxed in this pass).
             out.put(name, new WorkbenchBandPickerAst(
                     panel,
-                    readText(pickerNode, "label"),
+                    readLabelText(pickerNode, "label"),
                     parseTextArray(pickerNode.get("columns")),
                     filter,
-                    multiSelect
+                    multiSelect,
+                    readLabelLocales(pickerNode, "label")
             ));
         }
         return out;
@@ -1409,10 +1596,11 @@ public final class JsonModelParser {
             JsonNode fieldNode = node.get(name);
             out.add(new DerivedFieldAst(
                     name,
-                    readText(fieldNode, "label"),
+                    readLabelText(fieldNode, "label"),
                     readText(fieldNode, "tier"),
                     readText(fieldNode, "expression"),
-                    readText(fieldNode, "procedure")
+                    readText(fieldNode, "procedure"),
+                    readLabelLocales(fieldNode, "label")
             ));
         }
         return out;
@@ -1616,7 +1804,7 @@ public final class JsonModelParser {
             String name = requiredText(actionNode, "name");
             out.add(new PanelActionAst(
                     name,
-                    readText(actionNode, "label"),
+                    readLabelText(actionNode, "label"),
                     requiredText(actionNode, "binding"),
                     readText(actionNode, "concept"),
                     readText(actionNode, "operation"),
@@ -1632,7 +1820,8 @@ public final class JsonModelParser {
                     parseTextArray(actionNode.get("inputFields")),
                     readText(actionNode, "resultAs"),
                     readText(actionNode, "filename"),
-                    readText(actionNode, "contentType")
+                    readText(actionNode, "contentType"),
+                    readLabelLocales(actionNode, "label")
             ));
         }
         return out;
@@ -1657,6 +1846,53 @@ public final class JsonModelParser {
         String s = v.asText();
         if (s == null || s.isBlank()) return null;
         return s;
+    }
+
+    /**
+     * R5.6: reads a label site's resolved default text. Every label site accepts the widened
+     * shape {@code $defs/localizableLabel} -- a plain string (unchanged, {@link #readText} on it
+     * directly would already work) OR an object {@code {"default": "...", "<locale>": "...", ...}}.
+     * This is the ONE extra layer of indirection: for the object form it reads "default", the
+     * schema-required terminal fallback; for the plain-string form it behaves exactly like
+     * {@link #readText}. Always pair with {@link #readLabelLocales} at the same call site -- the
+     * text is only half of a label site's authored value.
+     */
+    private static String readLabelText(JsonNode node, String key) {
+        JsonNode v = node.get(key);
+        if (v == null || v.isNull()) return null;
+        if (v.isObject()) {
+            return readText(v, "default");
+        }
+        String s = v.asText();
+        return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /**
+     * R5.6: reads a label site's per-locale overrides (empty when authored as a plain string, or
+     * when the object form declares only "default"). Keys are whatever locale tags the author
+     * wrote (e.g. "en", "pt-BR") -- not validated against a fixed locale list, matching this
+     * codebase's general "informational tag, not a closed set" treatment of locale strings
+     * elsewhere (see {@code SettingsAst.locale}). Insertion order is preserved (LinkedHashMap) so
+     * canonical-JSON output is a function of parse order, not hash order.
+     */
+    private static Map<String, String> readLabelLocales(JsonNode node, String key) {
+        JsonNode v = node.get(key);
+        if (v == null || v.isNull() || !v.isObject()) {
+            return Map.of();
+        }
+        Map<String, String> out = new LinkedHashMap<>();
+        Iterator<String> names = v.fieldNames();
+        while (names.hasNext()) {
+            String locale = names.next();
+            if ("default".equals(locale)) {
+                continue;
+            }
+            String value = readText(v, locale);
+            if (value != null) {
+                out.put(locale, value);
+            }
+        }
+        return out;
     }
 
     private static String requiredText(JsonNode node, String key) throws IOException {
@@ -1742,6 +1978,18 @@ public final class JsonModelParser {
         return new FieldPickerAst(filter, multiSelect);
     }
 
+    /** R5.5: parses a field's `access: {read, write}` block -- same shape/grammar as a concept's
+     *  own {@code access}, one rung down the ladder. */
+    private static FieldAccessAst parseFieldAccess(JsonNode node, String path) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException(path + " must be an object");
+        }
+        return new FieldAccessAst(readText(node, "read"), readText(node, "write"));
+    }
+
     /**
      * LNCH-12: {@code schedule.tenantScope} accepts either a single tenant id string or an array
      * of them, mirroring how many other fields in this DSL accept a "one or many" shorthand.
@@ -1805,7 +2053,10 @@ public final class JsonModelParser {
                 throw new IOException(fieldPath + "[" + index + "] must be string or object");
             }
             String value = requiredText(item, "value");
-            String label = firstNonBlank(readText(item, "label"), readText(item, "displayLabel"));
+            String label = firstNonBlank(readLabelText(item, "label"), readLabelText(item, "displayLabel"));
+            Map<String, String> labelLocales = !readLabelLocales(item, "label").isEmpty()
+                    ? readLabelLocales(item, "label")
+                    : readLabelLocales(item, "displayLabel");
             Integer order = readOptionalInt(item, "order");
             String group = readText(item, "group");
             boolean defaultValue = item.has("default") && item.get("default").asBoolean(false);
@@ -1822,7 +2073,8 @@ public final class JsonModelParser {
                     deprecated,
                     iconHint,
                     badgeHint,
-                    description
+                    description,
+                    labelLocales
             ));
         }
         return out;
@@ -1989,6 +2241,20 @@ public final class JsonModelParser {
             onFailureSteps = parseStepList(flowName + "." + stepName + ".onFailure", onFailureNode);
         }
 
+        // R2.5 (durable await timeouts): an awaitEvent step's optional durable wait deadline
+        // (seconds from when it first parks) plus the escalation steps to run once that deadline
+        // passes without the awaited event ever arriving -- same array-of-steps shape onFailure
+        // already established above, deliberately not restricted to type=="await" here (mirroring
+        // delaySeconds/onFailureSteps, which are also parsed unconditionally and left unused by
+        // step types that don't read them; FlowValidation is where "only awaitEvent may declare
+        // this" gets enforced, not the parser).
+        Long timeoutSeconds = readOptionalLong(stepNode, "timeout");
+        List<StepAst> onTimeoutSteps = List.of();
+        JsonNode onTimeoutNode = stepNode.get("onTimeout");
+        if (onTimeoutNode != null && onTimeoutNode.isArray()) {
+            onTimeoutSteps = parseStepList(flowName + "." + stepName + ".onTimeout", onTimeoutNode);
+        }
+
         if ("invariant".equals(type)) {
             if ((checkpoint == null || checkpoint.isBlank()) && scope != null && !scope.isBlank()) {
                 checkpoint = "pre";
@@ -2044,7 +2310,9 @@ public final class JsonModelParser {
                 maxLoopIterations,
                 onFailureSteps,
                 procedure,
-                parallelAwait
+                parallelAwait,
+                timeoutSeconds,
+                onTimeoutSteps
         );
     }
 
@@ -2324,14 +2592,15 @@ public final class JsonModelParser {
             throw new IOException(fieldPath + " must be an object");
         }
         return new ActionMetadataAst(
-                readText(node, "label"),
+                readLabelText(node, "label"),
                 readText(node, "confirmationText"),
                 readText(node, "successMessage"),
                 readText(node, "failureHint"),
                 readText(node, "dangerLevel"),
                 readText(node, "visibleWhen"),
                 readText(node, "permissionHint"),
-                readText(node, "inputFormHint")
+                readText(node, "inputFormHint"),
+                readLabelLocales(node, "label")
         );
     }
 
@@ -2348,10 +2617,11 @@ public final class JsonModelParser {
             throw new IOException(fieldPath + " must be an object");
         }
         return new DomainTypeUiAst(
-                readText(node, "label"),
+                readLabelText(node, "label"),
                 readText(node, "placeholder"),
                 readText(node, "helpText"),
-                readText(node, "widget")
+                readText(node, "widget"),
+                readLabelLocales(node, "label")
         );
     }
 
@@ -2363,8 +2633,8 @@ public final class JsonModelParser {
             throw new IOException(fieldPath + " must be an object");
         }
         return new PresentationMetadataAst(
-                readText(node, "label"),
-                readText(node, "shortLabel"),
+                readLabelText(node, "label"),
+                readLabelText(node, "shortLabel"),
                 readText(node, "description"),
                 readText(node, "helpText"),
                 readText(node, "placeholder"),
@@ -2397,7 +2667,9 @@ public final class JsonModelParser {
                 readText(node, "defaultSort"),
                 readText(node, "defaultGroup"),
                 readText(node, "imageField"),
-                readText(node, "customWidgetRef")
+                readText(node, "customWidgetRef"),
+                readLabelLocales(node, "label"),
+                readLabelLocales(node, "shortLabel")
         );
     }
 
@@ -2515,10 +2787,11 @@ public final class JsonModelParser {
             }
             String event = readText(transitionNode, "event");
             String guard = readText(transitionNode, "guard");
-            String actionLabel = readText(transitionNode, "actionLabel");
+            String actionLabel = readLabelText(transitionNode, "actionLabel");
             Map<String, String> metadata = parseStringMap(transitionNode.get("metadata"));
             ActionMetadataAst action = parseActionMetadata(transitionNode.get("action"), fieldPath + ".transitions[" + index + "].action");
-            transitions.add(new StateTransitionAst(from, to, requiredPayload, event, guard, actionLabel, metadata, action));
+            transitions.add(new StateTransitionAst(from, to, requiredPayload, event, guard, actionLabel, metadata, action,
+                    readLabelLocales(transitionNode, "actionLabel")));
         }
         return new LifecycleAst(statusField, states, transitions);
     }
@@ -2545,7 +2818,7 @@ public final class JsonModelParser {
                 throw new IOException(fieldPath + "[" + index + "] must be a string or object");
             }
             String value = requiredText(stateNode, "value");
-            String label = readText(stateNode, "label");
+            String label = readLabelText(stateNode, "label");
             Boolean initial = readOptionalBoolean(stateNode, "initial");
             Boolean terminal = readOptionalBoolean(stateNode, "terminal");
             List<String> allowedActions = parseTextArray(stateNode.get("allowedActions"));
@@ -2556,7 +2829,8 @@ public final class JsonModelParser {
                     initial != null && initial,
                     terminal != null && terminal,
                     allowedActions,
-                    metadata
+                    metadata,
+                    readLabelLocales(stateNode, "label")
             ));
         }
         return states;

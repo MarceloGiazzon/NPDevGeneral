@@ -1,0 +1,13 @@
+id: EDIT-15
+title: Bulk selection + bulk actions on grids
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-21
+source: npdev-roadmap-collection.md R7.8
+surface: editor/grid-bulk-actions
+detail: |
+  Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
+resolution: |
+  Implemented 2026-08-21 during the roadmap closeout session.

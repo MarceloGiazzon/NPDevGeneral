@@ -42,16 +42,21 @@ NARRATIVE_PATH = WORKSPACE_ROOT / "scripts" / "docs" / "gaps-roadmap-narrative.m
 TABLE1_MARKER = "<!-- GENERATED: priority-index-table -->"
 TABLE7_MARKER = "<!-- GENERATED: fixed-engine-bugs-table -->"
 
-SCHEMA_VERSION = "gaps-ledger.v1"
+SUPPORTED_SCHEMA_VERSIONS = {"gaps-ledger.v1", "gaps-ledger.v2"}
 
 
 def load_ledger() -> dict:
     data = yaml.safe_load(LEDGER_PATH.read_text(encoding="utf-8"))
-    if data.get("schemaVersion") != SCHEMA_VERSION:
+    version = data.get("schemaVersion")
+    if version not in SUPPORTED_SCHEMA_VERSIONS:
         raise ValueError(
-            f"{LEDGER_PATH}: unsupported schemaVersion {data.get('schemaVersion')!r}, "
-            f"expected {SCHEMA_VERSION!r}"
+            f"{LEDGER_PATH}: unsupported schemaVersion {version!r}, "
+            f"expected one of {sorted(SUPPORTED_SCHEMA_VERSIONS)}"
         )
+    # v2 has no priorityIndex/fixedEngineBugs; synthesize empty lists so render() works unchanged.
+    if version == "gaps-ledger.v2":
+        data.setdefault("priorityIndex", [])
+        data.setdefault("fixedEngineBugs", [])
     return data
 
 

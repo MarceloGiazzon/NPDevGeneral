@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.compiled;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 public final class CompiledPresentationMetadata {
     private final String label;
@@ -40,6 +41,8 @@ public final class CompiledPresentationMetadata {
     private final String defaultGroup;
     private final String imageField;
     private final String customWidgetRef;
+    private final Map<String, String> labelLocales;
+    private final Map<String, String> shortLabelLocales;
 
     public CompiledPresentationMetadata(
             String label,
@@ -76,7 +79,9 @@ public final class CompiledPresentationMetadata {
             String defaultSort,
             String defaultGroup,
             String imageField,
-            String customWidgetRef
+            String customWidgetRef,
+            Map<String, String> labelLocales,
+            Map<String, String> shortLabelLocales
     ) {
         this.label = label;
         this.shortLabel = shortLabel;
@@ -113,6 +118,8 @@ public final class CompiledPresentationMetadata {
         this.defaultGroup = defaultGroup;
         this.imageField = imageField;
         this.customWidgetRef = customWidgetRef;
+        this.labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
+        this.shortLabelLocales = (shortLabelLocales == null || shortLabelLocales.isEmpty()) ? Map.of() : Map.copyOf(shortLabelLocales);
     }
 
     public String getLabel() {
@@ -253,5 +260,13 @@ public final class CompiledPresentationMetadata {
 
     public String getCustomWidgetRef() {
         return customWidgetRef;
+    }
+
+    public Map<String, String> getLabelLocales() {
+        return labelLocales;
+    }
+
+    public Map<String, String> getShortLabelLocales() {
+        return shortLabelLocales;
     }
 }

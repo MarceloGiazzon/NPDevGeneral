@@ -39,7 +39,7 @@
     },
     "packs": {
       "type": "array",
-      "description": "PK-3: transitive pack dependencies -- local files only, resolved via npdev.lock, never a network fetch. `version` is a minimal constraint: an exact version (\"2.0.3\") or a caret constraint (\"^2.0\", compatible-within-major -- same major, minor/patch at least as high).",
+      "description": "PK-3: transitive pack dependencies. `version` is a minimal constraint: an exact version (\"2.0.3\") or a caret constraint (\"^2.0\", compatible-within-major -- same major, minor/patch at least as high). PACK-8: each entry may optionally declare `from` (a remote coordinate, same grammar as model.schema.json's packRef `from`) or `$ref` (a local file); when neither is present the pre-PACK-8 local-file convention (`packs/<packId>/pack.json`) applies unchanged.",
       "items": {
         "type": "object",
         "required": ["pack", "version"],
@@ -53,6 +53,18 @@
             "type": "string",
             "minLength": 1,
             "pattern": "^(\\^)?\\d+\\.\\d+(\\.\\d+)?$"
+          },
+          "from": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(oci://[A-Za-z0-9][A-Za-z0-9._:/-]*(:[A-Za-z0-9._-]+|@sha256:[0-9a-f]{64})|git\\+(https|http|ssh|file|git)://.+@[A-Za-z0-9][A-Za-z0-9._/-]*)$",
+            "description": "PACK-8: remote pack coordinate for a transitive dependency -- same grammar as model.schema.json's packRef `from`. Mutually exclusive with `$ref`."
+          },
+          "$ref": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!/).*\\.json$",
+            "description": "PACK-8: explicit local file for a transitive dependency, overriding the default `packs/<packId>/pack.json` convention. Mutually exclusive with `from`."
           }
         },
         "additionalProperties": false
@@ -258,6 +270,36 @@
         ]
       }
     },
+    "webhooks": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/webhook" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      },
+      "description": "R6.2: a pack may declare inbound webhook doors alongside its other members. `source` is never namespace-qualified by pack composition (see model.schema.json's webhook $def)."
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/sequence" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      },
+      "description": "R5.3: a pack may declare document-numbering counters alongside its other members. `name` is never namespace-qualified by pack composition (see model.schema.json's sequence $def)."
+    },
+    "seeds": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "$ref": "model.schema.json#/$defs/seed" },
+          { "$ref": "model.schema.json#/$defs/localModelRef" }
+        ]
+      },
+      "description": "R8.8: a pack may declare first-boot seed rows alongside its other members. `concept` MUST name a concept this SAME pack declares -- rewritten to its pack-qualified form by pack composition, and a seed naming a concept the pack does not own is a compile error (see model.schema.json's seed $def and ModelSourceResolver's seeds handling)."
+    },
     "propertyScopes": {
       "type": "array",
       "items": {
@@ -286,6 +328,24 @@
     },
     "metadata": {
       "type": "object"
+    },
+    "extends": {
+      "type": "object",
+      "description": "PACK-10/R8.11: declares this pack is an additive extension of a concept owned by another pack. The extension pack contributes fields to the target concept via PackExtensionComposer (additive-only, sealedness/collision refusal). Equivalent to the legacy metadata.extends convention but first-class in the schema.",
+      "required": ["pack", "concept"],
+      "properties": {
+        "pack": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The pack id of the base pack whose concept is being extended."
+        },
+        "concept": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The bare concept name in the base pack that this extension adds fields to."
+        }
+      },
+      "additionalProperties": false
     },
     "fragments": {
       "type": "array",
@@ -385,6 +445,30 @@
       "type": "string",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "description": "REG-151: the pack's own true first-ever-published version, pinned once by `npdev pack publish --write` (either at this pack's first publish under this field's existence, backfilled from its migrations chain's own earliest hop, or -- for a pack with no chain yet -- copied from its own current `version`) and immutable thereafter, exactly like a migrations hop (see PackPublishGate's chain-immutability check). Exists as a trust anchor independent of the migrations chain's own current content: PackDependencyGraphWalker's untracked-pack fallback prefers this field over PackMigrationChain.earliestFromVersion() (which can be fooled if the chain's own earliest hop is later removed/truncated by a hand-edit that bypasses the publish gate)."
+    },
+    "signature": {
+      "type": "object",
+      "description": "PACK-8 Step 5: cryptographic signature of the pack's content digest. The digest is the same SHA-256 tree hash PackCache computes for content-addressed storage; the signature is that digest signed with a keypair (Ed25519 or SHA256withRSA). The public key is embedded so a consumer can verify without out-of-band key distribution. When present, `npdev pack add` verifies the signature against the cached digest and refuses on mismatch.",
+      "properties": {
+        "algorithm": {
+          "type": "string",
+          "enum": ["Ed25519", "SHA256withRSA"]
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$"
+        },
+        "value": {
+          "type": "string",
+          "description": "Base64-encoded signature of the digest"
+        },
+        "publicKey": {
+          "type": "string",
+          "description": "Base64-encoded public key for verification"
+        }
+      },
+      "required": ["algorithm", "digest", "value", "publicKey"],
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

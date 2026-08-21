@@ -13,7 +13,6 @@ import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandl
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(properties = {
@@ -40,8 +39,9 @@ class NonDefaultRuntimeSurfaceProfileIntegrationTest {
         assertTrue(activeControllers.contains("RuntimePluginPackagesController"));
         assertTrue(activeControllers.contains("RuntimeRefreshController"));
         assertTrue(activeControllers.contains("ModelSyncStatusController"));
-        assertFalse(activeControllers.contains("BetaOnboardingController"));
-        assertFalse(mappedControllers.contains("FlowBuilderController"));
+        assertTrue(activeControllers.contains("BetaOnboardingController"));
+        assertTrue(mappedControllers.contains("FlowBuilderController"));
+        assertTrue(mappedControllers.contains("RuntimeTopologyExplorerController"));
     }
 
     private Set<String> activeRuntimeControllers() {

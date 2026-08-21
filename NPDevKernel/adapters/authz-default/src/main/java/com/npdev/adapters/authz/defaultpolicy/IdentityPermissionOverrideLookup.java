@@ -18,9 +18,9 @@ import java.util.logging.Logger;
  * identity pack holds for an actor's role assignments (identity_user_role_permissions, added by the
  * {@code UserRolePermission} concept), tenant- and actor-scoped, fresh on every call -- the same
  * "never cache, re-derive every request" contract {@code IdentityRoleLookup} (RuntimeHost /
- * expression-cel) already established for roles and {@code token_version}. Deliberately reimplemented
+ * runtime-support) already established for roles and {@code token_version}. Deliberately reimplemented
  * here rather than shared with that class: this module ({@code authz-default}) has no dependency on
- * {@code expression-cel} and this query is self-contained, so a new cross-module dependency for one
+ * {@code runtime-support} and this query is self-contained, so a new cross-module dependency for one
  * lookup was not worth adding.
  *
  * <p>A role with NO override rows is simply absent from the returned map -- callers must treat

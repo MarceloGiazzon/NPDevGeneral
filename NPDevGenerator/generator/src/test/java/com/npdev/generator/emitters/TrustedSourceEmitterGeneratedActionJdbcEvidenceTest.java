@@ -140,7 +140,6 @@ final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
                 null,
                 List.of("ADMIN"),
                 "detailed",
-                "write",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateUser",
                         List.of("User"),

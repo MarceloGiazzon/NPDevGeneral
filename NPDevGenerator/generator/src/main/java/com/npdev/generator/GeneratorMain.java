@@ -21,6 +21,7 @@ import com.npdev.generator.assembly.FinalAppAssembler;
 import com.npdev.generator.api.GeneratorFacade;
 import com.npdev.generator.emitters.AppDependenciesEmitter;
 import com.npdev.generator.packs.BuiltinPackComposer;
+import com.npdev.generator.packs.PackExtensionComposer;
 import com.npdev.generator.settings.ConfigSettingsReader;
 import com.npdev.generator.dbconfig.DockerDeploymentEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
@@ -96,8 +97,15 @@ public final class GeneratorMain {
         CompiledModel compiled = new ModelCompiler().compile(ast);
 
         // Compose the built-in NPDev internal tables (identity + workspace packs) when enabled.
+        // basePackJsonByAlias accumulates every base pack's own raw pack.json, keyed by the alias it
+        // was composed under -- GAP-1 needs this below to check an extension pack's TARGET for
+        // sealedness, whether that target is a built-in pack (identity/workspace) or a plain
+        // installed one.
+        Map<String, JsonNode> basePackJsonByAlias = new LinkedHashMap<>();
         if (settingResolver.value(NpdevSettings.INTERNAL_TABLES, SettingTarget.app())) {
-            compiled = composeBuiltinInternalTables(compiled);
+            ComposedBuiltinPacks builtin = composeBuiltinInternalTables(compiled, a.runtimeHostRoot);
+            compiled = builtin.model();
+            basePackJsonByAlias.putAll(builtin.packJsonByAlias());
         }
 
         // Compose any explicitly-installed third-party packs (config.json's packs.included list --
@@ -105,9 +113,19 @@ public final class GeneratorMain {
         // admin-only). An installed pack's concepts are ordinary business concepts, not admin-gated:
         // they are deliberately NOT added to BuiltinPackComposer.BUILTIN_PACK_ALIASES, which is what
         // every admin-only check (BusinessUiEmitter/RuntimeApiEmitter/BoxManifestEmitter) keys on.
+        // GAP-1: an installed pack whose OWN pack.json declares `metadata.extends` (the convention
+        // com.npdev.generator.packs.PackExtensionComposer already established and fully tested, but
+        // that nothing in this real pipeline ever called) is instead additively patched onto its
+        // declared target concept via PackExtensionComposer -- never added as an ordinary standalone
+        // concept. See composeInstalledPacksAndExtensions for the split.
         List<String> installedPackAliases = readInstalledPackAliases(config);
+        Map<String, Map<String, String>> extensionFieldOrigins = Map.of();
         if (!installedPackAliases.isEmpty()) {
-            compiled = composeInstalledPacks(compiled, installedPackAliases);
+            Path packsDir = locatePlatformPacksDir("packs.included is non-empty", a.runtimeHostRoot);
+            ComposedInstalledPacks installed = composeInstalledPacksAndExtensions(
+                    compiled, installedPackAliases, packsDir, basePackJsonByAlias, modelPath);
+            compiled = installed.model();
+            extensionFieldOrigins = installed.extensionFieldOrigins();
         }
 
         GeneratedDatabasePlan databasePlan = new UserDatabaseDefinitionLoader()
@@ -180,7 +198,9 @@ public final class GeneratorMain {
                 resolvedModelSource,
                 databasePlan,
                 migrationPlanDestructiveItemStableStrings,
-                normalize(a.destructiveAcknowledgmentToken)
+                normalize(a.destructiveAcknowledgmentToken),
+                List.of(),
+                extensionFieldOrigins
         );
 
         writer.flushSummary();
@@ -271,40 +291,122 @@ public final class GeneratorMain {
         }
     }
 
-    private static CompiledModel composeBuiltinInternalTables(CompiledModel app) {
-        Path packsDir = locatePlatformPacksDir("internal.tables is enabled");
+    /** {@code packJsonByAlias}: the composed built-in packs' own raw pack.json, keyed by alias --
+     *  GAP-1 needs these to check an extension pack's declared target for sealedness when that target
+     *  is a built-in pack (identity/workspace). */
+    private record ComposedBuiltinPacks(CompiledModel model, Map<String, JsonNode> packJsonByAlias) {
+    }
+
+    private static ComposedBuiltinPacks composeBuiltinInternalTables(CompiledModel app, String runtimeHostRoot) throws IOException {
+        Path packsDir = locatePlatformPacksDir("internal.tables is enabled", runtimeHostRoot);
         BuiltinPackComposer composer = new BuiltinPackComposer();
         List<CompiledConcept> builtin = new java.util.ArrayList<>();
+        Map<String, JsonNode> packJsonByAlias = new LinkedHashMap<>();
         for (String alias : BuiltinPackComposer.BUILTIN_PACK_ALIASES) {
-            builtin.addAll(composer.loadPackConcepts(packsDir.resolve(alias).resolve("pack.json"), alias));
+            Path packFile = packsDir.resolve(alias).resolve("pack.json");
+            builtin.addAll(composer.loadPackConcepts(packFile, alias));
+            packJsonByAlias.put(alias, readJson(packFile));
         }
         System.out.println("Composed built-in internal tables (" + builtin.size() + " concepts) from " + packsDir);
-        return composer.merge(app, builtin);
+        return new ComposedBuiltinPacks(composer.merge(app, builtin), packJsonByAlias);
+    }
+
+    /** {@code extensionFieldOrigins}: {@code
+     *  com.npdev.generator.packs.PackExtensionComposer.ExtensionComposition#extensionFieldOrigins()} --
+     *  empty when {@code aliases} declares no extension pack. Package-visible (not {@code private}) so
+     *  {@code GeneratorMainPackExtensionCompositionTest} can assert on it directly -- same reason
+     *  {@link #composeInstalledPacksAndExtensions} itself is package-visible. */
+    record ComposedInstalledPacks(CompiledModel model, Map<String, Map<String, String>> extensionFieldOrigins) {
     }
 
     /**
-     * Composes any pack explicitly named in config.json's {@code packs.included} list -- the
+     * Composes every pack explicitly named in config.json's {@code packs.included} list -- the
      * "install a pack" half of the author-ecosystem ask. Reuses {@code BuiltinPackComposer}'s
      * already-generic {@code loadPackConcepts}/{@code merge} (it never assumed identity/workspace
-     * specifically; only the BUILTIN_PACK_ALIASES *list* it's normally driven by was hardcoded).
-     * Concepts contributed this way are deliberately not added to BUILTIN_PACK_ALIASES, so every
-     * existing admin-only check keys correctly: an installed third-party pack's concepts render as
-     * ordinary business concepts, not admin-gated internal tables.
+     * specifically; only the BUILTIN_PACK_ALIASES *list* it's normally driven by was hardcoded) for
+     * every alias whose OWN pack.json declares no {@code metadata.extends} target -- those concepts
+     * render as ordinary business concepts, not admin-gated internal tables, same as before.
+     *
+     * <p><b>GAP-1.</b> An alias whose pack.json DOES declare {@code metadata.extends} (the convention
+     * {@code com.npdev.generator.packs.PackExtensionComposer} already established and fully unit-
+     * tested, but that no real generation path ever invoked) is routed to {@link
+     * PackExtensionComposer#composeExtensionsWithOrdering} instead -- additively patched onto its
+     * declared target concept rather than added as a second standalone concept of its own. Any
+     * refusal {@code composeExtensionsWithOrdering}/{@code applyExtension} raises (a field-shape
+     * collision, a new required field, or a sealed target) propagates out of this method and fails
+     * generation before anything is emitted, same as every other pre-emission gate in this class
+     * (e.g. {@code StorageCapabilityGate.verify}).
+     *
+     * <p>{@code packsDir} is already resolved (by {@link #locatePlatformPacksDir}) rather than a
+     * {@code runtimeHostRoot} string this method would resolve itself -- deliberately, so a test can
+     * point it at a synthetic fixture directory without needing a real pack under the platform's own
+     * {@code NPDevContract/packs} (every real pack in this repo is sealed -- see {@code
+     * PackExtensionComposerTest}'s own class doc -- so no real pack could ever prove the SUCCESS path
+     * here anyway; only the natural sealed-refusal is provable against a real one).
      */
-    private static CompiledModel composeInstalledPacks(CompiledModel app, List<String> aliases) {
-        Path packsDir = locatePlatformPacksDir("packs.included is non-empty");
-        BuiltinPackComposer composer = new BuiltinPackComposer();
-        List<CompiledConcept> installed = new java.util.ArrayList<>();
+    static ComposedInstalledPacks composeInstalledPacksAndExtensions(
+            CompiledModel app,
+            List<String> aliases,
+            Path packsDir,
+            Map<String, JsonNode> basePackJsonByAlias,
+            Path modelPath
+    ) throws IOException {
+        BuiltinPackComposer builtinComposer = new BuiltinPackComposer();
+        PackExtensionComposer extensionComposer = new PackExtensionComposer();
+
+        List<CompiledConcept> ordinaryConcepts = new java.util.ArrayList<>();
+        List<PackExtensionComposer.ExtensionSource> extensionSources = new java.util.ArrayList<>();
+        Map<String, JsonNode> packJsonByAlias = new LinkedHashMap<>(basePackJsonByAlias);
+
         for (String alias : aliases) {
             Path packFile = packsDir.resolve(alias).resolve("pack.json");
             if (!Files.isRegularFile(packFile)) {
                 throw new IllegalStateException(
                         "config.json's packs.included names \"" + alias + "\", but no pack was found at " + packFile);
             }
-            installed.addAll(composer.loadPackConcepts(packFile, alias));
+            JsonNode packJson = readJson(packFile);
+            packJsonByAlias.put(alias, packJson);
+            List<CompiledConcept> concepts = builtinComposer.loadPackConcepts(packFile, alias);
+
+            PackExtensionComposer.ExtensionTarget target = extensionComposer.readExtensionTarget(packJson);
+            if (target == null) {
+                ordinaryConcepts.addAll(concepts);
+                continue;
+            }
+
+            String qualifiedExtConceptName = alias + "::" + target.conceptName();
+            CompiledConcept extensionConcept = concepts.stream()
+                    .filter(c -> qualifiedExtConceptName.equals(c.getName()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalStateException(
+                            "config.json's packs.included names extension pack \"" + alias
+                                    + "\", whose metadata.extends targets '" + target.qualifiedName()
+                                    + "' -- but that pack compiles no concept named '" + qualifiedExtConceptName
+                                    + "' to carry the patch"));
+            extensionSources.add(new PackExtensionComposer.ExtensionSource(alias, packJson, extensionConcept));
         }
-        System.out.println("Composed installed packs " + aliases + " (" + installed.size() + " concepts) from " + packsDir);
-        return composer.merge(app, installed);
+
+        System.out.println("Composed installed packs " + aliases + " (" + ordinaryConcepts.size()
+                + " ordinary concept(s), " + extensionSources.size() + " extension pack(s)) from " + packsDir);
+
+        CompiledModel merged = builtinComposer.merge(app, ordinaryConcepts);
+
+        if (extensionSources.isEmpty()) {
+            return new ComposedInstalledPacks(merged, Map.of());
+        }
+
+        JsonNode appModelJson = readJson(modelPath);
+        PackExtensionComposer.ExtensionComposition composition = extensionComposer.composeExtensionsWithOrdering(
+                merged, packJsonByAlias, extensionSources, appModelJson);
+        System.out.println("Composed pack extension(s) "
+                + extensionSources.stream().map(PackExtensionComposer.ExtensionSource::extensionAlias).toList()
+                + " -- " + composition.extensionFieldOrigins().values().stream().mapToInt(Map::size).sum()
+                + " field(s) additively patched in");
+        return new ComposedInstalledPacks(composition.model(), composition.extensionFieldOrigins());
+    }
+
+    private static JsonNode readJson(Path file) throws IOException {
+        return OBJECT_MAPPER.readTree(file.toFile());
     }
 
     /**
@@ -373,13 +475,28 @@ public final class GeneratorMain {
         return List.copyOf(aliases);
     }
 
-    private static Path locatePlatformPacksDir(String reason) {
+    private static Path locatePlatformPacksDir(String reason, String runtimeHostRoot) {
         Path start = Path.of("").toAbsolutePath().normalize();
         Path workspaceRoot = resolveSplitWorkspaceRoot(start);
+        if (workspaceRoot == null && runtimeHostRoot != null && !runtimeHostRoot.isBlank()) {
+            // The CWD walk above assumes this process was launched from somewhere inside the
+            // platform checkout. AppGen's "direct Java" fast generation path (Build-NpdevApp.ps1)
+            // instead launches from the cached generator-runtime distribution under
+            // AppGen/generator-runtime, which lives OUTSIDE any repo checkout by design (that is
+            // what makes the cache portable) -- so the CWD walk can never succeed from there, and
+            // internal.tables/packs.included failed unconditionally for every app built that way.
+            // --runtimeHostTemplate already names NPDevRuntimeHost inside the real checkout (every
+            // caller passes it, to stage the FinalApp's own template), so walking up from IT finds
+            // the same workspace root the CWD walk was trying to find -- reusing the identical
+            // content-based predicate (resolveSplitWorkspaceRoot), not a second resolution strategy.
+            Path fromTemplate = Path.of(runtimeHostRoot).toAbsolutePath().normalize();
+            workspaceRoot = resolveSplitWorkspaceRoot(fromTemplate);
+        }
         if (workspaceRoot == null) {
             throw new IllegalStateException(
                     reason + " but the NPDev workspace root could not be located from "
-                            + start + " (needed to find NPDevContract/packs).");
+                            + start + " or from --runtimeHostTemplate ('" + runtimeHostRoot
+                            + "') -- needed to find NPDevContract/packs.");
         }
         Path packsDir = workspaceRoot.resolve("NPDevContract").resolve("packs");
         if (!Files.isDirectory(packsDir)) {

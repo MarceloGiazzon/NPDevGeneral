@@ -153,6 +153,11 @@ class ModelChangeClassifierTest {
         for (Path modelPath : corpus) {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode baselineNode = mapper.readTree(modelPath.toFile());
+            if (!hasInlineConcepts(baselineNode)) {
+                continue; // pack-only model (every concept comes from a composed pack) -- raw
+                          // compile() runs schema validation before pack composition, which
+                          // requires a top-level `concepts` key; nothing inline to mutate anyway.
+            }
             CompiledModel baseline = compile(baselineNode);
 
             JsonNode currentNode = withFieldAddedToFirstConcept(mapper, baselineNode, false);
@@ -177,6 +182,9 @@ class ModelChangeClassifierTest {
         for (Path modelPath : corpus) {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode baselineNode = mapper.readTree(modelPath.toFile());
+            if (!hasInlineConcepts(baselineNode)) {
+                continue; // pack-only model -- see the sibling test for why compile() can't run here
+            }
             CompiledModel baseline = compile(baselineNode);
 
             JsonNode currentNode = withFieldAddedToFirstConcept(mapper, baselineNode, true);
@@ -207,11 +215,20 @@ class ModelChangeClassifierTest {
         return new ModelCompiler().compile(ast);
     }
 
+    /** {@code true} if {@code root} declares a non-empty top-level {@code concepts} array. A
+     *  pack-only model (all its concepts contributed by a composed {@code packs[].$ref}) has none --
+     *  raw {@link #compile} runs schema validation on the UNRESOLVED node (no pack composition),
+     *  and the schema requires the {@code concepts} key to be present at all, so such a model must
+     *  be skipped before {@code compile()} is even attempted, not just before mutation. */
+    private static boolean hasInlineConcepts(JsonNode root) {
+        JsonNode concepts = root.get("concepts");
+        return concepts != null && concepts.isArray() && !concepts.isEmpty();
+    }
+
     /** Adds one new field (named to never collide) to the first concept's {@code fields} array, or
      *  returns {@code null} if the model declares no concepts. */
     private static JsonNode withFieldAddedToFirstConcept(ObjectMapper mapper, JsonNode root, boolean required) {
-        JsonNode concepts = root.get("concepts");
-        if (concepts == null || !concepts.isArray() || concepts.isEmpty()) {
+        if (!hasInlineConcepts(root)) {
             return null;
         }
         ObjectNode mutable = root.deepCopy();

@@ -3,16 +3,22 @@ package com.npdev.kernel.concepts;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledFieldAccess;
 import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledLifecycle;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
+import com.npdev.dsl.v1.compiled.CompiledSequence;
 import com.npdev.dsl.v1.compiled.CompiledStateMachineState;
 import com.npdev.dsl.v1.compiled.CompiledStateTransition;
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.dsl.v1.expr.SequenceNumberFormat;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ports.SequenceAllocator;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -28,13 +34,34 @@ import java.util.regex.Pattern;
 
 public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGatewaySemanticPolicy {
     private final Map<String, ConceptDefinition> conceptsByName;
+    private final Map<String, CompiledSequence> sequencesByName;
+    private final SequenceAllocator sequenceAllocator;
 
     public ConfiguredConceptGatewaySemanticPolicy(List<ConceptDefinition> concepts) {
+        this(concepts, List.of(), SequenceAllocator.inMemory());
+    }
+
+    /**
+     * R5.3: adds the declared {@code sequences[]} (document-numbering counters, see {@code
+     * SequenceAst}) and the allocator that resolves a field's {@code nextNumber('name')}
+     * defaultExpression -- see {@link #evaluateFieldDefault}. The single-argument constructor above
+     * keeps every existing caller compiling unchanged, defaulting to an in-memory allocator (correct
+     * for tests and the {@code *-inproc} adapters; a real app wires a JDBC-backed one -- see {@link
+     * SequenceAllocator}'s own javadoc).
+     */
+    public ConfiguredConceptGatewaySemanticPolicy(
+            List<ConceptDefinition> concepts, List<CompiledSequence> sequences, SequenceAllocator sequenceAllocator) {
         Map<String, ConceptDefinition> byName = new LinkedHashMap<>();
         for (ConceptDefinition concept : concepts == null ? List.<ConceptDefinition>of() : concepts) {
             byName.put(normalizeKey(concept.name()), concept);
         }
         this.conceptsByName = Map.copyOf(byName);
+        Map<String, CompiledSequence> sequencesByNameBuilder = new LinkedHashMap<>();
+        for (CompiledSequence sequence : sequences == null ? List.<CompiledSequence>of() : sequences) {
+            sequencesByNameBuilder.put(normalizeKey(sequence.name()), sequence);
+        }
+        this.sequencesByName = Map.copyOf(sequencesByNameBuilder);
+        this.sequenceAllocator = Objects.requireNonNull(sequenceAllocator, "sequenceAllocator");
     }
 
     public static ConfiguredConceptGatewaySemanticPolicy empty() {
@@ -53,6 +80,14 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
      * a test exercises save/patch/delete against a real compiled model.
      */
     public static ConfiguredConceptGatewaySemanticPolicy fromCompiledModel(CompiledModel compiledModel) {
+        return fromCompiledModel(compiledModel, SequenceAllocator.inMemory());
+    }
+
+    /** R5.3: {@link #fromCompiledModel(CompiledModel)} with an explicit {@link SequenceAllocator}
+     *  -- the production wiring path (see {@code NpdevCapabilityBindingConfig.conceptGateway},
+     *  RuntimeHost) supplies a JDBC-backed one when a real DataSource is available. */
+    public static ConfiguredConceptGatewaySemanticPolicy fromCompiledModel(
+            CompiledModel compiledModel, SequenceAllocator sequenceAllocator) {
         if (compiledModel == null) {
             return empty();
         }
@@ -60,7 +95,8 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         for (CompiledConcept concept : compiledModel.getConcepts()) {
             definitions.add(toConceptDefinition(concept));
         }
-        return new ConfiguredConceptGatewaySemanticPolicy(definitions);
+        return new ConfiguredConceptGatewaySemanticPolicy(
+                definitions, compiledModel.getSequences(), sequenceAllocator);
     }
 
     private static ConceptDefinition toConceptDefinition(CompiledConcept concept) {
@@ -103,8 +139,18 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 schema == null ? null : schema.getDefaultExpression(),
                 schema == null ? null : schema.getDerivedExpression(),
                 false,
-                field.getReferenceTarget()
+                field.getReferenceTarget(),
+                fieldAccessRulesOf(field.getAccess())
         );
+    }
+
+    /** R5.5: a field's own declared {read, write} rule -- reuses {@link AccessRules}, the SAME
+     *  two-property shape {@code concept.access} already uses, one rung down the ladder. */
+    private static AccessRules fieldAccessRulesOf(CompiledFieldAccess access) {
+        if (access == null) {
+            return null;
+        }
+        return new AccessRules(access.getRead(), access.getWrite());
     }
 
     private static List<InvariantDefinition> invariantsOf(CompiledConcept concept) {
@@ -207,7 +253,7 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             if (isBlankValue(data.get(field.name()))) {
                 Object defaultValue = field.defaultValue();
                 if (defaultValue == null && hasText(field.defaultExpression())) {
-                    defaultValue = evaluateValueExpression(field.defaultExpression(), data);
+                    defaultValue = evaluateFieldDefault(field.defaultExpression(), data, request.tenantId());
                 }
                 if (defaultValue != null) {
                     data.put(field.name(), defaultValue);
@@ -356,14 +402,46 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     @Override
     public ConceptRecord filterVisibleFields(ConceptRecord record, ConceptGatewayRequestContext request) {
         ConceptDefinition concept = concept(request);
-        if (concept == null || concept.hiddenFields().isEmpty()) {
+        if (concept == null || (concept.hiddenFields().isEmpty() && !hasFieldReadAccessRules(concept))) {
             return record;
         }
         Map<String, Object> visible = new LinkedHashMap<>(record.data());
         for (String hiddenField : concept.hiddenFields()) {
             visible.remove(hiddenField);
         }
+        // R5.5: field-level read authorization -- evaluated against the RECORD'S OWN RAW data
+        // (record.data(), not the partially-filtered `visible` map), same reasoning LNCH-13's
+        // row-level check already documents above: a hidden field the rule references, or a field
+        // whose own access.read rule references ANOTHER field this loop hasn't reached yet, must
+        // still be visible to the expression itself. A denied field is OMITTED from the response
+        // entirely (removed from `visible`), never returned masked/null -- returning it as null
+        // would still confirm to the caller that a value is present, just not what it is; the
+        // caller cannot tell a denied field apart from a field that was never set.
+        for (FieldDefinition field : concept.fields().values()) {
+            if (field.access() == null || !hasText(field.access().read())) {
+                continue;
+            }
+            if (!visible.containsKey(field.name())) {
+                continue;
+            }
+            if (!evaluateAccessRule(field.access().read(), record.data(), request.executionContext())) {
+                visible.remove(field.name());
+            }
+        }
         return new ConceptRecord(record.conceptName(), record.id(), record.tenantId(), visible);
+    }
+
+    /** R5.5: does ANY field on this concept declare a {@code field.access.read} rule? Guards the
+     *  fast path in {@link #filterVisibleFields} the same way {@link #hasRowReadScope} guards
+     *  {@code query}'s extra count -- a concept with no field-level read rule at all pays nothing
+     *  extra. */
+    private static boolean hasFieldReadAccessRules(ConceptDefinition concept) {
+        for (FieldDefinition field : concept.fields().values()) {
+            if (field.access() != null && hasText(field.access().read())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -409,6 +487,73 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         return evaluateAccessRule(concept.access().write(), subject, request.executionContext());
     }
 
+    /**
+     * R5.5: field-level write authorization -- see the interface javadoc for the full contract.
+     * Mirrors {@link #isRowWritable}'s subject choice (previous record if present, else incoming
+     * data) so a field rule can reference sibling fields the same way {@code concept.access.write}
+     * already can. Only a field the caller actually attempted to CHANGE is ever evaluated: a field
+     * absent from the incoming data, or present with the SAME value the record already had, is
+     * skipped -- this is what lets a client resend the whole record (a plain HTML form's readonly
+     * input still round-trips its current value) without tripping a denial on fields it never
+     * touched.
+     */
+    @Override
+    public List<String> deniedWriteFields(ConceptGatewayRequestContext request) {
+        ConceptDefinition concept = concept(request);
+        if (concept == null) {
+            return List.of();
+        }
+        Map<String, Object> incoming = request.data();
+        Map<String, Object> previousData = request.previousRecord().map(ConceptRecord::data).orElse(Map.of());
+        Map<String, Object> subject = request.previousRecord().map(ConceptRecord::data).orElse(incoming);
+        List<String> denied = new ArrayList<>();
+        for (FieldDefinition field : concept.fields().values()) {
+            if (field.access() == null || !hasText(field.access().write())) {
+                continue;
+            }
+            if (!incoming.containsKey(field.name())) {
+                continue;
+            }
+            Object incomingValue = incoming.get(field.name());
+            Object previousValue = previousData.get(field.name());
+            if (Objects.equals(normalizeComparable(incomingValue), normalizeComparable(previousValue))) {
+                continue;
+            }
+            if (!evaluateAccessRule(field.access().write(), subject, request.executionContext())) {
+                denied.add(field.name());
+            }
+        }
+        return List.copyOf(denied);
+    }
+
+    /**
+     * REG-195: an access rule is evaluated via the plain two-argument {@code evaluateBoolean},
+     * which resolves to an EMPTY {@link ComputedExpression.FunctionRegistry} -- so
+     * {@code $user.roles.contains(...)}, the only idiom this platform's own docs/corpus use for
+     * "does the actor have role X" inside {@code access.read}/{@code access.write}, throws
+     * "unknown function: contains" and the catch below turned that into a permanent, silent deny
+     * regardless of the actor's roles. {@code contains} does not exist in ANY {@code
+     * ComputedExpression} caller yet (not just this one) -- it is registered here, scoped to
+     * access-rule evaluation, following the extension pattern {@code docs/EXPRESSIONS.md} already
+     * documents ("a function registry is just a Map ... a future call site can register its own
+     * without touching the grammar itself") rather than reaching into the invariant engine's
+     * adapter-side registry, which kernel has no dependency on.
+     */
+    private static final ComputedExpression.FunctionRegistry ACCESS_RULE_FUNCTIONS =
+            ComputedExpression.FunctionRegistry.of(Map.of(
+                    "contains", (args, vars) -> {
+                        Object receiver = args.get(0).eval(vars);
+                        Object needle = args.get(1).eval(vars);
+                        if (receiver instanceof java.util.Collection<?> collection) {
+                            return collection.contains(needle);
+                        }
+                        if (receiver instanceof String haystack) {
+                            return needle != null && haystack.contains(String.valueOf(needle));
+                        }
+                        return false;
+                    }
+            ));
+
     private static boolean evaluateAccessRule(String expression, Map<String, Object> recordData, ExecutionContext context) {
         Map<String, Object> scope = new LinkedHashMap<>(recordData == null ? Map.of() : recordData);
         ExecutionContext effectiveContext = context == null ? ExecutionContext.anonymous() : context;
@@ -417,7 +562,7 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         scope.put("$user.tenantId", effectiveContext.tenantId());
         scope.put("$user.roles", effectiveContext.roles());
         try {
-            return ComputedExpression.evaluateBoolean(expression, scope);
+            return ComputedExpression.evaluateBoolean(expression, scope, ACCESS_RULE_FUNCTIONS);
         } catch (ComputedExpression.ExpressionException malformed) {
             // Fail closed: a row-level access rule that doesn't evaluate cleanly must never
             // silently grant access -- SemanticValidator already rejects this at model-compile
@@ -446,6 +591,50 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
     private static Object evaluateValueExpression(String expression, Map<String, Object> data) {
         return ValueExpressionEvaluator.evaluate(expression, data);
     }
+
+    /**
+     * R5.3: a field's {@code defaultExpression} evaluator, widened to recognize {@code
+     * nextNumber('name')} BEFORE falling through to the generic pure {@link
+     * ValueExpressionEvaluator} -- allocation is a real side effect ({@link #sequenceAllocator}
+     * may be JDBC-backed), which {@link ValueExpressionEvaluator} deliberately never is (it stays
+     * pure so a backfill preview can call it too without allocating anything). Only reachable from
+     * {@code defaultExpression} -- {@code derivedExpression} never routes through this method (see
+     * {@link #applyDefaultsAndDerivedValues}), because a derived value is recomputed on every save
+     * and would otherwise burn a fresh number on every unrelated update; {@code
+     * SequenceValidation} (DSL) refuses {@code nextNumber()} there at author time.
+     *
+     * <p>An unrecognized sequence name (should already be impossible -- {@code SequenceValidation}
+     * requires every {@code nextNumber('name')} to reference a declared sequence) falls through to
+     * the generic evaluator rather than throwing, so a hand-edited compiled model degrades the same
+     * way any other unrecognized function call does (evaluates to null) instead of failing the
+     * write outright.
+     */
+    private Object evaluateFieldDefault(String expression, Map<String, Object> data, String tenantId) {
+        Matcher matcher = NEXT_NUMBER_PATTERN.matcher(expression == null ? "" : expression.trim());
+        if (matcher.matches()) {
+            CompiledSequence sequence = sequencesByName.get(normalizeKey(matcher.group(1)));
+            if (sequence != null) {
+                return allocateSequenceNumber(sequence, tenantId);
+            }
+        }
+        return evaluateValueExpression(expression, data);
+    }
+
+    /** R5.3: composes the allocator's scope key (sequence name + tenant segment, if {@code scope:
+     *  "tenant"} + any date-bucket {@link SequenceNumberFormat#scopeKeySuffix} derives from the
+     *  format's own date tokens) and renders the allocated counter value through the sequence's
+     *  {@code format} template. */
+    private Object allocateSequenceNumber(CompiledSequence sequence, String tenantId) {
+        LocalDate today = LocalDate.now(ZoneOffset.UTC);
+        String scopeKey = sequence.name()
+                + ("tenant".equals(sequence.scope()) ? "|" + (tenantId == null ? "" : tenantId) : "")
+                + SequenceNumberFormat.scopeKeySuffix(sequence.format(), today);
+        long next = sequenceAllocator.allocateNext(scopeKey);
+        return SequenceNumberFormat.render(sequence.format(), next, today);
+    }
+
+    private static final Pattern NEXT_NUMBER_PATTERN =
+            Pattern.compile("^nextNumber\\(\\s*['\"]([^'\"]*)['\"]\\s*\\)$");
 
     private static final Pattern UNIQUE_BY_PATTERN =
             Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)\\.uniqueBy\\(([A-Za-z_][A-Za-z0-9_]*)\\)$");
@@ -683,7 +872,11 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
             boolean hidden,
             /** S4: this field's declared {@code reference.target} concept name, or null if this
              *  field isn't a reference at all. */
-            String referenceTarget
+            String referenceTarget,
+            /** R5.5: this field's own declared {read, write} authorization rule, or null if this
+             *  field declares no field-level rule. Reuses {@link AccessRules}, the same shape
+             *  {@code concept.access} uses -- field scope is one rung down the SAME ladder. */
+            AccessRules access
     ) {
         public FieldDefinition(
                 String name,
@@ -693,7 +886,7 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 String defaultExpression,
                 String derivedExpression
         ) {
-            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, false, null);
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, false, null, null);
         }
 
         /** S4: pre-existing 7-arg shape (name..hidden, no referenceTarget), preserved so callers
@@ -707,7 +900,22 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                 String derivedExpression,
                 boolean hidden
         ) {
-            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, hidden, null);
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, hidden, null, null);
+        }
+
+        /** S4/R5.5 boundary: pre-existing 8-arg shape (name..referenceTarget, no access), preserved
+         *  so callers that predate field-level access keep compiling unchanged. */
+        public FieldDefinition(
+                String name,
+                boolean required,
+                List<String> enumValues,
+                Object defaultValue,
+                String defaultExpression,
+                String derivedExpression,
+                boolean hidden,
+                String referenceTarget
+        ) {
+            this(name, required, enumValues, defaultValue, defaultExpression, derivedExpression, hidden, referenceTarget, null);
         }
 
         public FieldDefinition {

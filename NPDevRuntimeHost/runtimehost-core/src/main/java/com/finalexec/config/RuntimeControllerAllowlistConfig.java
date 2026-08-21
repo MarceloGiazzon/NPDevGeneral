@@ -27,17 +27,18 @@ public class RuntimeControllerAllowlistConfig {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     @Bean
-    // REG-180/T5: PLAN.md (third-person-readiness-2026-08-15) proposed matchIfMissing=true here so
-    // this enforces on every profile instead of only the dormant Spring 'default' one. Tried and
-    // REVERTED -- verified against runtime-supported-controllers.json before shipping (never live,
-    // caught in review): npdev.runtime.surface-profile is set ONLY by application-default.properties,
-    // so on every REAL launch profile (dev/prod/trial, none of which set it) allowsController() falls
-    // back to the manifest's own defaultSurfaceProfile ('supported-core') and strips every controller
-    // not in allowedControllers -- which is ALL SIX com.finalexec.controlpanel.* controllers (REG-180
-    // already established this). matchIfMissing=true would therefore make every real boot silently
-    // 404 the entire ControlPanel/SUPERUSER admin surface, not just the one nobody uses. Left OPEN;
-    // see REG-180's own ledger entry for the (already-tried-and-reverted) allowedControllers option
-    // and why a real fix needs more design than a one-line default flip in either direction.
+    // REG-180 (resolved 2026-08-20, option (b)): this enforcement is INTENTIONALLY scoped to Spring's
+    // reserved 'default' profile. application-default.properties is the ONLY place
+    // npdev.runtime.supported-surface-enforced=true is set, and that file loads only on a fully
+    // UN-PROFILED boot -- no real launcher boots un-profiled, so this postprocessor is dormant on every
+    // documented path. This is deliberate, not an oversight: moving the flag onto a real launch profile
+    // (dev/prod/trial) would strip the entire com.finalexec.controlpanel.* SUPERUSER admin surface,
+    // which is intentionally NOT in allowedControllers (runtime-supported-controllers.json). Do not move
+    // the flag onto a real profile without first adding a companion allowlist mechanism for
+    // non-com.finalexec.api packages. Pinned by
+    // scripts/quality/run-runtime-surface-evidence.ps1 ("enforcement-scoped-to-default-profile-only").
+    // (History: a matchIfMissing=true proposal and an add-ControlPanel-to-allowlist proposal were both
+    // tried and reverted -- each would 404 the admin surface or break the runtime-surface invariant.)
     @ConditionalOnProperty(name = SUPPORTED_SURFACE_PROPERTY, havingValue = "true")
     static BeanDefinitionRegistryPostProcessor supportedRuntimeControllerAllowlistPostProcessor(
             Environment environment

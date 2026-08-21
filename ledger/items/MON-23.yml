@@ -1,0 +1,128 @@
+id: MON-23
+title: >-
+  R9.6/MON-22 emitted Install-Service.ps1/Uninstall-Service.ps1 and their POSIX twins into every
+  generated app's _ops, but no CLI verb could reach them -- MON-22 explicitly deferred this; add
+  the thin `npdev service install|uninstall` wrapper it named as a follow-up
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R9.6 -- "npdev service install --
+  supervision without Docker ... Emit and register a systemd unit or Windows service wrapper". Its
+  emitter half is ledger MON-22 (DONE, 2026-08-19), whose own "DELIBERATELY NOT DONE" section reads
+  verbatim: "No `npdev service install` CLI verb was added -- `NPDevCli/npdev_cli.py` is out of this
+  item's ownership ... wiring a thin CLI verb over them is a follow-up for whoever owns
+  npdev_cli.py next." That is this item. MON-22 itself is left untouched (its own scope, guard and
+  verification stay exactly as it recorded them) -- opened as a separate item rather than reopening
+  or editing it, since editing a closed, VERIFIED_LIVE item to absorb unrelated new file ownership
+  would blur what MON-22 actually proved.
+surface: cli/service
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_service_cli.py
+detail: |
+  `npdev service install --app-dir <app> [--dry-run] [--start] [--profile <name>] [--json]` and
+  `npdev service uninstall --app-dir <app> [--dry-run] [--json]` -- two new top-level subcommands.
+
+  **THIN BY CONSTRUCTION.** `_service_script` only LOCATES the platform-appropriate script already
+  emitted by `OperationalRunbookEmitter` (`Install-Service.ps1`/`Uninstall-Service.ps1` on Windows,
+  `install-service.sh`/`uninstall-service.sh` elsewhere) under `<finalAppRoot>/_ops` -- the same
+  anchor `npdev bench` already uses (`app_record["finalAppRoot"]`, not the discovery-only
+  `opsDir`, which can point at the pre-QUAL-3 legacy-shared location instead) -- and
+  `_run_service_op` only builds the argv and runs it. Zero OS-service logic is reimplemented here;
+  every actual registration/removal decision (idempotent no-op on a same-app re-run, named refusal
+  on a different-app name collision, `Restart=always` reasoning, the Scheduled-Task-not-a-real-SCM-
+  service caveat) lives entirely in the scripts MON-22 already proved live.
+
+  **App resolution matches `npdev bench` exactly, per this task's own instruction**: both call
+  `npdev_monitor.probe_app` and refuse with the record's own `detail` message when `isAppRoot` is
+  false. A missing script (an app generated before R9.6, or missing this platform's twin) is a
+  separate, clearly-worded refusal naming the exact path and R9.6 by name.
+
+  **`--dry-run` is prominent by design, not just by flag name** -- its own `--help` text opens with
+  "RECOMMENDED FIRST STEP, DO THIS BEFORE A REAL INSTALL", per this task's explicit instruction.
+  Install's `--dry-run` is passed straight through as the REAL `-DryRun`/`--dry-run` flag the
+  emitted scripts already support (MON-22 independently proved this branch side-effect-free and
+  needing no elevation). Uninstall has NO native dry-run flag on either platform -- both scripts are
+  already an idempotent no-op when nothing is installed, which MON-22 also proved live -- so rather
+  than silently drop `--dry-run` or pretend a flag that does not exist, `service uninstall
+  --dry-run` is a CLI-level preview: it prints the exact command that WOULD run and returns without
+  ever calling `subprocess.run` at all (asserted directly in
+  `ServiceUninstallDryRunPreviewTest.test_uninstall_dry_run_never_calls_subprocess`, which mocks
+  `subprocess` and asserts `.run.assert_not_called()`).
+
+  **`--profile` is systemd-only and Windows refuses it, stated up front.** `Install-Service.ps1`
+  has no `-Profile` parameter (it always wraps `Start-App.ps1` unmodified); `install-service.sh`
+  does. Passing `--profile` while targeting Windows is refused BEFORE any subprocess starts
+  (verified: mocked `subprocess` and asserted `.run.assert_not_called()` on that refusal path too).
+
+  **NEVER INSTALLED OR UNINSTALLED A REAL SERVICE ANYWHERE, exactly as instructed.** Every test
+  either (a) drives a REAL `--dry-run` against a minimal STUB `Install-Service.ps1`/
+  `install-service.sh` written by the test itself -- not the real generated one, since
+  `OperationalRunbookEmitter` is a different agent's file ownership in this session -- because the
+  stub's dry-run branch mirrors the real script's own already-live-verified (MON-22) zero-side-
+  effect contract; or (b) drives a REAL (non-dry-run) `uninstall` against a stub whose own "nothing
+  installed" branch is the genuine idempotent no-op path, never a simulation of one; or (c) proves a
+  refusal, which by definition touches no OS state. `Get-ScheduledTask`/`systemctl` were never
+  called by anything in this test suite -- confirmed by the stubs themselves containing no such
+  calls at all, not merely by not observing side effects.
+
+  **A REAL TESTING-METHODOLOGY GOTCHA, found live while writing this item's own POSIX-branch
+  tests.** The first draft exercised the POSIX code path on this Windows dev machine via
+  `mock.patch.object(os, "name", "posix")` -- which broke immediately with `pathlib._abc.
+  UnsupportedOperation: cannot instantiate 'PosixPath' on your system`, because Python 3.13's own
+  `pathlib.Path()` factory reads the SAME shared `os` module this code imports, and patching
+  `os.name` process-wide makes pathlib itself think it is on POSIX while the real OS underneath
+  still is not. Fixed by adding one indirection, `_is_windows_platform()`, that `_service_script`/
+  `_run_service_op` call instead of inlining `os.name == "nt"` -- tests patch THAT function instead,
+  leaving `pathlib`'s own `os.name` read untouched. Reproduced live (three tests failed with the
+  exact `UnsupportedOperation` traceback before the fix, all three green after) -- not a theoretical
+  concern, an actual RED this item's own work produced and then fixed in the same commit.
+
+  MEASURED live through the real `npdev` entry point (not just unit tests), against a hand-built
+  fixture app: `service install --app-dir <app> --dry-run --json` ran the stub for real and printed
+  its dry-run output; `service uninstall --app-dir <app> --dry-run --json` printed the exact
+  would-run command and executed nothing; `service uninstall --app-dir <app> --json` (no dry-run)
+  ran for real and reported the safe "Nothing to do" no-op; `service install --app-dir
+  <a-plain-non-app-directory> --dry-run` refused with the same "not a generated NPDev app" message
+  `npdev bench`/`monitor probe` already use, exit code 1.
+
+  NUMBERS: 13 new tests in `NPDevCli/tests/test_service_cli.py` (refusal paths, command-
+  construction for both platforms, real Windows dry-run/no-op execution against a stub, the
+  uninstall CLI-level preview's never-calls-subprocess proof, and a real POSIX execution of the
+  stub twin via `sh` -- present and used on this dev machine via Git's bundled coreutils). Combined
+  with the sibling PACK-15 item's 17 new tests, `NPDevCli/tests` totals 432, with the same 2
+  pre-existing `EngineDetection` failures (unrelated to packs or services) present before either
+  item's work started.
+
+  **NOT DONE, stated plainly.** No real OS service/scheduled task was ever installed or uninstalled
+  on any machine, by design (installing is privileged and hard to reverse -- exactly what this task
+  asked to avoid). The "refuse a same-name conflict pointed at a DIFFERENT app" branch is therefore
+  proven only at the level MON-22 already proved it (the emitted scripts' own logic + structural
+  tests), not re-proven here against a real second registration. `OperationalRunbookEmitter` was not
+  touched -- out of this session's file ownership, and the scripts already exist per MON-22.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_service_cli.py
+  asserts: >-
+    `npdev service install|uninstall` resolves the app via `npdev_monitor.probe_app` and refuses
+    clearly when it is not a generated app or the platform's own service script is missing;
+    correctly selects `Install-Service.ps1`/`Uninstall-Service.ps1` + a PowerShell interpreter on
+    Windows and `install-service.sh`/`uninstall-service.sh` + `sh` on POSIX (proven by real
+    execution on both branches, not just command construction); passes `--dry-run`/`--start`
+    through to install as the scripts' own real flags and refuses `--profile` on Windows before any
+    subprocess starts; and, since neither uninstall script has a native dry-run mode, proves
+    `service uninstall --dry-run` executes nothing at all (`subprocess.run` asserted never called)
+    while still printing the exact command it would have run.
+  provenRed: true
+  provenRedNote: >-
+    The service verb itself is new (nothing to have been red before). But this item DID produce a
+    real, reproduced RED during its own development: an early draft's POSIX-branch tests patched
+    `os.name` directly and hit `pathlib._abc.UnsupportedOperation: cannot instantiate 'PosixPath' on
+    your system` (three tests failing with that exact traceback on this Windows machine) because
+    Python 3.13's `pathlib.Path()` factory reads the same shared `os` module. Fixed by introducing
+    `_is_windows_platform()` as the mockable seam instead of patching `os.name` itself; re-run after
+    the fix, all three green. See this item's own detail field for the full reproduction.

@@ -1,0 +1,7 @@
+{
+  "api": {
+    "provider": "custom",
+    "baseURL": "https://deepseek.com",
+    "defaultModel": "claude-3-5-sonnet-latest"
+  }
+}

@@ -217,6 +217,17 @@ dependencies {
 
     // Runtime extension jars are staged outside the source/evidence workspace.
     implementation fileTree(dir: npdevRuntimeHostLibsDir, include: ['*.jar'])
+
+    // BUILD-2 (BT-2's own "the linking" follow-on, ledger item BUILD-2): a sealed pack jar an app
+    // links instead of generating that pack's own sources (FinalAppAssembler.linkSealedPacks) is
+    // staged INSIDE this specific app at libs/sealed-packs/ -- unlike npdevRuntimeHostLibsDir above,
+    // this is not a shared platform cache outside the workspace, it is this one app's own linked
+    // dependency. Conditional and inert (adds nothing) for every app that links no sealed pack, which
+    // is every app generated before this feature existed and every one that never opts in.
+    def npdevSealedPackJarsDir = file('libs/sealed-packs')
+    if (npdevSealedPackJarsDir.isDirectory()) {
+        implementation fileTree(dir: npdevSealedPackJarsDir, include: ['*.jar'])
+    }
 }
 
 // deps-and-java/PLAN.md W2.3/D3: this file stays a byte-for-byte, substitution-free copy
@@ -297,8 +308,6 @@ tasks.named('compileJava') {
 // TOGETHER, so deleting both keeps that rule's sibling-group check trivially satisfied (both absent).
 def modelSpecificGeneratedAppTests = [
         'com/finalexec/AsyncWaitResumeE2EIT.java',
-        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
-        'com/finalexec/InvariantApiIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         // REG-163: NonDefaultRuntimeSurfaceProfileIntegrationTest REVIVED 2026-08-15 -- the compile-
@@ -313,15 +322,15 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/RuntimeMetadataControllerStandaloneTest.java',
         'com/finalexec/RuntimeMetadataValidationControllerStandaloneTest.java',
-        'com/finalexec/RuntimePluginFilesystemDiscoveryIntegrationTest.java',
-        'com/finalexec/RuntimePluginStatusControllerIntegrationTest.java',
         'com/finalexec/RuntimePluginRuntimeRefResolverTest.java',
         'com/finalexec/RuntimeUiMetadataControllerStandaloneTest.java',
-        'com/finalexec/SupportedCoreControllerBlackBoxIntegrationTest.java',
-        'com/finalexec/SupportedRuntimeSurfaceAllowlistIntegrationTest.java',
+        // QUAL-5 Stage 3 (2026-08-20): RuntimePluginStatusControllerIntegrationTest,
+        // RuntimePluginFilesystemDiscoveryIntegrationTest, and SupportedRuntimeSurfaceAllowlistIntegrationTest
+        // are REVIVED -- each passes against the assembled simple-contact-intake sample.
+        // SupportedCoreControllerBlackBoxIntegrationTest is also REVIVED (REG-196 fix): discovery
+        // switched from filesystem walk to classpath scan of com.finalexec.api, matching the manifest's
+        // actual two-module scope (RuntimeHost + runtimehost-core jar).
         'com/finalexec/Stage12UiModelRuntimeIT.java',
-        'com/finalexec/Step01MultiConceptIntegrationTest.java',
-        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/TenantIsolationE2EIT.java'
 ]
 
@@ -330,21 +339,16 @@ def generatedRuntimeIntegrationTestSources = [
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/PublicationRollbackE2EIT.java',
         'com/finalexec/TenantIsolationE2EIT.java',
-        // R1 Stage 4 (MASTER-ROADMAP.md Track C item C3): 2 of the 6 remaining
-        // AbstractScenarioIntegrationTest subclasses -- confirmed via a real `integrationTest`
-        // compile+run against superuser-admin-console (the actual sample
-        // .github/workflows/npdev-ci-validation.yml's "RuntimeHost generated-app Postgres
-        // integration tests" step generates and runs integrationTest against, per that workflow's
-        // own NEW-1 comment) that they compile and pass there.
-        // The other 4 -- CanonicalDemoBusinessE2EIT, InvariantApiIntegrationTest,
-        // Step01MultiConceptIntegrationTest, Step03NestedJsonbIntegrationTest -- import
-        // com.npdev.generated.entities.{Patient,Provider,Appointment,InsuranceClaim} /
-        // repositories.{PatientRepository,ProviderRepository,AppointmentRepository,
-        // InsuranceClaimRepository}, none of which superuser-admin-console's model declares --
-        // confirmed as real `compileIntegrationTestJava` errors ("cannot find symbol") against
-        // that sample. Routing them here would BREAK the currently-passing CI integrationTest job,
-        // not fix a dead test, so they stay in modelSpecificGeneratedAppTests only (excluded from
-        // both test and integrationTest) pending a fixture that actually has these entities.
+        // QUAL-5 (2026-08-20): the 4 deferred AbstractScenarioIntegrationTest subclasses are now
+        // routed here. They import com.npdev.generated.entities.{Patient,Provider,Appointment,
+        // InsuranceClaim} / repositories.{PatientRepository,ProviderRepository,AppointmentRepository,
+        // InsuranceClaimRepository}, which only the canonical-demo sample declares -- so the CI
+        // integrationTest step (.github/workflows/npdev-ci-validation.yml) now generates
+        // canonical-demo instead of superuser-admin-console.
+        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
+        'com/finalexec/InvariantApiIntegrationTest.java',
+        'com/finalexec/Step01MultiConceptIntegrationTest.java',
+        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/AsyncWaitResumeE2EIT.java',
         'com/finalexec/Stage12UiModelRuntimeIT.java',
         // LNCH-1 Phase 7 (task 7.2): the Postgres Testcontainers twin of the H2 schema-evolution
@@ -512,7 +516,6 @@ sourceSets {
         java {
             srcDir 'src/main/java'
             srcDir 'npdev-generated/src/main/java'
-            exclude 'com/finalexec/HelloController.java'
             unsupportedRuntimeHostControllerSources.each { exclude it }
             unsupportedRuntimeHostServiceSources.each { exclude it }
             if (!generatedRuntimeMountPresent()) {

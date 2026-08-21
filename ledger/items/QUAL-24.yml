@@ -1,0 +1,93 @@
+id: QUAL-24
+title: >-
+  42 untriaged security-pattern-sweep hits accumulated behind a report-only gate step
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Surfaced by the clean T2 `run-all-gates.ps1` run that closed the 2026-08-19 roadmap session
+  (ai-knowledge gate step [6/36]). Confirmed pre-existing debt, not caused by that session's work:
+  none of the implicated files appear in any of its 20 commits.
+surface: quality/security-pattern-sweep
+files:
+  - scripts/quality/security-pattern-sweep-allowlist.json
+detail: |
+  `scripts/quality/security-pattern-sweep.py` reports 592 pattern hits across four bug SHAPES this
+  repo has actually produced (LNCH13-F1 guard-in-one-branch, REG-39 swallowed-security-exception,
+  REG-16 read-without-tenant-predicate, REG-36 unbounded-caller-input, plus sql-string-building).
+  550 carried a recorded verdict; **42 did not**, so every run re-printed them and the signal was
+  being read past. By pattern: `sql-string-building` 25, `read-without-tenant-predicate` 12,
+  `swallowed-security-exception` 3, `unbounded-caller-input` 1, `conditional-guard-no-else` 1.
+
+  The script deliberately never fails a build on its own (`--fail-on-new` is opt-in) on the stated
+  reasoning that "a heuristic gate that blocks CI on regex noise gets bypassed within a week". That
+  is right, and it is also exactly why the backlog grew unnoticed: nothing forced the read.
+
+  **Closed 2026-08-19: all 42 read individually, all 42 safe, 38 allowlist entries written**
+  (38 not 42 because the fingerprint is content-based, so three idioms appear at more than one site:
+  `5c3dd99975cf` x2, `b6003aed3caa` x3, `a8a3075d001f` x2). No REG was filed because none was
+  warranted. What each group actually is:
+
+  - **7 are not SQL at all.** The `SQL_VERB` regex is case-insensitive, so it matches the English
+    word "drop" in a validator's own diagnostic prose (`FieldValueValidation:156`,
+    `PackValidation:331/538` -- compile-time AST checks with no JDBC anywhere in the class) and the
+    `Select` in PowerShell's `Select-Object`/`Where-Object` inside `OperationalRunbookEmitter`'s
+    emitted `_ops` scripts (4 sites). Triaged rather than reworded: renaming a cmdlet or degrading a
+    diagnostic message to dodge a regex is the wrong repair.
+  - **6 advisory-lock reads are rowless.** `GET_LOCK`/`RELEASE_LOCK`, `pg_try_advisory_lock`/
+    `pg_advisory_unlock`, `sp_getapplock`/`sp_releaseapplock` are wrapped in a `SELECT` only because
+    that is how each engine returns their result. There is no row set for a tenant predicate to
+    scope, and the mutex they back is per-DATABASE -- scoping it per tenant would destroy the
+    exclusion it exists to provide (REG-91's shape).
+  - **17 are DDL in its declared home.** 7 in `NPDevKernel/.../storage/sql/` -- the package STOR-1
+    designates for exactly this, with `check-dialect-sites.py` failing the gate if it appears
+    anywhere else, so a hit there is the policy working. 8 in `SchemaRealizationEmitter` and 1 in
+    `WebhookDeliveryRecordStore`. DDL cannot bind identifiers as JDBC parameters on ANY engine, so
+    parameterisation is not an available alternative; identifiers route through `sqlId(engine, raw)`
+    -> `engine.dialect().identifier(raw)` and literals through `escapeLiteral()`/`quoteSqlLiteral()`.
+    The emitter runs at codegen time with no connection, caller or request in scope.
+  - **5 in `runtimehost-core` are new only because the code MOVED there.** In
+    `JdbcBusinessConceptStore` the tenant predicate IS present -- `existsUnique()` appends
+    `"tenant_id = ?"` at line 287 and `query()` appends `baseAlias + ".tenant_id = ?"` at line 402 --
+    but into a dynamically built `whereClauses` list, so it is not in the concatenated literal the
+    regex sees. `MigrationClaimStore:222` is the per-database boot mutex's single canonical row
+    (`WHERE claim_key = ?`, a compile-time constant) and is tenant-independent by design.
+  - **2 swallowed exceptions are fail-CLOSED, the inverse of REG-39.** Both catches are on
+    `HexFormat.of().parseHex(presented)` inside `verifySignature()`: the only way it throws is that
+    the attacker-supplied signature header is not valid hex, and a signature that cannot be parsed
+    IS invalid, so `return false` is the correct verdict rather than an infrastructure fault
+    misreported as one. The third (`DocumentRenderController:277`) is not a security verdict at all:
+    a missing logo file handle degrades to rendering the document without a logo, as its javadoc
+    states, and the null never reaches an authorization decision.
+  - **1 unbounded-caller-input has no asymmetry and no caller.** The checker's own guidance is to
+    look for a value bound without a limit while its PAIR has one; in `CronFireClaimStore:131`
+    `flowName` and `tenantId` are treated identically, both as real JDBC parameters (so length is
+    enforced by the column), and `ensureRowExists()` is reachable only from the in-process cron
+    scheduler -- never from a request.
+  - **1 conditional-guard-no-else has no other arm.** `checkCrudPermission` sits inside `restore()`,
+    and the ENTIRE method is wrapped in the same `{{#softDelete}}` section: when `softDelete` is
+    falsey the method is not emitted at all, so no generated path reaches a restore without the
+    check. LNCH13-F1 was the opposite -- a guard in one arm of a conditional whose other arm still
+    emitted the operation.
+
+  Re-run after the edits: **592 hits, 592 already cleared, 0 needing triage**, and
+  `--fail-on-new` exits 0.
+
+  **Not fixed here, deliberately:** the same run reports 206 cleared hits whose `where` prose names
+  a path the code no longer lives at, a consequence of this branch's `runtimehost-core` split.
+  The script prints this as explicitly informational (fingerprints survive file moves by design,
+  P3.1) and it is stale prose, not a stale verdict -- batching it into a triage commit would bury
+  the 38 real reads under 206 mechanical string edits.
+guard:
+  kind: script
+  ref: scripts/quality/security-pattern-sweep.py
+  asserts: >-
+    Every hit the sweep produces carries a recorded verdict in
+    scripts/quality/security-pattern-sweep-allowlist.json, keyed by a fingerprint of the matched
+    TEXT so that editing the cleared code invalidates the verdict and resurfaces the hit. Measured
+    2026-08-19: 592 hits / 592 cleared / 0 needing triage, `--fail-on-new` exit 0 (RED before the
+    fix: 42 needing triage).
+  provenRed: true

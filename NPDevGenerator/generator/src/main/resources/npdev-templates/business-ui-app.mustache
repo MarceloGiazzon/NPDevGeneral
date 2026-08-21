@@ -33,9 +33,20 @@
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
     boxView: { boxes: [], note: "", loading: false, loaded: false },
     promotion: { currentStage: "", history: [], loading: false, loaded: false, attempted: false },
+    // R7.2: the named seed/mock datasets declared under an app's definition/seeds/ (see
+    // DataSeedAdminController) -- loaded once (gated on ADMIN/SUPERUSER, the same guard the
+    // endpoint itself enforces server-side) so an empty grid's onboarding CTA can offer "Load
+    // sample data" instead of leaving a first-run app looking permanently dead.
+    seeds: { available: [], loading: false, loaded: false },
     // Keyed by declared Panel name -- deliberately separate from state.panels (per-CONCEPT grid
     // pagination state, a pre-existing and unrelated use of that name).
-    declaredPanels: {}
+    declaredPanels: {},
+    // R7.4: the model's declared properties[]/propertyScopes[] (see PropertyResolverController),
+    // fetched once at bootstrap. Saved views are pure opt-in progressive enhancement on top of the
+    // existing property cascade -- an app that declares no `views__<Concept>` property renders no
+    // views UI at all, so this stays null/[] harmlessly for every app that predates this feature.
+    propertyDeclarations: null,
+    propertyScopesInfo: null
   };
 
   // The header/side-nav chrome this used to own (app-bar, #sideNav, #layoutRoot, nav-collapse
@@ -102,7 +113,7 @@
 
   function humanize(str) {
     return String(str)
-      .replace(/([A-Z])/g, " $1")
+      .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
       .replace(/^./, function (s) { return s.toUpperCase(); })
       .trim();
   }
@@ -250,6 +261,21 @@
   }
 
   function isFieldReadonlyByCondition(field, values) {
+    // R5.5/GAP-2: `field.accessWriteScoped` is true when the model declares a field.access.write
+    // rule for this field at all (see BusinessUiEmitter.manifestFields) -- the SERVER is the one
+    // real enforcer of that rule (a denied write fails the whole save with FIELD_SCOPE_DENIED,
+    // never a silent per-field drop; see DefaultConceptGateway.enforceFieldWriteAccess). This
+    // client-side evaluator only ever looks up OTHER FIELD VALUES on the same record (see
+    // evaluateWhen/currentFormValues above) -- it has no access to the caller's role, tenant or a
+    // row-owner comparison, so it cannot evaluate the declared rule itself. Rather than guess,
+    // ANY field carrying the flag renders read-only here unconditionally: a real UX cost for a
+    // caller the server WOULD actually allow to write, but coherent -- no editable input that the
+    // very next save silently bounces -- and never itself a security boundary (isFieldEnabled/
+    // isFieldReadonlyByCondition affect only this generic UI's own <input disabled/readOnly>
+    // attributes; the server enforces regardless of what this function returns).
+    if (field.accessWriteScoped) {
+      return true;
+    }
     return field.readonlyWhen ? evaluateWhen(field.readonlyWhen, values) : false;
   }
 
@@ -260,6 +286,123 @@
   function setStatus(message, error) {
     el.status.textContent = message || "";
     el.status.classList.toggle("is-error", Boolean(error));
+  }
+
+  // R7.1. setStatus writes into el.status, which lives in the authbar strip at the top of #app --
+  // and .modal-backdrop (position:fixed, inset:0, z-index 10) covers #app outright. So a save that
+  // failed from a modal form reported its error onto a line the user could not see, behind the
+  // dimming layer. Toasts are the fix: one fixed host, appended to <body> above the backdrop, so
+  // the same message lands where the user is actually looking regardless of presentation.
+  const TOAST_TIMEOUT_MS = 6000;
+  el.toastHost = document.createElement("div");
+  el.toastHost.className = "toast-host";
+  el.toastHost.setAttribute("role", "region");
+  el.toastHost.setAttribute("aria-label", "Notifications");
+  document.body.appendChild(el.toastHost);
+
+  // Errors never auto-dismiss -- a validation message the user has to act on must not vanish while
+  // they are reading the field it points at. Success toasts fade on their own. R7.7: "pending" is a
+  // third non-auto-dismissing kind -- a toast reporting a flow still running must stay put until
+  // resolveToast() below morphs it into success/error, exactly the async counterpart of "don't
+  // vanish while the user still needs it."
+  function toast(message, kind) {
+    const copy = text(message).trim();
+    if (!copy) {
+      return null;
+    }
+    const node = document.createElement("div");
+    node.className = "toast is-" + (kind || "info");
+    node.setAttribute("role", kind === "error" ? "alert" : "status");
+    const body = document.createElement("div");
+    body.className = "toast-message";
+    body.textContent = copy;
+    node.appendChild(body);
+    const dismiss = button("×", "toast-close", function () { dismissToast(node); });
+    dismiss.setAttribute("aria-label", "Dismiss");
+    node.appendChild(dismiss);
+    el.toastHost.appendChild(node);
+    if (kind !== "error" && kind !== "pending") {
+      node.dataset.autoDismiss = String(setTimeout(function () { dismissToast(node); }, TOAST_TIMEOUT_MS));
+    }
+    return node;
+  }
+
+  function dismissToast(node) {
+    if (!node) {
+      return;
+    }
+    if (node.dataset.autoDismiss) {
+      clearTimeout(Number(node.dataset.autoDismiss));
+    }
+    if (node.parentNode) {
+      node.parentNode.removeChild(node);
+    }
+  }
+
+  // R7.7: morphs an existing "pending" toast in place into its resolved success/error state, rather
+  // than dismissing it and creating a second one -- the user's eye stays on the same element the
+  // whole time a tracked flow execution settles. Falls back to a fresh toast if the pending one was
+  // already dismissed (e.g. the user closed it manually) before the execution finished, so the
+  // outcome is still reported somewhere rather than silently dropped.
+  function resolveToast(node, success, message) {
+    if (!node || !node.parentNode) {
+      toast(message, success ? "success" : "error");
+      return;
+    }
+    node.className = "toast is-" + (success ? "success" : "error");
+    node.setAttribute("role", success ? "status" : "alert");
+    const body = node.querySelector(".toast-message");
+    if (body) {
+      body.textContent = text(message).trim();
+    }
+    if (node.dataset.autoDismiss) {
+      clearTimeout(Number(node.dataset.autoDismiss));
+      delete node.dataset.autoDismiss;
+    }
+    if (success) {
+      node.dataset.autoDismiss = String(setTimeout(function () { dismissToast(node); }, TOAST_TIMEOUT_MS));
+    }
+  }
+
+  // R7.7 (roadmap item, "Async flow-execution progress surface"): docs/UI_CONTRACT.md warns "a UI
+  // that shows Saved! on a 202 is lying" and names `execution.statusRoute` as the contract for
+  // following a flow-backed invocation's real outcome -- shipped (F2.1/F2.2) with no consumer until
+  // this. A declared Panel action bound to a flow (PanelRuntime#executeAction, binding: "flow")
+  // reaches the SAME WAITING_EVENT outcome through its own always-200 envelope instead of a raw
+  // HTTP 202 (see executeDeclaredPanelAction below) -- payload.status === "WAITING" is that
+  // envelope's equivalent of a 202. Never invent a synchronous "completed" message for it.
+  //
+  // Polling itself lives in NPDevShell (shell.js.mustache), not here: it already owns the
+  // persistent "recent executions" rail the roadmap asks for, and its own fetchJson/auth-token
+  // plumbing, so tracking one execution is a single call across that existing boundary rather than
+  // a second poller. The pending toast is created here (this file owns the toast host) and handed
+  // to NPDevShell only as an opaque resolve callback -- NPDevShell has no notion of toasts.
+  function trackFlowExecution(executionId, flowName) {
+    if (!executionId) {
+      return;
+    }
+    const label = flowName || "Flow";
+    const pending = toast(label + " is running…", "pending");
+    if (!(window.NPDevShell && typeof window.NPDevShell.trackExecution === "function")) {
+      return;
+    }
+    window.NPDevShell.trackExecution({
+      executionId: executionId,
+      flowName: label,
+      onSettled: function (outcome, detail) {
+        const failed = outcome !== "SUCCEEDED";
+        const errorSuffix = failed && detail && detail.lastErrorMessage ? ": " + detail.lastErrorMessage : "";
+        resolveToast(pending, !failed, label + (failed ? " failed" + errorSuffix + "." : " completed."));
+      }
+    });
+  }
+
+  // Feedback surface for anything the user WROTE (create/update/delete, panel row add/remove, an
+  // action run). Read-only chatter ("... loaded.") deliberately stays on setStatus alone, so the
+  // toast stack only ever carries outcomes the user asked for.
+  function notify(message, error) {
+    setStatus(message, error);
+    return toast(message, error ? "error" : "success");
   }
 
   function headers() {
@@ -277,7 +420,14 @@
     const contentType = response.headers.get("content-type") || "";
     const payload = contentType.includes("application/json") ? await response.json() : await response.text();
     if (!response.ok) {
-      throw new Error(errorMessage(payload, response.status));
+      // R7.1: the 4xx body a generated CRUD endpoint returns is field-addressable (see
+      // fieldViolations) and collapsing it to a message string threw that detail away here, at the
+      // one seam every caller goes through. Carry the parsed body and the status on the Error;
+      // .message is unchanged, so every existing `catch (error) { ... error.message }` still works.
+      const failure = new Error(errorMessage(payload, response.status));
+      failure.status = response.status;
+      failure.payload = payload;
+      throw failure;
     }
     return payload;
   }
@@ -298,47 +448,887 @@
         sort: defaultSort.field || concept.idField,
         direction: defaultSort.direction || "asc",
         filter: "",
+        // R7.3: one { operator, value } entry per filterable column the user has touched, keyed by
+        // field name. Empty-value entries are inert (buildWhereParam skips them) rather than
+        // deleted, so a control's operator choice survives even while its value is blank.
+        columnFilters: {},
         records: [],
         totalElements: 0,
         loading: false,
-        formMode: null
+        formMode: null,
+        // R7.4: which model-declared columns the user has hidden from this grid (names, not
+        // indices, so hiding survives a column being reordered upstream), and the saved-views
+        // cache/selection -- both purely client-side until a Save action writes them out.
+        hiddenColumns: [],
+        savedViews: { mine: [], shared: [], loaded: false, loading: false },
+        activeViewToken: "",
+        // R7.8: bulk selection is page-scoped client state -- an array of string ids, reset by
+        // loadPanel on every fetch (see below) so a selection can never silently outlive the rows
+        // it was made against (a changed page/filter/sort always starts from zero selected).
+        selectedIds: []
       };
     }
     return state.panels[concept.conceptName];
   }
 
-  function listUrl(concept) {
-    const panel = panelState(concept);
+  // R7.3: per-column structured filters ride the SAME `where` DSL (field:op:value, comma-joined
+  // clauses, AND-combined) the generated CRUD controller already parses for both its SQL-pushdown
+  // list path and its legacy free-text-filter path (see business-concept-crud-controller.mustache's
+  // parseWhereClauses) -- LNCH-5 shipped that server contract, but nothing in this UI ever built a
+  // `where` string until now. Only "eq"/"ne"/"contains" are accepted server-side (parseWhereClause
+  // rejects any other operator token), so the control set below is deliberately limited to those.
+  const FILTER_OPERATOR_LABELS = { contains: "contains", eq: "=", ne: "≠" };
+
+  function filterOperatorsFor(field) {
+    if (field.type === "boolean") {
+      return ["eq"];
+    }
+    if (field.enumValues && field.enumValues.length) {
+      return ["eq", "ne"];
+    }
+    if (field.type === "number" || field.type === "integer" || field.type === "decimal"
+        || field.type === "date" || field.type === "datetime") {
+      return ["eq", "ne"];
+    }
+    return ["contains", "eq", "ne"];
+  }
+
+  // Columns eligible for a structured filter control: visible on the grid (matches what the user
+  // can actually see being narrowed) AND declared filterable -- the same flag that already gates
+  // the free-text substring box server-side, so a field that box can't reach can't be filtered here
+  // either. R7.4: `panel` is optional so pre-existing callers keep working unchanged; passing it
+  // additionally excludes columns the user has hidden (see visibleFields).
+  function filterableVisibleFields(concept, panel) {
+    return visibleFields(concept, panel).filter(function (field) { return Boolean(field.filterable); });
+  }
+
+  // Lazily materializes a panel's per-field filter entry so a control always has somewhere to keep
+  // its operator/value without needing a parallel "have I been touched yet" check at every call site.
+  function columnFilterState(panel, field) {
+    if (!panel.columnFilters[field.name]) {
+      panel.columnFilters[field.name] = { operator: filterOperatorsFor(field)[0], value: "" };
+    }
+    return panel.columnFilters[field.name];
+  }
+
+  function columnFiltersActive(panel) {
+    return Object.keys(panel.columnFilters || {}).some(function (name) {
+      const entry = panel.columnFilters[name];
+      return entry && String(entry.value || "").length > 0;
+    });
+  }
+
+  // Builds the `where` query param from every column filter that currently has a value. Field names
+  // come from the manifest (never user input), so this cannot smuggle an arbitrary clause the server
+  // wouldn't otherwise accept.
+  function buildWhereParam(concept, panel) {
+    const clauses = [];
+    filterableVisibleFields(concept, panel).forEach(function (field) {
+      const entry = panel.columnFilters[field.name];
+      if (entry && String(entry.value || "").length > 0) {
+        clauses.push(field.name + ":" + entry.operator + ":" + entry.value);
+      }
+    });
+    return clauses.join(",");
+  }
+
+  function activeFilterSummary(concept, panel) {
+    const parts = [];
+    if (panel.filter) {
+      parts.push("search “" + panel.filter + "”");
+    }
+    filterableVisibleFields(concept, panel).forEach(function (field) {
+      const entry = panel.columnFilters[field.name];
+      if (entry && String(entry.value || "").length > 0) {
+        const opLabel = FILTER_OPERATOR_LABELS[entry.operator] || entry.operator;
+        parts.push((field.label || field.name) + " " + opLabel + " “" + entry.value + "”");
+      }
+    });
+    return parts.join("; ");
+  }
+
+  // Shared by both the grid's own list fetch and CSV export, so "what the grid shows" and "what
+  // exports" are provably built from the identical filter/sort state -- page/size are the only
+  // params each caller sets for itself afterwards.
+  function baseQueryParams(concept, panel) {
     const params = new URLSearchParams();
-    params.set("page", String(panel.page));
-    params.set("size", String(panel.size));
     params.set("sort", panel.sort);
     params.set("direction", panel.direction);
     if (panel.filter) {
       params.set("filter", panel.filter);
     }
+    const where = buildWhereParam(concept, panel);
+    if (where) {
+      params.set("where", where);
+    }
+    return params;
+  }
+
+  function listUrl(concept) {
+    const panel = panelState(concept);
+    const params = baseQueryParams(concept, panel);
+    params.set("page", String(panel.page));
+    params.set("size", String(panel.size));
     return concept.endpointBase + "?" + params.toString();
   }
 
-  // LNCH-10 slice 1: reuses the grid's current sort. Deliberately does NOT carry over page/size
-  // (an export always wants every matching row, not just the page on screen -- the export
-  // endpoint pages internally server-side) or the free-text search box's `filter` value: that
-  // box is an OR-across-every-filterable-field substring match with no SQL-pushdown equivalent
-  // (the same documented LNCH-5 boundary the grid's own structured push-down query already lives
-  // with) -- the generic export endpoint's query contract only supports structured filters, none
-  // of which this grid's UI currently exposes. See exportFilterNotice below for the on-screen
-  // disclosure of this gap rather than silently exporting something other than what's on screen.
-  function exportCsvUrl(concept) {
+  // R7.3 (REG-12 LNCH-10 follow-up): Export CSV used to hit a SEPARATE server endpoint
+  // (/api/concepts/{concept}/export.csv, ConceptQueryController) whose query parser ignores both
+  // `filter` and `where` outright -- so a filtered grid silently exported the whole table. That
+  // endpoint isn't ours to change (RuntimeHost is out of scope for this template), so instead this
+  // walks the SAME list endpoint (concept.endpointBase) the grid itself already uses, one page at a
+  // time, with the SAME filter/sort params loadPanel sends -- "export matches the on-screen rows" by
+  // construction, not by keeping two query builders in sync. EXPORT_PAGE_SIZE mirrors the CRUD
+  // controller's own MAX_PAGE_SIZE (business-concept-crud-controller.mustache); EXPORT_ROW_CAP is a
+  // client-side safety bound so a runaway loop can't hang the tab on an unexpectedly huge result.
+  const EXPORT_PAGE_SIZE = 100;
+  const EXPORT_ROW_CAP = 50000;
+
+  async function exportPanelCsv(concept) {
     const panel = panelState(concept);
-    const params = new URLSearchParams();
-    params.set("sort", panel.sort);
-    params.set("direction", panel.direction);
-    return "/api/concepts/" + encodeURIComponent(concept.conceptName) + "/export.csv?" + params.toString();
+    const fields = visibleFields(concept, panel);
+    const columns = fields.map(function (field) { return { name: field.name, label: field.label || field.name }; });
+    const rows = [];
+    let page = 0;
+    try {
+      setStatus("Preparing " + concept.displayName + " export…", false);
+      while (rows.length < EXPORT_ROW_CAP) {
+        const params = baseQueryParams(concept, panel);
+        params.set("page", String(page));
+        params.set("size", String(EXPORT_PAGE_SIZE));
+        const payload = await fetchJson(concept.endpointBase + "?" + params.toString(), {
+          method: "GET",
+          headers: headers()
+        });
+        const content = Array.isArray(payload.content) ? payload.content : [];
+        rows.push.apply(rows, content);
+        if (content.length < EXPORT_PAGE_SIZE) {
+          break;
+        }
+        page += 1;
+      }
+      downloadCsv(buildCsv(columns, rows), csvFilenameFor(concept));
+      setStatus(concept.displayName + " export ready: " + rows.length + " row(s).", false);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  function buildCsv(columns, rows) {
+    const lines = [columns.map(function (column) { return csvCell(column.label); }).join(",")];
+    rows.forEach(function (row) {
+      lines.push(columns.map(function (column) { return csvCell(row[column.name]); }).join(","));
+    });
+    return lines.join("\r\n") + "\r\n";
+  }
+
+  // Client-side mirror of CsvCells (NPDevRuntimeHost com.finalexec.api) so a value that started a
+  // formula (=, +, -, @, tab, CR) can't execute in a spreadsheet, while a plain negative number like
+  // -42 still exports as a number rather than a neutralized string -- same rule, same reasoning, kept
+  // in lockstep on purpose because this now IS the export path (the server's own CSV writer is no
+  // longer in this UI's request path).
+  function csvCell(value) {
+    const raw = value === null || value === undefined ? "" : String(value);
+    const cell = neutralizeCsvFormula(raw);
+    if (cell.indexOf(",") < 0 && cell.indexOf("\"") < 0 && cell.indexOf("\n") < 0 && cell.indexOf("\r") < 0) {
+      return cell;
+    }
+    return "\"" + cell.replace(/"/g, "\"\"") + "\"";
+  }
+
+  function neutralizeCsvFormula(value) {
+    if (!value) {
+      return value;
+    }
+    const first = value.charAt(0);
+    const formulaLead = first === "=" || first === "+" || first === "-" || first === "@"
+        || first === "\t" || first === "\r";
+    if (!formulaLead || isPlainCsvNumber(value)) {
+      return value;
+    }
+    return "'" + value;
+  }
+
+  function isPlainCsvNumber(value) {
+    if (value.length < 2) {
+      return false;
+    }
+    let digitSeen = false;
+    let dotSeen = false;
+    for (let index = 1; index < value.length; index += 1) {
+      const ch = value.charAt(index);
+      if (ch >= "0" && ch <= "9") {
+        digitSeen = true;
+      } else if (ch === "." && !dotSeen) {
+        dotSeen = true;
+      } else {
+        return false;
+      }
+    }
+    return digitSeen;
+  }
+
+  function csvFilenameFor(concept) {
+    const safe = String(concept.conceptName || "export").replace(/[^A-Za-z0-9_-]/g, "_");
+    return (safe || "export") + ".csv";
+  }
+
+  function downloadCsv(csvText, filename) {
+    const blob = new Blob([csvText], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  // R7.6 -- Generic CSV import, generalizing the propose -> review -> commit triad three
+  // hand-authored WmsOffice wizards already proved at the AGGREGATE level (DocumentoFiscalAggregate/
+  // RomaneioAggregate/InventarioArquivoAggregate: a procedure parses raw input into a draft, the
+  // Workbench renders an editable review grid, and commit is one atomic N+1-row write). A plain
+  // concept grid has no aggregate/draft/procedure machinery to reuse, so this generalizes the SHAPE
+  // of that pattern with different mechanics: "propose" is a client-side CSV parse (below), "review"
+  // is a per-row-validated preview table (reusing fieldViolations, the same per-field error parser
+  // R7.1/EDIT-5 built for the create/edit form), and "commit" is a sequence of independently atomic
+  // single-row POSTs against the SAME concept.endpointBase the New/Edit form already uses -- each
+  // accepted row's write is all-or-nothing (it is exactly the one request submitForm already makes),
+  // never a giant multi-row transaction, so a mid-file failure can only ever leave the rows already
+  // POSTed committed and the remaining rows simply not attempted -- never a half-written ROW. Rows
+  // that fail CLIENT-side validation (required/enum) are never sent at all, so "commit only accepted
+  // rows" is enforced before a single request goes out, not after a partial server-side failure.
+  //
+  // Deliberately NOT an aggregate-style multi-row transaction: importing 500 rows is 500 independent
+  // creates, so a row 400 rejection does not roll back rows 1-399. That is the DESIGN (matching the
+  // roadmap's explicit "commit only ACCEPTED rows" wording, not "all or nothing"), not a limitation
+  // discovered late -- H2/MySQL's implicit commit-on-DDL quirk (CLAUDE.md) does not apply here since
+  // Import performs no DDL, only the same DML the create endpoint always performed.
+  //
+  // The `id` column (present in Export CSV, since a concept's id is shown-in-UI by default) is never
+  // part of the create payload -- importableFields is formFields(concept, "create"), which already
+  // excludes every readOnly field including id, so a re-import always asks the server to mint a fresh
+  // id rather than attempting to reuse the exported one (which would collide on a populated grid).
+
+  function importableFields(concept) {
+    return formFields(concept, "create").filter(function (field) {
+      if (field.type === "array" || field.type === "object" || field.type === "file") {
+        return false;
+      }
+      // A many-to-many bond field has no flat scalar to put in one CSV cell.
+      return field.widget !== "multiselect";
+    });
+  }
+
+  const IMPORT_NUMERIC_TYPES = ["int", "integer", "long", "double", "float", "short", "byte", "number"];
+
+  // Inverse of csvCell/neutralizeCsvFormula: a value this app's OWN Export CSV wrote with a leading
+  // "'" guard (because it started with =, +, -, @, tab or CR and was not a plain negative number) has
+  // that guard stripped so the round-tripped value matches exactly. A genuine leading apostrophe that
+  // was never neutralized (not followed by one of those trigger characters) is left alone.
+  function unneutralizeCsvFormula(value) {
+    if (value.length >= 2 && value.charAt(0) === "'") {
+      const second = value.charAt(1);
+      if (second === "=" || second === "+" || second === "-" || second === "@" || second === "\t" || second === "\r") {
+        return value.slice(1);
+      }
+    }
+    return value;
+  }
+
+  // A small RFC4180-shaped parser: quoted fields may contain commas/newlines/doubled-quote escapes,
+  // matching exactly what buildCsv/csvCell (this same file's Export CSV) can produce, so Export's own
+  // output always parses back losslessly. \r\n, bare \n and bare \r line endings are all accepted
+  // (a pasted file may arrive with any of the three depending on the user's OS/editor).
+  function parseCsvText(rawText) {
+    const rows = [];
+    let row = [];
+    let field = "";
+    let inQuotes = false;
+    let i = 0;
+    const len = rawText.length;
+    while (i < len) {
+      const ch = rawText.charAt(i);
+      if (inQuotes) {
+        if (ch === "\"") {
+          if (rawText.charAt(i + 1) === "\"") { field += "\""; i += 2; continue; }
+          inQuotes = false; i += 1; continue;
+        }
+        field += ch; i += 1; continue;
+      }
+      if (ch === "\"") { inQuotes = true; i += 1; continue; }
+      if (ch === ",") { row.push(field); field = ""; i += 1; continue; }
+      if (ch === "\r" || ch === "\n") {
+        row.push(field);
+        field = "";
+        rows.push(row);
+        row = [];
+        i += (ch === "\r" && rawText.charAt(i + 1) === "\n") ? 2 : 1;
+        continue;
+      }
+      field += ch;
+      i += 1;
+    }
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    // Drop a wholly-blank trailing line (the common case: the file/paste ends with a newline).
+    return rows.filter(function (r) { return !(r.length === 1 && r[0] === ""); });
+  }
+
+  function importColumnLabel(field) {
+    return text(field.label || field.name);
+  }
+
+  function matchImportField(fields, headerCell) {
+    const needle = text(headerCell).trim().toLowerCase();
+    if (!needle) {
+      return null;
+    }
+    const byLabel = fields.find(function (field) {
+      return importColumnLabel(field).trim().toLowerCase() === needle;
+    });
+    if (byLabel) {
+      return byLabel;
+    }
+    return fields.find(function (field) { return field.name.toLowerCase() === needle; }) || null;
+  }
+
+  // Mirrors submitForm's own type coercion (same numeric-type list, same "decimal" exclusion to avoid
+  // a lossy float round-trip -- see submitForm's comment) so an imported row is converted exactly the
+  // way a hand-typed form value would be.
+  function importCellToPayloadValue(field, rawCell) {
+    const value = unneutralizeCsvFormula(text(rawCell));
+    if (field.type === "boolean") {
+      return value.trim().toLowerCase() === "true";
+    }
+    if (value === "") {
+      return "";
+    }
+    if (IMPORT_NUMERIC_TYPES.indexOf(field.type) !== -1) {
+      const n = (field.type === "int" || field.type === "integer" || field.type === "long"
+          || field.type === "short" || field.type === "byte")
+        ? parseInt(value, 10)
+        : parseFloat(value);
+      return isNaN(n) ? value : n;
+    }
+    return value;
+  }
+
+  // The client-side half of "per-row-validated preview": required + enum membership, the two checks
+  // that need no round trip to the server. Everything else (uniqueness, reference existence, other
+  // invariants) is left to the server's own create endpoint and surfaced via fieldViolations at
+  // commit time -- exactly the same split submitForm already uses (isFieldRequiredNow pre-submit,
+  // fieldViolations on a rejected save).
+  function validateImportRow(fields, values) {
+    const errors = [];
+    fields.forEach(function (field) {
+      const raw = text(values[field.name]).trim();
+      if (field.required && raw === "") {
+        errors.push({ field: field.name, message: (field.label || field.name) + " is required." });
+        return;
+      }
+      if (raw !== "" && field.enumValues && field.enumValues.length && field.enumValues.indexOf(raw) === -1) {
+        errors.push({
+          field: field.name,
+          message: (field.label || field.name) + ": \"" + raw + "\" is not one of " + field.enumValues.join(", ") + "."
+        });
+      }
+    });
+    return errors;
+  }
+
+  function buildImportPreview(concept, csvText) {
+    const fields = importableFields(concept);
+    const table = parseCsvText(csvText);
+    if (!table.length) {
+      return { error: "No rows found -- upload a CSV file or paste CSV text first.", fields: fields, rows: [] };
+    }
+    const headerRow = table[0];
+    const columnFields = headerRow.map(function (cell) { return matchImportField(fields, cell); });
+    const missingRequired = fields.filter(function (field) {
+      return field.required && columnFields.indexOf(field) === -1;
+    });
+    if (missingRequired.length) {
+      return {
+        error: "Missing required column(s): "
+            + missingRequired.map(function (field) { return field.label || field.name; }).join(", ") + ".",
+        fields: fields,
+        rows: []
+      };
+    }
+    const rows = table.slice(1).map(function (cells, index) {
+      const values = {};
+      columnFields.forEach(function (field, colIndex) {
+        if (field) {
+          values[field.name] = unneutralizeCsvFormula(text(cells[colIndex]));
+        }
+      });
+      const errors = validateImportRow(fields, values);
+      return { index: index, values: values, errors: errors, status: errors.length ? "invalid" : "pending" };
+    });
+    return { error: null, fields: fields, rows: rows };
+  }
+
+  // Commits only rows with zero client-side errors, one atomic single-row POST at a time (never
+  // batched), in file order. onRowUpdate is called after every row so the preview table can render
+  // progress live rather than freezing until the whole file finishes.
+  async function commitImportRows(concept, preview, onRowUpdate) {
+    let created = 0;
+    let skipped = 0;
+    let rejected = 0;
+    for (const row of preview.rows) {
+      if (row.errors.length) {
+        row.status = "skipped";
+        skipped += 1;
+        onRowUpdate(row);
+        continue;
+      }
+      const payload = {};
+      preview.fields.forEach(function (field) {
+        if (row.values[field.name] === undefined) {
+          return;
+        }
+        const converted = importCellToPayloadValue(field, row.values[field.name]);
+        if (converted !== "" || field.required) {
+          payload[field.name] = converted;
+        }
+      });
+      try {
+        await fetchJson(concept.endpointBase, { method: "POST", headers: headers(), body: JSON.stringify(payload) });
+        row.status = "created";
+        created += 1;
+      } catch (error) {
+        row.status = "rejected";
+        row.serverErrors = fieldViolations(error.payload, error.message);
+        row.serverMessage = error.message;
+        rejected += 1;
+      }
+      onRowUpdate(row);
+    }
+    return { created: created, skipped: skipped, rejected: rejected };
+  }
+
+  function importRowStatusLabel(status) {
+    switch (status) {
+      case "invalid": return "Error";
+      case "pending": return "Ready";
+      case "skipped": return "Skipped";
+      case "created": return "Created";
+      case "rejected": return "Rejected";
+      default: return status;
+    }
+  }
+
+  // The dialog itself: file-picker OR paste both feed the SAME textarea (one code path parses
+  // whichever text ends up there), matching "upload via the existing files endpoint or paste" --
+  // the picker reads the local file with FileReader entirely client-side (consistent with the rest
+  // of this template's principle of not adding a new server endpoint for a feature that does not
+  // need one; the file's bytes never have to leave the browser before the user has even previewed
+  // them). Uses the SAME openModal/closeModal (-> openModalInto/closeModalIn) every other dialog in
+  // this template uses, so Escape-to-close, the Tab focus trap and restore-focus-on-close (R7.9/
+  // EDIT-10) apply here for free -- nothing about dialog behavior is reimplemented.
+  function openImportDialog(concept) {
+    const fields = importableFields(concept);
+    const body = document.createElement("div");
+    body.className = "import-modal-body";
+
+    const intro = document.createElement("p");
+    intro.className = "import-intro";
+    const requiredLabels = fields.filter(function (field) { return field.required; })
+        .map(function (field) { return field.label || field.name; });
+    intro.textContent = "Upload or paste a CSV whose header row matches " + concept.displayName
+        + "'s Export CSV." + (requiredLabels.length ? " Required columns: " + requiredLabels.join(", ") + "." : "");
+    body.appendChild(intro);
+
+    const fileLabel = document.createElement("label");
+    fileLabel.className = "import-file-label";
+    const fileLabelText = document.createElement("span");
+    fileLabelText.textContent = "CSV file";
+    fileLabel.appendChild(fileLabelText);
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = ".csv,text/csv";
+    fileLabel.appendChild(fileInput);
+    body.appendChild(fileLabel);
+
+    const pasteLabel = document.createElement("label");
+    pasteLabel.className = "import-paste-label";
+    const pasteLabelText = document.createElement("span");
+    pasteLabelText.textContent = "…or paste CSV text";
+    pasteLabel.appendChild(pasteLabelText);
+    const textarea = document.createElement("textarea");
+    textarea.className = "import-paste-area";
+    textarea.rows = 8;
+    textarea.placeholder = fields.map(importColumnLabel).join(",");
+    pasteLabel.appendChild(textarea);
+    body.appendChild(pasteLabel);
+
+    fileInput.addEventListener("change", function () {
+      const chosen = fileInput.files && fileInput.files[0];
+      if (!chosen) {
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function () { textarea.value = String(reader.result || ""); };
+      reader.readAsText(chosen);
+    });
+
+    const previewWrap = document.createElement("div");
+    previewWrap.className = "import-preview-wrap";
+    body.appendChild(previewWrap);
+
+    const summary = document.createElement("div");
+    summary.className = "import-summary";
+    body.appendChild(summary);
+
+    let preview = null;
+
+    const actions = document.createElement("div");
+    actions.className = "modal-actions form-actions";
+    const commitButton = button("Import accepted rows", "primary", async function () {
+      if (!preview || preview.error || !preview.rows.length) {
+        return;
+      }
+      commitButton.disabled = true;
+      const result = await commitImportRows(concept, preview, renderImportPreview);
+      commitButton.disabled = false;
+      summary.textContent = "Import complete: " + result.created + " created, " + result.skipped
+          + " skipped (failed validation, never sent), " + result.rejected + " rejected by the server.";
+      notify(summary.textContent, result.rejected > 0);
+      if (result.created > 0) {
+        await reloadAfterMutation(concept);
+      }
+    });
+    commitButton.disabled = true;
+    const previewButton = button("Preview", "", function () {
+      preview = buildImportPreview(concept, textarea.value);
+      renderImportPreview();
+    });
+    actions.appendChild(previewButton);
+    actions.appendChild(commitButton);
+    // No separate Close button here -- openModalInto's own header Close button (plus Escape) already
+    // closes every dialog in this app; a second one would just duplicate it.
+    body.appendChild(actions);
+
+    function renderImportPreview() {
+      previewWrap.innerHTML = "";
+      if (!preview) {
+        return;
+      }
+      if (preview.error) {
+        const err = document.createElement("div");
+        err.className = "import-error";
+        err.textContent = preview.error;
+        previewWrap.appendChild(err);
+        commitButton.disabled = true;
+        return;
+      }
+      const acceptedCount = preview.rows.filter(function (row) { return row.status !== "invalid"; }).length;
+      summary.textContent = preview.rows.length + " row(s) parsed -- " + acceptedCount + " will be committed, "
+          + (preview.rows.length - acceptedCount) + " have validation errors and will be skipped.";
+      commitButton.disabled = acceptedCount === 0;
+      const table = document.createElement("table");
+      table.className = "import-preview-table";
+      const thead = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      const rowTh = document.createElement("th");
+      rowTh.textContent = "Row";
+      headRow.appendChild(rowTh);
+      preview.fields.forEach(function (field) {
+        const th = document.createElement("th");
+        th.textContent = field.label || field.name;
+        headRow.appendChild(th);
+      });
+      thead.appendChild(headRow);
+      table.appendChild(thead);
+      const tbody = document.createElement("tbody");
+      preview.rows.forEach(function (row) {
+        const tr = document.createElement("tr");
+        tr.className = "import-row-" + row.status;
+        tr.dataset.importRow = String(row.index);
+        tr.dataset.importStatus = row.status;
+        const rowTd = document.createElement("td");
+        rowTd.textContent = (row.index + 1) + " (" + importRowStatusLabel(row.status) + ")";
+        tr.appendChild(rowTd);
+        preview.fields.forEach(function (field) {
+          const td = document.createElement("td");
+          td.textContent = text(row.values[field.name]);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+        const noteMessages = row.errors.length
+            ? row.errors.map(function (e) { return e.message; })
+            : (row.serverErrors && row.serverErrors.length
+                ? row.serverErrors.map(function (e) { return e.message; })
+                : (row.serverMessage ? [row.serverMessage] : []));
+        if (noteMessages.length) {
+          const noteTr = document.createElement("tr");
+          noteTr.className = "import-row-note";
+          const noteTd = document.createElement("td");
+          noteTd.colSpan = preview.fields.length + 1;
+          noteTd.textContent = noteMessages.filter(Boolean).join(" ");
+          noteTr.appendChild(noteTd);
+          tbody.appendChild(noteTr);
+        }
+      });
+      table.appendChild(tbody);
+      previewWrap.appendChild(table);
+    }
+
+    openModal("Import " + concept.displayName, body);
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // R7.8: bulk selection + bulk actions (delete, set-field-on-selected) on the generic concept grid
+  // (renderTable below -- NOT the declared-Panel table renderDeclaredColumnsTable, which binds to
+  // an author-defined dataSource that need not even be a plain concept and already has its own
+  // action model via entry.actions/rowOps; extending bulk actions there is a separate, larger
+  // change this item does not cover).
+  //
+  // Design decision recorded in the roadmap item: a SERVER-SIDE batched endpoint, not a client-side
+  // loop, so one request gets one coherent audit trail instead of N independent ones. The batch
+  // endpoint (business-concept-crud-controller.mustache, POST {conceptName}/batch) does not do its
+  // own persistence -- it loops the SAME ConceptBinding.update()/delete() references the existing
+  // single-record PUT/DELETE endpoints already call (business-concept-crud-controller.mustache),
+  // which is the proven governed path: checkCrudPermission, ConceptGateway.save/delete (row-level
+  // access + invariants), and the audit trail, all per row, exactly as a single PUT/DELETE already
+  // gets. A row a caller lacks permission for comes back as one failed outcome (code "forbidden"),
+  // never a whole-batch rejection -- so a mixed-permission selection still applies to every row it
+  // can and reports the rest, mirroring how a single unauthorized PUT/DELETE already fails today
+  // (a 403 from checkCrudPermission), just captured per id instead of aborting the HTTP response.
+  //
+  // No client-side "may I do this" catalog exists to consult before offering these actions (the
+  // generic grid's existing View/Edit/Delete buttons are unconditional today too -- permission is
+  // enforced server-side, never hidden client-side); Delete/Set field are offered to every caller
+  // the same way, and a forbidden row is reported as a per-row failure rather than pre-filtered out.
+
+  // Candidate fields for "set field on selected": the same flat-scalar shape importableFields (CSV
+  // import) already established -- non-readOnly, no array/object/file -- minus reference fields
+  // (typing a raw foreign-key id across many rows blind is error-prone and out of this item's
+  // scope) and minus custom widgets (no generic way to drive one without a record to bind into).
+  function bulkEditableFields(concept) {
+    return formFields(concept, "edit").filter(function (field) {
+      if (field.type === "array" || field.type === "object" || field.type === "file") { return false; }
+      if (field.widget === "multiselect" || field.widget === "custom") { return false; }
+      return !field.reference;
+    });
+  }
+
+  function selectedRecordIds(panel) {
+    return panel.selectedIds || (panel.selectedIds = []);
+  }
+
+  function isRowSelected(panel, id) {
+    return selectedRecordIds(panel).indexOf(String(id)) !== -1;
+  }
+
+  function toggleRowSelected(panel, id, selected) {
+    const ids = selectedRecordIds(panel);
+    const key = String(id);
+    const at = ids.indexOf(key);
+    if (selected && at === -1) {
+      ids.push(key);
+    } else if (!selected && at !== -1) {
+      ids.splice(at, 1);
+    }
+  }
+
+  function clearSelection(panel) {
+    panel.selectedIds = [];
+  }
+
+  // Reuses importCellToPayloadValue's boolean/numeric coercion (the same rules submitForm applies
+  // to a typed form field) so a bulk-set value round-trips to the same JSON shape a normal edit
+  // would send, rather than a third, slightly different parsing path.
+  function bulkValueFromControl(field, control) {
+    if (control.type === "checkbox") {
+      return control.checked;
+    }
+    return importCellToPayloadValue(field, control.value);
+  }
+
+  async function postConceptBatch(concept, operation, ids, extra) {
+    const body = Object.assign({ operation: operation, ids: ids }, extra || {});
+    return fetchJson(concept.endpointBase + "/batch", {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify(body)
+    });
+  }
+
+  // Reuses .import-preview-table/.badge-* wholesale (business-ui-style.mustache) rather than
+  // introducing a second results-table style -- one row per requested id, "OK" or the server's own
+  // error code, and its message when it failed.
+  function showBatchResultsModal(concept, operationLabel, response) {
+    const results = Array.isArray(response.results) ? response.results : [];
+    const body = document.createElement("div");
+    body.className = "import-modal-body";
+    const summary = document.createElement("p");
+    summary.className = "import-summary";
+    summary.textContent = operationLabel + " complete: " + (response.succeeded || 0) + " succeeded, "
+        + (response.failed || 0) + " failed (of " + (response.requested || results.length) + " selected).";
+    body.appendChild(summary);
+    const wrap = document.createElement("div");
+    wrap.className = "import-preview-wrap";
+    const table = document.createElement("table");
+    table.className = "import-preview-table";
+    const thead = document.createElement("thead");
+    thead.appendChild(headerRow(["Record", "Result", "Message"]));
+    table.appendChild(thead);
+    const tbody = document.createElement("tbody");
+    results.forEach(function (row) {
+      const tr = document.createElement("tr");
+      tr.appendChild(textCell(row.id));
+      const statusTd = document.createElement("td");
+      const badge = document.createElement("span");
+      badge.className = "badge " + (row.ok ? "badge-success" : "badge-danger");
+      badge.textContent = row.ok ? "OK" : (row.code || "Error");
+      statusTd.appendChild(badge);
+      tr.appendChild(statusTd);
+      tr.appendChild(textCell(row.ok ? "" : (row.message || "")));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    body.appendChild(wrap);
+    openModal(operationLabel + " results -- " + concept.displayName, body);
+  }
+
+  async function runBulkDelete(concept, panel) {
+    const ids = selectedRecordIds(panel).slice();
+    if (!ids.length) { return; }
+    if (!window.confirm("Delete " + ids.length + " selected " + concept.displayName + " record(s)? This cannot be undone.")) {
+      return;
+    }
+    try {
+      const response = await postConceptBatch(concept, "delete", ids);
+      clearSelection(panel);
+      showBatchResultsModal(concept, "Delete", response);
+      notify("Deleted " + (response.succeeded || 0) + " of " + ids.length + " selected record(s).", (response.failed || 0) > 0);
+      if ((response.succeeded || 0) > 0) {
+        await reloadAfterMutation(concept);
+      } else {
+        render();
+      }
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  // The field-picker dialog IS the confirm step (an explicit "Set field" click after choosing both
+  // field and value), plus a window.confirm restating exactly what is about to happen -- the same
+  // belt-and-suspenders pattern deleteRecord/runBulkDelete use for the single/bulk delete actions.
+  function openBulkSetFieldDialog(concept, panel) {
+    const ids = selectedRecordIds(panel).slice();
+    if (!ids.length) { return; }
+    const fields = bulkEditableFields(concept);
+    if (!fields.length) {
+      notify("No editable fields are available for bulk update on " + concept.displayName + ".", true);
+      return;
+    }
+    const body = document.createElement("div");
+    body.className = "import-modal-body";
+    const intro = document.createElement("p");
+    intro.className = "import-intro";
+    intro.textContent = "Set a field to a new value on " + ids.length + " selected " + concept.displayName + " record(s).";
+    body.appendChild(intro);
+
+    const fieldLabel = document.createElement("label");
+    const fieldLabelText = document.createElement("span");
+    fieldLabelText.className = "field-label-text";
+    fieldLabelText.textContent = "Field";
+    fieldLabel.appendChild(fieldLabelText);
+    const fieldSelect = document.createElement("select");
+    fields.forEach(function (field) {
+      const option = document.createElement("option");
+      option.value = field.name;
+      option.textContent = field.label || field.name;
+      fieldSelect.appendChild(option);
+    });
+    fieldLabel.appendChild(fieldSelect);
+    body.appendChild(fieldLabel);
+
+    const valueWrap = document.createElement("div");
+    body.appendChild(valueWrap);
+
+    let valueControl = null;
+    function renderValueControl() {
+      const field = fields.find(function (f) { return f.name === fieldSelect.value; }) || fields[0];
+      valueWrap.innerHTML = "";
+      const valueLabel = document.createElement("label");
+      const valueLabelText = document.createElement("span");
+      valueLabelText.className = "field-label-text";
+      valueLabelText.textContent = "New value";
+      valueLabel.appendChild(valueLabelText);
+      valueControl = createInput(field, "", null);
+      valueLabel.appendChild(valueControl);
+      valueWrap.appendChild(valueLabel);
+    }
+    fieldSelect.addEventListener("change", renderValueControl);
+    renderValueControl();
+
+    const actions = document.createElement("div");
+    actions.className = "modal-actions form-actions";
+    const applyButton = button("Set field", "primary", async function () {
+      const field = fields.find(function (f) { return f.name === fieldSelect.value; }) || fields[0];
+      if (!field || !valueControl) { return; }
+      const value = bulkValueFromControl(field, valueControl);
+      if (!window.confirm("Set " + (field.label || field.name) + " to \"" + value + "\" on " + ids.length + " record(s)?")) {
+        return;
+      }
+      applyButton.disabled = true;
+      try {
+        const response = await postConceptBatch(concept, "setField", ids, { field: field.name, value: value });
+        clearSelection(panel);
+        closeModal();
+        showBatchResultsModal(concept, "Set field", response);
+        notify("Updated " + (response.succeeded || 0) + " of " + ids.length + " selected record(s).", (response.failed || 0) > 0);
+        if ((response.succeeded || 0) > 0) {
+          await reloadAfterMutation(concept);
+        } else {
+          render();
+        }
+      } catch (error) {
+        notify(error.message, true);
+      } finally {
+        applyButton.disabled = false;
+      }
+    });
+    actions.appendChild(button("Cancel", "", closeModal));
+    actions.appendChild(applyButton);
+    body.appendChild(actions);
+
+    openModal("Set field -- " + concept.displayName, body);
+  }
+
+  // Renders null (nothing appended by the caller) while nothing is selected, so an app generated
+  // before this feature and one generated after render byte-identical grids until a user actually
+  // checks a row.
+  function buildBulkActionsBar(concept, panel) {
+    const ids = selectedRecordIds(panel);
+    if (!ids.length) { return null; }
+    const bar = document.createElement("div");
+    bar.className = "bulk-actions-bar";
+    const count = document.createElement("span");
+    count.className = "bulk-actions-count";
+    count.textContent = ids.length + " selected";
+    bar.appendChild(count);
+    bar.appendChild(button("Clear selection", "", function () { clearSelection(panel); render(); }));
+    bar.appendChild(button("Set field…", "", function () { openBulkSetFieldDialog(concept, panel); }));
+    bar.appendChild(button("Delete selected", "danger", function () { runBulkDelete(concept, panel); }));
+    return bar;
   }
 
   async function loadPanel(concept) {
     const panel = panelState(concept);
     panel.loading = true;
+    // R7.8: a fresh fetch invalidates any prior selection -- the rows a selected id referred to may
+    // no longer be on screen (different page/filter/sort), so starting empty is the only choice that
+    // can't silently point the bulk actions bar at rows the user can no longer see.
+    panel.selectedIds = [];
     render();
     try {
       const payload = await fetchJson(listUrl(concept), {
@@ -449,13 +1439,22 @@
     }
   }
 
-  function showConcept(concept) {
+  // R7.5: `whereParam` is the same `where` DSL string R7.3 already builds from column filters
+  // (field:eq:value, comma-joined) -- when present (a gadget drill-down, or a bookmarked/shared
+  // deep link that carries one), it rides along in the published hash so a page reload or a second
+  // click on the same slice reproduces the identical URL rather than losing the filter.
+  function showConcept(concept, whereParam) {
     state.activeConcept = concept;
     el.app.querySelectorAll(".concept-panel").forEach(function (p) { p.style.display = "none"; });
     const section = document.getElementById(sectionId(concept));
     if (section) section.style.display = "";
     applyActiveGuidePage(concept);
-    const hash = "#" + sectionId(concept);
+    let hash = "#" + sectionId(concept);
+    if (whereParam) {
+      const params = new URLSearchParams();
+      params.set("where", whereParam);
+      hash += "?" + params.toString();
+    }
     if (window.location.hash !== hash) {
       window.location.hash = hash;
     }
@@ -481,6 +1480,19 @@
     loadDeclaredPanel(panelMeta);
   }
 
+  // R7.5: splits a hash into its section id and an optional `?where=` suffix (a gadget drill-down
+  // link -- see shell.js's drilldownHref -- or a hand-typed/bookmarked deep link carrying the same
+  // shape). Section-id matching below is unchanged; the where half is only ever read by
+  // activateTarget/showConcept.
+  function parseHashRoute(hash) {
+    const raw = (hash || "").replace(/^#/, "");
+    if (!raw) return { id: "", where: "" };
+    const qIndex = raw.indexOf("?");
+    if (qIndex === -1) return { id: raw, where: "" };
+    const params = new URLSearchParams(raw.slice(qIndex + 1));
+    return { id: raw.slice(0, qIndex), where: params.get("where") || "" };
+  }
+
   // Hash-based deep-link support: lets a shell nav link (from this same page, or -- once landed --
   // a hand-authored page's link into "/npdev-business-ui/index.html#concept-Foo") open the right
   // section instead of always landing on the default. sectionId()'s output is exactly what shell.js
@@ -488,7 +1500,7 @@
   // any extra coordination.
   function resolveHashTarget(hash) {
     if (!hash || !state.manifest) return null;
-    const id = hash.replace(/^#/, "");
+    const id = parseHashRoute(hash).id;
     if (!id) return null;
     const concept = visibleConcepts().find(function (c) { return sectionId(c) === id; });
     if (concept) return concept;
@@ -501,17 +1513,45 @@
     return panelMeta ? panelSectionRef(panelMeta) : null;
   }
 
-  function activateTarget(target) {
+  // R7.5: applies a drill-down's `where` clause onto this concept's OWN column-filter state (the
+  // exact structure R7.3's buildColumnFilterControl reads/writes), so the filter row shows exactly
+  // what's active -- not a silent server-side-only filter -- then refetches. Restricted to fields
+  // the concept declares filterable and to operators that field actually offers; an unknown field or
+  // disallowed operator in the clause is dropped rather than forwarded, same trust boundary
+  // buildWhereParam already applies to manually-entered filters (field names only ever come from the
+  // manifest, never directly from the URL).
+  function applyDrilldownFilter(concept, whereParam) {
+    const panel = panelState(concept);
+    const filterableByName = {};
+    concept.fields.forEach(function (field) { if (field.filterable) filterableByName[field.name] = field; });
+    whereParam.split(",").forEach(function (clause) {
+      const parts = clause.split(":");
+      if (parts.length < 3) return;
+      const fieldName = parts[0];
+      const operator = parts[1];
+      const value = parts.slice(2).join(":");
+      const field = filterableByName[fieldName];
+      if (!field || !value) return;
+      if (filterOperatorsFor(field).indexOf(operator) === -1) return;
+      panel.columnFilters[fieldName] = { operator: operator, value: value };
+    });
+    panel.page = 0;
+    loadPanel(concept);
+  }
+
+  function activateTarget(target, whereParam) {
     if (!target) return;
     if (target === STORE_SECTION) { showStore(); return; }
     if (target === BOX_VIEW_SECTION) { showBoxView(); return; }
     if (target === PROMOTION_SECTION) { showPromotion(); return; }
     if (target.declaredPanel) { showDeclaredPanel(target.declaredPanel); return; }
-    showConcept(target);
+    showConcept(target, whereParam);
+    if (whereParam) applyDrilldownFilter(target, whereParam);
   }
 
   function handleHashChange() {
-    activateTarget(resolveHashTarget(window.location.hash));
+    const route = parseHashRoute(window.location.hash);
+    activateTarget(resolveHashTarget(window.location.hash), route.where);
   }
 
   window.addEventListener("hashchange", handleHashChange);
@@ -568,7 +1608,14 @@
       );
       entry.lastActionName = actionName;
       entry.lastActionResult = payload.result;
-      setStatus("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
+      if (payload.status === "WAITING" && payload.executionId) {
+        // R7.7: a flow-bound action that parked on awaitEvent is not "completed" -- see
+        // trackFlowExecution's own comment for why this is the same lie docs/UI_CONTRACT.md warns
+        // against, reached through a Panel action instead of a raw 202.
+        trackFlowExecution(payload.executionId, (payload.result && payload.result.flowName) || actionName);
+      } else {
+        notify("Action \"" + actionName + "\" completed: " + (payload.status || "OK"), payload.status === "FAILED");
+      }
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
       setStatus(error.message, true);
@@ -588,7 +1635,7 @@
           + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows",
         { method: "POST", headers: headers(), body: JSON.stringify(body) }
       );
-      setStatus("Row added to \"" + dataSourceName + "\".", false);
+      notify("Row added to \"" + dataSourceName + "\".", false);
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
       setStatus(error.message, true);
@@ -603,7 +1650,7 @@
           + "/dataSources/" + encodeURIComponent(dataSourceName) + "/rows/" + encodeURIComponent(id),
         { method: "DELETE", headers: headers() }
       );
-      setStatus("Row removed from \"" + dataSourceName + "\".", false);
+      notify("Row removed from \"" + dataSourceName + "\".", false);
       await loadDeclaredPanel(panelMeta);
     } catch (error) {
       setStatus(error.message, true);
@@ -1746,15 +2793,23 @@
     actions.appendChild(button("Refresh", "", function () { loadPanel(concept); }));
     actions.appendChild(button("Clear", "", function () {
       panel.filter = "";
+      panel.columnFilters = {};
       panel.page = 0;
       loadPanel(concept);
     }));
-    const exportLink = document.createElement("a");
-    exportLink.href = exportCsvUrl(concept);
-    exportLink.textContent = "Export CSV";
-    exportLink.target = "_blank";
-    exportLink.rel = "noopener";
-    actions.appendChild(exportLink);
+    // R7.3: a real <button>, not an <a href>, because the CSV is now built client-side (see
+    // exportPanelCsv) by walking the SAME list request the grid just made -- so the export can never
+    // drift from whatever filter/sort state is currently on screen.
+    const exportButton = button("Export CSV", "", function () { exportPanelCsv(concept); });
+    actions.appendChild(exportButton);
+    // R7.6: generalizes the propose (parse) -> review (per-row-validated preview) -> commit (atomic
+    // per accepted row) triad that three hand-authored WmsOffice aggregate wizards already proved
+    // (DocumentoFiscalAggregate/RomaneioAggregate/InventarioArquivoAggregate, each parse->review->
+    // commit over a draft) -- generic here because a plain concept grid has no aggregate/draft
+    // machinery to propose into, so "propose" is a client-side CSV parse and "commit" is N
+    // independently atomic single-row POSTs to the SAME create endpoint the New/Edit form already
+    // uses, not one multi-row transaction. See openImportDialog.
+    actions.appendChild(button("Import CSV", "", function () { openImportDialog(concept); }));
     // LNCH-10 slice 2 (REG-12): prints exactly the currently loaded page -- the same filtered/sorted
     // rows on screen, not a full-table export (Export CSV already owns "every matching row").
     actions.appendChild(button("Print", "", function () { printPanel(concept); }));
@@ -1772,11 +2827,14 @@
     header.appendChild(actions);
     section.appendChild(header);
 
-    if (panel.filter) {
+    // R7.3: previously this disclosed that Export CSV IGNORED the filter -- now that exportPanelCsv
+    // reuses the grid's own request, the honest thing to surface is confirmation of what's active,
+    // not a warning about a mismatch that no longer exists.
+    if (panel.filter || columnFiltersActive(panel)) {
       const exportNotice = document.createElement("div");
       exportNotice.className = "export-filter-notice";
-      exportNotice.textContent = "Export CSV exports every " + concept.displayName
-          + " row sorted as shown -- it does not apply the search box filter above.";
+      exportNotice.textContent = "Filtered (" + activeFilterSummary(concept, panel)
+          + ") -- Export CSV exports exactly these rows, sorted as shown.";
       section.appendChild(exportNotice);
     }
 
@@ -1802,6 +2860,17 @@
     }));
     section.appendChild(filters);
 
+    // R7.4: opt-in per concept -- only rendered when the model declares this grid's
+    // `views__<Concept>` property (see savedViewsSupported), so an app that predates the feature
+    // shows no change here at all.
+    if (savedViewsSupported(concept)) {
+      section.appendChild(buildViewsBar(concept, panel));
+      const columnsToggle = buildColumnsToggle(concept, panel);
+      if (columnsToggle) {
+        section.appendChild(columnsToggle);
+      }
+    }
+
     if (panel.loading) {
       const loading = document.createElement("div");
       loading.className = "empty";
@@ -1810,17 +2879,294 @@
       return section;
     }
 
+    // R7.8: only rendered once at least one row is checked (see buildBulkActionsBar) -- appears
+    // directly above the grid it acts on, same placement as the filters bar above it.
+    const bulkBar = buildBulkActionsBar(concept, panel);
+    if (bulkBar) {
+      section.appendChild(bulkBar);
+    }
     section.appendChild(renderTable(concept, panel));
     section.appendChild(renderPager(concept, panel));
     return section;
   }
 
+  // R7.3: one <td> per visible column, directly under the header row -- filterable columns get an
+  // operator+value control, everything else (id, non-filterable fields, the trailing actions column)
+  // gets an empty cell so the row still lines up with the header/body grid.
+  function buildColumnFilterRow(concept, panel, fields) {
+    const row = document.createElement("tr");
+    row.className = "filter-row";
+    // R7.8: aligns with renderTable's new leading bulk-select column.
+    row.appendChild(document.createElement("td"));
+    fields.forEach(function (field) {
+      const td = document.createElement("td");
+      if (field.filterable) {
+        td.appendChild(buildColumnFilterControl(concept, panel, field));
+      }
+      row.appendChild(td);
+    });
+    row.appendChild(document.createElement("td"));
+    return row;
+  }
+
+  function buildColumnFilterControl(concept, panel, field) {
+    const wrap = document.createElement("div");
+    wrap.className = "column-filter";
+    // Name-based hook (independent of column order/position) for browser-verification routines and
+    // any future code that needs to find "the filter for field X" without guessing table position.
+    wrap.dataset.field = field.name;
+    const operators = filterOperatorsFor(field);
+    const entry = columnFilterState(panel, field);
+    function apply() {
+      panel.page = 0;
+      loadPanel(concept);
+    }
+    if (operators.length > 1) {
+      const opSelect = document.createElement("select");
+      opSelect.className = "column-filter-op";
+      operators.forEach(function (op) {
+        const option = document.createElement("option");
+        option.value = op;
+        option.textContent = FILTER_OPERATOR_LABELS[op] || op;
+        if (op === entry.operator) {
+          option.selected = true;
+        }
+        opSelect.appendChild(option);
+      });
+      opSelect.addEventListener("change", function () {
+        entry.operator = opSelect.value;
+        if (entry.value) {
+          apply();
+        }
+      });
+      wrap.appendChild(opSelect);
+    } else {
+      entry.operator = operators[0];
+    }
+    wrap.appendChild(buildColumnFilterValueControl(field, entry, apply));
+    return wrap;
+  }
+
+  // Type-appropriate value control: boolean/enum are closed choices (a select, so the value can
+  // never fail the server's own validation -- parseWhereClauses rejects an enum value that isn't one
+  // of the field's declared options), number/date/datetime get their native input type, everything
+  // else is free text against the "contains" operator. Mirrors createInput's type dispatch, kept
+  // separate because a filter control has no record to bind into and needs an explicit "Any" option.
+  function buildColumnFilterValueControl(field, entry, apply) {
+    if (field.type === "boolean") {
+      const select = document.createElement("select");
+      select.className = "column-filter-value";
+      [["", "Any"], ["true", "True"], ["false", "False"]].forEach(function (pair) {
+        const option = document.createElement("option");
+        option.value = pair[0];
+        option.textContent = pair[1];
+        if (pair[0] === entry.value) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+      select.addEventListener("change", function () {
+        entry.value = select.value;
+        apply();
+      });
+      return select;
+    }
+    if (field.enumValues && field.enumValues.length) {
+      const select = document.createElement("select");
+      select.className = "column-filter-value";
+      const any = document.createElement("option");
+      any.value = "";
+      any.textContent = "Any";
+      select.appendChild(any);
+      const options = (field.enumOptions && field.enumOptions.length)
+          ? field.enumOptions
+          : field.enumValues.map(function (value) { return { value: value, label: value }; });
+      options.forEach(function (opt) {
+        const option = document.createElement("option");
+        option.value = opt.value;
+        option.textContent = opt.label || opt.value;
+        if (opt.value === entry.value) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+      select.addEventListener("change", function () {
+        entry.value = select.value;
+        apply();
+      });
+      return select;
+    }
+    const input = document.createElement("input");
+    input.className = "column-filter-value";
+    input.value = entry.value || "";
+    if (field.type === "number" || field.type === "integer" || field.type === "decimal") {
+      input.type = "number";
+    } else if (field.type === "date") {
+      input.type = "date";
+    } else if (field.type === "datetime") {
+      input.type = "datetime-local";
+    } else {
+      input.type = "search";
+      input.placeholder = "contains…";
+    }
+    input.addEventListener("input", function () {
+      entry.value = input.value;
+    });
+    input.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") {
+        apply();
+      }
+    });
+    return input;
+  }
+
+  // R7.2: a fresh app's grid used to render a bare "(empty)"/"No records" line -- indistinguishable
+  // from a broken app. When no filter is active, this instead offers the two ways out of that state:
+  // create the first record by hand, or (when the app declares any definition/seeds/*.json AND the
+  // signed-in caller can reach DataSeedAdminController -- ADMIN/SUPERUSER, the identical guard the
+  // endpoint enforces server-side) load one of them. A filtered-to-empty grid gets a narrower message
+  // and no seed offer, since loading sample data wouldn't be the fix for "my filter matched nothing".
+  function buildEmptyStateCta(concept, panel) {
+    const wrap = document.createElement("div");
+    wrap.className = "empty-state";
+    const hasActiveFilter = Boolean(panel.filter) || columnFiltersActive(panel);
+    const message = document.createElement("p");
+    message.className = "empty-state-message";
+    message.textContent = hasActiveFilter
+        ? "No " + concept.displayName + " match the current filters."
+        : "No " + concept.displayName + " yet.";
+    wrap.appendChild(message);
+
+    const actions = document.createElement("div");
+    actions.className = "empty-state-actions";
+    actions.appendChild(button("Create " + concept.displayName, "primary", function () {
+      openForm(concept, "create", null);
+    }));
+    if (!hasActiveFilter && canManageSeeds() && state.seeds.loaded && state.seeds.available.length) {
+      const multiple = state.seeds.available.length > 1;
+      state.seeds.available.forEach(function (seed) {
+        const label = "Load sample data" + (multiple ? ": " + (seed.label || seed.id) : "");
+        const seedButton = button(label, "secondary", function () { runSeed(seed.id, concept); });
+        // REG-192: a stable, data-shape-independent hook (the seed's own id) so a routine can address
+        // this CTA without coupling to its rendered label, which changed "Demo users" -> "Load sample
+        // data" when REG-189 made a single-seed manifest render correctly.
+        seedButton.dataset.seedId = seed.id;
+        actions.appendChild(seedButton);
+      });
+    }
+    wrap.appendChild(actions);
+    return wrap;
+  }
+
+  function canManageSeeds() {
+    return Boolean(state.isSuperUser || state.roles.indexOf("ADMIN") !== -1);
+  }
+
+  // Loads the app's declared seed catalog once (DataSeedAdminController: GET /api/admin/seeds is
+  // itself ADMIN/SUPERUSER-gated, so canManageSeeds() here is a UI-side mirror of that same rule, not
+  // a substitute for it -- a caller who fails the server's check simply gets an empty list here via
+  // the catch below, same as before this feature existed). Re-renders on completion so any empty grid
+  // already on screen picks up the "Load sample data" action without the user having to do anything.
+  async function loadAvailableSeeds() {
+    if (state.seeds.loaded || state.seeds.loading) {
+      return;
+    }
+    state.seeds.loading = true;
+    try {
+      const seeds = await fetchJson("/api/admin/seeds", { method: "GET", headers: headers() });
+      state.seeds.available = Array.isArray(seeds) ? seeds : [];
+    } catch (error) {
+      state.seeds.available = [];
+    }
+    state.seeds.loading = false;
+    state.seeds.loaded = true;
+    render();
+  }
+
+  async function runSeed(seedId, concept) {
+    try {
+      setStatus("Loading sample data…", false);
+      const result = await fetchJson("/api/admin/seeds/" + encodeURIComponent(seedId) + "/run", {
+        method: "POST",
+        headers: headers()
+      });
+      if (!result || result.ok === false) {
+        notify("Sample data load failed: " + (result && result.failureMessage ? result.failureMessage : "unknown error"), true);
+        return;
+      }
+      const counts = (result && result.createdCounts) || {};
+      const total = Object.keys(counts).reduce(function (sum, key) { return sum + (counts[key] || 0); }, 0);
+      notify(total + " sample record(s) loaded.", false);
+      const panel = panelState(concept);
+      panel.page = 0;
+      await loadPanel(concept);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  // PACK-10 step 4: a field carries `extensionSource` (a pack alias) when an extension pack
+  // additively merged it onto a base pack's concept -- see PackExtensionComposer.applyExtension.
+  // Rendering it is purely presentational: which base/extension pack's field this is, never who
+  // controls WHERE it renders (that is app-controlled -- see the field's already-final position in
+  // `concept.fields`, decided server-side by composeExtensionsWithOrdering before this manifest was
+  // ever written). Appended as a sibling element (never folded into textContent), so it survives
+  // later `textContent =`/`+=` reassignment of the label it sits next to (e.g. the sort-arrow
+  // append in renderTable, or applyConditionals' required-marker rewrite).
+  function appendExtensionBadge(el, packAlias) {
+    if (!packAlias) {
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.className = "ext-field-badge";
+    badge.textContent = "+" + packAlias;
+    badge.title = "Added by extension pack \"" + packAlias + "\"";
+    el.appendChild(badge);
+  }
+
+  // R5.5/GAP-2: purely a courtesy hint that a field's WRITE is server-gated by a declared
+  // field.access.write rule -- see isFieldReadonlyByCondition's own comment for why this generic
+  // UI cannot evaluate the rule itself and instead renders the field read-only unconditionally
+  // whenever this badge shows. Never appended for accessReadScoped alone (a denied read is simply
+  // absent from the record already -- there is no field to badge).
+  function appendAccessBadge(el, field) {
+    if (!field || !field.accessWriteScoped) {
+      return;
+    }
+    const badge = document.createElement("span");
+    badge.className = "access-restricted-badge";
+    badge.textContent = "restricted";
+    badge.title = "This field's write access is restricted by server-side policy -- shown "
+        + "read-only here; the server, not this screen, decides who may actually change it.";
+    el.appendChild(badge);
+  }
+
   function renderTable(concept, panel) {
+    const fields = visibleFields(concept, panel);
     const table = document.createElement("table");
     table.className = "records";
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
-    visibleFields(concept).forEach(function (field) {
+    // R7.8: leading bulk-select column, always present -- mirrors the unconditional per-row Delete
+    // button below (no per-concept opt-in), since bulk delete/set-field are backed by the exact same
+    // governed primitives that already back those per-row actions (see the R7.8 block above).
+    const selectAllTh = document.createElement("th");
+    selectAllTh.className = "bulk-select-col";
+    const pageIds = panel.records.map(function (record) { return String(record[concept.idField]); });
+    const selectedOnPage = pageIds.filter(function (id) { return isRowSelected(panel, id); });
+    const selectAllBox = document.createElement("input");
+    selectAllBox.type = "checkbox";
+    selectAllBox.setAttribute("aria-label", "Select all rows on this page");
+    selectAllBox.disabled = pageIds.length === 0;
+    selectAllBox.checked = pageIds.length > 0 && selectedOnPage.length === pageIds.length;
+    selectAllBox.indeterminate = selectedOnPage.length > 0 && selectedOnPage.length < pageIds.length;
+    selectAllBox.addEventListener("change", function () {
+      pageIds.forEach(function (id) { toggleRowSelected(panel, id, selectAllBox.checked); });
+      render();
+    });
+    selectAllTh.appendChild(selectAllBox);
+    headRow.appendChild(selectAllTh);
+    fields.forEach(function (field) {
       const th = document.createElement("th");
       th.textContent = field.label || field.name;
       if (field.sortable) {
@@ -1839,28 +3185,47 @@
           loadPanel(concept);
         });
       }
+      appendExtensionBadge(th, field.extensionSource);
       headRow.appendChild(th);
     });
     const actionHead = document.createElement("th");
     actionHead.textContent = "";
     headRow.appendChild(actionHead);
     thead.appendChild(headRow);
+    thead.appendChild(buildColumnFilterRow(concept, panel, fields));
     table.appendChild(thead);
 
     const tbody = document.createElement("tbody");
     if (panel.records.length === 0) {
       const tr = document.createElement("tr");
       const td = document.createElement("td");
-      td.colSpan = visibleFields(concept).length + 1;
+      td.colSpan = fields.length + 2;
       td.className = "empty";
-      td.textContent = "No records";
+      td.appendChild(buildEmptyStateCta(concept, panel));
       tr.appendChild(td);
       tbody.appendChild(tr);
     } else {
       panel.records.forEach(function (record) {
         const tr = document.createElement("tr");
-        visibleFields(concept).forEach(function (field) {
+        const recordId = String(record[concept.idField]);
+        const selectTd = document.createElement("td");
+        selectTd.className = "bulk-select-col";
+        const rowBox = document.createElement("input");
+        rowBox.type = "checkbox";
+        rowBox.setAttribute("aria-label", "Select row");
+        rowBox.checked = isRowSelected(panel, recordId);
+        rowBox.addEventListener("change", function () {
+          toggleRowSelected(panel, recordId, rowBox.checked);
+          render();
+        });
+        selectTd.appendChild(rowBox);
+        tr.appendChild(selectTd);
+        fields.forEach(function (field) {
           const td = document.createElement("td");
+          // R7.10: consumed by business-ui-style.mustache's mobile card-collapse rule
+          // (`td::before { content: attr(data-label) }`) -- the header row that would normally
+          // carry this text is hidden in card mode, so each cell has to know its own column label.
+          td.setAttribute("data-label", field.label || field.name);
           renderFieldValue(td, field, record[field.name], false);
           tr.appendChild(td);
         });
@@ -1909,7 +3274,7 @@
   // this identical HTML shape, not a second bespoke layout.
   function printPanel(concept) {
     const panel = panelState(concept);
-    const fields = visibleFields(concept);
+    const fields = visibleFields(concept, panel);
 
     const doc = document.createElement("div");
     doc.className = "print-document";
@@ -1970,10 +3335,358 @@
     window.print();
   }
 
-  function visibleFields(concept) {
+  // R7.4: `panel` is optional (every pre-existing caller that omits it gets the full model-declared
+  // set unchanged). When passed, columns the user hid via the Columns toggle are excluded -- this is
+  // the ONE place "column set" actually takes effect, so a saved view's hiddenColumns and this
+  // function agree by construction rather than by two independent filters staying in sync.
+  function visibleFields(concept, panel) {
     const columns = concept.list && Array.isArray(concept.list.columns) ? concept.list.columns : [];
     const byName = Object.fromEntries(concept.fields.map(function (field) { return [field.name, field]; }));
-    return columns.map(function (name) { return byName[name]; }).filter(Boolean);
+    const fields = columns.map(function (name) { return byName[name]; }).filter(Boolean);
+    const hidden = panel && Array.isArray(panel.hiddenColumns) ? panel.hiddenColumns : [];
+    if (hidden.length === 0) {
+      return fields;
+    }
+    return fields.filter(function (field) { return hidden.indexOf(field.name) === -1; });
+  }
+
+  // R7.4 (R7.3 follow-up, RC-A1/RC-A3): named filter+sort+column sets per grid, persisted through
+  // the EXISTING scoped-property cascade (PropertyResolverController, GET/PUT /api/properties[/*])
+  // -- zero new server endpoints. A property must be model-declared to be settable at all
+  // (PropertyNotDeclaredException), so this feature is opt-in per concept: only a model that
+  // declares a `views__<ConceptName>` string property renders any of this UI; every other concept,
+  // and every app generated before this feature existed, is unaffected.
+  //
+  // One declared property holds BOTH "my views" and "the team's shared views" for a given grid,
+  // stored as independent rows at two different cascade scopes (settableAt should list a
+  // "$user.id"-derived scope and the implicit root scope, e.g. ["user","tenant"] -- the platform
+  // calls the latter "tenant" everywhere else in this codebase; the roadmap's "workspace" is the
+  // same root scope, just named for what it means to a reader). explain() already reports the
+  // winning row PLUS every less-specific row it overrode (PropertyExplanation.overrode), so ONE
+  // GET fetches both a user's own rows and the team's shared rows in a single round trip -- no
+  // second property, no new endpoint, and (LNCH loop) no cascade collapse hiding one behind the
+  // other the way reading a single scope's "current value" would.
+  function savedViewsPropertyKey(concept) {
+    return "views__" + String(concept.conceptName || "").replace(/[^A-Za-z0-9_]/g, "_");
+  }
+
+  function savedViewsSupported(concept) {
+    if (!Array.isArray(state.propertyDeclarations)) {
+      return false;
+    }
+    const key = savedViewsPropertyKey(concept);
+    return state.propertyDeclarations.some(function (p) { return p.name === key; });
+  }
+
+  // "user" and "tenant" are this platform's own names for the two ends of the cascade (see
+  // properties.html's identical "(tenant-wide root scope)" language) -- resolved from the model's
+  // OWN declared propertyScopes[] rather than hardcoded, so an app that named them differently
+  // still works.
+  function userScopeName() {
+    const scopes = state.propertyScopesInfo || [];
+    const found = scopes.find(function (s) { return s.from === "$user.id"; });
+    return found ? found.name : null;
+  }
+
+  function sharedScopeName() {
+    const scopes = state.propertyScopesInfo || [];
+    const found = scopes.find(function (s) { return !s.from; });
+    return found ? found.name : null;
+  }
+
+  function scopeNameForKind(scopeKind) {
+    return scopeKind === "shared" ? sharedScopeName() : userScopeName();
+  }
+
+  async function loadPropertyDeclarations() {
+    try {
+      const [props, scopes] = await Promise.all([
+        fetchJson("/api/properties", { headers: headers() }),
+        fetchJson("/api/properties/scopes", { headers: headers() })
+      ]);
+      state.propertyDeclarations = Array.isArray(props) ? props : [];
+      state.propertyScopesInfo = Array.isArray(scopes) ? scopes : [];
+    } catch (error) {
+      // Unauthenticated first paint (no API key yet) or an app with no properties[] declared at
+      // all -- either way, the views UI just stays hidden until the next successful bootstrap.
+      state.propertyDeclarations = [];
+      state.propertyScopesInfo = [];
+    }
+  }
+
+  function parseViewList(raw) {
+    if (typeof raw !== "string" || !raw) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      return [];
+    }
+  }
+
+  // Combines the ONE explain() call's winning value + overridden scopes into { mine, shared } --
+  // whichever of the two scopes has no stored row at all contributes an empty list, never an error.
+  async function fetchSavedViews(concept) {
+    const key = savedViewsPropertyKey(concept);
+    let explanation;
+    try {
+      explanation = await fetchJson("/api/properties/" + encodeURIComponent(key), { headers: headers() });
+    } catch (error) {
+      return { mine: [], shared: [] };
+    }
+    const uName = userScopeName();
+    const sName = sharedScopeName();
+    const winner = explanation.source ? explanation.source.scopeType : null;
+    const mine = winner === uName ? parseViewList(explanation.value) : [];
+    const shared = winner === sName ? parseViewList(explanation.value) : [];
+    (explanation.overrode || []).forEach(function (entry) {
+      if (entry.scopeType === sName && winner !== sName) {
+        shared.push.apply(shared, parseViewList(entry.value));
+      } else if (entry.scopeType === uName && winner !== uName) {
+        mine.push.apply(mine, parseViewList(entry.value));
+      }
+    });
+    return { mine: mine, shared: shared };
+  }
+
+  async function ensureSavedViewsLoaded(concept, force) {
+    const panel = panelState(concept);
+    if (!savedViewsSupported(concept)) {
+      return;
+    }
+    if (panel.savedViews.loading || (panel.savedViews.loaded && !force)) {
+      return;
+    }
+    panel.savedViews.loading = true;
+    try {
+      const combined = await fetchSavedViews(concept);
+      panel.savedViews.mine = combined.mine;
+      panel.savedViews.shared = combined.shared;
+      panel.savedViews.loaded = true;
+    } catch (error) {
+      panel.savedViews.mine = [];
+      panel.savedViews.shared = [];
+    } finally {
+      panel.savedViews.loading = false;
+    }
+    render();
+  }
+
+  function currentViewSnapshot(panel, name) {
+    return {
+      name: name,
+      filter: panel.filter || "",
+      columnFilters: JSON.parse(JSON.stringify(panel.columnFilters || {})),
+      sort: panel.sort,
+      direction: panel.direction,
+      hiddenColumns: (panel.hiddenColumns || []).slice()
+    };
+  }
+
+  function applySavedView(concept, view) {
+    const panel = panelState(concept);
+    panel.filter = view.filter || "";
+    panel.columnFilters = view.columnFilters ? JSON.parse(JSON.stringify(view.columnFilters)) : {};
+    panel.sort = view.sort || panel.sort;
+    panel.direction = view.direction || panel.direction;
+    panel.hiddenColumns = Array.isArray(view.hiddenColumns) ? view.hiddenColumns.slice() : [];
+    panel.page = 0;
+    loadPanel(concept);
+  }
+
+  async function saveCurrentView(concept, name, scopeKind) {
+    const scopeType = scopeNameForKind(scopeKind);
+    if (!scopeType) {
+      throw new Error("This app has no '" + scopeKind + "' property scope declared.");
+    }
+    const key = savedViewsPropertyKey(concept);
+    const combined = await fetchSavedViews(concept);
+    const list = scopeKind === "shared" ? combined.shared : combined.mine;
+    const panel = panelState(concept);
+    const next = list.filter(function (v) { return v.name !== name; });
+    next.push(currentViewSnapshot(panel, name));
+    await fetchJson("/api/properties/" + encodeURIComponent(key), {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ scopeType: scopeType, scopeId: "", value: JSON.stringify(next) })
+    });
+  }
+
+  async function deleteSavedView(concept, scopeKind, name) {
+    const scopeType = scopeNameForKind(scopeKind);
+    if (!scopeType) {
+      throw new Error("This app has no '" + scopeKind + "' property scope declared.");
+    }
+    const key = savedViewsPropertyKey(concept);
+    const combined = await fetchSavedViews(concept);
+    const list = scopeKind === "shared" ? combined.shared : combined.mine;
+    const next = list.filter(function (v) { return v.name !== name; });
+    await fetchJson("/api/properties/" + encodeURIComponent(key), {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({ scopeType: scopeType, scopeId: "", value: JSON.stringify(next) })
+    });
+  }
+
+  // window.prompt/confirm mirror how this same file already asks for an enum value list (createInput)
+  // and confirms a delete (deleteRecord) -- no new modal component for a two-field ask.
+  async function promptSaveView(concept) {
+    const panel = panelState(concept);
+    const suggested = panel.activeViewToken ? panel.activeViewToken.slice(panel.activeViewToken.indexOf(":") + 1) : "";
+    const name = window.prompt("Save the current filter, sort and columns as a view named:", suggested);
+    if (name === null) {
+      return;
+    }
+    const trimmed = name.trim();
+    if (!trimmed) {
+      notify("A view needs a name.", true);
+      return;
+    }
+    const canShare = Boolean(sharedScopeName());
+    const share = canShare && window.confirm(
+        "Share \"" + trimmed + "\" with everyone in this workspace?\n\nOK = shared with the team\nCancel = just me");
+    try {
+      await saveCurrentView(concept, trimmed, share ? "shared" : "mine");
+      panel.activeViewToken = (share ? "shared:" : "mine:") + trimmed;
+      notify("View “" + trimmed + "” saved" + (share ? " (shared with the team)." : " (just for you)."), false);
+      await ensureSavedViewsLoaded(concept, true);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  async function deleteSelectedView(concept) {
+    const panel = panelState(concept);
+    const token = panel.activeViewToken;
+    if (!token) {
+      notify("Select a saved view to delete first.", true);
+      return;
+    }
+    const idx = token.indexOf(":");
+    const scopeKind = token.slice(0, idx);
+    const name = token.slice(idx + 1);
+    if (!window.confirm("Delete the " + (scopeKind === "shared" ? "shared" : "personal") + " view “" + name + "”?")) {
+      return;
+    }
+    try {
+      await deleteSavedView(concept, scopeKind, name);
+      panel.activeViewToken = "";
+      notify("View “" + name + "” deleted.", false);
+      await ensureSavedViewsLoaded(concept, true);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
+
+  function buildViewsBar(concept, panel) {
+    if (!panel.savedViews.loaded && !panel.savedViews.loading) {
+      ensureSavedViewsLoaded(concept);
+    }
+    const bar = document.createElement("div");
+    bar.className = "views-bar";
+    const label = document.createElement("span");
+    label.className = "views-bar-label";
+    label.textContent = "View:";
+    bar.appendChild(label);
+
+    const select = document.createElement("select");
+    select.className = "views-select";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = panel.savedViews.loading ? "Loading views…" : "-- Select a saved view --";
+    select.appendChild(blank);
+    if (panel.savedViews.mine.length) {
+      const group = document.createElement("optgroup");
+      group.label = "My views";
+      panel.savedViews.mine.forEach(function (view) {
+        const opt = document.createElement("option");
+        opt.value = "mine:" + view.name;
+        opt.textContent = view.name;
+        group.appendChild(opt);
+      });
+      select.appendChild(group);
+    }
+    if (panel.savedViews.shared.length) {
+      const group = document.createElement("optgroup");
+      group.label = "Shared views";
+      panel.savedViews.shared.forEach(function (view) {
+        const opt = document.createElement("option");
+        opt.value = "shared:" + view.name;
+        opt.textContent = view.name;
+        group.appendChild(opt);
+      });
+      select.appendChild(group);
+    }
+    select.value = panel.activeViewToken || "";
+    select.addEventListener("change", function () {
+      panel.activeViewToken = select.value;
+      if (!select.value) {
+        return;
+      }
+      const idx = select.value.indexOf(":");
+      const scopeKind = select.value.slice(0, idx);
+      const name = select.value.slice(idx + 1);
+      const list = scopeKind === "shared" ? panel.savedViews.shared : panel.savedViews.mine;
+      const view = list.find(function (v) { return v.name === name; });
+      if (view) {
+        applySavedView(concept, view);
+      }
+    });
+    bar.appendChild(select);
+    bar.appendChild(button("Save view…", "", function () { promptSaveView(concept); }));
+    bar.appendChild(button("Delete view", "danger", function () { deleteSelectedView(concept); }));
+    return bar;
+  }
+
+  // A model-declared column can be hidden from THIS grid session (and, once saved, from a view) --
+  // gated behind the same savedViewsSupported flag as the views bar itself, since hiding columns is
+  // only meaningful in service of naming a set of them.
+  function buildColumnsToggle(concept, panel) {
+    const allFields = visibleFields(concept);
+    if (allFields.length <= 1) {
+      return null;
+    }
+    const details = document.createElement("details");
+    details.className = "columns-toggle";
+    const summary = document.createElement("summary");
+    summary.textContent = "Columns";
+    details.appendChild(summary);
+    const list = document.createElement("div");
+    list.className = "columns-toggle-list";
+    allFields.forEach(function (field) {
+      const row = document.createElement("label");
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.field = field.name;
+      checkbox.checked = (panel.hiddenColumns || []).indexOf(field.name) === -1;
+      checkbox.addEventListener("change", function () {
+        const hidden = panel.hiddenColumns || (panel.hiddenColumns = []);
+        const at = hidden.indexOf(field.name);
+        if (checkbox.checked) {
+          if (at !== -1) {
+            hidden.splice(at, 1);
+          }
+        } else {
+          if (allFields.length - hidden.length <= 1) {
+            checkbox.checked = true;
+            notify("At least one column must stay visible.", true);
+            return;
+          }
+          if (at === -1) {
+            hidden.push(field.name);
+          }
+        }
+        panel.page = 0;
+        loadPanel(concept);
+      });
+      row.appendChild(checkbox);
+      row.appendChild(document.createTextNode(" " + (field.label || field.name)));
+      list.appendChild(row);
+    });
+    details.appendChild(list);
+    return details;
   }
 
   function formFields(concept, mode) {
@@ -2253,6 +3966,7 @@
       row.className = "detail-row";
       const label = document.createElement("strong");
       label.textContent = field.label || field.name;
+      appendExtensionBadge(label, field.extensionSource);
       const value = document.createElement("span");
       if (field.widget === "multiselect" && field.reference) {
         value.textContent = "Loading…";
@@ -2373,13 +4087,23 @@
           wrapper.style.gridColumn = "span " + field.columnSpan;
         }
         const label = document.createElement("label");
+        // A dedicated header row (not `label` itself) so the extension badge sits INLINE next to
+        // the label text -- `label` is `display:grid` with no explicit columns, so appending the
+        // badge directly to it would stack the badge as its own row between the text and the input.
+        const labelHead = document.createElement("span");
+        labelHead.className = "field-label-row";
         const labelText = document.createElement("span");
         labelText.className = "field-label-text";
         labelText.textContent = (field.label || field.name) + (field.required ? " *" : "");
-        label.appendChild(labelText);
+        labelHead.appendChild(labelText);
+        appendExtensionBadge(labelHead, field.extensionSource);
+        appendAccessBadge(labelHead, field);
+        label.appendChild(labelHead);
         const input = createInput(field, record ? record[field.name] : "", record ? record[concept.idField] : null);
-        input.addEventListener("input", function () { applyConditionals(concept, form, record); });
-        input.addEventListener("change", function () { applyConditionals(concept, form, record); });
+        // R7.1: editing a flagged field clears ONLY that field's own highlight, so fixing one
+        // problem does not hide the ones the user has not addressed yet.
+        input.addEventListener("input", function () { clearFieldErrorsIn(wrapper); applyConditionals(concept, form, record); });
+        input.addEventListener("change", function () { clearFieldErrorsIn(wrapper); applyConditionals(concept, form, record); });
         label.appendChild(input);
         wrapper.appendChild(label);
         grid.appendChild(wrapper);
@@ -2437,6 +4161,143 @@
         control.readOnly = readonly;
       }
     });
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // R7.1: per-field validation errors.
+  //
+  // NOTHING below ever writes to a control's value. That is the load-bearing property: a rejected
+  // save must keep every character the user typed, so the only mutations here are a wrapper class,
+  // an appended note element, and two ARIA attributes.
+  // ---------------------------------------------------------------------------------------------
+
+  let fieldErrorSeq = 0;
+
+  // form.elements[name] yields a RadioNodeList (no .closest) when several controls share a name,
+  // and for a name that collides with the collection's own API ("length", "item", "namedItem") it
+  // yields a number or a function. The field name here comes from a SERVER message, so it is not
+  // necessarily a real field at all -- resolve to a genuine element or to nothing.
+  function formControl(form, name) {
+    let found = form.elements[name];
+    if (found && !found.tagName && typeof found.length === "number") {
+      found = found.length ? found[0] : null;
+    }
+    return found && typeof found.closest === "function" ? found : null;
+  }
+
+  // The 422 body a generated CRUD endpoint returns for an invariant failure is
+  //   { code, concept, invariant, path, message, violations: [ { code, concept, invariant, path, message } ] }
+  // (GeneratedCrudRuntimeSupport.InvariantViolationException.toResponseBody). `path` is the DSL
+  // field name: "email" for a scalar, "address.city" for a nested object field, and the
+  // comma-joined list "a, b" for a compound-unique invariant (CelInvariantEngine's
+  // evaluateCompoundUniqueRule sets fieldPath to exactly that). A uniqueness failure is a 409 with
+  // the SAME body, not a 422, so nothing here filters on status code.
+  //
+  // A plain 400 body is only { code, message } -- no path at all -- yet its message very often does
+  // name the field, in one of two shapes, both measured against a running app rather than assumed:
+  //
+  //   "Required field is missing for User: email"   generated service-base.mustache, ends ": <field>"
+  //   "Entity User: required field 'email' is ..."  invariant path, first single-quoted token
+  //
+  // The second is exactly what the server itself scrapes (InvariantMessageSupport
+  // .extractPathFromMessage), so reusing it keeps both sides reading a message the same way. The
+  // first is anchored at end-of-message so it cannot fire on "Request body is required" or on the
+  // enum message, whose field name is followed by more text. Either way a token that is not a real
+  // field simply matches no control, and the toast reports it alone.
+  function fieldViolations(payload, message) {
+    const out = [];
+    function push(path, detail) {
+      text(path).split(",").forEach(function (segment) {
+        const name = segment.split(/[.[]/)[0].trim();
+        if (name) {
+          out.push({ field: name, message: text(detail) });
+        }
+      });
+    }
+    if (payload && typeof payload === "object") {
+      const violations = Array.isArray(payload.violations) ? payload.violations : [];
+      violations.forEach(function (violation) {
+        if (violation) {
+          push(violation.path, violation.message || message);
+        }
+      });
+      if (!out.length) {
+        push(payload.path, payload.message || message);
+      }
+    }
+    if (!out.length) {
+      const scraped = /'([^']+)'/.exec(text(message)) || /[:.]\s*([A-Za-z_][A-Za-z0-9_]*)\s*$/.exec(text(message));
+      push(scraped ? scraped[1] : "", message);
+    }
+    return out;
+  }
+
+  function clearFieldErrorsIn(scope) {
+    Array.prototype.forEach.call(scope.querySelectorAll(".form-field.has-error"), function (wrapper) {
+      wrapper.classList.remove("has-error");
+    });
+    if (scope.classList && scope.classList.contains("has-error")) {
+      scope.classList.remove("has-error");
+    }
+    Array.prototype.forEach.call(scope.querySelectorAll(".field-error"), function (note) {
+      note.parentNode.removeChild(note);
+    });
+    Array.prototype.forEach.call(scope.querySelectorAll("[aria-invalid]"), function (control) {
+      control.removeAttribute("aria-invalid");
+      control.removeAttribute("aria-describedby");
+    });
+  }
+
+  // Marks every named field in `errors` ([{ field, message }]) and returns how many actually found a
+  // control -- the caller uses that to tell a field-addressable rejection from a generic one that
+  // only the toast can carry.
+  function applyFieldErrors(form, errors) {
+    clearFieldErrorsIn(form);
+    let addressed = 0;
+    let firstWrapper = null;
+    errors.forEach(function (entry) {
+      const control = formControl(form, entry.field);
+      const wrapper = control ? control.closest(".form-field") : null;
+      if (!wrapper || wrapper.classList.contains("has-error")) {
+        return;
+      }
+      wrapper.classList.add("has-error");
+      const note = document.createElement("span");
+      note.className = "field-error";
+      note.id = "np-field-error-" + (++fieldErrorSeq);
+      note.textContent = entry.message || "This value is not valid.";
+      wrapper.appendChild(note);
+      control.setAttribute("aria-invalid", "true");
+      control.setAttribute("aria-describedby", note.id);
+      addressed += 1;
+      if (!firstWrapper) {
+        firstWrapper = wrapper;
+      }
+    });
+    if (firstWrapper) {
+      revealFieldTab(form, firstWrapper);
+      const focusTarget = firstWrapper.querySelector("input, select, textarea");
+      if (focusTarget && !focusTarget.disabled) {
+        focusTarget.focus();
+      }
+    }
+    return addressed;
+  }
+
+  // A tabbed form can hide the offending field's whole section, which would leave the highlight
+  // applied off-screen. Click the section's own tab button so the existing tab handler does the
+  // showing -- no second copy of that logic.
+  function revealFieldTab(form, wrapper) {
+    const section = wrapper.closest(".form-tab-section");
+    if (!section || !section.classList.contains("field-hidden")) {
+      return;
+    }
+    const sections = Array.prototype.slice.call(form.querySelectorAll(".form-tab-section"));
+    const tabs = Array.prototype.slice.call(form.querySelectorAll(".form-tab"));
+    const index = sections.indexOf(section);
+    if (index >= 0 && index < tabs.length) {
+      tabs[index].click();
+    }
   }
 
   // Loads every distinct field.widget="custom" script referenced anywhere in the manifest, once,
@@ -3541,18 +5402,31 @@
         rows.forEach(function (row) {
           const tr = document.createElement("tr");
           tr.className = "picker-row";
+          // R7.9: a picker row was only ever a click target -- the focus trap this dialog now sits
+          // in (see openModalInto) would otherwise land a Tab-only user on the search box and the
+          // Close button with every actual choice unreachable. role="button" follows the same
+          // pattern R7.5 used for the SVG dashboard shapes (makeClickableSvg in shell.js.mustache).
+          tr.tabIndex = 0;
+          tr.setAttribute("role", "button");
           columns.forEach(function (col) {
             const td = document.createElement("td");
             td.textContent = formatValue(row[col]);
             tr.appendChild(td);
           });
-          tr.addEventListener("click", function () {
+          function pickRow() {
             const isViaRef = reference.via && reference.via !== "" && reference.anchorField && reference.anchorField !== reference.targetIdField;
             const id = isViaRef ? text(row[reference.anchorField]) : text(row[reference.targetIdField]);
             const label = lookupLabel(reference, row);
             state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: label, row: row };
             onSelect(id, label);
             closeModalIn(el.pickerModalRoot);
+          }
+          tr.addEventListener("click", pickRow);
+          tr.addEventListener("keydown", function (event) {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              pickRow();
+            }
           });
           tbody.appendChild(tr);
         });
@@ -3602,6 +5476,12 @@
     const values = currentFormValues(concept, form, record);
     const payload = {};
     const bondFieldsToSync = [];
+    // R7.1: pre-submit misses used to bail on the FIRST one with a status line the user often
+    // could not see. isFieldRequiredNow already ORs field.required with the client-side
+    // requiredWhen predicate (evaluateWhen), so a conditional requirement is caught here too --
+    // that detection always existed, only its reporting was invisible. Collect every miss instead
+    // of returning early, so one round-trip-free submit shows the user all of them at once.
+    const blocked = [];
     for (const field of formFields(concept, mode)) {
       if (!isFieldVisible(field, values)) {
         continue;
@@ -3621,8 +5501,8 @@
         let arrValue;
         try { arrValue = JSON.parse(control.value || "[]"); } catch (e) { arrValue = []; }
         if (required && (!Array.isArray(arrValue) || arrValue.length === 0)) {
-          setStatus((field.label || field.name) + " must have at least one item.", true);
-          return;
+          blocked.push({ field: field.name, message: (field.label || field.name) + " must have at least one item." });
+          continue;
         }
         payload[field.name] = arrValue;
         continue;
@@ -3637,8 +5517,8 @@
         // The hidden input holds the FileHandle JSON that createFileInput's upload set (or the
         // record's existing value, unchanged, if the author didn't pick a new file this edit).
         if (required && !control.value) {
-          setStatus((field.label || field.name) + " requires an uploaded file.", true);
-          return;
+          blocked.push({ field: field.name, message: (field.label || field.name) + " requires an uploaded file." });
+          continue;
         }
         if (control.value) {
           try { payload[field.name] = JSON.parse(control.value); } catch (e) { /* leave unset on parse failure */ }
@@ -3647,8 +5527,8 @@
       }
       const rawValue = control.type === "checkbox" ? control.checked : text(control.value).trim();
       if (required && (rawValue === "" || rawValue === null || rawValue === undefined)) {
-        setStatus((field.label || field.name) + " is required.", true);
-        return;
+        blocked.push({ field: field.name, message: (field.label || field.name) + " is required." });
+        continue;
       }
       if (rawValue !== "" || field.required || control.type === "checkbox") {
         // R5: "decimal" is deliberately excluded here -- parseFloat would round-trip an exact
@@ -3666,7 +5546,15 @@
         }
       }
     }
+    if (blocked.length) {
+      applyFieldErrors(form, blocked);
+      notify(blocked.length === 1
+        ? blocked[0].message
+        : blocked.length + " fields need attention before saving.", true);
+      return;
+    }
     const id = record ? record[concept.idField] : null;
+    clearFieldErrorsIn(form);
     try {
       const saved = await fetchJson(mode === "edit" ? concept.endpointBase + "/" + encodeURIComponent(id) : concept.endpointBase, {
         method: mode === "edit" ? "PUT" : "POST",
@@ -3685,10 +5573,14 @@
         );
       }
       onDone();
-      setStatus(mode === "edit" ? "Record updated." : "Record created.", false);
+      notify(mode === "edit" ? "Record updated." : "Record created.", false);
       await reloadAfterMutation(concept);
     } catch (error) {
-      setStatus(error.message, true);
+      // The form -- modal or inline -- stays exactly as the user left it: onDone() and
+      // reloadAfterMutation() run only on the success path above, so nothing re-renders or rebuilds
+      // it here, and applyFieldErrors touches no control's value. Everything typed is preserved.
+      applyFieldErrors(form, fieldViolations(error.payload, error.message));
+      notify(error.message, true);
     }
   }
 
@@ -3708,10 +5600,10 @@
           throw new Error(errorMessage(payload, response.status));
         }
       });
-      setStatus("Record deleted.", false);
+      notify("Record deleted.", false);
       await reloadAfterMutation(concept);
     } catch (error) {
-      setStatus(error.message, true);
+      notify(error.message, true);
     }
   }
 
@@ -3736,12 +5628,35 @@
   // same root for the picker would destroy the parent form the instant the
   // picker opened (confirmed live: a real generator bug, found via browser
   // verification of a reference field inside a create form).
+  //
+  // R7.9: every modal (the create/edit form AND the reference picker, both routed through
+  // here) is now a real dialog for keyboard use, not just a mouse-dismissible overlay --
+  // role="dialog"/aria-modal so assistive tech announces it, Escape closes it (checked against
+  // <input type="search">'s own native Escape-to-clear: that fires first and does not stop
+  // propagation, so the dialog still closes on the same keypress), a Tab/Shift+Tab focus trap so
+  // background content behind the backdrop is never reachable (a REAL keyboard trap would be "Tab
+  // escapes forward with no way back" -- this cycles within the dialog and Escape always gets out,
+  // which is the standard WAI-ARIA dialog pattern, not the WCAG 2.1.2 failure), initial focus on
+  // the first focusable control so a keyboard user lands somewhere useful, and focus restored to
+  // whatever triggered the dialog on close so Tab order resumes where the user left off.
+  function focusableIn(root) {
+    return Array.prototype.filter.call(
+      root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+      function (node) { return node.offsetParent !== null || node === document.activeElement; }
+    );
+  }
+
   function openModalInto(root, title, content) {
     root.innerHTML = "";
+    const opener = document.activeElement;
     const backdrop = document.createElement("div");
     backdrop.className = "modal-backdrop";
     const modal = document.createElement("div");
     modal.className = "modal";
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    modal.setAttribute("aria-label", title);
+    modal.tabIndex = -1;
     const header = document.createElement("div");
     header.className = "modal-header";
     const heading = document.createElement("h3");
@@ -3752,9 +5667,52 @@
     modal.appendChild(content);
     backdrop.appendChild(modal);
     root.appendChild(backdrop);
+
+    function trapKeydown(event) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeModalIn(root);
+        return;
+      }
+      if (event.key !== "Tab") {
+        return;
+      }
+      const focusable = focusableIn(modal);
+      if (!focusable.length) {
+        event.preventDefault();
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+    modal.addEventListener("keydown", trapKeydown);
+    root._npdevModalCleanup = function () {
+      modal.removeEventListener("keydown", trapKeydown);
+      if (opener && typeof opener.focus === "function" && document.contains(opener)) {
+        opener.focus();
+      }
+    };
+    // Prefer the first focusable control in the caller's OWN content (the form's first field, the
+    // picker's search box) over the header's Close button -- a keyboard user opening a create/edit
+    // form wants to start typing, not tab past chrome first. Falls back to the header, then the
+    // modal itself, so a display-only dialog is still reachable.
+    const initialFocus = focusableIn(content)[0] || focusableIn(modal)[0] || modal;
+    initialFocus.focus();
   }
 
   function closeModalIn(root) {
+    if (root._npdevModalCleanup) {
+      const cleanup = root._npdevModalCleanup;
+      root._npdevModalCleanup = null;
+      cleanup();
+    }
     root.innerHTML = "";
   }
 
@@ -3843,6 +5801,15 @@
       el.apiKey.placeholder = "dev/smoke: " + state.manifest.auth.devKeyHint;
     }
     await loadPrincipal();
+    // R7.4: awaited (not fire-and-forget) -- cheap, and every grid's first render already needs to
+    // know whether to show its Views bar, so there is no useful "later" to defer this to.
+    await loadPropertyDeclarations();
+    // R7.2: fire-and-forget -- loadAvailableSeeds() re-renders itself when it resolves, so an empty
+    // grid already on screen by then picks up the "Load sample data" action without blocking the
+    // rest of bootstrap on an admin-only lookup an ordinary user's roles will just skip.
+    if (canManageSeeds()) {
+      loadAvailableSeeds();
+    }
     // Delegates all chrome (header, nav tree, right rail) to the shared shell -- same runtime as
     // any hand-authored page, just told about business concepts/declared Panels via
     // deriveNativeGroups since those have no natural home in the shell's own generic sections.
@@ -3856,7 +5823,9 @@
     // shows the right item as active from the very first paint, not just after the first click.
     const hashTarget = resolveHashTarget(window.location.hash);
     if (hashTarget) {
-      activateTarget(hashTarget);
+      // R7.5: a cold-loaded/bookmarked deep link can carry a `?where=` suffix too, not just a
+      // gadget click within the same session -- resolve it the same way handleHashChange does.
+      activateTarget(hashTarget, parseHashRoute(window.location.hash).where);
     } else {
       // render() picks concepts[0] as the default active section by position, but (unlike
       // showConcept) never actually records it into state.activeConcept -- do that here so the

@@ -143,8 +143,7 @@
       "orderBy": [
         "employeeEmail"
       ],
-      "tracePolicy": "summary",
-      "auditPolicy": "read"
+      "tracePolicy": "summary"
     }
   ],
   "ruleProfiles": [
@@ -202,8 +201,7 @@
           "trace": true
         }
       ],
-      "tracePolicy": "detailed",
-      "auditPolicy": "write"
+      "tracePolicy": "detailed"
     }
   ],
   "panels": [
