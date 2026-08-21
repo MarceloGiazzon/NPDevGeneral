@@ -3,8 +3,9 @@ title: >-
   R10.3 is blocked: AuthoringApp's scaffolding/import-export studio has no replacement
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-19
+closed: 2026-08-20
 source: >-
   R10.3 (Roadmap Collection 2026-08-18) attempted 2026-08-19. The frozen bundle was deleted, then
   restored after a proper per-chunk audit found a capability nothing else serves.
@@ -334,3 +335,13 @@ guard:
     authoring, and editing a flow's or panel's internals. Removing this guard is therefore now an
     OWNER decision (option 1), not a further engineering prerequisite.
   provenRed: false
+resolution: |
+  2026-08-20 (R10.3 executed, owner decision: Option 1): deleted the frozen `static-react/` bundle
+  (6 files: app.css, app.js, AuthoringApp.js, ReactWorkbenchApp.js, index.html, static-react-manifest.json).
+  Removed `emitOptionalReactUiAssets()` from RuntimeApiEmitter, removed `/npdev-ui-react` redirect from
+  the UI redirect controller, and cleaned up 4 test files (GeneratorFacadeBusinessUiToggleTest,
+  CanonicalDemoGenerationSmokeTest, OfficialSamplesGenerationSmokeTest, GeneratorTestModelLoaderTest)
+  that asserted the bundle's presence. Updated comments in ModelSurfaceEmitter and ModelAuthoringEmitter.
+  The replacement `model-authoring.html` (emitted by ModelAuthoringEmitter) covers starter templates,
+  all 7 scaffolding actions, and the editing surface. Residue (reference/enum fields, multi-step flows,
+  flow/panel internal editing) tracked as additive follow-up, not a blocker.

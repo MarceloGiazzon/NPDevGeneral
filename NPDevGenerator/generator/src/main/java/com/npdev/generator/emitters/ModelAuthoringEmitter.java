@@ -9,7 +9,7 @@ import java.util.Map;
 
 /**
  * EDIT-12: emits {@code static/model-authoring.html}, a MINIMAL client-side replacement for the
- * frozen {@code static-react/assets/AuthoringApp.js} bundle's scaffolding + local-folder
+ * frozen {@code static-react/} bundle's scaffolding + local-folder
  * import/export capability -- the one chunk of that bundle {@code ledger/items/EDIT-12.yml} found
  * to have no replacement anywhere else (its Model/Rule editor siblings are already dead: R10.1
  * deleted the draft write-back endpoints they called).
