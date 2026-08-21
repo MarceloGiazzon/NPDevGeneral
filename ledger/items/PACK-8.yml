@@ -213,3 +213,14 @@ guard:
     the guard itself trips before any socket/process for both coordinate schemes, against a real
     closed TCP port.
   provenRed: false
+resolution: |
+  2026-08-20 (OCI Distribution API v2 pull implemented): OciDistributionClient.java provides a
+  minimal OCI Distribution API v2 HTTP client (manifest fetch, blob fetch, Bearer token auth dance).
+  RemotePackFetcher.fetchOci() replaces the previous IOException stub -- fetches manifest, parses
+  layer digest, fetches zip blob, extracts to temp dir (with zip-slip protection), stores in
+  PackCache for digest verification. FakeOciRegistry.java (test-only HTTP server) serves manifests
+  and blobs from a local directory tree. RemotePackFetcherOciLiveTest proves the full fetch→cache→
+  offline-read pipeline end-to-end, plus NetworkPolicy.DENIED refusal before any HTTP call.
+  OciDistributionClientTest covers manifest/blob fetch and 404 handling. All tests pass.
+  Remaining deferred steps: (5) signatures/cosign, (6) npdev pack publish, (7) static JSON index,
+  transitive pack `from`, mutable tag pinning, corpus coverage for `packs[].from`.

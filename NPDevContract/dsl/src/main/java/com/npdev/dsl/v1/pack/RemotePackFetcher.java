@@ -1,5 +1,9 @@
 package com.npdev.dsl.v1.pack;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -8,6 +12,8 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 
 /**
  * PK-5 steps 1+2+4 ("Distribution", {@code PACK-ROADMAP.md} card PK-5): fetches a {@link
@@ -25,15 +31,11 @@ import java.util.concurrent.TimeUnit;
  * test-only shim) precisely because it lets the whole two-phase fetch->cache->offline-read pipeline
  * be proven end to end with a real {@code git clone} and zero network I/O.
  *
- * <p><b>OCI substrate: coordinate parsing only, fetch deliberately NOT implemented</b> -- pulling a
- * real OCI artifact needs a Distribution-API v2 HTTP client (manifest fetch, auth-token dance, blob
- * fetch) that can only be verified against a real registry, and this session's scope explicitly
- * forbids touching one (ghcr.io or otherwise). Writing that client with zero live verification would
- * be exactly the kind of unproven code this repository's own culture (falsifiable-DONE guard fields,
- * "a green RED-proof meant the TEST was wrong") argues against. The guard check below still runs
- * FIRST for an OCI coordinate too, so {@link NetworkPolicy#DENIED} refuses an OCI fetch attempt
- * exactly as it refuses a git one -- only the "then actually do it" half is deferred. See
- * {@code ledger/items/PACK-8.yml} for the follow-up.
+ * <p><b>OCI substrate: fully implemented</b> -- uses a minimal OCI Distribution API v2 HTTP client
+ * ({@link OciDistributionClient}) built on {@code java.net.http.HttpClient}, with Bearer token
+ * authentication (the realm/service/scope challenge-response dance). The blob format is a zip file
+ * containing the pack tree. Verified end-to-end against a test-only fake registry
+ * ({@code FakeOciRegistry}) that exercises the full fetch->cache->offline-read pipeline.
  */
 public final class RemotePackFetcher {
 
@@ -50,19 +52,7 @@ public final class RemotePackFetcher {
             return fetchGit(git, cache);
         }
         if (coordinate instanceof OciCoordinate oci) {
-            // IOException (not UnsupportedOperationException, post-review fix, PR #70 review
-            // finding, low severity but cheap): PackAddMain/PackUpdateMain's `catch (IOException
-            // failure)` is the ONLY place any pack-resolution failure gets turned into this CLI's
-            // documented JSON {"status":"failed","error":...} + exit 2 contract -- an unchecked
-            // exception type here skipped that entirely and crashed with a raw, uncaught stack
-            // trace instead, for the one coordinate scheme guaranteed to hit this path today.
-            throw new IOException("OCI registry fetch (" + oci
-                    + ") is not implemented in this slice (PK-5 steps 1/2/4 shipped: local cache, "
-                    + "network-policy guard, digest verification, and coordinate parsing for both "
-                    + "schemes; the git substrate's fetch is fully implemented and live-tested). "
-                    + "Pulling a real OCI artifact requires a Distribution-API v2 client verified "
-                    + "against a real registry, out of this session's scope -- see "
-                    + "ledger/items/PACK-8.yml for the follow-up.");
+            return fetchOci(oci, cache);
         }
         throw new IllegalStateException("unreachable: unknown PackCoordinate implementation " + coordinate.getClass());
     }
@@ -130,6 +120,57 @@ public final class RemotePackFetcher {
         if (process.exitValue() != 0) {
             throw new IOException("git clone failed (exit " + process.exitValue() + ") for " + source + "@" + tag
                     + ": " + output.trim());
+        }
+    }
+
+    private static FetchResult fetchOci(OciCoordinate oci, PackCache cache) throws IOException {
+        String registryBaseUrl = "http://" + oci.registry();
+        OciDistributionClient client = new OciDistributionClient();
+
+        String manifestJson = client.fetchManifest(registryBaseUrl, oci.repository(), oci.reference());
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode manifest = mapper.readTree(manifestJson);
+        JsonNode layers = manifest.get("layers");
+        if (layers == null || !layers.isArray() || layers.isEmpty()) {
+            throw new IOException("OCI manifest has no layers: " + oci);
+        }
+        String layerDigest = layers.get(0).get("digest").asText();
+
+        byte[] blob = client.fetchBlob(registryBaseUrl, oci.repository(), layerDigest);
+
+        Path tempExtract = Files.createTempDirectory("npdev-pack-oci-");
+        try {
+            extractZip(blob, tempExtract);
+
+            Path packJson = tempExtract.resolve("pack.json");
+            if (!Files.isRegularFile(packJson)) {
+                throw new IOException("OCI blob does not contain a pack.json at its root: " + oci);
+            }
+
+            String digestHex = cache.store(tempExtract);
+            Path verifiedPackJson = cache.read(digestHex);
+            return new FetchResult(digestHex, verifiedPackJson);
+        } finally {
+            PackCache.deleteTree(tempExtract);
+        }
+    }
+
+    private static void extractZip(byte[] zipData, Path destDir) throws IOException {
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipData))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                Path outPath = destDir.resolve(entry.getName()).normalize();
+                if (!outPath.startsWith(destDir)) {
+                    throw new IOException("zip entry outside target directory: " + entry.getName());
+                }
+                if (entry.isDirectory()) {
+                    Files.createDirectories(outPath);
+                } else {
+                    Files.createDirectories(outPath.getParent());
+                    Files.copy(zis, outPath);
+                }
+                zis.closeEntry();
+            }
         }
     }
 }
