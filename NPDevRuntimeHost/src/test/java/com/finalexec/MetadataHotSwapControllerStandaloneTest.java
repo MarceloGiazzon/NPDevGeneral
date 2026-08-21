@@ -53,7 +53,7 @@ class MetadataHotSwapControllerStandaloneTest {
 
         when(runtimeContextService.currentContext(any())).thenReturn(executionContext);
 
-        MetadataHotSwapController controller = new MetadataHotSwapController(runtimeMetadataService, runtimeContextService);
+        MetadataHotSwapController controller = new MetadataHotSwapController(runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder());
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 

@@ -1,6 +1,11 @@
 package com.finalexec.api;
 
+import com.finalexec.config.ModelHolder;
 import com.finalexec.npdev.service.RuntimeMetadataService;
+import com.npdev.dsl.v1.ast.ModelAst;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiler.ModelCompiler;
+import com.npdev.dsl.v1.parser.JsonModelParser;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -65,13 +70,16 @@ public class MetadataHotSwapController {
 
     private final RuntimeMetadataService runtimeMetadataService;
     private final RuntimeContextService runtimeContextService;
+    private final ModelHolder modelHolder;
 
     public MetadataHotSwapController(
             RuntimeMetadataService runtimeMetadataService,
-            RuntimeContextService runtimeContextService
+            RuntimeContextService runtimeContextService,
+            ModelHolder modelHolder
     ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.runtimeContextService = runtimeContextService;
+        this.modelHolder = modelHolder;
     }
 
     /**
@@ -145,6 +153,50 @@ public class MetadataHotSwapController {
         body.put("code", code);
         body.put("message", message == null ? "" : message);
         return ResponseEntity.status(status).body(body);
+    }
+
+    /**
+     * B28: hot model reload -- parse, compile, and atomically swap the CompiledModel without restart.
+     * Requires SUPERUSER. The new model is read from a model.json file at the given path.
+     */
+    @PostMapping("/model-reload")
+    public ResponseEntity<Map<String, Object>> modelReload(HttpServletRequest request, @RequestBody Map<String, String> body) {
+        requireSuperUser(request);
+
+        String modelPath = body.get("modelPath");
+        if (modelPath == null || modelPath.isBlank()) {
+            return failure(HttpStatus.BAD_REQUEST, "MODEL_PATH_REQUIRED", "modelPath is required");
+        }
+
+        Path modelFile;
+        try {
+            modelFile = Paths.get(modelPath).toAbsolutePath().normalize();
+        } catch (InvalidPathException invalid) {
+            return failure(HttpStatus.BAD_REQUEST, "INVALID_MODEL_PATH", invalid.getMessage());
+        }
+
+        if (!modelFile.toFile().isFile()) {
+            return failure(HttpStatus.BAD_REQUEST, "MODEL_NOT_FOUND", "File not found: " + modelFile);
+        }
+
+        try {
+            ModelAst ast = new JsonModelParser().parse(modelFile);
+            CompiledModel newModel = new ModelCompiler().compile(ast);
+            CompiledModel oldModel = modelHolder.swap(newModel);
+            LOG.info("B28 hot model reload: swapped successfully (old concepts={}, new concepts={})",
+                    oldModel.getConcepts().size(), newModel.getConcepts().size());
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("ok", true);
+            response.put("concepts", newModel.getConcepts().size());
+            response.put("flows", newModel.getFlows().size());
+            response.put("procedures", newModel.getProcedures().size());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            LOG.warn("B28 hot model reload failed: modelPath={}", modelFile, e);
+            return failure(HttpStatus.INTERNAL_SERVER_ERROR, "RELOAD_FAILED",
+                    e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+        }
     }
 
     private void requireAdminContext(HttpServletRequest request) {

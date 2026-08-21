@@ -83,6 +83,11 @@ public class NpdevCapabilityBindingConfig {
     }
 
     @Bean
+    public com.finalexec.config.ModelHolder modelHolder(CompiledModel compiledModel) {
+        return new com.finalexec.config.ModelHolder(compiledModel);
+    }
+
+    @Bean
     public InvariantEngine invariantEngine(CompiledModel compiledModel) {
         return CelInvariantEngine.fromCompiledModel(compiledModel);
     }
