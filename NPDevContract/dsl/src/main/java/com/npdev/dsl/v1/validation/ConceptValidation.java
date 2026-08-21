@@ -430,17 +430,17 @@ final class ConceptValidation {
             String normalizedOwnName = normalize(concept.getName());
 
             if (normalizedRenamedFrom.equals(normalizedOwnName)) {
-                semanticWarnings.add("Concept " + concept.getName()
+                semanticWarnings.add("B1:rename_self_reference:Concept " + concept.getName()
                         + ": renamedFrom equals the concept's own name; this has no effect and is likely a leftover marker");
             } else if (entitiesByLower.containsKey(normalizedRenamedFrom)) {
-                errors.add("Concept " + concept.getName()
+                errors.add("B1:rename_source_missing:Concept " + concept.getName()
                         + ": renamedFrom " + renamedFrom + " names a concept that still exists "
                         + "(ambiguous: is this a rename or a reference to a real concept?)");
             }
 
             String firstConceptName = renamedFromSeen.putIfAbsent(normalizedRenamedFrom, concept.getName());
             if (firstConceptName != null && !normalize(firstConceptName).equals(normalizedOwnName)) {
-                errors.add("Concepts " + firstConceptName + " and " + concept.getName()
+                errors.add("B1:rename_ambiguous:Concepts " + firstConceptName + " and " + concept.getName()
                         + ": both declare renamedFrom " + renamedFrom
                         + " (ambiguous: which one is the actual rename target?)");
             }

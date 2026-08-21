@@ -302,7 +302,7 @@ final class PackValidation {
             String targetConceptName = referenceField.getReferenceTarget();
             ConceptAst targetConcept = entitiesByLower.get(normalize(targetConceptName));
             if (targetConcept == null) {
-                errors.add(here + ": where join field " + referenceFieldName + " targets unknown concept "
+                errors.add("B13:unresolvable_join_path:" + here + ": where join field " + referenceFieldName + " targets unknown concept "
                         + targetConceptName + " -- unresolvable join path");
                 return;
             }
@@ -344,7 +344,7 @@ final class PackValidation {
 
         FieldAst targetField = currentFieldsByLower.get(normalize(join.targetField()));
         if (targetField == null) {
-            errors.add(here + ": where join target field not found on concept " + currentConcept.getName()
+            errors.add("B13:unresolvable_join_path:" + here + ": where join target field not found on concept " + currentConcept.getName()
                     + ": " + join.targetField() + " -- unresolvable join path");
         }
     }
@@ -508,7 +508,7 @@ final class PackValidation {
             String targetConceptName = referenceField.getReferenceTarget();
             ConceptAst targetConcept = entitiesByLower.get(normalize(targetConceptName));
             if (targetConcept == null) {
-                errors.add(here + ": groupBy join field " + referenceFieldName + " targets unknown concept "
+                errors.add("B13:unresolvable_join_path:" + here + ": groupBy join field " + referenceFieldName + " targets unknown concept "
                         + targetConceptName + " -- unresolvable join path");
                 return;
             }
@@ -550,7 +550,7 @@ final class PackValidation {
 
         FieldAst targetField = currentFieldsByLower.get(normalize(join.targetField()));
         if (targetField == null) {
-            errors.add(here + ": groupBy join target field not found on concept " + currentConcept.getName()
+            errors.add("B13:unresolvable_join_path:" + here + ": groupBy join target field not found on concept " + currentConcept.getName()
                     + ": " + join.targetField() + " -- unresolvable join path");
             return;
         }
