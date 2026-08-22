@@ -94,26 +94,30 @@ $brokenBackendAggregationPassed = ($brokenBackendMissingPatterns.Count -eq 0)
 # of the six named below. runtime-surface-allowlist-report.json -- the one backing real build-time
 # allowlist ENFORCEMENT -- is `passed`, exactly as the gate's own comment claims.
 #
-# So: those six are excused only when the caller passes -SurfaceConvergencePendingOk, and only when
-# they are the ONLY failures. Any other failing sub-check, in any of the three reports, still fails
-# this check loudly. That keeps the exit code meaningful instead of blanket-suppressing the step.
+# So: those retired surface-governance checks are excused only when the caller passes
+# -SurfaceConvergencePendingOk, and only when they are the ONLY failures. Any other failing
+# sub-check, in any of the three reports, still fails this check loudly. That keeps the exit code
+# meaningful instead of blanket-suppressing the step.
 #
-# GATE-OBS-1a DECISION (REG-5, 2026-07-21): these six checks are now FORMALLY RETIRED, not "advisory
-# pending an owner." Concrete finding that settles it: runtime-surface-allowlist-report.json -- the
-# exact-list allowlist backed by RuntimeControllerAllowlistConfig reading
-# npdev/runtime-supported-controllers.json -- IS the exact-list-model enforcement the beta-0 manifest
-# refactor introduced, it is BLOCKING, and it passes. These six package-convention convergence/
-# exclusivity checks are a redundant proxy for the superseded "package == support bucket" rule; a
-# rewrite "against the exact-list model" (the other option considered) would only duplicate what the
-# allowlist already enforces. They are kept as informational observations, never as a gate blocker.
-# Reversible if the surface governance model ever changes. Recorded in docs/OPEN_GAPS_AND_ROADMAP.md
-# (GATE-OBS-1a). This ends the "advisory, unowned" state that REG-5 existed to close.
+# GATE-OBS-1a DECISION (REG-5, 2026-07-21): these retired checks are now FORMALLY RETIRED, not
+# "advisory pending an owner." Concrete finding that settles it:
+# runtime-surface-allowlist-report.json -- the exact-list allowlist backed by
+# RuntimeControllerAllowlistConfig reading npdev/runtime-supported-controllers.json -- IS the
+# exact-list-model enforcement the beta-0 manifest refactor introduced, it is BLOCKING, and it
+# passes. These package-convention convergence/exclusivity and footprint-size checks are a
+# redundant proxy for the superseded "package == support bucket" rule; a rewrite "against the
+# exact-list model" (the other option considered) would only duplicate what the allowlist already
+# enforces. They are kept as informational observations, never as a gate blocker. Reversible if the
+# surface governance model ever changes. Recorded in docs/OPEN_GAPS_AND_ROADMAP.md (GATE-OBS-1a).
+# This ends the "advisory, unowned" state that REG-5 existed to close.
 $surfaceGovernanceRetiredChecks = @(
     "service-buckets-are-exclusive",
     "controller-namespaces-match-convergence-buckets",
     "service-namespaces-match-convergence-buckets",
     "controller-namespace-convergence-is-clean",
     "service-namespace-convergence-is-clean",
+    "supported-controller-footprint-is-smaller-than-inventory",
+    "supported-service-footprint-is-smaller-than-inventory",
     "supported-controller-footprint-stays-minority"
 )
 
