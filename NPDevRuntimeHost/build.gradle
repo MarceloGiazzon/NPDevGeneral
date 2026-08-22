@@ -76,7 +76,7 @@ dependencies {
 
     implementation 'org.flywaydb:flyway-core'
     implementation 'org.flywaydb:flyway-database-postgresql'
-    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'org.postgresql:postgresql:42.7.13'
 
     // ---------------------------------------------------------------------------------------
     // storage/FULL_SUPPORT_PLAN.md gap A, and this is its concrete cause.
