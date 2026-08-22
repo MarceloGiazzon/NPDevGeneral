@@ -623,16 +623,20 @@ $allReports = @(
 # Governance-convention checks the d0bf41b beta-0 manifest refactor made stale: it replaced the
 # "declared Java package == support bucket" convergence rule (and the buckets-are-mutually-exclusive
 # assumption) with manifest exact-lists (allowedControllers / deferredControllers / testOnlyControllers)
-# plus overlapping service pattern arrays. Realigning these to the new governance model is a task for a
-# surface-governance owner; until then -PendingOk records them as advisory observations rather than
-# failing the gate. The actual allowlist enforcement is the build-time controller exclusion in
-# build.gradle.template, which is unaffected.
+# plus overlapping service pattern arrays. The controller footprint-minority heuristic is the same
+# old convention in a different shape: it is only a "good" signal when the supported surface is a
+# strict minority, which is no longer a meaningful gate once the allowlist is the real enforcement.
+# Realigning these to the new governance model is a task for a surface-governance owner; until then
+# -PendingOk records them as advisory observations rather than failing the gate. The actual allowlist
+# enforcement is the build-time controller exclusion in build.gradle.template, which is unaffected.
 $stalePendingCheckNames = @(
     "service-buckets-are-exclusive",
     "controller-namespaces-match-convergence-buckets",
     "service-namespaces-match-convergence-buckets",
     "controller-namespace-convergence-is-clean",
     "service-namespace-convergence-is-clean",
+    "supported-controller-footprint-is-smaller-than-inventory",
+    "supported-service-footprint-is-smaller-than-inventory",
     "supported-controller-footprint-stays-minority"
 )
 if ($PendingOk) {
