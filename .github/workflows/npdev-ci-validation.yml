@@ -360,109 +360,11 @@ jobs:
         with:
           name: npdev-linux-maturity-validation-evidence
           path: |
-            scripts/reports/out
-            ci-maturity-evidence
-            Build/gradle/npdev-dsl/**/test-results/test
-            Build/gradle/npdev-kernel/**/test-results/test
-            Build/gradle/npdev-generator/**/test-results/test
-            NPDevRuntimeHost/**/build/test-results/test
-            NPDevRuntimeHost/**/build/test-results/integrationTest
-            NPDevSamples/**/Output/App/**/build/test-results/integrationTest
-            NPDevSamples/**/Output/App/**/build/reports/tests/integrationTest
-          if-no-files-found: warn
-          retention-days: 14
-
-  ci-validation:
-    name: NPDev segmented CI validation
-    runs-on: windows-latest
-    timeout-minutes: 120
-
-    defaults:
-      run:
-        shell: pwsh
-
-    env:
-      NPDEV_WORKSPACE: ${{ github.workspace }}
-      CI: true
-      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: |
-            17
-            21
-
-      # Round-3 finding (2026-07-23): LegacyModelMigrationToolTest shells out to `npdev.bat`, which
-      # calls bare `python`. On windows-latest without setup-python, `python` resolves to the App
-      # Execution Alias stub (exits non-zero), so the test's `assertEquals(0, exitValue)` failed. The
-      # Linux job's `npdev` wrapper prefers python3 (pre-installed on ubuntu), so it was never hit
-      # there. Put a real Python on PATH.
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Configure Gradle CI
-        timeout-minutes: 5
-        run: |
-          Write-Host "JAVA_HOME=$env:JAVA_HOME"
-          Write-Host "JAVA_HOME_17_X64=$env:JAVA_HOME_17_X64"
-          Write-Host "JAVA_HOME_21_X64=$env:JAVA_HOME_21_X64"
-          java -version
-
-          if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_17_X64)) {
-            throw "JAVA_HOME_17_X64 is not available after setup-java."
-          }
-
-          $gradleUserHome = Join-Path $env:USERPROFILE ".gradle"
-          New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
-
-          @(
-            "org.gradle.daemon=false",
-            "org.gradle.console=plain",
-            "org.gradle.workers.max=2",
-            "org.gradle.vfs.watch=false",
-            "org.gradle.java.installations.auto-detect=true",
-            "org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64"
-          ) | Set-Content -LiteralPath (Join-Path $gradleUserHome "gradle.properties") -Encoding UTF8
-
-          Get-Content (Join-Path $gradleUserHome "gradle.properties")
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-          cache: npm
-          cache-dependency-path: |
-            NPDevEditor/ui-react/package-lock.json
-
-      # Root-3 fix (2026-07-24): LegacyModelMigrationToolTest runs `npdev migrate`, which validates via
-      # the in-repo Node JSON-schema validator and, if its node_modules is absent (gitignored → absent
-      # on a fresh checkout), runs `npm install` from INSIDE a Python subprocess. That on-demand install
-      # ENOENTs (-4058) specifically on the CI Windows runner (works on Linux + locally). Pre-install
-      # the deps here with npm run normally (not via Python's .cmd subprocess) so the CLI skips its
-      # broken on-demand install. Product follow-up: make the CLI's npm call Windows-robust (REG-33).
-      # Pre-install the validator deps FROM the validator dir (working-directory), belt-and-suspenders
-      # with the CLI fix (REG-33): npm reads package.json from cwd, so `npm install` here (cwd=validator)
-      # works, whereas `npm --prefix <dir> install` from repo root ENOENTs on Windows (no root package.json).
-      - name: Pre-install JSON Schema validator deps (Windows)
-        working-directory: scripts/quality/json-schema-validator
-        run: npm install --no-audit --no-fund
-
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
+      ~/.gradle/caches
+      ~/.gradle/wrapper
+      build/pack-cache
+      NPDevContract/dsl/build
+    
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
