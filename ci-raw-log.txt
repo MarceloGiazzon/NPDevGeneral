@@ -1,0 +1,662 @@
+﻿2026-08-22T03:48:29.8674031Z Current runner version: '2.336.0'
+2026-08-22T03:48:29.8698239Z ##[group]Runner Image Provisioner
+2026-08-22T03:48:29.8699035Z Hosted Compute Agent
+2026-08-22T03:48:29.8699603Z Version: 20260729.566
+2026-08-22T03:48:29.8700161Z Commit: cf7153fe6e25b664e8693c24944bf2b00355d109
+2026-08-22T03:48:29.8700909Z Build Date: 2026-07-29T19:17:02Z
+2026-08-22T03:48:29.8701531Z Worker ID: {82f81ba8-ec31-4d9f-882c-b3d00ac3b5d6}
+2026-08-22T03:48:29.8702655Z Azure Region: westcentralus
+2026-08-22T03:48:29.8703230Z ##[endgroup]
+2026-08-22T03:48:29.8704647Z ##[group]Operating System
+2026-08-22T03:48:29.8705274Z Microsoft Windows Server 2025
+2026-08-22T03:48:29.8705832Z 10.0.26100
+2026-08-22T03:48:29.8706290Z Datacenter
+2026-08-22T03:48:29.8706753Z ##[endgroup]
+2026-08-22T03:48:29.8707261Z ##[group]Runner Image
+2026-08-22T03:48:29.8707827Z Image: windows-2025-vs2026
+2026-08-22T03:48:29.8708357Z Version: 20260818.207.1
+2026-08-22T03:48:29.8709870Z Included Software: https://github.com/actions/runner-images/blob/win25-vs2026/20260818.207/images/windows/Windows2025-VS2026-Readme.md
+2026-08-22T03:48:29.8711453Z Image Release: https://github.com/actions/runner-images/releases/tag/win25-vs2026%2F20260818.207
+2026-08-22T03:48:29.8712406Z ##[endgroup]
+2026-08-22T03:48:29.8713404Z ##[group]GITHUB_TOKEN Permissions
+2026-08-22T03:48:29.8715184Z Contents: read
+2026-08-22T03:48:29.8715713Z Metadata: read
+2026-08-22T03:48:29.8716235Z ##[endgroup]
+2026-08-22T03:48:29.8718212Z Secret source: Actions
+2026-08-22T03:48:29.8719148Z Prepare workflow directory
+2026-08-22T03:48:29.9338893Z Prepare all required actions
+2026-08-22T03:48:29.9385938Z Getting action download info
+2026-08-22T03:48:30.1998854Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-08-22T03:48:30.3369841Z Download action repository 'actions/setup-java@v4' (SHA:cf277c60eb25467037889841efdb72551f06f6c3)
+2026-08-22T03:48:31.0676274Z Download action repository 'actions/setup-python@v5' (SHA:a26af69be951a213d495a4c3e4e4022e16d87065)
+2026-08-22T03:48:31.2545808Z Download action repository 'actions/setup-node@v4' (SHA:49933ea5288caeca8642d1e84afbd3f7d6820020)
+2026-08-22T03:48:31.4188847Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+2026-08-22T03:48:31.5735999Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+2026-08-22T03:48:31.9438533Z Complete job name: NPDev segmented CI validation
+2026-08-22T03:48:32.1157773Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:48:32.1168636Z ##[group]Run actions/checkout@v4
+2026-08-22T03:48:32.1169713Z with:
+2026-08-22T03:48:32.1170334Z   fetch-depth: 0
+2026-08-22T03:48:32.1171086Z   repository: MarceloGiazzon/NPDevGeneral
+2026-08-22T03:48:32.1178455Z   token: ***
+2026-08-22T03:48:32.1179108Z   ssh-strict: true
+2026-08-22T03:48:32.1179763Z   ssh-user: git
+2026-08-22T03:48:32.1180441Z   persist-credentials: true
+2026-08-22T03:48:32.1181204Z   clean: true
+2026-08-22T03:48:32.1181902Z   sparse-checkout-cone-mode: true
+2026-08-22T03:48:32.1182719Z   fetch-tags: false
+2026-08-22T03:48:32.1183402Z   show-progress: true
+2026-08-22T03:48:32.1184079Z   lfs: false
+2026-08-22T03:48:32.1184744Z   submodules: false
+2026-08-22T03:48:32.1185441Z   set-safe-directory: true
+2026-08-22T03:48:32.1186246Z   allow-unsafe-pr-checkout: false
+2026-08-22T03:48:32.1187279Z env:
+2026-08-22T03:48:32.1187998Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:32.1189165Z   CI: true
+2026-08-22T03:48:32.1190656Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:48:32.1192340Z ##[endgroup]
+2026-08-22T03:48:32.2593897Z Syncing repository: MarceloGiazzon/NPDevGeneral
+2026-08-22T03:48:32.2596287Z ##[group]Getting Git version info
+2026-08-22T03:48:32.2597834Z Working directory is 'D:\a\NPDevGeneral\NPDevGeneral'
+2026-08-22T03:48:32.3570364Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-08-22T03:48:32.7529103Z git version 2.55.0.windows.4
+2026-08-22T03:48:32.7573964Z ##[endgroup]
+2026-08-22T03:48:32.7593448Z Temporarily overriding HOME='D:\a\_temp\b942315b-5867-4b5c-87d1-dc750bb9ee8f' before making global git config changes
+2026-08-22T03:48:32.7594326Z Adding repository directory to the temporary git global config as a safe directory
+2026-08-22T03:48:32.7604054Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:32.8229774Z Deleting the contents of 'D:\a\NPDevGeneral\NPDevGeneral'
+2026-08-22T03:48:32.8235642Z ##[group]Initializing the repository
+2026-08-22T03:48:32.8244213Z [command]"C:\Program Files\Git\bin\git.exe" init D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:32.9159390Z Initialized empty Git repository in D:/a/NPDevGeneral/NPDevGeneral/.git/
+2026-08-22T03:48:32.9217129Z [command]"C:\Program Files\Git\bin\git.exe" remote add origin https://github.com/MarceloGiazzon/NPDevGeneral
+2026-08-22T03:48:32.9810287Z ##[endgroup]
+2026-08-22T03:48:32.9810850Z ##[group]Disabling automatic garbage collection
+2026-08-22T03:48:32.9820358Z [command]"C:\Program Files\Git\bin\git.exe" config --local gc.auto 0
+2026-08-22T03:48:33.0155920Z ##[endgroup]
+2026-08-22T03:48:33.0169416Z ##[group]Setting up auth
+2026-08-22T03:48:33.0170731Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-08-22T03:48:33.0474590Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-08-22T03:48:34.4874646Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-08-22T03:48:34.5177025Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-08-22T03:48:35.0794105Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-08-22T03:48:35.1079319Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-08-22T03:48:35.6042169Z [command]"C:\Program Files\Git\bin\git.exe" config --local http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+2026-08-22T03:48:35.6343730Z ##[endgroup]
+2026-08-22T03:48:35.6344455Z ##[group]Fetching the repository
+2026-08-22T03:48:35.6356925Z [command]"C:\Program Files\Git\bin\git.exe" -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+2026-08-22T03:48:38.1112369Z From https://github.com/MarceloGiazzon/NPDevGeneral
+2026-08-22T03:48:38.1115203Z  * [new branch]        batch1/docs-scripts-zero-build -> origin/batch1/docs-scripts-zero-build
+2026-08-22T03:48:38.1117031Z  * [new branch]        batch2/generator-determinism-and-guards -> origin/batch2/generator-determinism-and-guards
+2026-08-22T03:48:38.1118541Z  * [new branch]        batch4/pack-migration-first-published-anchor -> origin/batch4/pack-migration-first-published-anchor
+2026-08-22T03:48:38.1120234Z  * [new branch]        dependabot/github_actions/actions/cache-6 -> origin/dependabot/github_actions/actions/cache-6
+2026-08-22T03:48:38.1121906Z  * [new branch]        dependabot/github_actions/actions/checkout-7 -> origin/dependabot/github_actions/actions/checkout-7
+2026-08-22T03:48:38.1123277Z  * [new branch]        dependabot/github_actions/actions/setup-node-7 -> origin/dependabot/github_actions/actions/setup-node-7
+2026-08-22T03:48:38.1125102Z  * [new branch]        dependabot/github_actions/actions/setup-python-7 -> origin/dependabot/github_actions/actions/setup-python-7
+2026-08-22T03:48:38.1125968Z  * [new branch]        dependabot/github_actions/actions/upload-artifact-7 -> origin/dependabot/github_actions/actions/upload-artifact-7
+2026-08-22T03:48:38.1127176Z  * [new branch]        dependabot/gradle/NPDevContract/dsl/com.fasterxml.jackson.core-jackson-databind-2.22.2 -> origin/dependabot/gradle/NPDevContract/dsl/com.fasterxml.jackson.core-jackson-databind-2.22.2
+2026-08-22T03:48:38.1128734Z  * [new branch]        dependabot/gradle/NPDevContract/dsl/com.networknt-json-schema-validator-3.0.6 -> origin/dependabot/gradle/NPDevContract/dsl/com.networknt-json-schema-validator-3.0.6
+2026-08-22T03:48:38.1130292Z  * [new branch]        dependabot/gradle/NPDevContract/dsl/gradle-wrapper-9.7.0 -> origin/dependabot/gradle/NPDevContract/dsl/gradle-wrapper-9.7.0
+2026-08-22T03:48:38.1131655Z  * [new branch]        dependabot/gradle/NPDevContract/dsl/org.junit.jupiter-junit-jupiter-6.1.3 -> origin/dependabot/gradle/NPDevContract/dsl/org.junit.jupiter-junit-jupiter-6.1.3
+2026-08-22T03:48:38.1132982Z  * [new branch]        dependabot/gradle/NPDevContract/dsl/org.junit.platform-junit-platform-launcher-6.1.3 -> origin/dependabot/gradle/NPDevContract/dsl/org.junit.platform-junit-platform-launcher-6.1.3
+2026-08-22T03:48:38.1134129Z  * [new branch]        dependabot/gradle/NPDevEditor/gradle-wrapper-9.7.0 -> origin/dependabot/gradle/NPDevEditor/gradle-wrapper-9.7.0
+2026-08-22T03:48:38.1135041Z  * [new branch]        dependabot/gradle/NPDevGenerator/com.h2database-h2-2.4.240 -> origin/dependabot/gradle/NPDevGenerator/com.h2database-h2-2.4.240
+2026-08-22T03:48:38.1136224Z  * [new branch]        dependabot/gradle/NPDevGenerator/jakarta.servlet-jakarta.servlet-api-6.1.0 -> origin/dependabot/gradle/NPDevGenerator/jakarta.servlet-jakarta.servlet-api-6.1.0
+2026-08-22T03:48:38.1137522Z  * [new branch]        dependabot/gradle/NPDevGenerator/org.flywaydb-flyway-database-postgresql-13.3.0 -> origin/dependabot/gradle/NPDevGenerator/org.flywaydb-flyway-database-postgresql-13.3.0
+2026-08-22T03:48:38.1138678Z  * [new branch]        dependabot/gradle/NPDevGenerator/org.junit-junit-bom-6.1.3 -> origin/dependabot/gradle/NPDevGenerator/org.junit-junit-bom-6.1.3
+2026-08-22T03:48:38.1140394Z  * [new branch]        dependabot/gradle/NPDevGenerator/org.postgresql-postgresql-42.7.13 -> origin/dependabot/gradle/NPDevGenerator/org.postgresql-postgresql-42.7.13
+2026-08-22T03:48:38.1141862Z  * [new branch]        dependabot/gradle/NPDevKernel/com.h2database-h2-2.4.240 -> origin/dependabot/gradle/NPDevKernel/com.h2database-h2-2.4.240
+2026-08-22T03:48:38.1143101Z  * [new branch]        dependabot/gradle/NPDevKernel/com.networknt-json-schema-validator-3.0.6 -> origin/dependabot/gradle/NPDevKernel/com.networknt-json-schema-validator-3.0.6
+2026-08-22T03:48:38.1145297Z  * [new branch]        dependabot/gradle/NPDevKernel/io.micrometer-micrometer-core-1.17.0 -> origin/dependabot/gradle/NPDevKernel/io.micrometer-micrometer-core-1.17.0
+2026-08-22T03:48:38.1147284Z  * [new branch]        dependabot/gradle/NPDevKernel/jakarta.servlet-jakarta.servlet-api-6.1.0 -> origin/dependabot/gradle/NPDevKernel/jakarta.servlet-jakarta.servlet-api-6.1.0
+2026-08-22T03:48:38.1149484Z  * [new branch]        dependabot/gradle/NPDevKernel/org.springframework.boot-spring-boot-actuator-4.1.0 -> origin/dependabot/gradle/NPDevKernel/org.springframework.boot-spring-boot-actuator-4.1.0
+2026-08-22T03:48:38.1151815Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/com.mysql-mysql-connector-j-26.7.0 -> origin/dependabot/gradle/NPDevRuntimeHost/com.mysql-mysql-connector-j-26.7.0
+2026-08-22T03:48:38.1154047Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/com.tngtech.archunit-archunit-junit5-1.5.0 -> origin/dependabot/gradle/NPDevRuntimeHost/com.tngtech.archunit-archunit-junit5-1.5.0
+2026-08-22T03:48:38.1156613Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/org.eclipse.angus-angus-mail-2.0.5 -> origin/dependabot/gradle/NPDevRuntimeHost/org.eclipse.angus-angus-mail-2.0.5
+2026-08-22T03:48:38.1158721Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/org.postgresql-postgresql-42.7.13 -> origin/dependabot/gradle/NPDevRuntimeHost/org.postgresql-postgresql-42.7.13
+2026-08-22T03:48:38.1160750Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/org.springframework.boot-4.1.0 -> origin/dependabot/gradle/NPDevRuntimeHost/org.springframework.boot-4.1.0
+2026-08-22T03:48:38.1163439Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/runtimehost-core/com.networknt-json-schema-validator-3.0.6 -> origin/dependabot/gradle/NPDevRuntimeHost/runtimehost-core/com.networknt-json-schema-validator-3.0.6
+2026-08-22T03:48:38.1165867Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/runtimehost-core/gradle-wrapper-9.7.0 -> origin/dependabot/gradle/NPDevRuntimeHost/runtimehost-core/gradle-wrapper-9.7.0
+2026-08-22T03:48:38.1167803Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/runtimehost-core/io.spring.dependency-management-1.1.7 -> origin/dependabot/gradle/NPDevRuntimeHost/runtimehost-core/io.spring.dependency-management-1.1.7
+2026-08-22T03:48:38.1169755Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/runtimehost-core/org.postgresql-postgresql-42.7.13 -> origin/dependabot/gradle/NPDevRuntimeHost/runtimehost-core/org.postgresql-postgresql-42.7.13
+2026-08-22T03:48:38.1171447Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/runtimehost-core/org.springframework.boot-spring-boot-dependencies-4.1.0 -> origin/dependabot/gradle/NPDevRuntimeHost/runtimehost-core/org.springframework.boot-spring-boot-dependencies-4.1.0
+2026-08-22T03:48:38.1173073Z  * [new branch]        dependabot/gradle/NPDevRuntimeHost/runtimehost-core/software.amazon.awssdk-bom-2.53.3 -> origin/dependabot/gradle/NPDevRuntimeHost/runtimehost-core/software.amazon.awssdk-bom-2.53.3
+2026-08-22T03:48:38.1174353Z  * [new branch]        dependabot/gradle/com.fasterxml.jackson.core-jackson-databind-2.22.2 -> origin/dependabot/gradle/com.fasterxml.jackson.core-jackson-databind-2.22.2
+2026-08-22T03:48:38.1175435Z  * [new branch]        dependabot/gradle/com.networknt-json-schema-validator-3.0.6 -> origin/dependabot/gradle/com.networknt-json-schema-validator-3.0.6
+2026-08-22T03:48:38.1176497Z  * [new branch]        dependabot/gradle/gradle-wrapper-9.7.0 -> origin/dependabot/gradle/gradle-wrapper-9.7.0
+2026-08-22T03:48:38.1177343Z  * [new branch]        dependabot/gradle/org.junit.jupiter-junit-jupiter-6.1.3 -> origin/dependabot/gradle/org.junit.jupiter-junit-jupiter-6.1.3
+2026-08-22T03:48:38.1178389Z  * [new branch]        dependabot/gradle/org.junit.platform-junit-platform-launcher-6.1.3 -> origin/dependabot/gradle/org.junit.platform-junit-platform-launcher-6.1.3
+2026-08-22T03:48:38.1179467Z  * [new branch]        dependabot/npm_and_yarn/NPDevEditor/ui-react/multi-9b1536b8cd -> origin/dependabot/npm_and_yarn/NPDevEditor/ui-react/multi-9b1536b8cd
+2026-08-22T03:48:38.1180477Z  * [new branch]        dependabot/npm_and_yarn/NPDevEditor/ui-react/multi-d8ec5a502f -> origin/dependabot/npm_and_yarn/NPDevEditor/ui-react/multi-d8ec5a502f
+2026-08-22T03:48:38.1182262Z  * [new branch]        dependabot/npm_and_yarn/NPDevEditor/ui-react/typescript-7.0.2 -> origin/dependabot/npm_and_yarn/NPDevEditor/ui-react/typescript-7.0.2
+2026-08-22T03:48:38.1183346Z  * [new branch]        dependabot/npm_and_yarn/NPDevEditor/ui-react/vitejs/plugin-react-6.0.5 -> origin/dependabot/npm_and_yarn/NPDevEditor/ui-react/vitejs/plugin-react-6.0.5
+2026-08-22T03:48:38.1184197Z  * [new branch]        feat/pack-2-origin-provenance -> origin/feat/pack-2-origin-provenance
+2026-08-22T03:48:38.1184704Z  * [new branch]        fix-scale-ceiling       -> origin/fix-scale-ceiling
+2026-08-22T03:48:38.1185287Z  * [new branch]        fix-script-automation-quality-contract -> origin/fix-script-automation-quality-contract
+2026-08-22T03:48:38.1186011Z  * [new branch]        fix/reg-147-composite-unique-semicolon -> origin/fix/reg-147-composite-unique-semicolon
+2026-08-22T03:48:38.1186849Z  * [new branch]        fix/reg-153-codeql-password-logging -> origin/fix/reg-153-codeql-password-logging
+2026-08-22T03:48:38.1187525Z  * [new branch]        fix/reg-160-workspace-menu-table-name -> origin/fix/reg-160-workspace-menu-table-name
+2026-08-22T03:48:38.1188122Z  * [new branch]        fix/reg-161-pr-gate-trigger -> origin/fix/reg-161-pr-gate-trigger
+2026-08-22T03:48:38.1188731Z  * [new branch]        fix/reg-162-rebuild-worktree-staleness -> origin/fix/reg-162-rebuild-worktree-staleness
+2026-08-22T03:48:38.1189250Z  * [new branch]        main                    -> origin/main
+2026-08-22T03:48:38.1189651Z  * [new branch]        roadmap/wave1-2026-08-19 -> origin/roadmap/wave1-2026-08-19
+2026-08-22T03:48:38.1190093Z  * [new branch]        step12-r7-stage-b       -> origin/step12-r7-stage-b
+2026-08-22T03:48:38.1190499Z  * [new branch]        step13-r7-stage-d       -> origin/step13-r7-stage-d
+2026-08-22T03:48:38.1190954Z  * [new branch]        step14-pk5-distribution -> origin/step14-pk5-distribution
+2026-08-22T03:48:38.1191436Z  * [new branch]        step15-pk6-r10-extension -> origin/step15-pk6-r10-extension
+2026-08-22T03:48:38.1191950Z  * [new branch]        step15-r10-plugin-controller -> origin/step15-r10-plugin-controller
+2026-08-22T03:48:38.1192644Z  * [new branch]        step8-pack-depth        -> origin/step8-pack-depth
+2026-08-22T03:48:38.1193076Z  * [new branch]        step9-hygiene           -> origin/step9-hygiene
+2026-08-22T03:48:38.1193643Z  * [new branch]        track-c-bt2-sealed-pack-precompilation -> origin/track-c-bt2-sealed-pack-precompilation
+2026-08-22T03:48:38.1194313Z  * [new branch]        track-c-r10-custom-screen-mount -> origin/track-c-r10-custom-screen-mount
+2026-08-22T03:48:38.1194880Z  * [new branch]        track-c-r11-falsifiable-done -> origin/track-c-r11-falsifiable-done
+2026-08-22T03:48:38.1195470Z  * [new branch]        track-c-r3-editor-python-coverage -> origin/track-c-r3-editor-python-coverage
+2026-08-22T03:48:38.1196041Z  * [new branch]        track-c-r8b-nulls-dialect -> origin/track-c-r8b-nulls-dialect
+2026-08-22T03:48:38.1196533Z  * [new branch]        track-c-r8c-resume-claim -> origin/track-c-r8c-resume-claim
+2026-08-22T03:48:38.1197079Z  * [new branch]        track-c-r8d-capability-deadlines -> origin/track-c-r8d-capability-deadlines
+2026-08-22T03:48:38.1197722Z  * [new branch]        track-c-r9-full-ladder  -> origin/track-c-r9-full-ladder
+2026-08-22T03:48:38.1198433Z  * [new branch]        xref-ephemeral-packs-2026-08-17 -> origin/xref-ephemeral-packs-2026-08-17
+2026-08-22T03:48:38.1198900Z  * [new tag]           beta0                   -> beta0
+2026-08-22T03:48:38.1199278Z  * [new tag]           beta1                   -> beta1
+2026-08-22T03:48:38.1200163Z  * [new tag]           beta1.1                 -> beta1.1
+2026-08-22T03:48:38.1200714Z  * [new tag]           beta1.10                -> beta1.10
+2026-08-22T03:48:38.1201173Z  * [new tag]           beta1.11                -> beta1.11
+2026-08-22T03:48:38.1201612Z  * [new tag]           beta1.12                -> beta1.12
+2026-08-22T03:48:38.1202147Z  * [new tag]           beta1.13                -> beta1.13
+2026-08-22T03:48:38.1202678Z  * [new tag]           beta1.14                -> beta1.14
+2026-08-22T03:48:38.1203215Z  * [new tag]           beta1.15                -> beta1.15
+2026-08-22T03:48:38.1203722Z  * [new tag]           beta1.16                -> beta1.16
+2026-08-22T03:48:38.1204231Z  * [new tag]           beta1.17                -> beta1.17
+2026-08-22T03:48:38.1204710Z  * [new tag]           beta1.19                -> beta1.19
+2026-08-22T03:48:38.1205221Z  * [new tag]           beta1.2                 -> beta1.2
+2026-08-22T03:48:38.1205740Z  * [new tag]           beta1.3                 -> beta1.3
+2026-08-22T03:48:38.1206244Z  * [new tag]           beta1.4                 -> beta1.4
+2026-08-22T03:48:38.1206743Z  * [new tag]           beta1.5                 -> beta1.5
+2026-08-22T03:48:38.1208321Z  * [new tag]           beta1.6                 -> beta1.6
+2026-08-22T03:48:38.1208873Z  * [new tag]           beta1.7                 -> beta1.7
+2026-08-22T03:48:38.1209428Z  * [new tag]           beta1.8                 -> beta1.8
+2026-08-22T03:48:38.1209963Z  * [new tag]           beta1.9                 -> beta1.9
+2026-08-22T03:48:38.1210777Z  * [new tag]           npdev-official-beta-20260428-062512 -> npdev-official-beta-20260428-062512
+2026-08-22T03:48:38.1212368Z [command]"C:\Program Files\Git\bin\git.exe" branch --list --remote origin/main
+2026-08-22T03:48:38.1647810Z   origin/main
+2026-08-22T03:48:38.1704203Z [command]"C:\Program Files\Git\bin\git.exe" rev-parse refs/remotes/origin/main
+2026-08-22T03:48:38.1970699Z 2d1227282d6ad10269c65ef250bf7244eb668d8b
+2026-08-22T03:48:38.2009290Z ##[endgroup]
+2026-08-22T03:48:38.2009688Z ##[group]Determining the checkout info
+2026-08-22T03:48:38.2011764Z ##[endgroup]
+2026-08-22T03:48:38.2021064Z [command]"C:\Program Files\Git\bin\git.exe" sparse-checkout disable
+2026-08-22T03:48:38.2642710Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all extensions.worktreeConfig
+2026-08-22T03:48:38.2930632Z ##[group]Checking out the ref
+2026-08-22T03:48:38.2939431Z [command]"C:\Program Files\Git\bin\git.exe" checkout --progress --force -B main refs/remotes/origin/main
+2026-08-22T03:48:39.3459007Z Updating files:  89% (3231/3611)
+2026-08-22T03:48:39.3543539Z Updating files:  90% (3250/3611)
+2026-08-22T03:48:39.3630105Z Updating files:  91% (3287/3611)
+2026-08-22T03:48:39.3751262Z Updating files:  92% (3323/3611)
+2026-08-22T03:48:39.3865489Z Updating files:  93% (3359/3611)
+2026-08-22T03:48:39.3967225Z Updating files:  94% (3395/3611)
+2026-08-22T03:48:39.4080368Z Updating files:  95% (3431/3611)
+2026-08-22T03:48:39.4179347Z Updating files:  96% (3467/3611)
+2026-08-22T03:48:39.4298971Z Updating files:  97% (3503/3611)
+2026-08-22T03:48:39.5995846Z Updating files:  98% (3539/3611)
+2026-08-22T03:48:39.6098238Z Updating files:  99% (3575/3611)
+2026-08-22T03:48:39.6098860Z Updating files: 100% (3611/3611)
+2026-08-22T03:48:39.6099550Z Updating files: 100% (3611/3611), done.
+2026-08-22T03:48:39.6297847Z Switched to a new branch 'main'
+2026-08-22T03:48:39.6363940Z branch 'main' set up to track 'origin/main'.
+2026-08-22T03:48:39.6438021Z ##[endgroup]
+2026-08-22T03:48:39.6888477Z [command]"C:\Program Files\Git\bin\git.exe" log -1 --format=%H
+2026-08-22T03:48:39.7154593Z 2d1227282d6ad10269c65ef250bf7244eb668d8b
+2026-08-22T03:48:39.7655140Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:48:39.7657160Z ##[group]Run actions/setup-java@v4
+2026-08-22T03:48:39.7657399Z with:
+2026-08-22T03:48:39.7657586Z   distribution: temurin
+2026-08-22T03:48:39.7657805Z   java-version: 17
+21
+
+2026-08-22T03:48:39.7658003Z   java-package: jdk
+2026-08-22T03:48:39.7658194Z   check-latest: false
+2026-08-22T03:48:39.7658379Z   server-id: github
+2026-08-22T03:48:39.7658562Z   server-username: GITHUB_ACTOR
+2026-08-22T03:48:39.7658789Z   server-password: GITHUB_TOKEN
+2026-08-22T03:48:39.7659008Z   overwrite-settings: true
+2026-08-22T03:48:39.7659217Z   job-status: success
+2026-08-22T03:48:39.7661512Z   token: ***
+2026-08-22T03:48:39.7661678Z env:
+2026-08-22T03:48:39.7661935Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:39.7662211Z   CI: true
+2026-08-22T03:48:39.7662916Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:48:39.7663454Z ##[endgroup]
+2026-08-22T03:48:39.9731683Z ##[warning]setup-java v4 is deprecated and will no longer receive updates. Please migrate to actions/setup-java@v5.
+2026-08-22T03:48:39.9739084Z ##[group]Installed distributions
+2026-08-22T03:48:40.0080242Z Resolved Java 17.0.20+8 from tool-cache
+2026-08-22T03:48:40.0081212Z Setting Java 17.0.20+8 as the default
+2026-08-22T03:48:40.0102818Z (node:7360) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-08-22T03:48:40.0103539Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-08-22T03:48:40.0107633Z Creating toolchains.xml for JDK version 17 from temurin
+2026-08-22T03:48:40.0197763Z Writing to C:\Users\runneradmin\.m2\toolchains.xml
+2026-08-22T03:48:40.0201139Z 
+2026-08-22T03:48:40.0201321Z Java configuration:
+2026-08-22T03:48:40.0201663Z   Distribution: temurin
+2026-08-22T03:48:40.0202155Z   Version: 17.0.20+8
+2026-08-22T03:48:40.0203125Z   Path: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:48:40.0203459Z 
+2026-08-22T03:48:40.0228038Z Resolved Java 21.0.12+8.0 from tool-cache
+2026-08-22T03:48:40.0228388Z Setting Java 21.0.12+8.0 as the default
+2026-08-22T03:48:40.0246953Z Creating toolchains.xml for JDK version 21 from temurin
+2026-08-22T03:48:40.0302283Z Overwriting existing file C:\Users\runneradmin\.m2\toolchains.xml
+2026-08-22T03:48:40.0306029Z 
+2026-08-22T03:48:40.0306199Z Java configuration:
+2026-08-22T03:48:40.0306552Z   Distribution: temurin
+2026-08-22T03:48:40.0306856Z   Version: 21.0.12+8.0
+2026-08-22T03:48:40.0307718Z   Path: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:40.0308326Z 
+2026-08-22T03:48:40.0308801Z ##[endgroup]
+2026-08-22T03:48:40.0326688Z Creating settings.xml with server-id: github
+2026-08-22T03:48:40.0327043Z Writing to C:\Users\runneradmin\.m2\settings.xml
+2026-08-22T03:48:40.0649056Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:48:40.0650436Z ##[group]Run actions/setup-python@v5
+2026-08-22T03:48:40.0650680Z with:
+2026-08-22T03:48:40.0650855Z   python-version: 3.12
+2026-08-22T03:48:40.0651059Z   check-latest: false
+2026-08-22T03:48:40.0653354Z   token: ***
+2026-08-22T03:48:40.0653550Z   update-environment: true
+2026-08-22T03:48:40.0653777Z   allow-prereleases: false
+2026-08-22T03:48:40.0653985Z   freethreaded: false
+2026-08-22T03:48:40.0654534Z env:
+2026-08-22T03:48:40.0654783Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:40.0655057Z   CI: true
+2026-08-22T03:48:40.0655561Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:48:40.0656236Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:40.0656737Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:48:40.0657255Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:40.0657628Z ##[endgroup]
+2026-08-22T03:48:40.2292391Z ##[group]Installed versions
+2026-08-22T03:48:40.2523270Z (node:2576) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-08-22T03:48:40.2524230Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-08-22T03:48:40.2524931Z Successfully set up CPython (3.12.10)
+2026-08-22T03:48:40.2526061Z ##[endgroup]
+2026-08-22T03:48:40.2828578Z ##[group]Run Write-Host "JAVA_HOME=$env:JAVA_HOME"
+2026-08-22T03:48:40.2829051Z [36;1mWrite-Host "JAVA_HOME=$env:JAVA_HOME"[0m
+2026-08-22T03:48:40.2829415Z [36;1mWrite-Host "JAVA_HOME_17_X64=$env:JAVA_HOME_17_X64"[0m
+2026-08-22T03:48:40.2829779Z [36;1mWrite-Host "JAVA_HOME_21_X64=$env:JAVA_HOME_21_X64"[0m
+2026-08-22T03:48:40.2830082Z [36;1mjava -version[0m
+2026-08-22T03:48:40.2830280Z [36;1m[0m
+2026-08-22T03:48:40.2830745Z [36;1mif ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_17_X64)) {[0m
+2026-08-22T03:48:40.2831176Z [36;1m  throw "JAVA_HOME_17_X64 is not available after setup-java."[0m
+2026-08-22T03:48:40.2831505Z [36;1m}[0m
+2026-08-22T03:48:40.2831662Z [36;1m[0m
+2026-08-22T03:48:40.2831912Z [36;1m$gradleUserHome = Join-Path $env:USERPROFILE ".gradle"[0m
+2026-08-22T03:48:40.2832375Z [36;1mNew-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null[0m
+2026-08-22T03:48:40.2832739Z [36;1m[0m
+2026-08-22T03:48:40.2832892Z [36;1m@([0m
+2026-08-22T03:48:40.2833110Z [36;1m  "org.gradle.daemon=false",[0m
+2026-08-22T03:48:40.2833369Z [36;1m  "org.gradle.console=plain",[0m
+2026-08-22T03:48:40.2833627Z [36;1m  "org.gradle.workers.max=2",[0m
+2026-08-22T03:48:40.2833882Z [36;1m  "org.gradle.vfs.watch=false",[0m
+2026-08-22T03:48:40.2834204Z [36;1m  "org.gradle.java.installations.auto-detect=true",[0m
+2026-08-22T03:48:40.2834660Z [36;1m  "org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64"[0m
+2026-08-22T03:48:40.2835262Z [36;1m) | Set-Content -LiteralPath (Join-Path $gradleUserHome "gradle.properties") -Encoding UTF8[0m
+2026-08-22T03:48:40.2835721Z [36;1m[0m
+2026-08-22T03:48:40.2836386Z [36;1mGet-Content (Join-Path $gradleUserHome "gradle.properties")[0m
+2026-08-22T03:48:40.5150258Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-08-22T03:48:40.5151074Z env:
+2026-08-22T03:48:40.5151322Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:40.5151630Z   CI: true
+2026-08-22T03:48:40.5152164Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:48:40.5152907Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:40.5153469Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:48:40.5154055Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:40.5154590Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:40.5155091Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:48:40.5155579Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:40.5156013Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:40.5156445Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:40.5156791Z ##[endgroup]
+2026-08-22T03:48:40.9506896Z JAVA_HOME=C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:40.9515766Z JAVA_HOME_17_X64=C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:48:40.9523189Z JAVA_HOME_21_X64=C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:42.2617351Z openjdk version "21.0.12" 2026-07-21 LTS
+2026-08-22T03:48:42.2618391Z OpenJDK Runtime Environment Temurin-21.0.12+8 (build 21.0.12+8-LTS)
+2026-08-22T03:48:42.2619294Z OpenJDK 64-Bit Server VM Temurin-21.0.12+8 (build 21.0.12+8-LTS, mixed mode, sharing)
+2026-08-22T03:48:42.4150308Z org.gradle.daemon=false
+2026-08-22T03:48:42.4153561Z org.gradle.console=plain
+2026-08-22T03:48:42.4155641Z org.gradle.workers.max=2
+2026-08-22T03:48:42.4157413Z org.gradle.vfs.watch=false
+2026-08-22T03:48:42.4159561Z org.gradle.java.installations.auto-detect=true
+2026-08-22T03:48:42.4164076Z org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64
+2026-08-22T03:48:42.4887872Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:48:42.4889217Z ##[group]Run actions/setup-node@v4
+2026-08-22T03:48:42.4889667Z with:
+2026-08-22T03:48:42.4889834Z   node-version: 22
+2026-08-22T03:48:42.4890008Z   cache: npm
+2026-08-22T03:48:42.4890368Z   cache-dependency-path: scripts/quality/json-schema-validator/package-lock.json
+
+2026-08-22T03:48:42.4890782Z   always-auth: false
+2026-08-22T03:48:42.4890972Z   check-latest: false
+2026-08-22T03:48:42.4893248Z   token: ***
+2026-08-22T03:48:42.4893417Z env:
+2026-08-22T03:48:42.4893615Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:42.4893884Z   CI: true
+2026-08-22T03:48:42.4894391Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:48:42.4895052Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:42.4895553Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:48:42.4896061Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:42.4896619Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:42.4897220Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:48:42.4898058Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:42.4898453Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:42.4898870Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:42.4899189Z ##[endgroup]
+2026-08-22T03:48:42.6781883Z Found in cache @ C:\hostedtoolcache\windows\node\22.23.2\x64
+2026-08-22T03:48:42.6790204Z (node:9084) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-08-22T03:48:42.6791414Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-08-22T03:48:42.6794162Z ##[group]Environment details
+2026-08-22T03:48:47.6351378Z node: v22.23.2
+2026-08-22T03:48:47.6351629Z npm: 10.9.8
+2026-08-22T03:48:47.6351964Z yarn: 1.22.22
+2026-08-22T03:48:47.6352653Z ##[endgroup]
+2026-08-22T03:48:47.7135798Z [command]C:\Windows\system32\cmd.exe /D /S /C "C:\hostedtoolcache\windows\node\22.23.2\x64\npm.cmd config get cache"
+2026-08-22T03:48:48.4971828Z C:\npm\cache
+2026-08-22T03:48:48.8694458Z Cache hit for: node-cache-Windows-x64-npm-e710ee068d1fccaca66cef5d243c391623c9b5a5c889557f60110e9acf6be732
+2026-08-22T03:48:48.8808768Z (node:9084) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-08-22T03:48:49.3754567Z Received 363916 of 363916 (100.0%), 1.3 MBs/sec
+2026-08-22T03:48:49.3756187Z Cache Size: ~0 MB (363916 B)
+2026-08-22T03:48:49.3781232Z [command]"C:\Program Files\Git\usr\bin\tar.exe" -xf D:/a/_temp/40f9b2c8-222a-4da5-9a6d-b97e9f67db09/cache.tzst -P -C D:/a/NPDevGeneral/NPDevGeneral --force-local --use-compress-program "zstd -d"
+2026-08-22T03:48:49.5271038Z Cache restored successfully
+2026-08-22T03:48:49.5281958Z Cache restored from key: node-cache-Windows-x64-npm-e710ee068d1fccaca66cef5d243c391623c9b5a5c889557f60110e9acf6be732
+2026-08-22T03:48:49.5579324Z ##[group]Run npm install --no-audit --no-fund
+2026-08-22T03:48:49.5579736Z [36;1mnpm install --no-audit --no-fund[0m
+2026-08-22T03:48:49.5685445Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-08-22T03:48:49.5685800Z env:
+2026-08-22T03:48:49.5686027Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:49.5686325Z   CI: true
+2026-08-22T03:48:49.5686794Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:48:49.5687465Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:49.5687986Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:48:49.5688508Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:49.5689908Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:49.5703858Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:48:49.5704460Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:49.5704889Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:49.5705303Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:49.5705617Z ##[endgroup]
+2026-08-22T03:48:52.6399843Z 
+2026-08-22T03:48:52.6405839Z added 6 packages in 2s
+2026-08-22T03:48:54.9293076Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:48:54.9294459Z ##[group]Run actions/cache@v4
+2026-08-22T03:48:54.9294702Z with:
+2026-08-22T03:48:54.9294904Z   path: ~/.gradle/caches
+~/.gradle/wrapper
+
+2026-08-22T03:48:54.9295364Z   key: gradle-Windows-5f7cee75dd1ea387b1a4bc83c84e8f359bd5deca621f30b0449ca8a44f7b9685
+2026-08-22T03:48:54.9295830Z   restore-keys: gradle-Windows-
+
+2026-08-22T03:48:54.9296086Z   enableCrossOsArchive: false
+2026-08-22T03:48:54.9296317Z   fail-on-cache-miss: false
+2026-08-22T03:48:54.9296536Z   lookup-only: false
+2026-08-22T03:48:54.9296734Z   save-always: false
+2026-08-22T03:48:54.9296925Z env:
+2026-08-22T03:48:54.9297177Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:48:54.9297459Z   CI: true
+2026-08-22T03:48:54.9298317Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:48:54.9298997Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:54.9299532Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:48:54.9300047Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:48:54.9300526Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:54.9300986Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:48:54.9301424Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:54.9301817Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:54.9302218Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:48:54.9302533Z ##[endgroup]
+2026-08-22T03:48:55.0668594Z (node:7776) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-08-22T03:48:55.0669403Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-08-22T03:48:55.3525336Z Cache hit for restore-key: gradle-Windows-bbff0af4b46a72a903a88b70cef59e3ae20bd4c002bfb3dce419f21ddf6b011d
+2026-08-22T03:48:55.3642341Z (node:7776) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-08-22T03:48:56.5670078Z Received 100663296 of 442436404 (22.8%), 95.8 MBs/sec
+2026-08-22T03:48:57.7075754Z Received 268435456 of 442436404 (60.7%), 119.5 MBs/sec
+2026-08-22T03:48:58.7247098Z Received 442436404 of 442436404 (100.0%), 133.5 MBs/sec
+2026-08-22T03:48:58.7251793Z Cache Size: ~422 MB (442436404 B)
+2026-08-22T03:48:58.7315779Z [command]"C:\Program Files\Git\usr\bin\tar.exe" -xf D:/a/_temp/cadeaf1f-6199-4cd7-8eb8-bef3e7ff795c/cache.tzst -P -C D:/a/NPDevGeneral/NPDevGeneral --force-local --use-compress-program "zstd -d"
+2026-08-22T03:49:11.0373908Z Cache restored successfully
+2026-08-22T03:49:11.0747954Z Cache restored from key: gradle-Windows-bbff0af4b46a72a903a88b70cef59e3ae20bd4c002bfb3dce419f21ddf6b011d
+2026-08-22T03:49:11.1099549Z ##[group]Run $projects = @(
+2026-08-22T03:49:11.1099908Z [36;1m$projects = @([0m
+2026-08-22T03:49:11.1100151Z [36;1m  "NPDevContract\dsl",[0m
+2026-08-22T03:49:11.1100395Z [36;1m  "NPDevGenerator",[0m
+2026-08-22T03:49:11.1100625Z [36;1m  "NPDevKernel",[0m
+2026-08-22T03:49:11.1100839Z [36;1m  "NPDevRuntimeHost"[0m
+2026-08-22T03:49:11.1101057Z [36;1m)[0m
+2026-08-22T03:49:11.1101218Z [36;1m[0m
+2026-08-22T03:49:11.1101408Z [36;1mforeach ($project in $projects) {[0m
+2026-08-22T03:49:11.1101766Z [36;1m  $projectRoot = Join-Path $env:NPDEV_WORKSPACE $project[0m
+2026-08-22T03:49:11.1102176Z [36;1m  Write-Host "Checking Gradle wrapper in $projectRoot"[0m
+2026-08-22T03:49:11.1102487Z [36;1m[0m
+2026-08-22T03:49:11.1102664Z [36;1m  foreach ($relative in @([0m
+2026-08-22T03:49:11.1102966Z [36;1m    "gradle\wrapper\gradle-wrapper.properties",[0m
+2026-08-22T03:49:11.1103321Z [36;1m    "gradle\wrapper\gradle-wrapper.jar",[0m
+2026-08-22T03:49:11.1103624Z [36;1m    "gradlew",[0m
+2026-08-22T03:49:11.1103826Z [36;1m    "gradlew.bat"[0m
+2026-08-22T03:49:11.1104037Z [36;1m  )) {[0m
+2026-08-22T03:49:11.1104260Z [36;1m    $path = Join-Path $projectRoot $relative[0m
+2026-08-22T03:49:11.1104610Z [36;1m    if (-not (Test-Path -LiteralPath $path)) {[0m
+2026-08-22T03:49:11.1104968Z [36;1m      throw "Missing Gradle wrapper artifact: $path"[0m
+2026-08-22T03:49:11.1105260Z [36;1m    }[0m
+2026-08-22T03:49:11.1105427Z [36;1m  }[0m
+2026-08-22T03:49:11.1105592Z [36;1m}[0m
+2026-08-22T03:49:11.1209584Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-08-22T03:49:11.1209936Z env:
+2026-08-22T03:49:11.1210167Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:49:11.1210450Z   CI: true
+2026-08-22T03:49:11.1210928Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:49:11.1211695Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:11.1212215Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:49:11.1212740Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:11.1213215Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.1213922Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:49:11.1214617Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.1215016Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.1215409Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.1215719Z ##[endgroup]
+2026-08-22T03:49:11.4393495Z Checking Gradle wrapper in D:\a\NPDevGeneral\NPDevGeneral\NPDevContract\dsl
+2026-08-22T03:49:11.4445629Z Checking Gradle wrapper in D:\a\NPDevGeneral\NPDevGeneral\NPDevGenerator
+2026-08-22T03:49:11.4463645Z Checking Gradle wrapper in D:\a\NPDevGeneral\NPDevGeneral\NPDevKernel
+2026-08-22T03:49:11.4481780Z Checking Gradle wrapper in D:\a\NPDevGeneral\NPDevGeneral\NPDevRuntimeHost
+2026-08-22T03:49:11.5090928Z ##[group]Run & pwsh -NoProfile -ExecutionPolicy Bypass `
+2026-08-22T03:49:11.5091422Z [36;1m& pwsh -NoProfile -ExecutionPolicy Bypass `[0m
+2026-08-22T03:49:11.5092309Z [36;1m  -File "$env:NPDEV_WORKSPACE\scripts\quality\run-script-automation-quality.ps1" `[0m
+2026-08-22T03:49:11.5092810Z [36;1m  -WorkspaceRoot "$env:NPDEV_WORKSPACE"[0m
+2026-08-22T03:49:11.5192625Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-08-22T03:49:11.5192993Z env:
+2026-08-22T03:49:11.5193224Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:49:11.5193512Z   CI: true
+2026-08-22T03:49:11.5193991Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:49:11.5194851Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:11.5195784Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:49:11.5196391Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:11.5196877Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.5197334Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:49:11.5197810Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.5198218Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.5198651Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:11.5198978Z ##[endgroup]
+2026-08-22T03:49:12.6124730Z OK    Script automation quality report generated.
+2026-08-22T03:49:12.7874834Z ##[group]Run # NEW-2 (2026-07-23): pass -PendingOk so the surface-convergence classification/footprint
+2026-08-22T03:49:12.7875620Z [36;1m# NEW-2 (2026-07-23): pass -PendingOk so the surface-convergence classification/footprint[0m
+2026-08-22T03:49:12.7876265Z [36;1m# checks REG-5 formally RETIRED to advisory (docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a) are[0m
+2026-08-22T03:49:12.7876902Z [36;1m# recorded as warnings, not a hard throw. run-runtimehost-gate.ps1:123 already invokes this[0m
+2026-08-22T03:49:12.7877884Z [36;1m# script WITH -PendingOk; ci-validation was the one call site that omitted it, so the retired[0m
+2026-08-22T03:49:12.7878556Z [36;1m# checks (which the real allowlist enforcement makes redundant) failed this job.[0m
+2026-08-22T03:49:12.7879017Z [36;1m& pwsh -NoProfile -ExecutionPolicy Bypass `[0m
+2026-08-22T03:49:12.7879480Z [36;1m  -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `[0m
+2026-08-22T03:49:12.7879981Z [36;1m  -WorkspaceRoot "$env:NPDEV_WORKSPACE" `[0m
+2026-08-22T03:49:12.7880275Z [36;1m  -PendingOk[0m
+2026-08-22T03:49:12.7985657Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-08-22T03:49:12.7985999Z env:
+2026-08-22T03:49:12.7986234Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:49:12.7986524Z   CI: true
+2026-08-22T03:49:12.7986998Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:49:12.7987682Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:12.7988202Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:49:12.7988726Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:12.7989200Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:12.7989666Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:49:12.7990120Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:12.7990514Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:12.7990904Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:12.7991213Z ##[endgroup]
+2026-08-22T03:49:15.6639356Z OK    Runtime surface evidence reports generated.
+2026-08-22T03:49:15.8299794Z ##[group]Run .\gradlew check --no-daemon --console=plain
+2026-08-22T03:49:15.8300276Z [36;1m.\gradlew check --no-daemon --console=plain[0m
+2026-08-22T03:49:15.8400129Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-08-22T03:49:15.8400475Z env:
+2026-08-22T03:49:15.8400710Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:49:15.8400999Z   CI: true
+2026-08-22T03:49:15.8401500Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:49:15.8402352Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:15.8403351Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:49:15.8403901Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:49:15.8404382Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:15.8404862Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:49:15.8405320Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:15.8405729Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:15.8406129Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:49:15.8406443Z ##[endgroup]
+2026-08-22T03:49:17.4974968Z 
+2026-08-22T03:49:17.4977253Z Welcome to Gradle 8.5!
+2026-08-22T03:49:17.4977975Z 
+2026-08-22T03:49:17.4978449Z Here are the highlights of this release:
+2026-08-22T03:49:17.4980395Z  - Support for running on Java 21
+2026-08-22T03:49:17.4982223Z  - Faster first use with Kotlin DSL
+2026-08-22T03:49:17.4984437Z  - Improved error and warning messages
+2026-08-22T03:49:17.4984776Z 
+2026-08-22T03:49:17.4986800Z For more details see https://docs.gradle.org/8.5/release-notes.html
+2026-08-22T03:49:17.4987316Z 
+2026-08-22T03:49:18.6686587Z To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.5/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+2026-08-22T03:49:20.9745543Z Daemon will be stopped at the end of the build 
+2026-08-22T03:49:21.3604517Z Configuration on demand is an incubating feature.
+2026-08-22T03:49:30.5888022Z > Task :checkRuntimeSchemaCopies
+2026-08-22T03:49:30.5944771Z > Task :checkSampleModelCopies
+2026-08-22T03:49:30.6116887Z > Task :core:compileJava FROM-CACHE
+2026-08-22T03:49:30.6657398Z > Task :core:processResources NO-SOURCE
+2026-08-22T03:49:30.6658171Z > Task :core:classes UP-TO-DATE
+2026-08-22T03:49:30.6684998Z > Task :core:compileTestJava NO-SOURCE
+2026-08-22T03:49:30.6687718Z > Task :core:processTestResources NO-SOURCE
+2026-08-22T03:49:30.6692697Z > Task :core:testClasses UP-TO-DATE
+2026-08-22T03:49:30.6696008Z > Task :core:test NO-SOURCE
+2026-08-22T03:49:30.6696618Z > Task :core:jacocoTestReport SKIPPED
+2026-08-22T03:49:30.6697102Z > Task :core:check UP-TO-DATE
+2026-08-22T03:49:41.3806932Z > Task :compileJava
+2026-08-22T03:49:41.3807603Z > Task :processResources
+2026-08-22T03:49:41.3838994Z > Task :classes
+2026-08-22T03:49:45.1686793Z 
+2026-08-22T03:49:45.1992620Z Note: D:\a\NPDevGeneral\NPDevGeneral\NPDevContract\dsl\src\test\java\com\npdev\dsl\v1\compiled\CanonicalJsonRoundTripCompletenessTest.java uses or overrides a deprecated API.
+2026-08-22T03:49:45.2025398Z > Task :compileTestJava
+2026-08-22T03:49:45.2026682Z Note: Recompile with -Xlint:deprecation for details.
+2026-08-22T03:49:46.0673482Z 
+2026-08-22T03:49:46.0674453Z > Task :processTestResources
+2026-08-22T03:49:46.0675230Z > Task :testClasses
+2026-08-22T03:50:11.6619079Z 
+2026-08-22T03:50:11.6620208Z > Task :test
+2026-08-22T03:50:11.6620491Z 
+2026-08-22T03:50:11.6622869Z PackFromCoordinateResolutionTest > aFragmentStructuredRemotePackFetchesAndGeneratesFullyOfflineFromCache() FAILED
+2026-08-22T03:50:11.6626680Z     java.io.IOException at PackFromCoordinateResolutionTest.java:162
+2026-08-22T03:50:21.4692851Z 
+2026-08-22T03:50:21.4707471Z 884 tests completed, 1 failed
+2026-08-22T03:50:21.7722503Z 
+2026-08-22T03:50:21.7724538Z > Task :test FAILED
+2026-08-22T03:50:23.1814085Z 
+2026-08-22T03:50:23.1814717Z > Task :jacocoTestReport
+2026-08-22T03:50:23.1820438Z FAILURE: Build failed with an exception.
+2026-08-22T03:50:23.1826012Z 
+2026-08-22T03:50:23.1834193Z * What went wrong:
+2026-08-22T03:50:23.1837167Z Execution failed for task ':test'.
+2026-08-22T03:50:23.1838094Z 9 actionable tasks: 8 executed, 1 from cache
+2026-08-22T03:50:23.1840798Z > There were failing tests. See the report at: file:///D:/a/NPDevGeneral/Build/gradle/npdev-dsl/root/reports/tests/test/index.html
+2026-08-22T03:50:23.1841863Z 
+2026-08-22T03:50:23.1842169Z * Try:
+2026-08-22T03:50:23.1843608Z > Run with --scan to get full insights.
+2026-08-22T03:50:23.1844196Z 
+2026-08-22T03:50:23.1844528Z BUILD FAILED in 1m 6s
+2026-08-22T03:50:23.4770131Z ##[error]Process completed with exit code 1.
+2026-08-22T03:50:23.4950295Z ##[group]Run Get-ChildItem -Recurse -Path NPDevContract -Filter "TEST-*LegacyModelMigration*.xml" -ErrorAction SilentlyContinue | ForEach-Object {
+2026-08-22T03:50:23.4952215Z [36;1mGet-ChildItem -Recurse -Path NPDevContract -Filter "TEST-*LegacyModelMigration*.xml" -ErrorAction SilentlyContinue | ForEach-Object {[0m
+2026-08-22T03:50:23.4953402Z [36;1m  Write-Host "----- $($_.FullName) -----"[0m
+2026-08-22T03:50:23.4954006Z [36;1m  $raw = Get-Content -Raw -LiteralPath $_.FullName[0m
+2026-08-22T03:50:23.4954713Z [36;1m  Write-Host $raw.Substring(0, [Math]::Min(4000, $raw.Length))[0m
+2026-08-22T03:50:23.4955339Z [36;1m}[0m
+2026-08-22T03:50:23.5091161Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+2026-08-22T03:50:23.5091515Z env:
+2026-08-22T03:50:23.5091759Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:50:23.5092060Z   CI: true
+2026-08-22T03:50:23.5092599Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:50:23.5093275Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:50:23.5093801Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:50:23.5094333Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:50:23.5094810Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:23.5095269Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:50:23.5095723Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:23.5096130Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:23.5096522Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:23.5096846Z ##[endgroup]
+2026-08-22T03:50:24.0003385Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:50:24.0004764Z ##[group]Run actions/upload-artifact@v4
+2026-08-22T03:50:24.0005049Z with:
+2026-08-22T03:50:24.0005250Z   name: npdev-ci-validation-evidence
+2026-08-22T03:50:24.0005565Z   path: scripts/reports/out
+scripts/reports/releases
+
+2026-08-22T03:50:24.0005882Z   if-no-files-found: warn
+2026-08-22T03:50:24.0006114Z   retention-days: 14
+2026-08-22T03:50:24.0006325Z   compression-level: 6
+2026-08-22T03:50:24.0006529Z   overwrite: false
+2026-08-22T03:50:24.0006737Z   include-hidden-files: false
+2026-08-22T03:50:24.0006966Z env:
+2026-08-22T03:50:24.0007175Z   NPDEV_WORKSPACE: D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:50:24.0007493Z   CI: true
+2026-08-22T03:50:24.0007975Z   GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
+2026-08-22T03:50:24.0008669Z   JAVA_HOME: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:50:24.0009186Z   JAVA_HOME_17_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\17.0.20-8\x64
+2026-08-22T03:50:24.0009708Z   JAVA_HOME_21_X64: C:\hostedtoolcache\windows\Java_Temurin-Hotspot_jdk\21.0.12-8.0\x64
+2026-08-22T03:50:24.0010193Z   pythonLocation: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:24.0010648Z   PKG_CONFIG_PATH: C:\hostedtoolcache\windows\Python\3.12.10\x64/lib/pkgconfig
+2026-08-22T03:50:24.0012234Z   Python_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:24.0012664Z   Python2_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:24.0013068Z   Python3_ROOT_DIR: C:\hostedtoolcache\windows\Python\3.12.10\x64
+2026-08-22T03:50:24.0013390Z ##[endgroup]
+2026-08-22T03:50:24.1993814Z (node:1312) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-08-22T03:50:24.1994711Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-08-22T03:50:24.2076789Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-08-22T03:50:24.2080673Z The least common ancestor is D:\a\NPDevGeneral\NPDevGeneral\scripts\reports. This will be the root directory of the artifact
+2026-08-22T03:50:24.2081567Z With the provided path, there will be 5 files uploaded
+2026-08-22T03:50:24.2086227Z Artifact name is valid!
+2026-08-22T03:50:24.2088354Z Root directory input is valid!
+2026-08-22T03:50:24.5401091Z Beginning upload of artifact content to blob storage
+2026-08-22T03:50:24.5707661Z (node:1312) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+2026-08-22T03:50:24.7748935Z Uploaded bytes 9770
+2026-08-22T03:50:24.8338792Z Finished uploading artifact content to blob storage!
+2026-08-22T03:50:24.8340013Z SHA256 digest of uploaded artifact zip is ecf31f34b8c95b4cdd0b9c22cdf28a396d7f97c3276be31af893830d857816e0
+2026-08-22T03:50:24.8342904Z Finalizing artifact upload
+2026-08-22T03:50:25.0904524Z Artifact npdev-ci-validation-evidence.zip successfully finalized. Artifact ID 9469760266
+2026-08-22T03:50:25.0905959Z Artifact npdev-ci-validation-evidence has been successfully uploaded! Final size is 9770 bytes. Artifact ID is 9469760266
+2026-08-22T03:50:25.0917395Z Artifact download URL: https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/32549968565/artifacts/9469760266
+2026-08-22T03:50:25.1282480Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:50:25.1283807Z Post job cleanup.
+2026-08-22T03:50:25.2940877Z (node:8432) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+2026-08-22T03:50:25.2941715Z (Use `node --trace-deprecation ...` to show where the warning was created)
+2026-08-22T03:50:25.3259824Z Node 20 is being deprecated. This workflow is running with Node 24 by default. If you need to temporarily use Node 20, you can set the ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION=true environment variable. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+2026-08-22T03:50:25.3261172Z Post job cleanup.
+2026-08-22T03:50:25.5501704Z [command]"C:\Program Files\Git\bin\git.exe" version
+2026-08-22T03:50:25.5766358Z git version 2.55.0.windows.4
+2026-08-22T03:50:25.5839994Z Temporarily overriding HOME='D:\a\_temp\a403cd9e-c2e1-42af-b45c-c141f6407512' before making global git config changes
+2026-08-22T03:50:25.5841056Z Adding repository directory to the temporary git global config as a safe directory
+2026-08-22T03:50:25.5850574Z [command]"C:\Program Files\Git\bin\git.exe" config --global --add safe.directory D:\a\NPDevGeneral\NPDevGeneral
+2026-08-22T03:50:25.6156965Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp core\.sshCommand
+2026-08-22T03:50:25.6455835Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+2026-08-22T03:50:26.2146658Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-08-22T03:50:26.2414827Z http.https://github.com/.extraheader
+2026-08-22T03:50:26.2464839Z [command]"C:\Program Files\Git\bin\git.exe" config --local --unset-all http.https://github.com/.extraheader
+2026-08-22T03:50:26.2780253Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+2026-08-22T03:50:26.8335268Z [command]"C:\Program Files\Git\bin\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-08-22T03:50:26.8651284Z [command]"C:\Program Files\Git\bin\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+2026-08-22T03:50:27.4392943Z Cleaning up orphan processes
+2026-08-22T03:50:27.4526841Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4, actions/setup-java@v4, actions/setup-node@v4, actions/setup-python@v5, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
+
