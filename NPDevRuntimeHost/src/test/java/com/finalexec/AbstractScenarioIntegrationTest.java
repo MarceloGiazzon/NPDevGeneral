@@ -1,26 +1,42 @@
 package com.finalexec;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.ports.PermissionEvaluator;
+import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.security.PermissionDecision;
 import org.junit.jupiter.api.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles({"test", "postgres"})
 @Testcontainers
 @Tag("integration")
 public abstract class AbstractScenarioIntegrationTest {
+    protected static final String INTEGRATION_TENANT = "dev";
+
+    @Autowired
+    protected ConceptStore conceptStore;
+
+    @Autowired
+    protected ObjectMapper integrationObjectMapper;
+
     @DynamicPropertySource
     static void registerScenarioDefaults(DynamicPropertyRegistry registry) {
         registry.add("npdev.auth.enabled", () -> "true");
         registry.add("npdev.auth.mode", () -> "apikey");
+        registry.add("spring.main.allow-bean-definition-overriding", () -> "true");
         registry.add(
                 "npdev.auth.api-keys",
                 () -> "dev-key=dev:developer:ADMIN|DEBUG|USER;"
@@ -29,13 +45,31 @@ public abstract class AbstractScenarioIntegrationTest {
         );
     }
 
+    protected void deleteAllConceptRows(String... conceptNames) {
+        for (String conceptName : conceptNames) {
+            List<ConceptRecord> rows = conceptStore.findAll(INTEGRATION_TENANT, conceptName);
+            for (ConceptRecord row : rows) {
+                conceptStore.deleteById(INTEGRATION_TENANT, conceptName, row.id());
+            }
+        }
+    }
+
+    protected List<ConceptRecord> conceptRows(String conceptName) {
+        return conceptStore.findAll(INTEGRATION_TENANT, conceptName);
+    }
+
+    protected <T> T conceptEntity(ConceptRecord record, Class<T> entityType) {
+        Map<String, Object> data = new LinkedHashMap<>(record.data());
+        data.putIfAbsent("id", record.id());
+        return integrationObjectMapper.convertValue(data, entityType);
+    }
+
     // The Testcontainers JDBC URL in application-postgres.yml manages lifecycle.
 
     @TestConfiguration
     static class RuntimeHostIntegrationPermissionConfig {
-        @Bean
-        @Primary
-        PermissionEvaluator runtimeHostIntegrationPermissionEvaluator() {
+        @Bean("permissionEvaluator")
+        PermissionEvaluator permissionEvaluator() {
             return (subject, requirement) -> subject.roles().contains("admin")
                     ? PermissionDecision.allow("integration_admin_role")
                     : PermissionDecision.deny("integration_permission_denied", "Permission denied by integration test policy");
