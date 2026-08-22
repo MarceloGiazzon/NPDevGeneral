@@ -1,5 +1,5 @@
 dependencies {
-    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'org.postgresql:postgresql:42.7.13'
     implementation 'org.testcontainers:postgresql:1.21.4'
     implementation 'org.junit.jupiter:junit-jupiter-api:5.11.0'
     runtimeOnly 'org.slf4j:slf4j-simple:1.7.36'
