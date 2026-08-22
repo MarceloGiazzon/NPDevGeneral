@@ -76,12 +76,32 @@ final class AwaitEventStep {
             if (awaitRef.isBlank()) {
                 awaitRef = "awaitedEvent";
             }
+
+            // R2.5 (durable await timeouts): a timed await computes its deadline ONCE, the first
+            // time it parks, and reuses that same value on every later resume attempt (this method
+            // re-runs on each one -- see this class's own javadoc). Reusing rather than
+            // recomputing "now + timeout" is what makes the deadline actually expire: recomputing
+            // it here on every quiet resume would push it out indefinitely and it would never pass.
+            Long timeoutSeconds = step.getTimeoutSeconds();
+            Long deadlineEpochMs = null;
+            if (timeoutSeconds != null && timeoutSeconds > 0) {
+                long now = KernelRunner.nowEpochMillis();
+                deadlineEpochMs = FlowStateCodec.existingAwaitDeadlineEpochMs(state, step.getName());
+                if (deadlineEpochMs == null) {
+                    deadlineEpochMs = now + timeoutSeconds * 1000L;
+                }
+                if (now >= deadlineEpochMs) {
+                    return executeTimeout(runner, req);
+                }
+            }
+
             state.put(
                     FlowStateCodec.AWAIT_STATE_KEY,
                     FlowStateCodec.buildAwaitState(
                             step,
                             traceStepIndex,
-                            awaitRef
+                            awaitRef,
+                            deadlineEpochMs
                     )
             );
             stepInfo.put("awaitedEventStatus", "WAITING");
@@ -127,6 +147,87 @@ final class AwaitEventStep {
         state.put("lastEvent", awaited);
         state.put("causationId", awaited.eventId());
         state.put(satisfiedKey, Boolean.TRUE);
+        return null;
+    }
+
+    /**
+     * R2.5: runs a timed await's declared {@code onTimeout} steps once its deadline has passed
+     * with no satisfying event ever found -- the escalation branch the roadmap calls "wait for
+     * approval, but escalate after N hours". Structured identically to {@link
+     * BranchStep#execute}'s taken-branch handling (recurse into {@link KernelRunner#executeSteps}
+     * for the nested list, propagate a failure or an explicit {@code return} straight through,
+     * otherwise fall through to {@code null} so the shared post-switch tracing in {@code
+     * executeSteps} records THIS step's own completion and the outer flow continues at the next
+     * top-level step) -- deliberately reused rather than a bespoke shape, since "run a nested step
+     * list in place of the normal branch" is exactly what onFailure/then/else already solved.
+     */
+    private static KernelRunner.StepExecutionOutcome executeTimeout(KernelRunner runner, StepExecutionRequest req) {
+        FlowDefinition flow = req.flow();
+        FlowStepDefinition step = req.step();
+        Object input = req.input();
+        Map<String, Object> state = req.state();
+        List<EventEnvelope> emittedEvents = req.emittedEvents();
+        FlowTraceMeta traceMeta = req.traceMeta();
+        List<StepTrace> stepTraces = req.stepTraces();
+        String executionId = req.executionId();
+        String defaultCorrelationId = req.defaultCorrelationId();
+        int stepIndexOffset = req.stepIndexOffset();
+        KernelRunner.StepProgressRecorder progressRecorder = req.progressRecorder();
+        ExecutionContext effectiveContext = req.effectiveContext();
+        int traceStepIndex = req.traceStepIndex();
+        long stepStartedAt = req.stepStartedAt();
+        Map<String, Object> stateBefore = req.stateBefore();
+        Map<String, Object> stepInfo = req.stepInfo();
+
+        state.remove(FlowStateCodec.AWAIT_STATE_KEY);
+        stepInfo.put("awaitedEventStatus", "TIMED_OUT");
+        List<FlowStepDefinition> onTimeoutSteps = step.getOnTimeoutSteps();
+        if (!onTimeoutSteps.isEmpty()) {
+            KernelRunner.StepExecutionOutcome nested = runner.executeSteps(
+                    flow,
+                    onTimeoutSteps,
+                    input,
+                    state,
+                    emittedEvents,
+                    traceMeta,
+                    stepTraces,
+                    executionId,
+                    defaultCorrelationId,
+                    stepIndexOffset,
+                    progressRecorder,
+                    effectiveContext
+            );
+            if (nested.failedResult() != null) {
+                ExecutionResult nestedFailure = nested.failedResult();
+                runner.traceFailedStep(
+                        traceMeta,
+                        step,
+                        traceStepIndex,
+                        stepStartedAt,
+                        stateBefore,
+                        state,
+                        stepInfo,
+                        nestedFailure.getInvariantViolations(),
+                        nestedFailure.getCapabilityError(),
+                        stepTraces
+                );
+                return nested;
+            }
+            if (nested.returned()) {
+                runner.traceSuccessfulStep(
+                        traceMeta,
+                        step,
+                        traceStepIndex,
+                        stepStartedAt,
+                        stateBefore,
+                        state,
+                        stepInfo,
+                        stepTraces
+                );
+                progressRecorder.onStepCompleted(traceStepIndex + 1, state);
+                return nested;
+            }
+        }
         return null;
     }
 }

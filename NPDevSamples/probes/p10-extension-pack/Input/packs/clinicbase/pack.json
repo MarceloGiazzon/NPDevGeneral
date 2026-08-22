@@ -1,0 +1,21 @@
+{
+  "$schema": "../../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "clinicbase",
+  "version": "1.0.0",
+  "namespace": "com.npdev.clinicbase",
+  "description": "PACK-10 probe (first-class extends): a base pack with a Patient concept that an extension pack will additively extend via the first-class `extends` keyword.",
+  "category": "other",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "Patient",
+      "ui": { "label": "Patient" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Name" } }
+      ]
+    }
+  ]
+}

@@ -69,7 +69,83 @@ public final class CompiledModelCanonicalJson {
         root.set("properties", toProperties(model));
         root.set("contexts", toContexts(model));
         root.set("conversions", toConversions(model));
+        root.set("webhooks", toWebhooks(model));
+        root.set("sequences", toSequences(model));
+        root.set("seeds", toSeeds(model));
         return root;
+    }
+
+    /** R6.2: writes the model-declared inbound webhook doors, sorted by source (deterministic-
+     *  generation gate, same discipline every other array here follows). */
+    private static ArrayNode toWebhooks(CompiledModel model) {
+        ArrayNode webhooks = JsonNodeFactory.instance.arrayNode();
+        List<CompiledWebhook> sorted = new ArrayList<>(model.getWebhooks());
+        sorted.sort(Comparator.comparing(webhook -> normalize(webhook.source())));
+        for (CompiledWebhook webhook : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("source", safe(webhook.source()));
+            node.put("hmacSecretEnvVar", safe(webhook.hmacSecretEnvVar()));
+            node.put("eventName", safe(webhook.eventName()));
+            node.set("fieldMapping", toStringMap(webhook.fieldMapping()));
+            webhooks.add(node);
+        }
+        return webhooks;
+    }
+
+    /** R5.3: writes the model-declared document-numbering counters, sorted by name (deterministic-
+     *  generation gate, same discipline every other array here follows). */
+    private static ArrayNode toSequences(CompiledModel model) {
+        ArrayNode sequences = JsonNodeFactory.instance.arrayNode();
+        List<CompiledSequence> sorted = new ArrayList<>(model.getSequences());
+        sorted.sort(Comparator.comparing(sequence -> normalize(sequence.name())));
+        for (CompiledSequence sequence : sorted) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(sequence.name()));
+            node.put("format", safe(sequence.format()));
+            node.put("scope", safe(sequence.scope()));
+            sequences.add(node);
+        }
+        return sequences;
+    }
+
+    /** R8.8: writes the model/pack-declared first-boot seed rows. Deliberately NOT sorted, unlike
+     *  every sibling array above -- declaration order is semantically load-bearing (a later
+     *  record's {@code data} may reference an earlier one's {@code alias} via {@code
+     *  "$ref:<alias>"}), and {@link com.npdev.dsl.v1.compiler.ModelCompiler}/{@link
+     *  com.npdev.dsl.v1.resolution.ModelResolver} already produce this list in a deterministic
+     *  order (composition order), so preserving it here stays deterministic-generation-safe. */
+    private static ArrayNode toSeeds(CompiledModel model) {
+        ArrayNode seeds = JsonNodeFactory.instance.arrayNode();
+        for (CompiledSeed seed : model.getSeeds()) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("concept", safe(seed.concept()));
+            node.put("alias", safe(seed.alias()));
+            node.put("id", safe(seed.id()));
+            node.set("data", toObjectMap(seed.data()));
+            node.set("repeatOver", toSeedRepeatOver(seed.repeatOverVars()));
+            if (seed.count() != null) {
+                node.put("count", seed.count());
+            }
+            seeds.add(node);
+        }
+        return seeds;
+    }
+
+    private static JsonNode toSeedRepeatOver(Map<String, List<Integer>> repeatOverVars) {
+        if (repeatOverVars == null || repeatOverVars.isEmpty()) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode vars = JsonNodeFactory.instance.objectNode();
+        for (Map.Entry<String, List<Integer>> entry : repeatOverVars.entrySet()) {
+            ArrayNode range = JsonNodeFactory.instance.arrayNode();
+            for (Integer bound : entry.getValue()) {
+                range.add(bound);
+            }
+            vars.set(entry.getKey(), range);
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.set("vars", vars);
+        return node;
     }
 
     /** S7 Phase B (B13): writes the declared conversion vocabulary, sorted by id (deterministic-
@@ -166,8 +242,8 @@ public final class CompiledModelCanonicalJson {
             node.put("type", safe(property.type()));
             node.set("default", MAPPER.valueToTree(property.defaultValue()));
             node.set("settableAt", toStringArray(property.settableAt()));
-            if (property.label() != null) {
-                node.put("label", property.label());
+            if (property.label() != null || !property.labelLocales().isEmpty()) {
+                node.set("label", toLabelNode(property.label(), property.labelLocales()));
             }
             node.put("securityRelevant", property.securityRelevant());
             properties.add(node);
@@ -238,9 +314,42 @@ public final class CompiledModelCanonicalJson {
                 node.put("marginMm", document.marginMm());
             }
             node.set("metadata", toObjectMap(document.metadata()));
+            node.put("aggregate", safe(document.aggregate()));
+            node.set("bands", toDocumentBands(document.bands()));
+            node.set("logo", toDocumentLogo(document.logo()));
             documents.add(node);
         }
         return documents;
+    }
+
+    /** R5.7: a document band's {@code fields} round-trips through the same {@link
+     *  #toPanelFieldBindings} a panel's {@code fieldBindings} already uses. */
+    private static ArrayNode toDocumentBands(List<CompiledDocumentBand> bands) {
+        ArrayNode out = JsonNodeFactory.instance.arrayNode();
+        if (bands == null) {
+            return out;
+        }
+        for (CompiledDocumentBand band : bands) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(band.name()));
+            node.put("kind", safe(band.kind()));
+            node.put("collection", safe(band.collection()));
+            if (band.label() != null || !band.labelLocales().isEmpty()) {
+                node.set("label", toLabelNode(band.label(), band.labelLocales()));
+            }
+            node.set("fields", toPanelFieldBindings(band.fields()));
+            out.add(node);
+        }
+        return out;
+    }
+
+    private static JsonNode toDocumentLogo(CompiledDocumentLogo logo) {
+        if (logo == null) {
+            return JsonNodeFactory.instance.nullNode();
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("field", safe(logo.field()));
+        return node;
     }
 
     private static ArrayNode toAutoPanels(CompiledModel model) {
@@ -321,7 +430,7 @@ public final class CompiledModelCanonicalJson {
             CompiledUiStateControl control = entry.getValue();
             ObjectNode controlNode = JsonNodeFactory.instance.objectNode();
             controlNode.put("name", safe(control.name()));
-            controlNode.put("label", safe(control.label()));
+            controlNode.set("label", toLabelNode(control.label(), control.labelLocales()));
             controlNode.set("values", toStringArray(control.values()));
             controlNode.put("default", safe(control.defaultValue()));
             node.set(safe(entry.getKey()), controlNode);
@@ -350,8 +459,8 @@ public final class CompiledModelCanonicalJson {
         for (CompiledWorkbenchAction action : actions) {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("procedure", safe(action.procedure()));
-            if (action.label() != null) {
-                node.put("label", safe(action.label()));
+            if (action.label() != null || !action.labelLocales().isEmpty()) {
+                node.set("label", toLabelNode(action.label(), action.labelLocales()));
             }
             node.set("inputFields", toStringArray(action.inputFields()));
             if (action.applyTo() != null) {
@@ -404,8 +513,8 @@ public final class CompiledModelCanonicalJson {
             CompiledWorkbenchBandPicker picker = entry.getValue();
             ObjectNode pickerNode = JsonNodeFactory.instance.objectNode();
             pickerNode.put("panel", safe(picker.panel()));
-            if (picker.label() != null) {
-                pickerNode.put("label", safe(picker.label()));
+            if (picker.label() != null || !picker.labelLocales().isEmpty()) {
+                pickerNode.set("label", toLabelNode(picker.label(), picker.labelLocales()));
             }
             pickerNode.set("columns", toStringArray(picker.columns()));
             pickerNode.put("filter", safe(picker.filter()));
@@ -465,8 +574,8 @@ public final class CompiledModelCanonicalJson {
         }
         for (CompiledDerivedField field : derivedFields) {
             ObjectNode entry = JsonNodeFactory.instance.objectNode();
-            if (field.label() != null) {
-                entry.put("label", safe(field.label()));
+            if (field.label() != null || !field.labelLocales().isEmpty()) {
+                entry.set("label", toLabelNode(field.label(), field.labelLocales()));
             }
             entry.put("tier", safe(field.tier()));
             if (field.expression() != null) {
@@ -495,9 +604,24 @@ public final class CompiledModelCanonicalJson {
             // not a flag on it -- different timing (before the root upsert vs. after), different
             // contract (a non-ok result aborts with no writes vs. rolling back writes already made).
             node.put("onValidate", safe(aggregate.onValidate()));
+            // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> HERE -> reader.
+            node.set("invariants", toAggregateInvariants(aggregate.invariants()));
             aggregates.add(node);
         }
         return aggregates;
+    }
+
+    /** R4.4: writes aggregates[].invariants[] -- {name, expression, message?}. */
+    private static ArrayNode toAggregateInvariants(List<CompiledAggregateInvariant> invariants) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAggregateInvariant invariant : invariants) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(invariant.name()));
+            node.put("expression", safe(invariant.expression()));
+            node.put("message", safe(invariant.message()));
+            array.add(node);
+        }
+        return array;
     }
 
     private static ArrayNode toAggregateCollections(List<CompiledAggregateCollection> collections) {
@@ -530,6 +654,8 @@ public final class CompiledModelCanonicalJson {
             node.put("module", safe(concept.getModule()));
             node.put("renamedFrom", safe(concept.getRenamedFrom()));
             node.put("satelliteOf", safe(concept.getSatelliteOf()));
+            node.put("softDelete", concept.isSoftDelete());
+            node.put("temporal", concept.isTemporal());
             node.set("ui", toPresentationMetadata(concept.getUi()));
 
             List<CompiledField> fields = new ArrayList<>(concept.getFields());
@@ -555,6 +681,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.set("ui", toPresentationMetadata(field.getUi()));
                 fieldNode.set("file", toFileMetadata(field.getFile()));
                 fieldNode.set("picker", toFieldPicker(field.getPicker()));
+                fieldNode.set("access", toFieldAccess(field.getAccess()));
                 fieldsNode.add(fieldNode);
             }
             node.set("fields", fieldsNode);
@@ -639,7 +766,7 @@ public final class CompiledModelCanonicalJson {
             return null;
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
-        node.put("label", safe(ui.getLabel()));
+        node.set("label", toLabelNode(ui.getLabel(), ui.getLabelLocales()));
         node.put("placeholder", safe(ui.getPlaceholder()));
         node.put("helpText", safe(ui.getHelpText()));
         node.put("widget", safe(ui.getWidget()));
@@ -651,8 +778,8 @@ public final class CompiledModelCanonicalJson {
             return null;
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
-        node.put("label", safe(metadata.getLabel()));
-        node.put("shortLabel", safe(metadata.getShortLabel()));
+        node.set("label", toLabelNode(metadata.getLabel(), metadata.getLabelLocales()));
+        node.set("shortLabel", toLabelNode(metadata.getShortLabel(), metadata.getShortLabelLocales()));
         node.put("description", safe(metadata.getDescription()));
         node.put("helpText", safe(metadata.getHelpText()));
         node.put("placeholder", safe(metadata.getPlaceholder()));
@@ -852,7 +979,6 @@ public final class CompiledModelCanonicalJson {
             node.set("parameters", toProcedureParameters(query.parameters()));
             node.set("permissionRequirements", toStringArray(query.permissionRequirements()));
             node.put("tracePolicy", safe(query.tracePolicy()));
-            node.put("auditPolicy", safe(query.auditPolicy()));
             node.set("metadata", toObjectMap(query.metadata()));
             node.set("groupBy", toGroupByFields(query.groupBy()));
             node.set("aggregates", toAggregateFunctions(query.aggregates()));
@@ -920,7 +1046,6 @@ public final class CompiledModelCanonicalJson {
             node.set("returns", toSchema(procedure.returns()));
             node.set("permissionRequirements", toStringArray(procedure.permissionRequirements()));
             node.put("tracePolicy", safe(procedure.tracePolicy()));
-            node.put("auditPolicy", safe(procedure.auditPolicy()));
             node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
             node.set("metadata", toObjectMap(procedure.metadata()));
             procedures.add(node);
@@ -1199,7 +1324,7 @@ public final class CompiledModelCanonicalJson {
         for (CompiledPanelAction action : sorted) {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("name", safe(action.name()));
-            node.put("label", safe(action.label()));
+            node.set("label", toLabelNode(action.label(), action.labelLocales()));
             node.put("binding", safe(action.binding()));
             node.put("concept", safe(action.concept()));
             node.put("operation", safe(action.operation()));
@@ -1259,7 +1384,7 @@ public final class CompiledModelCanonicalJson {
         for (CompiledStateMachineState state : lifecycle.getStates()) {
             ObjectNode stateNode = JsonNodeFactory.instance.objectNode();
             stateNode.put("value", safe(state.getValue()));
-            stateNode.put("label", safe(state.getLabel()));
+            stateNode.set("label", toLabelNode(state.getLabel(), state.getLabelLocales()));
             stateNode.put("initial", state.isInitial());
             stateNode.put("terminal", state.isTerminal());
             stateNode.set("metadata", toStringMap(state.getMetadata()));
@@ -1279,7 +1404,7 @@ public final class CompiledModelCanonicalJson {
             transitionNode.set("requiredPayload", toStringArray(transition.getRequiredPayload()));
             transitionNode.put("event", safe(transition.getEvent()));
             transitionNode.put("guard", safe(transition.getGuard()));
-            transitionNode.put("actionLabel", safe(transition.getActionLabel()));
+            transitionNode.set("actionLabel", toLabelNode(transition.getActionLabel(), transition.getActionLabelLocales()));
             transitionNode.set("action", toActionMetadata(transition.getAction()));
             transitionNode.set("metadata", toStringMap(transition.getMetadata()));
             transitionsNode.add(transitionNode);
@@ -1414,6 +1539,17 @@ public final class CompiledModelCanonicalJson {
             } else {
                 stepNode.put("parallelAwait", flowStep.getParallelAwait());
             }
+            // R2.5 (durable await timeouts): an awaitEvent step's optional durable wait deadline
+            // (seconds) + its escalation steps. The generator only ever reads THIS canonical JSON
+            // (never StepAst/CompiledFlowStep directly, per CLAUDE.md), so a field missing from
+            // this writer or its reader counterpart below is invisible downstream even though it
+            // compiled correctly -- REG-104's exact shape.
+            if (flowStep.getTimeoutSeconds() == null) {
+                stepNode.putNull("timeoutSeconds");
+            } else {
+                stepNode.put("timeoutSeconds", flowStep.getTimeoutSeconds());
+            }
+            stepNode.set("onTimeoutSteps", toFlowSteps(flowStep.getOnTimeoutSteps()));
             steps.add(stepNode);
         }
         return steps;
@@ -1424,7 +1560,7 @@ public final class CompiledModelCanonicalJson {
             return null;
         }
         ObjectNode node = JsonNodeFactory.instance.objectNode();
-        node.put("label", safe(action.getLabel()));
+        node.set("label", toLabelNode(action.getLabel(), action.getLabelLocales()));
         node.put("confirmationText", safe(action.getConfirmationText()));
         node.put("successMessage", safe(action.getSuccessMessage()));
         node.put("failureHint", safe(action.getFailureHint()));
@@ -1599,7 +1735,7 @@ public final class CompiledModelCanonicalJson {
             }
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("value", safe(option.getValue()));
-            node.put("label", safe(option.getLabel()));
+            node.set("label", toLabelNode(option.getLabel(), option.getLabelLocales()));
             if (option.getOrder() == null) {
                 node.putNull("order");
             } else {
@@ -1668,6 +1804,18 @@ public final class CompiledModelCanonicalJson {
         return node;
     }
 
+    /** R5.5: field-level authorization rule (access: {read, write}) -- same shape as
+     *  {@link #toConceptAccess}, one rung down the ladder. */
+    private static JsonNode toFieldAccess(CompiledFieldAccess access) {
+        if (access == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("read", safe(access.getRead()));
+        node.put("write", safe(access.getWrite()));
+        return node;
+    }
+
     private static ObjectNode toStringMap(Map<String, String> values) {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         if (values == null || values.isEmpty()) {
@@ -1683,6 +1831,26 @@ public final class CompiledModelCanonicalJson {
 
     private static String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * R5.6: writes a label site. Plain string when there are no per-locale overrides -- the
+     * common case, and byte-identical to every pre-R5.6 canonical file (load-bearing for the
+     * determinism checker: {@code check-deterministic-generation.ps1} diffs two generations of the
+     * SAME model, so this only needs to be a function of the input, not literally unchanged
+     * output). Object form {@code {"default": "...", "<locale>": "...", ...}} otherwise, with
+     * locale keys sorted so output is independent of authoring/map-iteration order.
+     */
+    private static JsonNode toLabelNode(String text, Map<String, String> locales) {
+        if (locales == null || locales.isEmpty()) {
+            return JsonNodeFactory.instance.textNode(safe(text));
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.put("default", safe(text));
+        for (Map.Entry<String, String> entry : new TreeMap<>(locales).entrySet()) {
+            node.put(entry.getKey(), safe(entry.getValue()));
+        }
+        return node;
     }
 
     private static String normalize(String value) {

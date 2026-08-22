@@ -1,0 +1,25 @@
+{
+  "$schema": "../../../../../../NPDevContract/schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "clinicext",
+  "version": "1.0.0",
+  "namespace": "com.npdev.clinicext",
+  "description": "PACK-10 probe (first-class extends): an extension pack that additively adds a field to clinicbase::Patient using the first-class `extends` keyword (not the legacy metadata.extends convention).",
+  "category": "other",
+  "author": "NPDev",
+  "extends": { "pack": "clinicbase", "concept": "Patient" },
+  "packs": [
+    { "$ref": "../clinicbase/pack.json" }
+  ],
+  "concepts": [
+    {
+      "name": "Patient",
+      "ui": { "label": "Patient" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "bloodType", "type": "string", "required": false, "maxLength": 10,
+          "ui": { "label": "Blood type" } }
+      ]
+    }
+  ]
+}

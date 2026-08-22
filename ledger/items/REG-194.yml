@@ -1,0 +1,68 @@
+id: REG-194
+title: >-
+  humanize() spaces every capital, so an ALL-CAPS enum value renders as "H I G H" -- affecting every
+  label in every generated app, not just enums
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-20
+verification: UNIT_TESTED
+source: >-
+  Found by the R7.6 (EDIT-11) CSV import work while rendering PurchaseOrder's enum column, disclosed
+  as out of scope. Reproduced independently by the orchestrator.
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+detail: |
+  `humanize` (business-ui-app.mustache:114-119) is:
+
+      String(str).replace(/([A-Z])/g, " $1").replace(/^./, s => s.toUpperCase()).trim()
+
+  It inserts a space before EVERY capital, which is correct for camelCase and wrong for anything
+  already upper-case. Measured directly:
+
+      "inProgress" -> "In Progress"   (correct -- the case it was written for)
+      "status"     -> "Status"        (correct)
+      "HIGH"       -> "H I G H"       (wrong)
+      "OPEN"       -> "O P E N"       (wrong)
+
+  ALL-CAPS is the ordinary convention for enum values in this platform's own corpus, so the wrong
+  case is not exotic. The blast radius is wider than enums: `humanize` is the generic
+  identifier-to-label helper, so any ALL-CAPS or acronym-containing value routed through it degrades
+  the same way -- an `ID`, `URL` or `SKU` inside an identifier gets spaced out too.
+
+  Why it survived: the function is correct for the case it was written for (camelCase field names),
+  and enum VALUES only started flowing through the same helper as field NAMES as the UI grew. Nobody
+  looked at an all-caps value until a CSV preview put one in a column header-adjacent position.
+
+  SMALLEST FIX (not applied -- it is a rendering change across every generated app's labels, so it
+  wants its own slice with a browser check): only split a capital that FOLLOWS a lower-case letter or
+  digit, e.g. `replace(/([a-z0-9])([A-Z])/g, "$1 $2")`, leaving runs of capitals intact. Decide
+  deliberately what "HIGH" should render as -- "HIGH" (leave acronyms alone) or "High" (title-case a
+  fully-capitalised token) -- because those are different products, and pick one rather than letting
+  the regex decide by accident.
+
+  Deliberately filed rather than fixed inside R7.6: changing it there would have altered labels
+  throughout the app under a commit about CSV import, and the browser routine that proves R7.6 asserts
+  on some of those labels.
+
+  2026-08-20 (fix): adopted the sibling templates' split -- only a capital following a lower-case
+  letter or digit is split (`/([a-z0-9])([A-Z])/g, "$1 $2"`), so runs of capitals stay intact. Decision
+  taken for the "leave acronyms alone" option ("HIGH" stays "HIGH"), matching model-surface.mustache /
+  model-authoring.mustache. Verified with Node over the emitted function: inProgress -> "In Progress",
+  status -> "Status", HIGH -> "HIGH", OPEN -> "OPEN", orderId -> "Order Id", skuCode -> "Sku Code",
+  URLValue -> "URLValue". Regression test added (BusinessUiEmitterHumanizeTest), RED captured against
+  the old regex, GREEN after the fix.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterHumanizeTest.java
+  asserts: >-
+    The emitted business-ui app.js contains the camelCase-boundary split
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") and no longer contains the every-capital split
+    .replace(/([A-Z])/g, " $1"), so an ALL-CAPS enum value or acronym token is not exploded letter by
+    letter.
+  provenRed: true
+  provenRedNote: >-
+    Captured by temporarily restoring the old regex: BusinessUiEmitterHumanizeTest fails at the
+    corrected-split assertion (line 78); re-applying the fix turns the same test green.

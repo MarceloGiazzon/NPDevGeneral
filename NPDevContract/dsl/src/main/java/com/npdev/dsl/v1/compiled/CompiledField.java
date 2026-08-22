@@ -23,6 +23,7 @@ public final class CompiledField {
     private final CompiledFileMetadata file;
     private final boolean sensitive;
     private final CompiledFieldPicker picker;
+    private final CompiledFieldAccess access;
 
     public CompiledField(String name, String dslType, String javaType, boolean id, boolean required, boolean unique) {
         this(name, dslType, javaType, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -199,6 +200,33 @@ public final class CompiledField {
             boolean sensitive,
             CompiledFieldPicker picker
     ) {
+        this(name, dslType, javaType, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, sensitive, picker, null);
+    }
+
+    /** R5.5: {@code access} carries this field's declared {read, write} authorization rule --
+     *  compiled form of {@link com.npdev.dsl.v1.ast.FieldAst#getAccess()}. */
+    public CompiledField(
+            String name,
+            String dslType,
+            String javaType,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            CompiledReferenceSemantics referenceSemantics,
+            String domainType,
+            CompiledSchema schema,
+            List<CompiledEnumOption> enumOptions,
+            CompiledPresentationMetadata ui,
+            String connectable,
+            String renamedFrom,
+            CompiledFileMetadata file,
+            boolean sensitive,
+            CompiledFieldPicker picker,
+            CompiledFieldAccess access
+    ) {
         this.name = name;
         this.dslType = dslType;
         this.javaType = javaType;
@@ -217,6 +245,7 @@ public final class CompiledField {
         this.file = file;
         this.sensitive = sensitive;
         this.picker = picker;
+        this.access = access;
     }
 
     public CompiledField(
@@ -272,4 +301,6 @@ public final class CompiledField {
     public boolean isSensitive() { return sensitive; }
     /** B16/B19 (Move 9 A3): this field's declared picker filter/multiSelect, or null if undeclared. */
     public CompiledFieldPicker getPicker() { return picker; }
+    /** R5.5: this field's declared {read, write} authorization rule, or null if undeclared. */
+    public CompiledFieldAccess getAccess() { return access; }
 }

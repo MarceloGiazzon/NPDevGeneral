@@ -75,9 +75,6 @@ public class GeneratorTestModelLoaderTest {
         Path uiIndex = out.resolve("src/main/resources/static/npdev-ui/index.html");
         Path uiAppJs = out.resolve("src/main/resources/static/npdev-ui/app.js");
         Path uiStyle = out.resolve("src/main/resources/static/npdev-ui/style.css");
-        Path uiReactIndex = out.resolve("src/main/resources/static/npdev-ui-react/index.html");
-        Path uiReactAppJs = out.resolve("src/main/resources/static/npdev-ui-react/assets/app.js");
-        Path uiReactStyle = out.resolve("src/main/resources/static/npdev-ui-react/assets/app.css");
         Path runtimeActuatorProps = out.resolve("src/main/resources/npdev-runtime-actuator.properties");
         Path generatedSignature = out.resolve("src/main/resources/npdev/support/generated-folder.signature.properties");
         Path generatedBuildInfo = out.resolve("src/main/resources/npdev-build-info.properties");
@@ -123,9 +120,6 @@ public class GeneratorTestModelLoaderTest {
         assertTrue(Files.exists(uiIndex), "Expected generated operator UI index: " + uiIndex);
         assertTrue(Files.exists(uiAppJs), "Expected generated operator UI script: " + uiAppJs);
         assertTrue(Files.exists(uiStyle), "Expected generated operator UI style: " + uiStyle);
-        assertTrue(Files.exists(uiReactIndex), "Expected generated React operator UI index: " + uiReactIndex);
-        assertTrue(Files.exists(uiReactAppJs), "Expected generated React operator UI script: " + uiReactAppJs);
-        assertTrue(Files.exists(uiReactStyle), "Expected generated React operator UI style: " + uiReactStyle);
         assertTrue(Files.exists(runtimeActuatorProps), "Expected generated runtime actuator properties: " + runtimeActuatorProps);
         assertTrue(Files.exists(generatedSignature), "Expected generated strict-execution signature manifest: " + generatedSignature);
         assertFalse(Files.exists(generatedBuildInfo),
@@ -173,8 +167,8 @@ public class GeneratorTestModelLoaderTest {
                 "Generated runtime config must not construct kernel runner directly");
         assertTrue(!runtimeConfigContent.contains("com.npdev.adapters.events.inproc"),
                 "Generated runtime config must not reference in-proc event adapter classes directly");
-        assertTrue(!runtimeConfigContent.contains("com.npdev.adapters.expression.cel"),
-                "Generated runtime config must not reference CEL adapter classes directly");
+        assertTrue(!runtimeConfigContent.contains("com.npdev.runtime.support"),
+                "Generated runtime config must not reference runtime-support adapter classes directly");
         assertTrue(generatedSignatureContent.contains("contract=npdev-generated-folder-signature-v1"),
                 "Expected generated strict-execution signature contract marker");
         assertTrue(generatedSignatureContent.contains("treeSha256="),
@@ -374,18 +368,11 @@ public class GeneratorTestModelLoaderTest {
                 "Expected generated UI redirect controller to map /npdev-ui and /npdev-ui/");
         assertTrue(uiRedirectControllerContent.contains("redirect:/npdev-ui/index.html"),
                 "Expected generated UI redirect controller root redirect to follow canonical UI selection");
-        assertTrue(uiRedirectControllerContent.contains("@GetMapping({\"/npdev-ui-react\", \"/npdev-ui-react/\"})"),
-                "Expected generated UI redirect controller to map /npdev-ui-react and /npdev-ui-react/");
-        assertTrue(uiRedirectControllerContent.contains("redirect:/npdev-ui-react/index.html"),
-                "Expected generated UI redirect controller to redirect to React static index");
-
         String uiIndexContent = Files.readString(uiIndex);
         assertTrue(uiIndexContent.contains("/npdev-ui/app.js"),
                 "Expected generated UI index to reference generated script");
         assertTrue(uiIndexContent.contains("Current canonical operator UI: /npdev-ui/"),
                 "Expected generated UI index to include canonical route from UI selection");
-        assertTrue(uiIndexContent.contains("Alternate surface: /npdev-ui-react/"),
-                "Expected generated UI index to include alternate route from UI selection");
         assertTrue(uiIndexContent.contains("canonical-ui-selection.json"),
                 "Expected generated UI index to mention canonical selection control");
         assertTrue(uiIndexContent.contains("Execute Flow"),
@@ -415,15 +402,6 @@ public class GeneratorTestModelLoaderTest {
         assertTrue(uiAppContent.contains("/api/v1/executions/summaries"),
                 "Expected generated UI script to use execution summaries endpoint");
 
-        String uiReactIndexContent = Files.readString(uiReactIndex);
-        assertTrue(uiReactIndexContent.contains("/npdev-ui-react/assets/app.js"),
-                "Expected generated React UI index to reference React JS bundle");
-        assertTrue(uiReactIndexContent.contains("/npdev-ui-react/assets/app.css"),
-                "Expected generated React UI index to reference React CSS bundle");
-        assertTrue(uiReactIndexContent.contains("npdev-react-footer"),
-                "Expected generated React UI index to include build info footer");
-        assertTrue(uiReactIndexContent.contains("/actuator/info"),
-                "Expected generated React UI index to query actuator info for version footer");
         assertTrue(uiAppContent.contains("/api/v1/admin/failures/recent"),
                 "Expected generated UI script to probe admin failures endpoint");
         assertTrue(uiAppContent.contains("/api/v1/admin/circuits"),

@@ -3,16 +3,22 @@ package com.finalexec.api;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ConceptWriteRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -238,5 +244,104 @@ public class ConceptQueryController {
         } catch (NumberFormatException ignored) {
             return null;
         }
+    }
+
+    // --- R7.8: batched endpoints for bulk selection UI ---
+
+    /**
+     * R7.8: batch update — applies a set of field updates to multiple records atomically.
+     * Each entry in the body specifies an id and a map of fields to update.
+     */
+    @PatchMapping("/{concept}/batch")
+    public Map<String, Object> batchUpdate(
+            HttpServletRequest request,
+            @PathVariable String concept,
+            @RequestBody List<Map<String, Object>> ops
+    ) {
+        if (conceptGateway == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "concept gateway not configured");
+        }
+        if (ops == null || ops.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "batch operations list must not be empty");
+        }
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        int succeeded = 0;
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (Map<String, Object> op : ops) {
+            String id = op.get("id") == null ? null : op.get("id").toString();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> fields = (Map<String, Object>) op.get("fields");
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", id);
+            if (id == null || fields == null || fields.isEmpty()) {
+                result.put("status", "skipped");
+                result.put("reason", "missing id or fields");
+            } else {
+                try {
+                    ConceptReadRequest readRequest = new ConceptReadRequest(concept, id, context.tenantId());
+                    ConceptRecord current = conceptGateway.read(readRequest, context).orElse(null);
+                    if (current == null) {
+                        result.put("status", "failed");
+                        result.put("reason", "record not found");
+                    } else {
+                        Map<String, Object> merged = new LinkedHashMap<>(current.data());
+                        merged.putAll(fields);
+                        merged.put("id", id);
+                        conceptGateway.save(new ConceptWriteRequest(concept, id, context.tenantId(), merged), context);
+                        result.put("status", "updated");
+                        succeeded++;
+                    }
+                } catch (Exception e) {
+                    result.put("status", "failed");
+                    result.put("reason", e.getMessage());
+                }
+            }
+            results.add(result);
+        }
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("concept", concept);
+        response.put("total", ops.size());
+        response.put("succeeded", succeeded);
+        response.put("results", results);
+        return response;
+    }
+
+    /**
+     * R7.8: batch delete — deletes multiple records by id.
+     */
+    @DeleteMapping("/{concept}/batch")
+    public Map<String, Object> batchDelete(
+            HttpServletRequest request,
+            @PathVariable String concept,
+            @RequestParam List<String> ids
+    ) {
+        if (conceptGateway == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "concept gateway not configured");
+        }
+        if (ids == null || ids.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ids must not be empty");
+        }
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        int succeeded = 0;
+        List<Map<String, Object>> results = new ArrayList<>();
+        for (String id : ids) {
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", id);
+            try {
+                conceptGateway.delete(new ConceptReadRequest(concept, id, context.tenantId()), context);
+                result.put("status", "deleted");
+                succeeded++;
+            } catch (Exception e) {
+                result.put("status", "failed");
+                result.put("reason", e.getMessage());
+            }
+            results.add(result);
+        }
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("concept", concept);
+        response.put("total", ids.size());
+        response.put("succeeded", succeeded);
+        response.put("results", results);
+        return response;
     }
 }

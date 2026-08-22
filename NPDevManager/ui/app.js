@@ -1089,8 +1089,25 @@ window.__npdevRefreshInstall = async function refreshInstall() {
   await refreshAppPaths();
 };
 
+async function loadManagerVersion() {
+  const el = document.getElementById("manager-version");
+  if (!el) return;
+  try {
+    el.textContent = `v${await invoke("manager_version")}`;
+  } catch (e) {
+    el.textContent = "";
+    return;
+  }
+  try {
+    el.title = await invoke("manager_version_description");
+  } catch (e) {
+    el.title = "NPDev Manager version";
+  }
+}
+
 (async function init() {
   await initFakeBanner();
+  await loadManagerVersion();
   showScreen("ready");
   // Before loadDoctor: the picker's value is what tells doctor which app's database to check, so
   // populating it afterwards would make the first render the one WITHOUT database rows.

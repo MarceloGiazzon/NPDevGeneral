@@ -1,0 +1,106 @@
+id: RUN-11
+title: >-
+  A flow can wait for an approval but cannot escalate -- there is no way to express "wait, but
+  time out after N hours and do something else"
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R2 item R2.5 -- "the single biggest
+  missing automation primitive... every approval workflow with a deadline; the flow demo that
+  separates NPDev from CRUD generators." Blocked by R2.1 (RUN-6), which landed earlier the same day.
+surface: kernel/flow-steps, dsl/schema
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/AwaitEventStep.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ResumeCoordinator.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/FlowStateCodec.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/
+  - NPDevContract/schemas/model.schema.json
+  - NPDevSamples/dsl-conformance-max
+detail: |
+  `timeout` (integer seconds) + `onTimeout` (step list) on `awaitEvent`/`awaitMatch`. When the
+  deadline passes, the sweep resumes the instance and runs the `onTimeout` steps in place of
+  re-parking, then continues the flow past the await.
+
+  **This item was only possible because R2.1 (RUN-6) landed first.** Before it, a quiet wait was
+  driven to terminal STUCK after ~75 minutes of cumulative backoff -- so no declared deadline longer
+  than that could ever have been honoured. The roadmap sequenced them correctly: "a wait must survive
+  to its declared deadline before deadlines mean anything."
+
+  **ZERO DB SCHEMA CHANGE, and that is the central design decision.** The deadline lives inside the
+  existing `_npdev.await` state blob (`FlowStateCodec.AWAIT_STATE_KEY`) that every parked
+  `AWAIT_EVENT` step already writes into `FlowInstance.state()` -- as a new
+  `timeoutDeadlineEpochMs` field, present only when the step declares `timeout`. `state` already
+  round-trips whole through `state_json` in `JdbcFlowInstanceStore` (all four engines) and by
+  reference in `InProcFlowInstanceStore`, so no column, no migration, no four-engine DDL. This is
+  the same reasoning the B15(B) parallel-await javadoc already used to reject a new storage surface.
+
+  **The deadline is computed ONCE, at first park (`now + timeout*1000`), and read back unchanged on
+  every later resume** (`FlowStateCodec.existingAwaitDeadlineEpochMs`). Recomputing it per resume
+  would push the deadline forward on every quiet sweep and it would never fire -- a subtle way to
+  ship a feature that silently does nothing.
+
+  **Per the orchestrator's design correction, nothing routes through `npdev_scheduled_event`.** That
+  table's drain publishes with a fresh correlation id (RUN-10, OPEN), so a deadline routed through it
+  could not reliably wake its own instance. Keeping the deadline on the instance, where the sweep
+  already looks, leaves RUN-10 irrelevant to this feature.
+
+  THE SWEEP-SIDE CHANGE IS ONE GAP-CLOSE: previously an instance with no candidate event was ALWAYS
+  backed off and never resumed. `ResumeCoordinator.resumeAllWaitingExecutions` now reads
+  `FlowStateCodec.awaitDeadlineEpochMs(instance.state())` and forces a `resumeExecution` when the
+  deadline has passed even with zero candidate events. An instance whose await declares no timeout
+  reads no deadline and is unaffected -- which is what makes this additive rather than breaking.
+
+  `AwaitEventStep.execute` checks `now >= deadline` and runs `onTimeout` through a nested
+  `executeSteps` call, structurally identical to `BranchStep`'s taken-branch handling (propagate
+  failure/`return`, otherwise fall through).
+
+  FOUR-PLACE SCHEMA + REG-104 THREADING, both mandatory in this repo and both done: `timeout`/
+  `onTimeout` added to `$defs.flowStep` in all four `model.schema.json` copies (verified present in
+  each by the orchestrator; `check-schema-mirror-consistency.py` green), and the field threaded
+  through the full live chain -- `StepAst` -> `JsonModelParser` -> `ModelCompiler` ->
+  `CompiledFlowStep` -> `CompiledModelCanonicalJson`/`Reader` -> `ModelResolver.cloneStep` ->
+  `FlowStepDefinition` (new `withTimeout(...)` mirroring `withOnFailure`) ->
+  `CompiledModelFlowDefinitionProvider`. The generator only ever reads canonical JSON, so a field
+  that stopped short of the round-trip would be invisible downstream (REG-104's exact shape).
+  `FlowValidation.validateAwaitStep` validates `timeout > 0`, rejects `onTimeout` without `timeout`,
+  and recurses into `onTimeout` steps like `onFailure`.
+
+  CRASH-INJECTION TEST (this item's stated definition of done):
+  `timeoutBranchRunsDurablyAfterRestartWhenPersistedDeadlineHasAlreadyPassed` -- a first runner parks
+  a real instance with a genuine persisted deadline; the test rewrites ONLY the persisted state's
+  deadline into the deep past; a brand-new second runner sharing nothing but the stores finds it with
+  zero candidate events, resumes anyway, runs `onTimeout`, and the instance reaches COMPLETED with
+  `state.timeoutOutcome == "escalated"`. Same new-runner idiom as
+  `resumeRemainsPossibleWithNewKernelRunnerUsingSameStores`. Independently re-run by the orchestrator
+  with `--rerun-tasks`: **PASS**, inside `:kernel:test` **536 tests, 0 failures, 0 errors**.
+
+  CONFORMANCE: `dsl-conformance-max` gained `EscalateWidgetOrderApproval` with
+  `timeout: 259200` (3 days) + `onTimeout`, and a new tracked feature `step.awaitEvent.timeout`.
+  **RED-proven**: removing the fields makes the gate print
+  `step.awaitEvent.timeout 0 model(s) [ZERO]` and FAIL; restoring them returns it to green.
+
+  **NO BREAKING.md ENTRY, deliberately -- this is ADDITIVE.** Evaluated rather than assumed: both
+  fields are new and optional; an await that declares no `timeout` reads no deadline and takes the
+  identical pre-R2.5 path (wait forever); no existing model can trigger the new resume path; and the
+  internal-API changes are additive copy-constructors mirroring existing ones. The repo's stability
+  policy scopes BREAKING.md to breaking changes in the DSL, generated code layout, or internal APIs,
+  and none of the three is broken here. No codemod for the same reason.
+
+  GATES: `:kernel:test` 536/0 (orchestrator-verified), `check-schema-mirror-consistency.py` OK,
+  `check-dsl-coverage.py` OK with the new feature covered, `:NPDevContract:dsl:test` 777 with the 1
+  pre-existing `AiModelToDslMappingTest` failure (unrelated golden-scenario-count drift from an
+  in-flight `deferred/**` deletion) -- correctly not chased.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerLifecycleTest.java (timeoutBranchRunsDurablyAfterRestartWhenPersistedDeadlineHasAlreadyPassed)
+  asserts: >-
+    a parked await whose persisted deadline has passed is resumed by a BRAND-NEW KernelRunner
+    sharing only the stores -- proving the deadline survived in the store rather than in memory --
+    with zero candidate events present, runs its onTimeout steps, and completes the flow past the
+    await. Paired with the conformance detector step.awaitEvent.timeout, which was proven red by
+    removing the corpus example.
+  provenRed: true

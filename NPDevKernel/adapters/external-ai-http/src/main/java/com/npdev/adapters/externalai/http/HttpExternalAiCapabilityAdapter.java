@@ -47,12 +47,17 @@ import java.util.function.Function;
  * .defaults()} returns zeros for timeout/retry -- so a vendor that accepted the TCP connection and
  * then never responded hung the calling thread forever. The fix lives entirely here: a per-request
  * {@link HttpRequest.Builder#timeout} plus a bounded, adapter-local retry loop in {@link #send}, both
- * enforced on the calling thread. This deliberately does NOT flip {@code CapabilityExecutionPolicy
- * .defaults()}'s kernel-wide timeout -- doing that would move every capability invocation (not just
- * this one) from {@code KernelRunner}'s synchronous path onto {@code CompletableFuture.supplyAsync}'s
- * default executor, {@code ForkJoinPool.commonPool()}, which does not propagate SLF4J's MDC or
- * Spring's {@code RequestContextHolder} to its worker threads -- see {@code ledger/items/RUN-4.yml}
- * for the confirmed evidence trail. That is a separate, platform-wide decision for a later session.</p>
+ * enforced on the calling thread.</p>
+ *
+ * <p><b>R2.6 (RUN-4, 2026-08-19): the kernel now also has a backstop, and this adapter's own
+ * deadline is still the one that matters here.</b> {@code KernelRunner} resolves an undeclared
+ * capability timeout to a 600s hang backstop and runs the invocation on its own
+ * {@code npdev-capability-N} pool -- deliberately NOT {@code ForkJoinPool.commonPool()}, which does
+ * not carry the calling thread's thread-local state (the trace in {@code ledger/items/RUN-4.yml}
+ * found a real kernel safety guard being defeated by exactly that). 600s sits far above this
+ * adapter's own worst case -- {@code maxRetries}(2)+1 attempts x a 120s request timeout plus
+ * backoff -- so the backstop catches a genuine hang without ever truncating a working call. Keep it
+ * that way: if this adapter's timeout or retry budget grows, check it against that backstop.</p>
  */
 public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter, ExternalAiCapabilityContract {
 

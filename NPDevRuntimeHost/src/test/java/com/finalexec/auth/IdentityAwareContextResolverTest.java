@@ -1,5 +1,7 @@
 package com.finalexec.auth;
 
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ports.AuthenticatedContextResolver;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +14,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
@@ -48,7 +52,21 @@ class IdentityAwareContextResolverTest {
             s.execute("INSERT INTO identity_user_roles VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','22222222-2222-2222-2222-222222222222','tenantx')");
             s.execute("INSERT INTO identity_user_roles VALUES ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','33333333-3333-3333-3333-333333333333','22222222-2222-2222-2222-222222222222','tenantx')");
         }
-        resolver = new IdentityAwareContextResolver(CLAIMS_DELEGATE, new FixedProvider(dataSource));
+        resolver = new IdentityAwareContextResolver(CLAIMS_DELEGATE, new FixedProvider(dataSource), identityModel());
+    }
+
+    // REG-177: IdentityAwareContextResolver now resolves table names from a CompiledModel rather
+    // than hardcoded literals -- this fabricates one matching this test's own H2 schema (see the
+    // NpdevObservabilityConfigSensitiveFieldTest precedent for the same hand-built-CompiledModel
+    // pattern). The map KEY (not the concept's own name) is what CompiledModel.findConcept matches.
+    private static CompiledModel identityModel() {
+        Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
+        concepts.put("identity::User", new CompiledConcept("User", "User", "identity_users", List.of()));
+        concepts.put("identity::Role", new CompiledConcept("Role", "Role", "identity_roles", List.of()));
+        concepts.put("identity::UserRole", new CompiledConcept("UserRole", "UserRole", "identity_user_roles", List.of()));
+        concepts.put("identity::UserRolePermission",
+                new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
+        return new CompiledModel("test", "1.0.0", concepts);
     }
 
     private ExecutionContext resolve(String tenant, String actor) {
@@ -82,10 +100,13 @@ class IdentityAwareContextResolverTest {
     }
 
     @Test
-    void fallsBackWhenIdentityTablesAbsent() {
-        IdentityAwareContextResolver noTables =
-                new IdentityAwareContextResolver(CLAIMS_DELEGATE, new FixedProvider(emptyDataSource()));
-        assertEquals(Set.of("USER"), noTables.resolveFromPrincipal(
+    void fallsBackWhenIdentityPackNotComposed() {
+        // REG-177: "identity tables absent" now means the app's own CompiledModel doesn't compose
+        // the identity pack at all (checked once at construction, not per-request) -- an empty
+        // CompiledModel is the faithful equivalent of the old "physically empty database" fixture.
+        IdentityAwareContextResolver noIdentityPack = new IdentityAwareContextResolver(
+                CLAIMS_DELEGATE, new FixedProvider(emptyDataSource()), new CompiledModel("test", "1.0.0", Map.of()));
+        assertEquals(Set.of("USER"), noIdentityPack.resolveFromPrincipal(
                 Map.of("tenant_id", "tenantx", "actor_id", "charlie"), Map.of()).roles());
     }
 

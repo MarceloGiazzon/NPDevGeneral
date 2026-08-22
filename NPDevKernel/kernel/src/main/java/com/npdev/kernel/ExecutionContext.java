@@ -93,6 +93,29 @@ public record ExecutionContext(
         return dashed == null || dashed.isBlank() ? null : dashed;
     }
 
+    /**
+     * R5.6: the caller's requested locale tag (e.g. "pt-BR"), or null when none was supplied --
+     * additive, deliberately NOT a new record component. Nothing upstream of {@code
+     * ExecutionContext} carries a user locale today (confirmed: no claim, header, or session field
+     * anywhere in the auth-context chain reads one), so this reads the SAME generic {@code tags}
+     * map every other cross-cutting signal here already uses ({@link #correlationId()},
+     * {@link #idempotencyKey()}) rather than widening this record's canonical constructor -- which
+     * every adapter/runtimehost/generator caller across the repo constructs positionally, well
+     * outside this class's own module. A caller populates it via {@link #withTag(String, String)}
+     * with key {@code "locale"}; the generated {@code RuntimeContextService} is the natural place
+     * to do that from an {@code Accept-Language} header or {@code X-Tag-locale} header (the
+     * existing "any X-Tag-* header becomes a tag" convention), but wiring that is a RuntimeHost
+     * change, not a kernel one -- this method only defines the read side of the contract.
+     */
+    public String locale() {
+        String direct = tags.get("locale");
+        if (direct != null && !direct.isBlank()) {
+            return direct;
+        }
+        String capitalized = tags.get("Locale");
+        return capitalized == null || capitalized.isBlank() ? null : capitalized;
+    }
+
     public Map<String, String> metadata() {
         return tags;
     }

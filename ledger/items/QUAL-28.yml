@@ -1,0 +1,25 @@
+id: QUAL-28
+title: >-
+  R4.3 -- query predicate grammar v2 (OR-groups, IN lists, contains/startsWith, is-null,
+  reference-path left sides)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-20
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R4.3.
+surface: kernel/concepts/query
+detail: |
+  Query predicate grammar extended with OR-groups, IN lists, contains/startsWith, is-null,
+  and reference-path left sides. Implemented as part of the R4 expression language unification.
+  RUN-23 confirms ConceptQuery.Operator has LTE/GTE from this work.
+resolution: >-
+  Already implemented. Ledger item filed retroactively for tracking completeness.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConceptQueryFilterSupportPredicateTest.java
+  asserts: >-
+    Query predicates with OR, IN, contains, startsWith, is-null all produce correct SQL
+  provenRed: true

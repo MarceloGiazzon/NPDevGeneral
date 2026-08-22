@@ -1,0 +1,32 @@
+{
+  "scenarioName": "editor-open-model-only-verify",
+  "targetPath": "/npdev-ui-react/#/authoring/exchange",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "http://localhost:5173/npdev-ui-react/#/authoring/exchange", "label": "Open the Import/Export authoring route" },
+    { "action": "waitForLoadState", "state": "networkidle", "label": "Let the lazy authoring chunk finish loading" },
+    { "action": "screenshot", "name": "before_import", "label": "Exchange screen before importing a model" },
+    {
+      "action": "evaluate",
+      "name": "injectFile",
+      "script": "var modelJson = { dslVersion: '1.0.0', namespace: 'sample', version: '1.0.0', concepts: [ { name: 'Author', fields: [ { name: 'id', type: 'uuid', id: true, required: true }, { name: 'name', type: 'string', required: true } ] }, { name: 'Book', fields: [ { name: 'id', type: 'uuid', id: true, required: true }, { name: 'title', type: 'string', required: true }, { name: 'authorId', type: 'reference', required: true, reference: { target: 'Author', onDelete: 'restrict' } } ] } ] }; var file = new File([JSON.stringify(modelJson)], 'model.json', { type: 'application/json' }); var dt = new DataTransfer(); dt.items.add(file); var openBtn = Array.from(document.querySelectorAll('button')).find(function (b) { return b.textContent.trim() === 'Open model only'; }); var section = openBtn ? openBtn.closest('section') : null; var input = section ? section.querySelector('input[type=\"file\"]') : null; if (input) { input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })); } return { foundButton: !!openBtn, foundInput: !!input };",
+      "label": "Inject a minimal valid model.json into the file input via DataTransfer, same as a real file pick"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 500, "label": "Let React commit the selected-file state" },
+    {
+      "action": "evaluate",
+      "name": "clickOpen",
+      "script": "var openBtn = Array.from(document.querySelectorAll('button')).find(function (b) { return b.textContent.trim() === 'Open model only'; }); if (openBtn) { openBtn.click(); } return { clicked: !!openBtn };",
+      "label": "Click Open model only"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 2000, "label": "Let the async import + re-render settle" },
+    { "action": "screenshot", "name": "after_import", "label": "Screen after clicking Open model only" },
+    {
+      "action": "evaluate",
+      "name": "afterState",
+      "script": "var root = document.getElementById('root'); return { bodyTextLength: document.body.innerText.length, bodyTextSnippet: document.body.innerText.slice(0, 400), rootChildCount: root ? root.children.length : -1, rootInnerHtmlLength: root ? root.innerHTML.length : -1 };",
+      "label": "Capture rendered body/root state after import"
+    },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

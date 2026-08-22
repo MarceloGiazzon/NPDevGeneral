@@ -1,0 +1,243 @@
+id: RUN-21
+title: >-
+  Audit trail gains a real field-level before/after diff on create/update/soft-delete/restore, and
+  the inert `queries[].auditPolicy`/`procedures[].auditPolicy` knob is retired by codemod
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18, R5.1 -- "'Who changed what, when' is a hard ERP requirement -- and
+  the pieces already exist unconsumed (AuditLogStore port, audit-inproc/audit-postgres adapters).
+  Record create/update/delete with actor, timestamp, and before/after field diff in the gateway write
+  path; emit a generated history endpoint + panel. The schema-declared auditPolicy knob is consumed
+  by nothing -- enforce it or remove it by codemod so no inert knob ships in 1.0."
+surface: kernel/gateway-persistence-path, dsl/schema, dsl/compiled-model, generator/templates,
+  samples/corpus-migration, cli/migration-codemod
+files:
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/QueryAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledQuery.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledProcedure.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/ContractSurfaceSupportTest.java
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevCli/dsl_v2_migration.py
+  - NPDevCli/tests/test_dsl_v2_migration.py
+  - NPDevSamples/npdev-canary/Input/model.json
+  - NPDevSamples/medium-expense-approval/Input/model.json
+  - NPDevSamples/probes/engine-probe/Input/model.json
+  - NPDevContract/dsl/resources/Models/official-samples/medium-expense-approval/model.json
+  - NPDevGenerator/resources/Models/official-samples/medium-expense-approval/model.json
+  - BREAKING.md
+detail: |
+  PREMISE VERIFIED FIRST, and it split into two halves that are BOTH true, unlike most premises this
+  session -- one dimension of the roadmap's claim ("the pieces already exist unconsumed") was
+  MISLEADING, the other ("auditPolicy is consumed by nothing") was exactly right.
+
+  AuditingConceptStoreDecorator (the file the task brief flagged as "very likely your seam") is NOT
+  an audit-trail seam at all -- read before designing anything, per instruction. Its own javadoc says
+  what it is: a demo decorator proving the `persistence.adapter` personalization-cascade override
+  actually switches implementations, applied per-concept only when that cascade selects it, logging a
+  single greppable println per call. It never touches AuditLogStore/AuditRecord and was never wired
+  into a default path. A real, ALREADY-WIRED, ALWAYS-ON audit mechanism exists one layer up and
+  nowhere the roadmap or task brief named it: `DefaultConceptGateway.audit(...)`
+  (NPDevKernel/kernel/.../concepts/DefaultConceptGateway.java) calls `auditLogStore.append(...)` for
+  every CONCEPT_READ/LIST/AGGREGATE/WRITE/DELETE, allowed or denied, and `AuditLogStore` is bound to a
+  REAL adapter by default (`InProcAuditLogStore` in-memory mode / `JdbcAuditLogStore` jdbc mode via
+  NpdevRuntimeModeConfig) -- not the roadmap's "unconsumed" port at all. A SECOND, independent
+  mechanism also already existed: the generated CRUD service layer's
+  `runtimeSupport.auditCrudMutation(...)` (GeneratedCrudRuntimeSupport, called from
+  service-base.mustache's create/update/delete, and R5.4's restore), landing as `CRUD_*` action rows
+  in the SAME `npdev_audit_log` table (already a registered internal table, `NpdevAuditLogTable` --
+  no new table, no REG-193 exposure). Both mechanisms log actor/tenant/roles/outcome/reasonCode
+  already; NEITHER carried a field-level before/after diff, and neither differentiated a soft delete
+  from a physical one. That gap -- not "audit logging doesn't exist" -- is what R5.1 actually needed
+  to close, and it is a smaller, more precise gap than the roadmap's prose implied.
+
+  `auditPolicy` (`queries[].auditPolicy`/`procedures[].auditPolicy`, enum none/read/write) WAS exactly
+  as inert as claimed: grepped every `.auditPolicy()` accessor call in the repo before touching
+  anything -- every hit was inside the compiler (building the field) or the canonical JSON writer
+  (serializing it); ZERO runtime call sites ever read it to decide whether to log anything. A SECOND,
+  previously-unknown inert knob was found by the same grep discipline while documenting the first:
+  `ProcedureStepAst.audit` (a per-step Boolean, `"audit": true` in the DSL) is round-tripped through
+  the compiler and canonical JSON the identical way and is EQUALLY consumed by nothing at runtime.
+  The task brief and roadmap only named `auditPolicy`; `step.audit` is a real, closely-related finding
+  but deliberately NOT retired this round (see DELIBERATELY NOT DONE) -- flagging it here rather than
+  silently expanding scope.
+
+  THE FIELD-DIFF AUDIT TRAIL (the actual fix): rather than add a diff to BOTH pre-existing mechanisms
+  (doubling an already-duplicated CONCEPT_*/CRUD_* audit pair), the diff was added to the ONE
+  mechanism that already uniformly covers every mutation kind the roadmap's done-when needs, INCLUDING
+  restore -- `GeneratedCrudRuntimeSupport.auditCrudMutation`/`appendCrudAudit`. A new 7-arg overload
+  (`auditCrudMutation(conceptName, operation, resourceId, outcome, ctx, before, after)`) computes a
+  compact, deterministic "field: before -> after" string via a new `describeFieldDiff` helper
+  (alphabetically sorted, unchanged fields silently omitted, `null` for an absent side) and stores it
+  in the AuditRecord's existing `meta` map under a new `fieldDiff` key -- no DB schema change, since
+  `meta_json` is already a JSON_DOCUMENT column. The 5-arg overload (still used by the DENY path and
+  bond-membership add/remove, which have no before/after to offer) delegates to the new one with
+  `before=null, after=null` and omits the `fieldDiff` key entirely rather than emitting an empty one.
+
+  service-base.mustache's four mutation paths were wired to pass real snapshots (`mapFromEntity`,
+  already the class's own entity->Map converter, reused rather than duplicated):
+    - CREATE: before=null, after=mapFromEntity(created) (post-save, so it carries the generated id).
+    - UPDATE: before=mapFromEntity(existing) captured IMMEDIATELY after the fetch and BEFORE
+      `applyUpdateFields` mutates `existing` in place (the same "capture before the in-place mutation"
+      requirement HARDEN-GC-P2 already documented for file fields specifically); after=mapFromEntity(updated).
+    - DELETE: before=mapFromEntity(toDelete.get()); after=null. The pre-existing
+      `{{#hasFileFields}}`/`{{^hasFileFields}}` split (fetch-then-cascade vs. exists-only) was
+      collapsed to an UNCONDITIONAL `persistence.findById` fetch -- the audit "before" snapshot needs
+      the row's data regardless of file fields, so the two branches converged to one, a simplification
+      not just an addition. Verified no generator test asserted the removed `existsById` branch
+      (grepped generator src/test and src/main -- zero hits) before removing it.
+    - RESTORE (softDelete concepts only): before=null (the row was excluded from every read while
+      deleted, so there is no "before" snapshot this API ever legitimately saw); after=the
+      now-visible-again row, re-fetched via `persistence.findById(id)` after `conceptStore.restore()`
+      returns true.
+
+  "MUST NOT DOUBLE-COUNT A SOFT DELETE AS A PHYSICAL ONE" (the task brief's explicit constraint,
+  re-reading RUN-20 first as instructed): DefaultConceptGateway/the store layer don't expose to the
+  generated service whether a given `deleteById` call physically removed a row or flipped
+  `deleted_at` -- that knowledge lives inside JdbcBusinessConceptStore, one layer down, and adding a
+  new ConceptStore-port query for it (mirroring RUN-20's `restore()` pattern, including updating both
+  decorators) was judged bigger than this round's budget for a fact the TEMPLATE already knows at
+  GENERATION time. Solved instead with a compile-time `{{#softDelete}}`/`{{^softDelete}}` mustache
+  branch on the delete() audit call: a softDelete concept's delete emits action `CRUD_SOFT_DELETE`
+  (not `CRUD_DELETE`), and its counterpart `CRUD_RESTORE` event only EVER exists for such a concept
+  (the restore() method itself is entirely `{{#softDelete}}`-gated, unchanged from R5.4) -- so a
+  physical delete can never be misread as reversible, and a soft delete's pairing with its later
+  restore is unambiguous from the action names alone, with no runtime type-check needed.
+
+  RETIRING auditPolicy: corpus check FIRST (grepped the whole repo for `"auditPolicy"` in *.java/
+  *.json/*.py/*.md before deciding remove-vs-enforce) found 5 in-repo model.json files declaring it
+  (medium-expense-approval x3 copies, npdev-canary, engine-probe) plus 13 Java call sites (AST/
+  compiled records + their constructors), confirming this IS a breaking schema change requiring the
+  standing codemod-in-the-same-commit rule. Removed the field from QueryAst/ProcedureAst/
+  CompiledQuery/CompiledProcedure (both telescoping constructors each), JsonModelParser,
+  ModelCompiler, the canonical JSON writer (CompiledModelCanonicalJson, 2 sites) + metadata writer
+  (CompiledMetadataCanonicalJson, 1 site) + reader (CompiledModelCanonicalJsonReader, 2 sites), and
+  all 4 model.schema.json mirrors (NOT the frozen schemas/archive/model-1.0.0.schema.json copy, which
+  stays byte-for-byte historical) -- re-verified with check-schema-mirror-consistency.py (all 4 still
+  semantically identical). Fixed the resulting 13 broken constructor call sites across dsl/generator/
+  kernel test code (positional-arg surgery, one field removed from an already-long argument list per
+  site) plus one Java test fixture (ContractSurfaceSupportTest) whose raw JSON literal still declared
+  the retired key. A NEW `npdev migrate dsl-2` codemod step
+  (`_migrate_query_or_procedure_audit_policy`, dsl_v2_migration.py) strips the dead key from every
+  `queries[]`/`procedures[]` entry structurally (not a blind string replace -- every OTHER field on
+  the entry is left untouched, matching this module's existing house style), with 5 new unit tests
+  (all passing, 45/45 total in the module including the 40 pre-existing). Ran the codemod for real
+  (`npdev migrate dsl-2 --write`) against all 5 corpus files; re-validated all 5 against the updated
+  schema via a standalone jsonschema check (all OK). Two LOAD-BEARING non-repo-corpus generators that
+  ALSO construct models declaring `auditPolicy` were found and fixed the same way (they would have
+  started emitting schema-invalid models the next time they ran): `scripts/proofs/synthesize_scale_model.py`
+  (feeds the nightly SCALE-1 ladder) and two PowerShell model-builders
+  (`scripts/ai/Normalize-AiContract.ps1`, `scripts/quality/run-trusted-source-beta0-proof.ps1`).
+  `scripts/policy/ai-model-to-dsl-mapping-policy.json`'s one `dslTarget` reference to
+  `procedures[].auditPolicy` was updated to note the retirement (verified this field is free text, not
+  structurally parsed by any checker, before editing it). BREAKING.md entry added in the same commit
+  per the standing rule.
+
+  DOCS: `auditPolicy` was taught as a real, meaningful knob in 5 authored doc sources
+  (content/npdev-concepts-deep-dive.yml, content/npdev-user-manual.yml, content/readme.yml,
+  docs/FEATURES.md, and their generated content/*.json + docs/*.md mirrors) -- all updated to
+  describe the REAL mechanism (unconditional, per-operation, with a field diff) instead of the
+  retired per-query/procedure flag; regenerated via the existing `scripts/docs/generate_group_e_docs.py`/
+  `generate_group_d_docs.py` (never hand-edited the derived .md/.json directly, per the repo's
+  source->json->markdown discipline). The frozen editor bundle
+  (npdev-templates/static-react/assets/AuthoringApp.js) still mentions auditPolicy and was
+  deliberately left untouched -- no in-repo producer since 2026-08-17 (R10), out of scope for any
+  change short of R10's own work.
+
+  LIVE PROOF (soft-delete-r54-proof, AppGen/apps, H2Local, port 8391 -- reused R5.4's own proof app
+  rather than building a new one, since it already has a softDelete concept (Supplier, unique `code`)
+  over a real pre-existing database with 4 live rows from that prior proof). Rebuilt via
+  scripts/appgen/Rebuild-And-Restage.ps1 (both the runtimehost-libs restage for the
+  GeneratedCrudRuntimeSupport.java change and the generator-runtime refresh for the
+  service-base.mustache change -- this item touches both caches). Regenerated against the SAME
+  existing database, booted, authenticated with the app's real provisioned key
+  (App/secrets/api-key.env, not the config.json placeholder), then drove the full REST sequence and
+  read back GET /api/audit?resourceId=<id>:
+    - POST /api/suppliers {code: "R51-AUDIT-PROOF", displayName: "Audit Proof Supplier v1"} -> 201.
+      Audit row: CRUD_CREATE, fieldDiff = "code: null -> R51-AUDIT-PROOF; displayName: null ->
+      Audit Proof Supplier v1; id: null -> <id>; version: null -> 0".
+    - PUT .../{id} {displayName: "...v2 RENAMED", version: 0} -> 200 (version now 1). Audit row:
+      CRUD_UPDATE, fieldDiff = "displayName: Audit Proof Supplier v1 -> Audit Proof Supplier v2
+      RENAMED; version: 0 -> 1" -- code and id, UNCHANGED, correctly absent from the diff.
+    - DELETE .../{id} -> 204; GET /api/suppliers excludes it (0 matches). Audit row: CRUD_SOFT_DELETE
+      (not CRUD_DELETE), fieldDiff = every field going value -> null.
+    - POST .../{id}/restore -> 204; GET /api/suppliers includes it again with its v2-renamed data
+      intact (proving restore reads the real row, not a cached pre-delete snapshot). Audit row:
+      CRUD_RESTORE, fieldDiff = every field going null -> value, matching the restored data exactly.
+  All four rows share actorId="developer", tenantId="dev", roles=["ADMIN"], real timestamps, in the
+  correct chronological order -- a complete, readable "who changed what, when" trail for one record
+  from a single `GET /api/audit?resourceId=...` call, satisfying the roadmap's own "shows field-diff
+  history" bar via the endpoint that already existed rather than a new UI (see DELIBERATELY NOT DONE).
+
+  DELIBERATELY NOT DONE THIS ROUND:
+    - No generated UI PANEL for the audit history. `GET /api/audit` (and `/api/v1/audit`,
+      unconditionally emitted by RuntimeApiEmitter for every app already) is the "generated history
+      endpoint" half of the roadmap's ask and is proven live above; the "+ panel" half needs
+      business-ui-app.mustache/shell.js, which this session's OWNERSHIP split assigns to a different
+      agent -- touching them was out of bounds ("If you need one of theirs, STOP and report it").
+      Flagging this explicitly as the one piece of R5.1's literal text not closed by this item.
+    - No "unaudited concept writes nothing" RED control, because that premise does not hold in the
+      shipped design: audit logging is UNCONDITIONAL for every concept's create/update/delete/restore
+      (both DefaultConceptGateway's CONCEPT_* trail and the CRUD_* trail this item enriched), not an
+      opt-in flag a concept can be missing. This is a deliberately STRONGER guarantee than the
+      roadmap's own phrasing assumed ("every generated app" gets audit history, full stop, not just
+      concepts that opted in) -- there is no "unaudited concept" to construct a RED control against.
+    - `ProcedureStepAst.audit` (the per-step Boolean sibling of `auditPolicy`, found this round, see
+      above) was NOT retired -- named nowhere in the roadmap or task brief, and retiring it would
+      touch the exact same 9+ files a second time plus every corpus/doc mention of the per-step
+      `"audit": true` flag (including the doc examples this item already had to correct). Left as a
+      known, now-DOCUMENTED gap (content/npdev-concepts-deep-dive.yml's Gotchas section says outright
+      "a leftover marker with no effect") rather than silently expanded scope.
+    - `DefaultConceptGateway`'s own CONCEPT_WRITE/CONCEPT_DELETE audit path (the flow/procedure write
+      path, as opposed to the generated REST CRUD service path this item enriched) still has NO
+      field-level diff -- a flow step calling `saveConcept`/`deleteConcept` directly still gets only
+      the coarse actor/outcome/reasonCode trail it always had. The two mechanisms were kept
+      deliberately separate rather than merged or both enriched, to keep this item's blast radius to
+      the one path the roadmap's own done-when and this task's live-proof requirement actually
+      exercise (the REST CRUD surface).
+    - No field-level redaction in the diff (a sensitive field like a password hash would appear in
+      plaintext in `fieldDiff`, same as it already does in `mapFromEntity`'s existing un-redacted JSON
+      output used elsewhere, e.g. the mutation-event payload every subscriber receives). Genuinely
+      R5.5's territory (server-enforced field-level access), not this item's.
+    - Bond-membership add/remove (service-base.mustache lines ~478/487/496) still call the 5-arg
+      `auditCrudMutation` with no before/after -- diffing a many-to-many membership change is a
+      different shape (a set delta, not a field delta) that didn't fit this item's before/after Map
+      contract without inventing a second diff format; left as a coarse UPDATE audit row, unchanged
+      from before this item.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java#auditCrudMutation_withBeforeAndAfter_recordsOnlyChangedFieldsInDiff
+  asserts: >-
+    The 7-arg auditCrudMutation overload records an AuditRecord whose meta.fieldDiff contains exactly
+    the changed field ("status: OPEN -> CLOSED") and omits every unchanged field (priority, id) --
+    the core "diff, not noise" guarantee. Sibling tests in the same class (not separately guarded
+    here, but run in the same gate) cover create's null-before ("status: null -> OPEN") and the
+    no-before/no-after case omitting the fieldDiff key entirely.
+  provenRed: false
+  provenRedNote: >-
+    The guard test was written alongside the implementation, not run red against the unfixed code
+    first, so no genuine before/after RED exists for `describeFieldDiff`/the 7-arg overload itself --
+    the honest answer, matching RUN-16's same disclosure for a comparably-shaped change. One real,
+    live RED WAS hit and fixed during the live-proof run (not the guard test): the first attempt
+    authenticated against soft-delete-r54-proof using its config.json `trialDefaults.apiKey`
+    ("dev-key") verbatim and got a real 401 `{"error":"invalid_api_key"}` from the running app -- that
+    value is a documentation placeholder, not the actual provisioned secret; the app's real key lives
+    in the per-app-generated `App/secrets/api-key.env`, and re-running with it succeeded. Recorded
+    here for honesty, not counted as provenRed since it is an operational/auth prerequisite, not a
+    failure of the audit-diff feature under test.

@@ -1,0 +1,95 @@
+id: QUAL-23
+title: >-
+  21 of 41 kernel adapter modules run their tests in NO CI workflow
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Found 2026-08-19 while wiring R6.4's messaging adapters into the runtime. An agent reported its
+  own new modules were absent from CI; enumerating settings.gradle against both workflows showed the
+  gap is systemic, not specific to those two.
+surface: ci/adapter-coverage
+files:
+  - .github/workflows/npdev-ci-validation.yml
+  - .github/workflows/npdev-pr-gate.yml
+  - NPDevKernel/settings.gradle
+detail: |
+  Both GitHub Actions workflows enumerate adapter test targets as an **explicit hand-maintained
+  allowlist** (`:adapters:<name>:test`, one line each). Nothing reconciles that list against
+  `NPDevKernel/settings.gradle`, and no blanket `./gradlew test` covers the kernel root -- the two
+  `./gradlew check` invocations run in `NPDevContract/dsl` and in the assembled sample app, neither
+  of which reaches `NPDevKernel/adapters`.
+
+  Measured 2026-08-19 by diffing `settings.gradle`'s 41 `include 'adapters:*'` entries against both
+  workflow files: **21 modules appear in neither**:
+
+      auth-context-jwt          authz-default             document-render-inproc
+      document-render-stub      runtime-support            external-ai-http
+      external-ai-inproc        external-ai-pack-core     file-store-objectstore
+      json-jackson              mail-inproc               mail-smtp
+      messaging-http            messaging-inproc          metrics-micrometer
+      postgres-test-support     resume-bootstrap-spring   runtime-validation
+      schema-validator-default  tracing-redaction-default webhook-http
+
+  Some of those are defensible: `postgres-test-support` is test scaffolding. Most are not.
+  `runtime-support` holds `CelInvariantEngine` and `GeneratedCrudRuntimeSupport` -- core runtime.
+  `auth-context-jwt`, `authz-default`, `webhook-http`, `external-ai-http` and `mail-smtp` are the
+  security- and network-facing adapters, and `external-ai-http`/`mail-smtp` are precisely where
+  RUN-4's deadline/retry proofs live (hanging-socket tests that assert a bounded failure). Those
+  proofs do not run in CI today.
+
+  **This is the same failure shape `AdapterRegistrationConsistencyTest` already guards for
+  PACKAGING**: that test fails when a `settings.gradle` adapter is missing from the proof-test jar
+  lists, precisely so a new adapter cannot be silently omitted. There is no equivalent
+  reconciliation for CI TEST coverage, so a new adapter is silently untested instead.
+
+  **Partially addressed in the same commit:** `messaging-http` and `messaging-inproc` were added to
+  both workflows' inproc-adapter step, since this session introduced them and leaving them out would
+  have compounded the gap. The other 19 were deliberately NOT added in that change -- adding them
+  blind could surface pre-existing failures and lengthen every PR run, which is a decision to make
+  deliberately rather than as a side effect of an unrelated commit.
+
+  **Closed 2026-08-19.** Built `scripts/quality/check-ci-adapter-coverage.py`, the suggested-fix
+  mechanism: parses `settings.gradle`'s 41 adapters and both workflow files' `:adapters:<name>:test`
+  tokens, fails naming any module in neither and not on a reviewed `EXCLUDED` table (one entry,
+  `postgres-test-support` -- shared Testcontainers scaffolding, not a shipped adapter, its own tiny
+  unit suite exercised transitively by the *-postgres adapters that already build it). A second
+  control catches a stale `EXCLUDED` entry (names a module no longer in `settings.gradle`). Wired as
+  step [37/37] of `run-ai-knowledge-gate.ps1`, and separately auto-discovered by that gate's step
+  [14/36] (`--calibrate` self-test loop) since the script declares `--calibrate`.
+
+  Measured RED against the pre-fix repo (this checker's first real run, before any workflow edit):
+  22 covered, 1 excluded, **18 uncovered** (messaging-http/messaging-inproc from the source commit
+  already covered, so 18 not 19) -- exact list: auth-context-jwt, authz-default,
+  document-render-inproc, document-render-stub, runtime-support, external-ai-inproc, external-ai-http,
+  external-ai-pack-core, file-store-objectstore, json-jackson, mail-inproc, mail-smtp,
+  metrics-micrometer, resume-bootstrap-spring, runtime-validation, schema-validator-default,
+  tracing-redaction-default, webhook-http. Each was checked individually (test source dir present,
+  `build.gradle` dependencies, `org.testcontainers` imports) before adding: 17 are plain H2/in-memory/
+  loopback-socket unit tests (no Docker), added to BOTH `npdev-ci-validation.yml`'s Linux job and
+  `npdev-pr-gate.yml` so a regression shows red on the PR itself, not only nightly.
+  `file-store-objectstore` alone needs a real `MinIOContainer` (Testcontainers/Docker), so it was
+  added only to `npdev-ci-validation.yml`'s Linux job next to the existing Postgres Testcontainers
+  step, mirroring the existing nightly-first promotion path for Docker-backed adapters (B21) rather
+  than adding a second container pull to every PR. Re-running the checker after the edits: 40
+  covered, 1 excluded, 0 uncovered (GREEN). 8 of the 18 newly-added modules were spot-run for real
+  (`./gradlew :adapters:<name>:test`, separate `-PnpdevBuildRoot` to avoid colliding with a
+  concurrent `NPDevContract/dsl` edit) and passed: webhook-http, json-jackson, metrics-micrometer,
+  schema-validator-default, document-render-inproc, document-render-stub, mail-inproc,
+  external-ai-inproc (`BUILD SUCCESSFUL in 3m 17s`). The remaining 9 (including
+  `file-store-objectstore`, Docker-gated and off by default on this machine per
+  `scripts/policy/local-test-profile.json`) were `--dry-run`-verified only (task exists, resolves)
+  and are not independently proven to pass in CI -- GitHub Actions cannot be run from here.
+guard:
+  kind: script
+  ref: scripts/quality/check-ci-adapter-coverage.py
+  asserts: >-
+    Every adapter module in NPDevKernel/settings.gradle either appears as an ":adapters:<name>:test"
+    target in npdev-ci-validation.yml or npdev-pr-gate.yml, or is on the script's reviewed EXCLUDED
+    table with a recorded reason; a stale EXCLUDED entry is itself flagged. Measured RED on
+    2026-08-19 (18 of 41 modules in neither workflow and not excluded), then GREEN after adding 17
+    to both workflows and 1 (file-store-objectstore, Docker-only) to the Linux nightly job alone.
+  provenRed: true

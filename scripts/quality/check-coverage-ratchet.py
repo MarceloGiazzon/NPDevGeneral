@@ -10,10 +10,12 @@ plugin -- see each build.gradle's own comment for why RuntimeHost's is gated beh
 build.gradle.template ships into a generated FinalApp; the platform-internal builds never do).
 
 Track C card C8 (2026-08-14) extended this same ratchet -- same file, same schema, same gate step --
-to the two ecosystems R3 explicitly deferred: the editor (`NPDevEditor/ui-react`, `@vitest/coverage-v8`
-via `npm test` -> `vitest run --coverage`, `json-summary` reporter) and NPDevCli
+to the two ecosystems R3 explicitly deferred: the editor (`NPDevEditor/ui-react`) and NPDevCli
 (`coverage.py` wrapping the SAME `python -m unittest discover -s NPDevCli/tests` invocation
-run-ai-knowledge-gate.ps1 already ran). Neither tool emits JaCoCo's XML shape, so each module now
+run-ai-knowledge-gate.ps1 already ran). NPDevEditor/ui-react was later parked out of the repo
+(see BREAKING.md), so its `istanbul-json-summary` entry is gone from coverage-baseline.json; the
+format dispatch below is retained because it costs nothing and the module may return.
+Neither tool emits JaCoCo's XML shape, so each module now
 declares a `reportFormat` (`jacoco-xml` / `istanbul-json-summary` / `coverage-py-json`) and this
 script dispatches to the matching parser -- the RATCHET SEMANTICS below are identical across all
 three formats; only the bytes-on-disk differ. See coverage-baseline.json's own per-module notes for
@@ -39,8 +41,8 @@ WHERE REPORTS COME FROM
 ------------------------
 This script is wired into run-ai-knowledge-gate.ps1, which is static by design (no Gradle, no npm
 install, no boot). Reports only exist here because an EARLIER step in the same `run-all-gates.ps1`
-invocation (run-generator-gate.ps1 for dsl/generator, run-runtimehost-gate.ps1 for RuntimeHost,
-run-frontend-gate.ps1 for the editor) already ran the real test command, and each tool's own
+invocation (run-generator-gate.ps1 for dsl/generator, run-runtimehost-gate.ps1 for RuntimeHost)
+already ran the real test command, and each tool's own
 report-writing left a file on disk: JaCoCo's `finalizedBy jacocoTestReport` wiring in each
 build.gradle, vitest's `coverage.reporter: ["text","json-summary"]` in vitest.config.ts, or (for
 NPDevCli) run-ai-knowledge-gate.ps1's OWN step [18/35] running the suite under `coverage run` before
@@ -76,6 +78,34 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 BASELINE_PATH = "scripts/policy/coverage-baseline.json"
+
+# REG-168: directories never worth scanning for "did this module's source change" -- build output,
+# dependency caches, VCS metadata. Not exhaustive by design; a false negative here (an excluded dir
+# that actually held a real source edit) only makes the staleness check slightly less strict, never
+# wrong in the dangerous direction (it would still catch changes anywhere else in the module).
+_SOURCE_SCAN_EXCLUDED_DIR_PARTS = {
+    ".git", ".gradle", "build", "node_modules", "dist", "__pycache__", ".pytest_cache", "out",
+}
+
+
+def _newest_source_mtime(repo_root: Path, module_name: str) -> float | None:
+    """REG-168: newest mtime among a module's own source files, so a coverage report can be checked
+    for staleness against the source tree actually on disk -- not just trusted because it exists.
+    Returns None (meaning "can't determine, don't block") if the module directory doesn't exist or
+    has no files under it; callers must treat that as "skip the staleness check," not "stale."""
+    module_dir = repo_root / module_name
+    if not module_dir.is_dir():
+        return None
+    newest: float | None = None
+    for p in module_dir.rglob("*"):
+        if not p.is_file():
+            continue
+        if any(part in _SOURCE_SCAN_EXCLUDED_DIR_PARTS for part in p.relative_to(module_dir).parts[:-1]):
+            continue
+        mtime = p.stat().st_mtime
+        if newest is None or mtime > newest:
+            newest = mtime
+    return newest
 
 
 def _repo_root(explicit: str | None) -> Path:
@@ -122,6 +152,13 @@ def save_baseline(repo_root: Path, baseline: dict) -> None:
 
 DEFAULT_REPORT_FORMAT = "jacoco-xml"
 
+# QUAL-27: a PARTIAL test run empties whole classes (each class goes 0% covered), so the fraction of
+# classes that are FULLY uncovered is a strong partial-run signal -- a real coverage regression moves
+# the percentage without emptying whole classes. Measured live: a partial :generator:test report had
+# 116/148 classes fully uncovered (~78%) while the real full run had 7/148 (~5%). A report above this
+# fraction is refused as partial rather than treated as a real measurement.
+PARTIAL_UNCOVERED_CLASS_FRACTION = 0.5
+
 
 def _jacoco_line_counts(report_path: Path) -> tuple[int, int] | None:
     """JaCoCo's <report> root carries <counter type="..."/> elements as DIRECT children summarizing
@@ -135,6 +172,33 @@ def _jacoco_line_counts(report_path: Path) -> tuple[int, int] | None:
         if counter.get("type") == "LINE":
             return int(counter.get("covered", "0")), int(counter.get("missed", "0"))
     return None
+
+
+def _jacoco_class_fully_uncovered_fraction(report_path: Path) -> float | None:
+    """QUAL-27: JaCoCo's root <counter type=\"CLASS\"> reports how many classes are FULLY uncovered
+    (missed) vs partially/fully covered (covered). Returns missed/(missed+covered), or None if there
+    is no CLASS counter (non-jacoco, or a report truncated before class summaries were written)."""
+    try:
+        tree = ET.parse(report_path)
+    except (ET.ParseError, OSError):
+        return None
+    for counter in tree.getroot().findall("counter"):
+        if counter.get("type") == "CLASS":
+            covered = int(counter.get("covered", "0"))
+            missed = int(counter.get("missed", "0"))
+            total = covered + missed
+            return (missed / total) if total else None
+    return None
+
+
+def _report_is_partial(report_path: Path, report_format: str) -> bool:
+    """QUAL-27: a single-report jacoco measurement whose fully-uncovered class fraction exceeds
+    PARTIAL_UNCOVERED_CLASS_FRACTION is a partial test run (most tests never executed), not a real
+    coverage measurement -- it must be skipped, never treated as a regression or a ratchet-up."""
+    if report_format != "jacoco-xml":
+        return False
+    fraction = _jacoco_class_fully_uncovered_fraction(report_path)
+    return fraction is not None and fraction > PARTIAL_UNCOVERED_CLASS_FRACTION
 
 
 def _istanbul_json_summary_line_counts(report_path: Path) -> tuple[int, int] | None:
@@ -237,14 +301,22 @@ def _find_reports(repo_root: Path, globs: list[str]) -> list[Path]:
 
 
 def measure_module(
-    repo_root: Path, module_cfg: dict, override_path: str | None
+    repo_root: Path, module_cfg: dict, override_path: str | None, module_name: str | None = None
 ) -> tuple[float | None, str | None]:
     """Returns (percent, evidence) or (None, None) if not measured this run."""
     report_format = module_cfg.get("reportFormat", DEFAULT_REPORT_FORMAT)
 
     if override_path:
+        # An explicit --report MODULE=PATH is the caller vouching for freshness directly --
+        # the staleness check below exists specifically for auto-discovery's ambiguity, which
+        # doesn't apply here.
         p = Path(override_path)
         if not p.is_file():
+            return None, None
+        if _report_is_partial(p, report_format):
+            print(f"    (QUAL-27: refusing partial report for {module_name or p}: "
+                  f"{_jacoco_class_fully_uncovered_fraction(p):.1%} of classes fully uncovered)",
+                  file=sys.stderr)
             return None, None
         return parse_line_coverage_percent(p, report_format), str(p)
 
@@ -253,12 +325,36 @@ def measure_module(
     if not candidates:
         return None, None
 
+    # REG-168: a discovered report may predate the source it's supposed to measure -- shared
+    # multi-worktree Build directories, or a stale report surviving a checkout/revert without a
+    # rebuild. Drop any candidate older than the module's own newest source file rather than
+    # silently trusting it. source_mtime is None (skip the check) when the module directory can't
+    # be resolved at all, e.g. a synthetic/calibration module name.
+    source_mtime = _newest_source_mtime(repo_root, module_name) if module_name else None
+    if source_mtime is not None:
+        fresh = [c for c in candidates if c.stat().st_mtime >= source_mtime]
+        for stale in candidates:
+            if stale not in fresh:
+                print(
+                    f"    (REG-168: skipping stale report for {module_name}: {stale} predates "
+                    "the module's newest source file)",
+                    file=sys.stderr,
+                )
+        candidates = fresh
+        if not candidates:
+            return None, None
+
     if module_cfg.get("aggregate", False):
         pct = sum_line_coverage(candidates, report_format)
         evidence = f"{len(candidates)} report(s), e.g. {candidates[0]}"
         return pct, evidence
 
     newest = max(candidates, key=lambda p: p.stat().st_mtime)
+    if _report_is_partial(newest, report_format):
+        print(f"    (QUAL-27: refusing partial report for {module_name}: "
+              f"{_jacoco_class_fully_uncovered_fraction(newest):.1%} of classes fully uncovered)",
+              file=sys.stderr)
+        return None, None
     return parse_line_coverage_percent(newest, report_format), str(newest)
 
 
@@ -319,7 +415,7 @@ def main(argv: list[str]) -> int:
     for name in sorted(modules):
         cfg = modules[name]
         recorded = float(cfg.get("coveragePercent", 0.0))
-        pct, evidence = measure_module(repo_root, cfg, overrides.get(name))
+        pct, evidence = measure_module(repo_root, cfg, overrides.get(name), name)
         if pct is None:
             print(f"  - {name}: not measured this run (floor stays {recorded}%)")
             continue
@@ -465,6 +561,36 @@ def run_calibration() -> int:
         print(f"  [{'PASS' if pass4d else 'FAIL'}] coverage-py-json format parses totals.covered_lines/num_statements (17/68 -> measured: {pct_coveragepy})")
         ok = ok and pass4d
 
+        # Control 4e (REG-168): a report that PREDATES the module's own newest source file is
+        # rejected as stale (not-measured), even though it exists and glob-matches -- this is the
+        # real regression this item fixed (a leftover report from an unrelated build/worktree/
+        # checkout silently ratcheting the floor). A report NEWER than the source is still accepted.
+        stale_module_dir = tmp / "stale-module"
+        stale_report = make_xml(stale_module_dir / "report.xml", covered=90, missed=10)
+        source_file = stale_module_dir / "src" / "Main.java"
+        source_file.parent.mkdir(parents=True, exist_ok=True)
+        source_file.write_text("class Main {}", encoding="utf-8")
+        # Force the report to be OLDER than the source file it's supposed to measure, regardless of
+        # filesystem timestamp resolution or how fast this test runs.
+        report_time = source_file.stat().st_mtime - 3600
+        os.utime(stale_report, (report_time, report_time))
+        pct_stale, _ = measure_module(
+            tmp, {"reportGlobs": ["stale-module/report.xml"]}, None, "stale-module"
+        )
+        pass4e_stale = pct_stale is None
+        print(f"  [{'PASS' if pass4e_stale else 'FAIL'}] a report older than its module's newest source file is rejected as stale (measured: {pct_stale})")
+        ok = ok and pass4e_stale
+
+        # Same fixture, report now touched to be NEWER than the source -- must be accepted.
+        fresh_time = source_file.stat().st_mtime + 3600
+        os.utime(stale_report, (fresh_time, fresh_time))
+        pct_fresh, _ = measure_module(
+            tmp, {"reportGlobs": ["stale-module/report.xml"]}, None, "stale-module"
+        )
+        pass4e_fresh = pct_fresh is not None and abs(pct_fresh - 90.0) < 1e-6
+        print(f"  [{'PASS' if pass4e_fresh else 'FAIL'}] the same report, touched newer than the source, is accepted (measured: {pct_fresh})")
+        ok = ok and pass4e_fresh
+
         # Control 5: ratchet logic itself -- feed a fixture repo through main()'s measurement path
         # via an explicit --report override, on a throwaway baseline file, and confirm both the
         # PASS (improvement, file rewritten) and FAIL (regression, exit 1) outcomes actually occur.
@@ -504,6 +630,30 @@ def run_calibration() -> int:
         pass6 = rc_regress == 1
         print(f"  [{'PASS' if pass6 else 'FAIL'}] main() exits 1 when a fresh measurement falls below the (now 90%) floor (exit={rc_regress})")
         ok = ok and pass6
+
+        # Control 7 (QUAL-27): a partial report (most classes fully uncovered) must be REFUSED as
+        # partial, while a full report (few classes fully uncovered) is accepted.
+        partial_xml = tmp / "partial.xml"
+        partial_xml.write_text(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<report name=\"fixture\">\n"
+            "  <counter type=\"CLASS\" missed=\"116\" covered=\"32\"/>\n"
+            "  <counter type=\"LINE\" missed=\"90\" covered=\"10\"/>\n"
+            "</report>\n",
+            encoding="utf-8",
+        )
+        full_xml = tmp / "full.xml"
+        full_xml.write_text(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<report name=\"fixture\">\n"
+            "  <counter type=\"CLASS\" missed=\"7\" covered=\"141\"/>\n"
+            "  <counter type=\"LINE\" missed=\"10\" covered=\"90\"/>\n"
+            "</report>\n",
+            encoding="utf-8",
+        )
+        pass7 = _report_is_partial(partial_xml, "jacoco-xml") and not _report_is_partial(full_xml, "jacoco-xml")
+        print(f"  [{'PASS' if pass7 else 'FAIL'}] a partial report (116/148 classes fully uncovered) is refused; a full one (7/148) is not")
+        ok = ok and pass7
 
     if not ok:
         print("\nFAIL: calibration did not reproduce the expected PASS/FAIL pairs.", file=sys.stderr)

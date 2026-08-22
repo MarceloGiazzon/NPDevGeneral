@@ -1,0 +1,55 @@
+name: First-run harness (executable README)
+
+# QUAL-14 (2026-08-15): scripts/quality/firstrun-harness/run-readme.sh is the single best
+# third-person instrument in this repo -- a container with NOTHING installed, following
+# README.md/YOUR_FIRST_APP.md's own documented commands literally -- and until this workflow,
+# nothing in .github/workflows/ ever invoked it. See scripts/quality/firstrun-harness/README.md for
+# the full design ("Wiring it into the repo" names this exact suggested shape) and REG-182 for the
+# concrete regression (npdev run app / npdev dev both silently failing to boot under the fail-closed
+# `dev` profile) that shipped invisibly for however long because of that gap.
+#
+# Nightly + workflow_dispatch, deliberately NOT per-PR: a full run is 15-20 minutes (cold clone,
+# cold Gradle cache, no persistent cache mount by design -- the whole point is starting from
+# nothing) -- the same reasoning manager-harness.yml's own header comment already gives for a
+# sibling harness with an identical shape. `0 6 * * *` is offset from manager-harness's `0 5 * * *`
+# and nightly-scale-ladder's `0 4 * * *` so the three nightly-only jobs do not all start at once.
+on:
+  push:
+    tags: ['*']
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      repo_ref:
+        description: 'Branch or tag to check out inside the harness (default: main)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  firstrun:
+    name: run-readme.sh in a bare container
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the harness image
+        run: docker build -t npdev-firstrun scripts/quality/firstrun-harness
+
+      # REPO_REF: workflow_dispatch's own input wins (lets this be pointed at an unmerged branch,
+      # the harness's own "test BEFORE merging to main" mode); on a tag push, the tag that fired
+      # this workflow; on a schedule, the harness image's own Dockerfile default (main) -- always
+      # "what a newcomer actually gets" for the one trigger that runs unattended every night.
+      - name: Run the harness against a fresh clone
+        run: |
+          REF="${{ github.event.inputs.repo_ref }}"
+          if [ -n "$REF" ]; then
+            docker run --rm -e REPO_REF="$REF" npdev-firstrun
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            docker run --rm -e REPO_REF="${{ github.ref_name }}" npdev-firstrun
+          else
+            docker run --rm npdev-firstrun
+          fi

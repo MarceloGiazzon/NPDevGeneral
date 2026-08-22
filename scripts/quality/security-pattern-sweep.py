@@ -467,6 +467,59 @@ def sweep_unbounded_input(scan: Scan) -> list[Hit]:
 
 
 # --------------------------------------------------------------------------------------
+# Pattern 6 -- a script launches a generated app without provisioning an API key
+# (third-person-readiness-2026-08-15/FOLLOWUP-PLAN.md Step 1.3).
+#
+# T1/C2 (application-dev.yml): the `dev` profile no longer seeds a known admin key --
+# StartupValidator refuses to boot until one is supplied externally. Every SUPPORTED launcher on
+# this platform provisions one first (OperationalRunbookEmitter's Ensure-NpdevApiKey /
+# ensure_npdev_api_key, NPDevSamples' Ensure-NpdevSampleApiKey, npdev_cli.py's ensure_api_key) --
+# but that convention has no mechanical enforcement, and it was violated for real: the firstrun
+# harness and `npdev run app`/`npdev dev` themselves both shipped raw `java -jar
+# ... --spring.profiles.active=...` launches with no provisioning call anywhere in the file, found
+# only by reading every launcher by hand rather than trusting the last enumeration (the same lesson
+# PR #98's own dev-keys removal already cost twice).
+#
+# File-level, not call-site-level, deliberately: the platform's own launchers (Build-NpdevApp.ps1,
+# OperationalRunbookEmitter.java) embed several sub-scripts as string constants in ONE source file,
+# so "does this FILE contain a provisioning call anywhere" is the question that matches how they are
+# actually authored -- a call-site-level check would need to parse which embedded string a given
+# `-jar` line lives inside, which is not worth the complexity for a worklist generator.
+KEY_PROVISION_CALL = re.compile(
+    r"\b(Ensure-NpdevApiKey|Ensure-NpdevSampleApiKey|ensure_npdev_api_key|ensure_api_key)\b"
+)
+JAVA_JAR_LAUNCH = re.compile(r"-jar\b")
+SPRING_PROFILE_FLAG = re.compile(r"spring\.profiles\.active")
+
+
+def sweep_unprovisioned_java_launch(scan: Scan) -> list[Hit]:
+    if not JAVA_JAR_LAUNCH.search(scan.text) or not SPRING_PROFILE_FLAG.search(scan.text):
+        return []
+    if KEY_PROVISION_CALL.search(scan.text):
+        return []
+    jar_match = JAVA_JAR_LAUNCH.search(scan.text)
+    rel = scan.path.relative_to(scan.root).as_posix()
+    return [
+        Hit(
+            "unprovisioned-java-launch",
+            scan.path,
+            scan.line_of(jar_match.start()),
+            f"{scan.path.name} launches `java -jar ... --spring.profiles.active=...` but contains no "
+            f"key-provisioning call (Ensure-NpdevApiKey / Ensure-NpdevSampleApiKey / "
+            f"ensure_npdev_api_key / ensure_api_key) anywhere in the file -- `dev` refuses to boot "
+            f"without one (T1/C2). Confirm this is provisioned some other way (e.g. it deliberately "
+            f"launches WITHOUT one as a RED control), or allowlist with the reason.",
+            # Deliberately includes the file's relative path in the fingerprinted snippet, unlike
+            # every sweep above: THIS finding's identity genuinely is "which file lacks the call",
+            # not a code shape that should survive a move -- a file rename here is a new question,
+            # not the same one following its code.
+            f"{rel}: -jar ... spring.profiles.active present, no provisioning call in file",
+            scan.root,
+        )
+    ]
+
+
+# --------------------------------------------------------------------------------------
 # Driver
 # --------------------------------------------------------------------------------------
 
@@ -477,6 +530,7 @@ SWEEPS = [
     (sweep_sql_concatenation, ("*.java",), ("sql-string-building",)),
     (sweep_tenantless_reads, ("*.java",), ("read-without-tenant-predicate",)),
     (sweep_unbounded_input, ("*.java",), ("unbounded-caller-input",)),
+    (sweep_unprovisioned_java_launch, ("*.ps1", "*.sh", "*.py"), ("unprovisioned-java-launch",)),
 ]
 PATTERN_NAMES = sorted(name for _, _, names in SWEEPS for name in names)
 
@@ -501,10 +555,19 @@ SCAN_ROOTS = [
     # every hit already cleared under the old NPDevRuntimeHost/src/main/java path still clears here
     # -- but the root itself still has to be listed, or this exact blind spot recurs for the module.
     "NPDevRuntimeHost/runtimehost-core/src/main/java",
+    # FOLLOWUP-PLAN.md Step 1.3 (2026-08-15): Pattern 6's surface -- every script that can launch a
+    # generated app directly, not source code that ships inside one. Harmless for the five patterns
+    # above (no .java/.mustache files live here); load-bearing for Pattern 6, whose globs
+    # (*.ps1/*.sh/*.py) only exist under these three roots.
+    "scripts",
+    "NPDevSamples/scripts",
+    "NPDevCli",
 ]
 
-# Generated bundles and vendored assets: not ours to fix, and huge.
-SKIP = re.compile(r"(/build/|/node_modules/|/static-react/|/npdev-generated/|app\.js$|/test/|Test\.java$)")
+# Generated bundles and vendored assets: not ours to fix, and huge. `/tests/` (plural, NPDevCli's
+# own directory name) added alongside the existing singular `/test/` for Pattern 6's roots -- a test
+# fixture that merely mentions `-jar` in a docstring (test_java_launcher.py does) is not a launcher.
+SKIP = re.compile(r"(/build/|/node_modules/|/static-react/|/npdev-generated/|app\.js$|/tests?/|Test\.java$|__pycache__)")
 
 ALLOWLIST = Path("scripts/quality/security-pattern-sweep-allowlist.json")
 
@@ -687,6 +750,28 @@ SELF_TEST: list[tuple[str, str, str, str, bool]] = [
         }
         """,
         "unbounded-caller-input",
+        False,
+    ),
+    (
+        "REG-16x's shape (FOLLOWUP-PLAN.md Step 1.1): a launcher spawns java -jar on `dev` with no "
+        "key-provisioning call anywhere in the file -- StartupValidator refuses to boot without one",
+        "Start-App.ps1",
+        """
+        $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
+        Start-Process -FilePath 'java' -ArgumentList $args
+        """,
+        "unprovisioned-java-launch",
+        True,
+    ),
+    (
+        "the same launch, fixed: Ensure-NpdevApiKey runs first, in the same file",
+        "Start-App.ps1",
+        """
+        Ensure-NpdevApiKey -AppRoot $plan.appRoot
+        $args = @('-jar', $jar.FullName, "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
+        Start-Process -FilePath 'java' -ArgumentList $args
+        """,
+        "unprovisioned-java-launch",
         False,
     ),
 ]

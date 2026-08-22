@@ -2,6 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://npdev.local/schema/npdev-concept-fragment.schema.json",
   "title": "NPDev local concept fragment",
-  "description": "Single concept object referenced from a model concepts array. This is NPDev-local include syntax, not JSON Schema remote $ref.",
-  "$ref": "model.schema.json#/$defs/concept"
+  "description": "A single concept, in its own file, referenced from `concepts[]` by a local $ref. PACK-12: this declared NO properties and no additionalProperties, i.e. it validated anything at all -- a schema that accepts everything is worse than no schema, because it still reads as a contract.",
+  "$ref": "model.schema.json#/$defs/concept",
+  "allOf": [
+    {
+      "$ref": "model.schema.json#/$defs/concept"
+    }
+  ]
 }

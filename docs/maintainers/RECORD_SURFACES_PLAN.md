@@ -154,7 +154,7 @@ to *not* avoid a 140 KB one that is absent from the list. It also silently erase
 
 - `NPDevGenerator/.../static-react/assets/app.js` (408 KB) — **generated bundle, ignore entirely**
 - `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (172 KB)
-- `NPDevKernel/adapters/expression-cel/.../GeneratedCrudRuntimeSupport.java` (160 KB)
+- `NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java` (160 KB)
 - `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (140 KB)
 - `NPDevKernel/kernel/.../KernelRunner.java` (128 KB)
 

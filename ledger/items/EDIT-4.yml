@@ -1,0 +1,102 @@
+id: EDIT-4
+title: >-
+  R10.1: the model/rule/orchestration editor draft write-back endpoints are deleted; the shipped
+  editor is read-only
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R10 "Kill the Frozen Editor Bundle",
+  item R10.1, executed immediately after its gating decision EDIT-3 (R10.0). The roadmap's own
+  framing: "This closes the only one-way door in the authoring loop before the incoming team starts
+  losing work through it."
+surface: generator/runtime-admin-controller, editor/draft-writeback
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-admin-controller.mustache
+  - NPDevRuntimeHost/src/test/java/com/finalexec/Stage12UiModelRuntimeIT.java
+  - scripts/quality/firstrun-harness/run-readme.sh
+  - BREAKING.md
+detail: |
+  Every generated app's AdminController exposed nine mappings -- GET/POST/DELETE across
+  /api/admin/model/editor/draft, /api/admin/model/rules/draft and
+  /api/admin/model/orchestration/draft -- backed by three plain `static volatile JsonNode` fields.
+  Nothing ever wrote a saved draft back into model.json, so a draft could diverge from the source
+  model permanently, and a full round-trip through the shipped editor dropped 14 of the DSL's root
+  sections (the same defect class EDIT-1 fixed once at 17-of-34 before NPDevEditor was parked out of
+  this repo on 2026-08-17, after which the bundle had no in-repo producer and could not be fixed
+  again).
+
+  DELETED: all nine mappings, plus the helpers that existed only to serve them (`DraftKind`,
+  `saveDraft`, `readDraftOrModel`, `buildEmptyDraft`) and the `NPDevModelProvider` constructor
+  dependency they were the sole consumer of -- AdminController's constructor drops from three
+  parameters to two. Also removed the now-unused `DeleteMapping`/`RequestBody`/`CompiledModel`/
+  `NPDevModelProvider` imports.
+
+  DELIBERATELY KEPT, and verified still working after the change:
+    - POST /api/admin/model/sync-status (ModelSyncStatusController, a separate class) -- it only
+      REPORTS drift between authoring and deployed model, it never held draft state.
+    - GET /api/admin/model/export and GET /api/admin/model/ui (aka /api/admin/ui-model) -- a
+      separate read-only projection of the compiled model, unrelated to the draft mechanism.
+
+  Consumers updated in the same commit rather than left asserting a contract that no longer exists:
+    - `Stage12UiModelRuntimeIT.editorDraft_endpoint_is_reachable` -> renamed
+      `editorDraft_endpoint_is_gone_r10_1`, now asserts 404.
+    - `firstrun-harness/run-readme.sh`'s REG-139 draft-shape probe -> now asserts the endpoint is
+      gone (404), with its skip-message twin updated to match so the check name stays consistent in
+      all three places it appears.
+
+  Live verification (not inferred -- a real regenerated app, booted):
+    1. Regenerated + rebuilt `simple-user-registry-inmemory` via
+       scripts/appgen/Rebuild-And-Restage.ps1 (generator-runtime cache refreshed; BUILD SUCCESSFUL),
+       booted on :8082, authenticated with the app's own generated api-key.
+    2. All nine deleted mappings return 404 -- probed GET/POST/DELETE on the model draft and GET on
+       the rules and orchestration drafts; response body is Spring's standard
+       {"status":404,"error":"Not Found","path":"/api/admin/model/editor/draft"}.
+    3. POST /api/admin/model/sync-status -> 200 with a real body
+       ({"inSync":false,"authoringHash":null,...,"status":"unknown"}).
+    4. GET /api/admin/model/export -> 200 with the real compiled model; GET /api/admin/model/ui and
+       /api/admin/ui-model -> 200.
+    5. Full RuntimeHost gate (run-runtimehost-gate.ps1) PASSED against assembled sample
+       simple-contact-intake, including its :test task -- so Stage12UiModelRuntimeIT's rewritten
+       assertion compiles and passes in the real assembled-app context, not just in isolation.
+    6. check-deterministic-generation.ps1 PASSED: 561 files vs 561 files, 0 differing -- the
+       template edit did not introduce generation non-determinism.
+
+  Recorded as a BREAKING.md entry in the same commit (2026-08-18, "the model/rule/orchestration
+  editor draft endpoints are deleted (R10.1)"). No `npdev migrate` codemod ships with it, and that
+  is deliberate rather than an omission: no model DSL shape changed and no existing model.json needs
+  rewriting -- the break is confined to an HTTP surface whose only caller was the frozen editor
+  bundle EDIT-3 decided to demote to read-only.
+
+  Follow-ups this does NOT do, per the roadmap's own sequencing: R10.2 (emit a schema-driven model
+  surface from the generator, so a new DSL section appears in every app by construction) and R10.3
+  (delete npdev-templates/static-react/ entirely). Both stay open.
+
+  Known-stale-by-design after this change, noted in their own items rather than silently left
+  wrong: REG-139 (whose fix hardened the very endpoint now deleted) and REG-172 (whose rewritten
+  assertions targeted its response shape) both stay DONE -- their fixes were real and verified at
+  the time -- but each carries a 2026-08-18 note that its live-verification steps are no longer
+  re-runnable.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/Stage12UiModelRuntimeIT.java (editorDraft_endpoint_is_gone_r10_1)
+  asserts: >-
+    a regenerated, booted app returns 404 for GET /api/admin/model/editor/draft -- the draft
+    write-back surface cannot silently reappear in the generator template without this test going
+    red. Paired with firstrun-harness/run-readme.sh's own 404 probe against a live `npdev run app`
+    instance, which covers the same claim on a foreign machine where the RuntimeHost gate's
+    generated-app test exclusions do not apply.
+  provenRed: false
+  provenRedNote: >-
+    Deliberately false rather than assumed true. The inversion is certain by construction -- the
+    endpoint demonstrably returned 200 before this change (the test that occupied this exact slot,
+    editorDraft_endpoint_is_reachable, asserted a 200 with an entities[] body and was passing) so a
+    404 assertion could not have passed against the old code -- but that inversion was NOT executed
+    against the pre-change tree, unlike R8.1's fix earlier the same session where the fix was
+    stashed and the new tests observed failing first. Recording the inference as if it were a
+    measurement is the exact habit this repo's own culture warns against, so it is recorded as what
+    it is. The POSITIVE direction is fully measured: 404 confirmed live on a real regenerated app,
+    and green through the full RuntimeHost gate.

@@ -80,12 +80,39 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
                 || uri.equals("/api/auth/password-reset/confirm") || uri.equals("/api/v1/auth/password-reset/confirm")) {
             return true;
         }
+        // R6.2: an inbound webhook door has its OWN independent authentication -- an HMAC-SHA256
+        // signature WebhookInboundController itself verifies, using a secret named per-webhook in
+        // the model. A third party posting e.g. a payment confirmation holds no NPDev bearer token
+        // at all and never will, so this filter must not demand one -- the same "no NPDev credential
+        // ever" reasoning as the RuntimeApiKeyAuthFilter template's identical exemption.
+        if (uri.startsWith("/api/hooks/")) {
+            return true;
+        }
+        // R6.4: the cross-app messaging inbound door has its OWN independent authentication -- an
+        // HMAC-SHA256 signature HttpMessagingCapabilityAdapter itself verifies (MessagingDeliveryController
+        // calls HttpMessagingCapabilityAdapter#receiveInboundDelivery directly, in-process -- no second
+        // HTTP server, no loopback hop), using a secret named per-peer via npdev.messaging.http.peers. A
+        // peer app posting a delivery holds no NPDev bearer token at all and never will -- same "no
+        // NPDev credential ever" reasoning as the webhook exemption just above.
+        if (uri.equals(com.npdev.adapters.messaging.http.HttpMessagingCapabilityAdapter.INBOUND_PATH)) {
+            return true;
+        }
         // An earlier filter in the chain (SuperUserCredentialAuthFilter, order -110) may already
         // have authenticated this request via a completely independent credential (the ControlPanel's
         // X-Super-User-Key, unrelated to business auth.mode). This filter must not clobber that with
         // its own "missing_bearer_token" rejection just because no JWT was also presented.
         if (request.getAttribute(RuntimeApiKeyAuthFilter.CLAIMS_ATTRIBUTE) != null) {
             return true;
+        }
+        // Mirrors RuntimeApiKeyAuthFilter's own shouldNotFilter: a caller presenting a bearer
+        // token is validated regardless of path. Without this, this filter's protection could only
+        // ever cover a fixed, hardcoded path prefix (/api/*) -- but a trusted-source panel's own
+        // page/state/procedure routes are ARBITRARY per-app (whatever route the model declares), so
+        // no shared RuntimeHost template can know them in advance. A request with no Authorization
+        // header outside /api/* still falls through unauthenticated here, exactly as before -- the
+        // route's own currentContext()/role check fails closed on the missing claim.
+        if (normalize(request.getHeader("Authorization")) != null || sessionCookieValue(request) != null) {
+            return false;
         }
         return !(uri.startsWith("/api/") || uri.startsWith("/api/v1/"));
     }
@@ -97,12 +124,20 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
         String authorization = normalize(request.getHeader("Authorization"));
-        if (authorization == null || !authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            unauthorized(response, "missing_bearer_token");
-            return;
+        String token;
+        if (authorization != null) {
+            if (!authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                unauthorized(response, "missing_bearer_token");
+                return;
+            }
+            token = normalize(authorization.substring(7));
+        } else {
+            // No header: fall back to the session cookie LoginController sets on jwt-mode login.
+            // A plain top-level page navigation (an arbitrary role-gated route, e.g. a trusted-source
+            // panel's own declared path) never carries a custom header, only a cookie -- this is what
+            // makes such a route reachable at all via ordinary browsing, not just fetch()-driven calls.
+            token = sessionCookieValue(request);
         }
-
-        String token = normalize(authorization.substring(7));
         if (token == null) {
             unauthorized(response, "missing_bearer_token");
             return;
@@ -337,6 +372,20 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
             return null;
         }
         return value.trim();
+    }
+
+    /** The session cookie LoginController sets on a successful jwt-mode login (name must match). */
+    private static String sessionCookieValue(HttpServletRequest request) {
+        jakarta.servlet.http.Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        for (jakarta.servlet.http.Cookie cookie : cookies) {
+            if ("npdev_jwt".equals(cookie.getName())) {
+                return normalize(cookie.getValue());
+            }
+        }
+        return null;
     }
 
     private static final class JwtValidationException extends RuntimeException {

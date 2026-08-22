@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.dsl.v1.pack.PackExportReferenceClassifier;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
@@ -294,6 +295,31 @@ public class GeneratedPackCatalogController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Concept not found in this app's model: " + conceptName);
         }
 
+        // PACK-14: classify the concept's reference targets with the SAME shared implementation the
+        // CLI `npdev pack export` uses, instead of copying the concept verbatim. A pack exported with a
+        // dangling reference fails loudly at composition with no context; refuse by default, or record
+        // it in metadata.unresolvedReferences when the caller explicitly opts in.
+        ObjectNode exportedConcept = (ObjectNode) conceptNode.deepCopy();
+        Path packsRoot = workspaceRoot.resolve("NPDevContract").resolve("packs");
+        PackExportReferenceClassifier.Result classification =
+                PackExportReferenceClassifier.classify(List.of(exportedConcept), java.util.Set.of(conceptName), packsRoot);
+        boolean allowUnresolved = Boolean.parseBoolean(
+                String.valueOf(request.getOrDefault("allowUnresolvedRefs", "false")));
+        if (!classification.unresolved().isEmpty() && !allowUnresolved) {
+            StringBuilder offenders = new StringBuilder();
+            for (Map<String, String> item : classification.unresolved()) {
+                if (offenders.length() > 0) {
+                    offenders.append("; ");
+                }
+                offenders.append(item.get("field")).append(" -> ").append(item.get("target"));
+            }
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Refusing to export: reference(s) point outside the exported concept and outside "
+                            + "any known sibling pack: " + offenders
+                            + ". Export the target concept too, or pass allowUnresolvedRefs:true to "
+                            + "export with the reference recorded in metadata.unresolvedReferences.");
+        }
+
         Path packDir = workspaceRoot.resolve("NPDevContract").resolve("packs").resolve(packName);
         Path packJsonPath = packDir.resolve("pack.json");
         if (Files.exists(packJsonPath)) {
@@ -311,8 +337,25 @@ public class GeneratedPackCatalogController {
                 : description);
         pack.put("category", category);
         pack.put("author", author);
+        if (!classification.crossPackVersions().isEmpty()) {
+            ArrayNode packsArray = pack.putArray("packs");
+            classification.crossPackVersions().forEach((packId, versionConstraint) -> {
+                ObjectNode dependency = packsArray.addObject();
+                dependency.put("pack", packId);
+                dependency.put("version", versionConstraint);
+            });
+        }
+        if (!classification.unresolved().isEmpty()) {
+            ObjectNode metadata = pack.putObject("metadata");
+            ArrayNode unresolvedArray = metadata.putArray("unresolvedReferences");
+            for (Map<String, String> item : classification.unresolved()) {
+                ObjectNode entry = unresolvedArray.addObject();
+                entry.put("field", item.get("field"));
+                entry.put("target", item.get("target"));
+            }
+        }
         ArrayNode concepts = pack.putArray("concepts");
-        concepts.add(conceptNode);
+        concepts.add(exportedConcept);
 
         try {
             Files.createDirectories(packDir);

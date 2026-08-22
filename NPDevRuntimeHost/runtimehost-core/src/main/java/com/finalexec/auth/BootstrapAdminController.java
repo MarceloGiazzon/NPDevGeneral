@@ -1,5 +1,7 @@
 package com.finalexec.auth;
 
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -30,17 +33,24 @@ public class BootstrapAdminController {
     private static final String ADMIN_ROLE_NAME = "ADMIN";
 
     private final DataSource dataSource;
+    // REG-177 fix: graceful tryResolve, not the throwing resolve() -- this bean is only gated on
+    // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
+    // mode without ever composing the identity pack must still boot (guarded per-request instead,
+    // mirroring the ControlPanel controllers' fix for the same regression).
+    private final Optional<IdentityPackTableNames> identityTables;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
 
     public BootstrapAdminController(
             DataSource dataSource,
+            CompiledModel compiledModel,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
         this.dataSource = dataSource;
+        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -60,21 +70,26 @@ public class BootstrapAdminController {
                 || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
+        if (identityTables.isEmpty()) {
+            return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
+        }
+        IdentityPackTableNames identityTables = this.identityTables.get();
 
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                if (IdentityProvisioning.countUsersInTenant(connection, tenantId) > 0) {
+                if (IdentityProvisioning.countUsersInTenant(connection, identityTables, tenantId) > 0) {
                     connection.rollback();
                     return ResponseEntity.status(409).body(Map.of("error", "tenant_already_bootstrapped"));
                 }
 
                 UUID userId = UUID.randomUUID();
-                IdentityProvisioning.insertIdentityUser(connection, userId, username, displayName, request.email(), tenantId);
+                IdentityProvisioning.insertIdentityUser(
+                        connection, identityTables, userId, username, displayName, request.email(), tenantId);
 
                 UUID roleId = IdentityProvisioning.findOrCreateRole(
-                        connection, tenantId, ADMIN_ROLE_NAME, "Bootstrapped administrator role");
-                IdentityProvisioning.insertUserRole(connection, userId, roleId, tenantId);
+                        connection, identityTables, tenantId, ADMIN_ROLE_NAME, "Bootstrapped administrator role");
+                IdentityProvisioning.insertUserRole(connection, identityTables, userId, roleId, tenantId);
 
                 IdentityProvisioning.insertCredential(
                         connection, credentialTable, credentialUserIdColumn, credentialPasswordColumn,

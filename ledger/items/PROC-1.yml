@@ -3,8 +3,14 @@ title: >-
   No ledger status can express not-doing; no DONE claim is falsifiable
 type: PROCESS
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-12
+closed: 2026-08-20
+decision: >-
+  R11 scope completed 2026-08-20: knowledge/gate-manifest.json maps all 9 gate scripts (7 local +
+  1 CI workflow + 1 orchestrator) to stable IDs; gaps.yml migrated to v2 (clean slate, all v1
+  entries were DONE/CLOSED); consumer scripts (extract_platform_status.py, generate_gaps_roadmap.py)
+  updated to accept both v1 and v2 schema versions.
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md F6, ROADMAP.md card R11). A DONE claim in the
   ledger is a sentence, not a proof -- nothing forces it to name the test or script that verifies it.
@@ -33,3 +39,23 @@ guard:
   ref: scripts/quality/generate_open_items.py (validate_guard)
   asserts: a ledger item's optional guard block, when present, must be a mapping with kind/ref/asserts/provenRed of the right types
   provenRed: false
+resolution: |
+  2026-08-20 (decision field generalized): the `decision:` field is now first-class for ANY status,
+  not just WONTFIX/OBSOLETE. generate_open_items.py validates its type (must be a string) and renders
+  it in the output. The ledger README documents it as optional for non-WONTFIX/OBSOLETE statuses to
+  record deliberate deferral or scope decisions. Still required for WONTFIX/OBSOLETE (unchanged).
+
+  2026-08-20 (R11 scope completed):
+  - knowledge/gate-manifest.json created (gate-manifest.v1): 9 gates mapped (GENERATOR, RUNTIMEHOST,
+    AI-KNOWLEDGE, AI-BETA, BETA-RELEASE, BETA0-CLOSURE, FAST, PR-GATE, ALL-GATES).
+  - ledger/gaps.yml migrated to gaps-ledger.v2: clean slate with entries: [] (all 31 priorityIndex
+    + 12 fixedEngineBugs v1 entries were DONE/CLOSED, preserved in git history).
+  - schemas/ai/gaps-ledger.schema.json updated to v2 (accepts entries[] with id/title/status).
+  - scripts/ai/extract_platform_status.py and scripts/docs/generate_gaps_roadmap.py updated to
+    accept both v1 and v2 schema versions (v2 returns empty items / empty tables).
+  - knowledge/platform-status.json regenerated (0 items, as expected from empty v2 entries).
+
+closeoutNote:
+  date: 2026-08-21
+  note: >-
+    Wave 5 close-out (2026-08-21): gate-manifest.json shipped, gaps.yml migrated to v2, consumer scripts updated. No remaining deferred sub-work.

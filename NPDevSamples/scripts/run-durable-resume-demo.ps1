@@ -31,8 +31,9 @@ $profiles = Get-ConfigString -Config $config -Path @("runtime", "springProfile")
 $baseUrl = "http://localhost:$port"
 # R7 Stage D: resolved below, once the app has been generated (Get-NpdevLiveApiKey needs
 # _ops/resolved-db-plan.json, which generate-sample-app.ps1 has not written yet at this point).
-# This script boots the app itself (raw java -jar, no Ensure-NpdevApiKey call), so a hardcoded
-# "dev-key" is no longer a safe assumption -- ask what actually authenticates instead.
+# This script boots the app itself (raw java -jar), so a hardcoded "dev-key" is no longer a safe
+# assumption -- ask what actually authenticates instead. Stale note removed 2026-08-15: this DOES
+# call Ensure-NpdevSampleApiKey (below, once $appRoot exists) before that boot -- see T1/C2.
 $apiKey = $null
 
 $logDir = Join-Path $sample.OutputRoot "RunOutput"
@@ -71,6 +72,9 @@ Info "=== Step 0: generate + build ==="
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { Fail "Sample generation failed" }
 
 $appRoot = $sample.AppRoot
+# T1/C2: application-dev.yml no longer seeds a known key, so provision one before this script's
+# own raw java boot below -- Start-Process inherits this session's environment.
+Ensure-NpdevSampleApiKey -AppRoot $appRoot
 $apiKey = Get-NpdevLiveApiKey -AppRoot $appRoot
 $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
 Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"

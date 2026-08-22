@@ -42,7 +42,7 @@ detail: |
 
   Two real equality bugs found and fixed along the way (BigDecimal's `.equals()` is scale-sensitive;
   `.compareTo()` is not):
-  1. `CelInvariantEngine.compareValues`'s `==`/`!=` branch (NPDevKernel/adapters/expression-cel) used
+  1. `CelInvariantEngine.compareValues`'s `==`/`!=` branch (NPDevKernel/adapters/runtime-support) used
      `Objects.equals()` instead of the `>`/`<` branch's own `toBigDecimal(...).compareTo(...)` two
      lines below it -- fixed to match, but this path is the legacy-matcher fallback, live only for
      expression shapes `ComputedExpression` can't parse.

@@ -88,6 +88,11 @@ tasks.register('generatorQualityGate') {
     group = 'verification'
     description = 'Runs the independent NPDevGenerator verification build.'
     dependsOn ':generator:test'
+    // REG-176: packaged-proof tests moved out of :generator:test into their own serialized task
+    // (generator/build.gradle) -- depend on it here too so generatorQualityGate (run-generator-gate.ps1's
+    // T2 gate) keeps the same coverage it always had; packagedProofTest's own onlyIf still skips it
+    // outside CI/-PincludePackagedProofs, unchanged from before this split.
+    dependsOn ':generator:packagedProofTest'
     dependsOn ':tools:npdev-cli:test'
 }
 

@@ -62,6 +62,42 @@ app alone rather than taking it down.
 it, and giving it a database that actually keeps your data is the real next step:
 `docs/YOUR_FIRST_APP.md`.
 
+## 4. Before you change a field: who uses it?
+
+```sh
+# every place this field is referenced -- panels, queries, procedures, flows
+./npdev inspect usage --model <model.json> --of Patient.birthDate
+
+# the same question about a whole concept, or about a named object
+./npdev inspect usage --model <model.json> --of Patient
+./npdev inspect usage --model <model.json> --of procedure:EnrichRows
+
+# every reference that does NOT resolve; exits 2 if any is a real orphan
+./npdev inspect usage --model <model.json> --orphans
+
+# the same answer as a self-contained HTML page you can open or send to someone
+./npdev inspect usage --model <model.json> --of Patient.birthDate --diagram usage.html
+```
+
+A field is referenced from more places than it looks: a panel's table columns and field bindings,
+a query's `orderBy` and `where`, a procedure's steps, a visibility rule. Renaming or removing one
+without checking those is the most common way to break a model that still validates.
+
+Each result carries the exact structural `path` of the reference (for example
+`panels[PatientsPanel].fieldBindings[2].field`), which is what `npdev migrate rename --cascade`
+edits when it updates them for you.
+
+Three outcomes, and the third one matters:
+
+- **RESOLVED** -- the target exists.
+- **UNRESOLVED** -- nothing by that name exists. This is a real defect, and `npdev validate model`
+  now fails on it.
+- **UNDECIDABLE** -- the reference could not be worked out without running the app (an expression
+  outside the predicate grammar, a `$var.field` whose producing step declares no shape). It is
+  reported, never counted as clean, and never treated as a failure. "We could not check this" and
+  "we checked it and it was fine" are different answers, and a tool that prints them identically
+  is how a broken model comes to validate cleanly.
+
 ## Other useful commands
 
 ```sh
@@ -123,10 +159,9 @@ The browser-based authoring UI (concepts, fields, flows, panels) as an alternati
 model JSON is already built into every app you generate -- open **`/npdev-ui-react/`** on your
 running app (e.g. `http://localhost:8080/npdev-ui-react/`). No separate install or server needed.
 
-`npm run dev` inside `NPDevEditor/ui-react` (Vite, typically `http://localhost:5173`) is the
-**editor's own development server** -- for someone changing the editor's source code, not for
-authoring a model. Run against a bare `npm run dev` it has no generated app to talk to and shows
-"unavailable" everywhere; that is expected for that workflow, not a bug in the one above.
+The editor's own source tree is no longer part of this repository -- what ships is the built
+bundle committed under `npdev-templates/static-react/`, which the generator copies into each
+app. See `BREAKING.md` for where the source moved.
 
 ## When running from another directory
 

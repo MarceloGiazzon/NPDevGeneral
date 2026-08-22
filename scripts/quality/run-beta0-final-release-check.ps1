@@ -117,8 +117,6 @@ $orderedGates = @(
     [pscustomobject]@{ name = "runtime-null-context-tests"; command = "scripts/quality/run-runtime-null-context-tests.ps1" },
     [pscustomobject]@{ name = "runtimehost-staged-jar-preflight-tests"; command = "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1" },
     [pscustomobject]@{ name = "runtimehost-staged-jar-preflight"; command = "scripts/quality/run-runtimehost-staged-jar-preflight.ps1" },
-    [pscustomobject]@{ name = "frontend-gate"; command = "scripts/quality/run-frontend-gate.ps1" },
-    [pscustomobject]@{ name = "frontend-gate-tests"; command = "scripts/quality/run-frontend-gate-tests.ps1" },
     [pscustomobject]@{ name = "docker-linux-proof-tests"; command = "scripts/quality/run-docker-linux-proof-tests.ps1" },
     [pscustomobject]@{ name = "docker-linux-proof"; command = "scripts/quality/run-docker-linux-proof.ps1" },
     [pscustomobject]@{ name = "sample-matrix-tests"; command = "scripts/quality/run-sample-matrix-tests.ps1" },

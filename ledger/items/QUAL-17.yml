@@ -1,0 +1,92 @@
+id: QUAL-17
+title: >-
+  342 of 360 semantic ERROR diagnostics carry one of two generic suggestedFix sentences, and the
+  golden-scenario corpus the roadmap named to enforce coverage would have asserted it over zero
+  diagnostics
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R1 item R1.4. Its stated premise --
+  "ValidationDiagnostic already carries the fields... but only 2 of ~16 validator classes set them"
+  -- was measured true on its face but misleading in effect, and its stated definition of done was
+  measured to be VACUOUS. Both corrections are recorded below.
+surface: dsl/validation
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/DiagnosticSuggestedFixCoverageTest.java
+detail: |
+  MEASURED REALITY vs the roadmap's three claims:
+    - "~16 validator classes" -- CORRECT. 15 classes emit ERROR strings via `errors.add` (362 call
+      sites), plus `UxMetadataValidation` which builds `ValidationDiagnostic` objects directly.
+    - "only 2 of ~16 set them" -- correct on its face, MISLEADING in effect. Every validator emits a
+      plain `String` that `ValidationDiagnosticNormalizer` converts centrally, so `suggestedFix` was
+      already non-null on 100% of ERROR diagnostics. The real defect was QUALITY, not presence:
+      **18 of 360 message templates produced a specific fix; 342 got one of two generic sentences**
+      ("Update the model so this semantic rule is satisfied.").
+    - "28 golden-scenario expected failures" -- **WRONG TWICE, and this is the load-bearing
+      correction.** 28 is the TOTAL scenario count; only 23 declare `expectedOutcome: fail`. And
+      none of those 23 fails inside this validator at all -- their models are
+      `schemaVersion: ai-model.v1`, which `JsonModelParser` cannot parse as a DSL model, and their
+      expected codes (`AI_MODEL_KIND_UNSUPPORTED`, `PANEL_ENTITY_UNRESOLVED`, ...) come from the AI
+      admission layer at the ai-model-schema / ai-config-schema / command-policy / verification-schema
+      stages. **A corpus run over them, exactly as the roadmap's definition of done specified, would
+      have asserted 100% suggestedFix coverage over ZERO diagnostics and passed forever** -- a
+      vacuous gate of precisely the kind this repo has been burned by before.
+
+  WHAT WAS BUILT, in the one place all 362 sites funnel through
+  (`ValidationDiagnosticNormalizer`):
+    - Lifted `PropertyValidation`'s `-- suggestedFix:` marker convention INTO the field. That
+      convention had been invented but never read by anything. The marker deliberately stays in the
+      message text too, because `SemanticValidator.validate()` returns bare strings and most callers
+      never see the diagnostic object.
+    - Added a grammar-driven derivation over the ten message shapes this package actually uses, which
+      quotes the offending token back at the author -- e.g. "Aggregate Order: root concept not found:
+      Ghost" now yields "Declare a root concept 'Ghost' before referencing it here, or point the
+      reference at one that already exists...". This is what makes the fix ACTIONABLE rather than
+      merely present.
+    - The old generic default became `UNCLASSIFIED_SUGGESTED_FIX`, a failure SIGNAL the enforcement
+      test forbids, rather than an acceptable fallback.
+    - Ran the new scan, found the 17 sites the grammar genuinely could not help, and hand-authored
+      markers at exactly those (ConceptValidation, FieldValueValidation x2, FlowValidation x4,
+      PackValidation x7, PanelValidation, ReferenceValidation x2).
+    Result: **360/360 templates derive a specific fix, 0 bare.**
+
+  `helpKey` wired to the **3** knowledge cards that genuinely match
+  (`fix-panel-unknown-entity`, `fix-workflow-invalid-transition`, `widget-datatype-compatibility`).
+  Of 16 cards only 6 are `error-fix`, and 3 of those describe parser/runtime refusals rather than
+  SemanticValidator output. Everything else keeps its `validation.semantic.<code>` doc key --
+  deliberately left unlinked rather than inventing card ids that resolve to nothing, and a test
+  asserts every card id used names a file that exists.
+
+  THE ENFORCEMENT TEST, and why it is better than the one the roadmap asked for:
+  `DiagnosticSuggestedFixCoverageTest` scans this package's SOURCE, reconstructs all 360 message
+  templates, pushes each through the real normalizer, and fails naming any that stays bare. Because
+  it works off the source rather than a fixture corpus, **a newly written ERROR rule is covered the
+  moment it is written** -- it cannot ship bare waiting for someone to add a scenario. Four tests,
+  all green: the template scan, a frozen count of the 2 literal-less sites covered by their real
+  runtime messages, an end-to-end broken model through the real parser/validator, and the helpKey
+  card-id resolution.
+
+  RESULTS: `:NPDevContract:dsl:test` -> **777 tests, 1 failure**, and that one failure is the
+  PRE-EXISTING `AiModelToDslMappingTest.everyGoldenAiModelUsesOnlyClassifiedFields` ("golden AI-model
+  scenario count changed"), caused by the unrelated in-flight deletion of
+  `golden-ai-scenarios/deferred/**` that was already staged in this working tree before any of this
+  session's work began -- confirmed pre-existing by stashing all session changes and re-running.
+  All 773 other pre-existing tests pass. **No existing test was updated or weakened**: the marker
+  convention is additive, so `contains`-style assertions (PropertyValidationTest's,
+  DslParserRobustnessTest's) still hold.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/DiagnosticSuggestedFixCoverageTest.java
+  asserts: >-
+    every ERROR message template in the validation package derives an actionable, specific
+    suggestedFix through the real normalizer -- none falls through to UNCLASSIFIED_SUGGESTED_FIX --
+    checked by scanning source rather than a fixture corpus, so a new ERROR rule is covered the
+    moment it is written rather than when someone remembers to add a scenario; and every helpKey in
+    use names a knowledge card file that actually exists.
+  provenRed: true

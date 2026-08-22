@@ -46,7 +46,7 @@ class DefaultProcedureExecutorQueryToCapabilityTest {
     void filteredQueryRowsFlowIntoCapabilityCallUnmodified() {
         Map<String, CompiledQuery> queries = Map.of(
                 "OrdersByCliente", new CompiledQuery(
-                        "OrdersByCliente", "Order", "cliente == 'acme'", List.of(), null, List.of(), List.of(), null, null, Map.of(),
+                        "OrdersByCliente", "Order", "cliente == 'acme'", List.of(), null, List.of(), List.of(), null, Map.of(),
                         List.of(), List.of(), null)
         );
 

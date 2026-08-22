@@ -1,6 +1,8 @@
 package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -11,6 +13,8 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -40,11 +44,27 @@ class LoginControllerTest {
 
     private LoginController controller() throws Exception {
         return new LoginController(
-                dataSource, new ObjectMapper(), new DefaultResourceLoader(),
+                dataSource, new ObjectMapper(), new DefaultResourceLoader(), identityModel(),
                 "usuarios", "user_id", "senha_hash",
                 "classpath:npdev/security/test-jwt-private.pem",
                 "https://issuer.npdev.test", "npdev-runtime-beta", 28800L
         );
+    }
+
+    // REG-177: LoginController now resolves table names from a CompiledModel rather than a
+    // hardcoded literal -- this fabricates one matching this test's own H2 schema (see the
+    // NpdevObservabilityConfigSensitiveFieldTest precedent for the same hand-built-CompiledModel
+    // pattern). Role/UserRole/UserRolePermission tables never physically exist in this test's H2
+    // schema, but that's fine: IdentityRoleLookup.rolesFor fails open (empty roles) on a real
+    // "table not found" SQLException, exactly like before this fix existed.
+    private static CompiledModel identityModel() {
+        Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
+        concepts.put("identity::User", new CompiledConcept("User", "User", "identity_users", List.of()));
+        concepts.put("identity::Role", new CompiledConcept("Role", "Role", "identity_roles", List.of()));
+        concepts.put("identity::UserRole", new CompiledConcept("UserRole", "UserRole", "identity_user_roles", List.of()));
+        concepts.put("identity::UserRolePermission",
+                new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
+        return new CompiledModel("test", "1.0.0", concepts);
     }
 
     /** Current (fresh) shape of the identity pack -- includes token_version, as the platform's pack has since LNCH-4. */

@@ -172,12 +172,35 @@ function emptyStateHtml() {
     </div>`;
 }
 
+// MON-9. Three states, and the third one is the reason this exists rather than a boolean.
+//
+// An app generated before `schemaLifecycle` was written into `_ops/resolved-db-plan.json` has no
+// answer to give, and is shown as UNKNOWN with the fix. Defaulting it to PRESERVED would be a
+// reassurance the data cannot support -- and the entire point of showing this is that an app which
+// silently empties itself on every start must not be able to look like one that does not.
+function dataPolicyBadge(app) {
+  const policy = app.dataPolicy || "unknown";
+  const strategy = (app.schemaLifecycle && app.schemaLifecycle.strategy) || null;
+  if (policy === "ephemeral") {
+    return `<span class="badge ephemeral" title="schemaLifecycle.strategy=${esc(strategy || "Ephemeral")}"`
+      + `>EPHEMERAL</span> <small>wiped on every start</small>`;
+  }
+  if (policy === "preserved") {
+    return `<span class="badge preserved" title="schemaLifecycle.strategy=${esc(strategy || "?")}"`
+      + `>PRESERVED</span>`;
+  }
+  return `<span class="badge unknownpolicy">—</span> <small>(regenerate to see)</small>`;
+}
+
 function cardHtml(app) {
   const state = statusOf(app);
   const dir = esc(app.appDir);
   const kv = [
     ["URL", app.baseUrl ? `${esc(app.baseUrl)} <small>(probed on 127.0.0.1)</small>` : "—"],
     ["DB", esc(app.engine || "—") + (app.connection && app.connection.database ? ` · ${esc(app.connection.database)}` : "")],
+    // MON-9: does this app KEEP its rows? Placed directly under DB because that is the line a
+    // reader is already looking at when the question occurs to them.
+    ["DATA", dataPolicyBadge(app)],
     ["APP", `<span title="${dir}">${esc(shortPath(app.appDir))}</span>`],
     ["OPS", app.opsDir ? esc(shortPath(app.opsDir, 34)) : "—"],
     ["PID", app.pid ? `${app.pid} · port ${app.port || "—"}` : `port ${app.port || "—"}`],

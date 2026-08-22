@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.compiled;
 
+import java.util.Map;
+
 public final class CompiledEnumOption {
     private final String value;
     private final String label;
@@ -10,6 +12,7 @@ public final class CompiledEnumOption {
     private final String iconHint;
     private final String badgeHint;
     private final String description;
+    private final Map<String, String> labelLocales;
 
     public CompiledEnumOption(
             String value,
@@ -22,6 +25,21 @@ public final class CompiledEnumOption {
             String badgeHint,
             String description
     ) {
+        this(value, label, order, group, defaultValue, deprecated, iconHint, badgeHint, description, Map.of());
+    }
+
+    public CompiledEnumOption(
+            String value,
+            String label,
+            Integer order,
+            String group,
+            boolean defaultValue,
+            boolean deprecated,
+            String iconHint,
+            String badgeHint,
+            String description,
+            Map<String, String> labelLocales
+    ) {
         this.value = value;
         this.label = label;
         this.order = order;
@@ -31,6 +49,7 @@ public final class CompiledEnumOption {
         this.iconHint = iconHint;
         this.badgeHint = badgeHint;
         this.description = description;
+        this.labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 
     public String getValue() {
@@ -67,5 +86,9 @@ public final class CompiledEnumOption {
 
     public String getDescription() {
         return description;
+    }
+
+    public Map<String, String> getLabelLocales() {
+        return labelLocales;
     }
 }

@@ -409,6 +409,12 @@
         "network": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "roleBindings": {
+          "type": "object",
+          "description": "PACK-9: logical role name (as referenced by a pack's own role('logicalName') tokens) -> this app's own concrete role name. A pack composed with a role('x') token whose 'x' has no entry here refuses composition, naming the pack and 'x'.",
+          "additionalProperties": { "type": "string", "minLength": 1 },
+          "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_]*$" }
         }
       },
       "additionalProperties": false
@@ -445,6 +451,27 @@
         "$ref": "#/$defs/context"
       },
       "description": "B20 (S2): bounded-context declarations. Each names a context and $ref's the fragment file (composed via the same pack/fragment $ref machinery as `fragments`/`packs`) whose concepts/queries/panels/flows belong to that context. Cross-context references use context::Concept (D1); a fragment may only reference a context its own `imports[]` (pack.schema.json) declares (D3) -- an undeclared or unresolvable reference is a compile error, never silent."
+    },
+    "webhooks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/webhook"
+      },
+      "description": "R6.2: model-declared inbound webhook doors -- POST /api/hooks/{source} verifies an HMAC-SHA256 signature against a named env var and, once verified, publishes eventName into the flow engine's event store so a flow parked on awaitEvent can be resumed by a third party holding no NPDev credential."
+    },
+    "sequences": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sequence"
+      },
+      "description": "R5.3: model-declared document-numbering counters (e.g. INV-2026-0001). A field's defaultExpression can call nextNumber('name') to atomically allocate the next value, formatted per this sequence's format template."
+    },
+    "seeds": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/seed"
+      },
+      "description": "R8.8: model/pack-declared seed rows, reusing the existing app-level seed record shape (NPDevContract/schemas/seed.schema.json's $defs/record). Applied once, automatically, at first boot through the same governed ConceptGateway.save path every other write uses (see com.finalexec.seed.ModelSeedRunner in NPDevRuntimeHost); regenerating/restarting the app does not duplicate rows. A pack/context-declared seed's concept must name a concept the SAME pack/context owns -- rewritten to its pack-qualified form at composition time, and a seed naming a concept the pack does not own is a compile error (see ModelSourceResolver's seeds handling and SeedValidation)."
     }
   },
   "$defs": {
@@ -470,6 +497,135 @@
       },
       "additionalProperties": false
     },
+    "webhook": {
+      "type": "object",
+      "required": [
+        "source",
+        "hmacSecretEnvVar",
+        "eventName"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_-]*$",
+          "description": "Path segment identifying this webhook door: POST /api/hooks/{source}. Deliberately NOT namespace-qualified by pack composition -- a third party posts to a fixed, predictable URL."
+        },
+        "hmacSecretEnvVar": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Name of the environment variable holding the HMAC-SHA256 verification secret -- never a literal secret value in the model, never committed."
+        },
+        "eventName": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Flow event name published into the event store once the signature verifies; must name a member of this model's own events[]."
+        },
+        "fieldMapping": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Target event-payload field name -> dot-path into the inbound JSON body. Absent/empty means the raw parsed JSON body becomes the event payload unchanged."
+        }
+      },
+      "additionalProperties": false
+    },
+    "sequence": {
+      "type": "object",
+      "required": [
+        "name",
+        "format"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+          "description": "Identifier referenced by nextNumber('name') in a field's defaultExpression. Deliberately NOT namespace-qualified by pack composition -- same reasoning as this schema's webhook $def applies to source."
+        },
+        "format": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Render template for an allocated number. Recognized tokens: {seq} / {seq:N} (the running counter, zero-padded to N digits -- exactly one required), plus optional {year}/{yy}/{month}/{day} date tokens resolved at allocation time. Example: \"INV-{year}-{seq:4}\" -> INV-2026-0001. Any date token also partitions the underlying counter, so numbering resets exactly when the rendered text would otherwise repeat."
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["global", "tenant"],
+          "description": "global (default): one counter shared by every tenant. tenant: one independent counter per tenant."
+        }
+      },
+      "additionalProperties": false
+    },
+    "seed": {
+      "type": "object",
+      "required": ["concept"],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "not": { "required": ["alias", "repeatOver"] },
+          "description": "Bulk-generated (repeatOver) rows can't be individually aliased."
+        },
+        {
+          "not": { "required": ["alias", "count"] },
+          "description": "Bulk-generated (count) rows can't be individually aliased."
+        },
+        {
+          "not": { "required": ["repeatOver", "count"] },
+          "description": "repeatOver and count are two alternative bulk-generation mechanisms -- use only one."
+        },
+        {
+          "if": {
+            "anyOf": [ { "required": ["repeatOver"] }, { "required": ["count"] } ]
+          },
+          "then": { "required": ["data"] },
+          "description": "Either bulk mechanism needs 'data' as the per-row template."
+        }
+      ],
+      "properties": {
+        "concept": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R8.8: concept this seed row targets. For a pack/context-declared seed, must name a concept the SAME pack/context declares (compile error otherwise, thrown at pack-composition time) -- rewritten to its pack-qualified form there. A root-declared seed may name any of the model's own concepts, unrestricted, exactly like a root-declared query or panel."
+        },
+        "alias": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_]+$",
+          "description": "Optional local name a LATER seed record (anywhere in the fully resolved model) can reference via \"$ref:<alias>\". Only single (non-bulk) records may carry one -- must be unique across every declared seed."
+        },
+        "id": {
+          "type": "string",
+          "description": "Explicit id for this record; a generated UUID is used at seed-run time when absent."
+        },
+        "data": {
+          "type": "object",
+          "description": "Field values, same shape as a POST /api/<concept> body. A string value of the exact form \"$ref:<alias>\" is replaced with that alias's generated id; \"$gen:<generator>[:<args>]\" is replaced with a generated value -- see NPDevContract/schemas/seed.schema.json's genToken doc for the full generator vocabulary (name/words/date-range/decimal-range/enum-pick/ref-pick-random). Both resolve on top-level fields only."
+        },
+        "repeatOver": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vars"],
+          "properties": {
+            "vars": {
+              "type": "object",
+              "minProperties": 1,
+              "additionalProperties": {
+                "type": "array",
+                "items": { "type": "integer" },
+                "minItems": 2,
+                "maxItems": 2,
+                "description": "[min, max] inclusive."
+              }
+            }
+          },
+          "description": "Bulk-generates one record per combination of the declared integer ranges (Cartesian product). Mutually exclusive with 'count' and 'alias'."
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Shorthand for repeatOver with no index variables: bulk-generates this many copies of 'data'. Mutually exclusive with 'repeatOver' and 'alias'."
+        }
+      }
+    },
     "propertyScope": {
       "type": "object",
       "required": [
@@ -487,6 +643,31 @@
         }
       },
       "additionalProperties": false
+    },
+    "localizableLabel": {
+      "description": "R5.6: a label site accepts a plain string (unchanged -- every existing model keeps validating and behaving exactly as before) OR a per-locale object. The object form requires 'default', the deterministic terminal fallback used when neither the requested locale nor its language family has an entry -- resolution order is exact locale tag, then language-only, then 'default'. Any other key is a BCP-47-ish locale tag (e.g. 'en', 'pt-BR') mapped to that locale's override string.",
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "default"
+          ],
+          "properties": {
+            "default": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      ]
     },
     "property": {
       "type": "object",
@@ -523,8 +704,7 @@
           "description": "Which declared propertyScopes[].name values may hold a row for this property. Every name here must be declared in propertyScopes -- checked at compile time, not by this schema."
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "securityRelevant": {
           "type": "boolean",
@@ -642,6 +822,38 @@
           "type": "string",
           "minLength": 1,
           "description": "Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md): names a procedure run BEFORE the root upsert, inside the same transaction as commit() -- a non-ok result aborts the whole commit with NO writes at all. A sibling of onCommit (which runs AFTER the tree is written, rolling back on failure), not a flag on it: different timing, different contract."
+        },
+        "invariants": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateInvariant"
+          },
+          "description": "R4.4 (Roadmap Wave 1 2026-08-19): declarative cross-collection invariants evaluated against the whole aggregate draft tree (root fields plus every named collection) in the SAME pre-commit transaction slot onValidate uses -- a veto names the failing rule in the commit API error."
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregateInvariant": {
+      "type": "object",
+      "required": [
+        "name",
+        "expression"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R4.4: the rule identifier a commit-time API error names when this invariant vetoes a commit. Required and must be unique within its aggregate."
+        },
+        "expression": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R4.4: a boolean-shaped expression evaluated against the aggregate draft tree -- root fields directly by name, each declared collection by name as a list (e.g. lines.all(l => l.qty > 0) && lines.sum(qty) <= totalQty)."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R4.4: optional override for the veto message; defaults to a message composed from name plus the evaluator's own failure detail."
         }
       },
       "additionalProperties": false
@@ -903,8 +1115,7 @@
           "description": "Declared procedure this action invokes over the draft."
         },
         "label": {
-          "type": "string",
-          "minLength": 1,
+          "$ref": "#/$defs/localizableLabel",
           "description": "Button caption. Defaults to the procedure name when omitted."
         },
         "inputFields": {
@@ -941,8 +1152,7 @@
           "description": "Source Selection panel the client offers as a modal row picker (C6 \"Seleciona Ruas\")."
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "columns": {
           "type": "array",
@@ -1020,8 +1230,7 @@
       "additionalProperties": false,
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "tier": {
           "type": "string",
@@ -1051,8 +1260,7 @@
       "description": "Move 11 W6 (C1, docs/MOVE3_G2_CHECKLISTS.md): one piece of declared TRANSIENT UI state on an Aggregate Workbench surface -- a record-type toggle and its kind. transaction.visibleWhen's grammar ($root.<field> == '<literal>') reads persisted root fields only, and a record-type toggle is not a persisted field of anything, so there was nothing for the predicate to read. This adds a second resolvable ROOT for the SAME grammar ($ui.<name>), not a second dialect. PRESENTATION-ONLY: UI state never reaches the commit payload and must never gate persistence or authorization -- a surface hidden by $ui.* whose rows exist still commits them unchanged.",
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "values": {
           "type": "array",
@@ -1155,6 +1363,16 @@
           "minLength": 1,
           "description": "PK-6: declares this concept is a satellite extension of a base concept owned by another pack (a pack-qualified reference, e.g. \"identity::User\"). The base pack stays untouched; this concept must also declare a unique+required `type: reference` field whose `reference.target` equals this value (the 1:1 anchor bond the satellite hangs off), enforced by SemanticValidator."
         },
+        "softDelete": {
+          "type": "boolean",
+          "default": false,
+          "description": "R5.4: this concept's rows are never physically deleted. A generated delete flips a platform-managed `deletedAt` timestamp instead of removing the row; every generated read (list/page/aggregate/existsUnique/reference finder) excludes a row with `deletedAt` set, and a generated restore action clears it. A `unique:true` field (or compound-unique invariant) is enforced among live (non-deleted) rows only -- a value freed by a soft delete can be reused immediately."
+        },
+        "temporal": {
+          "type": "boolean",
+          "default": false,
+          "description": "R5.8: this concept carries effective-dated rows (price lists, tax rates, assignments -- multiple rows for the same logical entity, valid over different, non-overlapping windows). Requires the concept to also declare its own author-owned `validFrom`/`validTo` fields (type: date, required: true -- ordinary business fields, not platform-managed columns; a still-open-ended row uses a far-future sentinel date rather than a null validTo), enforced at compile time. The generic concept-CRUD read/list/query endpoint (`GET /api/concepts/{conceptName}`) accepts an `asOf=<date>` query parameter that composes with any other `where=` filter already supported there (e.g. `where=productCode:eq:P100&asOf=2026-03-15` resolves the row effective for that product on that date) -- `validFrom<=asOf<=validTo` is pushed down as two ordinary ConceptQuery filters, and a temporal concept's default view (asOf absent) resolves as of today, matching `softDelete`'s own default-excludes-noncurrent-rows convention. Scoping resolution to \"the same logical entity\" (e.g. the same product) is the caller's job via an ordinary `where=` filter, not a new identity-key schema concept -- deliberately deferred, see ledger RUN-22."
+        },
         "fields": {
           "type": "array",
           "minItems": 1,
@@ -1229,8 +1447,7 @@
           "minLength": 1
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "initial": {
           "type": "boolean"
@@ -1278,8 +1495,7 @@
           "minLength": 1
         },
         "actionLabel": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "action": {
           "$ref": "#/$defs/actionMetadata"
@@ -1388,6 +1604,21 @@
             "multiSelect": {
               "type": "boolean",
               "default": false
+            }
+          }
+        },
+        "access": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "R5.5: field-level (not row-level) authorization -- the next rung on the ladder below concept.access: role ceiling (permission) -> row scope (concept.access) -> field scope (this). Each expression is evaluated per-record through the platform's unified expression language (ComputedExpression), with $user.id/$user.tenantId/$user.actorId/$user.roles available alongside the record's own fields, exactly like concept.access. read gates whether this field's value may appear in a read/list/query response for a given record (denied means the field key is OMITTED from the response, never returned masked/null). write gates whether a save may set/change this field's value (denied means the WHOLE write is rejected, never silently dropped). Absent = no additional field-level restriction beyond the concept's own row-level access and role permissions.",
+          "properties": {
+            "read": {
+              "type": "string",
+              "minLength": 1
+            },
+            "write": {
+              "type": "string",
+              "minLength": 1
             }
           }
         },
@@ -1702,12 +1933,10 @@
           "minLength": 1
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "displayLabel": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "order": {
           "type": "integer",
@@ -1837,12 +2066,10 @@
       "type": "object",
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "shortLabel": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "description": {
           "type": "string",
@@ -1984,8 +2211,7 @@
       "type": "object",
       "properties": {
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "confirmationText": {
           "type": "string",
@@ -2840,6 +3066,18 @@
             "$ref": "#/$defs/flowStep"
           },
           "description": "LNCH-17: compensation steps run in reverse completion order if a later step in the same flow terminally fails. Not a distributed transaction -- best-effort cleanup, per the saga pattern; see docs/architecture/FLOW_TRANSACTION_CONTRACT.md."
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "R2.5: an awaitEvent step's durable wait deadline in seconds, measured from when the step first parks (not from flow start). Checked by the resume sweep against the persisted flow instance, so it survives a process restart -- once it passes without the awaited event arriving, the flow resumes into onTimeout instead of re-parking. Absent means no timeout (wait forever, the pre-R2.5 default)."
+        },
+        "onTimeout": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/flowStep"
+          },
+          "description": "R2.5: escalation steps run once timeout's deadline passes without the awaited event arriving -- e.g. notify a manager, then let the flow continue past the await. Requires timeout to be set."
         }
       },
       "allOf": [
@@ -3345,14 +3583,6 @@
             "detailed"
           ]
         },
-        "auditPolicy": {
-          "type": "string",
-          "enum": [
-            "none",
-            "read",
-            "write"
-          ]
-        },
         "metadata": {
           "type": "object"
         },
@@ -3531,14 +3761,6 @@
             "none",
             "summary",
             "detailed"
-          ]
-        },
-        "auditPolicy": {
-          "type": "string",
-          "enum": [
-            "none",
-            "read",
-            "write"
           ]
         },
         "actionDescriptor": {
@@ -3994,8 +4216,7 @@
           "minLength": 1
         },
         "label": {
-          "type": "string",
-          "minLength": 1
+          "$ref": "#/$defs/localizableLabel"
         },
         "binding": {
           "type": "string",
@@ -4122,9 +4343,77 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "aggregate": {
+          "type": "string",
+          "minLength": 1,
+          "description": "R5.7: optional aggregate binding. When set, must equal the aggregate's root concept (enforced by DocumentValidation, not schema) -- 'bands' may then bind the aggregate's header and top-level collections."
+        },
+        "bands": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/documentBand"
+          },
+          "description": "R5.7: header/line-item bands read off the bound aggregate's tree (root fields plus named top-level collections, the same shape AggregateRuntime.load() produces). Requires 'aggregate' to be set."
+        },
+        "logo": {
+          "$ref": "#/$defs/documentLogo"
         }
       },
       "additionalProperties": false
+    },
+    "documentBand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "kind",
+        "fields"
+      ],
+      "description": "R5.7: one printable band of an aggregate-bound document -- 'header' reads fields off the aggregate root, 'lineItems' reads rows off one of the aggregate's TOP-LEVEL collections (named by 'collection'; nested/dotted collection paths are not supported). 'fields' deliberately reuses the panelFieldBinding shape a panel's fieldBindings already parses -- an author who knows how to bind a panel field binds a document band field the identical way.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "header",
+            "lineItems"
+          ]
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required when kind is 'lineItems': the name of a top-level collection on the bound aggregate. Not allowed on a 'header' band."
+        },
+        "label": {
+          "$ref": "#/$defs/localizableLabel"
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/panelFieldBinding"
+          },
+          "description": "Must declare at least one field. An empty band would render a blank header block or a line-item table with no columns -- indistinguishable from 'this record has no data' -- so both this schema-level minItems and DocumentValidation reject it as an authoring error instead."
+        }
+      }
+    },
+    "documentLogo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field"
+      ],
+      "description": "R5.7: a document's logo, bound to a property on the document's root concept -- never a URL. The renderer resolves that property's stored bytes and hands the PDF adapter an already-inline data: URI; DocumentRenderInProcAdapter refuses to fetch anything else while rendering (R6-F3's DENY_EXTERNAL_URIS), so a URL-shaped logo binding is not merely discouraged, it has no legal spelling in this model.",
+      "properties": {
+        "field": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     },
     "guidePage": {
       "type": "object",

@@ -436,7 +436,6 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 null,
                 List.of("ADMIN"),
                 "record",
-                "write",
                 new CompiledGeneratedActionDescriptorSpec(
                         "CreateItem12User",
                         List.of("Item12User"),
@@ -1021,7 +1020,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         // below) -- both jars must exist or the generated app fails to compile.
                         ":adapters:document-render-inproc:jar",
                         ":adapters:document-render-stub:jar",
-                        ":adapters:expression-cel:jar",
+                        ":adapters:runtime-support:jar",
                         ":adapters:external-ai-http:jar",
                         ":adapters:external-ai-inproc:jar",
                         ":adapters:external-ai-pack-core:jar",
@@ -1037,12 +1036,15 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         // clean CI runner only explicitly-built adapters exist -> compile error. Build them.
                         ":adapters:mail-inproc:jar",
                         ":adapters:mail-smtp:jar",
+                        ":adapters:messaging-http:jar",
+                        ":adapters:messaging-inproc:jar",
                         ":adapters:persistence-inproc:jar",
                         ":adapters:persistence-postgres:jar",
                         ":adapters:resume-bootstrap-spring:jar",
                         ":adapters:runtime-validation:jar",
                         ":adapters:schema-validator-default:jar",
                         ":adapters:tracing-redaction-default:jar",
+                        ":adapters:webhook-http:jar",
                         ":adapters:webhook-inproc:jar",
                         "--no-daemon",
                         "--console=plain"
@@ -1181,8 +1183,12 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
         return process;
     }
 
-    /** How long a packaged app may take to answer /actuator/health. See waitForHealth. */
-    private static final Duration HEALTH_TIMEOUT = Duration.ofMinutes(6);
+    /** How long a packaged app may take to answer /actuator/health. See waitForHealth.
+     * REG-176: was 6 minutes -- raised as defense-in-depth after this test still timed out under
+     * real CI load even once run in full isolation (its own serial Gradle task, no other task
+     * scheduled concurrently), suggesting the CI runner's available boot performance today, not
+     * test-level contention, is the binding constraint. */
+    private static final Duration HEALTH_TIMEOUT = Duration.ofMinutes(8);
 
     private static void waitForHealth(int port, Path evidenceRoot) throws Exception {
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();

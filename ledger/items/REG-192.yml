@@ -1,0 +1,62 @@
+id: REG-192
+title: >-
+  Two smaller verification-path defects found during EDIT-7: engine_start_env hardcodes
+  ALLOW_EVALUATE=false, and r7-2's routine searches for seed-button text that REG-189 changed
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-20
+verification: UNIT_TESTED
+source: >-
+  Found while browser-verifying EDIT-7 (R7.4). Both confirmed against real source/behaviour; neither
+  fixed, as `NPDevCli` was held by a concurrent workstream and the routine belongs to another item.
+surface: cli/monitor, verification/routines
+files:
+  - NPDevCli/npdev_monitor.py
+  - AppGen/apps/simple-user-registry-h2local/explorations/r7-2-empty-state-seed-cta.json
+detail: |
+  **(a) `engine_start_env()` hardcodes `ALLOW_EVALUATE: "false"`** (`npdev_monitor.py:889`, confirmed
+  by the orchestrator). A routine therefore cannot use `evaluate` steps when the engine is started
+  through `npdev monitor` -- which blocks stubbing `window.prompt`/`window.confirm`, and headless
+  Chromium has no OS dialog to answer, so any UI whose action goes through a native dialog is
+  undrivable that way. EDIT-7's verification had to start the engine manually to get around it.
+  Worth deciding deliberately rather than leaving hardcoded: `evaluate` is genuinely powerful, so the
+  honest options are an opt-in flag on `engine-start`, or per-app config, not a silent `false`.
+
+  **(b) `r7-2-empty-state-seed-cta.json` is now stale**, and REG-189's fix is why. That routine
+  asserts on button text `"Demo users"`. When the app had two seed files the CTA rendered one button
+  per seed with its label; now that REG-189 made a single-seed manifest work correctly and
+  `simple-user-registry-h2local` legitimately has exactly ONE seed, the button reads
+  **"Load sample data"** with no suffix. So a routine written to prove R7.2 no longer matches the UI
+  R7.2 produces -- through no fault of either item.
+
+  This is a small but real instance of a general hazard worth noting: **a routine that asserts on
+  rendered text is coupled to data shape**, and a fix elsewhere (REG-189) can invalidate it silently.
+  Preferring the emitter's deterministic selectors (`#concept-<Name>`, `[name=field]`, action-button
+  ids) over visible text is the durable answer, and is what MON-15's coverage matching and R3.3's
+  generated routines already rely on.
+
+  2026-08-20 (fix), two parts:
+  (a) `engine_start_env` now takes `allow_evaluate: bool = False` and sets ALLOW_EVALUATE
+      "true"/"false" accordingly; `npdev monitor engine-start` gained an `--allow-evaluate` opt-in flag
+      threaded through `_run_monitor_engine_start`. `npdev explore`'s `_start_engine` keeps the default
+      (off) unchanged. Test: NPDevCli/tests/test_monitor_engine_start.py (3 tests, RED->GREEN).
+  (b) The seed CTA now exposes `data-seed-id=<seed.id>` (business-ui-app.mustache), and
+      r7-2-empty-state-seed-cta.json addresses it via `button[data-seed-id="demo-users"]` instead of the
+      rendered label. Test: BusinessUiEmitterSeedCtaHookTest (asserts the emitted asset carries the
+      hook); the routine-side RED (matching "Demo users" while the one-seed app renders "Load sample
+      data") was already recorded above.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_monitor_engine_start.py
+  asserts: >-
+    engine_start_env sets ALLOW_EVALUATE=false by default and =true under allow_evaluate=True (the
+    opt-in threaded from `npdev monitor engine-start --allow-evaluate`), so a routine can stub
+    window.prompt/confirm through a supported path rather than starting the engine by hand; and the
+    seed CTA exposes data-seed-id so r7-2 addresses it by identity, not rendered label.
+  provenRed: true
+  provenRedNote: >-
+    Captured by running test_monitor_engine_start before the fix: engine_start_env rejected the
+    allow_evaluate kwarg (TypeError). The (b) half's RED was already observed live (routine matched
+    "Demo users" while the one-seed app renders "Load sample data"), as recorded in the source note.

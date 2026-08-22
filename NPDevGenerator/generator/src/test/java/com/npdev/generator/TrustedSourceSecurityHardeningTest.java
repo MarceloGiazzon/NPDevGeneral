@@ -295,7 +295,6 @@ class TrustedSourceSecurityHardeningTest {
                 null,
                 List.of("admin"),
                 "summary",
-                "write",
                 Map.of("trustedSourceEntrypoint", "procedure/EscapeProcedure.java")
         );
         return new CompiledModel(
@@ -326,7 +325,6 @@ class TrustedSourceSecurityHardeningTest {
                 null,
                 List.of("admin"),
                 "summary",
-                "write",
                 Map.of("trustedSourceEntrypoint", "procedure/CreateUsersProcedure.java")
         );
         return new CompiledModel(

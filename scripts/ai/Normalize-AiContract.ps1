@@ -344,7 +344,9 @@ function New-OfficialModel {
             returns = [ordered]@{ type = "string" }
             permissionRequirements = @([string]$procedure.requiredRole)
             tracePolicy = "summary"
-            auditPolicy = if ([string]$procedure.sideEffectType -eq "none") { "read" } else { "write" }
+            # R5.1: auditPolicy retired -- it was schema-declared but consumed by nothing at
+            # runtime. The write/read distinction this used to carry survives in metadata.sideEffectType
+            # below, which is what actually mapped to it (see scripts/policy/ai-model-to-dsl-mapping-policy.json).
             metadata = [ordered]@{
                 beta0Surface = "custom-procedure"
                 sideEffectType = [string]$procedure.sideEffectType

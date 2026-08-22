@@ -1,0 +1,27 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "pack9-role-binding-a",
+    "description": "PACK-9 live two-app role-binding proof, app A -- binds labeling pack's role('curator') to CURATOR_A. Not frozen like npdev-canary; exists solely to prove PACK-9's done-when.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": { "root": "..\\..\\..\\NPDevRuntimeHost", "mergeStrategy": "clean-copy" },
+  "artifact": { "root": "..\\Output\\ArtifactNP", "generatedFolderName": "npdev-generated", "libsFolderName": "libs", "metaFolderName": "npdev-meta" },
+  "finalExec": { "root": "..\\Output\\App", "deleteBeforeMount": true },
+  "database": { "provider": "h2-local", "database": "npdev_pack9_role_binding_a", "resetMode": "reset" },
+  "runtime": { "springProfile": "dev,trial", "serverPort": 8410, "javaArgs": [], "gradleTask": "bootRun" },
+  "trialDefaults": {
+    "apiKey": "dev-key", "recommendedProfiles": "dev,trial", "runtimeUrl": "http://localhost:8410/",
+    "databaseMode": "h2-local",
+    "notes": ["PACK-9 role-binding proof app A. Not release-gated; a hand-run fixture."]
+  }
+}

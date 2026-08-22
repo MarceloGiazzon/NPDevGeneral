@@ -29,6 +29,9 @@ public final class CompiledModel {
     private final List<CompiledProperty> properties;
     private final List<CompiledContext> contexts;
     private final List<CompiledConversion> conversions;
+    private final List<CompiledWebhook> webhooks;
+    private final List<CompiledSequence> sequences;
+    private final List<CompiledSeed> seeds;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -387,6 +390,116 @@ public final class CompiledModel {
             List<CompiledContext> contexts,
             List<CompiledConversion> conversions
     ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, List.of());
+    }
+
+    /** R6.2: canonical constructor, adds {@code webhooks} (model-declared inbound webhook doors --
+     *  see {@link CompiledWebhook}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
+                List.of());
+    }
+
+    /** R5.3: adds {@code sequences} (model-declared document-numbering counters -- see
+     *  {@link CompiledSequence}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks,
+            List<CompiledSequence> sequences
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
+                sequences, List.of());
+    }
+
+    /** R8.8: canonical constructor, adds {@code seeds} (model/pack-declared first-boot seed rows --
+     *  see {@link CompiledSeed}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks,
+            List<CompiledSequence> sequences,
+            List<CompiledSeed> seeds
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -416,6 +529,9 @@ public final class CompiledModel {
         this.properties = properties == null ? List.of() : List.copyOf(properties);
         this.contexts = contexts == null ? List.of() : List.copyOf(contexts);
         this.conversions = conversions == null ? List.of() : List.copyOf(conversions);
+        this.webhooks = webhooks == null ? List.of() : List.copyOf(webhooks);
+        this.sequences = sequences == null ? List.of() : List.copyOf(sequences);
+        this.seeds = seeds == null ? List.of() : List.copyOf(seeds);
     }
 
     public String getNamespace() { return namespace; }
@@ -550,6 +666,54 @@ public final class CompiledModel {
     /** S7 Phase B (B13): declared conversions, empty when the model declares none. */
     public List<CompiledConversion> getConversions() {
         return Collections.unmodifiableList(conversions);
+    }
+
+    /** R6.2: model-declared inbound webhook doors, empty when the model declares none. */
+    public List<CompiledWebhook> getWebhooks() {
+        return Collections.unmodifiableList(webhooks);
+    }
+
+    /** R6.2: the single webhook whose {@code source} matches the given path segment, or empty --
+     *  the lookup {@code WebhookInboundController} uses for {@code POST /api/hooks/{source}}. */
+    public Optional<CompiledWebhook> findWebhookBySource(String source) {
+        if (source == null || source.isBlank()) {
+            return Optional.empty();
+        }
+        for (CompiledWebhook webhook : webhooks) {
+            if (webhook.source().equals(source)) {
+                return Optional.of(webhook);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** R5.3: model-declared document-numbering counters, empty when the model declares none. */
+    public List<CompiledSequence> getSequences() {
+        return Collections.unmodifiableList(sequences);
+    }
+
+    /** R5.3: the single sequence whose {@code name} matches -- the lookup {@code
+     *  ConfiguredConceptGatewaySemanticPolicy} uses to resolve a field's {@code
+     *  nextNumber('name')} defaultExpression. */
+    public Optional<CompiledSequence> findSequenceByName(String name) {
+        if (name == null || name.isBlank()) {
+            return Optional.empty();
+        }
+        for (CompiledSequence sequence : sequences) {
+            if (sequence.name().equalsIgnoreCase(name)) {
+                return Optional.of(sequence);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** R8.8: model/pack-declared first-boot seed rows, empty when the model declares none.
+     *  Declaration order is preserved (never sorted) -- it is semantically load-bearing, since a
+     *  later record's {@code data} may reference an earlier one's {@code alias} via {@code
+     *  "$ref:<alias>"}. See {@code com.finalexec.seed.ModelSeedRunner} (NPDevRuntimeHost) for the
+     *  boot-time, idempotent executor. */
+    public List<CompiledSeed> getSeeds() {
+        return Collections.unmodifiableList(seeds);
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

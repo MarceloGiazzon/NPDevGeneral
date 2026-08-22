@@ -13,66 +13,56 @@ import java.util.Set;
  * own concepts.
  *
  * <p><b>Definition (the card's own words):</b> "A pack is sealed iff zero outbound references to
- * non-pack concepts and zero unbound capabilities." This class is the mechanical implementation.
+ * non-pack concepts and zero unbound capabilities." A <em>composed</em> sealed pack (one that lists
+ * its own {@code packs[]}) is sealed when every dependency in its transitive closure is itself
+ * sealed, the closure's resolution adds every transitively-bundled concept to the reference universe
+ * (so a reference to a dependency's concept is not "outbound"), and nothing else leaks out.
  *
  * <p><b>Deliberately narrower than "from PK-1's provenance"</b> -- the BT-2 card assumed {@code
  * origin}/provenance metadata (packId/version/digest recorded on every compiled member) was already
  * threaded through the four-place canonical chain when it was written. It is not: that is PK-1 steps
  * 5-8, tracked separately as {@code ledger/items/PACK-2.yml}, which stays OPEN. Rather than block on
- * that (a HIGH-severity, separately-scoped gap), this analyzer computes sealedness directly from the
- * pack's OWN {@code pack.json} content -- before any app ever composes it -- which is both simpler
- * and more correct for this purpose: sealedness is a property of the pack in isolation, not of any
- * particular app's composed model, so it should never have needed compiled-model provenance at all.
+ * that, this analyzer computes sealedness directly from the pack's OWN {@code pack.json} content --
+ * before any app ever composes it -- which is both simpler and more correct for this purpose.
  *
  * <p><b>What is checked, precisely:</b>
  * <ol>
- *   <li>The pack must declare no transitive dependencies of its own ({@code packs[]} empty or
- *       absent). A pack that depends on other packs could in principle be sealed too (bundling its
- *       whole transitive closure into one jar, or requiring its dependencies to themselves be sealed
- *       jars already on the classpath) -- but that composition question is genuinely new design work
- *       this slice does not attempt. Restricting sealing to leaf packs (no {@code packs[]}) keeps the
- *       mechanism correct for the packs it does handle rather than accepting a half-considered answer
- *       for the harder case. See BT-2's ledger item for this explicit deferral.</li>
- *   <li>{@code requires.capabilities[]} must be empty or absent. A pack that requires a capability
- *       from the composing app cannot be compiled once and shared -- the capability binding only
- *       exists once a real app supplies it (see {@code ModelSourceResolver.checkPackRequirements}),
- *       and a sealed jar is built with no app in the loop at all. This is the "zero unbound
- *       capabilities" half of the card's definition.</li>
- *   <li>Every concept's every {@code reference}-typed field must target another concept declared in
- *       this SAME pack's own {@code concepts[]} (by bare, unqualified name -- pack.json concepts are
- *       always authored with bare names; a {@code ::}-qualified target, possible only via this pack's
- *       own {@code packs[]}, is itself already excluded by rule 1 above). This is the "zero outbound
- *       references to non-pack concepts" half. The target is resolved via {@link
- *       #referenceTarget(JsonNode)}, which recognizes all THREE spellings {@code JsonModelParser}
- *       actually accepts at real parse time -- {@code "ref": "Concept"}, {@code "reference":
- *       {"target": "Concept"}}, and {@code "reference": "Concept"} -- in the same priority order. An
- *       earlier version of this analyzer only recognized the object form and was caught by
- *       adversarial review before merge: a pack using either bare-string spelling for an outbound
- *       reference would have been wrongly certified sealed. {@link PackSealednessAnalyzerTest} covers
- *       all three shapes so this cannot silently regress.</li>
+ *   <li>Transitive dependencies: a pack's own {@code packs[]} must all be sealed. That is only
+ *       verifiable when the caller supplies a {@link PackDependencyResolver} that can turn each
+ *       {@code packs[]} entry into its {@code pack.json}; {@link #analyze(JsonNode)} (no resolver)
+ *       refuses any {@code packs[]} pack outright -- the historical leaf-pack-only behaviour, kept
+ *       for backward compatibility -- while {@link #analyze(JsonNode, PackDependencyResolver)}
+ *       recursively seals every transitive dependency and requires ALL of them to be sealed.</li>
+ *   <li>{@code requires.capabilities[]} must be empty or absent -- the "zero unbound capabilities"
+ *       half. A sealed jar is built with no app in the loop, so a required capability can never be
+ *       bound at pack-build time.</li>
+ *   <li>Every concept's every {@code reference}-typed field, plus the query/panel/flow concept
+ *       references, must target a concept in the pack's own <em>closure</em>: its {@code concepts[]}
+ *       plus the concepts bundled by its transitively-sealed dependencies. Any reference whose bare
+ *       name is not in that closure is an outbound reference to a non-pack concept. The field-target
+ *       spelling is resolved via {@link #referenceTarget(JsonNode)} (all THREE spellings
+ *       {@code JsonModelParser} accepts).</li>
  * </ol>
  *
  * <p><b>Not checked (documented limitation, not silently ignored):</b> a concept declared via a
- * {@code localModelRef} ({@code {"$ref": "..."}}) fragment rather than inline cannot be inspected by
- * this analyzer without resolving the fragment first ({@code ModelSourceResolver} handles that
- * resolution during real composition, but this analyzer deliberately runs on the pack's raw,
- * unresolved JSON so it has no filesystem/model-root dependency and stays a pure function like its
- * {@link PackDiffEngine}/{@link PackPublishGate} siblings). A fragment-based concept is therefore
- * treated as UNVERIFIABLE and fails sealedness with a named violation, rather than being silently
- * assumed safe -- the identity/workspace built-in packs this slice targets declare every concept
- * inline, so this limitation does not block them.
- *
- * <p>References other than a concept field's {@code reference.target} (a query join, a panel data
- * source, a flow step referencing a concept by name, ...) are not walked by this first slice --
- * the FK/reference-field case is both the dominant shape in every existing pack and the one that
- * actually determines whether the entity/repository layer this card precompiles is self-contained.
- * Extending the walk to query/flow/panel concept references is mechanical (same pattern, same
- * pack-local-name-set check) and left as follow-up, not attempted here to keep this slice's own
- * claim precise.
+ * {@code localModelRef} ({@code {"$ref": "..."}}) fragment rather than inline is treated as
+ * UNVERIFIABLE and fails sealedness with a named violation, because resolving it would add a
+ * filesystem/model-root dependency this pure function deliberately avoids. Borrowing the same
+ * reasoning, a {@code packs[]} pack is only verifiable when the caller supplies a
+ * {@link PackDependencyResolver}; without one it refuses.
  */
 public final class PackSealednessAnalyzer {
 
     private PackSealednessAnalyzer() {
+    }
+
+    /**
+     * Turns a pack's {@code packs[]} dependency entry into that dependency's raw {@code pack.json},
+     * so the analyzer can recursively verify the whole transitive closure is sealed.
+     */
+    @FunctionalInterface
+    public interface PackDependencyResolver {
+        JsonNode resolve(String packRef);
     }
 
     public record SealednessResult(boolean sealed, List<String> violations) {
@@ -89,17 +79,70 @@ public final class PackSealednessAnalyzer {
         }
     }
 
+    /** Internal recursion result: sealedness + violations, plus the closure's available concept set
+     *  so a parent composed pack can treat a bundled dependency's concepts as non-outbound. */
+    private record Internal(boolean sealed, List<String> violations, Set<String> closureConcepts) {
+        Internal {
+            violations = List.copyOf(violations);
+        }
+    }
+
+    /** Backward-compatible leaf-pack entry point: {@code packs[]} packs are refused (no resolver). */
     public static SealednessResult analyze(JsonNode packJson) {
+        Internal internal = analyzeInternal(packJson, null, new LinkedHashSet<>());
+        return new SealednessResult(internal.sealed(), internal.violations());
+    }
+
+    /** Full entry point: a {@code packs[]} pack is sealed iff every transitive dependency resolves
+     *  and is itself sealed (recursively), with no outbound references or unbound capabilities. */
+    public static SealednessResult analyze(JsonNode packJson, PackDependencyResolver resolver) {
+        Internal internal = analyzeInternal(packJson, resolver, new LinkedHashSet<>());
+        return new SealednessResult(internal.sealed(), internal.violations());
+    }
+
+    private static Internal analyzeInternal(JsonNode packJson, PackDependencyResolver resolver, Set<String> visited) {
         if (packJson == null || !packJson.isObject()) {
-            return SealednessResult.unsealed(List.of("pack document is missing or not a JSON object"));
+            return new Internal(false, List.of("pack document is missing or not a JSON object"), Set.of());
         }
         List<String> violations = new ArrayList<>();
+        Set<String> closureConcepts = new LinkedHashSet<>();
 
         JsonNode packsNode = packJson.get("packs");
         if (packsNode != null && packsNode.isArray() && !packsNode.isEmpty()) {
-            violations.add("pack declares " + packsNode.size() + " of its own transitive dependencies "
-                    + "(packs[]) -- composed sealed packs (a sealed pack depending on another pack) are "
-                    + "not yet supported; only a leaf pack (no packs[] of its own) can be sealed today");
+            if (resolver == null) {
+                violations.add("pack declares " + packsNode.size() + " of its own transitive dependencies (packs[]) -- "
+                        + "composed sealed packs require a PackDependencyResolver so the whole closure can be "
+                        + "verified sealed; none was supplied, so sealing is refused");
+            } else {
+                for (JsonNode dependency : packsNode) {
+                    String ref = packRef(dependency);
+                    if (ref == null) {
+                        violations.add("a packs[] dependency entry names no pack/from/$ref, so it cannot be resolved "
+                                + "for sealedness verification");
+                        continue;
+                    }
+                    if (!visited.add(ref)) {
+                        continue; // already analyzed -- cycle guard
+                    }
+                    JsonNode dependencyJson;
+                    try {
+                        dependencyJson = resolver.resolve(ref);
+                    } catch (RuntimeException e) {
+                        violations.add("transitive dependency '" + ref + "' could not be resolved: " + e.getMessage());
+                        continue;
+                    }
+                    if (dependencyJson == null) {
+                        violations.add("transitive dependency '" + ref + "' resolved to nothing (null) -- its sealedness "
+                                + "cannot be verified");
+                        continue;
+                    }
+                    Internal dependencyInternal = analyzeInternal(dependencyJson, resolver, visited);
+                    closureConcepts.addAll(dependencyInternal.closureConcepts());
+                    if (!dependencyInternal.sealed()) {
+                        violations.add("transitive dependency '" + ref + "' is not sealed: " + dependencyInternal.violations());
+                    }
+                }
+            }
         }
 
         JsonNode requiresNode = packJson.get("requires");
@@ -136,6 +179,13 @@ public final class PackSealednessAnalyzer {
             }
         }
 
+        // The referencing universe: this pack's own concepts plus everything its (sealed or not)
+        // dependencies bundle, so a reference to a bundled dependency concept is not outbound.
+        Set<String> referenceUniverse = new LinkedHashSet<>(closureConcepts);
+        referenceUniverse.addAll(conceptNames);
+
+        Set<String> reportedOutbound = new LinkedHashSet<>();
+
         for (JsonNode concept : inlineConcepts) {
             String conceptName = concept.get("name").asText();
             JsonNode fieldsNode = concept.get("fields");
@@ -155,17 +205,118 @@ public final class PackSealednessAnalyzer {
                     continue;
                 }
                 String bareTarget = bareName(rawTarget);
-                if (!conceptNames.contains(bareTarget)) {
+                if (!referenceUniverse.contains(bareTarget)) {
                     String fieldName = field.has("name") ? field.get("name").asText("?") : "?";
+                    reportedOutbound.add(rawTarget);
                     violations.add("concept '" + conceptName + "' field '" + fieldName
-                            + "' references '" + rawTarget + "', which is not declared in this pack's own "
-                            + "concepts[] -- an outbound reference to a non-pack concept, so this pack "
-                            + "cannot be sealed");
+                            + "' references '" + rawTarget + "', which is not declared in this pack's "
+                            + "referencing universe (own concepts[] or a transitively-sealed dependency) "
+                            + "-- an outbound reference to a non-pack concept, so this pack cannot be sealed");
                 }
             }
         }
 
-        return violations.isEmpty() ? SealednessResult.allSealed() : SealednessResult.unsealed(violations);
+        checkNonFieldConceptReferences(packJson, referenceUniverse, reportedOutbound, violations);
+
+        return new Internal(violations.isEmpty(), violations, referenceUniverse);
+    }
+
+    /** The {@code packs[]} entry's resolvable reference string: {@code pack}, else {@code from},
+     *  else {@code $ref} -- mirroring the field spellings ModelSourceResolver accepts. */
+    private static String packRef(JsonNode dependency) {
+        if (dependency == null || !dependency.isObject()) {
+            return null;
+        }
+        String pack = textOrNull(dependency.get("pack"));
+        if (pack != null) {
+            return pack;
+        }
+        String from = textOrNull(dependency.get("from"));
+        if (from != null) {
+            return from;
+        }
+        return textOrNull(dependency.get("$ref"));
+    }
+
+    private static void checkNonFieldConceptReferences(
+            JsonNode packJson,
+            Set<String> referenceUniverse,
+            Set<String> reportedOutbound,
+            List<String> violations
+    ) {
+        List<String> refs = new ArrayList<>();
+        collectConceptRefs(refs, packJson.get("queries"), "queries");
+        collectConceptRefs(refs, packJson.get("panels"), "panels");
+        JsonNode flows = packJson.get("flows");
+        if (flows != null && flows.isArray()) {
+            for (int f = 0; f < flows.size(); f++) {
+                JsonNode flow = flows.get(f);
+                collectConceptRefs(refs, flow, "flows[" + f + "]");
+                JsonNode steps = flow == null ? null : flow.get("steps");
+                if (steps != null && steps.isArray()) {
+                    for (int s = 0; s < steps.size(); s++) {
+                        collectConceptRefs(refs, steps.get(s), "flows[" + f + "].steps[" + s + "]");
+                    }
+                }
+            }
+        }
+        for (String entry : refs) {
+            String ref = entry.substring(entry.indexOf('=') + 1);
+            String bare = bareName(ref);
+            if (!referenceUniverse.contains(bare) && !reportedOutbound.contains(ref)) {
+                reportedOutbound.add(ref);
+                violations.add(entry.replaceFirst("=", " refers to '") + "', which is not declared in this "
+                        + "pack's referencing universe (own concepts[] or a transitively-sealed dependency) "
+                        + "-- an outbound reference to a non-pack concept, so this pack cannot be sealed");
+            }
+        }
+    }
+
+    /** Collects concept-reference strings from a subtree under the clearly-concept-bearing keys:
+     *  {@code dataSource.concept}, {@code concept}, and flow-step {@code scope} (only when it names a
+     *  local-looking concept, i.e. not a {@code $}-prefixed runtime/variable reference). Records as
+     *  {@code <context>=<ref>}; recurses into arrays and nested {@code dataSource} objects. */
+    private static void collectConceptRefs(List<String> into, JsonNode node, String context) {
+        if (node == null) {
+            return;
+        }
+        if (node.isArray()) {
+            for (int i = 0; i < node.size(); i++) {
+                collectConceptRefs(into, node.get(i), context + "[" + i + "]");
+            }
+            return;
+        }
+        if (!node.isObject()) {
+            return;
+        }
+        JsonNode dataSource = node.get("dataSource");
+        if (dataSource != null && dataSource.isObject()) {
+            String concept = textOrNull(dataSource.get("concept"));
+            if (concept != null) {
+                into.add(context + ".dataSource.concept=" + concept);
+            }
+            collectConceptRefs(into, dataSource, context + ".dataSource");
+        }
+        String concept = textOrNull(node.get("concept"));
+        if (concept != null) {
+            into.add(context + ".concept=" + concept);
+        }
+        String scope = textOrNull(node.get("scope"));
+        if (scope != null && looksLikeConceptName(scope)) {
+            into.add(context + ".scope=" + scope);
+        }
+    }
+
+    /** A {@code scope} value that names a concept (a bare identifier), as opposed to a runtime
+     *  {@code $}-prefixed variable, a dotted path, or a literal. */
+    private static boolean looksLikeConceptName(String value) {
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+        if (value.indexOf('$') >= 0 || value.indexOf('.') >= 0 || value.indexOf(' ') >= 0) {
+            return false;
+        }
+        return value.matches("[A-Za-z_][A-Za-z0-9_]*");
     }
 
     /**

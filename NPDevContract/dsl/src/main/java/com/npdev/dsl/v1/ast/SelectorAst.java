@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -22,7 +24,11 @@ public record SelectorAst(
     public SelectorAst {
         filters = filters == null ? List.of() : List.copyOf(filters);
         columns = columns == null ? List.of() : List.copyOf(columns);
-        returnMapping = returnMapping == null ? Map.of() : Map.copyOf(returnMapping);
+        // REG-175/REG-146: AutoPanelExpander.expandSelector nests this straight into
+        // CompiledPanel.metadata["returnMapping"] -- the outer metadata map's own keys get sorted
+        // before JSON serialization, but nested map VALUES are not, so this map's own iteration
+        // order (randomized by Map.copyOf's JEP 269 mitigation) was reaching compiled-model.json.
+        returnMapping = returnMapping == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(returnMapping));
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
     }
 }

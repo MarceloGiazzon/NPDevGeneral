@@ -13,12 +13,16 @@ import java.util.Set;
  * exactly as Postgres does, so more than half the job carried over with no work at all. The real
  * work is the other 18 sites, and they are mostly small.
  *
- * <p><b>{@code RETURNING} does not apply here.</b> MySQL's one genuinely structural gap -- it cannot
- * return generated keys inline, needing a second query plus {@code LAST_INSERT_ID()} -- is the thing
- * a text-returning interface cannot hide, because it changes the NUMBER of statements. Measured on
- * 5680551: <b>zero production sites use RETURNING.</b> So {@link MySqlReturningStrategy} declares
- * itself non-inline and refuses both directions rather than shipping a two-statement path nothing
- * exercises. Conformance vector A2 is what will say the day that changes.
+ * <p><b>{@code RETURNING} does not apply inline here.</b> MySQL's one genuinely structural gap -- it
+ * cannot return generated keys inline -- is the thing a text-returning interface cannot hide,
+ * because the matching two-statement path ({@code SELECT LAST_INSERT_ID()}) changes the NUMBER of
+ * statements a caller runs rather than their spelling. Measured on 5680551: <b>zero production
+ * sites use RETURNING</b> (NPDev keys are client-assigned UUIDs), so the two-statement path has no
+ * caller today. {@link MySqlReturningStrategy} therefore declares itself non-inline -- {@link
+ * ReturningStrategy#inlineClause} still refuses, because MySQL truly has no inline clause -- but now
+ * provides {@link ReturningStrategy#secondQuerySql()}, the same "prepared early, not wrong" state
+ * the inline engines' {@code returning()} have always held. It is implemented here so the interface
+ * is uniform across all four engines, not opened on speculation of a caller.
  *
  * <h2>The DDL-commit decision</h2>
  *
@@ -79,7 +83,13 @@ public final class MySqlDialect implements SqlDialect {
             StorageCapability.OPTIMISTIC_LOCKING,
             // R8c: native "FOR UPDATE SKIP LOCKED" since MySQL 8.0 GA (this platform already
             // targets 8.4 elsewhere -- see SqlDialect#keyableTextColumnType's javadoc).
-            StorageCapability.SKIP_LOCKED_READS);
+            StorageCapability.SKIP_LOCKED_READS,
+            // R9.3: GET_LOCK/RELEASE_LOCK, session-scoped and needing no table.
+            StorageCapability.SESSION_ADVISORY_LOCK);
+    // PARTIAL_UNIQUE_INDEX deliberately absent: MySQL 8.x has no partial/filtered index syntax
+    // (documented engine limitation, see that capability's javadoc). The documented workaround (a
+    // generated column that is NULL for a deleted row, uniquely indexed) is separate, engine-specific
+    // DDL this platform does not emit today.
     // SNAPSHOT_RESTORE absent: mysqldump is an external tool, not something the platform can drive
     // as an engine operation, and declaring it would be a promise the generator trusts wrongly.
 
@@ -89,6 +99,15 @@ public final class MySqlDialect implements SqlDialect {
     private MySqlDialect() {
     }
 
+    /**
+     * R4.3: MySQL's {@code CAST} target list has no {@code VARCHAR} -- it accepts {@code CHAR}.
+     * {@code CAST(col AS VARCHAR)} is a syntax error here, so the interface default would make every
+     * contains/startsWith filter fail at query time on this engine.
+     */
+    @Override
+    public String caseInsensitiveTextExpression(String expression) {
+        return "LOWER(CAST(" + expression + " AS CHAR))";
+    }
     @Override
     public String name() {
         return "mysql";
@@ -404,6 +423,26 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropIndexIfExists(String indexName, String tableName) {
+        // MySQL has no "DROP INDEX IF EXISTS" (unlike DROP TABLE, which does support IF EXISTS) --
+        // same catalog-lookup + PREPARE/EXECUTE idiom as guardedCreateIndex/guardedConstraintDdl
+        // above, but with the polarity INVERTED: run the DROP only when the index IS found, a plain
+        // no-op SELECT otherwise (preparedGuard's own shared helper always guards the opposite way,
+        // "run only when NOT found", which is what every CREATE-shaped caller needs).
+        String statement = "DROP INDEX " + indexName + " ON " + tableName + ";";
+        String index = escapeLiteral(indexName);
+        String table = escapeLiteral(tableName);
+        return "SET @npdev_ddl := (SELECT IF(COUNT(*) > 0, " + quoteSqlLiteral(statement) + ", 'SELECT 1')\n"
+                + "  FROM INFORMATION_SCHEMA.STATISTICS\n"
+                + "  WHERE INDEX_NAME = '" + index + "'\n"
+                + "    AND TABLE_NAME = '" + table + "'\n"
+                + "    AND TABLE_SCHEMA = DATABASE());\n"
+                + "PREPARE npdev_stmt FROM @npdev_ddl;\n"
+                + "EXECUTE npdev_stmt;\n"
+                + "DEALLOCATE PREPARE npdev_stmt;\n";
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         return preparedGuard(
                 "INFORMATION_SCHEMA.COLUMNS",
@@ -413,6 +452,36 @@ public final class MySqlDialect implements SqlDialect {
                 // MySQL accepts ADD COLUMN, but the statement is about to be wrapped in a string
                 // literal, so any IF NOT EXISTS the caller left in would be a syntax error inside it.
                 SqlDdlGuards.stripIfNotExists(alterStatement));
+    }
+
+    @Override
+    public String guardedCreateSchema(String schemaName) {
+        // MySQL's SCHEMA and DATABASE are the same object, and IF NOT EXISTS is native on both.
+        return "CREATE SCHEMA IF NOT EXISTS " + schemaName;
+    }
+
+    /** R9.3. MySQL keys advisory locks by NAME, not by number as Postgres does. */
+    @Override
+    public Object advisoryLockKey(String lockName) {
+        return lockName;
+    }
+
+    /**
+     * R9.3. Timeout 0 makes {@code GET_LOCK} return immediately -- the non-blocking probe this
+     * contract requires.
+     *
+     * <p>{@code COALESCE} is load-bearing, not defensive: {@code GET_LOCK} returns <b>NULL</b> (not
+     * 0) when the attempt errors out, and a NULL read back as an int is 0 only by accident of the
+     * driver. Normalising in SQL keeps "did I get it" a single unambiguous integer everywhere.
+     */
+    @Override
+    public String tryAdvisoryLockSql() {
+        return "SELECT COALESCE(GET_LOCK(?, 0), 0)";
+    }
+
+    @Override
+    public String releaseAdvisoryLockSql() {
+        return "SELECT COALESCE(RELEASE_LOCK(?), 0)";
     }
 
     /**
@@ -623,12 +692,17 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     /**
-     * MySQL cannot return generated columns from an insert.
+     * MySQL cannot return generated columns from an insert -- there is no inline {@code RETURNING}
+     * clause, so {@link #inlineClause} refuses. The generated key (an {@code AUTO_INCREMENT}
+     * integer) must be read with a follow-up statement, which {@link #secondQuerySql()} provides.
      *
-     * <p>Both methods throw. That is the whole point: a {@code secondQuerySql()} returning
-     * {@code SELECT LAST_INSERT_ID()} would be a code path no caller exercises (zero sites use
-     * RETURNING), maintained on speculation, and trusted the first time someone did. When
-     * conformance A2 fails, implement it then -- and the failure will say exactly which site needs it.
+     * <p>{@code secondQuerySql()} is implemented the same "prepared early" way the inline engines'
+     * {@code returning()} values are (STOR-13): it is real and correct, matching MySQL's documented
+     * idiom, even though no production site calls it today -- NPDev's entity keys are client-assigned
+     * UUIDs, so there is no auto-increment key to fetch. Making it throw was the outlier among the
+     * four engines; returning the true second query keeps the {@link ReturningStrategy} contract
+     * uniform. A caller that actually needs a DB-generated key asks {@link #isInline()} first, sees
+     * false, and runs the insert then {@code secondQuerySql()}.
      */
     static final class MySqlReturningStrategy implements ReturningStrategy {
         @Override
@@ -639,20 +713,19 @@ public final class MySqlDialect implements SqlDialect {
         @Override
         public String inlineClause(List<String> columns) {
             throw new UnsupportedOperationException(
-                    "engine 'mysql': there is no RETURNING clause. Generated keys need a second query "
-                    + "(SELECT LAST_INSERT_ID()), which changes the number of statements a caller runs "
-                    + "-- check isInline() first. No production site uses RETURNING today, which is why "
-                    + "the two-statement path is not built; conformance vector A2 is what will say it "
-                    + "is needed.");
+                    "engine 'mysql': there is no inline RETURNING clause. Generated keys need a second "
+                    + "query (SELECT LAST_INSERT_ID(), via secondQuerySql()), which changes the number "
+                    + "of statements a caller runs -- check isInline() first.");
         }
 
         @Override
         public String secondQuerySql() {
-            throw new UnsupportedOperationException(
-                    "engine 'mysql': the two-statement generated-key path is deliberately NOT "
-                    + "implemented -- zero production sites use RETURNING (measured on 5680551), and an "
-                    + "unexercised path would be trusted the first time it ran. Implement it when "
-                    + "conformance A2 fails, together with the call site that needs it.");
+            // MySQL's generated-key read-back. Only meaningful for an AUTO_INCREMENT column: it reads
+            // LAST_INSERT_ID() from the most recent INSERT on this connection. NPDev's entity keys
+            // are client-assigned UUIDs, so no production site issues this today (zero RETURNING
+            // sites, measured on 5680551); it is provided so the ReturningStrategy contract is
+            // uniform across all four engines rather than opening a throw for this one.
+            return "SELECT LAST_INSERT_ID()";
         }
     }
 }

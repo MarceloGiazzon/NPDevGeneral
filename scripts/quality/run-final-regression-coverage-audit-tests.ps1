@@ -197,7 +197,6 @@ Assert-Condition -Condition ($missingSchemaExit -ne 0) -Name "audit-fails-missin
 Assert-Condition -Condition (@($missingSchemaReport.failures | Where-Object { [string]$_ -match "schema-validation-case-wired" }).Count -gt 0) -Name "audit-records-schema-wiring-failure" -Message "Audit must record missing schema-validation wiring."
 
 $representativeMissingEntrypoints = @(
-    [pscustomobject]@{ name = "frontend-gate-tests"; omitted = "scripts/quality/run-frontend-gate-tests.ps1"; expectedCoverage = "frontend-gate-success-failure-tests" },
     [pscustomobject]@{ name = "runtimehost-staged-jar-preflight-tests"; omitted = "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1"; expectedCoverage = "runtimehost-full-staged-jar-preflight" },
     [pscustomobject]@{ name = "trusted-source-proof-tests"; omitted = "scripts/quality/run-trusted-source-beta0-proof-tests.ps1"; expectedCoverage = "trusted-source-manifest-locking" },
     [pscustomobject]@{ name = "scope-policy-enforcement-tests"; omitted = "scripts/quality/run-scope-policy-enforcement-tests.ps1"; expectedCoverage = "scope-policy-enforcement-drift-tests" },
@@ -239,7 +238,6 @@ $report = [pscustomobject]@{
             "audit-passes-coverage-while-release-blocked",
             "audit-fails-missing-sample-release-requirement",
             "audit-fails-missing-schema-validation-wiring",
-            "audit-fails-missing-frontend-gate-tests",
             "audit-fails-missing-runtimehost-staged-jar-preflight-tests",
             "audit-fails-missing-trusted-source-proof-tests",
             "audit-fails-missing-scope-policy-enforcement-tests",

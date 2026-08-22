@@ -1,0 +1,68 @@
+id: MON-14
+title: >-
+  npdev_monitor.redact()'s `pass(word)?` pattern matches the word "passed", so redacting any report
+  that contains test results corrupts them
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Found while implementing R3.4 (MON-13): the new npdev-test-report could not be run through
+  redact() without erasing its own `summary.passed` field.
+surface: cli/monitor
+files:
+  - NPDevCli/npdev_monitor.py
+detail: |
+  `redact()` scrubs credential-shaped keys using a pattern that includes `pass(word)?`. That matches
+  the bare word `pass` and therefore also `passed` -- so any structure carrying test results
+  (`summary.passed`, a per-check `passed: true`, a `status: "passed"`) has real data replaced by the
+  redaction placeholder.
+
+  WHY THIS MATTERS BEYOND ONE REPORT: CLAUDE.md makes redaction mandatory on the export path --
+  "that plan carries a DB password, so anything that copies it off the machine must go through
+  `npdev_monitor.redact()`". `npdev monitor logs export` bundles app logs with a redacted
+  `resolved-db-plan.json`. The moment anything with test-shaped fields joins such a bundle, the
+  export silently corrupts it. The failure is invisible: the operator gets a well-formed JSON whose
+  numbers are wrong, not an error.
+
+  R3.4 worked around it rather than weakening either side: the `npdev-test-report.v1` is NOT passed
+  through `redact()`, and the guarantee is upgraded instead -- no credential is put into that report
+  in the first place, asserted by a test. That is the right call for one report but is not a fix, and
+  it does not help the next author who reasonably assumes redact() is safe to apply.
+
+  MEASURED, not inferred -- run against the real function:
+
+      in : {'summary': {'passed': 12, 'failed': 0}, 'password': 'hunter2', 'keyCount': 3}
+      out: {'summary': {'passed': '<redacted>', 'failed': 0}, 'password': '<redacted>', 'keyCount': 3}
+
+  So the bug is confirmed AND narrower than first assumed: `password` is correctly redacted and
+  `keyCount` is correctly left alone, so the `key`-family patterns are already tight enough. The
+  defect is specific to the `pass` stem. Scope the fix accordingly rather than auditing patterns
+  that turn out to be fine.
+
+  FIXED 2026-08-18. `pass(word)?` became
+  `password|passwd|passphrase|pass(?![a-z])`, keeping every other stem untouched. The negative
+  lookahead is `[a-z]` under IGNORECASE, so it also covers `A-Z` -- which is what excludes
+  `passCount` and `passRate` as well as `passed`, while a bare `pass`, `dbPass` or `pass_value`
+  still matches. Measured after the fix, both directions asserted:
+
+      redacted : password, dbPassword, passwd, passphrase, pass, apiKey, api_key, token, secret,
+                 privateKey
+      preserved: summary.passed=12, passCount=7, passRate=0.9, keyCount=3
+
+  Guarded by `test_redaction_does_not_eat_the_word_passed` in
+  `NPDevCli/tests/test_monitor_data_policy.py`, which asserts BOTH directions on purpose -- a "fix"
+  that simply stopped redacting would satisfy a one-sided test. Full suite 280 -> 281, OK.
+
+  Note for anyone extending this pattern: MON-13's `npdev-test-report.v1` is still deliberately not
+  passed through `redact()`, relying instead on the stronger guarantee that no credential enters it.
+  That remains the better posture for that specific report and was not changed by this fix.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_monitor_data_policy.py (test_redaction_does_not_eat_the_word_passed)
+  asserts: >-
+    redact() removes credential values while leaving innocent fields whose names merely CONTAIN the
+    `pass` stem (notably `passed`) untouched
+  provenRed: true

@@ -21,10 +21,24 @@ name: Engine support (application level)
 #                             EMITTER asks it is untested, and Tier B's J2 failed for exactly that
 #                             reason one layer down
 #
-# workflow_dispatch for ordinary commits, deliberately. Unlike the conformance suite, this one
-# generates and compiles a Spring Boot app per engine, which is minutes rather than seconds;
-# promoting it to a BRANCH push trigger is still a decision to make once its runtime is known -- the
-# same order W1.1 before W1.2 that the conformance workflow followed.
+# workflow_dispatch for ordinary commits was the original, deliberate choice: this workflow
+# generates and compiles a Spring Boot app per engine, which is minutes rather than seconds, and
+# promoting it to a BRANCH push trigger was left as "still a decision to make once its runtime is
+# known -- the same order W1.1 before W1.2 that the conformance workflow followed." That runtime is
+# now known (measured: E8/E10/E15/E9+E12 finish in minutes; the app-on-engine matrix is the long
+# pole at up to 60min/engine, run in parallel across the 3-engine matrix, not serially).
+#
+# QUAL-12 (2026-08-15): the runtime being unknown was never actually the reason this stayed
+# dispatch-only that long -- nobody revisited the decision. Between this workflow's last real run
+# (2026-08-12, 0c8a6ff8) and the beta1.18 tag, 15 merges landed with ZERO coverage from this
+# workflow, including the one that committed NPDevRuntimeHost/runtimehost-core/gradlew as
+# non-executable (BT-1) -- the sole cause of all three beta1.18 tag failures. A paths-filtered or
+# dispatch-only gate is dormant for every change it doesn't happen to catch a human remembering to
+# run; see the general rule recorded in scripts/quality/verification-cadence.json's own `_comment`
+# array. Added `push: branches: [main]`
+# below: a run per MERGE, not per PR (this workflow still does not run on pull_request -- the cost
+# tradeoff its own reasoning above already made for a Docker-heavy, multi-minute job holds), so it
+# is the cheapest trigger that would have caught BT-1 within one merge instead of fifteen.
 #
 # TAGS ARE THE EXCEPTION, added 2026-08-10. `release_candidate.py`'s REQUIRED_WORKFLOWS names this
 # workflow FILE, and the RC gate resolves a run AT THE TAG'S EXACT SHA -- "recent on main" does not
@@ -32,6 +46,8 @@ name: Engine support (application level)
 # dispatch as the only trigger there was NOTHING that could produce a run at a tag's sha except a
 # human remembering to press a button within the gate's window. It refused twice on 2026-08-10,
 # ~20 minutes each time, and is the likeliest reason `beta1.13` shipped with no manifest at all.
+# The new push:main trigger above does not replace this: the RC gate still resolves the exact tag
+# sha, and a push:main run from an earlier merge is not proof about a later, un-run commit.
 #
 # A tag is exactly the moment this workflow's cost is worth paying: it is the one run that proves a
 # generated application boots on MySQL and SQL Server at the sha being published.
@@ -39,6 +55,7 @@ name: Engine support (application level)
 
 on:
   push:
+    branches: [main]
     tags: ['*']
   workflow_dispatch:
     inputs:

@@ -1,0 +1,77 @@
+id: MON-19
+title: >-
+  Per-app exploration excuses live only in _ops/exploration-config.json, which regeneration wipes and
+  nothing emits -- every narrow excuse must be hand-rewritten after each rebuild or its routine goes red
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-20
+source: >-
+  Found by the orchestrator while auditing R7.5's green run for excuse legitimacy. The excuses
+  themselves were correctly narrow; their STORAGE is the defect.
+surface: cli/explore, generator/ops-emitters
+files:
+  - NPDevCli/npdev_explore.py
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+detail: |
+  `npdev_explore.py:113` resolves the per-app override to
+  `<app_dir>/_ops/exploration-config.json`, and `:303` documents it as "Per-app override (D5 rule 2)".
+  A repo-wide grep for `exploration-config` finds **only those two read sites** -- no emitter, no
+  template, no build script ever WRITES the file. It is hand-placed.
+
+  But `_ops` is regenerated wholesale: an app rebuild spares exactly `data`, `logs` and `secrets`
+  (the three-seam list CLAUDE.md pins via twin-pair rule `app-secrets-dir-spared-three-seams`).
+  So the file is destroyed by every regeneration, along with `_ops/exploration-runs/` (observed
+  directly tonight: two recorded R7.5 runs vanished across one rebuild).
+
+  CONSEQUENCE: a narrow, correctly-justified excuse is not durable. The app
+  `simple-user-registry` carries five, four of them MON-12-era 401-on-pre-auth-navigation rules and
+  one added by R7.5 for the dashboard gadget's own query fetch. Every one has to be re-authored by
+  hand after each rebuild, or the routine that depended on it goes red for a reason that has nothing
+  to do with the code under test. That is precisely the failure mode that trains people to widen
+  excuses into blanket ones -- the opposite of MON-12's design intent.
+
+  WHY THIS HID: the file survives across `npdev explore` runs, which is the loop anyone testing
+  routines actually exercises. It only disappears on regeneration, and the person regenerating is
+  usually not the person who wrote the excuse.
+
+  Note the excuses observed were genuinely well-formed -- each scoped by `urlContains` plus
+  `status: 401` with a written reason -- so this item is about persistence, not about excuse
+  discipline, which is working as designed.
+
+  SMALLEST FIX (not applied, needs an owner decision on WHICH durable home):
+    (a) source it from the app definition (AppGen/apps/<app>/exploration-config.json) and have the
+        build copy it into `_ops`, mirroring how other app-authored inputs travel; or
+    (b) add `_ops/exploration-config.json` to the spared set -- but that set is a THREE-SEAM
+        agreement (Build-NpdevApp.ps1 `$SparedInsideApp`, Build-ClaudeApp.ps1, and
+        FinalAppAssembler.PRESERVED_APP_DIRECTORIES) and CLAUDE.md records that the Java layer runs
+        LAST, so a path added to the PowerShell lists but not the Java one is spared and then
+        deleted again with no error. Whichever is chosen, all three seams move together.
+  (a) is likely correct because it also makes the excuse reviewable in the app definition rather
+  than invisible in ephemeral build output -- but that is a decision, not a foregone conclusion.
+
+  Related: the same regeneration wipe destroys `_ops/exploration-runs/`, so any run record cited as
+  evidence must be copied to `NPDev_General__OutsideRepo` before rebuilding. A leftover
+  `exploration-runs/<...>/` directory with no `run.json` is an agent that died mid-run, not a result.
+
+  2026-08-20 (fix, option (a) -- owner decision accepted): Build-NpdevApp.ps1 now copies
+  definition/exploration-config.json into the generated app's `_ops` on every build (step 4e, right
+  after the seeds copy it mirrors). The author keeps the config in the app definition (reviewable,
+  durable); the build re-establishes it in `_ops` on each regeneration, so a routine's excuse no longer
+  depends on hand re-authoring. npdev_explore.py's read path is unchanged (it already read
+  `<app>/_ops/exploration-config.json`). Verified by PowerShell parse + mirroring the proven seeds copy
+  (which real builds exercise); a full-build re-verification is recommended.
+guard:
+  kind: script
+  ref: scripts/appgen/Build-NpdevApp.ps1
+  asserts: >-
+    Build-NpdevApp.ps1 copies definition/exploration-config.json into the generated app's `_ops` on
+    every build (step 4e, mirroring the seeds copy), so a per-app exploration excuse survives
+    regeneration and a routine's verdict no longer depends on hand re-authoring.
+  provenRed: false
+  provenRedNote: >-
+    Established by grep (only two read sites, no writer) plus the directly observed loss of
+    `_ops/exploration-runs` across a rebuild. The writer is now the build copy; a full rebuild that
+    re-verifies the file lands in `_ops` has not been run here (a build-script change, not a
+    unit-testable one).

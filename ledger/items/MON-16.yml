@@ -1,0 +1,107 @@
+id: MON-16
+title: >-
+  Every log path in a generated app is unbounded -- no file logging at all in the runtime host,
+  launcher logs accumulate one file per run forever, and no compose service caps its json-file driver
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R9 item R9.2 -- "months-long
+  unattended runs with bounded disk; log exports that stay shippable."
+surface: runtimehost/logging, generator/ops-emitters
+files:
+  - NPDevRuntimeHost/src/main/resources/application.properties
+  - NPDevRuntimeHost/src/test/resources/application-test.yml
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/DockerDeploymentEmitterTest.java
+detail: |
+  BEFORE-STATE, measured on all three paths rather than assumed -- the roadmap's "every path is
+  unbounded" held:
+    - Runtime host: only `logging.pattern.console` existed. **No file logging at all**, and the
+      `application-npdev-log.properties` the base `application.yml` optionally imports does not
+      exist.
+    - Launchers: `Run-FinalApp.ps1`/`run-final-app.sh` create a new `app-<UTC-timestamp>.log` per run
+      via `Tee-Object`/`tee` and never prune -- one file per run, forever.
+    - Compose: no service in either flavor (app/database/proxy/minio/mailhog) declared a `logging:`
+      block, and Docker's default json-file driver has no cap of its own.
+
+  CHANGES:
+    1. `application.properties` -- `logging.file.name=logs/app.log`, a `logging.pattern.file`
+       carrying the SAME `[%X{correlationId:--}]` as the console, and
+       `logging.logback.rollingpolicy.{max-file-size=10MB, max-history=14, total-size-cap=200MB}`.
+       Pure Spring Boot configuration; **no custom logback.xml and no hand-written rotator**.
+       Disabled in `application-test.yml` (`logging.file.name: ""`) so the RuntimeHost suite does not
+       litter.
+    2. `OperationalRunbookEmitter` -- both launchers prune `app-*.log` to the newest 19 BEFORE
+       creating this run's file (crash-safe ordering), capping at 20.
+    3. `DockerDeploymentEmitter` -- every service in both compose flavors gets
+       `logging: {driver: json-file, options: {max-size: "10m", max-file: "5"}}`.
+
+  TWO DECISIONS WORTH KEEPING:
+    - **The file is `logs/app.log`, app-relative, NOT `app-<timestamp>.log`.** App-relative puts it
+      in the same `logs` directory the launchers already tee into and that regeneration already
+      spares (MON-6), and under Docker resolves to `/app/logs` inside the `app-data` named volume the
+      compose file already mounts, so rolled segments survive container recreation. The NAME matters
+      separately: an `app-*.log` collision would fold Spring's own rolled segments into the file set
+      `npdev monitor logs export` globs (`logs_dir.glob("app-*.log")`) and break its one-file-per-run
+      invariant.
+    - The compose cap is literal and uniform rather than sourced from `DockerEngineProfile` -- there
+      is no per-engine variance in how much log a container may keep, so putting it in the profile
+      JSON would have implied a knob that means nothing.
+
+  ROLLOVER EVIDENCE, real and on the bare-launcher path (tiny caps 5KB/3-history/30KB total with
+  `LOGGING_LEVEL_ROOT=DEBUG` for volume, so rollover happens in seconds rather than requiring a
+  months-long soak -- stated as the substitute it is): segments climbed to `.0`-`.76` (~40 files),
+  then between two snapshots 3 seconds apart **all of `.0`-`.100` were deleted** by logback's
+  total-size-cap, leaving `.101`-`.122` at ~31KB against the 30KB cap. `tail -n 3 app.log` returned
+  fresh live lines throughout -- the "tailing still works" half of the definition of done -- and
+  `curl /actuator/health` returned 200 with a real request line showing
+  `[caebb653-bf43-4c76-a3a6-e01d6e12bd2d]`, so **the correlationId survived rotation**, which was the
+  explicit constraint.
+
+  LAUNCHER PRUNING, measured: seeded 25 `app-*.log` files, ran the REAL emitted `Run-FinalApp.ps1`
+  once, count dropped to exactly 20 -- the 5 oldest by mtime deleted, matching the prune-to-19-then-
+  create design.
+
+  **COMPOSE PATH IS CONTENT-ONLY, stated plainly rather than implied**: Docker is off locally per
+  `scripts/policy/local-test-profile.json`, so no live compose soak was run. Verified instead against
+  the emitted `docker-compose.yml` plus a new test,
+  `everyComposeServiceDeclaresACappedLogDriver`, which counts `restart: unless-stopped` occurrences
+  as the service count (rather than parsing YAML structure or hardcoding indentation) and asserts
+  each has a capped driver, across BOTH the server-engine and standalone flavors.
+
+  GATES, all independently re-verified by the orchestrator: `check-deterministic-generation.ps1`
+  **passed, 562/562 files, 0 differing** -- notable because the implementer's FIRST determinism
+  attempt raced with the RuntimeHost gate on the same `simple-contact-intake` sample directory and
+  was re-run sequentially rather than reported through the ambiguity. `run-runtimehost-gate.ps1`
+  passed. `check-engine-parity.py` 0 violations. `check-twin-pair-consistency.py` 23/23 including
+  `app-secrets-dir-spared-three-seams` -- **the spared-directories list was not touched**, which is
+  the trap that once silently deleted `logs` when a PowerShell list and the Java
+  `FinalAppAssembler.PRESERVED_APP_DIRECTORIES` disagreed.
+
+  A housekeeping note carried forward: `git diff --stat` on `DockerDeploymentEmitter.java` reports
+  ~1490 changed lines, which is a **pre-existing mixed CRLF/CR line-ending artifact in that file**
+  (confirmed present in HEAD: `git show HEAD:... | file -` reports "ASCII text, with CRLF, CR line
+  terminators"). `git diff -w` shows the real change is 104/34 -- which spans both this item's
+  logging work and R9.1's earlier backup/restore rewrite in the same file. Anyone reviewing that
+  file's diff should use `-w` or be misled about the size of the change.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/DockerDeploymentEmitterTest.java (everyComposeServiceDeclaresACappedLogDriver)
+  asserts: >-
+    every service in BOTH emitted compose flavors declares a capped json-file log driver -- counted
+    against `restart: unless-stopped`, which every service block already carries one-for-one, so a
+    newly added service cannot slip through uncapped. The runtime-host and launcher halves are
+    evidenced by measurement rather than by this test: logback deleted segments .0-.100 under a tiny
+    cap while tailing kept working and the correlationId survived, and the real emitted launcher
+    pruned 25 seeded log files down to exactly 20.
+  provenRed: false
+  provenRedNote: >-
+    The before-state was measured directly rather than inferred -- no file logging existed at all, no
+    launcher prune existed, and no compose service declared a logging block -- so the new assertions
+    could not have passed beforehand. Not recorded as provenRed because the test was written
+    alongside the change rather than executed against the pre-change tree.

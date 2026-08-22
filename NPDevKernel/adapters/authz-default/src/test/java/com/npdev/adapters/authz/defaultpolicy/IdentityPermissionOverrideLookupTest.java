@@ -1,5 +1,6 @@
 package com.npdev.adapters.authz.defaultpolicy;
 
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * established for the sibling roles lookup.
  */
 class IdentityPermissionOverrideLookupTest {
+
+    // Matches the literal, unversioned table names this test's own setUp() creates -- this test is
+    // a pure JDBC-level unit test with no CompiledModel/generator involved, so the real REG-177
+    // resolve-from-compiled-model path is exercised elsewhere (IdentityAwareContextResolverTest /
+    // live boot verification), not here.
+    private static final IdentityPackTableNames TABLES = new IdentityPackTableNames(
+            "identity_users", "identity_roles", "identity_user_roles", "identity_user_role_permissions");
 
     private DataSource dataSource;
     private CapturingHandler capturingHandler;
@@ -81,31 +89,31 @@ class IdentityPermissionOverrideLookupTest {
     @Test
     void returnsTheOverrideSetForAnActiveUsersRole() {
         Map<String, Set<String>> overrides =
-                IdentityPermissionOverrideLookup.overridesFor(dataSource, "tenantx", "charlie");
+                IdentityPermissionOverrideLookup.overridesFor(dataSource, TABLES, "tenantx", "charlie");
         assertEquals(Set.of("WarehouseManager"), overrides.keySet());
         assertEquals(Set.of("EXECUTE_FLOW", "READ_EXECUTIONS"), overrides.get("WarehouseManager"));
     }
 
     @Test
     void inactiveUserYieldsNoOverridesEvenThoughRowsExist() {
-        assertTrue(IdentityPermissionOverrideLookup.overridesFor(dataSource, "tenantx", "dormant").isEmpty());
+        assertTrue(IdentityPermissionOverrideLookup.overridesFor(dataSource, TABLES, "tenantx", "dormant").isEmpty());
     }
 
     @Test
     void unknownActorYieldsEmptyMap() {
-        assertTrue(IdentityPermissionOverrideLookup.overridesFor(dataSource, "tenantx", "nobody").isEmpty());
+        assertTrue(IdentityPermissionOverrideLookup.overridesFor(dataSource, TABLES, "tenantx", "nobody").isEmpty());
     }
 
     @Test
     void wrongTenantYieldsEmptyMap() {
-        assertTrue(IdentityPermissionOverrideLookup.overridesFor(dataSource, "othertenant", "charlie").isEmpty());
+        assertTrue(IdentityPermissionOverrideLookup.overridesFor(dataSource, TABLES, "othertenant", "charlie").isEmpty());
     }
 
     @Test
     void absentTablesFailOpenToEmptyMapNotAnException() {
         DataSource noTables = new SingleConnectionUrlDataSource(
                 "jdbc:h2:mem:empty" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
-        assertTrue(IdentityPermissionOverrideLookup.overridesFor(noTables, "tenantx", "charlie").isEmpty());
+        assertTrue(IdentityPermissionOverrideLookup.overridesFor(noTables, TABLES, "tenantx", "charlie").isEmpty());
     }
 
     /**
@@ -119,7 +127,7 @@ class IdentityPermissionOverrideLookupTest {
         DataSource noTables = new SingleConnectionUrlDataSource(
                 "jdbc:h2:mem:empty" + System.nanoTime() + ";DB_CLOSE_DELAY=-1");
 
-        IdentityPermissionOverrideLookup.overridesFor(noTables, "tenantx", "charlie");
+        IdentityPermissionOverrideLookup.overridesFor(noTables, TABLES, "tenantx", "charlie");
 
         assertTrue(capturingHandler.records.stream().anyMatch(r ->
                         r.getLevel() == Level.SEVERE && r.getMessage() != null
@@ -129,7 +137,7 @@ class IdentityPermissionOverrideLookupTest {
 
     @Test
     void freshSchemaReadsOverridesWithoutSeverelyLogging() {
-        IdentityPermissionOverrideLookup.overridesFor(dataSource, "tenantx", "charlie");
+        IdentityPermissionOverrideLookup.overridesFor(dataSource, TABLES, "tenantx", "charlie");
 
         assertFalse(capturingHandler.records.stream().anyMatch(r -> r.getLevel() == Level.SEVERE),
                 "the fresh-schema path must not log a schema-mismatch severity");
@@ -137,7 +145,7 @@ class IdentityPermissionOverrideLookupTest {
 
     @Test
     void nullDataSourceYieldsEmptyMap() {
-        assertTrue(IdentityPermissionOverrideLookup.overridesFor(null, "tenantx", "charlie").isEmpty());
+        assertTrue(IdentityPermissionOverrideLookup.overridesFor(null, TABLES, "tenantx", "charlie").isEmpty());
     }
 
     private static final class CapturingHandler extends Handler {

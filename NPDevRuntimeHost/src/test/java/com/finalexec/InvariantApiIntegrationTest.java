@@ -2,7 +2,6 @@ package com.finalexec;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.npdev.generated.repositories.ProviderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,12 +29,9 @@ class InvariantApiIntegrationTest extends AbstractScenarioIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private ProviderRepository providerRepository;
-
     @BeforeEach
     void cleanDb() {
-        providerRepository.deleteAll();
+        deleteAllConceptRows("Provider");
     }
 
     @Test

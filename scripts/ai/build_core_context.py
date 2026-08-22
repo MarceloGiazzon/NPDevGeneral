@@ -9,8 +9,9 @@ Concatenates, in a STABLE order (so it forms a cacheable prompt prefix):
   3. golden, verified example models (a few official samples).
 
 The volatile per-app request is meant to go AFTER this bundle at prompt-assembly time, behind the
-cache breakpoint. Output -> <Build>/npdev-ai/core-context/ (bundle.md + manifest.json with a
-content hash so callers can tell when the cached prefix changed).
+cache breakpoint. Output -> <Build>/npdev-ai/core-context/: bundle.md (human-facing), bundle.json
+(the same text as a JSON string -- what PROGRAMS read, so no script has to read a .md file; see
+main()), and manifest.json with a content hash so callers can tell when the cached prefix changed.
 
 WHY JSON, NOT THE AUTHORED YAML: PyYAML is a repo-dev/CI-only dependency
 (scripts/requirements.txt's own comment: "NOT a dependency of the shipped CLI itself"), and this
@@ -112,7 +113,20 @@ def build_bundle() -> tuple[str, dict]:
 def main(_argv: list[str]) -> int:
     bundle, manifest = build_bundle()
     out_dir = ai_out_dir("core-context")
-    (out_dir / "bundle.md").write_text(bundle, encoding="utf-8")
+    # write_bytes, not write_text: on Windows write_text translates "\n" to "\r\n", which silently
+    # made the file on disk larger than -- and a different sha256 from -- the `bytes`/
+    # `contentSha256` the manifest right below advertises for the very same content. Anyone
+    # verifying the bundle's integrity got a false mismatch on Windows and a match on Linux.
+    (out_dir / "bundle.md").write_bytes(bundle.encode("utf-8"))
+    # bundle.json carries the SAME text as a JSON string, and is what machines read. bundle.md is
+    # the human-facing artifact. This split is the repo's standing "no script may read a .md file"
+    # rule (CLAUDE.md, md-zero-2026-08-11) applied at the point of production rather than argued
+    # about at the point of consumption: the MCP core-context tool serves this file, so the fact a
+    # program needs lives in JSON and the markdown stays output-for-humans. Newlines inside a JSON
+    # string are escaped, so this payload is byte-exact regardless of platform line-ending handling.
+    (out_dir / "bundle.json").write_text(
+        json.dumps({**manifest, "markdown": bundle}, indent=2) + "\n", encoding="utf-8"
+    )
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     print(json.dumps(
         {"output": str(out_dir / "bundle.md"), "bytes": manifest["bytes"],

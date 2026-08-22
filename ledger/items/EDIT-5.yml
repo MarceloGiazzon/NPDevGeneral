@@ -1,0 +1,99 @@
+id: EDIT-5
+title: >-
+  All generated-app feedback is one status line -- and in a modal it renders BEHIND the backdrop, so
+  a failed save reports invisibly; fetchJson also destroys field-level error detail at the one seam
+  every caller uses
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R7 item R7.1 -- "The most visible
+  polish gap a new user hits on their first bad save." Two aggravating factors below were found by
+  reading the real template, not stated in the roadmap.
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache
+detail: |
+  Feedback was a single `setStatus(message, isError)` writing into one `<div class="status">` in the
+  authbar at the top of `#app` -- 40+ call sites, every save, delete, action and load.
+
+  TWO THINGS MADE IT WORSE THAN "PLAIN", both measured in the real template:
+    - **In modal presentation the line was literally invisible.** `.modal-backdrop` is
+      `position:fixed; inset:0; z-index:10` and covers `#app`, so a failed save from a modal
+      reported its error BEHIND the dimming layer. The user saw nothing at all.
+    - **`fetchJson` destroyed the field information at the one seam every caller uses**:
+      `throw new Error(errorMessage(payload, status))` collapsed the structured body to a string, so
+      no caller could have rendered per-field errors even if it wanted to.
+
+  `requiredWhen` was indeed already evaluated client-side (`isFieldRequiredNow` inside `submitForm`),
+  as the roadmap claimed -- so conditional requirements were already DETECTED pre-submit. The gap was
+  visibility, not detection; they were reported through the invisible line and bailed on the first
+  miss.
+
+  **The real error bodies, measured against a running app rather than assumed** -- and the roadmap's
+  "400/422" framing is incomplete:
+    - Uniqueness violation is **409, not 422**: `{"code":"invariant_failed","concept","invariant",
+      "path","message","violations":[...]}` where `path` is the field name (`"a, b"` for
+      compound-unique). Because it is 409, nothing can filter on status.
+    - Missing required field is **400 with NO `path` at all**:
+      `{"code":"invalid_request","message":"Required field is missing for User: email"}` -- it names
+      its field after a trailing colon, found only by probing. Both that shape and the single-quoted
+      variant the server itself scrapes are handled.
+
+  CHANGES (2 files, +317/-16): a toast host appended to `<body>` ABOVE the backdrop (which is what
+  fixes the invisible-in-modal case), `toast()`/`dismissToast()`/`notify()` with errors that never
+  auto-dismiss and successes that fade; `fetchJson` now attaches `.status`/`.payload` to the Error
+  while leaving `.message` unchanged, so all existing catch blocks keep working;
+  `fieldViolations`/`applyFieldErrors`/`clearFieldErrorsIn`/`revealFieldTab` touch only a wrapper
+  class, an appended note and two ARIA attributes -- **never a control's value**, which is what
+  preserves the user's input; `submitForm` collects ALL pre-submit misses instead of bailing on the
+  first. Write paths route through `notify`; loads stay on `setStatus`.
+
+  BROWSER-VERIFIED FOR REAL (this item's definition of done): a 44-step `npdev explore` routine
+  driven by the live ScrapForAI engine against `simple-user-registry-h2local`, final run
+  2026-08-18T20-00-52 against a build containing the final template: **44/44 steps, 0 non-passing.**
+  The two `evaluate` probes are hard asserts that throw:
+  `presubmit_preserved_input -> "preserved:R71-KEPT-NAME"` and
+  `server_error_preserved_input -> "preserved:R71-DUPLICATE-ATTEMPT|r71-kept@example.com"`.
+  Screenshots confirm a red toast + red `Email *` label + red border + inline "Email is required."
+  with Name untouched, then the 409 rendering the server's own message against `email` with both
+  inputs intact, then the green "Record created." toast.
+
+  **The run's overall verdict is nonetheless RED, and honestly so** -- not from any assertion, but
+  from 8 console resource errors, one of which is the 409 the routine deliberately provokes as the
+  thing under test. That limitation is filed separately as MON-12 rather than papered over with a
+  blanket console-error excuse, which the harness docs forbid.
+
+  DETERMINISM: `check-deterministic-generation.ps1` **PASSED, 562/562 files, 0 differing**. Its first
+  invocation died with a PowerShell `.Count` error caused by a transient race with a concurrent agent
+  generating into the same `NPDevSamples/simple-contact-intake/Output` tree; confirmed by independent
+  two-pass hashing (also 0 differing) plus a clean re-run.
+guard:
+  kind: manual
+  ref: >-
+    D:\WorkSpace\NPDev\AppGen\apps\simple-user-registry-h2local\explorations\r7-1-form-feedback.json
+    -- run with `npdev explore run --app-dir <the generated app> --routine r7-1-form-feedback`.
+    DELIBERATELY `manual`, not `test`: the routine lives with an AppGen app, which CLAUDE.md defines
+    as source-of-truth layer 2 ("truth for app definitions only -- not a git repo"), so no
+    repo-rooted path can name it and the falsifiable-DONE checker correctly refuses to resolve one.
+    Promoting it into the in-repo corpus (`NPDevSamples/**/browser-routines/`, where
+    check-routine-corpus-conformance.py enforces "one corpus, one location") would make it a real
+    automated guard, but requires retargeting it at an NPDevSamples app -- worthwhile follow-up, not
+    done here.
+  asserts: >-
+    submitting a form with a missing required field shows a dismissible toast, a per-field highlight
+    and an inline message while PRESERVING every other input; a server-side uniqueness violation
+    (409) renders the server's own message against the offending field with all input intact; and a
+    valid save shows a success toast. The two preserved-input probes are hard asserts that throw, so
+    the routine cannot pass while silently wiping the form.
+  provenRed: false
+  provenRedNote: >-
+    Not run against the pre-change template, so the red direction is not recorded as measured. The
+    two aggravating defects were however directly observed in the source before the fix -- the status
+    div sits inside #app which .modal-backdrop covers at z-index 10, and fetchJson threw a plain
+    Error built from errorMessage(payload, status) -- so the invisible-in-modal and
+    field-detail-destroyed claims are read off the code, not inferred from behaviour.

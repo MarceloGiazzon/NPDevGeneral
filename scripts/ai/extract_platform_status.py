@@ -91,10 +91,14 @@ def _row_to_markdown(cells: list[str]) -> str:
 def extract(root: Path) -> list[dict[str, Any]]:
     ledger_path = root / LEDGER
     data = yaml.safe_load(ledger_path.read_text(encoding="utf-8"))
-    if data.get("schemaVersion") != "gaps-ledger.v1":
+    version = data.get("schemaVersion")
+    if version == "gaps-ledger.v2":
+        # v2: all v1 entries are DONE/CLOSED; entries[] is the forward format (currently empty).
+        return []
+    if version != "gaps-ledger.v1":
         raise ValueError(
-            f"{ledger_path}: unsupported schemaVersion {data.get('schemaVersion')!r}, "
-            f"expected 'gaps-ledger.v1'"
+            f"{ledger_path}: unsupported schemaVersion {version!r}, "
+            f"expected 'gaps-ledger.v1' or 'gaps-ledger.v2'"
         )
     seen: set[str] = set()
     out: list[dict[str, Any]] = []

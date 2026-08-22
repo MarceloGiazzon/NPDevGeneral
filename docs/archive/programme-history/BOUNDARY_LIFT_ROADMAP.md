@@ -75,7 +75,7 @@ then the two big subsystems (LIFT-UPLOAD, LIFT-LOOP) last where the most design 
 (already does arithmetic / comparison / logical / parens / field-refs for AutoPanel computed columns)
 into the *single* expression grammar for both computed values **and** invariants — retiring the
 hand-rolled DNF matcher in
-[`CelInvariantEngine`](../../../NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/adapters/expression/cel/CelInvariantEngine.java).
+[`CelInvariantEngine`](../../../NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/adapters/runtime/support/CelInvariantEngine.java).
 
 ### LIFT-EXPR-P1 — Boolean-complete the evaluator
 - **Status:** DONE (2026-07-13) · **Risk:** Medium
@@ -120,8 +120,8 @@ hand-rolled DNF matcher in
 - **What:** Reimplement `CelInvariantEngine` to parse each invariant `expression` once (compile time)
   and evaluate via `ComputedExpression.evaluateBoolean` at runtime, deleting the hand-rolled top-level
   `||`/`&&`-over-fixed-atoms matcher.
-- **Where:** `NPDevKernel/adapters/expression-cel/.../CelInvariantEngine.java`; wire the
-  `:NPDevContract:dsl` dependency into the `expression-cel` adapter `build.gradle` if not already
+- **Where:** `NPDevKernel/adapters/runtime-support/.../CelInvariantEngine.java`; wire the
+  `:NPDevContract:dsl` dependency into the `runtime-support` adapter `build.gradle` if not already
   present (it consumes compiled types, so likely is).
 - **Why:** Removes the parens/`!`/arithmetic ceiling at the enforcement point.
 - **How:**
@@ -130,7 +130,7 @@ hand-rolled DNF matcher in
   3. Preserve the existing error/diagnostic shape (rule name, message) so callers don't change.
 - **Definition of Done:** invariant enforcement uses `ComputedExpression`; the old matcher code is
   deleted; all existing invariant tests pass unchanged.
-- **Verify:** `expression-cel` adapter tests green; a model with a parenthesized/arithmetic invariant
+- **Verify:** `runtime-support` adapter tests green; a model with a parenthesized/arithmetic invariant
   rejects the violating record at runtime.
 
 ### LIFT-EXPR-P3 — Compile-time validation + authoring diagnostics
@@ -251,7 +251,7 @@ throws *"compound unique (multiple fields) not supported yet"*. Single-field `un
   interface with no live caller wiring `.unique()` into invariant enforcement — confirmed
   out-of-scope, not touched.
 - **Verify:** new `CelInvariantEngineCompoundUniqueTest` (violation reported / different-group
-  allowed / missing-field-skips-check) green; full `expression-cel` + `kernel` + `generator` +
+  allowed / missing-field-skips-check) green; full `runtime-support` + `kernel` + `generator` +
   `NPDevContract:dsl` suites green with no regressions.
 
 ### LIFT-UNIQUE-P4 — Generator surface (client-side hint) + P5 — Editor
@@ -652,8 +652,11 @@ the same `maxLoopIterations` safety cap procedures use.
   were added (extended `FlowStepsTable.tsx` and `modelDocumentTypes.ts` in place), so no
   `ui-boundary.json` registration was needed.
 - **What:** The flow designer offers a `forEach` node with a collection binding and a nested body.
-- **Where:** [`FlowStepsTable.tsx`](../../../NPDevEditor/ui-react/src/authoring/editors/flows/FlowStepsTable.tsx);
-  [`modelDocumentTypes.ts`](../../../NPDevEditor/ui-react/src/authoring/editors/modelDocumentTypes.ts).
+- **Where:** `NPDevEditor/ui-react/src/authoring/editors/flows/FlowStepsTable.tsx`;
+  `NPDevEditor/ui-react/src/authoring/editors/modelDocumentTypes.ts`. (Plain paths, not links:
+  `NPDevEditor` was parked out of this repository on 2026-08-17 — see `BREAKING.md` — so these
+  resolve in the parked tree, not here. This doc is archived historical narrative; the paths are
+  kept for the record rather than for navigation.)
 - **Why:** Full-stack reach.
 - **Definition of Done:** authoring a loop in the flow builder round-trips to a working, resumable
   flow.

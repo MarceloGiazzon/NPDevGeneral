@@ -236,15 +236,19 @@ class DialectConformanceTierATest {
     // ------------------------------------------------------------------ A2/C1: honest refusals
 
     @Test
-    @DisplayName("A2: MySQL admits it has no RETURNING instead of inventing one")
-    void mySqlRefusesReturning() {
+    @DisplayName("A2: MySQL has no inline RETURNING, but provides the two-statement LAST_INSERT_ID() path")
+    void mySqlReturning() {
         ReturningStrategy returning = MySqlDialect.INSTANCE.returning();
         assertTrue(!returning.isInline());
-        // Both directions throw. The two-statement LAST_INSERT_ID() path is deliberately NOT built:
-        // zero production sites use RETURNING, and an unexercised path gets trusted the first time
-        // it runs. A2 failing is what will say it is needed.
+        // inlineClause() must refuse: there is no inline RETURNING clause on MySQL, and inventing
+        // one would be the silent-answer defect -- returning no row masquerading as a real answer.
         assertThrows(UnsupportedOperationException.class, () -> returning.inlineClause(List.of("id")));
-        assertThrows(UnsupportedOperationException.class, returning::secondQuerySql);
+        // The two-statement path is the real answer: read the AUTO_INCREMENT key the insert created
+        // with a follow-up statement. No production site uses it (NPDev keys are client-assigned
+        // UUIDs, and a text-returning interface cannot hide that it changes the NUMBER of statements
+        // a caller runs), but the dialect now returns the true query the same way the other three
+        // engines return their real inline clause, so the ReturningStrategy contract is uniform.
+        assertEquals("SELECT LAST_INSERT_ID()", returning.secondQuerySql());
     }
 
     @Test
@@ -757,6 +761,100 @@ class DialectConformanceTierATest {
         String expected = PostgresDialect.INSTANCE.nullsFirstAscending("c");
         for (SqlDialect dialect : SqlDialects.all()) {
             assertEquals(expected, dialect.nullsFirstAscending("c"), dialect.name());
+        }
+    }
+
+    // ------------------------------------------------------------------ R5.2 (RUN-1 item 4): trimmedText
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R5.2: trimmedText never emits the single-argument ANSI TRIM -- SQL Server 2016 does not have it")
+    void trimmedTextNeverEmitsBareTrim(SqlDialect dialect) {
+        String expr = dialect.trimmedText("sku");
+        // The construct this method exists to replace: single-arg TRIM(x) did not exist in T-SQL
+        // before SQL Server 2017, and this dialect targets 2016+. If a future edit spells TRIM(...)
+        // directly, an app pinned to SQL Server 2016 gets a syntax error the H2-only local dev loop
+        // can never catch.
+        String upper = expr.toUpperCase(java.util.Locale.ROOT);
+        assertTrue(upper.contains("LTRIM") && upper.contains("RTRIM"), dialect.name() + ": " + expr);
+        // Strip the two portable forms out and confirm no OTHER "TRIM(" is left -- i.e. no bare,
+        // single-argument TRIM(...) call anywhere in the expression.
+        String withoutPortableForms = upper.replace("LTRIM(", "").replace("RTRIM(", "");
+        assertFalse(withoutPortableForms.contains("TRIM("), dialect.name() + ": emitted bare TRIM(...) -- " + expr);
+        assertTrue(expr.contains("sku"), dialect.name() + ": expression dropped -- " + expr);
+    }
+
+    @Test
+    @DisplayName("R5.2: every engine gets the IDENTICAL trimmedText expression -- there is no per-dialect answer to diverge")
+    void trimmedTextIsUniformAcrossEngines() {
+        // Same reasoning as nullsFirstAscendingIsUniformAcrossEngines above: LTRIM(RTRIM(x)) is plain
+        // ANSI SQL every engine (including SQL Server 2016) has always had, so there is no per-engine
+        // fact to encode and every dialect must return the literal same expression.
+        String expected = PostgresDialect.INSTANCE.trimmedText("c");
+        for (SqlDialect dialect : SqlDialects.all()) {
+            assertEquals(expected, dialect.trimmedText("c"), dialect.name());
+        }
+    }
+
+    // ------------------------------------------------------------------ R4.3: predicate grammar v2's
+    // escaping/binding primitives (contains/startsWith LIKE patterns, IN placeholder lists)
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: containsPattern/startsWithPattern escape the SQL wildcard characters, on every engine")
+    void containsAndStartsWithPatternsEscapeWildcards(SqlDialect dialect) {
+        // A literal search term that itself contains LIKE's own metacharacters must be matched
+        // LITERALLY -- a user searching for "50%_off" must not have that '%'/'_' interpreted as a
+        // wildcard by the engine once the pattern is bound.
+        assertEquals("%50\\%\\_off%", dialect.containsPattern("50%_off"), dialect.name());
+        assertEquals("50\\%\\_off%", dialect.startsWithPattern("50%_off"), dialect.name());
+        // The engine's own escape character, if it ever appeared in a user term, must itself be
+        // escaped FIRST -- otherwise a term containing a literal backslash could re-arm one of the
+        // '%'/'_' escapes that follows it.
+        assertEquals("%a\\\\b%", dialect.containsPattern("a\\b"), dialect.name());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: the produced pattern is a value to BIND, never SQL text -- no quote/injection characters need escaping here")
+    void containsPatternIsABindValueNotSqlText(SqlDialect dialect) {
+        // The whole point of binding rather than interpolating: a term containing a single quote (the
+        // classic SQL-injection character) needs NO special handling from this method, because it is
+        // never spliced into the SQL string -- it travels as a PreparedStatement parameter. If this
+        // method tried to escape quotes, that would be evidence it was (wrongly) being built for
+        // string-concatenation instead.
+        String pattern = dialect.containsPattern("O'Brien");
+        assertEquals("%O'Brien%", pattern, dialect.name() + ": a bound value must carry the quote verbatim");
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: likeEscapeClause is the literal ESCAPE '\\' fragment every engine accepts identically")
+    void likeEscapeClauseIsUniform(SqlDialect dialect) {
+        assertEquals("ESCAPE '\\'", dialect.likeEscapeClause(), dialect.name());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("R4.3: inPlaceholders renders exactly N bind markers, comma-joined, and refuses zero/negative")
+    void inPlaceholdersRendersExactlyNMarkers(SqlDialect dialect) {
+        assertEquals("?", dialect.inPlaceholders(1), dialect.name());
+        assertEquals("?, ?, ?", dialect.inPlaceholders(3), dialect.name());
+        assertEquals(5, dialect.inPlaceholders(5).chars().filter(c -> c == '?').count(), dialect.name());
+        assertThrows(IllegalArgumentException.class, () -> dialect.inPlaceholders(0), dialect.name());
+        assertThrows(IllegalArgumentException.class, () -> dialect.inPlaceholders(-1), dialect.name());
+    }
+
+    @Test
+    @DisplayName("R4.3: the LIKE/IN primitives are uniform across engines -- plain ANSI SQL, no per-engine fact to encode")
+    void likeAndInPrimitivesAreUniformAcrossEngines() {
+        String expectedContains = PostgresDialect.INSTANCE.containsPattern("a%b");
+        String expectedStartsWith = PostgresDialect.INSTANCE.startsWithPattern("a%b");
+        String expectedIn = PostgresDialect.INSTANCE.inPlaceholders(4);
+        for (SqlDialect dialect : SqlDialects.all()) {
+            assertEquals(expectedContains, dialect.containsPattern("a%b"), dialect.name());
+            assertEquals(expectedStartsWith, dialect.startsWithPattern("a%b"), dialect.name());
+            assertEquals(expectedIn, dialect.inPlaceholders(4), dialect.name());
         }
     }
 }

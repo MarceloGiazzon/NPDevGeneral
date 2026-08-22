@@ -1,0 +1,76 @@
+id: REG-187
+title: >-
+  simple-user-registry-inmemory 500s on every create -- 'Create flow "CreateUser" for User did not
+  persist id' -- while its h2local sibling is fine
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-20
+verification: UNIT_TESTED
+source: >-
+  Found incidentally while browser-verifying R7.1 (EDIT-5) -- the agent picked this sample, could not
+  create a record, and reproduced the failure with plain curl and no JavaScript involved, which is
+  what separates it from the UI work it was there to test.
+surface: samples/inmemory, kernel/persistence
+files:
+  - AppGen/apps/simple-user-registry-inmemory/definition/model.json
+detail: |
+  Every create against a generated `simple-user-registry-inmemory` returns 500 with
+  `Create flow "CreateUser" for User did not persist id`. Reproduced by direct curl, so it is a
+  server-side persistence failure, not a UI defect. The `simple-user-registry-h2local` sibling --
+  the same model on a different engine -- works.
+
+  The flow is `invariantCheck -> capabilityCall(save-user) -> emitEvent -> return`, so the failure is
+  the `capabilityCall` not persisting an id under the InMemory engine.
+
+  **EVIDENCE THIS IS PRE-EXISTING, NOT CAUSED BY THIS SESSION'S WORK** -- checked deliberately,
+  because this session changed kernel flow-step code and the honest default is to suspect yourself
+  first:
+    - The model declares NO `scheduleEvent` step anywhere, so R2.4 (RUN-9), which changed only the
+      `delaySeconds > 0` branch of `ScheduleEventStep`, cannot reach this flow.
+    - R2.4's one change inside `GeneratedCrudRuntimeSupport`'s constructor is a single registration
+      line (`kernelRunner.withDeferredEventScheduler(this::scheduleDeferredFlowEvent)`), and the
+      bound method itself guards `dataSource == null` and returns false with a warning -- which is
+      the correct and harmless behaviour for an engine with no DataSource at all.
+    - No file under `NPDevKernel/adapters/persistence-inproc` or any other in-proc persistence path
+      was modified in this session (`git status` over NPDevKernel confirms).
+    - R2.1/R2.2/R2.3 touched resume, un-stick and the scheduled-event drain -- none is on a create
+      path.
+
+  **NOT DEFINITIVELY CONFIRMED PRE-EXISTING.** The decisive test -- stash every session change,
+  rebuild this app, curl a create -- was NOT run, because concurrent agents held the build tree and
+  the ports at the time. The reasoning above is strong but circumstantial, and is recorded as such
+  rather than asserted as proven. **Anyone picking this up should do that stash-and-rebuild first**;
+  if it reproduces at HEAD, this is straightforwardly a pre-existing sample/engine defect.
+
+  Worth noting for whoever takes it: this sample is used as a convenience target for live
+  verification (R10.1 used it earlier the same day to prove admin endpoints 404/200, which it did
+  correctly -- that work never created a record, so it was unaffected). A broken create in a
+  first-contact "simple user registry" sample is a poor first impression, and the InMemory engine is
+  the one a newcomer is most likely to try first.
+
+  2026-08-20 (fix, root-caused by code reading): under InMemory the flow's `capabilityCall(save-user)`
+  dispatched (via dev.runtime.json's `capabilityOverrides: persistence -> useAdapterId "memory"`) to
+  `InMemoryPersistenceCapabilityAdapter`, which wrote to its OWN `Map<concept, Map<id, record>>`, while
+  the generated service's post-flow `findById(generatedId)` read `InMemoryConceptStore`
+  (`Map<tenantId|concept|id, ConceptRecord>`) -- two stores. Under JDBC both write to the same H2 DB, so
+  h2local worked. Fix: `InMemoryPersistenceCapabilityAdapter` now takes an optional `ConceptStore` and
+  delegates `save()` to it (using the tenant the kernel stamps into the entity), and
+  `NpdevPluginConfig` injects the SAME `ConceptStore` the service reads -- one store. Unit test:
+  `InMemoryPersistenceCapabilityAdapterTest.saveDelegatesToTheInjectedConceptStore` (save -> the shared
+  store's findById sees it); kernel + persistence-inproc + runtimehost-core compile green. The live
+  stash+rebuild+curl repro was NOT re-run (heavy AppGen generate+boot), so the fix is unit-proven rather
+  than boot-proven.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/persistence-inproc/src/test/java/com/npdev/adapters/persistence/inproc/InMemoryPersistenceCapabilityAdapterTest.java
+  asserts: >-
+    When constructed with a ConceptStore (as NpdevPluginConfig does), the adapter's save() writes to
+    that store, so a flow-driven create is visible to the generated service's post-flow findById under
+    InMemory -- the row is found via conceptStore.findById(tenant, concept, id) with the stamped tenant.
+  provenRed: false
+  provenRedNote: >-
+    The defect was established by code reading (two stores: the "memory" capability adapter vs the
+    service's InMemoryConceptStore), not a captured failing run. The fix is pinned by the new delegation
+    test, which fails if save() reverts to the isolated Map; the live generate+boot repro was not run.

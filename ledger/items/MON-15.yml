@@ -1,0 +1,94 @@
+id: MON-15
+title: >-
+  No way to ask what an app's routine corpus actually touches -- a growing tester team has no signal
+  for where to aim, and an untested concept is indistinguishable from a tested one
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R3 item R3.5 -- "a growing tester team
+  knows where to aim". Blocked by R3.1 (MON-11) and R3.3; R3.1 landed earlier today, R3.3 has not, so
+  the browser half works from hand-written routines.
+surface: cli/explore
+files:
+  - NPDevCli/npdev_explore.py
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_explore_coverage.py
+detail: |
+  `npdev explore coverage --app-dir <app>` crosses the probe's inventory with routine selector
+  references and run history into a per-app table: concept -> referencing routines -> last green
+  run, plus a top-level `uncovered: {concepts, flows}` section.
+
+  **THE PROBE INVENTORY IS REAL, verified rather than assumed**: `probe_app(include_info=True)`
+  embeds the app's `info.json` verbatim under `record["info"]`, carrying `concepts: [{name, route}]`,
+  `flows: [name...]` and a flat `records[]` of URL rows. So the roadmap's "concept/URL/flow
+  inventory" holds -- all three are there.
+
+  **A finding that changed the design, and the reason flow coverage is NOT measured from routines:**
+  the generated business UI (`business-ui-app.mustache`) has **ZERO** references to `/api/flows/*`.
+  Flows have no browser-UI surface at all, so no routine can ever touch one, and a coverage report
+  that looked for them there would report 0% flow coverage forever and be read as a testing gap
+  rather than an architectural fact. Flow coverage is therefore matched against acceptance scenarios'
+  `when.path`/`when.method` -- which is what the roadmap's "flow coverage comes from acceptance
+  scenarios' paths" line says, now with the reason recorded.
+
+  TWO EXACTNESS DECISIONS worth keeping, both mirroring generator behaviour rather than
+  approximating it:
+    - Concept<->routine matching searches each routine's JSON text for `concept-<sanitized-name>`,
+      the exact substring `sectionId()` builds into every panel's DOM id
+      (`business-ui-app.mustache`), mirrored in Python. Not a fuzzy name match.
+    - Flow<->scenario matching computes the real execute URL using
+      `InfoPageEmitter.encodePathSegment`'s percent-encoding, mirrored exactly -- deliberately NOT
+      `urllib.parse.quote`, which form-encodes a space as `+` and would silently fail to match any
+      flow whose name contains one.
+
+  **"Last green run" READS `runs.jsonl`; it never recomputes a verdict.** `evaluate_verdict` stays
+  the single function that decides green (the same rule R3.1 and R3.4 already respect), so a
+  coverage report cannot come to a different conclusion about a run than the run record itself.
+
+  **No schema added, deliberately** -- consistent with `list`/`suite`/`preflight`/`prune`. This is a
+  computed report over facts that are already durable elsewhere (info.json, routine files,
+  runs.jsonl); a second stored shape is a thing that can later disagree with them.
+
+  LIVE VERIFICATION, which is this item's definition of done ("verified against a sample where one
+  concept deliberately has no routine -- and says so"): a throwaway AppGen app (`coverage-r35-check`,
+  H2-local, port 8130) built from npdev-canary's 2-concept/1-flow model -- **not** the frozen canary
+  itself. One routine referencing only `#concept-CanaryTask`, run through `npdev explore run` against
+  the live booted app with a real ScrapForAI engine and a real GREEN verdict. Result:
+
+      concepts: 1/2 covered   flows: 1/1 covered
+        [UNCOVERED] concept CanaryOwner    routines=-  lastGreenRun=-
+        [covered  ] concept CanaryTask     routines=01-canarytask-open-panel  lastGreenRun=2026-08-18T21-30-05_...
+        [covered  ] flow    CreateCanaryTask   scenarios=01-create-canary-task-flow.scenario.json
+        UNCOVERED: concepts: CanaryOwner
+
+  `CanaryOwner`, deliberately given no routine, appears in UNCOVERED; `CanaryTask` shows its real
+  routine and real last-green-run. Flow detection was proven against a real POST to
+  `/api/flows/CreateCanaryTask/execute`. The throwaway app and its Build folders were cleaned up
+  afterward.
+
+  TESTS: `NPDevCli/tests/test_explore_coverage.py`, 16 tests (concept/flow matching, selector
+  sanitization, percent-encoding, the last-green vs last-run distinction, refusals, CLI wiring).
+  Full suite **281 -> 297, OK**, independently re-run by the orchestrator at 297/OK.
+
+  NOT done: R3.3 (`npdev explore generate`) is still open, so coverage today measures hand-written
+  routines. When R3.3 lands, this report is what will show whether generated routines actually cover
+  what they claim.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_explore_coverage.py
+  asserts: >-
+    a concept with no routine referencing its generated `concept-<Name>` selector appears in the
+    report's explicit `uncovered` section rather than merely carrying a false flag; a covered concept
+    reports its referencing routines and its last GREEN run read from runs.jsonl (never recomputed);
+    flow coverage is matched against acceptance scenarios' when.path using the generator's own
+    percent-encoding, not urllib's.
+  provenRed: false
+  provenRedNote: >-
+    The verb did not exist, so its assertions could not have passed before; not recorded as provenRed
+    because the tests were written alongside the implementation. The load-bearing claim was verified
+    LIVE instead, against a purpose-built app where one concept was deliberately left uncovered and
+    correctly appeared in the UNCOVERED section.

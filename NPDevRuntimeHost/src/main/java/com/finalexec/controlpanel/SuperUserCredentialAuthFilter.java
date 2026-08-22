@@ -67,7 +67,8 @@ public class SuperUserCredentialAuthFilter extends OncePerRequestFilter {
         if (resolved.isEmpty() || !resolved.get().roles().contains(REQUIRED_ROLE)) {
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
-            response.getWriter().write("{\"error\":\"invalid_super_user_key\"}");
+            response.getWriter().write("""
+                {"error":"super_user_auth_failed","boundaryId":"B17","message":"Super-user key was rejected. Read the key from SUPER_USER_KEY.txt in the app's working directory."}""");
             return;
         }
         ApiKeyCredentialResolver.Principal principal = resolved.get();

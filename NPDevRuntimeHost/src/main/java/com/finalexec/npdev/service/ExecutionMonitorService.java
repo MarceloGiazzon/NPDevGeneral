@@ -2,6 +2,7 @@ package com.finalexec.npdev.service;
 
 import com.npdev.generated.runtime.service.KernelFacade;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.exec.ExecutionSummary;
 import com.npdev.kernel.execution.FlowInstance;
 import com.npdev.kernel.execution.FlowInstanceStatus;
 import org.springframework.stereotype.Service;
@@ -12,6 +13,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 @Service
 public class ExecutionMonitorService {
@@ -65,6 +67,91 @@ public class ExecutionMonitorService {
         response.put("activeCount", countByOutcome(items, "ACTIVE"));
         response.put("items", items);
         return response;
+    }
+
+    /**
+     * R2.2: the stuck queue, backed by {@code ExecutionSummaryStore.listStuckSummaries} -- a
+     * purpose-built query that both {@code JdbcFlowInstanceStore} and {@code InProcFlowInstanceStore}
+     * implemented, and that until now no REST surface called at all. {@link #active} does surface
+     * STUCK rows, but only as part of a 100-row recent window that a busy app pushes them out of.
+     *
+     * <p>Cards are built from {@link ExecutionSummary}, not {@link FlowInstance}, so they carry no
+     * flow state -- deliberate: this is a triage list, and the summary query is the whole point of
+     * using it instead of re-filtering {@code listExecutions}.
+     */
+    public Map<String, Object> stuck(ExecutionContext requesterContext) {
+        List<Map<String, Object>> items = kernelFacade.listRecentStuckExecutions(100, 0, requesterContext).stream()
+                .map(this::stuckCard)
+                .toList();
+
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("surfaceName", "Execution Monitor");
+        response.put("mode", "stuck");
+        response.put("detailRouteTemplate", EXECUTION_DETAIL_PATH_TEMPLATE);
+        response.put("stuckCount", items.size());
+        response.put("items", items);
+        return response;
+    }
+
+    /**
+     * R2.2: hand a STUCK execution back to the resume sweep.
+     *
+     * <p>Every outcome comes back as an explicit body rather than a thrown
+     * {@code ResponseStatusException}, for the same measured reason {@code AgentProxyController}
+     * documents: Spring Boot defaults {@code server.error.include-message} to {@code never}, so a
+     * thrown exception's reason reaches the caller as an empty string -- and "this execution is
+     * COMPLETED, not STUCK" is the entire diagnostic value of the 409. The controller maps
+     * {@code outcome} to a status code; nothing here knows about HTTP.
+     */
+    public Map<String, Object> unstick(String executionId, ExecutionContext requesterContext) {
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("surfaceName", "Execution Monitor");
+        response.put("executionId", blankIfNull(executionId));
+        try {
+            Optional<FlowInstance> unstuck = kernelFacade.unstickExecution(executionId, requesterContext);
+            if (unstuck.isEmpty()) {
+                response.put("ok", false);
+                response.put("outcome", "NOT_FOUND");
+                response.put("message", "No execution exists with that id.");
+                return response;
+            }
+            response.put("ok", true);
+            response.put("outcome", "UNSTUCK");
+            response.put("message", "Execution returned to WAITING_EVENT with a cleared attempt count; "
+                    + "the next resume sweep will retry it, or publish the awaited event to retry now.");
+            response.put("execution", executionCard(unstuck.get(), Map.of()));
+            return response;
+        } catch (IllegalStateException notUnstickable) {
+            response.put("ok", false);
+            response.put("outcome", "NOT_STUCK");
+            response.put("message", blankIfNull(notUnstickable.getMessage()));
+            return response;
+        }
+    }
+
+    private Map<String, Object> stuckCard(ExecutionSummary summary) {
+        String status = blankIfNull(summary.status());
+
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("executionId", summary.executionId());
+        item.put("flowName", summary.flowName());
+        item.put("tenantId", summary.tenantId());
+        item.put("correlationId", summary.correlationId());
+        item.put("status", status);
+        item.put("outcome", outcome(status));
+        item.put("attentionLevel", attentionLevel(status));
+        item.put("currentStepIndex", summary.currentStepIndex());
+        item.put("waitingForEventName", blankIfNull(summary.waitingForEventName()));
+        item.put("updatedAtEpochMs", summary.updatedAtMs());
+        item.put("resumeAttemptCount", summary.resumeAttemptCount());
+        item.put("lastResumeErrorCode", blankIfNull(summary.lastResumeErrorCode()));
+        item.put("lastErrorKind", blankIfNull(summary.lastErrorKind()));
+        item.put("lastErrorCode", blankIfNull(summary.lastErrorCode()));
+        item.put("failedAtEpochMs", summary.failedAtEpochMs() == null ? 0L : summary.failedAtEpochMs());
+        item.put("detailPath", "/api/executions/" + summary.executionId());
+        item.put("linksPath", "/api/executions/" + summary.executionId() + "/links");
+        item.put("unstickPath", "/api/executions/" + summary.executionId() + "/unstick");
+        return item;
     }
 
     public Map<String, Object> links(String executionId, ExecutionContext requesterContext) {

@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -73,8 +74,11 @@ public final class AuthoringMergeGate {
     ) {
         public MergeResult {
             violations = List.copyOf(violations);
-            elementsFromOurs = elementsFromOurs == null ? Set.of() : Set.copyOf(elementsFromOurs);
-            elementsFromTheirs = elementsFromTheirs == null ? Set.of() : Set.copyOf(elementsFromTheirs);
+            // REG-175/REG-146: AuthoringDiffGateMain writes these straight into report/mergedManifest
+            // JSON "elementsFromOurs"/"elementsFromTheirs" arrays via unsorted iteration -- Set.copyOf's
+            // JEP 269 iteration-order randomization was reaching that emitted output.
+            elementsFromOurs = elementsFromOurs == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(elementsFromOurs));
+            elementsFromTheirs = elementsFromTheirs == null ? Set.of() : Collections.unmodifiableSet(new LinkedHashSet<>(elementsFromTheirs));
         }
 
         public boolean merged() {

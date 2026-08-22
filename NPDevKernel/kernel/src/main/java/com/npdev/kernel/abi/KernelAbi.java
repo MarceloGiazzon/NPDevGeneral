@@ -10,7 +10,7 @@ package com.npdev.kernel.abi;
  * kernel version happened to be current at build time. Every app that later links that jar brings its
  * own (possibly newer, possibly older) kernel to the table. If the kernel surface the pack's generated
  * code calls into has changed shape since the jar was built -- a renamed method, a changed signature
- * on {@code GeneratedCrudRuntimeSupport} (3,701 lines, {@code NPDevKernel/adapters/expression-cel},
+ * on {@code GeneratedCrudRuntimeSupport} (3,701 lines, {@code NPDevKernel/adapters/runtime-support},
  * treated as ABI by this mechanism) -- linking the old jar against the new kernel is a
  * {@code NoSuchMethodError} waiting to happen at runtime, not at build time. This constant, and
  * {@code PackAbiManifest}/{@code PackAbiCompatibility} in the generator module, exist so that

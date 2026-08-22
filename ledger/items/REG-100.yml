@@ -72,7 +72,7 @@ detail: |
   at MODEL level, naming the legal set ("computeValue requires operation to be one of [add,
   subtract], got: multiply"). No runtime default, no silent answer.
 
-  **Not audited, and the highest-value item left in X0**: `expression-cel` (invariants, `access.read`
+  **Not audited, and the highest-value item left in X0**: `runtime-support` (invariants, `access.read`
   /`access.write`, `defaultExpression`, `derivedExpression`) -- the only real expression engine in the
   platform, and the one where a silent default matters most, since `access.*` is an authorization
   answer. It deserves its own pass, not a paragraph.
@@ -111,4 +111,4 @@ detail: |
     (472 tests, 106 classes, 0 failures) -- existing `visibleWhen` fixtures already used real field
     names (`tipo`), so nothing broke.
 
-  Left open for a future pass, not attempted here: the `expression-cel` audit named above.
+  Left open for a future pass, not attempted here: the `runtime-support` audit named above.

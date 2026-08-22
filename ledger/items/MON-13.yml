@@ -1,0 +1,93 @@
+id: MON-13
+title: >-
+  No single command tells a tester whether one app is healthy -- REST smoke, acceptance and browser
+  routines are three separate invocations totalled by hand, and the model-derived REST smoke did not
+  exist at all
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R3 item R3.4 -- "one green/red per app
+  for testers and per-app CI; the command an external adopter runs to trust their own app."
+surface: cli/test
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/npdev_monitor.py
+  - NPDevCli/tests/test_npdev_test_verb.py
+detail: |
+  `npdev test --app-dir <a running app>` composes three layers into one report and one exit code,
+  with **zero per-app configuration**: `probe_app(include_info=True)` supplies base URL, live API
+  key, concept list, final-app root and definition root, and scenarios/routines are discovered from
+  the app itself.
+
+  **A correction to the roadmap's premise, measured: only TWO of the three layers existed.** The
+  roadmap says "compose three existing layers", but the model-derived REST smoke **did not exist**.
+  Every REST smoke in this repo reads a HAND-WRITTEN check list --
+  `scripts/ai/Invoke-AiRestSmokeVerifier.ps1` (+ `npdev-canary/canary-verification.json`),
+  `Build-NpdevApp.ps1`'s per-app `Input/smoke-plan.json`, and
+  `OperationalRunbookEmitter.smokeTestScript()`, whose only model-awareness is one hardcoded
+  `/api/users` behind `plan.smoke.hasUserConcept`. `schemas/ai/ai-smoke-plan.schema.json` has **no
+  writer at all**. The model-derived INPUT did exist (`InfoPageEmitter` publishes `info.json`'s
+  `concepts: [{name, route}]`), so this item wrote the ~50-line plan derivation -- not a runner.
+  The other two were reused as-is: `run_acceptance` (npdev_cli.py) and R3.1's
+  `npdev_explore.run_suite`, with `evaluate_verdict` untouched so no second verdict path exists.
+
+  **TWO PRE-EXISTING DISCOVERY DEFECTS FOUND AND FIXED** (`npdev_monitor.py`) -- the reason this item
+  is worth more than its own verb. `resolved-db-plan.json` has TWO writers with DIFFERENT KEYS:
+  `Build-NpdevApp.ps1` writes `appRoot` (not `finalAppPath`) and no `appDefinitionRoot` at all (the
+  definition lives in `app-plan.json`'s `webSourceDir`). Consequence: **every AppGen-built app**
+  probed as `hasInfoJson: false`, `jarPath: null` and a stale `dev-key`, and its definition-level
+  routines were invisible to `npdev explore` as well. Now one function `app_definition_root()` with
+  two callers (`probe_app`, `npdev_explore.definition_dirs`). This is the same two-writers hazard
+  the repo already knows about for this exact file.
+
+  REPORT: `npdev-test-report.v1` at `<app>/_ops/npdev-test-report.json` (neighbour of the generated
+  `smoke-test-report.json`), embedding `npdev-acceptance-report.v1` and `npdev-exploration-suite.v1`
+  VERBATIM. **No new schema**, deliberately: that report family has no schema files
+  (`schemas/ai/*` are gate/MCP contracts), and two of three layers already carry their own shape.
+  Layer 1's check rows borrow `ai-rest-smoke-result.schema.json`'s field names rather than forking
+  the vocabulary.
+
+  TWO HONEST CALLS worth knowing:
+    - An ALL-EMPTY run reports `nothingMeasured: true` and exits NONZERO, applying R3.1's "zero runs
+      reads like a pass" rule one level up. A tester with no scenarios and no routines is told so,
+      not congratulated.
+    - The report is deliberately NOT passed through `npdev_monitor.redact()`, because that function's
+      `pass(word)?` pattern matches the word `passed` and would erase `summary.passed`. The weaker
+      redaction is replaced by a stronger guarantee -- no credential is put into the report in the
+      first place, asserted by a test. The redact defect itself is filed as MON-14.
+
+  TESTS: **260 -> 280, OK** (`NPDevCli/tests/test_npdev_test_verb.py`, 20 tests), independently
+  re-run by the orchestrator at 280/OK. NPDevCli coverage ratcheted 36.88% -> 45.73%.
+
+  LIVE: against a rebuilt+booted `simple-user-registry` (port 8082) with a real ScrapForAI engine,
+  **all three layers green, exit 0** -- 1/1 concept endpoint 200, 1/1 approved scenario, 1/1 browser
+  routine (runId `2026-08-18T20-04-39_info-page-renders`). A deliberately-wrong scenario produced
+  **exit 2** naming `$.size equals 999, got 20`, proving the red-implies-nonzero contract rather than
+  assuming it.
+
+  Judgement worth recording: the agent REVERTED an opportunistic coverage-ratchet bump for
+  `NPDevKernel/kernel` (34.01% -> 63.10%) because the report it was measured from was produced while
+  that module did not compile (a concurrent agent held `storage/sql/` mid-edit). Ratcheting a floor
+  from a bad measurement is how a gate becomes permanently unsatisfiable.
+
+  NOT done: R3.3 (`explore generate`) has not landed, so an app with no hand-written routines has an
+  empty browser layer -- reported honestly as such rather than as a pass. R3.5 (`explore coverage`)
+  is likewise still open.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_npdev_test_verb.py
+  asserts: >-
+    `npdev test` composes the model-derived REST smoke, *.scenario.json acceptance and the browser
+    routine suite against a running app with no per-app config file, writes one
+    npdev-test-report.v1, and exits nonzero if any layer is red -- including the all-empty case,
+    which reports nothingMeasured rather than a vacuous pass.
+  provenRed: false
+  provenRedNote: >-
+    The verb did not exist, so its assertions could not have passed before; not recorded as provenRed
+    because the tests were written alongside the implementation. The red-implies-nonzero contract WAS
+    measured live rather than asserted: a deliberately-wrong acceptance scenario produced exit 2
+    naming the exact mismatch.

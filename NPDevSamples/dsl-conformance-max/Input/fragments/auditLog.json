@@ -11,12 +11,37 @@
   "bindings": [
     {
       "capability": "auditLog",
-      "adapter": "audit-log-inproc"
+      "adapter": "plugin:java-source"
+    }
+  ],
+  "flows": [
+    {
+      "name": "RecordAuditLogEntry",
+      "input": {
+        "concept": "WidgetOrder",
+        "mode": "query"
+      },
+      "steps": [
+        {
+          "name": "record-entry",
+          "type": "capabilityCall",
+          "capability": "auditLog",
+          "operation": "record",
+          "args": [ "$input" ],
+          "output": "$recorded"
+        },
+        {
+          "name": "return-recorded",
+          "type": "return",
+          "value": "$recorded"
+        }
+      ]
     }
   ],
   "metadata": {
     "auditLogFragment": {
-      "purpose": "docs/FAIL_OPEN_PLAN.md R2: real in-git example of a top-level `fragments` entry, mirroring the shape of AppGen/apps/npdev_split_model_sample_app's plugin/sendMail.json fragment (capabilities + bindings + metadata, $ref-ed from model.json)."
+      "purpose": "docs/FAIL_OPEN_PLAN.md R2: real in-git example of a top-level `fragments` entry, mirroring the shape of AppGen/apps/npdev_split_model_sample_app's plugin/sendMail.json fragment (capabilities + bindings + metadata, $ref-ed from model.json).",
+      "correction2026_08_19": "The original binding pointed 'auditLog' at adapter 'audit-log-inproc' -- a builtin-style name that mimics real registered adapters (mail-inproc, notification-inproc, webhook-inproc) but was never actually registered in NPDevGenerator/resources/Plugins/{default,dev}.plugin-manifest.json, and no such adapter class ever existed under NPDevKernel/adapters. NpdevCapabilityBindingConfig.capabilityRegistry() (NPDevRuntimeHost) eagerly resolves EVERY declared binding against RuntimePluginAdapterRegistry at boot, so the generated app failed to start with 'Adapter audit-log-inproc for capability auditLog ... is not declared in active plugin manifest' even though nothing ever called it. This was a fixture defect, not a generator/runtime defect -- no real app author naming a real capability collides with this made-up name. Fixed by switching the binding to the genuine 'plugin:java-source' mounted-capability mechanism (same one proven live by NPDevSamples/probes/lib-probe's librarySignature capability): a capability.plugin.json descriptor + real Java source under capabilities/auditLog/, and a RecordAuditLogEntry flow so CompiledPluginRequirementGraphBuilder actually discovers the requirement and GeneratedPluginMountPlan mounts it -- an unreferenced binding is never mounted, flow call or not."
     }
   }
 }

@@ -1,0 +1,229 @@
+id: RUN-19
+title: >-
+  Nothing in the DSL or kernel could express INV-2026-0001 -- declarative sequences[] +
+  nextNumber(), atomically allocated inside the gateway's own write transaction
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R5 item R5.3 -- "Add
+  sequences:[{name, format, scope}] (4 schema mirrors) and a nextNumber() function in the registry;
+  allocation SQL becomes new SqlDialect methods, running inside the same gateway transaction as the
+  insert." Blocked-by premise (R4.1/RUN-12 done) verified true before any change; two other roadmap
+  premises ("allocation SQL becomes new SqlDialect methods" and "the same ambient-connection
+  technique JdbcBusinessConceptStore uses is sufficient for atomicity") were both measured FALSE,
+  which is the substance of this item.
+surface: dsl/schema, dsl/validation, kernel/concepts, kernel/ports, kernel/dbschema, runtimehost/db
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/SequenceAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledSequence.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/SequenceNumberFormat.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SequenceValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ModelAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModel.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevContract/schemas/pack.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/SequenceAllocator.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema/NpdevSequenceCounterTable.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema/NpdevInternalTables.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/dbschema/NpdevInternalTablesSourceOfTruthTest.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConfiguredConceptGatewaySemanticPolicy.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcSequenceAllocator.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/RuntimeConceptGatewaySemanticPolicies.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcSequenceAllocatorConcurrencyTest.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevSamples/dsl-conformance-max/Input/manifest.json
+  - scripts/quality/dsl_coverage/features.py
+  - scripts/quality/twin-pair-registry.json
+detail: |
+  PREMISE VERIFIED FIRST: read ledger/items/RUN-12.yml (R4.1) before writing anything. It confirmed
+  `ComputedExpression` (the grammar `FieldValueValidation` now validates against) already accepts
+  ANY call syntax including `nextNumber('name')`, and its own detail text names R5.3 by number as
+  the future work that "rides the same widened path". R4.1 really did unblock this item.
+
+  NEW MODEL SHAPE: `sequences: [{name, format, scope}]`. `format` is a template with recognized
+  tokens `{seq}`/`{seq:N}` (the running counter, zero-padded to N digits -- exactly one required)
+  and optional `{year}`/`{yy}`/`{month}`/`{day}` date tokens (`SequenceNumberFormat`, pure, no DB --
+  validated at author time via the identical logic that renders at runtime, so a malformed template
+  can never validate and then fail to render). `scope` is `global` (one counter for every tenant) or
+  `tenant` (one counter per tenant); ANY date token in `format` also partitions the counter, so
+  `"INV-{year}-{seq:4}"` resets to 1 exactly when the year rolls over, without a second field.
+  `nextNumber('name')` in a field's `defaultExpression` allocates; `derivedExpression` refuses it at
+  author time (`SequenceValidation`) -- a derived value recomputes on every save, so allowing it
+  there would burn a fresh number on every unrelated update.
+
+  REG-108 + REG-104 CHAINS, threaded exactly like R6.2's `webhooks[]` (`git show 13da88a3` was the
+  worked example): `ModelSourceResolver.MODEL_ARRAY_KEYS`, both `pack.schema.json` copies, all FOUR
+  `model.schema.json` mirrors, `ModelResolver.resolve()`'s whole-list pass-through,
+  `JsonModelParser`/`ModelCompiler`/the canonical JSON writer+reader pair. New twin-pair rule
+  `sequence-ast-compiled-four-place` (mirroring `webhook-ast-compiled-four-place`) plus `sequences`
+  added to `pack-composition-four-place`'s tracked fields, both verified by
+  `check-twin-pair-consistency.py` (25/25 rules OK).
+
+  ONE REAL DEVIATION FROM THE WEBHOOK TEMPLATE, FOUND BY INVESTIGATION NOT COPIED BLINDLY:
+  `sequences[].name` is deliberately EXCLUDED from `ModelSourceResolver.mergeQualifiedNonConceptArrays`'s
+  generic per-pack `name` -> `qualifierId::name` qualification (a one-line `if (!"sequences".equals(key))`
+  guard around the existing qualification write, duplicate-within-a-pack detection unchanged). Reason:
+  unlike every other qualified kind, a sequence is referenced by `nextNumber('name')` as an opaque
+  literal ARGUMENT embedded inside another field's `defaultExpression` STRING --
+  `rewriteKnownMemberReferenceFields` (the "PACK-11 fifth place" R6.2 needed for `eventName`) only
+  rewrites discrete JSON fields, never substrings inside an expression string, so qualifying the
+  declaration but leaving every reference to it unqualified would silently break any pack-declared
+  sequence the moment its own pack tried to use it. Same reasoning `WebhookAst.source` already
+  established for a wire-visible identity, applied here to a literal-referenced one.
+  `SequenceValidation` requires global name uniqueness across the fully-resolved model instead
+  (mirrors `WebhookValidation`'s `source` uniqueness check), closing the collision risk that leaving
+  names unqualified reopens.
+
+  ALLOCATION PATH: `sequences[]` compiles to `CompiledSequence`, read by
+  `ConfiguredConceptGatewaySemanticPolicy` (constructed with a new `SequenceAllocator` port,
+  defaulting to `SequenceAllocator.inMemory()` so every existing caller/constructor keeps compiling
+  unchanged). `applyDefaultsAndDerivedValues` recognizes `nextNumber('name')` in a field's
+  `defaultExpression` BEFORE falling through to the generic pure `ValueExpressionEvaluator` (which
+  cannot allocate -- it stays pure so a backfill preview can call it with no side effect), composes a
+  scope key (sequence name + tenant segment if `scope: tenant` + `SequenceNumberFormat`'s own
+  date-bucket suffix), calls `sequenceAllocator.allocateNext(scopeKey)`, and renders the result
+  through the format template. `DefaultConceptGateway.saveWithinTransaction` already runs
+  `applyDefaultsAndDerivedValues` (and thus the allocation) INSIDE `transactionRunner.runInTransaction`,
+  the same transaction boundary `store.save` writes the concept row in one call later -- satisfying
+  the roadmap's "running inside the same gateway transaction as the insert" without a new abstraction.
+
+  MEASURED FALSE (roadmap premise 1): "allocation SQL becomes new SqlDialect methods." Zero new
+  dialect methods were added or needed -- `JdbcSequenceAllocator` (RuntimeHost) reuses
+  `SqlDialect#selectForUpdate` and `SqlDialect#isUniqueViolation`, both pre-dating this item (RUN-2),
+  the identical finding RUN-15 already made for its own claim table. `check-dialect-sites.py`: 0
+  dialect-bound sites outside `com/npdev/kernel/storage/sql` after this change.
+
+  MEASURED FALSE (a design assumption made mid-implementation, not a roadmap line): "the ambient-
+  connection technique `JdbcBusinessConceptStore` already uses (`DataSourceUtils.getConnection`,
+  nothing else) is sufficient here too." The first version of `JdbcSequenceAllocator.allocateNext`
+  did exactly that. Running the concurrency test WITHOUT wrapping each call in a transaction (a
+  caller mistake the type system does not prevent, and worth proving safe against on its own)
+  measured 20 threads x 25 allocations against ONE scope key producing 500 calls but only 90
+  DISTINCT values -- a catastrophic collision rate. Cause: with no ambient Spring transaction,
+  `DataSourceUtils.getConnection` hands back a plain AUTOCOMMIT connection, so `SELECT ... FOR
+  UPDATE`'s lock is released the instant the `SELECT` itself completes (autocommit makes each
+  statement its own transaction) -- the `UPDATE` that follows runs completely unprotected. Fixed by
+  having `allocateNext` inspect `Connection#getAutoCommit()` and manage a LOCAL transaction
+  (temporarily false, commit, restore) only when the connection is not already inside one -- so it is
+  now correct standalone AND still correctly joins a real ambient transaction when the production
+  call site provides one (both proven, see guard).
+
+  The idempotent row-seed insert (`ensureRowExists`, first allocation for a brand-new scope key)
+  stays on its OWN independent autocommit connection, exactly like `CronFireClaimStore.ensureRowExists`
+  (RUN-2/R2.7) -- attempting it on the ambient connection would risk poisoning that transaction on an
+  engine that aborts the whole transaction after any statement error (Postgres) the moment two
+  concurrent callers race the FIRST allocation, which is the common case the concurrency proof
+  exercises, not a rare edge case.
+
+  New internal table `npdev_sequence_counter` (`NpdevSequenceCounterTable`, kernel dbschema) added to
+  `NpdevInternalTables.all()` the same way `NpdevCronFireClaimTable` was (RUN-15) -- confirmed
+  automatic, no generator edit needed (`:generator:test --tests com.npdev.generator.dbconfig.*`
+  green, the same dynamically-derived schema-realization test RUN-15 relied on).
+  `NpdevInternalTablesSourceOfTruthTest`'s hardcoded table-name set needed one added line, same as
+  RUN-15.
+
+  PRODUCTION WIRING: `NpdevCapabilityBindingConfig.conceptGateway` (RuntimeHost, copied into every
+  generated app) now also resolves an `ObjectProvider<DataSource>`, wiring a real
+  `JdbcSequenceAllocator` when a DataSource is available and `SequenceAllocator.inMemory()` otherwise
+  -- the identical "degrade to in-memory, no DataSource" posture the same bean already uses for its
+  `TransactionRunner`.
+
+  PROVEN RED THEN GREEN (two separate REDs, both real):
+    1. `check-dsl-coverage.py`: with `sequences[]` temporarily removed from
+       `NPDevSamples/dsl-conformance-max/Input/model.json`, the gate FAILED naming
+       `sequences  0 model(s)  [ZERO]`. Restored, GREEN again (`sequences  1 model(s)  [OK]`).
+    2. `JdbcSequenceAllocatorConcurrencyTest.concurrentAllocationsWithNoAmbientTransactionNeverCollide`:
+       measured 90 distinct values out of 500 calls (see "measured false" above) against the
+       pre-fix allocator. Restoring the fix (current committed code) reproduces the identical
+       scenario GREEN: `distinctScopeKeysAllocateIndependently`,
+       `concurrentAllocationsWithNoAmbientTransactionNeverCollide`, and
+       `concurrentAllocationsInsideARealAmbientTransactionNeverCollide` (wraps each call in a real
+       `SpringTransactionRunner`/`DataSourceTransactionManager` transaction, the literal production
+       shape) all 3/3 pass.
+
+  LIVE, against a real generation (dsl-conformance-max regenerated for real, H2): the compiled model
+  round-trips `sequences: [{"name":"orderNumber","format":"ORD-{year}-{seq:4}","scope":"tenant"}]`
+  through `compiled-model.json`; the generator's own schema-realization manifest records
+  `businessTableColumnDefaultExpressions.widget_orders.order_number = "nextNumber('orderNumber')"`,
+  confirming the field-level wiring reaches generated output, not just the DSL layer.
+
+  GATES run directly (not the full `run-all-gates.ps1` -- three other agents were concurrently
+  editing this same checkout; a full run would have mixed their in-flight state into this item's
+  evidence):
+    - `check-schema-mirror-consistency.py` OK (4+2+3 copies)
+    - `check-twin-pair-consistency.py` OK (25/25 rules)
+    - `check-dsl-coverage.py` OK (93 features, all covered) -- RED-proven for `sequences` (above)
+    - `check-dialect-sites.py` PASS (0 sites outside storage/sql)
+    - `validate-corpus.py` 51/51 parse (dsl-conformance-max included; the 2 pre-existing MISSING
+      corpusRole entries -- bench-r37-proof, seed-r32-bench -- predate this item, not touched)
+    - `:NPDevContract:dsl:test` 776/777 (only the pre-existing known-red `AiModelToDslMappingTest`,
+      the exact baseline RUN-12 already documented)
+    - `:kernel:test` all green (dbschema + concepts packages included)
+    - `:generator:test --tests com.npdev.generator.dbconfig.*` green
+    - `runtimehost-core`'s own `test` task green (ungated per QUAL-19, run anyway for evidence)
+    - `run-runtimehost-gate.ps1`'s own steps run manually and in full for the affected app: libs
+      sync, sample generation of dsl-conformance-max, `gradlew ... test --tests
+      com.finalexec.db.JdbcSequenceAllocatorConcurrencyTest` against the REAL assembled app --
+      green (3/3). The gate's FULL unfiltered `test` task (every test in the assembled app) was
+      NOT run this session, for the same concurrent-checkout reason above.
+
+  NOT ATTEMPTED, deliberately: no `npdev migrate` codemod / BREAKING.md entry -- purely additive (a
+  new optional top-level array, a new optional field-level `nextNumber()` call inside an existing
+  grammar, a new internal table, a new port with an in-memory default). A model with no `sequences[]`
+  behaves exactly as today -- proven by the full existing DSL/kernel suites staying green with no
+  test changed except the two mechanical additions (`NpdevInternalTablesSourceOfTruthTest`'s table
+  name, `DiagnosticSuggestedFixCoverageTest`'s incidental discovery that every new `errors.add(...)`
+  needed an explicit `-- suggestedFix:` marker -- fixed in `SequenceValidation` itself, not by
+  weakening the gate). No MySQL/SQL Server/Postgres run locally (`scripts/policy/local-test-profile.json`:
+  H2 + SQL Server only, Postgres/MySQL/Docker off by default) -- `JdbcSequenceAllocator` uses only
+  `SqlDialect#selectForUpdate`/`#isUniqueViolation`, both already proven on all four engines by RUN-2/
+  RUN-15's own conformance history, and plain ANSI INSERT/SELECT/UPDATE with no dialect-specific
+  syntax of its own. No functional index on `npdev_sequence_counter.scope_key` beyond its primary
+  key -- not needed at the row counts a per-tenant/per-year document-numbering counter reaches. No UI
+  for authoring sequences beyond the JSON model shape -- out of scope for a DSL/kernel/allocation
+  item.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcSequenceAllocatorConcurrencyTest.java
+  gatedBy: >-
+    run-runtimehost-gate.ps1 (T2). FinalAppAssembler copies NPDevRuntimeHost/src/test wholesale
+    into every generated app, so this test runs for real in that gate's `gradlew ... test` step
+    against the assembled app, with runtimehost-core's JdbcSequenceAllocator on the classpath via
+    the staged runtimehost-libs jar. Reproduce directly: generate NPDevSamples/dsl-conformance-max
+    (NPDevSamples/scripts/generate-sample-app.ps1 -SampleId dsl-conformance-max), then in its
+    Output/App run `gradlew test --tests com.finalexec.db.JdbcSequenceAllocatorConcurrencyTest`.
+  asserts: >-
+    two REAL scenarios, both racing 20 threads x 25 allocations for ONE scope key against a real H2
+    database via JdbcSequenceAllocator: concurrentAllocationsWithNoAmbientTransactionNeverCollide
+    (no transaction wrapper at all -- the shape that exposed the RED) and
+    concurrentAllocationsInsideARealAmbientTransactionNeverCollide (each call wrapped in a real
+    SpringTransactionRunner/DataSourceTransactionManager transaction -- the literal production
+    shape, DefaultConceptGateway.save's own transaction boundary). Both assert the 500 returned
+    values are exactly the set {1..500} -- no duplicate (a real collision) and no gap (a lost
+    increment). distinctScopeKeysAllocateIndependently additionally proves two different scope keys
+    never share a counter.
+  provenRed: true
+  provenRedNote: >-
+    Genuinely measured, not staged: the first version of JdbcSequenceAllocator (ambient connection
+    only, no local-transaction fallback) was run against
+    concurrentAllocationsWithNoAmbientTransactionNeverCollide and produced 90 distinct values out of
+    500 calls (assertion: "expected: <500> but was: <90>"), reproduced live against a real H2
+    database inside the assembled dsl-conformance-max app. check-dsl-coverage.py was separately
+    RED-proven by temporarily removing sequences[] from the corpus model and observing the gate name
+    the feature as ZERO-covered, then restoring it GREEN.

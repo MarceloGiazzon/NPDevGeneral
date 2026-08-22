@@ -37,6 +37,9 @@ public final class ModelAst {
     private final List<ContextAst> contexts;
     private final List<ConversionAst> conversions;
     private final Map<String, String> physicalQualifierByConceptName;
+    private final List<WebhookAst> webhooks;
+    private final List<SequenceAst> sequences;
+    private final List<SeedAst> seeds;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -499,6 +502,126 @@ public final class ModelAst {
             List<ConversionAst> conversions,
             Map<String, String> physicalQualifierByConceptName
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, conversions, physicalQualifierByConceptName, List.of());
+    }
+
+    /** R6.2: canonical constructor, adds {@code webhooks} (model-declared inbound webhook doors --
+     *  see {@link WebhookAst}). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions,
+            Map<String, String> physicalQualifierByConceptName,
+            List<WebhookAst> webhooks
+    ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, conversions, physicalQualifierByConceptName, webhooks, List.of());
+    }
+
+    /** R5.3: adds {@code sequences} (model-declared document-numbering counters -- see
+     *  {@link SequenceAst}). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions,
+            Map<String, String> physicalQualifierByConceptName,
+            List<WebhookAst> webhooks,
+            List<SequenceAst> sequences
+    ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, conversions, physicalQualifierByConceptName, webhooks, sequences, List.of());
+    }
+
+    /** R8.8: canonical constructor, adds {@code seeds} (model/pack-declared first-boot seed rows --
+     *  see {@link SeedAst}). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions,
+            Map<String, String> physicalQualifierByConceptName,
+            List<WebhookAst> webhooks,
+            List<SequenceAst> sequences,
+            List<SeedAst> seeds
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -528,6 +651,9 @@ public final class ModelAst {
         this.conversions = conversions == null ? new ArrayList<>() : new ArrayList<>(conversions);
         this.physicalQualifierByConceptName = physicalQualifierByConceptName == null
                 ? Map.of() : Map.copyOf(physicalQualifierByConceptName);
+        this.webhooks = webhooks == null ? new ArrayList<>() : new ArrayList<>(webhooks);
+        this.sequences = sequences == null ? new ArrayList<>() : new ArrayList<>(sequences);
+        this.seeds = seeds == null ? new ArrayList<>() : new ArrayList<>(seeds);
     }
 
     public String getNamespace() { return namespace; }
@@ -652,6 +778,26 @@ public final class ModelAst {
      *  ({@code aliasOrPackId::Name}); empty when the model declares no packs. */
     public Map<String, String> getPhysicalQualifierByConceptName() {
         return physicalQualifierByConceptName;
+    }
+
+    /** R6.2: model-declared inbound webhook doors, empty when the model declares none (a model
+     *  with no webhooks behaves exactly as it did before this feature existed). */
+    public List<WebhookAst> getWebhooks() {
+        return Collections.unmodifiableList(webhooks);
+    }
+
+    /** R5.3: model-declared document-numbering counters, empty when the model declares none (a
+     *  model with no sequences behaves exactly as it did before this feature existed). */
+    public List<SequenceAst> getSequences() {
+        return Collections.unmodifiableList(sequences);
+    }
+
+    /** R8.8: model/pack-declared first-boot seed rows, empty when the model declares none (a model
+     *  with no seeds behaves exactly as it did before this feature existed). Declaration order is
+     *  preserved (never sorted) -- it is semantically load-bearing, since a later record's {@code
+     *  data} may reference an earlier one's {@code alias} via {@code "$ref:<alias>"}. */
+    public List<SeedAst> getSeeds() {
+        return Collections.unmodifiableList(seeds);
     }
 
     private static List<ConceptAst> toConcepts(List<? extends EntityAst> source) {

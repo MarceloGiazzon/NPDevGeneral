@@ -1,3 +1,14 @@
+# R9.2: the base application.properties turns on rolling FILE logging (logging.file.name=logs/
+# app.log) for every real app boot. Every RuntimeHost test activates this "test" profile
+# (@ActiveProfiles always includes it -- see AbstractScenarioIntegrationTest and friends), so
+# without this override the whole suite would also write a rolling app.log under whatever working
+# directory Gradle runs tests from. An empty override disables it (Spring Boot's LogFile.get(...)
+# treats a blank logging.file.name/path as "no file logging" -- StringUtils.hasLength is false for
+# ""), profile documents outrank the non-profile default document, so this wins over the base value.
+logging:
+  file:
+    name: ""
+
 spring:
   datasource:
     url: ${NPDEV_TEST_DB_URL:jdbc:h2:mem:npdev_test;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE}
@@ -9,7 +20,6 @@ spring:
     open-in-view: false
   flyway:
     enabled: true
-    clean-on-validation-error: true
     clean-disabled: false
 
 npdev:
@@ -21,3 +31,9 @@ npdev:
     enabled: false
   scheduler:
     enabled: false
+  # Same reasoning as application-postgres.yml's identical override: this profile always connects
+  # to a fixed-name H2 in-memory database (npdev_test, above), never whatever db.definition.json
+  # resolved for the real app -- so DatabaseIdentityStartupValidator's identity check is equally
+  # meaningless here and must be skipped, not just for the postgres profile.
+  trial:
+    database-override: true

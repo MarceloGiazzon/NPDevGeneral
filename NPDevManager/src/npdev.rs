@@ -12,9 +12,11 @@ use std::process::Stdio;
 use std::sync::Mutex;
 
 use serde_json::Value;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
+
+use crate::state::AppState;
 
 pub fn fake_mode() -> bool {
     std::env::var("NPDEV_MANAGER_FAKE")
@@ -420,6 +422,26 @@ pub async fn run_generate_app(
                            if stderr.trim().is_empty() { stdout.trim() } else { stderr.trim() }));
     }
     Ok(())
+}
+
+/// Validate a candidate model.json against the real DSL validator (`npdev validate model`, which
+/// itself wraps the `:NPDevContract:dsl:validateModel` Gradle task -- the exact structural +
+/// semantic checks the generator runs, without generating).
+///
+/// A failed validation is a normal RESULT (the CLI exits 2 and still prints the typed
+/// npdev-validation-report.v2 to stdout), not a transport error -- same non-zero-exit-is-a-result
+/// handling as `run_db_operation` below, via the same `parse_single_json` helper.
+pub async fn run_validate_model(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    model_path: &str,
+) -> Result<Value, String> {
+    let output = build_command(python_exe, npdev_cli, &["validate", "model", model_path], java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run validate model: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "validate model")
 }
 
 /// M14: one of the five database operations, run through the CLI.
@@ -861,6 +883,7 @@ pub async fn run_ops_script_streaming(
 
     let app2 = app.clone();
     let script2 = script.clone();
+    let running_key = format!("ops:{app_dir}:{script}");
     tauri::async_runtime::spawn(async move {
         let mut last: Option<Value> = None;
         while let Ok(Some(line)) = reader.next_line().await {
@@ -882,6 +905,11 @@ pub async fn run_ops_script_streaming(
             "kind": "done", "script": script2, "exitCode": exit_code,
             "logFile": last.and_then(|v| v.get("logFile").cloned()),
         }));
+        // The caller (run_ops_script) inserts `running_key` into AppState.running right after this
+        // function returns, so the same run "wait for it to finish" lock survives forever unless
+        // something removes it -- nothing else ever did, so a script that finished cleanly still
+        // blocked every future run of itself for the rest of the window's session.
+        app2.state::<AppState>().running.lock().expect("lock poisoned").remove(&running_key);
     });
 
     Ok(Some(RunningProcess {

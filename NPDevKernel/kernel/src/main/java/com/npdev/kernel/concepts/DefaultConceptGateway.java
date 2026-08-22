@@ -422,6 +422,7 @@ public final class DefaultConceptGateway implements ConceptGateway {
         // the semantic-validation USE of that data that must wait until authorization passes.
         enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
         enforceRowWritable(requestContext, "CONCEPT_WRITE");
+        enforceFieldWriteAccess(requestContext, "CONCEPT_WRITE");
 
         ConceptSemanticDecision decision = runWriteSemantics(
                 requestContext,
@@ -672,6 +673,7 @@ public final class DefaultConceptGateway implements ConceptGateway {
         );
         enforcePermission(effectiveContext, "concept.write", request.conceptName(), "CONCEPT_WRITE", request.id());
         enforceRowWritable(requestContext, "CONCEPT_WRITE");
+        enforceFieldWriteAccess(requestContext, "CONCEPT_WRITE");
         ConceptSemanticDecision decision = runWriteSemantics(
                 requestContext,
                 ruleProfilesForWriteBeforeCommit(effectiveContext)
@@ -700,6 +702,35 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 ConceptSemanticDecision.deny("ROW_SCOPE_DENIED", message)
         );
         throw new ConceptGatewayAccessDeniedException("ROW_SCOPE_DENIED", message);
+    }
+
+    /**
+     * R5.5: field-level write scoping -- {@link ConceptGatewaySemanticPolicy#deniedWriteFields}
+     * against the request's incoming data, evaluated right alongside {@link #enforceRowWritable}
+     * (same position: an authorization gate, run before any semantic validation touches the
+     * previous record's data, per REG-41). A denial rejects the WHOLE write -- there is no
+     * per-field "drop the denied field and keep going" path, matching {@code
+     * ConceptGatewaySemanticPolicy#deniedWriteFields}'s own javadoc: silently dropping a field
+     * would let the caller believe their write fully succeeded when it didn't. The thrown message
+     * names the denied field(s) -- safe to disclose since the caller supplied that field name
+     * themselves in the request body; it never includes the field's previous or attempted value.
+     */
+    private void enforceFieldWriteAccess(ConceptGatewayRequestContext requestContext, String action) {
+        List<String> deniedFields = semanticPolicy.deniedWriteFields(requestContext);
+        if (deniedFields.isEmpty()) {
+            return;
+        }
+        ExecutionContext context = requestContext.executionContext();
+        String message = "Concept Gateway denied field-level write access for concept "
+                + requestContext.conceptName() + ", field(s): " + String.join(", ", deniedFields);
+        audit(context, action, requestContext.conceptName(), requestContext.id(), "DENIED", "field_scope_denied", requestContext.tenantId());
+        trace(
+                requestContext,
+                "DENIED",
+                "field_scope_denied",
+                ConceptSemanticDecision.deny("FIELD_SCOPE_DENIED", message)
+        );
+        throw new ConceptGatewayAccessDeniedException("FIELD_SCOPE_DENIED", message);
     }
 
     private void audit(

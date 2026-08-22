@@ -80,6 +80,23 @@ public interface ConceptGatewaySemanticPolicy {
         return Optional.empty();
     }
 
+    /**
+     * R5.5: field-level (not row-level) write authorization -- the names of this request's
+     * CHANGED fields (relative to the previous record for an update/delete, or every non-blank
+     * field for a create -- the same "previous record if present, else incoming data" subject
+     * {@link #isRowWritable} already uses) that are denied by a declared {@code field.access.write}
+     * rule. A field the caller did not submit, or submitted with the SAME value it already had, is
+     * never included -- only a genuinely attempted change can be denied, so a client that resends
+     * an unchanged read-only field (the common shape of a PUT that round-trips the whole record)
+     * is never rejected for a field it never actually tried to change. Empty means every changed
+     * field passes (or no field on this concept declares a field-level write rule at all) -- the
+     * default here preserves today's behavior for the NOOP policy and any policy that predates
+     * field-level access.
+     */
+    default List<String> deniedWriteFields(ConceptGatewayRequestContext request) {
+        return List.of();
+    }
+
     static ConceptGatewaySemanticPolicy noop() {
         return NOOP;
     }

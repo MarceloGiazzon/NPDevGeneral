@@ -22,6 +22,7 @@ import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
+import com.npdev.dsl.v1.ast.AggregateInvariantAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
@@ -117,6 +118,52 @@ final class AggregateValidation {
                     hooks == null ? null : hooks.onFieldChange(), proceduresByLower, errors);
             validateHookProcedure(aggregate.name(), "beforeAction",
                     hooks == null ? null : hooks.beforeAction(), proceduresByLower, errors);
+            validateAggregateInvariants(aggregate, errors);
+        }
+    }
+
+    /**
+     * R4.4 (Roadmap Wave 1 2026-08-19): a declared aggregate invariant's {@code name} is the rule
+     * identifier a commit-time API error names (the done-when's "the failing rule named in the API
+     * error"), so it must be present and unique within its aggregate -- a blank or duplicate name
+     * would let a veto happen with no way for the caller to tell which rule fired. {@code
+     * expression} must parse and be boolean-shaped, the same author-time check ConceptAst's own
+     * expression-typed invariants already get (LIFT-EXPR-P3's {@code isBooleanShaped}); this is a
+     * syntactic check only -- it does not (cannot, statically) know which collection names the
+     * runtime draft tree will actually have, so an expression referencing a collection or field
+     * that does not exist still parses clean here and fails only when evaluated against a real
+     * draft.
+     */
+    private static void validateAggregateInvariants(AggregateAst aggregate, List<String> errors) {
+        Set<String> seenNames = new HashSet<>();
+        for (AggregateInvariantAst invariant : aggregate.invariants()) {
+            String here = "Aggregate " + aggregate.name() + " invariant";
+            if (!hasText(invariant.name())) {
+                errors.add(here + ": name is required");
+            } else {
+                here = "Aggregate " + aggregate.name() + " invariant '" + invariant.name() + "'";
+                if (!seenNames.add(normalize(invariant.name()))) {
+                    errors.add(here + ": duplicate invariant name within this aggregate");
+                }
+            }
+            if (!hasText(invariant.expression())) {
+                errors.add(here + ": expression is required");
+                continue;
+            }
+            try {
+                ComputedExpression.validate(invariant.expression());
+            } catch (ComputedExpression.ExpressionException syntaxError) {
+                errors.add(here + ": expression does not parse: " + syntaxError.getMessage());
+                continue;
+            }
+            try {
+                if (!ComputedExpression.isBooleanShaped(invariant.expression())) {
+                    errors.add(here + ": expression must be boolean-shaped "
+                            + "(a comparison, &&/||, unary !, or a boolean literal at the top level)");
+                }
+            } catch (ComputedExpression.ExpressionException ignored) {
+                // Already reported by the parse check above.
+            }
         }
     }
 

@@ -12,6 +12,7 @@ public final class StateMachineStateAst {
     private final boolean terminal;
     private final List<String> allowedActions;
     private final Map<String, String> metadata;
+    private final Map<String, String> labelLocales;
 
     public StateMachineStateAst(String value) {
         this(value, null, false, false, List.of(), Map.of());
@@ -25,12 +26,25 @@ public final class StateMachineStateAst {
             List<String> allowedActions,
             Map<String, String> metadata
     ) {
+        this(value, label, initial, terminal, allowedActions, metadata, Map.of());
+    }
+
+    public StateMachineStateAst(
+            String value,
+            String label,
+            boolean initial,
+            boolean terminal,
+            List<String> allowedActions,
+            Map<String, String> metadata,
+            Map<String, String> labelLocales
+    ) {
         this.value = value;
         this.label = label;
         this.initial = initial;
         this.terminal = terminal;
         this.allowedActions = allowedActions == null ? List.of() : List.copyOf(allowedActions);
         this.metadata = metadata == null ? Map.of() : new LinkedHashMap<>(metadata);
+        this.labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 
     public String getValue() {
@@ -39,6 +53,10 @@ public final class StateMachineStateAst {
 
     public String getLabel() {
         return label;
+    }
+
+    public Map<String, String> getLabelLocales() {
+        return labelLocales;
     }
 
     public boolean isInitial() {

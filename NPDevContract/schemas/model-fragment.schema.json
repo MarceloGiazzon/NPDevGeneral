@@ -3,27 +3,316 @@
   "$id": "https://npdev.local/schema/npdev-model-fragment.schema.json",
   "title": "NPDev local model fragment",
   "type": "object",
-  "description": "Partial NPDev model file referenced from top-level fragments. This is NPDev-local include syntax, not JSON Schema remote $ref.",
+  "description": "A model fragment: any subset of the model's top-level member arrays, composed into the model root by `fragments[]`. PACK-12 (2026-08-17): this file previously declared 14 keys and NOT `concepts`, while setting additionalProperties:false -- so as written it rejected the most ordinary fragment there is. It had no consumer, which is exactly why it could be wrong unnoticed; `resolve_split_model` now validates every fragment file against it. The property list is generated from the composer's own key set (npdev_cli.MODEL_ARRAY_KEYS) rather than typed, because typing it is how it went stale.",
   "properties": {
+    "aggregates": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/aggregate"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "autoPanels": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/autoPanel"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/binding"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "capabilities": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/capability"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "concepts": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/concept"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "contexts": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/context"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "conversions": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/conversion"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "customCapabilities": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/capability"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "documents": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/document"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "domainTypes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/domainType"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/event"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/flow"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "guidePages": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/guidePage"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "orchestrationRules": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/orchestrationRule"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "orchestrations": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/orchestrationRule"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "panels": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/panel"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "procedures": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/procedure"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "properties": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/property"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "propertyScopes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/propertyScope"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "queries": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/query"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "roles": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/role"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "ruleProfiles": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/ruleProfile"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "selectors": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "model.schema.json#/$defs/selector"
+          },
+          {
+            "$ref": "model.schema.json#/$defs/localModelRef"
+          }
+        ]
+      }
+    },
+    "metadata": {
+      "type": "object"
+    },
     "fragments": {
       "type": "array",
       "items": {
         "$ref": "model.schema.json#/$defs/localModelRef"
       }
-    },
-    "domainTypes": { "type": "array" },
-    "capabilities": { "type": "array" },
-    "customCapabilities": { "type": "array" },
-    "bindings": { "type": "array" },
-    "events": { "type": "array" },
-    "flows": { "type": "array" },
-    "orchestrationRules": { "type": "array" },
-    "orchestrations": { "type": "array" },
-    "queries": { "type": "array" },
-    "ruleProfiles": { "type": "array" },
-    "procedures": { "type": "array" },
-    "panels": { "type": "array" },
-    "metadata": { "type": "object" }
+    }
   },
   "additionalProperties": false
 }

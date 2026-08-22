@@ -25,6 +25,13 @@
   var SIDEBAR_COLLAPSED_KEY = "npdev.shell.sidebarCollapsed";
   var RIGHTBAR_COLLAPSED_KEY = "npdev.shell.rightbarCollapsed";
   var RECENT_ITEMS_KEY = "npdev.shell.recentItems";
+  // R7.10: the one small-viewport threshold this whole file's responsive behaviour keys off --
+  // shared between the injected CSS below (so the transform-based drawer and the JS state that
+  // drives it never disagree about where "mobile" starts) and every matchMedia() call later in
+  // this file. 768 matches business-ui-style.mustache's own breakpoint (bumped from 760 in the
+  // same change) and workbench-page.html.mustache's, so a boot at either 390px or 768px sees the
+  // sidebar, grid, form and workbench responses land together.
+  var MOBILE_BREAKPOINT_PX = 768;
 
   // App-owned theme hook: an app can ship a `theme.css` in its own web/ folder (served at the
   // static root, next to its hand-authored pages) to override the shell's `--np-*` tokens and any
@@ -41,10 +48,88 @@
     document.head.appendChild(link);
   })();
 
+  // R7.7: the "recent executions" rail's own CSS, self-contained here rather than added to
+  // shell.css.mustache -- this script is the only owner of the rail's DOM, and a JS-injected style
+  // block (same pattern as injectAppTheme above) keeps the feature working even on a page that
+  // never gets a shell.css update. The toggle stays hidden (display:none) until trackExecution()
+  // records a first entry, so an app with no async invocations renders its topbar exactly as
+  // before -- no empty icon, no layout shift, nothing to notice.
+  (function injectExecutionsRailStyle() {
+    if (document.querySelector('style[data-npdev-shell-executions]')) return;
+    var style = document.createElement("style");
+    style.setAttribute("data-npdev-shell-executions", "true");
+    style.textContent =
+      ".npdev-shell-executions-toggle{display:none;margin-left:8px;padding:4px 9px;border:1px solid var(--np-border,#d8dee7);" +
+      "border-radius:14px;background:var(--np-surface,#fff);color:var(--np-text,#1c2333);font-size:13px;cursor:pointer;}" +
+      ".npdev-shell-executions-toggle.npdev-shell-executions-toggle-visible{display:inline-flex;align-items:center;gap:4px;}" +
+      ".npdev-shell-executions-panel{display:none;position:fixed;top:44px;right:16px;z-index:70;width:min(320px,calc(100vw - 32px));" +
+      "max-height:360px;overflow-y:auto;background:var(--np-surface,#fff);border:1px solid var(--np-border,#d8dee7);" +
+      "border-radius:8px;box-shadow:0 12px 32px rgba(24,32,42,.22);padding:6px;}" +
+      ".npdev-shell-executions-panel.npdev-shell-executions-panel-open{display:block;}" +
+      ".npdev-shell-execution-row{display:flex;align-items:center;justify-content:space-between;gap:10px;" +
+      "padding:7px 8px;font-size:13px;border-bottom:1px solid var(--np-border,#eef1f5);}" +
+      ".npdev-shell-execution-row:last-child{border-bottom:none;}" +
+      ".npdev-shell-execution-name{overflow-wrap:anywhere;color:var(--np-text,#1c2333);}" +
+      ".npdev-shell-execution-status{flex-shrink:0;font-size:11px;font-weight:600;text-transform:uppercase;" +
+      "letter-spacing:.02em;padding:2px 6px;border-radius:10px;}" +
+      ".npdev-shell-execution-pending .npdev-shell-execution-status{background:#fbeed2;color:#8a5c00;}" +
+      ".npdev-shell-execution-succeeded .npdev-shell-execution-status{background:#d9f0e3;color:#1f7a4d;}" +
+      ".npdev-shell-execution-failed .npdev-shell-execution-status{background:#f6d9d9;color:#a32424;}";
+    document.head.appendChild(style);
+  })();
+
+  // R7.10: the sidebar's small-viewport drawer CSS -- same "JS-injected style block" pattern as
+  // injectExecutionsRailStyle above, and for the same reason: this script is the sidebar's only
+  // owner (paintSkeleton builds it, the toggle below drives it), so its responsive behaviour lives
+  // with it rather than in shell.css.mustache. Below MOBILE_BREAKPOINT_PX the sidebar leaves the
+  // flex flow and becomes an off-canvas drawer (translateX, closed by default) with a dismissible
+  // backdrop; the desktop icon-rail "collapsed" affordance (npdev-shell-sidebar-collapsed) is
+  // neutralized here since a narrow icon rail is not a meaningful state on a touch drawer -- the
+  // drawer is always either fully open or fully hidden.
+  (function injectResponsiveShellStyle() {
+    if (document.querySelector('style[data-npdev-shell-responsive]')) return;
+    var style = document.createElement("style");
+    style.setAttribute("data-npdev-shell-responsive", "true");
+    var mq = "@media (max-width:" + MOBILE_BREAKPOINT_PX + "px)";
+    style.textContent =
+      mq + "{" +
+      ".npdev-shell-sidebar{position:fixed;top:var(--np-topbar-h,52px);bottom:0;left:0;z-index:40;" +
+      "width:min(84vw,300px);transform:translateX(-100%);transition:transform .18s ease;" +
+      "box-shadow:0 12px 32px rgba(24,32,42,.28);}" +
+      "body.npdev-shell-sidebar-mobile-open .npdev-shell-sidebar{transform:translateX(0);}" +
+      /* A drawer ignores the desktop icon-rail width/label-hiding -- always full width, labels on. */
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar{width:min(84vw,300px);}" +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-label," +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-section{display:block;}" +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar a," +
+      "body.npdev-shell-sidebar-collapsed .npdev-shell-sidebar .npdev-shell-nav-group-header{" +
+      "justify-content:flex-start;padding-left:8px;padding-right:8px;}" +
+      ".npdev-shell-sidebar-backdrop{position:fixed;inset:0;top:var(--np-topbar-h,52px);" +
+      "background:rgba(16,24,40,.45);z-index:39;display:none;}" +
+      "body.npdev-shell-sidebar-mobile-open .npdev-shell-sidebar-backdrop{display:block;}" +
+      /* R7.10 touch targets: the nav links/collapse toggle grow to >=44px hit areas on a drawer a
+         thumb has to tap, without changing the desktop rail's denser 28px controls. */
+      ".npdev-shell-topbar .npdev-shell-collapse-toggle{width:44px;height:44px;}" +
+      ".npdev-shell-sidebar a,.npdev-shell-sidebar .npdev-shell-nav-group-header{min-height:44px;}" +
+      ".npdev-shell-body{position:relative;}" +
+      /* The right gadget rail has no drawer of its own (out of scope for this pass) -- at this
+         width it would otherwise squeeze the content column to near-nothing alongside the sidebar
+         drawer, so it and its topbar toggle are simply hidden rather than left half-broken. */
+      ".npdev-shell-rightbar{display:none;}" +
+      ".npdev-shell-topbar button.npdev-shell-rightbar-toggle{display:none;}" +
+      "}";
+    document.head.appendChild(style);
+  })();
+
   var el = {};
   var state = {
     manifest: null, menuRows: [], roles: [], actorId: "", isSuperUser: false, token: null,
-    hostMode: false, deriveNativeGroups: null
+    hostMode: false, deriveNativeGroups: null,
+    // R7.7: recent flow-execution tracker entries, newest first -- see trackExecution() below.
+    // Purely in-memory (does not survive a reload), a deliberate scope cut: this is a live-session
+    // progress rail, not a durable audit log -- the real audit trail is the Execution Monitor's own
+    // /api/v1/executions/active and /history routes (ExecutionMonitorController).
+    executions: []
   };
   var gadgetRenderers = {};
   var contextState = { title: "", rows: [] };
@@ -146,6 +231,26 @@
     return window.location.pathname.split("/").pop();
   }
 
+  // ------------------------------------------------------------ responsive ----
+
+  // R7.10: the one place that decides "are we on the drawer layout" -- both the collapse-toggle's
+  // click handler and the resize listener below ask this rather than each hardcoding the number,
+  // so it can only ever disagree with the injected CSS's own MOBILE_BREAKPOINT_PX by construction,
+  // not by two literals drifting apart.
+  function isMobileViewport() {
+    return !!(window.matchMedia && window.matchMedia("(max-width:" + MOBILE_BREAKPOINT_PX + "px)").matches);
+  }
+
+  function closeMobileSidebar() {
+    document.body.classList.remove("npdev-shell-sidebar-mobile-open");
+    if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "false");
+  }
+
+  function openMobileSidebar() {
+    document.body.classList.add("npdev-shell-sidebar-mobile-open");
+    if (el.sidebarToggle) el.sidebarToggle.setAttribute("aria-expanded", "true");
+  }
+
   // ------------------------------------------------------------- skeleton ----
 
   function wrapContent() {
@@ -164,13 +269,31 @@
     sidebarToggle.className = "npdev-shell-collapse-toggle";
     sidebarToggle.type = "button";
     sidebarToggle.title = "Recolher/expandir menu";
+    sidebarToggle.setAttribute("aria-label", "Recolher/expandir menu");
     sidebarToggle.textContent = "☰";
+    sidebarToggle.setAttribute("aria-expanded", "false");
+    // R7.10: ties the toggle to the drawer it controls for assistive tech, on both the desktop
+    // icon-rail and the mobile drawer -- "sideNav" is paintSkeleton()'s own fixed id for the same
+    // element in both modes, so one attribute covers both.
+    sidebarToggle.setAttribute("aria-controls", "sideNav");
+    // R7.10: below MOBILE_BREAKPOINT_PX this same button drives the off-canvas drawer
+    // (npdev-shell-sidebar-mobile-open) instead of the desktop icon-rail collapse -- a drawer has
+    // no meaningful "collapsed-but-still-there" state, so the two behaviours don't mix.
     sidebarToggle.addEventListener("click", function () {
+      if (isMobileViewport()) {
+        if (document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
+          closeMobileSidebar();
+        } else {
+          openMobileSidebar();
+        }
+        return;
+      }
       var collapsed = !document.body.classList.contains("npdev-shell-sidebar-collapsed");
       document.body.classList.toggle("npdev-shell-sidebar-collapsed", collapsed);
       writeJsonStorage(localStorage, SIDEBAR_COLLAPSED_KEY, collapsed);
     });
     bar.appendChild(sidebarToggle);
+    el.sidebarToggle = sidebarToggle;
 
     var logo = document.createElement("span");
     logo.className = "npdev-shell-logo";
@@ -182,6 +305,27 @@
     breadcrumb.className = "npdev-shell-breadcrumb";
     bar.appendChild(breadcrumb);
     el.breadcrumb = breadcrumb;
+
+    // R7.7: recent-executions rail toggle. Stays display:none (see injectExecutionsRailStyle)
+    // until the first tracked execution arrives, so an app with no async invocations shows nothing
+    // new here at all.
+    var executionsToggle = document.createElement("button");
+    executionsToggle.className = "npdev-shell-executions-toggle";
+    executionsToggle.type = "button";
+    executionsToggle.title = "Recent flow executions";
+    executionsToggle.textContent = "⏱";
+    executionsToggle.addEventListener("click", function () {
+      el.executionsPanel.classList.toggle("npdev-shell-executions-panel-open");
+    });
+    bar.appendChild(executionsToggle);
+    el.executionsToggle = executionsToggle;
+
+    var executionsPanel = document.createElement("div");
+    executionsPanel.className = "npdev-shell-executions-panel";
+    executionsPanel.setAttribute("role", "region");
+    executionsPanel.setAttribute("aria-label", "Recent flow executions");
+    bar.appendChild(executionsPanel);
+    el.executionsPanel = executionsPanel;
 
     var identity = document.createElement("span");
     identity.className = "npdev-shell-identity";
@@ -213,9 +357,18 @@
     var rightbar = document.createElement("div");
     rightbar.className = "npdev-shell-rightbar";
 
+    // R7.10: the drawer's dismiss surface -- covers the content column at MOBILE_BREAKPOINT_PX and
+    // below (see injectResponsiveShellStyle's .npdev-shell-sidebar-backdrop rule), hidden otherwise.
+    // Lives in the DOM unconditionally (cheap, inert when hidden) rather than being created/destroyed
+    // on every viewport crossing.
+    var sidebarBackdrop = document.createElement("div");
+    sidebarBackdrop.className = "npdev-shell-sidebar-backdrop";
+    sidebarBackdrop.addEventListener("click", closeMobileSidebar);
+
     var bodyRow = document.createElement("div");
     bodyRow.className = "npdev-shell-body";
     bodyRow.appendChild(sidebar);
+    bodyRow.appendChild(sidebarBackdrop);
     bodyRow.appendChild(content);
     bodyRow.appendChild(rightbar);
 
@@ -224,6 +377,7 @@
     document.body.classList.add("npdev-shell-active");
 
     el.sidebar = sidebar;
+    el.sidebarBackdrop = sidebarBackdrop;
     el.rightbar = rightbar;
     el.content = content;
 
@@ -233,6 +387,21 @@
     if (readJsonStorage(localStorage, RIGHTBAR_COLLAPSED_KEY, false)) {
       document.body.classList.add("npdev-shell-rightbar-collapsed");
     }
+
+    // R7.10: dismiss the drawer on Escape (a standard dialog/drawer convention) and drop it
+    // whenever a resize/rotation crosses back above the breakpoint -- without this a drawer left
+    // open on a phone, then the same page resized wide (devtools, foldable, external monitor),
+    // would keep the off-canvas transform applied under styles no longer meant for it.
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
+        closeMobileSidebar();
+      }
+    });
+    window.addEventListener("resize", function () {
+      if (!isMobileViewport() && document.body.classList.contains("npdev-shell-sidebar-mobile-open")) {
+        closeMobileSidebar();
+      }
+    });
   }
 
   // --------------------------------------------------------------- identity ----
@@ -256,6 +425,101 @@
     } else {
       el.identity.textContent = "nao autenticado";
     }
+  }
+
+  // ------------------------------------------------------- executions rail ----
+
+  // R7.7: the async progress surface docs/UI_CONTRACT.md's own words call for -- "a UI that shows
+  // Saved! on a 202 is lying." A caller (business-ui-app.mustache's trackFlowExecution, today's
+  // only caller) hands this an executionId once it learns a flow-backed invocation returned
+  // WAITING/202 instead of an immediate result; this function owns polling the execution's own
+  // `execution.statusRoute` (the F2.1/F2.2 metadata-catalog field this item finally consumes -- see
+  // docs/UI_CONTRACT.md) until it reaches a terminal status, keeping the rail entry's badge current
+  // the whole time, and invoking the caller's onSettled callback exactly once when it does.
+  var EXECUTION_STATUS_ROUTE_TEMPLATE = "/api/v1/executions/{executionId}/links";
+  var EXECUTION_POLL_INTERVAL_MS = 2000;
+  // ~5 minutes at the interval above -- long enough for a real awaitEvent round trip (RUN-17's own
+  // live proof resumed within one resume-sweep tick), short enough that a genuinely abandoned poll
+  // does not run forever in a background tab.
+  var EXECUTION_POLL_MAX_ATTEMPTS = 150;
+
+  function executionOutcome(status) {
+    if (status === "COMPLETED") return "SUCCEEDED";
+    if (status === "FAILED" || status === "FAILED_PERMANENT" || status === "STUCK") return "FAILED";
+    return "PENDING";
+  }
+
+  function renderExecutionsRail() {
+    if (!el.executionsToggle || !el.executionsPanel) return;
+    var hasEntries = state.executions.length > 0;
+    el.executionsToggle.classList.toggle("npdev-shell-executions-toggle-visible", hasEntries);
+    var pendingCount = state.executions.filter(function (item) { return item.outcome === "PENDING"; }).length;
+    el.executionsToggle.textContent = pendingCount ? "⏱ " + pendingCount : "⏱";
+    el.executionsPanel.innerHTML = "";
+    state.executions.forEach(function (item) {
+      var row = document.createElement("div");
+      row.className = "npdev-shell-execution-row npdev-shell-execution-" + item.outcome.toLowerCase();
+      var name = document.createElement("span");
+      name.className = "npdev-shell-execution-name";
+      name.textContent = item.flowName || item.executionId;
+      var status = document.createElement("span");
+      status.className = "npdev-shell-execution-status";
+      status.textContent = item.outcome === "PENDING" ? "pending"
+        : (item.outcome === "SUCCEEDED" ? "completed" : "failed");
+      row.appendChild(name);
+      row.appendChild(status);
+      el.executionsPanel.appendChild(row);
+    });
+  }
+
+  function upsertExecutionRailEntry(executionId, flowName, outcome) {
+    for (var i = 0; i < state.executions.length; i++) {
+      if (state.executions[i].executionId === executionId) {
+        state.executions[i].outcome = outcome;
+        renderExecutionsRail();
+        return;
+      }
+    }
+    state.executions.unshift({ executionId: executionId, flowName: flowName, outcome: outcome });
+    // A recency rail, not an audit log -- the durable record is ExecutionMonitorController's own
+    // /active and /history routes. Capped so a long session doesn't grow this list unbounded.
+    if (state.executions.length > 20) { state.executions.length = 20; }
+    renderExecutionsRail();
+  }
+
+  function pollExecution(descriptor, attempt) {
+    var route = EXECUTION_STATUS_ROUTE_TEMPLATE.replace("{executionId}", encodeURIComponent(descriptor.executionId));
+    fetchJson(route, state.token).then(function (detail) {
+      var status = (detail && detail.executionStatus) || "";
+      var outcome = executionOutcome(status);
+      upsertExecutionRailEntry(descriptor.executionId, descriptor.flowName, outcome);
+      if (outcome !== "PENDING") {
+        if (descriptor.onSettled) descriptor.onSettled(outcome, detail);
+        return;
+      }
+      if (attempt < EXECUTION_POLL_MAX_ATTEMPTS) {
+        setTimeout(function () { pollExecution(descriptor, attempt + 1); }, EXECUTION_POLL_INTERVAL_MS);
+      } else {
+        upsertExecutionRailEntry(descriptor.executionId, descriptor.flowName, "FAILED");
+        if (descriptor.onSettled) descriptor.onSettled("FAILED", detail);
+      }
+    }).catch(function () {
+      // A transient fetch error (network blip, a brief 401 while a token refreshes) should not
+      // abandon tracking -- retry on the same schedule, up to the same cap, rather than reporting a
+      // false failure for what may still resolve.
+      if (attempt < EXECUTION_POLL_MAX_ATTEMPTS) {
+        setTimeout(function () { pollExecution(descriptor, attempt + 1); }, EXECUTION_POLL_INTERVAL_MS);
+      }
+    });
+  }
+
+  // Public entry point (window.NPDevShell.trackExecution below). descriptor: { executionId,
+  // flowName, onSettled(outcome, detail) } -- onSettled is optional; the rail entry itself is
+  // useful with no callback at all.
+  function trackExecution(descriptor) {
+    if (!descriptor || !descriptor.executionId) return;
+    upsertExecutionRailEntry(descriptor.executionId, descriptor.flowName, "PENDING");
+    pollExecution(descriptor, 0);
   }
 
   // ------------------------------------------------------------------ nav ----
@@ -310,6 +574,10 @@
       // qualify it with the SPA's own root so the recent-items gadget stays a valid link from any
       // page (a hand-authored page has no element with that hash id at all).
       recordRecentItem(label, isHash && state.hostMode ? BUSINESS_UI_ROOT + href : href);
+      // R7.10: a same-page hash switch on the drawer layout would otherwise leave the drawer
+      // covering the very content it just navigated to -- a real navigation unloads the page
+      // anyway, so this is a no-op there.
+      if (isMobileViewport()) closeMobileSidebar();
     });
     container.appendChild(a);
     return a;
@@ -529,6 +797,91 @@
     return value.toLocaleString ? value.toLocaleString() : String(value);
   }
 
+  // R7.5 (Roadmap R7.5): every gadget was a dead end -- clicking a KPI/bar/line/table datum did
+  // nothing. GeneratedQueryController.runAggregate now reports which concept an aggregate query
+  // reads from and each declared groupBy field (with its bucket, if any); these turn that into a
+  // click target landing on the SAME grid, pre-filtered to exactly the clicked slice -- through the
+  // EXISTING `where` DSL (field:eq:value, comma-joined) R7.3 already taught business-ui-app.mustache
+  // (buildWhereParam/columnFilters), carried over the EXISTING hash-based deep link
+  // (businessHref/sectionAnchor) via a `?where=` suffix on the fragment. No new filter format, no
+  // new endpoint -- this only produces a link the grid already knows how to consume. A bucketed
+  // groupBy field is excluded: the row holds the bucket label (e.g. a month name), not the raw
+  // stored value, so an eq filter against the raw field would silently match nothing.
+  function drillableKeys(result) {
+    return ((result && result.groupBy) || [])
+        .filter(function (g) { return g && g.field && !g.bucket; })
+        .map(function (g) { return g.field; });
+  }
+
+  function drilldownWhereParam(keys, row) {
+    var clauses = [];
+    (keys || []).forEach(function (key) {
+      var value = row ? row[key] : undefined;
+      if (value === undefined || value === null) return;
+      clauses.push(key + ":eq:" + value);
+    });
+    if (!clauses.length) return "";
+    var params = new URLSearchParams();
+    params.set("where", clauses.join(","));
+    return params.toString();
+  }
+
+  function drilldownHref(concept, keys, row) {
+    var whereParam = drilldownWhereParam(keys, row);
+    var base = businessHref(concept);
+    return whereParam ? base + "?" + whereParam : base;
+  }
+
+  // In host mode (gadget rail and grid are the same page -- see business-ui-app.mustache's
+  // NPDevShell.mount call), a hash change is enough: app.js's own hashchange listener does the rest.
+  // Elsewhere (a hand-authored page hosting a dashboard GuidePage) the same href is a real navigation
+  // to the generic business UI.
+  function navigateToDrilldown(concept, keys, row) {
+    var href = drilldownHref(concept, keys, row);
+    if (state.hostMode) {
+      if (window.location.hash === href) {
+        window.dispatchEvent(new Event("hashchange"));
+      } else {
+        window.location.hash = href;
+      }
+    } else {
+      window.location.href = href;
+    }
+  }
+
+  // role/aria-label make a clicked shape identifiable both to assistive tech and to a browser
+  // verification routine's selector (`[aria-label="..."]`) -- an SVG <rect>/<circle> has no visible
+  // text of its own to target otherwise. The <title> child is the native SVG hover tooltip.
+  function makeClickableSvg(node, label, onClick) {
+    node.style.cursor = "pointer";
+    node.setAttribute("role", "button");
+    node.setAttribute("aria-label", label);
+    node.addEventListener("click", onClick);
+    var titleEl = svgEl("title", {});
+    titleEl.textContent = label;
+    node.appendChild(titleEl);
+  }
+
+  // R7.9: the SAME treatment as makeClickableSvg, for the two drill-down targets that are plain
+  // HTML (a <div> KPI tile, a <table> row) rather than SVG -- both were click-only until now, so a
+  // keyboard-only user could reach every OTHER gadget's drill-down (the bar/line shapes already had
+  // makeClickableSvg) but not these two. tabIndex makes the element a real Tab stop; role="button" +
+  // Enter/Space keydown make it operable once reached, matching native <button> semantics.
+  function makeClickableElement(node, label, onClick) {
+    node.style.cursor = "pointer";
+    node.tabIndex = 0;
+    node.setAttribute("role", "button");
+    node.setAttribute("aria-label", label);
+    node.title = label;
+    node.addEventListener("click", onClick);
+    node.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onClick();
+      }
+    });
+  }
+
   function renderKpiGadget(container, gadget) {
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
@@ -538,6 +891,9 @@
       var big = document.createElement("div");
       big.className = "npdev-shell-gadget-kpi";
       big.textContent = formatNumber(total);
+      if (result && result.concept) {
+        makeClickableElement(big, "Ver " + result.concept, function () { navigateToDrilldown(result.concept, [], {}); });
+      }
       container.appendChild(big);
     }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
   }
@@ -559,6 +915,8 @@
       thead.appendChild(htr);
       table.appendChild(thead);
       var tbody = document.createElement("tbody");
+      var drillConcept = result && result.concept;
+      var drillKeys = drillableKeys(result);
       rows.forEach(function (row) {
         var tr = document.createElement("tr");
         columns.forEach(function (c) {
@@ -567,6 +925,9 @@
           td.textContent = typeof v === "number" ? formatNumber(v) : String(v == null ? "" : v);
           tr.appendChild(td);
         });
+        if (drillConcept) {
+          makeClickableElement(tr, "Ver " + drillConcept, function () { navigateToDrilldown(drillConcept, drillKeys, row); });
+        }
         tbody.appendChild(tr);
       });
       table.appendChild(tbody);
@@ -587,7 +948,7 @@
   // Grouped-bar / multi-line chart over the (already-aggregated) query rows: x names a groupBy
   // field (the category axis), y names an aggregates output (the value axis), series (optional)
   // names a second groupBy field that splits each category into multiple bars/lines.
-  function renderXyChart(container, rows, gadget, chartType) {
+  function renderXyChart(container, rows, gadget, chartType, result) {
     var xField = gadget.x, yField = gadget.y, seriesField = gadget.series;
     var categories = [], categorySeen = {};
     rows.forEach(function (row) {
@@ -600,11 +961,15 @@
       if (!seriesSeen[key]) { seriesSeen[key] = true; seriesValues.push(key); }
     });
     var valueByKey = {};
+    var rowByKey = {};
     rows.forEach(function (row) {
       var cKey = String(row[xField]);
       var sKey = seriesField ? String(row[seriesField]) : "_";
       valueByKey[cKey + "" + sKey] = numberOrZero(row[yField]);
+      rowByKey[cKey + "" + sKey] = row;
     });
+    var drillConcept = result && result.concept;
+    var drillKeys = drillableKeys(result);
 
     var width = 480, height = 220, padTop = 16, padRight = 12, padBottom = 30, padLeft = 46;
     var innerW = width - padLeft - padRight, innerH = height - padTop - padBottom;
@@ -646,7 +1011,13 @@
           var v = valueByKey[c + "" + s] || 0;
           var x = padLeft + catBand * (ci + 0.5);
           var y = padTop + innerH - (v / maxValue) * innerH;
-          svg.appendChild(svgEl("circle", { cx: x, cy: y, r: "2.5", fill: color }));
+          var point = svgEl("circle", { cx: x, cy: y, r: "2.5", fill: color });
+          if (drillConcept) {
+            makeClickableSvg(point, c + (seriesField ? " / " + s : ""), function () {
+              navigateToDrilldown(drillConcept, drillKeys, rowByKey[c + "" + s]);
+            });
+          }
+          svg.appendChild(point);
         });
       });
     } else {
@@ -658,10 +1029,16 @@
           var barH = (v / maxValue) * innerH;
           var x = padLeft + catBand * ci + (catBand - groupWidth) / 2 + si * barWidth;
           var y = padTop + innerH - barH;
-          svg.appendChild(svgEl("rect", {
+          var bar = svgEl("rect", {
             x: x, y: y, width: Math.max(1, barWidth - 2), height: Math.max(0, barH),
             fill: CHART_COLORS[si % CHART_COLORS.length]
-          }));
+          });
+          if (drillConcept) {
+            makeClickableSvg(bar, c + (seriesField ? " / " + s : ""), function () {
+              navigateToDrilldown(drillConcept, drillKeys, rowByKey[c + "" + s]);
+            });
+          }
+          svg.appendChild(bar);
         });
       });
     }
@@ -695,7 +1072,7 @@
     fetchGadgetQuery(gadget).then(function (result) {
       var rows = (result && result.rows) || [];
       if (!rows.length) { gadgetMessage(container, "Sem dados."); return; }
-      renderXyChart(container, rows, gadget, chartType);
+      renderXyChart(container, rows, gadget, chartType, result);
     }).catch(function (err) { gadgetMessage(container, "Erro: " + err.message); });
   }
 
@@ -851,6 +1228,11 @@
     renderSidebar();
     applyGuidePage(manifest, currentGuidePageName());
     recordRecentItem(document.title, window.location.pathname);
+    // R3.9: the routine recorder never even builds its UI for a visitor who is not both the app's
+    // superUserRole AND explicitly opted in -- see the routine-recorder section below.
+    if (state.isSuperUser && recorderOptedIn()) {
+      maybeInitRecorderUi();
+    }
   }
 
   function init() {
@@ -884,6 +1266,504 @@
     if (state.hostMode) refreshActiveLinks();
   });
 
+  // ------------------------------------------------------ routine recorder ----
+  //
+  // R3.9: a tester drives the app by hand and gets a runnable ScrapForAI routine out, instead of
+  // hand-writing one. Emits EXACTLY the file shape every hand-authored routine under a
+  // browser-routines/ directory already uses (`targetPath` + `steps[]` of {action, selector, ...}),
+  // the same shape `schemas/ai/scrapforai-routine.schema.json` pins and
+  // `check-routine-corpus-conformance.py` enforces -- so a downloaded recording needs no hand-editing
+  // to run through `npdev explore`.
+  //
+  // OPT-IN, not a default surface: nothing below this comment builds any UI or attaches any listener
+  // unless BOTH (1) the visitor resolves as the app's own superUserRole (state.isSuperUser, computed
+  // in applyData from the manifest -- the same authority bar the ControlPanel uses) AND (2) the
+  // visitor explicitly opted in, either by loading a URL with a `npdevRecord` query parameter once, or
+  // by having done so earlier in this browser (persisted to localStorage so the toggle survives normal
+  // navigation for the rest of a recording session). An ordinary user never sees a recorder: nobody
+  // types `?npdevRecord=1` by accident, and the gate is re-checked from applyData() -- which only runs
+  // after identity resolves -- so a pre-auth or non-superuser visit never builds recorder UI or
+  // attaches recorder listeners at all.
+  var RECORDER_ENABLED_KEY = "npdev.shell.recorderEnabled";
+  var RECORDER_SESSION_KEY = "npdev.shell.recorderSession";
+  var RECORDER_MAX_STEPS = 50; // matches schemas/ai/scrapforai-routine.schema.json's steps maxItems
+  var recorder; // { active, steps, assertArmed, targetPath, lastPath, scenarioName } -- see recorderDefaultState()
+  var recorderUiBuilt = false;
+  var recorderLastClickWasSubmit = false;
+
+  function recorderQueryFlagPresent() {
+    return /(?:^|[?&])npdevRecord(?:=|&|$)/.test(window.location.search);
+  }
+
+  function recorderOptedIn() {
+    if (recorderQueryFlagPresent()) {
+      writeJsonStorage(localStorage, RECORDER_ENABLED_KEY, true);
+      return true;
+    }
+    return Boolean(readJsonStorage(localStorage, RECORDER_ENABLED_KEY, false));
+  }
+
+  function recorderDefaultState() {
+    return { active: false, steps: [], assertArmed: false, targetPath: null, lastPath: null, scenarioName: "" };
+  }
+
+  function recorderLoadState() {
+    return readJsonStorage(sessionStorage, RECORDER_SESSION_KEY, null) || recorderDefaultState();
+  }
+
+  function recorderSaveState() {
+    if (recorder) writeJsonStorage(sessionStorage, RECORDER_SESSION_KEY, recorder);
+  }
+
+  // A real page navigation happened (as opposed to the SPA's own hash routing, which never touches
+  // pathname/search) since the last step was recorded -- e.g. the apiKey auth preamble's own
+  // `reload`, or a jwt-mode login redirect. Runs unconditionally at script load (cheap: one
+  // sessionStorage read, no-op unless a recording was already active), so a full navigation mid
+  // recording is captured as a `goto` step exactly like a hand-authored login routine's own preamble
+  // (see NPDevCli/npdev_explore.py's `_auth_preamble`), rather than silently losing the step.
+  function recorderPrimeNavigation() {
+    var rec = readJsonStorage(sessionStorage, RECORDER_SESSION_KEY, null);
+    if (!rec || !rec.active) return;
+    var path = window.location.pathname + window.location.search;
+    if (rec.lastPath !== path && rec.steps.length < RECORDER_MAX_STEPS) {
+      rec.steps.push(rec.lastPath
+        ? { action: "goto", url: window.location.origin + path, label: "Navigate to " + path }
+        : { action: "goto", url: "$targetUrl", label: "Open the app" });
+      if (!rec.targetPath) rec.targetPath = window.location.pathname;
+    }
+    rec.lastPath = path;
+    recorder = rec;
+    writeJsonStorage(sessionStorage, RECORDER_SESSION_KEY, rec);
+  }
+
+  function recorderCssEscape(value) {
+    return String(value).replace(/["\\]/g, "\\$&");
+  }
+
+  function recorderShortText(el) {
+    var text = (el && el.textContent || "").replace(/\s+/g, " ").trim();
+    if (!text || text.length > 60) return null;
+    return text;
+  }
+
+  function recorderNearestStableAncestor(el) {
+    var node = el ? el.parentElement : null;
+    while (node && node !== document.body) {
+      if (node.id) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function recorderStructuralPath(el, stopAt) {
+    var parts = [];
+    var node = el;
+    while (node && node !== document.body && node !== stopAt && node.parentElement) {
+      var siblings = Array.prototype.filter.call(node.parentElement.children, function (sib) {
+        return sib.tagName === node.tagName;
+      });
+      parts.unshift(node.tagName.toLowerCase() + ":nth-of-type(" + (siblings.indexOf(node) + 1) + ")");
+      node = node.parentElement;
+    }
+    return parts.join(" > ");
+  }
+
+  // Prefers the stable hooks the generated templates already emit and every hand-authored routine
+  // already relies on (see NPDevSamples/**/browser-routines/*.json): a stable `id` (panel containers
+  // are `#concept-<Name>`, the shell's own `#sideNav`/`#apiKey`), a form control's `name` attribute
+  // (business-ui-app.mustache always sets `input.name = field.name`), or a column filter's
+  // `data-field`/`data-prop` attribute (buildColumnFilterControl/renderTable). Falls back to
+  // `tag:has-text("...")` for buttons/links/labels -- the same fallback convention the hand-authored
+  // corpus already uses throughout (e.g. `button:has-text("Save")`) -- and only as a last resort to a
+  // positional nth-of-type chain, which is flagged `unstable` so the recorded step's own label warns a
+  // tester to double check it survives the next regeneration rather than silently trusting it.
+  function recorderBuildSelector(el) {
+    if (!el || !el.tagName) return { selector: "body", unstable: true };
+    if (el.id) return { selector: "#" + el.id, unstable: false };
+
+    var ancestor = recorderNearestStableAncestor(el);
+    var prefix = ancestor ? "#" + ancestor.id + " " : "";
+
+    if (el.getAttribute) {
+      var name = el.getAttribute("name");
+      if (name) return { selector: prefix + "[name=\"" + recorderCssEscape(name) + "\"]", unstable: false };
+      var dataField = el.getAttribute("data-field");
+      if (dataField) return { selector: prefix + "[data-field=\"" + recorderCssEscape(dataField) + "\"]", unstable: false };
+      var dataProp = el.getAttribute("data-prop");
+      if (dataProp) return { selector: prefix + "[data-prop=\"" + recorderCssEscape(dataProp) + "\"]", unstable: false };
+    }
+
+    var tag = el.tagName.toLowerCase();
+    var text = recorderShortText(el);
+    if (text && (tag === "button" || tag === "a" || tag === "label" || el.getAttribute("role") === "button")) {
+      return { selector: prefix + tag + ":has-text(\"" + recorderCssEscape(text) + "\")", unstable: false };
+    }
+
+    return { selector: prefix + recorderStructuralPath(el, ancestor), unstable: true };
+  }
+
+  function recorderStepLabel(prefix, info) {
+    return prefix + (info && info.unstable ? " (selector may be unstable across regeneration -- verify by hand)" : "");
+  }
+
+  function recorderElementIsRecorderUi(el) {
+    while (el) {
+      if (el.getAttribute && el.getAttribute("data-npdev-recorder-ui") === "true") return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
+
+  function recorderCommit(step) {
+    if (!recorder || !recorder.active) return;
+    if (recorder.steps.length >= RECORDER_MAX_STEPS) {
+      recorderSetStatus("Step limit reached (" + RECORDER_MAX_STEPS + " -- the engine's own per-routine max). Download this routine and start a new one to continue.");
+      return;
+    }
+    recorder.steps.push(step);
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  // Captures user-visible intent, not raw event noise: a click on a text/textarea/select is skipped
+  // here (the `change` handler below records the resulting `fill`/`selectOption` once, on blur/commit,
+  // not on every keystroke), and a click that lands inside a button/link/label/table row walks up to
+  // that element so an icon-inside-a-button records the button.
+  function recorderOnClick(event) {
+    if (!recorder || !recorder.active) return;
+    var el = event.target;
+    if (recorderElementIsRecorderUi(el)) return;
+    var rawTag = el.tagName ? el.tagName.toLowerCase() : "";
+    if (rawTag === "input" || rawTag === "textarea" || rawTag === "select") return;
+    var target = el.closest ? el.closest("button, a, [role=\"button\"], label, tr, td, th") : el;
+    if (!target) target = el;
+    if (recorderElementIsRecorderUi(target)) return;
+
+    recorderLastClickWasSubmit = false;
+    var tag = target.tagName ? target.tagName.toLowerCase() : "";
+    if (tag === "button" && (target.getAttribute("type") || "").toLowerCase() === "submit") {
+      recorderLastClickWasSubmit = true;
+    }
+
+    if (recorder.assertArmed) {
+      recorder.assertArmed = false;
+      var assertInfo = recorderBuildSelector(target);
+      var assertText = recorderShortText(target);
+      recorderCommit(assertText
+        ? { action: "assertTextContains", selector: assertInfo.selector, text: assertText, label: recorderStepLabel("Assert text", assertInfo) }
+        : { action: "assertVisible", selector: assertInfo.selector, label: recorderStepLabel("Assert visible", assertInfo) });
+      return;
+    }
+
+    var info = recorderBuildSelector(target);
+    var clickText = recorderShortText(target);
+    recorderCommit({ action: "click", selector: info.selector, label: recorderStepLabel(clickText ? "Click \"" + clickText + "\"" : "Click", info) });
+  }
+
+  // `change` (not `input`) so a `fill` step captures the FINAL value once a field is committed,
+  // never one step per keystroke.
+  function recorderOnChange(event) {
+    if (!recorder || !recorder.active) return;
+    var el = event.target;
+    if (recorderElementIsRecorderUi(el)) return;
+    var tag = el.tagName ? el.tagName.toLowerCase() : "";
+    var type = (el.type || "").toLowerCase();
+    var info = recorderBuildSelector(el);
+
+    if (tag === "select") {
+      recorderCommit({ action: "selectOption", selector: info.selector, value: el.value, label: recorderStepLabel("Select", info) });
+      return;
+    }
+    if (type === "checkbox") {
+      recorderCommit({ action: el.checked ? "check" : "uncheck", selector: info.selector, label: recorderStepLabel(el.checked ? "Check" : "Uncheck", info) });
+      return;
+    }
+    if (type === "radio") {
+      recorderCommit({ action: "check", selector: info.selector, label: recorderStepLabel("Select", info) });
+      return;
+    }
+    if (tag === "input" || tag === "textarea") {
+      if (type === "password") {
+        // The typed secret is never written into the downloaded routine literally -- `valueFromCredential`
+        // matches every hand-authored login routine (NPDevCli/npdev_explore.py's `_auth_preamble`), and an
+        // operator supplies the real value at `npdev explore run --cred` time.
+        recorderCommit({ action: "fill", selector: info.selector, valueFromCredential: el.name || "password", label: recorderStepLabel("Fill (from credential -- not recorded literally)", info) });
+        return;
+      }
+      recorderCommit({ action: "fill", selector: info.selector, value: el.value, label: recorderStepLabel("Fill", info) });
+    }
+  }
+
+  // A submit-type button's own click already recorded a `click` step (recorderOnClick, which also set
+  // recorderLastClickWasSubmit); this only fires for the case that click handler cannot see -- pressing
+  // Enter inside a form field, which the browser turns straight into a `submit` event with no `click` at all.
+  function recorderOnSubmit(event) {
+    if (!recorder || !recorder.active) return;
+    if (recorderLastClickWasSubmit) { recorderLastClickWasSubmit = false; return; }
+    var form = event.target;
+    if (recorderElementIsRecorderUi(form)) return;
+    var submitBtn = form.querySelector ? form.querySelector("button[type=\"submit\"]") : null;
+    if (!submitBtn) return;
+    var info = recorderBuildSelector(submitBtn);
+    var text = recorderShortText(submitBtn);
+    recorderCommit({ action: "click", selector: info.selector, label: recorderStepLabel(text ? "Submit \"" + text + "\" (Enter key)" : "Submit form (Enter key)", info) });
+  }
+
+  function recorderStart() {
+    recorder = recorderDefaultState();
+    recorder.active = true;
+    recorder.targetPath = window.location.pathname;
+    recorder.lastPath = window.location.pathname + window.location.search;
+    recorder.steps.push({ action: "goto", url: "$targetUrl", label: "Open the app" });
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  function recorderStop() {
+    if (recorder) { recorder.active = false; recorderSaveState(); }
+    recorderRefreshUi();
+  }
+
+  function recorderClear() {
+    recorder = recorderDefaultState();
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  function recorderUndo() {
+    if (recorder && recorder.steps.length) {
+      recorder.steps.pop();
+      recorderSaveState();
+      recorderRefreshUi();
+    }
+  }
+
+  function recorderToggleAssertArm() {
+    if (!recorder || !recorder.active) return;
+    recorder.assertArmed = !recorder.assertArmed;
+    recorderSaveState();
+    recorderRefreshUi();
+  }
+
+  function recorderAddScreenshot() {
+    if (!recorder || !recorder.active) return;
+    recorderCommit({ action: "screenshot", name: "shot_" + (recorder.steps.length + 1), label: "Screenshot" });
+  }
+
+  // Composes exactly the file shape every browser-routines/ corpus entry uses -- `targetPath` (not
+  // `targetUrl`; `npdev_explore.compose_engine_request` derives targetUrl from it at run time, R10) plus
+  // `steps[]`. Never embeds a wall-clock timestamp into the document itself, so two recordings of the
+  // identical click-path produce byte-identical JSON.
+  function recorderComposeDocument() {
+    return {
+      scenarioName: (recorder.scenarioName || "").trim() || "recorded-routine",
+      targetPath: recorder.targetPath || window.location.pathname,
+      options: { headless: true, screenshots: "onFailure", collectDomOnFailure: true },
+      steps: recorder.steps
+    };
+  }
+
+  function recorderDownload() {
+    if (!recorder || !recorder.steps.length) return;
+    var doc = recorderComposeDocument();
+    var blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = doc.scenarioName.replace(/[^a-zA-Z0-9_-]+/g, "-") + ".json";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function recorderCopy() {
+    if (!recorder || !recorder.steps.length || !navigator.clipboard) return;
+    navigator.clipboard.writeText(JSON.stringify(recorderComposeDocument(), null, 2)).then(function () {
+      recorderSetStatus("Copied " + recorder.steps.length + " step(s) to the clipboard.");
+    }, function () {
+      recorderSetStatus("Copy failed -- clipboard access was denied by the browser.");
+    });
+  }
+
+  var recorderStatusOverride = null;
+  function recorderSetStatus(text) {
+    recorderStatusOverride = text;
+    recorderRefreshUi();
+  }
+
+  function recorderInjectStyle() {
+    if (document.querySelector("style[data-npdev-recorder-style]")) return;
+    var style = document.createElement("style");
+    style.setAttribute("data-npdev-recorder-style", "true");
+    style.textContent =
+      "#npdevRecorderPanel{position:fixed;right:14px;bottom:14px;z-index:80;width:min(320px,calc(100vw - 28px));" +
+      "background:var(--np-surface,#fff);border:1px solid var(--np-border,#d8dee7);border-radius:10px;" +
+      "box-shadow:0 12px 32px rgba(24,32,42,.25);font-size:12px;color:var(--np-text,#1c2333);}" +
+      "#npdevRecorderPanel .npdev-rec-head{display:flex;align-items:center;justify-content:space-between;" +
+      "padding:8px 10px;font-weight:600;border-bottom:1px solid var(--np-border,#eef1f5);cursor:pointer;}" +
+      "#npdevRecorderPanel .npdev-rec-dot{display:inline-block;width:8px;height:8px;border-radius:50%;" +
+      "background:#9aa4b2;margin-right:6px;}" +
+      "#npdevRecorderPanel.npdev-rec-active .npdev-rec-dot{background:#c0392b;}" +
+      "#npdevRecorderPanel .npdev-rec-body{padding:8px 10px;display:flex;flex-direction:column;gap:6px;}" +
+      "#npdevRecorderPanel.npdev-rec-collapsed .npdev-rec-body{display:none;}" +
+      "#npdevRecorderPanel .npdev-rec-row{display:flex;gap:6px;flex-wrap:wrap;}" +
+      "#npdevRecorderPanel button{padding:4px 8px;border:1px solid var(--np-border,#d8dee7);border-radius:6px;" +
+      "background:var(--np-surface-alt,#f4f6f9);color:var(--np-text,#1c2333);cursor:pointer;font-size:12px;}" +
+      "#npdevRecorderPanel button:disabled{opacity:.5;cursor:default;}" +
+      "#npdevRecorderPanel button.npdev-rec-primary{background:#c0392b;color:#fff;border-color:#c0392b;}" +
+      "#npdevRecorderPanel button.npdev-rec-armed{background:#8a5c00;color:#fff;border-color:#8a5c00;}" +
+      "#npdevRecorderPanel input[type=text]{width:100%;box-sizing:border-box;padding:4px 6px;" +
+      "border:1px solid var(--np-border,#d8dee7);border-radius:6px;background:var(--np-surface,#fff);" +
+      "color:var(--np-text,#1c2333);}" +
+      "#npdevRecorderPanel .npdev-rec-steps{max-height:120px;overflow-y:auto;border:1px solid var(--np-border,#eef1f5);" +
+      "border-radius:6px;padding:4px 6px;}" +
+      "#npdevRecorderPanel .npdev-rec-steps div{padding:2px 0;overflow-wrap:anywhere;}" +
+      "#npdevRecorderPanel .npdev-rec-status{color:var(--np-text-muted,#5b6472);}";
+    document.head.appendChild(style);
+  }
+
+  function recorderBuildUi() {
+    recorderInjectStyle();
+    var panel = document.createElement("div");
+    panel.id = "npdevRecorderPanel";
+    panel.setAttribute("data-npdev-recorder-ui", "true");
+
+    var head = document.createElement("div");
+    head.className = "npdev-rec-head";
+    var dot = document.createElement("span");
+    dot.className = "npdev-rec-dot";
+    head.appendChild(dot);
+    var title = document.createElement("span");
+    title.textContent = "Routine recorder";
+    title.style.flex = "1";
+    title.style.marginLeft = "4px";
+    head.appendChild(title);
+    var collapseHint = document.createElement("span");
+    collapseHint.textContent = "▾";
+    head.appendChild(collapseHint);
+    head.addEventListener("click", function () {
+      panel.classList.toggle("npdev-rec-collapsed");
+    });
+    panel.appendChild(head);
+
+    var body = document.createElement("div");
+    body.className = "npdev-rec-body";
+
+    var nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.placeholder = "scenario name (optional)";
+    nameInput.addEventListener("input", function () {
+      if (recorder) { recorder.scenarioName = nameInput.value; recorderSaveState(); }
+    });
+    body.appendChild(nameInput);
+
+    var row1 = document.createElement("div");
+    row1.className = "npdev-rec-row";
+    var startStopBtn = document.createElement("button");
+    startStopBtn.type = "button";
+    startStopBtn.addEventListener("click", function () {
+      if (recorder && recorder.active) { recorderStop(); } else { recorderStart(); }
+    });
+    row1.appendChild(startStopBtn);
+    var assertBtn = document.createElement("button");
+    assertBtn.type = "button";
+    assertBtn.textContent = "Mark assertion";
+    assertBtn.title = "Arm: the next click records an assertion step instead of a click step.";
+    assertBtn.addEventListener("click", recorderToggleAssertArm);
+    row1.appendChild(assertBtn);
+    var shotBtn = document.createElement("button");
+    shotBtn.type = "button";
+    shotBtn.textContent = "Screenshot";
+    shotBtn.addEventListener("click", recorderAddScreenshot);
+    row1.appendChild(shotBtn);
+    body.appendChild(row1);
+
+    var row2 = document.createElement("div");
+    row2.className = "npdev-rec-row";
+    var undoBtn = document.createElement("button");
+    undoBtn.type = "button";
+    undoBtn.textContent = "Undo last";
+    undoBtn.addEventListener("click", recorderUndo);
+    row2.appendChild(undoBtn);
+    var clearBtn = document.createElement("button");
+    clearBtn.type = "button";
+    clearBtn.textContent = "Clear";
+    clearBtn.addEventListener("click", function () {
+      if (window.confirm("Discard all " + (recorder ? recorder.steps.length : 0) + " recorded step(s)?")) recorderClear();
+    });
+    row2.appendChild(clearBtn);
+    var copyBtn = document.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.textContent = "Copy JSON";
+    copyBtn.addEventListener("click", recorderCopy);
+    row2.appendChild(copyBtn);
+    var downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.textContent = "Download";
+    downloadBtn.addEventListener("click", recorderDownload);
+    row2.appendChild(downloadBtn);
+    body.appendChild(row2);
+
+    var steps = document.createElement("div");
+    steps.className = "npdev-rec-steps";
+    body.appendChild(steps);
+
+    var status = document.createElement("div");
+    status.className = "npdev-rec-status";
+    body.appendChild(status);
+
+    panel.appendChild(body);
+    document.body.appendChild(panel);
+
+    el.recorderPanel = panel;
+    el.recorderNameInput = nameInput;
+    el.recorderStartStopBtn = startStopBtn;
+    el.recorderAssertBtn = assertBtn;
+    el.recorderUndoBtn = undoBtn;
+    el.recorderDownloadBtn = downloadBtn;
+    el.recorderCopyBtn = copyBtn;
+    el.recorderSteps = steps;
+    el.recorderStatus = status;
+  }
+
+  function recorderRefreshUi() {
+    if (!recorderUiBuilt || !recorder) return;
+    el.recorderPanel.classList.toggle("npdev-rec-active", Boolean(recorder.active));
+    el.recorderStartStopBtn.textContent = recorder.active ? "Stop" : "Start";
+    el.recorderStartStopBtn.className = recorder.active ? "npdev-rec-primary" : "";
+    el.recorderAssertBtn.className = recorder.assertArmed ? "npdev-rec-armed" : "";
+    el.recorderAssertBtn.textContent = recorder.assertArmed ? "Assertion armed..." : "Mark assertion";
+    el.recorderUndoBtn.disabled = !recorder.steps.length;
+    el.recorderDownloadBtn.disabled = !recorder.steps.length;
+    el.recorderCopyBtn.disabled = !recorder.steps.length;
+    if (recorder.scenarioName && el.recorderNameInput.value !== recorder.scenarioName) {
+      el.recorderNameInput.value = recorder.scenarioName;
+    }
+    el.recorderSteps.innerHTML = "";
+    recorder.steps.forEach(function (step, index) {
+      var row = document.createElement("div");
+      row.textContent = (index + 1) + ". " + (step.label || step.action);
+      el.recorderSteps.appendChild(row);
+    });
+    el.recorderStatus.textContent = recorderStatusOverride ||
+      (recorder.steps.length + "/" + RECORDER_MAX_STEPS + " step(s) recorded" + (recorder.active ? "" : " (stopped)"));
+    recorderStatusOverride = null;
+  }
+
+  function maybeInitRecorderUi() {
+    recorder = recorder || recorderLoadState();
+    if (recorderUiBuilt) { recorderRefreshUi(); return; }
+    recorderUiBuilt = true;
+    recorderBuildUi();
+    document.addEventListener("click", recorderOnClick, true);
+    document.addEventListener("change", recorderOnChange, true);
+    document.addEventListener("submit", recorderOnSubmit, true);
+    recorderRefreshUi();
+  }
+
+  recorderPrimeNavigation();
+
   // Public API surface. `mount` puts the shell in SPA host mode: the generic business UI supplies
   // a `deriveNativeGroups` callback (business concepts + declared Panels, which have no natural
   // home in the System/NPDev sections) and the shell renders/manages the WHOLE chrome exactly as
@@ -897,11 +1777,27 @@
       if (el.breadcrumb) {
         el.breadcrumb.textContent = contextState.title ? "/ " + contextState.title : "";
       }
-      if (state.manifest) applyGuidePage(state.manifest, currentGuidePageName());
+      // R7.5 fix: re-apply whichever GuidePage is CURRENTLY active (document.body.dataset
+      // .guidePage) -- so a context refresh (e.g. new context-info rows) re-renders that page's
+      // own gadgets -- rather than unconditionally recomputing the name from the static
+      // <meta name="npdev-guide-page"> tag. That tag only ever expresses a hand-authored page's
+      // OWN fixed page-level choice; in host mode (business-ui-app.mustache) no such tag exists,
+      // so this always fell through to manifest.defaultGuidePage ("Default") -- silently undoing
+      // applyActiveGuidePage's own explicit `applyGuidePage(concept.guidePage)` call one line
+      // above this one, on EVERY render. Confirmed live: a concept's own GuidePage (distinct
+      // gadgets/regions/theme from Default) never took effect, because this line reset it back
+      // in the same call before the next paint. Falls back to the meta tag only when no page is
+      // active yet, which is exactly the hand-authored-page case the fallback exists for.
+      if (state.manifest) {
+        applyGuidePage(state.manifest, document.body.dataset.guidePage || currentGuidePageName());
+      }
     },
     applyGuidePage: function (name) {
       if (state.manifest) applyGuidePage(state.manifest, name);
     },
+    // R7.7: registers a flow-backed invocation that returned WAITING/202 for polling; see
+    // trackExecution() above for the descriptor shape.
+    trackExecution: trackExecution,
     mount: function (options) {
       state.hostMode = true;
       state.deriveNativeGroups = options && options.deriveNativeGroups;

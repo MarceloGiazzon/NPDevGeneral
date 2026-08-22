@@ -3,13 +3,8 @@ package com.finalexec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.generated.entities.InsuranceClaim;
-import com.npdev.generated.repositories.AppointmentRepository;
-import com.npdev.generated.repositories.InsuranceClaimRepository;
-import com.npdev.generated.repositories.PatientRepository;
-import com.npdev.generated.repositories.ProviderRepository;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptGateways;
-import com.npdev.kernel.ports.PermissionEvaluator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,12 +39,6 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
         ConceptGateway relaxedConceptGateway() {
             return ConceptGateways.inMemory();
         }
-
-        @Bean
-        @Primary
-        PermissionEvaluator relaxedPermissionEvaluator() {
-            return PermissionEvaluator.allowAll();
-        }
     }
 
     @Autowired
@@ -58,24 +47,9 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private InsuranceClaimRepository insuranceClaimRepository;
-
-    @Autowired
-    private AppointmentRepository appointmentRepository;
-
-    @Autowired
-    private PatientRepository patientRepository;
-
-    @Autowired
-    private ProviderRepository providerRepository;
-
     @BeforeEach
     void cleanDb() {
-        insuranceClaimRepository.deleteAll();
-        appointmentRepository.deleteAll();
-        patientRepository.deleteAll();
-        providerRepository.deleteAll();
+        deleteAllConceptRows("InsuranceClaim", "Appointment", "Patient", "Provider");
     }
 
     @Test
@@ -278,7 +252,8 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
 
     private InsuranceClaim awaitClaimForAppointment(UUID appointmentId) throws Exception {
         for (int attempt = 0; attempt < 20; attempt++) {
-            List<InsuranceClaim> claims = insuranceClaimRepository.findAll().stream()
+            List<InsuranceClaim> claims = conceptRows("InsuranceClaim").stream()
+                    .map(row -> conceptEntity(row, InsuranceClaim.class))
                     .filter(claim -> appointmentId.equals(claim.getAppointmentId()))
                     .toList();
             if (!claims.isEmpty()) {

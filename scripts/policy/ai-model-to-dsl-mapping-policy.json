@@ -101,7 +101,7 @@
     { "path": "procedures[].outputs[].enumRef", "classification": "mapped", "dslTarget": "procedure sidecar outputs[].enum reference metadata" },
     { "path": "procedures[].outputs[].enumValues", "classification": "mapped", "dslTarget": "procedure sidecar outputs[].enumValues" },
     { "path": "procedures[].outputs[].values", "classification": "mapped", "dslTarget": "procedure sidecar outputs[].enumValues compatibility alias" },
-    { "path": "procedures[].sideEffectType", "classification": "mapped", "dslTarget": "procedures[].auditPolicy and metadata.sideEffectType" },
+    { "path": "procedures[].sideEffectType", "classification": "mapped", "dslTarget": "procedures[].metadata.sideEffectType (procedures[].auditPolicy retired, R5.1)" },
     { "path": "procedures[].requiredRole", "classification": "mapped", "dslTarget": "procedures[].permissionRequirements" },
     { "path": "procedures[].tenantScoped", "classification": "mapped", "dslTarget": "procedures[].metadata.tenantScoped" },
     { "path": "procedures[].allowedEntities", "classification": "mapped", "dslTarget": "procedure sidecar allowedEntities and reference gate" },

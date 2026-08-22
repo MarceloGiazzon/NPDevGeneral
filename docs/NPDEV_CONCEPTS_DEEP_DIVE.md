@@ -559,11 +559,11 @@ Reading each one:
 
 ---
 
-## 8. Procedure (coda) — server-side logic that isn't its own public endpoint
+## 8. Procedure — server-side logic that isn't its own public endpoint
 
 ### What it is
 
-A Procedure ("coda") is a small script of steps, like a Flow, but it is **not** automatically
+A Procedure is a small script of steps, like a Flow, but it is **not** automatically
 exposed as `POST /api/flows/...`. Instead, it's meant to be called from a Panel action
 (`"binding": "procedure"`), or from another procedure. Reach for a procedure instead of a flow
 when the logic is a supporting operation for a screen — "read this list for the admin page",
@@ -579,8 +579,7 @@ other systems to call directly over REST.
   "locals": [ /* optional working variables, alias: "variables" */ ],
   "steps": [ /* REQUIRED, at least 1 */ ],
   "returns": { /* optional shape of the result */ },
-  "tracePolicy": "detailed",     // none | summary | detailed
-  "auditPolicy": "write"          // none | read | write
+  "tracePolicy": "detailed"     // none | summary | detailed
 }
 ```
 
@@ -591,8 +590,10 @@ around data access): `assign`, `mapValue`, `condition`/`if`, `loop`/`forEach`, `
 `eventPublish`/`publishEvent`, `return`.
 
 `tracePolicy` controls how much execution detail gets recorded (useful while you're building
-and debugging); `auditPolicy` controls whether reads/writes get logged to the audit trail —
-set `"write"` for anything that changes data you'll need to account for later.
+and debugging). Audit logging is NOT a per-procedure setting — every concept create, update,
+delete and restore reached through the governed path (`saveConcept`/`deleteConcept` steps
+included) is logged automatically, with a before/after field diff, no matter what the
+procedure declares.
 
 ### Real examples (from `invoice-bonds-demo`) — a read procedure and a write procedure
 
@@ -607,8 +608,7 @@ A **read-oriented** procedure, running a governed query:
       "target": "activeUsers", "trace": true },
     { "name": "return-active-users", "type": "return", "value": "$activeUsers", "trace": true }
   ],
-  "tracePolicy": "detailed",
-  "auditPolicy": "read"
+  "tracePolicy": "detailed"
 }
 ```
 
@@ -625,8 +625,7 @@ isolation, audit — the same enforcement a business CRUD write gets):
       "data": { "input": "$input" }, "target": "savedUser", "trace": true, "audit": true },
     { "name": "return-saved-user", "type": "return", "value": "$savedUser", "trace": true }
   ],
-  "tracePolicy": "detailed",
-  "auditPolicy": "write"
+  "tracePolicy": "detailed"
 }
 ```
 
@@ -638,13 +637,45 @@ just a button that runs this logic.
 
 - A procedure has no REST route of its own — if you need something callable directly by an
   external client, use a Flow instead.
-- `trace`/`audit` can be set per-step (as shown above) in addition to the procedure-level
-  `tracePolicy`/`auditPolicy` — the per-step flags are for singling out the operations that
-  matter most inside an otherwise ordinary procedure.
+- `trace` can be set per-step (as shown above) in addition to the procedure-level
+  `tracePolicy` — the per-step flag is for singling out the operations that matter most inside
+  an otherwise ordinary procedure. The per-step `audit` flag shown on `save-user-through-gateway`
+  above is a leftover marker with no effect — audit logging is unconditional, not opt-in.
 
 ---
 
-## How the eight pieces fit together
+## 9. Pack, context, fragment — three ways to split a model, and which to reach for
+
+These three all take content out of one `model.json` and put it somewhere else, and until now
+nothing said how they differ. They are not interchangeable:
+
+| | `packs[]` | `contexts[]` | `fragments[]` |
+|---|---|---|---|
+| What it is | a distributable **Library** | an in-project **Module** | a file split |
+| Namespaced | yes (`pack::X`, or an `as` alias) | yes (`context::X`) | no — flat merge |
+| Versioned | semver + `npdev.lock` | no | no |
+| Can live elsewhere | yes (`git+https`, `oci`) | no | no |
+| Boundary enforcement | `requires` / `provides` | `imports[]`, acyclic, **compile error** | none |
+| Physical DB isolation | no | `physicallyIsolate` | no |
+
+**If you are organising ONE project, you want `contexts[]`.** It is the module mechanism, and
+the reason is the `imports[]` column: a context may only reference another context it has
+declared, the import graph must be acyclic, and a violation is a compile error rather than a
+convention. That is what makes a boundary a boundary. `physicallyIsolate` additionally puts a
+context's tables in their own physical database.
+
+**If you are shipping something for OTHER projects to install, you want `packs[]`.** A pack is
+versioned, resolvable from a remote coordinate, and declares what it `requires` and `provides`.
+
+**`fragments[]` is not a boundary at all** — it is a file split. Its content merges flat into
+the model with no namespace and no rules about who may reference what. Reach for it when one
+`model.json` has simply become inconvenient to scroll, not when you want separation.
+
+A pack or context contributes its members under a qualifier, and references *inside* the
+contribution are rewritten to match: a pack-contributed panel naming `Label` gets
+`labeling::Label`, because that is what the concept is called once composed.
+
+## How the pieces fit together
 
 ```
 Concept   — the data (a table + its fields + its rules)

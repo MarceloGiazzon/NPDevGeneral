@@ -320,7 +320,9 @@ final class FlowValidation {
         errors.add("Flow " + flow.getName() + ": writes concepts across " + aggregatesByTouchedConcepts.size()
                 + " different aggregates in one flow: " + detail
                 + " -- DDD's one-aggregate-one-transaction rule: split this into one flow per "
-                + "aggregate, coordinated by a domain event, rather than writing both roots here.");
+                + "aggregate, coordinated by a domain event, rather than writing both roots here."
+                + " -- suggestedFix: keep the writes of one aggregate in this flow, move the rest into a "
+                + "second flow, and have this one emit an event the second flow subscribes to.");
     }
 
     private static void collectConceptMutationScopes(List<StepAst> steps, Set<String> scopes) {
@@ -394,7 +396,17 @@ final class FlowValidation {
                         knownStepNames,
                         errors
                 );
-                case "await" -> validateAwaitStep(flow, step, eventNames, errors);
+                case "await" -> validateAwaitStep(
+                        flow,
+                        step,
+                        operationsByCapability,
+                        eventNames,
+                        conceptInvariantRefs,
+                        referencedCapabilities,
+                        knownProcedureNames,
+                        knownStepNames,
+                        errors
+                );
                 case "generatedaction" -> validateGeneratedActionStep(flow, step, errors);
                 case "foreach" -> validateForEachStep(
                         flow,
@@ -481,7 +493,10 @@ final class FlowValidation {
             String collectionRoot = normalize(step.getCollectionRef()).split("\\.", 2)[0];
             if (normalizedItemKey.equals(collectionRoot)) {
                 errors.add("Flow " + flow.getName() + " step " + step.getName()
-                        + ": itemKey must not shadow its own collection reference");
+                        + ": itemKey must not shadow its own collection reference"
+                        + " -- suggestedFix: rename itemKey to something other than '" + itemKey
+                        + "' (the collection's own root key), so the loop body can still read the "
+                        + "collection it is iterating");
             }
         }
         if (step.getMaxLoopIterations() != null) {
@@ -490,7 +505,10 @@ final class FlowValidation {
                         + ": maxLoopIterations must be positive");
             } else if (step.getMaxLoopIterations() > MAX_LOOP_ITERATIONS_CEILING) {
                 errors.add("Flow " + flow.getName() + " step " + step.getName()
-                        + ": maxLoopIterations must not exceed " + MAX_LOOP_ITERATIONS_CEILING);
+                        + ": maxLoopIterations must not exceed " + MAX_LOOP_ITERATIONS_CEILING
+                        + " -- suggestedFix: set maxLoopIterations to " + MAX_LOOP_ITERATIONS_CEILING
+                        + " or less; a larger batch belongs in a scheduled flow that pages, not in one "
+                        + "synchronous loop");
             }
         }
         int reachableAwaitStepCount = countAwaitSteps(step.getLoopSteps());
@@ -606,7 +624,9 @@ final class FlowValidation {
         String scope = normalize(step.getScope());
         if (step.getInvariants().isEmpty() && scope.isBlank()) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
-                    + ": invariant step must reference invariants or define scope");
+                    + ": invariant step must reference invariants or define scope"
+                    + " -- suggestedFix: declare invariants[] naming the concept invariants to check, or "
+                    + "declare scope naming the concept whose invariants all run here");
             return;
         }
 
@@ -824,6 +844,20 @@ final class FlowValidation {
         if (condition.isBlank()) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
                     + ": branch step must define condition");
+        } else {
+            // R4.2 (roadmap): KernelRunner.evaluateCondition now tries the full ComputedExpression
+            // grammar (arithmetic/&&/||/>/<, not just ==/!=) before falling back to its legacy
+            // matcher -- validate the same grammar here, mirroring
+            // ConceptValidation.validateAccessExpression/FieldValueValidation's identical widening,
+            // so a condition that can never parse is refused at author time instead of reaching a
+            // running flow.
+            try {
+                ComputedExpression.validate(condition);
+            } catch (ComputedExpression.ExpressionException syntaxError) {
+                errors.add("Flow " + flow.getName() + " step " + step.getName()
+                        + ": branch condition has invalid syntax: " + condition
+                        + " (" + syntaxError.getMessage() + ")");
+            }
         }
         if (step.getThenSteps().isEmpty()) {
             errors.add("Flow " + flow.getName() + " step " + step.getName()
@@ -843,7 +877,12 @@ final class FlowValidation {
     private static void validateAwaitStep(
             FlowAst flow,
             StepAst step,
+            Map<String, Set<String>> operationsByCapability,
             Set<String> eventNames,
+            Set<String> conceptInvariantRefs,
+            Set<String> referencedCapabilities,
+            Set<String> knownProcedureNames,
+            Set<String> knownStepNames,
             List<String> errors
     ) {
         String awaitEvent = normalize(step.getAwaitEvent());
@@ -869,6 +908,26 @@ final class FlowValidation {
                 errors.add("Flow " + flow.getName() + " step " + step.getName()
                         + ": await match payload reference must be non-blank for field " + payloadMatch.getKey());
             }
+        }
+
+        // R2.5 (durable await timeouts): timeout is optional, but when present it must be a
+        // positive number of seconds -- mirroring validateScheduleEventStep's delaySeconds check
+        // (>= 0 there since an immediate scheduleEvent is meaningful; a ZERO-second await timeout
+        // is not, since it would expire the instant the step first parks). onTimeout is only
+        // meaningful paired with a declared timeout, and its steps get the same recursive
+        // validation as onFailure/then/else -- an escalation branch is an ordinary step list, not
+        // a special one.
+        if (step.getTimeoutSeconds() != null && step.getTimeoutSeconds() <= 0L) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": await step timeout must be > 0 seconds");
+        }
+        if (step.getTimeoutSeconds() == null && !step.getOnTimeoutSteps().isEmpty()) {
+            errors.add("Flow " + flow.getName() + " step " + step.getName()
+                    + ": await step onTimeout requires timeout to be set");
+        }
+        if (!step.getOnTimeoutSteps().isEmpty()) {
+            validateFlowSteps(flow, step.getOnTimeoutSteps(), operationsByCapability, eventNames,
+                    conceptInvariantRefs, referencedCapabilities, knownProcedureNames, knownStepNames, errors);
         }
     }
 

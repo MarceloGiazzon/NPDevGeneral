@@ -97,7 +97,7 @@ files:
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/UpsertStrategy.java
   - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
   - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
-  - NPDevKernel/adapters/expression-cel/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
   - NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
   - NPDevSamples/probes/p4-constraints/Input/model.json

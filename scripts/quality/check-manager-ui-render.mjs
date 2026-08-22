@@ -37,7 +37,6 @@ const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace
 function resolvePlaywright() {
   const candidates = [];
   if (process.env.PLAYWRIGHT_MODULE) candidates.push(process.env.PLAYWRIGHT_MODULE);
-  candidates.push(path.join(REPO, "NPDevEditor", "ui-react", "node_modules", "playwright", "index.mjs"));
   try {
     const answer = execFileSync(process.env.PYTHON ?? "python",
       [path.join(REPO, "NPDevCli", "npdev_cli.py"), "monitor", "engine", "--json"],
@@ -51,7 +50,7 @@ function resolvePlaywright() {
 const playwrightModule = resolvePlaywright();
 if (!playwrightModule) {
   console.log("SKIPPED -- Playwright is not available on this machine.");
-  console.log("  Tried $PLAYWRIGHT_MODULE, NPDevEditor/ui-react/node_modules, and the engine root");
+  console.log("  Tried $PLAYWRIGHT_MODULE and the engine root");
   console.log("  reported by `npdev monitor engine --json`. Install one of them to run this check.");
   process.exit(0);
 }

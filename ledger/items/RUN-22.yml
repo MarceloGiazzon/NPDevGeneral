@@ -1,0 +1,246 @@
+id: RUN-22
+title: >-
+  R1.7 hot metadata swap: the two shipped tests had never run and hid a real
+  IOException/IllegalArgumentException catch-order bug plus two test-only races; a live same-PID
+  label swap is now proven by a real browser routine too -- though reaching the SERVED UI needed
+  combining the hot swap with REG-109's separate static-manifest override, a gap now filed as
+  RUN-24 since neither `npdev dev` nor the hot-swap endpoint alone does this automatically
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection (npdev-roadmap-collection.md), R1.7 -- "A signature-verified, SUPERUSER-gated
+  'reload compiled model' admin endpoint..., invalidatable kernel/runtimehost metadata caches, and
+  the dev loop's existing fast path pushing re-signed compiled-model.json into the live app."
+  Done when: "editing a panel label with `npdev dev` running updates the served UI with the same
+  app PID, proven by a browser routine." Two prior commits on this branch shipped the mechanism
+  (f46fefe3 -- MetadataHotSwapController + RuntimeMetadataService.applyMetadataOnlyReload;
+  d493e61f -- `npdev monitor hotswap` + Update-AppMetadata.ps1's restart-avoidance) but explicitly
+  left both named gaps open: the two new RuntimeHost tests had never run, and no live
+  boot-edit-swap-observe proof existed against any app (every previously-built app predated
+  MetadataHotSwapController).
+surface: runtimehost/metadata-hotswap
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/RuntimeMetadataService.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/RuntimeMetadataServiceHotSwapTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/MetadataHotSwapControllerStandaloneTest.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/MetadataHotSwapController.java
+  - NPDevCli/npdev_cli.py
+  - scripts/appgen/Update-AppMetadata.ps1
+detail: |
+  **Part 1: running the two tests for the first time found two real bugs, one in production code.**
+  `run-runtimehost-gate.ps1`'s full suite (615 tests) had never included these two classes before
+  (blocked at commit time by an unrelated in-flight compile error elsewhere). Running it for real:
+
+  1. **Production bug, `RuntimeMetadataService.parseJsonFile`.** Jackson's
+     `JsonProcessingException` (thrown for malformed JSON) IS-A `IOException`. The method's catch
+     order was `catch (IOException e) { throw e; }` BEFORE `catch (Exception e) { throw new
+     IllegalArgumentException(...) }` -- so the `IOException` branch always won for a malformed
+     source file, and a bad `metadata/concepts.manifest.json` propagated as a raw `IOException`
+     (surfacing to the HTTP caller as 500 `RELOAD_FAILED`) instead of the documented
+     `IllegalArgumentException` (400 `INVALID_METADATA_SOURCE`) `applyMetadataOnlyReload`'s own
+     javadoc promises. Caught live by
+     `RuntimeMetadataServiceHotSwapTest#refusesOnAMalformedSourceDirectoryWithoutTouchingAnyDestinationFile`
+     failing with a raw `JsonParseException` instead of the expected `IllegalArgumentException`.
+     Fixed by adding a `catch (JsonProcessingException e)` clause BEFORE the `IOException` one (the
+     more specific subtype must be caught first), leaving the general `IOException`/`Exception`
+     fallbacks unchanged. The refusal's actual BEHAVIOR (nothing written) was already correct either
+     way -- this bug only affected which exception type/HTTP status the caller saw.
+
+  2. **Two test-only races in `concurrentReadersNeverObserveATornCrossFileSwap`,** found in
+     sequence as each got fixed:
+     a. The "flip back to old" step between race iterations used raw, non-atomic, non-lock-protected
+        `Files.writeString` calls straight to the external destination files -- a completely
+        different, uncoordinated writer racing against the reader threads on its own, independent of
+        `applyMetadataOnlyReload`'s actual atomicity guarantee. First real run failed with a Jackson
+        `MismatchedInputException` from a reader that opened `index.json` mid-truncate. Fixed by
+        routing the reset through the SAME atomic `applyMetadataOnlyReload` call the race is meant to
+        exercise (a second staged source root), so the test only ever races against the real
+        mechanism.
+     b. Even after (a), the reader compared `namespace` (from one `service.overview()` call) against
+        `metadataVersion` from a SEPARATE `service.metadataIndex()` call -- two independent read-lock
+        acquisitions, leaving a window for the writer to complete an entire swap between them and
+        pair one read's namespace with a LATER read's version. `overview()` already surfaces
+        `metadataVersion` (read from the index file inside the SAME lock acquisition as namespace),
+        so the fix was to read both fields from that one call, removing the second call entirely.
+     Neither (a) nor (b) was a production bug -- both were the test fixture racing against itself,
+     not evidence of a torn write in `applyMetadataOnlyReload`.
+
+  **Re-verification, honestly measured, not assumed:** a fresh `runtimehost-core` jar was built with
+  fix 1, a targeted `--tests` run against the assembled `simple-contact-intake` sample confirmed both
+  named classes green in isolation (`MetadataHotSwapControllerStandaloneTest` 4/4,
+  `RuntimeMetadataServiceHotSwapTest` 4/5, one still red), fix 2a+2b applied, targeted run again
+  (`RuntimeMetadataServiceHotSwapTest` 5/5), then the FULL `run-runtimehost-gate.ps1` re-run from a
+  clean state end to end: `BUILD SUCCESSFUL`, gate report `overallStatus: passed`,
+  `verificationCommand.status: passed` -- the same 615-test suite that named these two classes FAILED
+  before now reports no failures at all.
+
+  **Part 2: a live boot-edit-swap-observe proof, HTTP-level (no browser routine ran).**
+  Rebuilt `runtimehost-libs` with both fixes (`Rebuild-And-Restage.ps1 -SkipGeneratorRuntime`),
+  regenerated+built+booted the AppGen H2Local sample `aggregate-query-verify-h2local` (port 8097,
+  PID 14588, fresh SUPERUSER key at boot -- this app predates R1.7 and had no
+  `MetadataHotSwapController` before this rebuild). Edited
+  `AppGen/apps/aggregate-query-verify-h2local/definition/model.json`'s `warehouseId` field label
+  from `"Warehouse"` to `"Warehouse (R1.7 hot swap proof)"`.
+
+  `Update-AppMetadata.ps1`'s classify step (`:generator:classifyModelChange`, a plain
+  `NPDevGenerator\gradlew` invocation with no explicit `npdevBuildRoot`) hit an environmental Gradle
+  file lock unrelated to R1.7: `Unable to delete file
+  '...\NPDev_General\.claude\worktrees\Build\gradle\npdev-generator\dsl\libs\dsl-0.1.0.jar'`,
+  reproduced on 3 separate attempts (the third showing "3 busy...Daemons could not be reused"),
+  consistent with other concurrent worktree-agent sessions on this machine sharing that exact build
+  path -- a `.claude\worktrees\Build` root one level too high, sibling to every worktree rather than
+  inside this one, unlike `sync-runtimehost-libs.ps1`'s correctly-scoped
+  `-PnpdevBuildRoot=D:\WorkSpace\NPDev\Build`. Not diagnosed further or fixed here -- it is in
+  `NPDevGenerator`'s own build-root resolution for a standalone `gradlew` invocation, not in the
+  hot-swap mechanism this item owns, and reproducing/fixing a multi-worktree collision is out of
+  scope for a metadata-swap item.
+
+  Worked around by exercising R1.7's actual shipped surface directly instead of through the
+  classifier: hand-copied the app's own deployed `compiled-metadata.json` +
+  `metadata/*.manifest.json` into a scratch `<dir>/src/main/resources/npdev/...` source root
+  (`MetadataHotSwapController.ApplyRequest`'s documented shape), edited the `warehouseId` label in
+  both `fields.manifest.json` and `layout.manifest.json` (a first pass touched only the former,
+  which correctly surfaced an inconsistent bundle -- `fields` showing the new label,  `layout`
+  still the old one -- an artifact of the partial hand-edit, not a hot-swap defect; corrected and
+  re-applied), then called `npdev monitor hotswap --app-dir ... --classification METADATA_ONLY
+  --metadata-source-root ...` directly against the running app, authenticating with the real
+  `X-Super-User-Key` from `_ops/SUPER_USER_KEY.txt` `SuperUserBootstrapper` issued at boot.
+
+  Result: `{"ok":true,"code":"APPLIED","metadataGeneration":2}`. Verified over real HTTP,
+  before/after:
+    `GET /api/admin/runtime/metadata/fields?concept=WidgetShipmentEvent` -- label
+    `"Warehouse"` -> `"Warehouse (R1.7 hot swap proof)"`.
+    `GET /api/runtime/metadata/ui/bundle?concept=WidgetShipmentEvent` (the UI-facing bundle
+    endpoint `PermissionAwareUiMetadataService`/`RuntimeUiMetadataController` serve, the same one
+    EDIT-13 used for its own "served UI" proof) -- both its `fields` and `layout` sections show the
+    new label after the swap.
+  PID identity, checked three ways: `_ops/app.pid` read `14588` both before and after;
+  `tasklist //FI "PID eq 14588"` showed the same `java.exe` process throughout; `/actuator/health`
+  stayed `UP` with the same in-process H2 (`"mode":"inproc"`) the whole time -- no restart occurred.
+
+  **NOT done, named honestly (as of this section):** no browser (Playwright/ScrapForAI) routine ran
+  -- this is an HTTP-level proof only, the fallback the roadmap item's own follow-up instructions
+  explicitly allow when a browser routine is impractical in the time budget. The full
+  `Update-AppMetadata.ps1` shell-out chain (classify -> emit -> hotswap) was not proven end-to-end
+  because of the unrelated Gradle build-root lock above; the mechanism it drives
+  (`npdev monitor hotswap` against `MetadataHotSwapController`) WAS proven end-to-end, directly.
+  **Closed by the 2026-08-19 (session 2) section below, which supplies the missing browser-routine
+  proof and also found a genuine new boundary of the mechanism -- see RUN-24.**
+
+  ---
+
+  **2026-08-19 (session 2): the real browser-routine proof, using a real Playwright browser via the
+  ScrapForAI harness -- and a genuine new finding about what the hot swap does and does not reach.**
+
+  Same app the prior session used, still running (`aggregate-query-verify-h2local`, PID 14588 --
+  the exact PID from the section above, never restarted across this entire session): rather than
+  regenerating a fresh copy (an isolated full-rebuild attempt was in flight but hit the app's own
+  port/PID already in use, since the prior session's process had simply kept running), this session
+  reused that live process directly, which is itself part of the evidence -- the same PID persisted
+  across TWO separate sessions and TWO separate hot-swap generations.
+
+  **Step 1 -- confirmed the pre-change state, both ways.** `GET /api/runtime/metadata/ui/bundle`
+  reported the label as `"Warehouse (R1.7 hot swap proof)"` (the prior session's own hot-swapped
+  value). But the actual SERVED business-ui grid at `/npdev-business-ui/` showed plain `"Warehouse"`
+  -- the ORIGINAL generation-time label, never touched by either of the prior session's two hot
+  swaps. This is the first half of this session's real finding: `MetadataHotSwapController` writes
+  the runtime-metadata catalogs (what the REST API reports) but the rendered business-ui grid reads
+  a SEPARATE static file, `generated-ui-manifest.json`
+  (`business-ui-app.mustache`: `state.manifest = await fetchJson("./generated-ui-manifest.json")`),
+  which the hot swap never touches. See RUN-24 for the full analysis.
+
+  **Step 2 -- edited the label in the app's metadata source and applied the change two ways.**
+  Edited `AppGen/apps/aggregate-query-verify-h2local/definition/model.json`'s `warehouseId` field
+  label from `"Warehouse (R1.7 hot swap proof)"` to `"Warehouse (RUN-22 browser proof)"` (the
+  authoritative app definition, layer 2 per this repo's own source-of-truth rule). Applied via:
+  (a) `npdev monitor hotswap --app-dir ... --classification METADATA_ONLY --metadata-source-root
+  <scratch>` -- same CLI the prior session used, hand-preparing the scratch catalogs the same way
+  (compiled-metadata.json + every metadata/*.manifest.json, patching `warehouseId`'s `label` in
+  each) -- result `{"ok":true,"code":"APPLIED","metadataGeneration":3}` (generation 2 -> 3, the
+  prior session left it at 2); (b) directly overwriting
+  `npdev-generated/src/main/resources/static/npdev-business-ui/generated-ui-manifest.json`'s
+  matching `concepts[].fields[].label` on disk (a backup of the original was kept alongside it) --
+  REG-109's own already-verified external-path mechanism (file: resource locations resolved
+  per-request, confirmed live back on 2026-08-02), invoked directly here since neither
+  `MetadataHotSwapController` nor `Update-AppMetadata.ps1`'s fast path chains into it automatically
+  (RUN-24). Both writes happened while the app kept running, PID unchanged.
+
+  **Step 3 -- the real browser-routine proof.** ScrapForAI (Playwright, headless Chromium) via
+  `NPDevSamples/scripts/browser/scrapforai-harness.ps1`, on its own port (3011, to avoid the
+  ScrapForAI instance another concurrent session already had bound to the default 3010) against the
+  live app's real origin `http://127.0.0.1:8097`. Two separate routine runs (before/after), each:
+  `goto` the business UI, fill `#apiKey` with the app's real live key (from `npdev monitor probe`),
+  `reload`, click the `WidgetShipmentEvent` concept's sidebar link, wait for `#concept-
+  WidgetShipmentEvent` to render, `assertTextContains` on that panel's grid header text.
+    - BEFORE routine (run before either apply step above): asserted the grid header contains
+      `"Warehouse"` -- PASSED. Screenshot + full DOM-text snapshot captured; header row reads
+      literally `Id ^  Shipped at  Units shipped  Warehouse`.
+    - AFTER routine (run after both apply steps): asserted the grid header contains
+      `"Warehouse (RUN-22 browser proof)"` -- PASSED. Screenshot + DOM-text snapshot captured;
+      header row now reads `Id ^  Shipped at  Units shipped  Warehouse (RUN-22 browser proof)`.
+  Both routines: 0 page errors, 0 unexpected external requests; the only console/network entries
+  were the two benign categories the verify-in-browser skill documents (`theme.css` 404, pre-auth
+  401s before the explicit `#apiKey` fill+reload takes effect) -- a genuinely clean pass, not a
+  suppressed one.
+
+  **PID identity, checked three ways, across the ENTIRE session 2 sequence (before the first apply,
+  after both applies, after the browser proof):** `_ops/app.pid` read `14588` at every check;
+  `tasklist //FI "PID eq 14588"` showed the same live `java.exe` process at the end; `GET
+  /actuator/health` stayed `UP` throughout. No restart occurred at any point in this session, on top
+  of never having restarted since the prior session either.
+
+  **The genuine new finding, stated plainly:** the roadmap's done-when says "editing a panel label
+  with `npdev dev` running updates the served UI with the same app PID." This session proves that
+  outcome IS achievable with no restart and the same PID -- but NOT via `npdev dev` itself, and NOT
+  via the hot-swap endpoint alone. `npdev dev`'s own watch loop (`NPDevCli/dev_loop.py::run_cycle`)
+  unconditionally stops and reboots the app on every cycle regardless of METADATA_ONLY
+  classification -- it never calls the hot-swap path at all. And the hot-swap endpoint alone, even
+  when called directly, does not update the static `generated-ui-manifest.json` the served
+  business-ui grid actually reads. This session's proof combined `npdev monitor hotswap` (metadata
+  REST API) with a direct application of REG-109's own already-shipped external-file override
+  (served UI) by hand. Filed as **RUN-24** (OPEN) rather than silently treated as fully closing R1.7
+  -- see that item for the full analysis and fix shape. R1.7 the roadmap item is therefore **NOT**
+  fully done: the underlying mechanism works end to end, proven live and now by a real browser, but
+  the two automatic entry points named by the roadmap's own wording (`npdev dev`, and the hot-swap
+  endpoint reaching the served UI on its own) do not yet deliver it without a manual assist.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/RuntimeMetadataServiceHotSwapTest.java#concurrentReadersNeverObserveATornCrossFileSwap
+    (see the same file's refusesOnAMalformedSourceDirectoryWithoutTouchingAnyDestinationFile for the
+    parse-exception-classification half, and MetadataHotSwapControllerStandaloneTest for the
+    HTTP-layer coverage)
+  asserts: >-
+    concurrentReadersNeverObserveATornCrossFileSwap races 8 readers against a writer cycling
+    applyMetadataOnlyReload and observes no torn cross-file read once the test's own reset goes
+    through the same atomic API and both compared fields come from one overview() call;
+    refusesOnAMalformedSourceDirectoryWithoutTouchingAnyDestinationFile asserts a malformed source
+    file is refused via IllegalArgumentException (not a raw IOException) with nothing written.
+  provenRed: true
+  provenRedNote: >-
+    Both failures were real, first-ever runs, not flakes: refusesOnAMalformedSourceDirectoryWithoutTouchingAnyDestinationFile
+    failed with a raw com.fasterxml.jackson.core.JsonParseException where IllegalArgumentException
+    was expected (2026-08-19 gate run, 615 tests / 2 failed); concurrentReadersNeverObserveATornCrossFileSwap
+    failed first with a Jackson MismatchedInputException (the raw writeFixture reset tearing on its
+    own), then after that fix with a plain AssertionFailedError (the two-separate-calls cross-call
+    race) -- three distinct real failures across two fix iterations, each independently reproduced
+    before its fix and re-run green after.
+  provenGreenNote: >-
+    Full run-runtimehost-gate.ps1 re-run from a clean state after both fixes: BUILD SUCCESSFUL,
+    gate report overallStatus: passed, verificationCommand.status: passed -- the same 615-test
+    suite that named these two classes FAILED now reports zero failures. Live proof against a
+    booted AppGen app (aggregate-query-verify-h2local, PID 14588, H2Local) 2026-08-19: two
+    applyMetadataOnlyReload calls via npdev monitor hotswap, both ok:true, served UI-facing bundle
+    endpoint reflects the new label, PID and /actuator/health unchanged throughout.
+    **2026-08-19 session 2:** a real Playwright browser routine (ScrapForAI harness) against the
+    SAME still-running PID 14588 confirms the served `/npdev-business-ui/` grid itself (not just
+    the REST bundle endpoint) shows the new label after a third applyMetadataOnlyReload
+    (generation 3) COMBINED with a direct write to generated-ui-manifest.json (REG-109's external
+    override) -- before: grid header "Warehouse", after: "Warehouse (RUN-22 browser proof)", both
+    asserted by the routine and confirmed via screenshot + DOM-text snapshot. PID and
+    /actuator/health unchanged across the entire sequence. See RUN-24 for the boundary this exposed
+    (hot swap alone does not reach the served UI; npdev dev never calls hot swap at all).

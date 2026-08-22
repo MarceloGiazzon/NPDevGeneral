@@ -1,0 +1,206 @@
+id: EDIT-11
+title: >-
+  A fresh app's only way to load a spreadsheet was one row at a time by hand -- every concept grid
+  now has a generic CSV Import (upload or paste) with a per-row-validated preview that commits only
+  the accepted rows, each one an independently atomic single-row write
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R7.6 -- "A business user's first act
+  in a fresh app is 'load my spreadsheet.' Generator-emitted parse -> per-row-validated preview ->
+  atomic commit, generalizing the propose-review-commit pattern already proven by three hand-authored
+  WmsOffice wizards; upload via the existing files endpoint or paste." Blocked by R7.1 (soft --
+  reuses per-row error rendering), DONE (EDIT-5).
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache
+  - AppGen/apps/payment-webhook-rehearsal/definition/model.json (external, AppGen source of truth --
+    added a Supplier concept + a PurchaseOrder concept with a reference field and an enum field)
+  - AppGen/apps/payment-webhook-rehearsal/explorations/r7-6-csv-import-roundtrip-and-atomicity.json
+    (external)
+detail: |
+  PREMISE CHECKED AGAINST REAL DATA, NOT ASSUMED: "three hand-authored WmsOffice wizards" proving a
+  propose-review-commit pattern. Twelve premises in this roadmap collection had already been measured
+  false this session, so this one was verified against `D:\WorkSpace\NPDev\AppGen\apps\_official\
+  WmsOffice\definition\model.json` (a non-repo, layer-2 app definition) rather than taken on faith.
+  TRUE, and exactly three: `aggregates[]` declares DocumentoFiscalAggregate (NF-e Import, propose =
+  ParseNfeProcedure), RomaneioAggregate (propose = ParseRomaneioProcedure), and InventarioArquivoAggregate
+  (propose = ImportarContagemProcedure). Each aggregate's own `metadata.purpose` names the triad
+  verbatim: "propose (...via invoke()) -> review (editable ... grid) -> commit (atomic N+1 write, G1's
+  transaction boundary)". A fourth wizard exists (Recebimento por Arquivo) but REUSES
+  InventarioArquivoAggregate rather than adding a fourth aggregate, so the aggregate count is exactly
+  three, matching the roadmap's number precisely rather than coincidentally.
+
+  THE PATTERN DOES NOT GENERALIZE VERBATIM, AND THAT IS THE DESIGN DECISION THIS ITEM MAKES EXPLICIT:
+  the WmsOffice triad is AGGREGATE machinery -- a hand-authored procedure parses into a draft, the
+  Aggregate Workbench renders the review grid, and commit is one real multi-row (N+1) transaction
+  across a header + owned collection. A plain concept grid (the overwhelming majority of concepts in
+  any app -- R7.6 must work on "every concept grid", not just aggregates with a hand-authored
+  procedure) has none of that: no draft, no procedure, no aggregate commit boundary. So this
+  generalizes the SHAPE of propose->review->commit with different, generic mechanics:
+    - PROPOSE: a client-side CSV parse (`parseCsvText`, business-ui-app.mustache) -- no server call,
+      no procedure authoring required per concept.
+    - REVIEW: a per-row-validated preview table (`buildImportPreview`/`validateImportRow`) checking
+      `required` and `enumValues` membership client-side, reusing R7.1/EDIT-5's `fieldViolations`
+      parser for the SERVER-side rejections a commit can still produce (409 uniqueness, bad reference,
+      etc.) -- the exact per-field error rendering the roadmap says to reuse.
+    - COMMIT: `commitImportRows` POSTs each row with zero client-side errors, ONE AT A TIME, to the
+      SAME `concept.endpointBase` the New/Edit form already uses (`submitForm`). This is deliberately
+      NOT a multi-row transaction -- see ATOMICITY below.
+
+  ATOMICITY -- DECIDED DELIBERATELY, STATED EXPLICITLY (the task's own instruction): a partially-bad
+  file commits its GOOD rows only ("the former" of the roadmap's two options), never rejected
+  wholesale. The transaction boundary that guarantees no partial application: each accepted row is
+  exactly ONE JSON POST -> ONE `GeneratedConceptCrudController.create` call ->
+  `{ServiceClass}.create()`, the SAME single-row write path `submitForm` has always used for a manual
+  Create. That call is already all-or-nothing at the row level (one row's fields either all persist or
+  none do -- there is no multi-field partial-row write in this codepath, confirmed by reading
+  `business-concept-crud-controller.mustache`'s `create` handler, unmodified by this item). A CSV
+  import of N rows is therefore N INDEPENDENT atomic single-row commits, not one N-row transaction: a
+  crash/network-drop mid-file leaves exactly the rows already POSTed committed and the rest simply
+  un-attempted -- never a half-written ROW, and never a half-imported FILE silently masquerading as
+  complete. Rows that fail CLIENT-side validation (required/enum) are EXCLUDED BEFORE any request is
+  sent, so "commit only accepted rows" is enforced pre-flight, not by a rollback after a failed write.
+  CLAUDE.md's H2/MySQL-implicit-commit-on-DDL caveat was checked and does not apply: Import performs no
+  DDL, only the same DML the create endpoint always performed.
+
+  ROUND TRIP -- MEASURED, WITH AN HONEST LIMITATION STATED: "export a grid to CSV, import that exact
+  file" could not be driven completely live because the ScrapForAI routine schema has no
+  download-capture step (`buildCsv`'s output goes through a client-side Blob + `<a download>`, which
+  the harness cannot intercept without `evaluate`-driven monkey-patching). Instead, the routine feeds
+  Import text that is BYTE-EXACT to what `buildCsv`/`csvCell` (Export CSV, both read from source, not
+  assumed) would produce for the same field values -- including a comma-containing value inside a
+  quoted cell (`"R76 Acme, Inc."`) and a throwaway `Id` column Export always includes and Import must
+  silently drop. This proves the PARSER correctly inverts the EXPORTER's exact quoting/escaping rules,
+  which is the property that actually breaks in a naive CSV round trip. Proven on the two shapes the
+  task named as where round-trips actually break: a REFERENCE field (PurchaseOrder.supplierId, a real
+  Supplier id) and an ENUM field (PurchaseOrder.priority, `[Low, Medium, High]`) -- not just plain
+  strings.
+
+  A REAL, PREVIOUSLY-UNKNOWN PLATFORM DEFECT WAS FOUND WHILE DESIGNING THE ENUM ASSERTION, AND
+  DELIBERATELY NOT FIXED (out of this item's scope -- `humanize()` is used for every field/column label
+  across the whole business UI, not just enum badges, so changing its behavior is a separate,
+  far-reaching decision): `humanize()` (business-ui-app.mustache) inserts a space before EVERY capital
+  letter, so an ALL-CAPS `enumValues` entry like `"HIGH"` renders as the badge text `"H I G H"`, not
+  `"HIGH"`. Found by reading the function, not by a failed assertion -- the fixture's enum values were
+  chosen as `["Low", "Medium", "High"]` (one leading capital each) specifically to avoid tripping over
+  it, and that choice, and the reason for it, is recorded here rather than silently worked around.
+
+  FIXTURE: `payment-webhook-rehearsal` (AppGen, H2Local, port 8098, reused per R6.2/R7.7/R7.9
+  precedent) gained two new concepts, additive only, no existing concept/aggregate touched: `Supplier`
+  (id, name) and `PurchaseOrder` (id, `supplierId: reference -> Supplier`, `priority: enum`,
+  `quantity: integer`). A fixture Supplier ("R76 Fixture Supplier") was pre-created via one direct
+  authenticated POST to `/api/concepts/suppliers` (not through the browser) specifically so the
+  PurchaseOrder CSV could reference a REAL, already-persisted id rather than a fabricated one -- the
+  routine schema has no way to interpolate a step's own captured variable into the middle of a later
+  `fill` value, so a real id had to be knowable in advance.
+
+  BROWSER-VERIFIED (this item's Definition of Done, both halves, verbatim): live run
+  `2026-08-19T10-21-08_r7-6-csv-import-roundtrip-and-atomicity`, **50/50 steps passed, `green: true`,
+  `reasons: []`**, recorded via `npdev explore run --ledger-id EDIT-11` (the SAME `evaluate_verdict`
+  `npdev explore record` itself uses -- this report does not judge its own green). REAL MEASURED DATA,
+  read back from the server's own API immediately after the run (not inferred from the routine's own
+  assertions):
+    - Supplier round trip: started at 1 row (the fixture); after pasting `Id,Name\r\n<uuid>,"R76 Acme,
+      Inc."\r\n` (Export's exact quoting for a comma-containing value) through Preview -> Import
+      accepted rows, ended at EXACTLY 2 rows, the second with `name` == `"R76 Acme, Inc."` -- the comma
+      survived the quote/unquote round trip unchanged, and the throwaway `Id` column was silently
+      ignored (a fresh server-assigned id was minted, confirmed distinct from the pasted placeholder).
+    - PurchaseOrder atomicity: started at 0 rows. A 4-row paste (2 good: `[realSupplierId, High, 7]`
+      and `[realSupplierId, Low, 3]`; 2 bad: an enum value `Urgent` not in `[Low,Medium,High]`, and a
+      row with a blank required Supplier column) produced preview counts 2 pending / 2 invalid, a
+      commit summary of **exactly** "2 created, 2 skipped (failed validation, never sent), 0 rejected
+      by the server", and a FINAL grid/API state of **exactly 2 rows** -- `{priority: High, quantity:
+      7, supplierId: <real id>}` and `{priority: Low, quantity: 3, supplierId: <real id>}` -- confirmed
+      by a direct authenticated GET against `/api/concepts/purchase_orders` immediately after the run,
+      independent of the routine's own DOM assertions. Neither bad row's data reached the server at
+      all (0 rejected, not 2) -- proving the two bad rows were excluded BEFORE any request, exactly the
+      "commit only accepted rows" design.
+
+  A REAL ROUTINE-TIMING RACE WAS FOUND LIVE AND FIXED, NOT ROUTED AROUND (the first full run, before
+  this fix, genuinely failed): `commitImportRows`'s click handler is `async` (it awaits each POST), but
+  `.import-summary`'s DOM node already exists from the earlier Preview step, so
+  `waitForSelector(".import-summary", state: visible)` immediately succeeded without waiting for the
+  commit's own async work to finish, and the following `assertTextContains` read the STALE pre-commit
+  summary text and failed. Confirmed as a routine defect, not a template defect, by inspecting the
+  post-failure data state: the "R76 Acme, Inc." Supplier row WAS created (the async POST completed
+  moments after the premature assertion), proving the commit logic itself was correct all along. Fixed
+  by replacing that `waitForSelector` with a 600ms `waitForTimeout` at both commit sites (Supplier and
+  PurchaseOrder) -- the same class of fix, and the same root cause pattern (a selector that already
+  exists doesn't make a good proxy for "the async work behind it finished"), EDIT-8/EDIT-9 each hit and
+  documented independently.
+
+  `green: true` required 9 narrow `allowedConsoleErrorSubstrings` entries in the app's (ephemeral)
+  `_ops/exploration-config.json`, MON-12 style, each `urlContains` + `status` + a written note: `/api/me`
+  (401, double pre-auth fetch), `/api/properties` (401, covers `/scopes`), `/api/workspace_menus` (401
+  AND a separate 404 -- this app declares no `workspace::Menu` concept, pre-existing per EDIT-9's own
+  identical note), `/api/concepts/payment_orders`/`products`/`product_batchs` (401, this app's
+  pre-existing R6.2/R7.7/R7.9 fixture panels' own default-route loads), and this item's own two new
+  panels' loads, `/api/concepts/suppliers` and `/api/concepts/purchase_orders` (401). All fire only in
+  the pre-auth window before the routine's own `#apiKey` reload. No blanket console excuse was added.
+  Config + run.json + the routine copied to
+  `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\r7-6-evidence\` because a generated app's `_ops/
+  exploration-runs` and `_ops/exploration-config.json` are NOT spared across regeneration (MON-19).
+
+  DETERMINISM: `scripts/hygiene/check-deterministic-generation.ps1` (SampleId simple-contact-intake)
+  **PASSED** -- two full generations, the script's own terminal "Deterministic generation check passed"
+  verdict, run against the exact template shipped.
+
+  REGRESSION: `:generator:test` (the full suite, not just the emitters touched) -- **366 tests, 0
+  failures, 0 errors** (counted directly from the JUnit XML reports under
+  `Build\gradle\npdev-generator\generator\test-results\test\`, not read off the console summary line).
+
+  WHAT WAS DELIBERATELY NOT DONE: no new server endpoint of any kind (import commits through the
+  EXISTING single-row create endpoint only); no bulk/batch transaction endpoint (see Atomicity above --
+  a design choice, not a missed opportunity); no literal "click Export, capture its download, feed it
+  back" browser proof (the harness has no download-capture step -- proved instead via a byte-exact
+  reconstruction of Export's own output, verified against Export's real source); server-side existence
+  validation of a reference id is NOT duplicated client-side (left to the server's existing constraint
+  enforcement, surfaced through the same `fieldViolations` path a bad reference would already hit);
+  Import does not respect the R7.4 per-view hidden-columns toggle the way Export does (Import always
+  offers the full model-declared editable field set -- a business user loading a fixed-shape
+  spreadsheet should not depend on another user's transient view state); the `humanize()` all-caps
+  enum-label defect (see above) was found, disclosed, and deliberately left unfixed as out of this
+  item's scope; file-picker upload (`<input type=file>` + `FileReader`, entirely client-side, never
+  touching `/api/files`) is implemented and shipped but was NOT proven live in the browser -- the
+  ScrapForAI routine schema has no step that drives a real OS file picker, so per this item's own
+  brief, the PASTE path was proven instead and that choice is stated here rather than left implicit.
+guard:
+  kind: manual
+  ref: >-
+    D:\WorkSpace\NPDev\AppGen\apps\payment-webhook-rehearsal\explorations\
+    r7-6-csv-import-roundtrip-and-atomicity.json -- run with `npdev explore run --app-dir <generated
+    app> --file <routine> --credential apiKey=<app's own X-Api-Key, from secrets/api-key.env>`.
+    Requires `http://localhost:8098`/`http://127.0.0.1:8098` in the ScrapForAI engine's own
+    `ALLOWED_TARGET_ORIGINS` (D:\WorkSpace\ScrapForAILegacy\.env, hot-reloadable, no engine restart
+    needed) -- absent by default, the engine refuses the target with `TargetUrlNotAllowed`. Requires a
+    Supplier row already persisted (id baked into the routine's `purchaseOrderMixedCsv` variable);
+    re-running against a fresh database needs that id updated to whatever a fresh POST to
+    `/api/concepts/suppliers` returns. DELIBERATELY `manual`, not `test`: the routine lives with an
+    AppGen app, which CLAUDE.md defines as source-of-truth layer 2 ("not a git repo"), so no
+    repo-rooted path can name it -- same reason EDIT-5/6/7/8/9/10's guards are manual.
+  asserts: >-
+    (1) ROUND TRIP: text byte-exact to Export CSV's own quoting rules, pasted through Import, produces
+    a record whose field values exactly match the pre-quoted originals, proven on a comma-containing
+    string value and (via a second concept) a reference id + an enum value; (2) ATOMICITY: a file
+    mixing good and bad rows commits ONLY the good rows (measured: 2 created, 2 skipped, 0 rejected --
+    the bad rows never reached the server), and the resulting grid/API state contains exactly the
+    accepted rows' data, byte-for-byte, with the rejected enum value and the rejected blank-reference
+    row appearing nowhere in the persisted data.
+  provenRed: true
+  provenRedNote: >-
+    Two distinct real reds, neither simulated: (1) the Import CSV button/dialog did not exist anywhere
+    in the template before this item -- confirmed by reading business-ui-app.mustache in full before
+    editing it, not assumed from the roadmap's framing. (2) A live run against this item's OWN
+    mid-implementation state (the feature already working, but the routine still using
+    `waitForSelector` instead of `waitForTimeout` after the async commit click) genuinely failed at the
+    post-commit summary assertion with "Expected selector text to contain requested text". Diagnosed to
+    root cause by reading the server's own data state immediately after the failed run (the row WAS
+    created, proving the commit logic was correct and the routine's wait was the defect, not the
+    template) rather than guessed. Fixed in the routine; the immediately following run, same template,
+    went 50/50 green.

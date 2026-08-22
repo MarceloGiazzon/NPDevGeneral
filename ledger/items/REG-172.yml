@@ -86,3 +86,10 @@ resolution: |
 
   Verified via the same real Postgres integration-test run as REG-171/REG-173: BUILD SUCCESSFUL,
   40/40 tests passed, including all three of this class's tests.
+
+  2026-08-18 (R10.1, following EDIT-3's read-only-editor decision): `/api/admin/model/editor/draft`
+  was deleted outright, so `editorDraft_endpoint_is_reachable`'s rewritten assertions above (the
+  {namespace, entities} shape check) no longer apply -- the test was renamed to
+  `editorDraft_endpoint_is_gone_r10_1` and now asserts 404. `uiModel_endpoint_...` and
+  `modelExport_endpoint_...` are untouched; `/api/admin/ui-model` and `/api/admin/model/export` are
+  a separate, unrelated read surface that R10.1 does not remove.

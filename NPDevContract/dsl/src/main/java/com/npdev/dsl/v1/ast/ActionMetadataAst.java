@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
+import java.util.Map;
+
 public final class ActionMetadataAst {
     private final String label;
     private final String confirmationText;
@@ -9,6 +11,7 @@ public final class ActionMetadataAst {
     private final String visibleWhen;
     private final String permissionHint;
     private final String inputFormHint;
+    private final Map<String, String> labelLocales;
 
     public ActionMetadataAst(
             String label,
@@ -20,6 +23,20 @@ public final class ActionMetadataAst {
             String permissionHint,
             String inputFormHint
     ) {
+        this(label, confirmationText, successMessage, failureHint, dangerLevel, visibleWhen, permissionHint, inputFormHint, Map.of());
+    }
+
+    public ActionMetadataAst(
+            String label,
+            String confirmationText,
+            String successMessage,
+            String failureHint,
+            String dangerLevel,
+            String visibleWhen,
+            String permissionHint,
+            String inputFormHint,
+            Map<String, String> labelLocales
+    ) {
         this.label = label;
         this.confirmationText = confirmationText;
         this.successMessage = successMessage;
@@ -28,10 +45,15 @@ public final class ActionMetadataAst {
         this.visibleWhen = visibleWhen;
         this.permissionHint = permissionHint;
         this.inputFormHint = inputFormHint;
+        this.labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 
     public String getLabel() {
         return label;
+    }
+
+    public Map<String, String> getLabelLocales() {
+        return labelLocales;
     }
 
     public String getConfirmationText() {

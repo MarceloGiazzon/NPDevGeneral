@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "NPDev Pack Catalog",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "const": "pack-catalog.v1" },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["packId", "version", "description"],
+        "properties": {
+          "packId": { "type": "string" },
+          "version": { "type": "string" },
+          "description": { "type": "string" },
+          "author": { "type": "string" },
+          "category": { "type": "string" },
+          "coordinate": { "type": "string", "description": "oci:// or git+ URL" },
+          "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "signature": { "type": "boolean" },
+          "concepts": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["schemaVersion", "packs"],
+  "additionalProperties": false
+}

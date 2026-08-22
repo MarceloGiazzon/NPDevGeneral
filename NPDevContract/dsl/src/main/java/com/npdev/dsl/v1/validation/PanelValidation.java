@@ -388,7 +388,9 @@ final class PanelValidation {
             RegionMountAst region = entry.getValue();
             if ("component".equals(region.render()) && !hasText(region.component())) {
                 errors.add(panelLabel + " transaction.regions." + address
-                        + ": render is \"component\" but no component name is declared");
+                        + ": render is \"component\" but no component name is declared"
+                        + " -- suggestedFix: declare component with the component's name on this region, "
+                        + "or change render away from \"component\" to a render mode that needs no name");
             }
         }
     }
@@ -550,6 +552,7 @@ final class PanelValidation {
                     }
                 }
                 validatePanelRowOps(panel, dataSource, entitiesByLower, errors);
+                validateAddFormFields(panel, dataSource, entitiesByLower, errors);
             }
             for (PanelActionAst action : panel.actions()) {
                 String binding = normalize(action.binding());
@@ -670,8 +673,35 @@ final class PanelValidation {
                     + ": rowOps requires a concept-bound dataSource (query/procedure dataSources can't be mutated)");
             return;
         }
+    }
+
+    /**
+     * REG-185: {@code addFormFields} names fields of the dataSource's concept, and a name that does
+     * not exist there is wrong whether or not the dataSource also declares {@code rowOps}.
+     *
+     * <p>This check used to live INSIDE {@link #validatePanelRowOps}, after its
+     * `rowOps == null -> return` guard, so it only ever ran for a dataSource that opted into row
+     * mutation. The plan that produced REG-185 recorded `panelDataSource.addFormFields` as one of
+     * the sites that DID error -- true, but only in the shape its probe happened to use. Measured
+     * 2026-08-17: with `rowOps` absent, a ghost `addFormFields` entry produced zero diagnostics.
+     * Hoisted here so the one message comes from one place -- {@code ReferenceIntegrityValidation}
+     * excludes this site precisely because this check owns it, and an exclusion covering a check
+     * that does not always run is a hole, not a de-duplication.
+     */
+    private static void validateAddFormFields(
+            PanelAst panel,
+            PanelDataSourceAst dataSource,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors
+    ) {
+        if (dataSource.addFormFields() == null || dataSource.addFormFields().isEmpty()) {
+            return;
+        }
         ConceptAst concept = entitiesByLower.get(normalize(dataSource.concept()));
-        if (concept == null || dataSource.addFormFields() == null || dataSource.addFormFields().isEmpty()) {
+        if (concept == null) {
+            // The dataSource has no resolvable concept (query/procedure-bound, or a concept that
+            // does not exist). Both are reported by their own checks; blaming the fields here would
+            // report one mistake twice under two names.
             return;
         }
         Set<String> conceptFieldNames = concept.getFields().stream()

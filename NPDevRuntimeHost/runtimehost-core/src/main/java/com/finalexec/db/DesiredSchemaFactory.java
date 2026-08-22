@@ -97,8 +97,12 @@ public final class DesiredSchemaFactory {
         String declaredType = facts.declaredType();
         // Platform columns (id/version/row_version/tenant_id) are ALWAYS NOT NULL (§6), independent of
         // whether they appear in the model's required set — so nullable only when a non-platform,
-        // non-required model field.
-        boolean nullable = !facts.requiredByModel() && !facts.platformManaged();
+        // non-required model field. R5.4: deleted_at is the one documented exception -- a platform
+        // column that is ALWAYS nullable (NULL means "live") -- see
+        // SchemaLifecycleExecutor#isNullablePlatformColumn's javadoc for why this can't just be
+        // "!platformManaged()" anymore.
+        boolean nullable = SchemaLifecycleExecutor.isNullablePlatformColumn(facts.column())
+                || (!facts.requiredByModel() && !facts.platformManaged());
         return new DesiredColumn(
                 lower(rawColumn),
                 declaredType == null ? null : SqlTypeNormalization.normalize(declaredType),

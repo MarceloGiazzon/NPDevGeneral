@@ -29,8 +29,18 @@ detail: |
   (`bundleIoService.schemaLossDetector.test.ts`, `importExportRoundTrip.test.ts`). The vitest run
   itself was not re-executed this pass (`node_modules` not installed in this checkout) -- closed on
   source-level + commit-history evidence, not a fresh test run.
+
+  2026-08-17: NPDevEditor was parked out of this repository (see BREAKING.md). The files and guard
+  below name paths that no longer resolve here; they resolve in the parked tree. This item stays
+  DONE -- the fix shipped and was verified before the move -- but its guard can no longer be re-run
+  from this repo.
 guard:
-  kind: test
-  ref: NPDevEditor/ui-react/src/authoring/io/importExportRoundTrip.test.ts (schema-driven loss-detector test)
+  kind: manual
+  ref: >-
+    NOT RE-RUNNABLE FROM THIS REPOSITORY as of 2026-08-17 -- the schema-driven loss-detector test
+    that guarded this item travelled with the editor module when it was parked out (see
+    BREAKING.md). It existed and was verified before the move; it is recorded here as history, and
+    deliberately names no repo-rooted path, because naming one that cannot resolve would be a
+    dangling claim rather than a guard.
   asserts: every model.schema.json root key present in a real packs-bearing model.json (dsl-conformance-max) survives export+import
   provenRed: true

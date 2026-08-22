@@ -4,6 +4,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -46,13 +47,15 @@ class RuntimeRequestSizeFilterTest {
         assertTrue(overLimitResponse.getContentAsString().contains("payload_too_large"));
     }
 
+    @Disabled("Chunked/multipart/WebSocket scenarios require a full servlet container — "
+            + "existing tests 1 and 2 cover the core filter logic with MockHttpServletRequest")
     @Test
     void notesChunkedMultipartWebSocketAndPerformanceExpectations() {
-        // chunked encoding
-        // multipart upload
-        // WebSocket upgrade
-        // performance target <1ms per request
-        assertTrue(true);
+        // Original aspirational expectations:
+        // - chunked encoding: filter still applies
+        // - multipart upload: filter still applies
+        // - WebSocket upgrade: filter skips
+        // - performance target: < 1ms overhead per request
     }
 
     private static MockHttpServletRequest request(String uri) {

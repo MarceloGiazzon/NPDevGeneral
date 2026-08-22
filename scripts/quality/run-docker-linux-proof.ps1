@@ -6,7 +6,8 @@ param(
     [string]$DockerfilePath = "Dockerfile.ai-beta",
     [int]$BuildTimeoutSeconds = 1800,
     [int]$RunTimeoutSeconds = 3600,
-    [int]$ProgressIntervalSeconds = 30
+    [int]$ProgressIntervalSeconds = 30,
+    [switch]$Force
 )
 
 $ErrorActionPreference = "Stop"
@@ -192,6 +193,17 @@ if ([string]::IsNullOrWhiteSpace($WorkspaceRoot)) {
     $WorkspaceRoot = (Resolve-Path ".").Path
 }
 $workspaceRoot = [System.IO.Path]::GetFullPath($WorkspaceRoot)
+
+if ($env:CI -ne "true" -and -not $Force) {
+    $localProfilePath = Join-Path $workspaceRoot "scripts\policy\local-test-profile.json"
+    $localProfile = Get-Content $localProfilePath -Raw | ConvertFrom-Json
+    $dockerAllowed = ($localProfile.enabledEngines -contains "postgres") -or ($localProfile.enabledEngines -contains "mysql")
+    if (-not $dockerAllowed) {
+        Write-DockerProofMessage "SKIPPED: disabled by scripts/policy/local-test-profile.json (pass -Force to override, or add postgres/mysql to enabledEngines)"
+        exit 0
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "docker-linux-proof-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }

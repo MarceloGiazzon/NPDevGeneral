@@ -1,0 +1,203 @@
+id: MON-20
+title: >-
+  No tool measured a real app's endpoint latency, so a tester who suspected "this panel got slow"
+  had nothing -- and RUN-1/RUN-16's own definition-of-done pointed at a verb that did not exist
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R3 item R3.7 -- "Probe concept
+  list/panel/query endpoints at seeded row counts, save p50/p95 baselines per app, diff on re-run."
+  RUN-16 (closed hours earlier the same night) had to hand-roll a one-off timing comparison inside a
+  JUnit test specifically because this verb did not exist yet, and said so in its own ledger entry.
+surface: cli/bench
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_bench_cli.py
+detail: |
+  PREMISES CHECKED FIRST (this roadmap collection had already measured eight premises false, and the
+  task brief named three specific pieces of machinery to check before building anything new):
+    - **The nightly scale ladder** (`scripts/proofs/run-scale-proof.ps1`,
+      `scripts/policy/scale-proof-baseline.json`, `schemas/ai/scale-proof-report.schema.json`) DOES
+      measure latency+memory and DOES save baselines (verified by reading all three) -- but it is a
+      synthetic-model harness bound to ONE hardcoded panel name (`ScaleProofPanel`) chosen at
+      model-synthesis time, PowerShell-driven, scoped under `scripts/proofs/` (a different agent's
+      surface this round), and answers "does the platform scale as concept count grows" as a nightly
+      maintenance concern -- not "is THIS already-generated app slow right now", which is what a
+      tester needs on demand. Extending it would mean teaching a PowerShell proof script to read the
+      same `info.json`/`generated-ui-manifest.json` this module already parses in Python for
+      `test`/`seed`/`explore generate`, for a genuinely different consumer and call pattern. Judged
+      not to be a real extension target; a sibling CLI verb was the smaller, more honest change.
+    - **`npdev monitor probe`** reports app identity/health/config, never per-request timing --
+      confirmed by reading `npdev_monitor.py`; nothing to extend there.
+    - **`npdev explore` run records** capture browser-routine pass/fail plus step durations, not
+      repeated-sample endpoint latency; a different measurement shape for a different question.
+    - **R3.2 (`npdev seed`, `$gen` generative tokens) was already DONE** (QUAL-18/QUAL-19) before this
+      item started, clearing the roadmap's own stated blocker: an app can be loaded to 100k+ rows
+      with one CLI call before benching it.
+  Conclusion: no existing latency/baseline machinery actually fit this job, so `npdev bench` is a NEW
+  verb -- but built by copying `test`'s/`seed`'s own shape (`probe_app` discovery, refuse-not-report-
+  zeros on a non-running app, `_ops`-relative report path, `--json`/human-summary duality), not a
+  new CLI pattern, per the task's own instruction to copy existing wiring.
+
+  ENDPOINT PLAN, model-derived, no per-app config file (same discipline `_rest_smoke_layer`/`explore
+  generate` already established):
+    - "concept list" checks reuse the EXACT source `_rest_smoke_layer` already reads (`info.json`'s
+      `concepts: [{name, route}]`, `GET /api/<route>`) -- this is RUN-1's own surface, and the one
+      RUN-16 (hours earlier) had no tool to point at.
+    - "panel" checks read `generated-ui-manifest.json`'s `panels[]` (the same manifest `explore
+      generate` parses) and GET `/api/runtime/metadata/ui/panels/<name>`
+      (`RuntimeUiMetadataController.loadPanel`, read before assuming). This single generic endpoint
+      IS the roadmap's "query" leg too: a panel's GET already executes its declared dataSource
+      queries server-side and returns their rows, and a repo-wide grep found no separate ad-hoc query
+      endpoint anywhere in runtime-host. So "concept list/panel/query" collapses to two endpoint
+      KINDS, not three -- stated here rather than silently assumed, and `PanelRuntime.loadPanel`
+      (read directly) confirmed even aggregate-workbench panels answer this same GET without a root
+      id, so no panel kind needed excluding from the default plan.
+    - `--concept`/`--panel` (repeatable, mirrors `explore generate --concept`'s own flag shape) scope
+      the plan; a name that does not exist is a NAMED warning in both the JSON and the human summary,
+      never a silent no-op.
+
+  BASELINE DESIGN (looked at `scale-proof-baseline.json`'s shape before inventing a new one; it does
+  not fit -- that file is an APPEND-ONLY ratchet history keyed by concept count, meant for a nightly
+  trend; this item needs "the current expectation for THIS app", a single current value per endpoint
+  that gets explicitly promoted, closer to `explore accept`'s per-screenshot re-baseline than to the
+  ladder's history):
+    - One file per app, `<app-dir>/_ops/bench-baseline.json` (`npdev-bench-baseline.v1`), the same
+      `_ops`-relative convention `npdev-test-report.json`/`bench-baseline.json`'s sibling report use.
+    - **First run with no baseline file always establishes one** -- there is nothing yet to protect,
+      and refusing to record one would make the very next run equally useless.
+    - **Every run after that leaves the baseline UNCHANGED unless `--update-baseline` is passed** --
+      the same explicit-promotion discipline `explore accept` uses for one screenshot, so a run that
+      catches a real regression cannot silently erase the evidence by being re-run.
+    - An endpoint with zero successful samples is never written into the baseline (a failed endpoint
+      has nothing meaningful to compare against later).
+    - **No JSON Schema file was added** for either the report or the baseline shape. Checked
+      precedent first: `npdev-test-report.v1` (R3.4, the verb this one is modeled on) has no schema
+      under `schemas/ai/` either -- `TEST_REPORT_FILENAME`'s only contract is its own
+      `schemaVersion` string. Matching that precedent rather than inventing new machine-checked
+      contract ceremony for a CLI-internal artifact nothing else consumes yet.
+    - **Known, disclosed durability gap, not fixed here**: `_ops` is NOT one of the three seams
+      (`data`/`logs`/`secrets`) a regeneration spares (CLAUDE.md's own three-seam rule,
+      `app-secrets-dir-spared-three-seams`), so `bench-baseline.json` is wiped by the next
+      regeneration -- the exact same durability hole MON-19 (opened the same night, still OPEN) found
+      for `exploration-config.json`. Not fixed here: MON-19 itself says the fix needs an owner
+      decision on which of two durable homes to use, and duplicating that half-open decision for a
+      second file would be scope creep on this item. Recorded so nobody re-discovers it as a surprise.
+
+  MEASUREMENT HONESTY (the stated point of the item, and RUN-16's own lesson generalized):
+    - The regression signal is RELATIVE ONLY: `new p50 >= --regression-threshold * saved p50`
+      (default 1.5x), never an absolute millisecond ceiling. RUN-16 measured a plain "<300ms"
+      absolute threshold flake at 365ms under ordinary multi-agent machine contention while the SAME
+      code measured 167ms otherwise -- a swing from noise alone bigger than many real regressions.
+      `_compare_to_baseline` is a pure function unit-tested at the exact threshold boundary
+      (ratio==threshold flags; just under does not).
+    - **KNOWN LIMITATION, and this item's own evidence demonstrates it: the relative threshold did
+      NOT solve the noise problem, it only changed its shape.** An earlier draft of this entry claimed
+      "1.5x sits comfortably above that measured noise band"; the measurement recorded below
+      contradicts that -- `simple-user-registry` produced `ratio=1.666x` and exit 2 with NO code
+      change at all, purely from ambient machine load. That is a FALSE POSITIVE, not a correct
+      detection, and 1.666x is above the 1.5x default, not below it.
+      The root cause is structural, not a bad constant: RUN-16's technique was robust because it
+      measured the OLD and NEW paths back-to-back **within one run**, so both samples carried the same
+      machine noise and it cancelled. `npdev bench` compares a fresh p50 against a baseline captured
+      at a DIFFERENT time under DIFFERENT load, so nothing cancels. Raising the constant only trades
+      false positives for false negatives.
+      CONSEQUENCE FOR CALLERS: treat the measurements (p50/p95/mean/stdev/samples) as trustworthy and
+      the REGRESSED VERDICT as advisory. Do not wire exit code 2 into a blocking gate until the
+      cross-run noise problem is addressed -- a co-measured control endpoint in the same run, whose
+      ratio normalises the others, is the shape that would fix it. Tracked as MON-21.
+    - Every report/summary carries `samples`, `meanMs` and `stdevMs` alongside `p50Ms`/`p95Ms` --
+      never a bare number. `_bench_stats` is unit-tested for the zero-sample, single-sample and
+      multi-sample cases.
+    - A failed sample is COUNTED, not dropped from the denominator: `failedSamples` plus the first 5
+      `failures` reasons plus a `failuresTruncated` count for the rest -- CLAUDE.md's own "if you
+      bound coverage, SAY what was dropped" rule, applied to a list of HTTP failure strings.
+    - A non-running app is refused (`CliError`, exit 1) rather than reported as a wall of failed
+      samples -- the same D4/QUAL-4 rule `run_test`/`run_seed` already follow.
+
+  LIVE MEASUREMENT (two real generated apps, not simulated; both under
+  `D:\WorkSpace\NPDev\Build\generated-finalapps\`):
+
+  1) **simple-user-registry** (pre-existing, already running, untouched by this item otherwise):
+     `User` concept-list, 25 samples: `p50=6.814ms p95=23.946ms mean=8.664ms stdev=5.101ms`. First
+     run established the baseline; a second run at the same endpoint compared `ratio=0.84x` (not
+     regressed, exit 0). A later real run under heavier ambient machine load measured
+     `p50=11.349ms` against that same 6.814ms baseline -- `ratio=1.666x`, flagged REGRESSED and
+     exited 2, entirely from real contention, not staged. **Read that result correctly: nothing
+     regressed. The code was identical; only machine load differed. The tool reported a regression
+     that did not exist**, which is the limitation recorded above, observed live on the very machine
+     the verb was built on rather than hypothesised. Exit-code triad confirmed
+     live/directly: 0 (ok), 2 (regressed, via a deliberately forged near-zero baseline), 1 (refusal,
+     via the unit suite's not-running-app test). The app's five identity::*/workspace::* built-in-pack
+     concepts all answered HTTP 404 on their `info.json`-derived route -- confirmed independently with
+     a bare `curl`, so this is a REAL, PRE-EXISTING route-construction limitation `_rest_smoke_layer`
+     (and therefore `npdev test`) already shares, not a defect introduced by this item. Reported
+     honestly as failed samples with the real HTTP status, never hidden or silently skipped.
+
+  2) **bench-r37-proof**, a purpose-built throwaway scratch app (mirroring QUAL-18's own
+     `seed-r32-bench` precedent -- layer 2, `D:\WorkSpace\NPDev\AppGen\apps\_scratch\bench-r37-proof`,
+     generated fresh under its own port 8599 so no other agent's app was touched), reproducing the
+     roadmap's OWN literal done-when wording ("`npdev bench` ... at 100k seeded rows"): one `Item`
+     concept plus one `ItemCatalogPanel` (dataSource bound to an `AllItems` query over the same
+     concept). `npdev seed run` loaded 100,000 `Item` records via `$gen:words`/`$gen:decimal-range`/
+     `$gen:enum-pick` tokens in 137.4s. First bench pass (cold JVM, 20 samples): `Item` list
+     `p50=33.177ms p95=217.265ms mean=67.119ms stdev=106.335ms` (min 26ms / max 495ms -- the huge
+     spread is real first-request warm-up cost, exactly the kind of noise a single-sample benchmark
+     would have hidden); `ItemCatalogPanel` `p50=28.772ms p95=264.601ms`. A second pass minutes later
+     (JIT warmed): `Item` `p50=19.772ms p95=43.028ms` (`ratio=0.596x` vs. the cold baseline -- faster,
+     correctly NOT flagged), `ItemCatalogPanel` `p50=29.417ms p95=34.869ms` (`ratio=1.022x`, flat).
+     `--update-baseline` then promoted only the two successfully-measured endpoints into
+     `bench-baseline.json`, leaving it silent on the five identity/workspace concepts and
+     `workspace::Menu`/`workspace::PropertyValue` that 404 on this app too (same shared, pre-existing
+     limitation as app 1 -- confirmed independently on a second app, so it is a pattern, not a fluke).
+     The scratch app was stopped afterward (`_ops/Stop-App.ps1`) to free the port; its definition
+     stays under `AppGen/apps/_scratch/` as a re-runnable proof, same as `seed-r32-bench`.
+
+  DELIBERATELY NOT DONE THIS ROUND:
+    - No JWT/bearer-token auth path -- `npdev bench` authenticates the same way `npdev test`/
+      `npdev seed` do today (`X-Api-Key` from the probe), so a jwt-mode app (WmsOffice, confirmed
+      live: all 56 of its endpoints 401 under this header, independently reproduced with a bare
+      `curl`) reports an honest all-failed result rather than a false measurement. `generate screen`'s
+      `_screen_auth_headers` already has a `--token-file` pattern that could be threaded through here
+      later; not done now to keep this item's surface to what R3.7 asked for.
+    - No functional index or query-plan work on the endpoints being measured -- this item is the
+      MEASURING TOOL RUN-1/RUN-16 needed, not a second optimization pass.
+    - No fix for the `_ops`-durability gap the baseline file inherits from MON-19 -- recorded above,
+      not duplicated as a second half-open decision.
+    - No attempt to reach the literal "canary" app named in the roadmap text: `npdev-canary`
+      (`D:\WorkSpace\NPDev\Build\npdev-canary\App`) was stopped and carries no `info.json` this
+      session, so a purpose-built scratch app was used instead to reproduce the SAME row count and
+      measurement shape without disturbing a shared fixture or another agent's running app.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_bench_cli.py
+  asserts: >-
+    Pure-function coverage (`BenchStats`, `BenchBaselineCompare`, `BenchBaselineFile`, `BenchPlan`) --
+    zero/one/many-sample stats shapes, the exact regression-threshold boundary (ratio==threshold
+    flags, just under does not, a faster run is never a regression, zero successful samples is never
+    compared), missing/corrupt baseline files treated as absent, and the concept+panel plan built
+    from `info.json`+`generated-ui-manifest.json` with named warnings for an unknown `--concept`/
+    `--panel`. Filesystem-and-HTTP-stub coverage (`RunBenchMeasurement`, `RunBenchBaseline`,
+    `BenchReportFile`, `BenchCliExitCodes`) -- every planned endpoint measured with the requested
+    sample count, live-key authentication, a failing endpoint counted not hidden, `--concept`/
+    `--panel` scoping, no API key ever reaching the report, refusal (not a zero-filled report) on a
+    non-running app, first-run baseline establishment, a second run leaving the baseline untouched
+    without `--update-baseline`, `--update-baseline` promoting it, and the 0/1/2 exit-code triad. 35
+    new tests, all green; full NPDevCli suite 335 -> 370, all green
+    (`python -m unittest discover -s NPDevCli/tests -p "test_*.py"`, the genuinely CI-gated path per
+    CLAUDE.md). The load-bearing REAL-app claims (actual p50/p95/mean/stdev numbers, live regression
+    detection under real machine load, the 100k-row measurement) are evidenced by direct measurement
+    in this file's `detail:`, against two live booted apps, not by a mocked test.
+  provenRed: false
+  provenRedNote: >-
+    The verb did not exist before this item (confirmed: no prior `bench` subcommand in
+    `npdev_cli.py`), so there is no pre-existing behavior a RED run could have been taken against --
+    the same honest accounting MON-18/QUAL-18 recorded for their own new verbs. Correctness was
+    instead proven going forward: 35 new unit/integration tests plus two independent live measurement
+    runs against two different real generated apps (one pre-existing and shared, one purpose-built),
+    including one naturally-occurring (not staged) regression detection caused by real ambient machine
+    load and one deliberately-forged-baseline regression detection to prove the exit-code path.

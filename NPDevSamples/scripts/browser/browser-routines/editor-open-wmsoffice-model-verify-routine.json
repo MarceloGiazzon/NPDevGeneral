@@ -1,0 +1,31 @@
+{
+  "scenarioName": "editor-open-wmsoffice-model-verify",
+  "targetPath": "/npdev-ui-react/#/authoring/exchange",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true },
+  "steps": [
+    { "action": "goto", "url": "http://localhost:5173/npdev-ui-react/#/authoring/exchange", "label": "Open the Import/Export authoring route" },
+    { "action": "waitForLoadState", "state": "networkidle", "label": "Let the lazy authoring chunk finish loading" },
+    {
+      "action": "evaluate",
+      "name": "injectRealFile",
+      "script": "return fetch('http://127.0.0.1:8935/wmsoffice-model-for-import-test.json').then(function (r) { return r.text(); }).then(function (text) { var file = new File([text], 'model.json', { type: 'application/json' }); var dt = new DataTransfer(); dt.items.add(file); var openBtn = Array.from(document.querySelectorAll('button')).find(function (b) { return b.textContent.trim() === 'Open model only'; }); var section = openBtn ? openBtn.closest('section') : null; var input = section ? section.querySelector('input[type=\"file\"]') : null; if (input) { input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })); } return { foundButton: !!openBtn, foundInput: !!input, fetchedLength: text.length }; });",
+      "label": "Fetch WmsOffice's real model.json and inject it into the file input"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 500, "label": "Let React commit the selected-file state" },
+    {
+      "action": "evaluate",
+      "name": "clickOpen",
+      "script": "var openBtn = Array.from(document.querySelectorAll('button')).find(function (b) { return b.textContent.trim() === 'Open model only'; }); if (openBtn) { openBtn.click(); } return { clicked: !!openBtn };",
+      "label": "Click Open model only"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 2500, "label": "Let the async import + re-render settle" },
+    { "action": "screenshot", "name": "after_import_wmsoffice", "label": "Screen after opening WmsOffice's real model.json" },
+    {
+      "action": "evaluate",
+      "name": "afterState",
+      "script": "var root = document.getElementById('root'); return { bodyTextLength: document.body.innerText.length, bodyTextSnippet: document.body.innerText.slice(0, 600), rootChildCount: root ? root.children.length : -1, rootInnerHtmlLength: root ? root.innerHTML.length : -1 };",
+      "label": "Capture rendered body/root state after import"
+    },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

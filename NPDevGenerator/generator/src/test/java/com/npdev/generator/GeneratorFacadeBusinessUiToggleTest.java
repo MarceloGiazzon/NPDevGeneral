@@ -29,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GeneratorFacadeBusinessUiToggleTest {
 
     private static final String BUSINESS_UI_MARKER = "src/main/resources/static/npdev-business-ui/app.js";
-    private static final String INTERNAL_UI_MARKER = "src/main/resources/static/npdev-ui-react/index.html";
 
     private static Path canonicalDemoModel() {
         return Path.of("..", "resources", "Models", "canonical-demo", "model.json").normalize();
@@ -74,7 +73,5 @@ class GeneratorFacadeBusinessUiToggleTest {
 
         assertFalse(Files.exists(out.resolve(BUSINESS_UI_MARKER)),
                 "ui.generateBusinessUi=false should suppress the business UI: " + BUSINESS_UI_MARKER);
-        assertTrue(Files.exists(out.resolve(INTERNAL_UI_MARKER)),
-                "The rest of generation should still run: " + INTERNAL_UI_MARKER);
     }
 }

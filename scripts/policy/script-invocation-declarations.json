@@ -76,6 +76,9 @@
     "scripts/appgen/New-AppTreePage.ps1": {
       "invocation": "orchestrated"
     },
+    "scripts/appgen/New-AppTreePageV2.ps1": {
+      "invocation": "orchestrated"
+    },
     "scripts/appgen/New-ControlPanelPage.ps1": {
       "invocation": "orchestrated"
     },
@@ -123,10 +126,6 @@
       "invocation": "ci-gate"
     },
     "scripts/hooks/pre-commit.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
-    },
-    "scripts/hygiene/Setup-EditorNodeModules.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
     },
@@ -205,6 +204,10 @@
     "scripts/quality/cadence_state.py": {
       "invocation": "orchestrated"
     },
+    "scripts/quality/test_profile.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/quality/check-adr-decision-implementation.py": {
       "invocation": "ci-gate"
     },
@@ -212,6 +215,9 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-cadence-coverage.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/check-ci-adapter-coverage.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-closeable-streams.py": {
@@ -258,9 +264,6 @@
       "documentedIn": "docs/adr/ADR-0009-external-ai-delegation.md"
     },
     "scripts/quality/check-firstrun-extractor.py": {
-      "invocation": "ci-gate"
-    },
-    "scripts/quality/check-generated-bundle-freshness.py": {
       "invocation": "ci-gate"
     },
     "scripts/quality/check-ledger-status-reverse-freshness.py": {
@@ -344,8 +347,7 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/firstrun-harness/run-readme.sh": {
-      "invocation": "manual-runbook",
-      "documentedIn": "scripts/quality/firstrun-harness/README.md"
+      "invocation": "ci-gate"
     },
     "scripts/quality/fix-statezip-visible-timestamps.ps1": {
       "invocation": "manual-runbook",
@@ -433,12 +435,6 @@
     "scripts/quality/run-docker-linux-proof.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-editor-complexity-check.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/quality/run-editor-gate.ps1": {
-      "invocation": "ci-gate"
-    },
     "scripts/quality/run-engine-app-proof.py": {
       "invocation": "ci-gate"
     },
@@ -458,13 +454,6 @@
     },
     "scripts/quality/run-final-regression-coverage-audit.ps1": {
       "invocation": "orchestrated"
-    },
-    "scripts/quality/run-frontend-gate-tests.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/quality/run-frontend-gate.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/FRONTEND_GATE_REPRODUCIBILITY.md"
     },
     "scripts/quality/run-generator-gate.ps1": {
       "invocation": "ci-gate"
@@ -598,6 +587,14 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/beta/ai-only-beta-0-release-runbook.md"
     },
+    "scripts/release/New-SourceZip.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/release/New-Source-npx.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/runtimehost/sync-runtimehost-libs.ps1": {
       "invocation": "ci-gate"
     },
@@ -636,9 +633,6 @@
       "invocation": "ci-gate"
     },
     "scripts/statezip-npdev-contract.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/statezip-npdev-editor.ps1": {
       "invocation": "orchestrated"
     },
     "scripts/statezip-npdev-general.ps1": {
@@ -684,6 +678,13 @@
       "invocation": "ci-gate"
     },
     "scripts/quality/check-done-item-guards.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/proofs/run-pk10-first-class-extends-proof.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "ledger/items/PACK-10.yml"
+    },
+    "scripts/quality/check-pack-coordinates-pinned.py": {
       "invocation": "ci-gate"
     }
   }

@@ -1,0 +1,4 @@
+{
+  "database": { "engine": "H2Local", "databaseName": "npdev_pack9_role_binding_b", "username": "sa", "password": "", "createInternalTables": true, "createBusinessTables": true },
+  "schemaLifecycle": { "strategy": "KeepExistingIfCompatible", "allowDestructiveRecreate": false, "destructiveRecreateConfirmation": "", "scope": "NpdevOwnedTablesOnly" }
+}

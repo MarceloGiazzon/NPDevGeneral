@@ -7,4 +7,17 @@ dependencies {
     implementation 'org.eclipse.angus:angus-mail:2.0.3'
 
     testImplementation 'com.icegreen:greenmail-junit5:2.1.0'
+
+    // R6.3 (RUN-18): the scheduled-report end-to-end proof compiles a real model.json (capabilities
+    // + bindings + a cron-scheduled flow) through the SAME parser/validator/compiler/flow-definition
+    // path a generated app uses, then drives it against a real document-render-inproc adapter and
+    // this module's own real SmtpMailCapabilityAdapter (pointed at GreenMail) -- test-only, so
+    // mail-smtp's own shipped artifact stays exactly as dependency-light as before.
+    testImplementation project(':dsl')
+    testImplementation project(':adapters:flow-compiled')
+    testImplementation project(':adapters:document-render-inproc')
+    // dsl exposes Jackson (JsonNode) on its public JsonModelParser.parse(...) API as implementation,
+    // so a test that calls it directly needs Jackson on its own compile classpath (same note as
+    // flow-compiled's build.gradle).
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
 }

@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "npdev-local-test-profile.v1",
+  "checkLevel": "normal",
+  "checkLevels": ["very_low", "low", "normal", "high", "extra_high", "full"],
+  "enabledEngines": ["h2", "sqlserver"],
+  "allEngines": ["h2", "sqlserver", "postgres", "mysql"],
+  "note": "Local-machine default only. CI (CI=true) ignores this file and always runs its full matrix -- this exists purely to keep a developer/agent machine from spinning up Docker/Postgres/MySQL by default. Raise checkLevel or add postgres/mysql to enabledEngines to opt back in for a specific task. Read by scripts/quality/test_profile.py; consumed by NPDevKernel PostgresTestSupport.java (via NPDEV_TEST_PROFILE_ENGINES) and scripts/proofs/run-item20-postgres-proof.ps1 / scripts/quality/run-docker-linux-proof.ps1 (via docker_allowed())."
+}

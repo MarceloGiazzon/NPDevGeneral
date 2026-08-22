@@ -1,12 +1,15 @@
 # Using NPDev with MySQL or SQL Server
 
-**Status: experimental, and this page says exactly what that means.** Everything below is measured —
-each claim names the CI run that produced it. Where something has not been measured, it says so
-rather than sounding confident.
+**Status: supported — a generated app boots, serves and persists on both engines, proven in CI.**
+Everything below is measured — each claim names the CI run that produced it. Where something has
+not been measured, it says so rather than sounding confident.
 
-> **The one sentence to take away:** *implemented, locally checked, and supported are three different
-> claims, and only the third is one you are entitled to rely on.* MySQL and SQL Server are at the
-> second, moving toward the third.
+> **The one sentence to take away:** MySQL and SQL Server carry the full claim — an app generated for
+> either engine realizes its schema through NPDev's own engine, boots Spring, serves, and persists,
+> the same bar PostgreSQL crossed before them. Two operational differences remain real and change
+> what you should *do*, not whether it works: MySQL commits implicitly on DDL (§4.2), MySQL wants
+> `utf8mb4` (§4.1), and SQL Server's text columns are `NVARCHAR` (§5.1). Read §4 and §5 before
+> relying on them in production.
 
 **Companion docs:** [`DATABASES_AND_MIGRATIONS.md`](../DATABASES_AND_MIGRATIONS.md) (how NPDev turns a
 model into a schema), [`SCHEMA_EVOLUTION.md`](../SCHEMA_EVOLUTION.md) (what happens when the model
@@ -17,21 +20,21 @@ changes), [`DEPLOYMENT.md`](../DEPLOYMENT.md).
 ## 1. Choosing an engine
 
 ```sh
-npdev engines                     # what exists, what each needs, which are experimental
+npdev engines                     # what exists, what each needs, which carry caveats
 npdev init my-app --engine mysql --db-host localhost --db-user npdev --db-password ...
 ```
 
 `npdev engines` is the authoritative list — the CLI reads it from one registry, and so does the
-Manager's dropdown, so the two cannot disagree. An experimental engine prints its caveat **at the
-point of choice**, not in a changelog.
+Manager's dropdown, so the two cannot disagree. A supported engine that carries operational caveats
+prints them **at the point of choice**, not in a changelog.
 
 | engine | `--engine` | needs a server | status |
 |---|---|---|---|
 | H2 (file) | `h2local` | no | supported — the default |
 | H2 (TCP) | `h2server` | yes | supported |
 | PostgreSQL | `postgres` | yes | supported |
-| MySQL 8.4+ | `mysql` | yes | **experimental** |
-| SQL Server 2022+ | `sqlserver` | yes | **experimental** |
+| MySQL 8.4+ | `mysql` | yes | supported — two operational caveats, see §4 |
+| SQL Server 2022+ | `sqlserver` | yes | supported — two operational caveats, see §5 |
 | in-memory | `inmemory` | no | supported — persists nothing |
 
 `npdev init --engine` writes both files an app needs: `db.definition.json` (how your data persists)
@@ -40,39 +43,38 @@ cannot disagree about the engine.
 
 ---
 
-## 2. What "experimental" means here
+## 2. What "supported" means here
 
-An engine becomes **supported** when a *generated application* boots, serves and persists on it in
-CI — not when its dialect passes unit tests. That distinction is the entire point:
+An engine becomes **supported** — the status both MySQL and SQL Server hold today in `npdev engines`
+— when a *generated application* boots, serves and persists on it in CI. That is a higher bar than a
+dialect passing unit tests, and it is the entire point:
 
 | Layer | MySQL / SQL Server | PostgreSQL |
 |---|---|---|
 | Dialect string generation (Tier A) | proven — 78 assertions, four engines | proven |
 | Behaviour over raw JDBC (Tier B) | proven — **14/14 vectors per engine, 0 skips**, real containers (run `31271016482`) | proven |
-| **A generated app booting and serving** | **NOT YET** — `STOR-5` | **proven** (run `31279857141`): boots, non-BMP unicode round trip, paginated query, rows survive a restart |
+| **A generated app booting and serving** | **proven** (run `31296993259`): boots, serves and persists on both. STOR-12 re-ran the app proof 4/4 on a fresh database and 4/4 on a non-fresh one — the deployment shape | **proven** (run `31279857141`): boots, non-BMP unicode round trip, paginated query, rows survive a restart |
 
-**What `STOR-5` is, plainly.** NPDev's own first migration script
-(`V1__npdev_schema_realization.sql`) is written in PostgreSQL/H2 idioms —
-`CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`. MySQL supports one of those and rejects
-the others; T-SQL rejects all of them. So an app generated for either engine currently fails during
-its first Flyway migration. Two earlier causes in the same area are already fixed: the app template
-carried no JDBC driver for these engines at all (`STOR-4`), and NPDev's own `execution_id` primary
-key was a `TEXT` column that MySQL will not index.
-
-Nothing about this is hidden: the failures are found in minutes by a CI job rather than by your
-first boot, and they are strictly ordered — Flyway stops at the first statement it cannot run — so
-the remaining work is bounded and visible.
+**It was not always this way.** Getting here meant closing a chain of engine-specific defects that
+each sat behind the one before it (the STOR-* work, 2026-08-08 → 2026-08-10). The first was STOR-5:
+NPDev's own schema-realization script (`V1__npdev_schema_realization.sql`) was written in
+PostgreSQL/H2 guarded-DDL idioms — `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`. MySQL
+supports one of those and rejects the others; T-SQL rejects all of them, so an app generated for
+either engine failed during its first Flyway migration. Two earlier causes in the same area were
+already fixed when STOR-5 landed: the app template carried no JDBC driver for these engines at all
+(`STOR-4`), and NPDev's own `execution_id` primary key was a `TEXT` column that MySQL will not
+index. Each fix revealed the next construct and the next defect (STOR-6, STOR-7, STOR-9, STOR-10,
+STOR-12) until the application-level probe closed on all three engines. That probe lives in
+`.github/workflows/engine-support.yml`; today its matrix job is literally named "a generated app
+boots, serves and persists" for `[mysql, sqlserver, postgres]`.
 
 Tier B runs against **real** MySQL 8.4 and SQL Server 2022 containers, pinned by digest so a red
 result cannot be an upstream image change. It covers upsert idempotence, pagination non-overlap,
 JSON round-trip, reserved-word columns, DDL/DML transactionality, auto-increment monotonicity,
 charset fidelity and enforced uniqueness.
 
-**What it does not cover** is everything above raw JDBC: schema realization through NPDev's own
-engine, Spring boot-up, the REST surface. That distinction is not academic — the application-level
-probe found three separate reasons no generated app could run on these engines while every layer
-below stayed green. Until that probe passes for an engine, it stays experimental here and in
-`npdev engines`.
+The checks in §3 (`npdev doctor`) are the operational safety net on top of the proof: the moment a
+database is configured wrong, they say which one of several failures it is — before a build.
 
 ---
 

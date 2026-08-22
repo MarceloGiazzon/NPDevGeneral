@@ -137,6 +137,50 @@ function Get-NpdevLiveApiKey([string]$AppRoot) {
     return $apiKey
 }
 
+# T1/C2: application-dev.yml no longer seeds a known api-dev/dev-key pair, so `dev` now fails
+# closed exactly like `default` and `prod` -- StartupValidator.validateAuth() refuses to boot
+# without a key. A sample script that boots the app itself (raw `gradlew bootRun` / `java -jar`,
+# never `_ops/Run-FinalApp.ps1`) must provision one BEFORE starting that process, the same way
+# Ensure-NpdevApiKey (OperationalRunbookEmitter.java) does for the supported launchers -- Start-Process
+# inherits the calling PowerShell session's environment, so setting $env:NPDEV_AUTH_API_KEYS /
+# $env:NPDEV_AUTH_APIKEYS here reaches the child gradlew/java process without either variable ever
+# being written to a generated file this repo owns.
+#
+# Same file, same contract as the generator's provisioner: idempotent, "present but unusable"
+# (REG-157: empty file, or no non-comment line contains '=') treated as absent, printed once.
+function Ensure-NpdevSampleApiKey([string]$AppRoot) {
+    $secretsDir = Join-Path $AppRoot "secrets"
+    $keyFile = Join-Path $secretsDir "api-key.env"
+    $needsGeneration = -not (Test-Path -LiteralPath $keyFile)
+    if (-not $needsGeneration) {
+        $hasUsableMapping = $false
+        foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+            $line = $rawLine.Trim()
+            if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) { $hasUsableMapping = $true; break }
+        }
+        $needsGeneration = -not $hasUsableMapping
+    }
+    if ($needsGeneration) {
+        if (-not (Test-Path -LiteralPath $secretsDir)) { New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null }
+        $bytes = New-Object byte[] 24
+        [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $key = ([Convert]::ToBase64String($bytes) -replace "[^a-zA-Z0-9]", "")
+        Set-Content -LiteralPath $keyFile -Value ("NPDEV_AUTH_API_KEYS=" + $key + "=dev:developer:admin") -Encoding UTF8 -NoNewline
+        Info ("Generated a new admin API key for this sample app, saved to: " + $keyFile)
+    }
+    foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+        $line = $rawLine.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $parts = $line.Split("=", 2)
+            $name = $parts[0].Trim()
+            if ($name) {
+                Set-Item -Path ("env:" + $name) -Value $parts[1].Trim()
+                if ($name -eq "NPDEV_AUTH_API_KEYS") { Set-Item -Path "env:NPDEV_AUTH_APIKEYS" -Value $parts[1].Trim() }
+            }
+        }
+    }
+}
+
 function Resolve-NPDevSample([string]$SamplesRoot, [string]$SampleId) {
     if ([string]::IsNullOrWhiteSpace($SampleId)) {
         Fail "SampleId is required."

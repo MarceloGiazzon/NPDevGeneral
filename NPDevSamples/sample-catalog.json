@@ -94,6 +94,21 @@
       "verificationTarget": "contract-fixture"
     },
     {
+      "id": "temporal-pricing-r58",
+      "name": "Temporal Pricing (R5.8)",
+      "kind": "repro-case",
+      "formerCategory": "repro-cases",
+      "purpose": "R5.8 live proof: concept.temporal + the generic concept-CRUD read endpoint's asOf query param resolve the effective row of a product whose price changed over time.",
+      "inputRoot": "temporal-pricing-r58/Input",
+      "outputRoot": "temporal-pricing-r58/Output",
+      "inputPath": "NPDevSamples/temporal-pricing-r58/Input",
+      "outputPath": "NPDevSamples/temporal-pricing-r58/Output",
+      "generateScript": "scripts/samples/generate-sample.ps1 -SampleIds temporal-pricing-r58",
+      "runScript": "scripts/samples/run-sample.ps1 -SampleId temporal-pricing-r58",
+      "verifyScript": "scripts/samples/verify-sample.ps1 -SampleIds temporal-pricing-r58 -GenerateIfMissing",
+      "verificationTarget": "temporal-asof-regression"
+    },
+    {
       "id": "dsl-conformance-max",
       "name": "DSL Conformance Max",
       "kind": "test-model",

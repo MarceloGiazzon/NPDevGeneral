@@ -148,8 +148,47 @@ public class RuntimeUiMetadataController {
         return run(() -> requirePanelRuntime().deleteRow(panelName, dataSourceName, id, currentContext(request)));
     }
 
+    /**
+     * R5.6 (roadmap Wave 1): the closing half of "nothing carries a user locale server-side" --
+     * {@code ExecutionContext} already has a read side for a {@code "locale"} tag
+     * ({@link ExecutionContext#locale()}, added by the DSL/kernel half of this work) but nothing
+     * populated it, because the generated {@code RuntimeContextService} (a mustache template out of
+     * this module's reach) never reads one. Populated HERE instead, from the standard
+     * {@code Accept-Language} header every browser already sends with zero app-specific wiring --
+     * chosen over a stored per-user preference because it needs no new concept/field/endpoint to
+     * exist for the done-when demo ("switching user locale live" is exactly what re-sending the
+     * request with a different header does), and because it is the one locale signal that reaches
+     * every unauthenticated/first-load request too (a stored preference only exists once someone is
+     * logged in and has set it). A per-user stored preference remains a natural LATER addition
+     * layered on top (an explicit {@code locale} tag beats this header the same way an explicit
+     * {@code X-Tag-locale} would, per {@link ExecutionContext#withTag}'s override semantics) -- not
+     * done here, out of this task's scope.
+     */
     private ExecutionContext currentContext(HttpServletRequest request) {
-        return runtimeContextService.currentContext(request);
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        String requestedLocale = primaryLocaleTag(request);
+        return requestedLocale == null ? context : context.withTag("locale", requestedLocale);
+    }
+
+    /**
+     * The request's locale, taken from the standard {@code Accept-Language} header (RFC 9110) --
+     * only the FIRST (highest-priority) language range, stripped of its optional {@code ;q=} weight
+     * (e.g. {@code "pt-BR,pt;q=0.9,en;q=0.8"} resolves to {@code "pt-BR"}). The kernel's
+     * {@code LabelResolver} already implements the exact-tag / same-language-ignoring-region
+     * fallback a lower-priority range in the same header would otherwise exist to express, so only
+     * the first range is read.
+     * Returns null (not {@code ""}) when the header is absent/blank/wildcard-only, so
+     * {@link ExecutionContext#locale()} correctly reports "no locale requested" rather than a
+     * tag that can never match anything.
+     */
+    private static String primaryLocaleTag(HttpServletRequest request) {
+        String header = request.getHeader(HttpHeaders.ACCEPT_LANGUAGE);
+        if (header == null || header.isBlank()) {
+            return null;
+        }
+        String firstRange = header.split(",", 2)[0].trim();
+        String tag = firstRange.split(";", 2)[0].trim();
+        return tag.isBlank() || "*".equals(tag) ? null : tag;
     }
 
     private Map<String, Object> run(MetadataCall metadataCall) {

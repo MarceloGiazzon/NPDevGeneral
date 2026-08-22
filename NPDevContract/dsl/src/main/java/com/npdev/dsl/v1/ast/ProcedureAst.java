@@ -12,7 +12,6 @@ public record ProcedureAst(
         SchemaAst returns,
         List<String> permissionRequirements,
         String tracePolicy,
-        String auditPolicy,
         GeneratedActionDescriptorAst actionDescriptor,
         Map<String, Object> metadata
 ) {

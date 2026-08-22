@@ -19,6 +19,14 @@ public final class DefaultTraceRedactionPolicy implements TraceRedactionPolicy {
     private static final Set<String> INFO_ALLOWLIST = Set.of(
             "emittedEventName",
             "emittedEventId",
+            // R2.4: a scheduleEvent step with a delay no longer EMITS anything -- it writes a
+            // durable row -- so it records the event under its own two keys rather than lying with
+            // the emitted* pair above. Allowlisted alongside them because they carry exactly the
+            // same thing (an event name and a generated id, neither of them user data), and
+            // omitting them would make a delayed step the only event step whose redacted trace
+            // cannot tell you WHICH event it was.
+            "scheduledEventName",
+            "scheduledEventId",
             "awaitedEventName",
             "awaitedEventFoundEventId",
             "awaitedEventStatus",

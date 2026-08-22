@@ -80,6 +80,19 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
     }
 
     /**
+     * R5.4: forwards to the delegate's own override (on {@link JdbcBusinessConceptStore}, a real
+     * {@code deleted_at}-clearing {@code UPDATE}) rather than falling through to
+     * {@link ConceptStore}'s default ({@code false}, "not supported") -- the same
+     * "without this override, wrapping a concept in this decorator silently downgrades a capability"
+     * trap {@link #query}/{@link #aggregate}/{@link #existsUnique} above already document.
+     */
+    @Override
+    public boolean restore(String tenantId, String conceptName, String id) {
+        log("restore", id);
+        return delegate.restore(tenantId, conceptName, id);
+    }
+
+    /**
      * LNCH-5: forwards to the delegate's own {@code query} override (the JDBC adapter's SQL
      * push-down) rather than falling through to {@link ConceptStore}'s default (fetch-all + in-memory
      * filter) -- without this override, wrapping a concept in this decorator would silently downgrade
@@ -102,6 +115,19 @@ public final class AuditingConceptStoreDecorator implements ConceptStore {
             String tenantId, String conceptName, com.npdev.kernel.concepts.ConceptAggregateQuery query) {
         log("aggregate", "");
         return delegate.aggregate(tenantId, conceptName, query);
+    }
+
+    /**
+     * R5.2 (RUN-1 item 4): forwards to the delegate's own pushdown override (on
+     * {@link JdbcBusinessConceptStore}, a candidate-narrowing SQL {@code WHERE}) rather than falling
+     * through to {@link ConceptStore}'s default (fetch-all + scan-in-the-JVM) -- the same
+     * "without this override, wrapping a concept in this decorator silently downgrades a capability"
+     * trap {@link #query}/{@link #aggregate} above already document.
+     */
+    @Override
+    public boolean existsUnique(String tenantId, String conceptName, List<String> fieldNames, List<Object> values, String excludeId) {
+        log("existsUnique", "");
+        return delegate.existsUnique(tenantId, conceptName, fieldNames, values, excludeId);
     }
 
     private void log(String operation, String id) {

@@ -15,6 +15,15 @@ on:
       - 'NPDevManager/**'
       - 'scripts/quality/manager-harness/**'
       - '.github/workflows/manager-harness.yml'
+      # QUAL-13 (2026-08-15): this workflow builds and boots a real generated app along the
+      # Manager's own path, so a RuntimeHost regression is exactly what it should catch -- but
+      # NPDevRuntimeHost/** was never in this list, so BT-1 (a non-executable gradlew committed
+      # under runtimehost-core) got zero pre-merge signal from this workflow and only failed it at
+      # the beta1.18 tag, 15 merges later. `**/gradlew` is separate from NPDevRuntimeHost/** on
+      # purpose: BT-1's own defect was a file-MODE change, which a content-path pattern under one
+      # module would not generalise to the other five tracked wrapper copies CLAUDE.md names.
+      - 'NPDevRuntimeHost/**'
+      - '**/gradlew'
   schedule:
     - cron: '0 5 * * *'
   workflow_dispatch: {}

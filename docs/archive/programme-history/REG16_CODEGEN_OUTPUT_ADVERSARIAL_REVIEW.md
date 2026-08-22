@@ -3,7 +3,7 @@
 > **Date:** 2026-07-25 · **Branch:** `beta1-vision-spine` · **Surface:** the code the generator EMITS
 > (and the templates that emit it), not the emitter's own internals.
 > **Plan:** [`ONE_PLAN_CLOSE_EVERYTHING.md`](ONE_PLAN_CLOSE_EVERYTHING.md) §3.1 ·
-> **Steered by:** [`SECURITY_PATTERN_SWEEP_2026-07.md`](../../SECURITY_PATTERN_SWEEP_2026-07.md) §4.1
+> **Steered by:** [`SECURITY_PATTERN_SWEEP_2026-07.md`](../SECURITY_PATTERN_SWEEP_2026-07.md) §4.1
 
 ---
 

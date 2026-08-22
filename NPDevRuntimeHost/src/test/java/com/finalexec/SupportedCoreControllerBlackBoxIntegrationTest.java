@@ -9,17 +9,21 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import org.springframework.core.type.filter.AnnotationTypeFilter;
+import org.springframework.context.annotation.ClassPathScanningCandidateComponentProvider;
+import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.stereotype.Controller;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.util.ClassUtils;
+import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.LinkedHashSet;
 import java.util.Set;
-import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -49,22 +53,29 @@ class SupportedCoreControllerBlackBoxIntegrationTest {
 
     @Test
     void everyRuntimeHostControllerIsClassifiedExactlyOnce() throws Exception {
-        Set<String> sourceControllers = discoverSourceControllers();
+        Set<String> classpathControllers = discoverClasspathControllers();
         Set<String> allowedControllers = loadArray("allowedControllers");
         Set<String> deferredControllers = loadArray("deferredControllers");
         Set<String> testOnlyControllers = loadArray("testOnlyControllers");
+
+        Set<String> allClassified = new LinkedHashSet<>();
+        allClassified.addAll(allowedControllers);
+        allClassified.addAll(deferredControllers);
+        allClassified.addAll(testOnlyControllers);
+
+        for (String classified : allClassified) {
+            assertTrue(
+                    classpathControllers.contains(classified) || compileExcludedSourceExists(classified),
+                    "Manifest entry '" + classified + "' is phantom: not on classpath and no compile-excluded source found.");
+        }
 
         assertNoOverlap("allowed/deferred", allowedControllers, deferredControllers);
         assertNoOverlap("allowed/test-only", allowedControllers, testOnlyControllers);
         assertNoOverlap("deferred/test-only", deferredControllers, testOnlyControllers);
 
-        LinkedHashSet<String> classifiedControllers = new LinkedHashSet<>();
-        classifiedControllers.addAll(allowedControllers);
-        classifiedControllers.addAll(deferredControllers);
-        classifiedControllers.addAll(testOnlyControllers);
-
-        assertEquals(sourceControllers, classifiedControllers,
-                "Every RuntimeHost controller source must be classified as allowed, deferred, or test-only.");
+        assertEquals(classpathControllers, allClassified,
+                "Every api controller on the classpath (RuntimeHost + runtimehost-core) must be classified "
+                        + "as allowed, deferred, or test-only in the manifest.");
     }
 
     @Test
@@ -91,17 +102,34 @@ class SupportedCoreControllerBlackBoxIntegrationTest {
         }
     }
 
-    private Set<String> discoverSourceControllers() throws Exception {
-        Path sourceRoot = Path.of("src", "main", "java", "com", "finalexec");
+    private Set<String> discoverClasspathControllers() {
+        ClassPathScanningCandidateComponentProvider scanner =
+                new ClassPathScanningCandidateComponentProvider(false);
+        scanner.addIncludeFilter(new AnnotationTypeFilter(Controller.class));
+        scanner.addIncludeFilter(new AnnotationTypeFilter(RestController.class));
+
         LinkedHashSet<String> controllers = new LinkedHashSet<>();
-        try (Stream<Path> stream = Files.walk(sourceRoot)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().endsWith("Controller.java"))
-                    .map(path -> path.getFileName().toString().replace(".java", ""))
-                    .sorted()
-                    .forEach(controllers::add);
+        for (String pkg : new String[]{"com.finalexec.api"}) {
+            for (BeanDefinition bd : scanner.findCandidateComponents(pkg)) {
+                String className = bd.getBeanClassName();
+                if (className != null) {
+                    String simpleName = className.substring(className.lastIndexOf('.') + 1);
+                    controllers.add(simpleName);
+                }
+            }
         }
         return Set.copyOf(controllers);
+    }
+
+    private boolean compileExcludedSourceExists(String controllerName) {
+        try {
+            PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
+            Resource resource = resolver.getResource(
+                    "file:src/main/java/com/finalexec/" + controllerName + ".java");
+            return resource.exists();
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private Set<String> activeRuntimeControllers() {

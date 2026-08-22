@@ -121,7 +121,6 @@ PRODUCTION_ROOTS = (
     "NPDevManager/src",
     "NPDevCli",
     "NPDevMcp",
-    "NPDevEditor/ui-react/src",
 )
 
 SOURCE_SUFFIXES = {".java", ".py", ".ps1", ".rs", ".ts", ".tsx", ".kt", ".sql"}
@@ -152,7 +151,20 @@ RESOLVED_MARKERS = (
 CONTEXT_LINES = 3
 
 # id -> reason. An entry here MUST say why a resolved-looking mention coexists with a live OPEN row.
-ACCEPTED: dict[str, str] = {}
+ACCEPTED: dict[str, str] = {
+    "REG-180": (
+        "The mention R1 found (RuntimeControllerAllowlistConfig.java, 'REG-180/T5: PLAN.md ... "
+        "proposed matchIfMissing=true here so this enforces on every profile') is prose explaining "
+        "a fix that was TRIED AND REVERTED, not evidence one landed -- same shape as the item's own "
+        "documented 'option (a) tried and reverted' entry from earlier the same day. The code is "
+        "functionally UNCHANGED from before this comment was added "
+        "(@ConditionalOnProperty(havingValue=\"true\"), no matchIfMissing); the comment exists "
+        "precisely so a future reader does not re-propose the same one-line fix without re-deriving "
+        "why it silently strips all six com.finalexec.controlpanel.* controllers on every real boot. "
+        "See ledger/items/REG-180.yml's 2026-08-15 'third option tried and reverted' paragraph for "
+        "the full trace."
+    ),
+}
 
 # R2's own ACCEPTED list -- separate from R1's so a reason written for one rule is never silently
 # read as covering the other (they fire on different evidence and can both be wrong independently).
@@ -174,6 +186,27 @@ ACCEPTED_R2: dict[str, str] = {
         "changes were for REG-171/172/173 in the SAME squashed PR, unrelated to REG-170's own "
         "IdentityProvisioning bug. Same shape as PACK-9 above: a legitimate 'reconcile this row' "
         "firing whose reconciliation is already done and the conclusion is 'still open'."
+    ),
+    "REG-176": (
+        "The commit R2 names (f494e21588, the Batch 3 runtimehost PR #93 commit) genuinely MODIFIED "
+        "REG-176.yml -- but the edit added a 2026-08-15 root-cause narrowing (a Gradle-cache-"
+        "staleness hypothesis, pinned to the exact failing step) and a follow-up note that the SAME "
+        "job came back GREEN on a later PR with no code change, i.e. confirmed intermittent -- "
+        "explicitly 'downgrading urgency accordingly since it is not blocking every PR after all, "
+        "but the underlying cause... remains unexplained.' Not a fix; the item's own text says so. "
+        "The commit's production-source changes (REG-170/156/166/163's runtimehost fixes) are "
+        "unrelated to REG-176's own CI-infrastructure question. Same shape as PACK-9/REG-170 above: "
+        "a legitimate 'reconcile this row' firing whose reconciliation is already done and the "
+        "conclusion is 'still open, still unexplained.'"
+    ),
+    "REG-180": (
+        "The commit R2 will name touches BOTH REG-180.yml (documenting a third proposed fix, tried "
+        "and reverted before shipping -- see the file's own 2026-08-15 paragraph) AND "
+        "RuntimeControllerAllowlistConfig.java (a revert back to the pre-existing "
+        "@ConditionalOnProperty(havingValue=\"true\") with no matchIfMissing, plus an explanatory "
+        "comment -- no functional change from the item's already-OPEN state). Same shape as "
+        "PACK-9/REG-170/REG-176 above: a legitimate 'reconcile this row' firing whose reconciliation "
+        "is already done and the conclusion is 'still open, not fixed.'"
     ),
 }
 

@@ -2,7 +2,7 @@
   "dslVersion": "1.0.0",
   "pack": "shipping",
   "version": "1.0.0",
-  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'shipping' bounded context. Imports 'billing' (D3) and references its concept via the qualified name billing::Invoice (D1) in a declared query -- the corpus witness for check-dsl-coverage.py's 'contexts' feature. S4 (roadmap B27) extends this same fixture with the groupBy join corpus witness: DeliveryAttempt.shipment is a SAME-CONTEXT reference (Shipment also lives in 'shipping'); Shipment.invoice is a CROSS-CONTEXT reference into the imported 'billing' context -- one fixture exercising both join shapes check-dsl-coverage.py's query.groupBy.join / query.groupBy.join.crossContext features require. S8 W1.1 (roadmap deferred item #1) extends it again with a two-hop chain through the SAME two reference fields (shipment then invoice) -- the corpus witness for check-dsl-coverage.py's query.groupBy.join.multiHop feature.",
+  "description": "B20 (S2, ADR-0011) dsl-conformance-max witness: the 'shipping' bounded context. Imports 'billing' (D3) and references its concept via the qualified name billing::Invoice (D1) in a declared query -- the corpus witness for check-dsl-coverage.py's 'contexts' feature. S4 (roadmap B27) extends this same fixture with the groupBy join corpus witness: DeliveryAttempt.shipment is a SAME-CONTEXT reference (Shipment also lives in 'shipping'); Shipment.invoice is a CROSS-CONTEXT reference into the imported 'billing' context -- one fixture exercising both join shapes check-dsl-coverage.py's query.groupBy.join / query.groupBy.join.crossContext features require. S8 W1.1 (roadmap deferred item #1) extends it again with a two-hop chain through the SAME two reference fields (shipment then invoice) -- the corpus witness for check-dsl-coverage.py's query.groupBy.join.multiHop feature. R4.3 lockstep fix (Roadmap Wave 1 gap closure): RecentFailedOrUpsDeliveryAttempts below is the corpus witness for the query predicate v2 grammar (query.where.v2) -- an OR-group, a reference-path join reusing this same shipment.carrier field, and a date comparison in one where, the exact combination PackValidation#validateQueryWhereCompiles now accepts and DefaultProcedureExecutor#runQuery now executes (compileToConceptQueryFilters).",
   "imports": ["billing"],
   "concepts": [
     {
@@ -24,7 +24,8 @@
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "shipment", "type": "reference", "reference": { "target": "Shipment" },
           "ui": { "label": "Shipment" } },
-        { "name": "succeeded", "type": "boolean", "required": true, "ui": { "label": "Succeeded" } }
+        { "name": "succeeded", "type": "boolean", "required": true, "ui": { "label": "Succeeded" } },
+        { "name": "attemptedOn", "type": "date", "required": true, "ui": { "label": "Attempted on" } }
       ]
     }
   ],
@@ -51,6 +52,15 @@
       "concept": "DeliveryAttempt",
       "groupBy": [ "shipment.invoice.status" ],
       "aggregates": [ { "name": "attempts", "fn": "count" } ]
+    },
+    {
+      "name": "RecentFailedOrUpsDeliveryAttempts",
+      "concept": "DeliveryAttempt",
+      "where": "shipment.carrier == 'UPS' && attemptedOn >= '2026-01-01' || succeeded == false",
+      "orderBy": [ "attemptedOn desc" ],
+      "metadata": {
+        "purpose": "Coverage for query.where.v2 (R4.3 lockstep fix): an OR-group whose first AND-clause crosses a reference-path join (shipment.carrier) plus a date comparison, combined with a second, plain-field OR branch -- the exact shape PackValidation#validateQueryWhereCompiles now validates and DefaultProcedureExecutor#runQuery now executes end-to-end via ConceptQueryPredicateCompiler#compileToConceptQueryFilters."
+      }
     }
   ]
 }

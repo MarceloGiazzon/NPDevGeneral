@@ -1,0 +1,17 @@
+{
+  "id": "p10-extension-pack",
+  "title": "p10-extension-pack",
+  "complexity": "pack-probe",
+  "purpose": "PACK-10 probe (first-class extends): clinicbase composed with a throwaway extension pack ('clinicext') that uses the first-class `extends` keyword to additively contribute a bloodType field onto clinicbase::Patient.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- serves the PACK-10 live proof and nothing else.",
+    "clinicbase is a TRANSITIVE dependency (declared only by packs/clinicext/pack.json's own packs[]), never $ref'd directly by model.json.",
+    "Built for PACK-10 first-class extends verification; not intended to be run by hand."
+  ],
+  "expectedOutcomes": [
+    "clinicbase::Patient ends up with both name (from base) and bloodType (from extension) after composition.",
+    "The first-class `extends` keyword is accepted by the schema and processed by PackExtensionComposer.",
+    "The generated app has a single Patient table with both columns."
+  ]
+}

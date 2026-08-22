@@ -1,0 +1,112 @@
+id: MON-12
+title: >-
+  A negative-path browser routine can never be green -- allowedConsoleErrorSubstrings matches on
+  `text`, but a failed resource puts the discriminating info in `location.url`, so the only
+  expressible excuse is a blanket "409"/"404" the docs forbid
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Found while browser-verifying R7.1 (EDIT-5): a 44-step routine whose whole purpose is to prove
+  error rendering passed all 44 steps and both hard asserts, then took a RED verdict for console
+  errors -- one of which was the 409 the routine deliberately provokes as the thing under test.
+surface: cli/explore, verification
+files:
+  - NPDevCli/npdev_explore.py
+detail: |
+  `evaluate_verdict` fails a run on console errors unless they match
+  `allowedConsoleErrorSubstrings`. That matching is done against the console message `text`. For a
+  FAILED RESOURCE (a fetch/XHR that returns 4xx), the text is generic -- the information that
+  identifies WHICH request failed lives in `location.url`. So there is no way to write a narrow,
+  honest excuse like "the POST to /api/users may return 409 in this routine". The only expressible
+  excuses are blanket substrings such as "409" or "404", which would suppress every occurrence
+  anywhere in the run -- exactly what the harness documentation warns against.
+
+  CONSEQUENCE, and why this is filed rather than noted: **any routine that deliberately exercises an
+  error path is structurally incapable of being green.** That is a large category and it is growing:
+    - R7.1's own form-feedback routine (EDIT-5) -- 44/44 steps green, verdict RED.
+    - R3.3 (`npdev explore generate`, not yet built) is specified to emit CRUD routines per concept
+      including validation failures; every one of those would be born red.
+    - R3.4's `npdev test` rolls the routine suite into a single per-app verdict, so one unavoidable
+      red drags a whole app's verdict down and trains people to ignore it.
+
+  The 8 console errors in R7.1's run, for reference on how much is genuinely benign vs. under test:
+  2x documented-benign `theme.css` 404, 3x pre-auth 401 (the default rule excuses only index 0),
+  1x `workspace_menus` 404 (the model declares no menus), and 1x the deliberately-provoked 409.
+
+  LIKELY SHAPE OF THE FIX, not implemented here: let an allowed-console-error entry match on
+  `location.url` (and ideally on a status) as well as `text`, so an excuse can name the exact
+  request a routine intends to fail. That keeps the blanket-suppression prohibition intact while
+  making a negative-path routine expressible. Alternatively, let a routine STEP declare that it
+  expects a specific failing request, which is more precise still but a larger change to the routine
+  schema -- and that schema is the ENGINE's and is pinned (`schemas/ai/scrapforai-routine.schema.json`,
+  re-pinned only via `scripts/quality/pin-routine-schema.py` against a running engine), so the
+  cheaper `location.url` matching is probably the right first slice.
+
+  Deliberately NOT worked around in EDIT-5 by adding a blanket "409" excuse: that would have made one
+  routine green by making every future routine blind to a real 409.
+
+  FIXED 2026-08-18. The real console-error record shape, captured from a live engine run rather than
+  assumed:
+
+      {"type": "error",
+       "text": "Failed to load resource: the server responded with a status of 409 ()",
+       "location": {"url": "http://127.0.0.1:8199/api/concepts/users", "line": 0, "column": 0}}
+
+  `text` is generic on every engine/app/request; the identifying URL lives only in `location.url`
+  (a `networkFailure` names it as `origin`+`pathname` instead).
+
+  **Where the allowlist lives decided the whole design**: `allowedConsoleErrorSubstrings` is read
+  from the app's own `_ops/exploration-config.json` via `load_verdict_config` -- **never** from
+  `schemas/ai/scrapforai-routine.schema.json`, which is the ENGINE's and is pinned. So the fix
+  needed no engine-schema change. One NPDev-owned schema did move:
+  `schemas/ai/exploration-run.schema.json` widened `verdict.allowedConsoleErrorSubstrings` items
+  from `string` to `oneOf[string, object]`.
+
+  An allowlist entry may now be a plain string (unchanged behaviour) or an object naming the exact
+  request: `{"urlContains": ..., "status": 409, "textContains": ..., "note": ...}`. **`urlContains`
+  is REQUIRED** -- an object without it matches nothing rather than falling back to a blanket sweep,
+  which is what preserves the anti-blanket property this item exists to protect; `status` and
+  `textContains` are AND-ed narrowing, not alternatives. `evaluate_verdict` itself is untouched and
+  remains THE one function that decides green.
+
+  **A SIBLING DEFECT FOUND AND FIXED while proving this live, and it had been wrong all along**: the
+  platform's own DEFAULT theme.css excuse tested `"theme.css" in text.lower()` -- a string a real
+  Chromium console error never contains. So it only ever excused the `networkFailure` twin (which
+  does not gate green) and never the `consoleError` one. The default rule had been silently
+  ineffective; fixed with the same `_url_of` helper, one line.
+
+  LIVE PROOF, real Java app + real ScrapForAI engine on an isolated scratch copy with a fresh H2 DB:
+  EDIT-5's `r7-1-form-feedback.json` before any excuse config -- `status: passed, stepCount: 44,
+  verdict.green: false`, reasons citing the deliberate 409 among 8 console errors, exactly as this
+  item was filed. After adding five NARROW `urlContains`+`status` excuses (the intentional 409, plus
+  the app's own pre-auth 401s / theme.css / workspace_menus 404, each individually named):
+  **`verdict.green: true`, `reasons: []`, 16 entries excused, every one attributed to a specific
+  named rule** -- and no blanket "409"/"401" anywhere. A 409 on a DIFFERENT endpoint still goes red,
+  unit-tested, which is the property that makes this a fix rather than a mute button.
+
+  TESTS: **297 -> 305** (7 matcher tests + 1 default-rule regression test), orchestrator-verified at
+  305/OK. `check-routine-corpus-conformance.py` 29/29 green and unaffected -- it validates routine
+  FILES against the pinned engine schema, which this change never touches.
+
+  Unblocks what it was filed for: R3.3's generated CRUD routines can now express their expected
+  validation failures, and R3.4's per-app verdict is no longer dragged red by a routine doing its
+  job.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_monitor_and_explore.py (the 7 MON-12 matcher tests + the default-rule regression test)
+  asserts: >-
+    an allowlist entry may name the exact request a routine intends to fail
+    (`{"urlContains", "status", "textContains"}`), matched against `location.url` rather than the
+    generic console `text`; an object entry WITHOUT `urlContains` matches nothing rather than
+    sweeping, so a blanket suppression stays inexpressible; the same failing status on a DIFFERENT
+    endpoint still goes red; and the platform's default theme.css excuse matches the URL rather than
+    a string real console errors never carry.
+  provenRed: true
+  provenRedNote: >-
+    Observed red for real before the fix and green after, on the SAME routine: r7-1-form-feedback
+    reported 44/44 steps with `verdict.green: false` citing the intentional 409, then
+    `verdict.green: true, reasons: []` with 16 entries each attributed to a specific named rule.

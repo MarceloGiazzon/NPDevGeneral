@@ -1,0 +1,55 @@
+id: REG-188
+title: >-
+  npdev doctor still advises `clear-claim` for a blocked migration, which can no longer free a live
+  mutex after STOR-17
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Disclosed by the implementer of STOR-17 (R9.3) rather than left to be discovered -- the file was
+  held by a concurrent workstream at the time, so it was reported instead of edited.
+surface: cli/doctor, runtimehost/schema-lifecycle
+files:
+  - NPDevCli/npdev_cli.py
+detail: |
+  STOR-17 replaced the old claim-row mechanism with a session-scoped `MigrationMutex`. The refusal
+  TEXT was deliberately kept verbatim (with a test pinning it) because `npdev_cli.py` greps for it --
+  but the accompanying `suggested_fix` still tells the operator to run `clear-claim`.
+
+  That advice is now wrong in the case that matters. A live mutex is held by an open connection, not
+  by a row, so `clear-claim` cannot release it: an operator following the advice deletes a row that
+  is no longer the lock and concludes the tool is broken. It remains correct only for a genuine
+  leftover claim ROW from before the upgrade.
+
+  Low severity because the mutex releases itself when the holding connection dies -- the situation
+  that would send someone to `clear-claim` in the first place mostly resolves on its own now. The
+  cost is a misleading instruction at a moment when someone is already stuck, which is exactly when
+  bad advice is most expensive.
+
+  FIXED 2026-08-18, in `_classify_boot_failure`. The pinned detection string
+  ("Another NPDev instance is currently migrating this database") is **untouched** at both ends --
+  `npdev_cli.py:2035` still greps it and `MigrationMutex.java:328` still emits it, with
+  `SchemaLifecycleExecutorMigrationClaimTest` pinning it. Only the `suggested_fix` changed: wait for
+  the holder (bounded by `-Dnpdev.schema.lock.waitSeconds`, default 300s) or find and stop the hung
+  process, since closing its connection is what releases the lock. `clear-claim` is now explicitly
+  scoped to a genuine leftover row predating STOR-17 and annotated as unable to free a live,
+  connection-held `MigrationMutex`.
+
+  Verified against real source rather than assumed: `SchemaAcknowledgmentController.clearClaim()`
+  calls only `MigrationClaimStore.clear()` and never touches `MigrationMutex` -- which is exactly
+  why the old advice could not work on a live lock.
+guard:
+  kind: manual
+  ref: >-
+    grep `waitSeconds` and `clear-claim` in NPDevCli/npdev_cli.py's `_classify_boot_failure` -- the
+    advice must describe waiting for or stopping the lock HOLDER, with clear-claim scoped to a
+    pre-STOR-17 leftover row; and the detection string "Another NPDev instance is currently
+    migrating this database" must still match MigrationMutex.java's emitted text verbatim.
+  asserts: >-
+    the doctor's advice for a blocked migration describes waiting for or stopping the lock holder,
+    not clearing a claim row that is no longer the lock -- while the pinned detection string keeps
+    matching what the runtime actually emits
+  provenRed: false

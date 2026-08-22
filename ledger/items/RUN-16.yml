@@ -1,0 +1,153 @@
+id: RUN-16
+title: >-
+  Uniqueness pre-check on create/update loaded the ENTIRE tenant table into the JVM -- replaced with
+  an indexed, semantics-preserving SQL pushdown
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18, R5.2 -- "the platform's worst remaining data-scale landmine".
+  Closes RUN-1 item 4, the one sub-item R8a deliberately left open: "existsUniqueInConceptStore/
+  existsUniqueCompoundInConceptStore in service-base.mustache are UNCHANGED -- still a full
+  conceptStore.findAll(...) scan per create/update."
+surface: kernel/concept-store, kernel/storage/sql
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/ConceptStore.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/AuditingConceptStoreDecorator.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/TenantControlledConceptStoreDecorator.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/ports/ConceptStoreExistsUniqueTest.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreExistsUniqueTest.java
+detail: |
+  PREMISE VERIFIED FIRST, not assumed: read service-base.mustache's generated
+  `existsUniqueInConceptStore`/`existsUniqueCompoundInConceptStore` before touching anything. Both
+  really did call `conceptStore.findAll(currentTenantId(), CONCEPT_NAME)` -- an unbounded fetch of
+  every row of the tenant's table, deserialized into `ConceptRecord` objects, on EVERY create and
+  EVERY update of any concept with a `unique: true` field or a compound-unique invariant. RUN-1.yml's
+  own account of this (item 4) matched the code exactly; no roadmap premise here needed correcting.
+
+  THE PINNED SEMANTICS (`uniqueValuesEqual`, read before writing a line of SQL):
+    - Either side null -> never collides (a null unique field never conflicts with anything).
+    - Either side a Java String -> BOTH sides compared as `String.valueOf(...).trim()`,
+      case-insensitively. This is what lets a numeric field submitted as a JSON string via the
+      untyped `create(Map)` path collide with the DB's numeric-typed stored value -- a documented,
+      relied-upon cross-type behavior, not an oversight.
+    - Neither side a String -> `Object#equals` OR `String.valueOf(...)` equality (handles
+      same-value cross-numeric-wrapper mismatches, e.g. Integer(5) vs Long(5), which `equals` alone
+      treats as unequal -- but NOT a scale-padded decimal vs a bare integer: BigDecimal("42.0000")
+      vs Integer(42) does NOT collide under this rule, since their toString()s differ. That is
+      surprising but pre-existing, and preserved exactly rather than silently "fixed" -- see the
+      decimalScaleMismatch test below.
+    - Tenant-scoped (`conceptStore.findAll(tenantId, ...)` was always tenant-scoped); excludeId
+      case-insensitively excludes the row being updated from colliding with itself.
+    - The DB's own unique constraint on the column is GLOBAL, case-sensitive and untrimmed -- this
+      pre-check exists specifically to catch the WIDER set of collisions (case/whitespace variants)
+      the raw index cannot.
+
+  DESIGN: `ConceptStore.uniqueValuesCollide(Object, Object)` is that exact rule, hoisted to ONE
+  canonical static method on the kernel port (previously duplicated only inside per-concept
+  generated code). `ConceptStore.existsUnique(tenantId, conceptName, fieldNames, values, excludeId)`
+  is a new default method whose body is the same full-scan loop `findAll` already backs `query`/
+  `aggregate`/`findAllCapped` with -- correct, and the only option, for in-proc adapters.
+
+  `JdbcBusinessConceptStore.existsUnique` is the real fix: a candidate-narrowing SQL `WHERE`
+  (tenant_id + per-field predicate + excludeId exclusion), NOT an attempt to replicate
+  `uniqueValuesCollide` byte-for-byte in SQL text. Per field:
+    - A text-shaped column (string/enum, and anything unrecognized -- matching
+      `SqlTypeSupport.sqlType`'s own `default -> VARCHAR`) compares
+      `LOWER(dialect.trimmedText(dialect.cast(column, TEXT)))` against the candidate's own
+      normalized text -- for a text column the cast is an identity, so this branch is EXACT, and it
+      reuses the column's existing DB unique index whenever the value is already stored in that
+      exact case/trim (the common case).
+    - A non-text column (numeric/boolean/date/datetime/reference) compares natively
+      (`column = ?`, coerced via the existing write-path `coerceValue`) -- a provable SUPERSET of
+      `uniqueValuesCollide`'s "neither side a String" branch (SQL's `42 = 42.0000` is TRUE; the JVM
+      rule's toString comparison for that pair is FALSE), and a REAL indexed lookup today because it
+      reuses the plain unique constraint the schema emitter already creates.
+  Every row the query returns is re-checked in Java against the real `uniqueValuesCollide` before it
+  can flip the answer to `true` -- so an engine-formatting wrinkle (decimal scale, MySQL's CAST
+  rejecting VARCHAR, a driver's date-to-text rendering) can only ever produce a harmless false
+  positive at the SQL layer, never a wrong final answer. No `LIMIT` on the candidate query: the DB
+  index being case-sensitive/untrimmed means more than one pre-existing row could differ only by
+  case, and all of them must be considered.
+
+  `SqlDialect.trimmedText(String)` is new (I own storage/sql/** this round): a uniform default
+  method (same shape as the existing `nullsFirstAscending`) emitting `LTRIM(RTRIM(x))` rather than
+  the single-argument ANSI `TRIM(x)` -- caught in review before it shipped: `TRIM(x)` did not exist
+  in T-SQL before SQL Server 2017, and `SqlServerDialect`'s own class javadoc targets 2016+, so the
+  obvious spelling would have been a syntax error on the oldest engine version this platform claims
+  to support. `dialect.cast(expression, SqlType.TEXT)` (pre-existing, zero callers before this)
+  already solved the sibling MySQL problem -- its CAST rejects VARCHAR outright and needs CHAR.
+
+  `AuditingConceptStoreDecorator`/`TenantControlledConceptStoreDecorator` both got a forwarding
+  `existsUnique` override, matching the existing pattern for `query`/`aggregate`/`findAllCapped` --
+  without it, wrapping a concept in either decorator would silently downgrade its uniqueness check
+  back to a full scan.
+
+  `service-base.mustache`'s two generated methods now delegate to `conceptStore.existsUnique(...)`
+  instead of looping over `findAll(...)` themselves. `uniqueValuesEqual` stays, unchanged, for
+  `listBy*` reference finders (a different call site RUN-1's own scope never covered).
+
+  MEASUREMENT: `npdev bench` (roadmap R3.7) does not exist yet, so this was measured the honest
+  alternative way -- timing the new pushdown against the OLD full-scan path
+  (`ConceptStore#findAll`, unchanged, still used elsewhere) over the IDENTICAL 100k-row H2 table, in
+  the same JVM, back to back
+  (`JdbcBusinessConceptStoreExistsUniqueTest#existsUniqueOverOneHundredThousandRowsIsDramaticallyFasterThanTheOldFullScanItReplaced`).
+  Measured this run: `existsUnique` = 167ms, `findAll` = 1235ms over the same 100k rows -- a 7.4x
+  speedup, on a machine under real concurrent load from four other agents' builds at the time. The
+  test's own assertion uses a conservative 3x floor (relative, not an absolute millisecond budget)
+  specifically because an earlier absolute "<300ms" threshold flaked at 365ms under that same
+  contention -- the relative comparison self-normalizes against machine noise since both
+  measurements share it.
+
+  ENGINES ACTUALLY EXECUTED: H2 only, live (`JdbcBusinessConceptStoreExistsUniqueTest`, run inside
+  the assembled `simple-contact-intake` sample app -- 8/8 passed). Postgres/MySQL/SQL Server were NOT
+  run locally (this machine's `scripts/policy/local-test-profile.json` disables them by default; no
+  Docker was started, per instruction). Cross-engine coverage instead comes from
+  `DialectConformanceTierATest`'s new `trimmedText` cases -- pure-Java assertions against all FOUR
+  static dialect implementations (no live DB needed) proving H2/Postgres/MySQL/SQL Server all emit
+  the identical, SQL-Server-2016-safe `LTRIM(RTRIM(...))` form, and that `dialect.cast(..., TEXT)`
+  (relied on for the text branch) already had per-engine coverage from its own pre-existing
+  implementation. CI's real multi-engine matrix (STOR-3) exercises the JDBC pushdown itself on
+  Postgres/MySQL/SQL Server the same way it already exercises `query`/`aggregate`/`findAllCapped`.
+
+  DELIBERATELY NOT DONE THIS ROUND:
+    - No new physical (functional) index. NUMERIC/BOOLEAN/DATE/DATETIME/UUID-typed unique fields get
+      a genuine indexed lookup today by reusing the plain unique constraint the schema emitter
+      already creates. STRING/ENUM fields (the most common case) get a selective, candidate-bounded
+      SQL scan, not yet a true index hit, because the DB's unique index is on the raw (unnormalized)
+      column -- a `LOWER(TRIM(...))` predicate cannot use it without a functional index. Adding one
+      is a real, separate schema-emitter change (guarded/idempotent DDL, a migration path for
+      existing apps) that the roadmap's own phrasing ("decide once, deliberately, before soft delete
+      complicates it") scopes as a follow-up, not this item.
+    - No `npdev bench` (does not exist -- R3.7, unimplemented).
+    - No change to `uniqueValuesEqual`/`listBy*` reference-finder behavior (out of RUN-1's own
+      original scope, untouched).
+    - No "unique among live rows" soft-delete semantics -- explicitly deferred per the roadmap text,
+      so a future soft-delete feature makes this decision once rather than inheriting an accidental
+      one.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreExistsUniqueTest.java#existsUniqueOverOneHundredThousandRowsIsDramaticallyFasterThanTheOldFullScanItReplaced
+  asserts: >-
+    existsUnique over a 100k-row H2 table returns the correct answer while completing at least 3x
+    faster than ConceptStore#findAll (the old, still-present full-scan path) over the identical
+    table in the same run -- measured this run at 167ms vs 1235ms (7.4x) -- and that the trim/
+    case-insensitive, cross-type-collision, null-never-collides, self-exclusion, tenant-scoping and
+    compound-AND semantics are byte-for-byte unchanged from the pre-R5.2 full scan, including a
+    decimal-scale-mismatch case that proves a SQL-side false positive never leaks into the final
+    answer.
+  provenRed: false
+  provenRedNote: >-
+    Did not check out the pre-R5.2 code and run this test against it. Instead the scale-proof test
+    calls the OLD path directly (ConceptStore#findAll, unchanged and still used by every other
+    caller) against the identical 100k-row table in the same run, so the "before" measurement is the
+    real old code path executing live, not a reverted checkout. No RED run was performed against the
+    unfixed existsUniqueInConceptStore/existsUniqueCompoundInConceptStore loop itself.

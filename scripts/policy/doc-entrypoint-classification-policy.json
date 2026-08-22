@@ -63,12 +63,6 @@
   },
   "scriptClassifications": [
     {
-      "path": "scripts/quality/run-frontend-gate.ps1",
-      "classification": "release-relevant",
-      "releaseRelevant": true,
-      "reason": "Frontend evidence is blocking for Beta0 and the frontend gate producer script is implemented."
-    },
-    {
       "path": "scripts/quality/run-docker-linux-proof.ps1",
       "classification": "release-relevant",
       "releaseRelevant": true,
@@ -124,18 +118,6 @@
     }
   ],
   "reportClassifications": [
-    {
-      "reportPath": "scripts/reports/out/frontend-gate-report.json",
-      "producerScripts": [
-        "scripts/quality/run-frontend-gate.ps1"
-      ],
-      "consumers": [
-        "scripts/policy/beta-release-gate-policy.json"
-      ],
-      "classification": "blocking-report",
-      "reason": "Frontend evidence is a blocking Beta0 report produced by scripts/quality/run-frontend-gate.ps1 and consumed by scripts/policy/beta-release-gate-policy.json.",
-      "blockingWhenProducerMissing": true
-    },
     {
       "reportPath": "scripts/reports/out/docker-linux-parity-report.json",
       "producerScripts": [

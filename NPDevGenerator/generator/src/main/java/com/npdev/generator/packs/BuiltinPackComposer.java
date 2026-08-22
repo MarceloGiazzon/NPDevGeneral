@@ -99,8 +99,16 @@ public final class BuiltinPackComposer {
         // which silently dropped guidePages/aggregates/autoPanels/documents for every app that
         // composes built-in or installed packs (internal.tables=true, or packs.included non-empty)
         // -- caught live when a declared `document` vanished from a superuser-admin-console-style
-        // app's compiled model. Use the canonical (widest) constructor so nothing app-level is lost
-        // by merging in pack concepts.
+        // app's compiled model. That fix moved this call to an 18-arg overload, believing it to be
+        // "the canonical (widest) constructor" -- it was not: CompiledModel gained externalAi/
+        // settings/roles/propertyScopes/properties/contexts/conversions in LATER waves (RC-A1/RC-B1/
+        // S2/S7-B13), each adding a WIDER overload without this caller ever being revisited, so this
+        // same silent-drop defect simply recurred one field-family later. Caught live the same way:
+        // internal.tables=true together with a model-declared properties[]/propertyScopes[] (R7.4)
+        // compiled clean but every property 404'd at runtime, because `properties`/`propertyScopes`
+        // never survived this merge. Use the ACTUAL widest constructor (S7 Phase B, the one that
+        // itself takes `conversions`) so a field this method does not explicitly name can never be
+        // silently dropped by a future addition the same way twice more.
         return new CompiledModel(
                 app.getNamespace(),
                 app.getDslVersion(),
@@ -119,7 +127,14 @@ public final class BuiltinPackComposer {
                 app.getGuidePages(),
                 app.getAggregates(),
                 app.getAutoPanels(),
-                app.getDocuments()
+                app.getDocuments(),
+                app.getExternalAi(),
+                app.getSettings(),
+                app.getRoles(),
+                app.getPropertyScopes(),
+                app.getProperties(),
+                app.getContexts(),
+                app.getConversions()
         );
     }
 

@@ -1,0 +1,155 @@
+id: RUN-15
+title: >-
+  Cron scheduler is per-JVM and in-memory; scaling a generated app to two replicas double-fires
+  every scheduled flow
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R2 item R2.7 -- "Add a cron_fire claim
+  table keyed (flowName, tenant, scheduledFireTime) using the proven selectForUpdateSkipLocked +
+  lease pattern from RUN-2." Premise verified before any change, not assumed.
+surface: runtimehost/scheduler, kernel/dbschema
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema/NpdevCronFireClaimTable.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/dbschema/NpdevInternalTables.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/dbschema/NpdevInternalTablesSourceOfTruthTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/scheduler/CronFireClaimStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/scheduler/NpdevCronSchedulerService.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/scheduler/CronFireClaimStoreTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/scheduler/NpdevCronSchedulerServiceMultiInstanceTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/scheduler/NpdevCronSchedulerServiceTest.java
+detail: |
+  PREMISE VERIFIED, TRUE AS STATED: `NpdevCronSchedulerService` (`com.finalexec.scheduler`, RuntimeHost)
+  registers one Spring `ThreadPoolTaskScheduler` per JVM and one `CronTrigger` per (flow, tenant) pair
+  entirely in memory -- no shared state, no coordination primitive of any kind. Two replicas pointed at
+  the same database each independently compute their own fire schedule and independently call
+  `KernelRunner.execute`, so every tick both instances observe fires twice. Confirmed by literally
+  reproducing it (below), not by reading the code and assuming.
+
+  MIRRORS RUN-2 EXACTLY, PER THE ROADMAP'S INSTRUCTION -- NO SECOND MECHANISM INVENTED:
+  `CronFireClaimStore.tryClaim` reuses `SqlDialect#selectForUpdateSkipLocked` +
+  `SqlDialect#isUniqueViolation` (both pre-existing, unmodified -- see "SqlDialect ownership" below),
+  and the claimed_by/claimed_until lease shape is byte-for-byte what RUN-2 added to
+  `npdev_flow_instance`. One real difference from RUN-2, forced by the domain rather than chosen:
+  RUN-2's claim narrows an ALREADY-EXISTING batch of rows (a flow instance is created, then later
+  becomes resume-eligible); a cron tick's claim row does not exist ahead of time -- there is exactly
+  one legitimate fire attempt per (flow_name, tenant_id, scheduled_fire_time), and nothing creates
+  that row until the first instance to observe the tick asks for it. So `tryClaim` is RUN-2's pattern
+  plus one new step in front of it: an idempotent `INSERT` (tolerating a concurrent duplicate via
+  `isUniqueViolation`, the exact check `MigrationClaimStore` already uses) that guarantees the row
+  exists before the `SELECT ... FOR UPDATE SKIP LOCKED` + `UPDATE` claim runs.
+
+  DETERMINISTIC scheduledFireTime, THE PART RUN-2 DID NOT NEED: two JVMs must compute the IDENTICAL
+  claim key for "the same tick" or the claim is worthless (each would claim its own key and both would
+  fire). Deriving it from observed wall-clock `Instant.now()` at callback time was rejected --
+  scheduler-thread jitter could put two instances' callbacks on opposite sides of a second boundary,
+  splitting one logical tick into two claim keys and reintroducing the double-fire the claim exists to
+  prevent (this is a real risk, not a hypothetical, especially at the per-second granularity the DoD's
+  own proof technique uses). `NpdevCronSchedulerService.advanceFireTime` instead computes each tick
+  from `org.springframework.scheduling.support.CronExpression#next` off the PREVIOUS computed grid
+  point (seeded once at registration to "now"), never off observed time -- purely calendar math, so
+  two independent chains seeded within the same registration window converge on the identical absolute
+  instant regardless of jitter. `AtomicReference#updateAndGet` makes the read-advance atomic against a
+  slow-running previous tick still executing when the next one fires.
+
+  TABLE CREATED VIA THE SAME ROUTE AS RUN-2's, NOT A NEW ONE: `NpdevCronFireClaimTable.definition()`
+  registered in `NpdevInternalTables.all()`, exactly where `NpdevFlowInstanceTable` already sits.
+  `SchemaRealizationEmitterInternalLogicalTypesTest` (generator) confirmed the new table's `CREATE
+  TABLE IF NOT EXISTS npdev_cron_fire_claim` lands in generated `V1__npdev_schema_realization.sql`
+  automatically (that test derives its expectations from `NpdevInternalTables.all()` dynamically, no
+  edit needed). `NpdevInternalTablesSourceOfTruthTest` DOES hardcode an exact-match table-name set and
+  needed one line added -- done.
+
+  SCOPE NOTE, DELIBERATELY NOT FIXED (found while researching the table-creation route, out of
+  R2.7's scope): internal tables only get `CREATE TABLE IF NOT EXISTS` in the fresh, versioned
+  `V1__` migration. The safe-additive `R__` repeatable migration (added by RUN-2 itself) only carries
+  `ALTER TABLE ... ADD COLUMN`/`CREATE INDEX` for internal tables -- both presuppose the table already
+  exists. Checked git history: this has been true since the additive-column path was first added and
+  was never exercised for a BRAND NEW internal table (confirmed by reading the diffs that introduced
+  `npdev_promotion_state` and `npdev_pack_install_intent`, neither of which touched the additive
+  script). So `npdev_cron_fire_claim` -- like every internal table before it -- lands automatically
+  for a freshly-generated app, but an EXISTING already-migrated app's database will not self-heal the
+  new table on a plain regenerate; it needs either a fresh database or a manual `CREATE TABLE`. This
+  is a pre-existing platform limitation affecting all ~14 other internal tables too, not something
+  introduced here -- flagged rather than silently worked around, and left alone per "fix only real
+  problems, do not audit the whole project."
+
+  SqlDialect OWNERSHIP: another agent owns `NPDevKernel/kernel/.../storage/sql/**` this round. Zero
+  new dialect methods were needed or added -- `selectForUpdateSkipLocked`, `isUniqueViolation`, and
+  `require`/`StorageCapability.SKIP_LOCKED_READS` all pre-date this item (RUN-2). `check-dialect-sites.py`
+  confirms zero dialect-bound SQL sites exist outside `com/npdev/kernel/storage/sql` after this change.
+
+  PROVEN RED THEN GREEN (this item's stated DoD): `NpdevCronSchedulerServiceMultiInstanceTest` runs
+  TWO REAL `NpdevCronSchedulerService` instances (own KernelRunner, own ScheduleOutcomeTracker, own
+  ThreadPoolTaskScheduler -- everything a second replica would have of its own) sharing ONE H2
+  DataSource, racing the same `"* * * * * *"` cron for 4s. Asserts
+  `totalFiresAcrossBothTrackers == COUNT(*) FROM npdev_cron_fire_claim` -- an invariant that needs no
+  timing assumptions, since the claim table gets exactly one row per DISTINCT tick either instance
+  ever attempted, and the claim guarantees at most one instance wins each row.
+
+  RED, actually run against `runScheduledFlow` temporarily edited to still call `tryClaim` (so the
+  row-count measurement stayed valid) but ignore its result and never back off -- the exact pre-fix
+  no-coordination shape:
+    org.opentest4j.AssertionFailedError: R2.7 DoD: two scheduler instances against one H2 database
+    must fire each cron window exactly once -- firesA=4 firesB=4 distinctClaimedTicks=4
+    ==> expected: <4> but was: <8>
+  Every one of the 4 distinct ticks observed in the window was fired by BOTH instances (8 = 4*2).
+  Restoring the claim check (current committed state) reproduces the identical scenario GREEN.
+
+  GREEN, current code: `NpdevCronSchedulerServiceMultiInstanceTest` 1/1 pass;
+  `CronFireClaimStoreTest` (direct two-real-threads claim proof, mirroring
+  `JdbcFlowInstanceStoreClaimTest`'s technique exactly: sequential claim/loss, expired-lease
+  reclaim, and `concurrentClaimsFromTwoRealThreadsForTheSameTickNeverBothWin` via a `CountDownLatch`
+  + two real JDBC connections) 3/3 pass; `runtimehost-core`'s full suite (4 test classes) green;
+  `:kernel:test` full suite green (dbschema registry tests included); `:generator:test`
+  `com.npdev.generator.dbconfig.*` green (confirms schema-realization wiring). Existing
+  single-instance `NpdevCronSchedulerServiceTest` (outer RuntimeHost template) updated for the new
+  constructor parameter and its own H2 claim table; compiles clean and its logic is exercised
+  end-to-end by the new multi-instance test (the outer template's own `gradlew test` run was not used
+  for final proof -- its non-template `build.gradle` is stale, kept only for the bare-template gate
+  per this repo's own convention, and needs an explicit `-PnpdevRuntimeHostLibsDir` override plus is
+  missing a JUnit Platform launcher dependency; `compileTestJava` with that override succeeds, proving
+  the signature is correct, but the assembled-app `run-runtimehost-gate.ps1` path was not run this
+  session -- its first step, `sync-runtimehost-libs.ps1 -BuildLocalJars`, failed on `:generator:jar`
+  for reasons unrelated to this change while four other agents were concurrently editing this same
+  checkout; a direct `:generator:test` run against the SAME source succeeded cleanly).
+
+  ENGINES: H2 only, per `scripts/policy/local-test-profile.json` (Postgres/MySQL/SQL Server/Docker
+  intentionally not started). The DoD names H2 explicitly; the real multi-engine matrix rides CI like
+  every other claim-table proof in this repo.
+
+  NOT ATTEMPTED, deliberately: no `npdev migrate` codemod / BREAKING.md entry -- purely additive (a
+  new internal table, a new constructor parameter on an internal Spring `@Component` with no external
+  callers besides this repo's own tests, no DSL/schema change, no change to any generated code shape a
+  model author would see). No fix for the pre-existing "new internal table on an already-migrated
+  database" gap noted above -- out of this item's scope, affects ~14 other tables, flagged for a
+  separate item if the owner wants it tracked.
+guard:
+  # kind: manual, NOT test -- deliberately. The test below is real and passes, but
+  # NPDevRuntimeHost/runtimehost-core is a STANDALONE Gradle root project (its own settings.gradle,
+  # rootProject.name = 'runtimehost-core'); it is not included as a subproject anywhere, and no
+  # run-*.ps1 gate or .github workflow invokes its `test` task. Every gate reference to
+  # runtimehost-core reads .java files for static checks only. The one pre-existing test there
+  # (NpdevFileStoreConfigTest, REG-166) is likewise guarded manually, with the same cd-and-gradlew
+  # invocation. Declaring kind: test here would assert an automatic enforcement that does not exist.
+  # Tracked for wiring by QUAL-19.
+  kind: manual
+  ref: >-
+    cd NPDevRuntimeHost/runtimehost-core && ./gradlew test --tests
+    com.finalexec.scheduler.NpdevCronSchedulerServiceMultiInstanceTest --tests
+    com.finalexec.scheduler.CronFireClaimStoreTest
+    (source: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/scheduler/NpdevCronSchedulerServiceMultiInstanceTest.java#twoInstancesAgainstOneDatabaseFireEachWindowExactlyOnce)
+  asserts: >-
+    two REAL NpdevCronSchedulerService instances (own KernelRunner/tracker/task-scheduler) sharing
+    ONE H2 database race the same per-second cron for 4s; total fires summed across both instances'
+    trackers must equal the distinct-tick row count in npdev_cron_fire_claim -- proven RED (8 fires
+    across 4 distinct ticks, i.e. every tick double-fired) with the claim's back-off temporarily
+    removed from production code, then GREEN with it restored. Companion test
+    NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/scheduler/CronFireClaimStoreTest.java#concurrentClaimsFromTwoRealThreadsForTheSameTickNeverBothWin
+    proves the claim primitive itself with two real threads and two real JDBC connections racing
+    SELECT ... FOR UPDATE SKIP LOCKED for the same tick.
+  provenRed: true

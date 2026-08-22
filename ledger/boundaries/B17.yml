@@ -1,9 +1,10 @@
 id: B17
 title: "Super-user key is issued, not supplied"
 kind: HITTABLE
-userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
+userFacingText: "The super-user key you provided was rejected. Read the auto-generated key from SUPER_USER_KEY.txt in the app's working directory."
 workaround: "Read the issued key from its file path (SUPER_USER_KEY.txt), never over HTTP."
-enforcingDiagnosticCodes: []
-codeLinked: false
-codeLinkedNote: "Enforced by SuperUserBootstrapper/SuperUserCredentialAuthFilter (NPDevRuntimeHost/.../controlpanel/) rejecting a supplied key at auth time -- a runtime security behavior, not a DSL ValidationDiagnostic -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+enforcingDiagnosticCodes:
+  - "super_user_auth_failed"
+codeLinked: true
+codeLinkedNote: "SuperUserCredentialAuthFilter now returns a structured JSON error with boundaryId B17 and error code super_user_auth_failed."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B17"

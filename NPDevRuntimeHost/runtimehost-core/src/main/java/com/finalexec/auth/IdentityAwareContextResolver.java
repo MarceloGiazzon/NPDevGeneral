@@ -1,5 +1,7 @@
 package com.finalexec.auth;
 
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ports.AuthenticatedContextResolver;
 import com.npdev.runtime.support.IdentityRoleLookup;
@@ -10,6 +12,7 @@ import org.springframework.web.server.ResponseStatusException;
 import javax.sql.DataSource;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -29,21 +32,32 @@ public final class IdentityAwareContextResolver implements AuthenticatedContextR
 
     private final AuthenticatedContextResolver delegate;
     private final ObjectProvider<DataSource> dataSourceProvider;
+    // REG-177: resolved ONCE at construction, not per-request -- empty when this app doesn't
+    // compose the identity pack at all (internal.tables=false is a normal, supported
+    // configuration, matching this class's own "apps that don't use the identity pack are
+    // unaffected" contract above).
+    private final Optional<IdentityPackTableNames> identityTables;
 
     public IdentityAwareContextResolver(
             AuthenticatedContextResolver delegate,
-            ObjectProvider<DataSource> dataSourceProvider
+            ObjectProvider<DataSource> dataSourceProvider,
+            CompiledModel compiledModel
     ) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.dataSourceProvider = Objects.requireNonNull(dataSourceProvider, "dataSourceProvider");
+        this.identityTables = IdentityPackTableNames.tryResolve(
+                Objects.requireNonNull(compiledModel, "compiledModel"));
     }
 
     @Override
     public ExecutionContext resolveFromPrincipal(Map<String, Object> claims, Map<String, String> headers) {
         ExecutionContext base = delegate.resolveFromPrincipal(claims, headers);
         rejectIfTokenRevoked(claims, base);
+        if (identityTables.isEmpty()) {
+            return base;
+        }
         Set<String> identityRoles = IdentityRoleLookup.rolesFor(
-                dataSourceProvider.getIfAvailable(), base.tenantId(), base.actorId());
+                dataSourceProvider.getIfAvailable(), identityTables.get(), base.tenantId(), base.actorId());
         return identityRoles.isEmpty() ? base : base.withRoles(identityRoles);
     }
 
@@ -56,9 +70,12 @@ public final class IdentityAwareContextResolver implements AuthenticatedContextR
      * {@code GeneratedCrudRuntimeSupport} path can never diverge.
      */
     private void rejectIfTokenRevoked(Map<String, Object> claims, ExecutionContext context) {
+        if (identityTables.isEmpty()) {
+            return;
+        }
         Object rawTokenVersion = claims == null ? null : claims.get("tv");
-        if (IdentityRoleLookup.isTokenRevoked(
-                rawTokenVersion, dataSourceProvider.getIfAvailable(), context.tenantId(), context.actorId())) {
+        if (IdentityRoleLookup.isTokenRevoked(rawTokenVersion, dataSourceProvider.getIfAvailable(),
+                identityTables.get(), context.tenantId(), context.actorId())) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "token_revoked");
         }
     }

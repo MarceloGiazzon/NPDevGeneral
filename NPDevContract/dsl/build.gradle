@@ -111,6 +111,29 @@ tasks.register('validateModel', JavaExec) {
     args cliArgs
 }
 
+// XREF-2: emit the model-wide reference index (contract npdev-model-xref.v1) for one model.json.
+// Same JavaExec-wrapping-a-small-Main-class convention as validateModel above, and the same reason:
+// pack/context composition and `qualifierId::Name` qualification exist ONLY on the Java side, so
+// `npdev inspect usage` reads this task's report rather than re-walking the model in Python
+// (REG-108's "two walks of the same graph that drift" shape).
+// ignoreExitValue matches validateModel's: a model that cannot be parsed exits 2, and the caller
+// should see the message rather than a Gradle failure wrapping it.
+tasks.register('modelXref', JavaExec) {
+    group = 'verification'
+    description = 'Emit the model-wide reference index (npdev-model-xref.v1) for a model.json.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.ModelXrefMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
 // PK-3: npdev pack add|update|list|why -- same JavaExec-wrapping-a-small-Main-class convention as
 // validateModel above. add/update share one Main class (PackAddMain; PackUpdateMain is a 1-line
 // delegate) since they're the same operation under two names.
@@ -181,6 +204,29 @@ tasks.register('packWhy', JavaExec) {
     args cliArgs
 }
 
+// BUILD-2 follow-up: `npdev pack seal <pack.json>` -- certifies a pack is sealed (eligible to ship
+// as a precompiled jar) by running PackSealednessAnalyzer across the whole transitive closure when
+// the pack declares its own packs[]. Writes a .sealed marker on success; exits non-zero on a named
+// violation. Same JavaExec-wrapping-a-small-Main-class convention as packList/packWhy above.
+tasks.register('packSeal', JavaExec) {
+    group = 'verification'
+    description = 'Certify a pack is sealed (analyze + write .sealed marker); composed packs are verified across the whole transitive closure from a local packs root.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackSealMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('packPath')) {
+        cliArgs << project.getProperty('packPath')
+    }
+    if (project.hasProperty('packsRoot')) {
+        cliArgs << '--packs-root' << project.getProperty('packsRoot')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
 // PK-4 Stage A: `npdev pack diff <old> <new>` -- a pure, no-database, no-app-build classification
 // of every difference between two pack.json documents into ADDITIVE/BREAKING/PATCH
 // (com.npdev.dsl.v1.pack.PackDiffEngine). Purely informational: never refuses, unlike packPublish
@@ -200,6 +246,27 @@ tasks.register('packDiff', JavaExec) {
     }
     if (project.hasProperty('reportOut')) {
         cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
+// PACK-8 Step 7: `npdev pack search` -- searches a pack catalog JSON for packs matching a
+// query and/or category. Same JavaExec convention as the other pack CLI tasks.
+tasks.register('packSearch', JavaExec) {
+    group = 'verification'
+    description = 'Search a pack catalog for packs matching a query and/or category.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.PackSearchMain'
+    ignoreExitValue = true
+    def cliArgs = []
+    if (project.hasProperty('catalog')) {
+        cliArgs << '--catalog' << project.getProperty('catalog')
+    }
+    if (project.hasProperty('query')) {
+        cliArgs << '--query' << project.getProperty('query')
+    }
+    if (project.hasProperty('category')) {
+        cliArgs << '--category' << project.getProperty('category')
     }
     args cliArgs
 }

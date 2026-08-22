@@ -10,10 +10,12 @@ import java.util.List;
  * plus {@code LAST_INSERT_ID()}, which changes the NUMBER of statements rather than their spelling,
  * and a number of statements is the one thing a text-returning interface cannot hide.
  *
- * <p>So the shape exists here and nothing implements the two-statement path. That is deliberate:
- * building an escape hatch on speculation means maintaining, and eventually trusting, a code path no
- * caller exercises. <b>Conformance vector A2 ("the generated key is readable after insert") is what
- * will tell you the day a site needs it</b> -- add it when A2 fails, not before.
+ * <p>So the shape exists here for the engines that need it. The inline engines (Postgres, H2,
+ * SQL Server) return their clause from {@link #inlineClause}; MySQL cannot inline, so it offers the
+ * two-statement {@code SELECT LAST_INSERT_ID()} from {@link #secondQuerySql()} instead. No production
+ * site exercises either contract today (NPDev keys are client-assigned UUIDs, measured on 5680551),
+ * so these are prepared early rather than wired -- a caller that ever needs a DB-generated key asks
+ * {@link #isInline()} first and then runs the matching path. Conformance vector A2 pins this shape.
  */
 public interface ReturningStrategy {
 

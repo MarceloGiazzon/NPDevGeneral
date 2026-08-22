@@ -5,9 +5,11 @@ import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ports.CapabilityAdapter;
 import com.npdev.kernel.ports.EmailCapability;
+import com.npdev.kernel.ports.MailAttachment;
 import com.npdev.kernel.ports.MailMessage;
 import com.npdev.kernel.ports.MailPayload;
 import com.npdev.kernel.ports.MailSendResult;
+import jakarta.activation.DataHandler;
 import jakarta.mail.AuthenticationFailedException;
 import jakarta.mail.Message;
 import jakarta.mail.MessagingException;
@@ -15,7 +17,10 @@ import jakarta.mail.SendFailedException;
 import jakarta.mail.Session;
 import jakarta.mail.Transport;
 import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeBodyPart;
 import jakarta.mail.internet.MimeMessage;
+import jakarta.mail.internet.MimeMultipart;
+import jakarta.mail.util.ByteArrayDataSource;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -167,7 +172,7 @@ public final class SmtpMailCapabilityAdapter implements CapabilityAdapter, Email
                     mimeMessage.addRecipient(Message.RecipientType.TO, new InternetAddress(recipient));
                 }
                 mimeMessage.setSubject(rendered.subject());
-                mimeMessage.setText(rendered.body());
+                populateContent(mimeMessage, rendered);
                 Transport.send(mimeMessage);
                 return new MailSendResult(UUID.randomUUID().toString(), "sent", adapterId());
             } catch (MessagingException e) {
@@ -184,6 +189,63 @@ public final class SmtpMailCapabilityAdapter implements CapabilityAdapter, Email
         throw new MailSendException(
                 "SMTP send exhausted retries: " + (lastFailure == null ? "unknown failure" : lastFailure.getMessage()),
                 lastFailure);
+    }
+
+    /**
+     * R6.3 (RUN-18): plain-text-only unless the message carries an HTML alternative and/or
+     * attachments -- when neither is present this calls the exact same {@code setText(...)} every
+     * pre-R6.3 send did, so an existing plain-text caller's wire output is unchanged byte-for-byte.
+     * HTML-only builds a {@code multipart/alternative} (text + html); attachments-only builds a
+     * {@code multipart/mixed} (text part + N attachment parts); both builds {@code multipart/mixed}
+     * containing the alternative part plus N attachment parts.
+     */
+    private static void populateContent(MimeMessage mimeMessage, MailMessage rendered) throws MessagingException {
+        boolean hasHtml = rendered.hasHtmlBody();
+        boolean hasAttachments = !rendered.attachments().isEmpty();
+        if (!hasHtml && !hasAttachments) {
+            mimeMessage.setText(rendered.body());
+            return;
+        }
+
+        MimeBodyPart textPart = new MimeBodyPart();
+        textPart.setText(rendered.body());
+
+        if (!hasAttachments) {
+            // HTML-only: multipart/alternative IS the message content, no outer mixed wrapper needed.
+            mimeMessage.setContent(alternativePart(textPart, rendered.htmlBody()));
+            return;
+        }
+
+        MimeMultipart mixed = new MimeMultipart("mixed");
+        if (hasHtml) {
+            MimeBodyPart alternativeWrapper = new MimeBodyPart();
+            alternativeWrapper.setContent(alternativePart(textPart, rendered.htmlBody()));
+            mixed.addBodyPart(alternativeWrapper);
+        } else {
+            mixed.addBodyPart(textPart);
+        }
+        for (MailAttachment attachment : rendered.attachments()) {
+            mixed.addBodyPart(attachmentPart(attachment));
+        }
+        mimeMessage.setContent(mixed);
+    }
+
+    private static MimeMultipart alternativePart(MimeBodyPart textPart, String htmlBody) throws MessagingException {
+        MimeBodyPart htmlPart = new MimeBodyPart();
+        htmlPart.setContent(htmlBody, "text/html; charset=UTF-8");
+        MimeMultipart alternative = new MimeMultipart("alternative");
+        alternative.addBodyPart(textPart);
+        alternative.addBodyPart(htmlPart);
+        return alternative;
+    }
+
+    private static MimeBodyPart attachmentPart(MailAttachment attachment) throws MessagingException {
+        MimeBodyPart attachmentPart = new MimeBodyPart();
+        attachmentPart.setDataHandler(
+                new DataHandler(new ByteArrayDataSource(attachment.contentBytes(), attachment.contentType())));
+        attachmentPart.setFileName(attachment.filename());
+        attachmentPart.setDisposition(jakarta.mail.Part.ATTACHMENT);
+        return attachmentPart;
     }
 
     private static boolean isRetryable(MessagingException e) {

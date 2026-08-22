@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{namespace}} -- Model Surface</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; line-height: 1.4; max-width: 1100px; }
+    h1 { margin: 0 0 4px; font-size: 1.4rem; }
+    .subtitle { color: #666; margin: 0 0 16px; max-width: 72ch; }
+    .controls { margin: 0 0 16px; }
+    .controls input { font: inherit; padding: 4px 8px; min-width: 280px; }
+    nav.np-toc { margin: 0 0 20px; padding: 10px 12px; border: 1px solid #8883; border-radius: 6px; }
+    nav.np-toc a { display: inline-block; margin: 2px 10px 2px 0; font-size: 0.85rem; text-decoration: none; }
+    nav.np-toc a .np-count { color: #888; }
+    section.np-part { margin: 0 0 10px; }
+    section.np-part > summary { cursor: pointer; font-size: 1.05rem; padding: 6px 0; border-bottom: 1px solid #8883; }
+    section.np-part > summary .np-count { color: #888; font-weight: normal; font-size: 0.85rem; margin-left: 6px; }
+    details.np-item { margin: 2px 0 2px 14px; }
+    details.np-item > summary { cursor: pointer; padding: 2px 0; }
+    table.np-kv { border-collapse: collapse; margin: 4px 0 4px 14px; }
+    table.np-kv td { padding: 2px 8px; vertical-align: top; border-bottom: 1px solid #8881; }
+    td.np-key { white-space: nowrap; color: #666; width: 1%; font-family: ui-monospace, monospace; }
+    td.np-val { font-family: ui-monospace, monospace; word-break: break-word; }
+    .np-scalar { }
+    .np-empty, .np-null { color: #888; font-style: italic; }
+    .np-hidden { display: none !important; }
+    code { font-family: ui-monospace, monospace; }
+  </style>
+</head>
+<body>
+<h1>{{namespace}}</h1>
+<p class="subtitle">
+  Every top-level part of the compiled model, generated fresh with this build. Nothing on this page
+  is hand-picked: whatever the compiler carries is walked and shown here, so a part added after this
+  page was first written still shows up without it being changed. Read-only -- there is nothing
+  here that writes anything back.
+</p>
+<p class="subtitle">
+  Looking to edit a model instead of just viewing this one? See
+  <a href="model-authoring.html">local model authoring</a> -- a separate, client-side workspace over
+  a model.json you choose from your own machine, not this app's own model above.
+</p>
+
+<div class="controls"><input id="np-filter" placeholder="filter&hellip;" autocomplete="off"></div>
+<nav class="np-toc" id="np-toc"></nav>
+<div id="np-root"></div>
+
+<!--
+  The compiled model is embedded, not fetched: it is already fully known at generation time, so
+  there is no live endpoint to call back into for data that cannot have changed since, and an
+  embedded page keeps working when opened from file://, where fetch() is blocked by every browser
+  (the same reasoning info.html documents for its own embedded JSON).
+-->
+<script type="application/json" id="npdev-model">{{{modelJson}}}</script>
+<script>
+(function () {
+  'use strict';
+
+  var model = JSON.parse(document.getElementById('npdev-model').textContent);
+  var root = document.getElementById('np-root');
+  var toc = document.getElementById('np-toc');
+
+  // A short list of commonly-used identifying keys, tried in order, used only to pick a friendlier
+  // heading for one entry inside a list than "#3" would be. This is a display nicety over whatever
+  // shape a given entry happens to have -- it does not change what is shown, and it does not skip
+  // an entry that has none of these keys.
+  var LABEL_KEYS = ['name', 'title', 'label', 'concept', 'route', 'source', 'ref'];
+
+  function isPlainObject(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function entryLabel(entry, index) {
+    if (isPlainObject(entry)) {
+      for (var i = 0; i < LABEL_KEYS.length; i++) {
+        var candidate = entry[LABEL_KEYS[i]];
+        if (typeof candidate === 'string' && candidate.length > 0) { return candidate; }
+      }
+    }
+    return '#' + (index + 1);
+  }
+
+  function humanize(key) {
+    return String(key)
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/^./, function (c) { return c.toUpperCase(); });
+  }
+
+  // One function, applied to every value regardless of what part of the model it came from -- no
+  // branch anywhere here asks "which part is this". A list renders as a stack of collapsible
+  // entries; an object renders as a key/value table; anything else renders as text.
+  function renderAny(value) {
+    if (value === null || value === undefined) {
+      var none = document.createElement('span');
+      none.className = 'np-null';
+      none.textContent = String.fromCharCode(8212);
+      return none;
+    }
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        var emptyList = document.createElement('span');
+        emptyList.className = 'np-empty';
+        emptyList.textContent = '(none declared)';
+        return emptyList;
+      }
+      var list = document.createDocumentFragment();
+      value.forEach(function (entry, index) {
+        var item = document.createElement('details');
+        item.className = 'np-item';
+        var summary = document.createElement('summary');
+        summary.textContent = entryLabel(entry, index);
+        item.appendChild(summary);
+        item.appendChild(renderAny(entry));
+        list.appendChild(item);
+      });
+      return list;
+    }
+    if (isPlainObject(value)) {
+      var keys = Object.keys(value);
+      if (keys.length === 0) {
+        var emptyObj = document.createElement('span');
+        emptyObj.className = 'np-empty';
+        emptyObj.textContent = '(empty)';
+        return emptyObj;
+      }
+      var table = document.createElement('table');
+      table.className = 'np-kv';
+      keys.forEach(function (key) {
+        var row = table.insertRow();
+        var keyCell = row.insertCell();
+        keyCell.className = 'np-key';
+        keyCell.textContent = key;
+        var valCell = row.insertCell();
+        valCell.className = 'np-val';
+        valCell.appendChild(renderAny(value[key]));
+      });
+      return table;
+    }
+    var scalar = document.createElement('span');
+    scalar.className = 'np-scalar';
+    scalar.textContent = String(value);
+    return scalar;
+  }
+
+  function countOf(value) {
+    if (Array.isArray(value)) { return value.length; }
+    if (isPlainObject(value)) { return Object.keys(value).length; }
+    return null;
+  }
+
+  var topKeys = Object.keys(model);
+  topKeys.forEach(function (key, index) {
+    var value = model[key];
+    var count = countOf(value);
+    var anchorId = 'np-part-' + index;
+
+    var link = document.createElement('a');
+    link.href = '#' + anchorId;
+    link.textContent = humanize(key);
+    if (count !== null) {
+      var countSpan = document.createElement('span');
+      countSpan.className = 'np-count';
+      countSpan.textContent = ' (' + count + ')';
+      link.appendChild(countSpan);
+    }
+    toc.appendChild(link);
+
+    var part = document.createElement('details');
+    part.className = 'np-part';
+    part.id = anchorId;
+    part.dataset.k = key.toLowerCase();
+    part.open = (typeof value !== 'object') || (Array.isArray(value) ? value.length > 0 && value.length <= 3 : false);
+
+    var summary = document.createElement('summary');
+    summary.textContent = humanize(key);
+    if (count !== null) {
+      var summaryCount = document.createElement('span');
+      summaryCount.className = 'np-count';
+      summaryCount.textContent = '(' + count + ')';
+      summary.appendChild(summaryCount);
+    }
+    part.appendChild(summary);
+    part.appendChild(renderAny(value));
+    root.appendChild(part);
+  });
+
+  document.getElementById('np-filter').addEventListener('input', function (evt) {
+    var needle = evt.target.value.trim().toLowerCase();
+    Array.prototype.forEach.call(root.children, function (part) {
+      var matches = needle === '' || part.dataset.k.indexOf(needle) !== -1
+        || part.textContent.toLowerCase().indexOf(needle) !== -1;
+      part.classList.toggle('np-hidden', !matches);
+      if (matches && needle !== '') { part.open = true; }
+    });
+  });
+})();
+</script>
+</body>
+</html>

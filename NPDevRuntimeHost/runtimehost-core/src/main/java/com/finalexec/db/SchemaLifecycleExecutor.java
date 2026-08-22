@@ -24,6 +24,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import com.npdev.kernel.storage.sql.SqlDialects;
+import com.finalexec.boundary.*;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -78,7 +80,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * {@code PLATFORM_MANAGED_COLUMNS = Set.of("a", "b", ...)} shape the test's regex expects.
      */
     private static final Set<String> PLATFORM_MANAGED_COLUMNS =
-            Set.of("id", "version", "row_version", "tenant_id");
+            Set.of("id", "version", "row_version", "tenant_id", "deleted_at");
 
     /**
      * The platform-managed columns that carry a FIXED, known default and are therefore repairable by
@@ -97,6 +99,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      */
     static final List<String> REPAIRABLE_PLATFORM_COLUMNS =
             List.of("version", "row_version", "tenant_id");
+
+    /**
+     * R5.4: the OTHER kind of non-repairable platform column, alongside {@code id} -- {@code
+     * deleted_at} carries no fixed platform default at all. NULL means "live", which is the
+     * permanently-correct value for a row that has never been soft-deleted; unlike version/
+     * row_version/tenant_id there is no wrong/missing state for {@link PlatformColumnPass} to
+     * backfill-then-NOT-NULL, so it must stay OUT of {@link #REPAIRABLE_PLATFORM_COLUMNS} while still
+     * being a member of {@link #PLATFORM_MANAGED_COLUMNS} (Trigger B must not treat it as an
+     * unexplained extra column on a table that has it). {@link #assertPlatformColumnSetsAgree} needs
+     * this named explicitly now that "platform-managed minus id" is no longer the same set as
+     * "repairable".
+     */
+    private static final Set<String> NON_REPAIRABLE_PLATFORM_COLUMNS = Set.of("id", "deleted_at");
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
@@ -152,12 +167,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             throw new IllegalStateException("REG-6 platform-column drift: REPAIRABLE_PLATFORM_COLUMNS "
                     + repairable + " is not a subset of PLATFORM_MANAGED_COLUMNS " + PLATFORM_MANAGED_COLUMNS);
         }
-        Set<String> managedMinusId = new LinkedHashSet<>(PLATFORM_MANAGED_COLUMNS);
-        managedMinusId.remove("id");
-        if (!managedMinusId.equals(repairable)) {
-            throw new IllegalStateException("REG-6 platform-column drift: PLATFORM_MANAGED_COLUMNS minus 'id' "
-                    + managedMinusId + " must equal REPAIRABLE_PLATFORM_COLUMNS " + repairable
-                    + " (every non-id platform column carries a fixed default and is repairable)");
+        Set<String> managedMinusNonRepairable = new LinkedHashSet<>(PLATFORM_MANAGED_COLUMNS);
+        managedMinusNonRepairable.removeAll(NON_REPAIRABLE_PLATFORM_COLUMNS);
+        if (!managedMinusNonRepairable.equals(repairable)) {
+            throw new IllegalStateException("REG-6 platform-column drift: PLATFORM_MANAGED_COLUMNS minus "
+                    + NON_REPAIRABLE_PLATFORM_COLUMNS + " " + managedMinusNonRepairable
+                    + " must equal REPAIRABLE_PLATFORM_COLUMNS " + repairable
+                    + " (every platform column other than id/deleted_at carries a fixed default and is repairable)");
         }
     }
 
@@ -167,6 +183,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     static boolean isPlatformManagedColumn(String column) {
         return column != null && PLATFORM_MANAGED_COLUMNS.contains(column.toLowerCase(Locale.ROOT));
+    }
+
+    /**
+     * R5.4: the one platform-managed column {@link DesiredSchemaFactory} must NOT fold into its
+     * blanket "every platform column is always NOT NULL" rule (Section 6 -- true for id/version/
+     * row_version/tenant_id, false for {@code deleted_at}, whose whole point is usually-null).
+     * Package-private and named the negative of {@link #isPlatformManagedColumn} on purpose: a caller
+     * that only checks {@code isPlatformManagedColumn} and assumes "therefore NOT NULL" is exactly
+     * the bug this exists to prevent from creeping back in at a future call site.
+     */
+    static boolean isNullablePlatformColumn(String column) {
+        return column != null && NON_REPAIRABLE_PLATFORM_COLUMNS.contains(column.toLowerCase(Locale.ROOT))
+                && !"id".equalsIgnoreCase(column);
     }
 
     /** REG-6: the platform-managed column names, as the single set the passes subtract from live
@@ -329,6 +358,34 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             verifyExternallyManagedSchemaCompatible(dataSource, manifest);
             return;
         }
+        // STOR-16: the ephemeral posture, branched BEFORE any fingerprint read, diff computation,
+        // impact report, acknowledgment-token consult or PendingSchemaAcknowledgmentStore lookup.
+        //
+        // The ordering is the feature. `DropAndRecreateOnStructureChange` + allowDestructiveRecreate
+        // authorizes itemized column drops and type narrowings ONLY -- a concept drop, or any diff
+        // that cannot be executed item by item, still refuses and demands a token (X4.4 / C1). That
+        // is correct for a database whose contents matter and useless for a throwaway one, and no
+        // combination of the existing flags could express the difference. Placing the branch here
+        // means Ephemeral bypasses that machinery BY CONSTRUCTION rather than by each refusal site
+        // remembering to check a flag -- one of which would eventually not.
+        if (manifest.ephemeral()) {
+            DestructiveRecreationPass.executeEphemeralWipe(dataSource, manifest);
+            // Same follow-up the acknowledged path performs after a full wipe: without clearing the
+            // realization history, Flyway sees V1 as already applied and refuses to rebuild the
+            // tables that were just dropped, leaving the app running against nothing.
+            //
+            // ...but only IF there is a history to clear. An Ephemeral app wipes on every boot,
+            // including its first, where flyway_schema_history does not exist yet -- and
+            // clearSchemaRealizationHistory issues a DELETE against it unconditionally. That threw
+            // on a brand-new database, i.e. on the very first start of every ephemeral app, which
+            // is a spectacular way to ship a feature. Not fixed by loosening the shared method: its
+            // strictness is a real invariant on the acknowledged path, which by construction only
+            // runs when a stored fingerprint proves the app has booted before.
+            clearSchemaRealizationHistoryForEphemeral(dataSource);
+            flyway.migrate();
+            afterMigrate(dataSource, manifest);
+            return;
+        }
         // LNCH-1 hardening X4.3: make the deprecated posture visible on EVERY boot, not only on the
         // day it finally destroys something. Deliberately placed here rather than in beforeMigrate:
         // this method runs once per real boot, while beforeMigrate is driven directly by dozens of
@@ -358,19 +415,28 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // fingerprint (only afterMigrate does, at its very end) and no path drops npdev_schema_metadata,
         // so this read is the true pre-boot value even after a destructive beforeMigrate.
         String storedAtBootStart = readFingerprint(dataSource);
-        // B4 (Move 9 A1, docs/ACCEPTED_BOUNDARIES.md): claim the single migration slot for this boot
-        // BEFORE any schema work, so a second instance racing against the same database refuses
-        // loudly instead of interleaving renames/widenings/drops. freshDatabase=true (no fingerprint
-        // stored yet -- a genuinely virgin database) is passed through, not used to skip the call
-        // outright: on Postgres, MigrationClaimStore.claim now protects this case too (a
-        // pg_advisory_lock needs no table to exist), closing the one race the old row-only claim could
-        // never cover. On H2 the fresh-database case is still skipped internally, exactly as before
-        // REG-7.2's fix required (claiming unconditionally would self-bootstrap
-        // npdev_schema_migration_claim before flyway.migrate() ever runs on a fresh schema, which
-        // makes Flyway see a non-empty "public" schema with no history table and refuse outright).
-        // See MigrationClaimStore's class javadoc for the full engine-by-engine scope.
+        // B4 (Move 9 A1) / R9.3: take the single migration slot for this boot BEFORE any schema
+        // work, so a second instance racing against the same database WAITS instead of interleaving
+        // renames/widenings/drops. R9.3 changed what "take" means: this used to refuse on collision
+        // (and, on every engine but Postgres, not to lock a virgin database at all), which turned two
+        // simultaneous boots into one migrated database and one dead process. It now blocks until the
+        // slot is free, on all four engines and including the first-ever boot.
+        //
+        // freshDatabase is still passed through and still matters, but only for the BOOKKEEPING ROW:
+        // writing it means creating npdev_schema_migration_claim, and creating any table in Flyway's
+        // schema before flyway.migrate() runs on a virgin schema makes Flyway see a non-empty
+        // "public" schema with no history table and refuse outright (REG-7.2). The LOCK itself is
+        // taken either way -- see MigrationMutex for how it avoids needing a table at all on three
+        // engines, and keeps its table out of Flyway's schema on the fourth.
         boolean freshDatabase = storedAtBootStart == null || storedAtBootStart.isBlank();
-        MigrationClaimStore.Claim claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+        MigrationClaimStore.Claim claim;
+        try {
+            claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+        } catch (RuntimeException lockFailure) {
+            throw new BoundaryBootException(new BoundaryViolation("B4", "boot",
+                    "Another app instance holds the migration lock. Wait for it to finish or clear the claim.",
+                    Instant.now()));
+        }
         try {
             boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
                     && !storedAtBootStart.equals(manifest.schemaFingerprint());
@@ -610,15 +676,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         Optional<SchemaHistoryStore.HistoryPoint> aheadOfBuild = SchemaHistoryStore.databaseMigratedPastThisBuild(dataSource, manifest);
         if (aheadOfBuild.isPresent()) {
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
-            throw new IllegalStateException("This database was migrated PAST this build. Schema history shows "
-                    + "fingerprint " + aheadOfBuild.get().toFingerprint() + " was successfully applied at "
-                    + aheadOfBuild.get().appliedAtUtc() + " (epoch ms), newer than this build's own target ("
-                    + manifest.schemaFingerprint() + "). Rolling an older build back onto a database a newer "
-                    + "build already migrated is unsupported and can silently lose data (REG-8) -- roll forward "
-                    + "to the newer build, restore from backup/snapshot, or -- if you deliberately intend this "
-                    + "older build to take over -- mark fingerprint " + aheadOfBuild.get().toFingerprint()
-                    + " done (see docs/SCHEMA_EVOLUTION.md#marking-a-migration-as-done) and redeploy. See "
-                    + "docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.");
+            throw new BoundaryBootException(new BoundaryViolation("B5", "boot",
+                    "This database was migrated by a newer build. Downgrade is not supported.",
+                    Instant.now()));
         }
 
         // SER-P4.8: classify's COLUMN-level decision is now ClassificationReducer over the live diff
@@ -1415,6 +1475,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             DatabaseMetaData metadata, DataSource dataSource, SchemaManifest manifest) throws SQLException {
         Set<String> owned = readOwnedBusinessTables(dataSource);
         if (owned == null || owned.isEmpty()) {
+            // B8 (ownership history): no ownership evidence recorded -- cannot prove any live table is
+            // NPDev-owned, so skipping drop of unowned tables. Warn so the operator sees the boundary.
+            System.out.println("NPDev schema lifecycle: WARNING [B8] no ownership history recorded -- "
+                    + "skipping drop of unowned tables (no ownership evidence to act on).");
             return Set.of();
         }
         Set<String> stillDeclared = new LinkedHashSet<>();
@@ -1685,6 +1749,47 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             }
         }
         return columns;
+    }
+
+    /**
+     * STOR-16: clear Flyway's record of the schema-realization scripts so it re-applies them over
+     * the tables the ephemeral wipe just dropped -- tolerating the two states an ephemeral app
+     * legitimately reaches and the acknowledged path never does.
+     *
+     * <p>{@link #clearSchemaRealizationHistory} treats both as errors, correctly: it runs only
+     * after an ACKNOWLEDGED destruction, which by construction happens on an app that has booted
+     * before and whose realization scripts are on the classpath. Reaching it with no history table
+     * or no scripts would mean something is badly wrong. An ephemeral app wipes on EVERY boot,
+     * including the first, where neither exists yet -- both cases were found by the RuntimeHost
+     * gate throwing, one per boot state, not by reading the code.
+     *
+     * <p>Loosening the shared method to cover this would have traded a real invariant for a
+     * convenience, so this is a sibling rather than a flag.
+     */
+    private void clearSchemaRealizationHistoryForEphemeral(DataSource dataSource) {
+        List<String> scripts = schemaRealizationScriptNames();
+        if (scripts.isEmpty()) {
+            // Nothing to re-apply, so nothing to un-record. Not an error here.
+            return;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            if (readActualColumns(connection.getMetaData(), "flyway_schema_history").isEmpty()) {
+                // Flyway has never run against this database -- an ephemeral app's first boot. It
+                // will create its history and apply everything from scratch a moment from now.
+                return;
+            }
+            for (String script : scripts) {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM flyway_schema_history WHERE script = ?"
+                )) {
+                    statement.setString(1, script);
+                    statement.executeUpdate();
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException(
+                    "Failed preparing schema realization reapply after ephemeral recreation", exception);
+        }
     }
 
     private void clearSchemaRealizationHistory(DataSource dataSource) {
@@ -2227,6 +2332,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     destructiveRecreateConfirmation, destructiveAcknowledgment, businessTableRequiredColumns,
                     businessTableColumnDefaultLiterals, businessTableExpressionDefaultColumns,
                     businessTableUniqueConstraints, planItemStableStrings, "NpdevManaged");
+        }
+
+        /**
+         * STOR-16: true when this app declares its data is discarded on every start.
+         *
+         * <p>Accepts the retired {@code RecreateOnAppStart} spelling too. A generator built after
+         * STOR-16 always writes {@code Ephemeral} -- {@code SchemaLifecycleStrategy.parse} maps the
+         * old name to the new enum and every emission goes through {@code externalName()} -- but a
+         * manifest baked by an OLDER generator is still on disk in already-assembled apps, and the
+         * runtime reads whatever string is there. Refusing to honour it would change those apps'
+         * behaviour on a rebuild-free restart.
+         */
+        boolean ephemeral() {
+            return "Ephemeral".equals(strategy) || "RecreateOnAppStart".equals(strategy);
         }
 
         boolean destructiveAllowed() {

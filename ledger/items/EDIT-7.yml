@@ -1,0 +1,109 @@
+id: EDIT-7
+title: >-
+  A grid's filter/sort/column set cannot be named and saved -- every user rebuilds the same view by
+  hand each session, and nothing can be shared with the team
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R7 item R7.4 -- "shareable team
+  views; per-role landing defaults; daily-driver ergonomics." Blocked by R7.3, which landed earlier
+  the same day (EDIT-6).
+surface: generator/business-ui
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache
+detail: |
+  Name/save/select/delete of a grid's filter+sort+column set, persisted through the EXISTING scoped
+  property cascade rather than any new server surface.
+
+  **PARTIAL, deliberately, and the missing piece is this item's own definition of done.** The
+  roadmap's stated bar is: "a view persists across sessions, and a workspace-scoped view saved by
+  user A is **visible to user B in a live two-session browser test**." That two-session test was
+  **not performed**. No R7.4 routine exists in the app's `explorations/` directory (only R7.1's,
+  R7.2's and R7.3's) and no R7.4 run record was produced -- verified by the orchestrator rather than
+  taken on report. The implementing agent stalled while idling on a background determinism check
+  before reaching browser verification.
+
+  WHAT IS DONE AND VERIFIED:
+    - ~1109 insertions in `business-ui-app.mustache` plus 180 in `business-ui-style.mustache`,
+      carrying 45 saved-view call sites.
+    - **The roadmap's central constraint is met: zero new server endpoints.** The implementation
+      reads and writes through `PropertyResolverController`'s existing surface --
+      `GET /api/properties`, `GET /api/properties/scopes`, and
+      `GET|PUT /api/properties/{key}` -- confirmed by the orchestrator in the template source. That
+      controller is open to every authenticated role (unlike the raw generic-CRUD endpoint for
+      `workspace::PropertyValue`, which stays admin-only per REG-114), which is what makes a
+      per-user view readable without widening any permission.
+    - `check-deterministic-generation.ps1` **passed, 563/563 files, 0 differing** -- run in the
+      foreground by the orchestrator, since that was the check the agent was blocked on.
+
+  WHAT REMAINS BEFORE THIS CAN BE DONE:
+    1. The two-session proof: a workspace-scoped view saved by user A must be visible to user B on a
+       live app. This is the whole point of the "shared with the team" half and nothing else
+       substitutes for it.
+    2. Persistence across sessions for a user-scoped view (reload, view still there).
+    3. An honest answer to a question the item raises and has not yet answered: whether a generated
+       app's auth mode can actually present two genuinely distinct users for this test. If it cannot,
+       the sharing should be proven at the properties-API level and that limitation stated -- not
+       faked with a second browser session under the same identity.
+
+  Recorded as PARTIAL rather than DONE because the code being present is not the claim; the claim is
+  that a colleague can see your view. Nobody has seen that happen yet.
+
+  **CLOSED 2026-08-19 -- the two-session proof was performed and the answer to the open question is
+  YES.** A generated app's `apikey` auth mode CAN present two genuinely distinct users: adding a
+  second entry to `secrets/api-key.env`
+  (`NPDEV_AUTH_API_KEYS=...;colleagueKey=dev:colleague:admin`) yields actor `colleague` alongside the
+  auto-provisioned `developer` in the same tenant, **confirmed server-side by `/api/me` returning
+  distinct `actorId`s** rather than assumed from config. So the sharing did not have to be proven at
+  the API level as a fallback.
+
+  Three separate ScrapForAI sessions, each a fresh Playwright context (isolation confirmed via
+  localStorage), all recorded green with `--ledger-id EDIT-7` and verified by the orchestrator in
+  `runs.jsonl`:
+    - `r7-4-saved-views-persist-across-sessions` (developer) -- saves a personal AND a shared view,
+      reloads into a genuinely new session, both survive, and reapplying the personal view restores
+      its exact filter+column state.
+    - `r7-4b-saved-view-delete-persists` (developer) -- a deleted view stays deleted across a fresh
+      reload, i.e. the delete reached the server rather than only the page.
+    - `r7-4c-saved-view-shared-across-actors` (colleague) -- **the developer's SHARED view is visible
+      and reapplies correctly for the other actor, while the developer's PERSONAL view correctly is
+      NOT.** Both directions asserted; a test that only checked visibility would pass even if scoping
+      were broken open.
+
+  **The implementation needed no fixes.** `git diff --stat` still shows exactly the 1109/180
+  insertions recorded above -- no template edits were required to make the proof pass. Every bug hit
+  during verification was in the new ROUTINES (the User grid starts empty because seeding requires
+  clicking R7.2's CTA rather than happening automatically; Playwright strict mode needs scoped
+  locators on multi-row grids).
+
+  A narrow `allowedConsoleErrorSubstrings` override was added to the app's
+  `_ops/exploration-config.json` for pre-auth 401s on `/api/me`, `/api/properties*`,
+  `/api/workspace_menus` and `/api/concepts/users` -- legitimate MON-12-style named excuses, all
+  firing only during the routine's deliberate pre-auth first load. Needed because the platform's
+  default `index == 0` "first navigation" rule misses them when `theme.css`'s 404 happens to sort
+  first in the console array -- a narrower sibling of MON-12 worth knowing about.
+
+  Determinism re-checked: `check-deterministic-generation.ps1` passed.
+
+  Two CLI defects and one stale routine were found during this work and filed separately rather than
+  fixed here (`NPDevCli` was held by a concurrent workstream): REG-190, REG-191, REG-192.
+guard:
+  kind: manual
+  ref: >-
+    D:\WorkSpace\NPDev\AppGen\apps\simple-user-registry-h2local\explorations\
+    {r7-4-saved-views-persist-across-sessions.json, r7-4b-saved-view-delete-persists.json,
+    r7-4c-saved-view-shared-across-actors.json} -- run with `npdev explore suite`. Requires a second
+    actor in the app's secrets/api-key.env (`;colleagueKey=dev:colleague:admin`). DELIBERATELY
+    `manual`: the routines live with an AppGen app, which CLAUDE.md defines as source-of-truth layer
+    2 ("not a git repo"), so no repo-rooted path can name them -- same reason EDIT-5's and EDIT-6's
+    guards are manual.
+  asserts: >-
+    a named filter+sort+column set persists across sessions at user scope, and a workspace-scoped one
+    saved by one user is visible to another -- through the existing properties API with no new server
+    endpoint
+  provenRed: false

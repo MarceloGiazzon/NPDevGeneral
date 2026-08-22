@@ -1,11 +1,13 @@
 package com.npdev.test.postgres;
 
+import org.junit.jupiter.api.Assumptions;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.testcontainers.containers.PostgreSQLContainer;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Arrays;
 import java.util.Objects;
 
 public final class PostgresTestSupport {
@@ -16,7 +18,23 @@ public final class PostgresTestSupport {
     }
 
     public static DataSource dataSource() {
+        Assumptions.assumeTrue(postgresEnabled(),
+                "Postgres disabled locally (scripts/policy/local-test-profile.json) -- "
+                        + "set NPDEV_TEST_PROFILE_ENGINES=postgres to opt in, or run with CI=true");
         return DataSourceHolder.DATA_SOURCE;
+    }
+
+    private static boolean postgresEnabled() {
+        if ("true".equalsIgnoreCase(System.getenv("CI"))) {
+            return true;
+        }
+        String override = System.getenv("NPDEV_TEST_PROFILE_ENGINES");
+        if (override == null) {
+            return false;
+        }
+        return Arrays.stream(override.split(","))
+                .map(String::trim)
+                .anyMatch(engine -> engine.equalsIgnoreCase("postgres"));
     }
 
     public static void execute(DataSource dataSource, String... statements) {

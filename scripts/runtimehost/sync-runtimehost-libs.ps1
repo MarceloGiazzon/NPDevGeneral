@@ -31,6 +31,17 @@ else {
 }
 $kernelRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel"
 $generatorRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevGenerator"
+# REG-181: NPDevContract/dsl is built TWICE, under two different jar names, by two different Gradle
+# projects -- NPDevKernel's/NPDevGenerator's own `:dsl` subproject reference produces
+# `dsl-0.1.0.jar` as a side effect of THEIR builds below, but the generated app's own
+# verifyNpdevRuntimeHostLibs task requires `npdev-dsl-0.1.0.jar` specifically (dsl's OWN standalone
+# `rootProject.name`, per its settings.gradle) -- a name nothing in this script used to build.
+# Without this step, `npdev-dsl-0.1.0.jar` was only ever staged if something ELSE, outside this
+# script, happened to have built it recently; a stale copy from a prior run would sit unnoticed and
+# unrefreshed indefinitely, since $sourceByName tracks jar names independently and never treats
+# `dsl-0.1.0.jar`'s freshness as proof of `npdev-dsl-0.1.0.jar`'s.
+$dslRoot = Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevContract\dsl"
+$dslGradleWrapper = Get-NPDevGradleWrapperExecutable $dslRoot
 # BT-1: runtimehost-core is the app-INDEPENDENT half of RuntimeHost (scripts/proofs/
 # classify_runtimehost_sources.py's 262-file split), built as its own independent Gradle project --
 # NOT an `include 'adapters:...'` subproject of NPDevKernel, because NPDevRuntimeHost itself is a
@@ -44,6 +55,7 @@ $generatorGradleWrapper = Get-NPDevGradleWrapperExecutable $generatorRoot
 $runtimeHostCoreGradleWrapper = Get-NPDevGradleWrapperExecutable $runtimeHostCoreRoot
 
 New-Item -ItemType Directory -Force -Path $runtimeHostLibs | Out-Null
+Ensure-NPDevFile $dslGradleWrapper "Contract/dsl Gradle wrapper"
 Ensure-NPDevFile $kernelGradleWrapper "Kernel Gradle wrapper"
 Ensure-NPDevFile $generatorGradleWrapper "Generator Gradle wrapper"
 Ensure-NPDevFile $runtimeHostCoreGradleWrapper "RuntimeHost-core Gradle wrapper"
@@ -198,15 +210,28 @@ if ($BuildLocalJars) {
     # before the build even starts ("Cannot convert URL '...' to a file"). --project-cache-dir is the
     # one reliable override; derive it from the SAME $externalBuildRoot this script already computed
     # portably above, so this is a no-op on the author's own machine and portable everywhere else.
+    $dslProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\dsl-standalone"
     $kernelProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\kernel"
     $generatorProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\generator"
     $runtimeHostCoreProjectCacheDir = Join-Path $externalBuildRoot "gradle-project-caches\runtimehost-core"
 
+    # REG-181: dsl's OWN standalone build (produces npdev-dsl-0.1.0.jar) -- see the variable
+    # declarations above for why this can't be skipped in favor of kernel's/generator's own `:dsl`
+    # subproject reference (that produces a differently-named jar, dsl-0.1.0.jar, that the generated
+    # app's verifyNpdevRuntimeHostLibs task does not accept). NPDEV_BUILD_ROOT is already exported
+    # into this process's environment (above), so dsl's own resolveNpdevBuildRoot() picks it up with
+    # no -P flag needed, unlike kernel/generator's convention.
+    Write-NPDevInfo "Building local Contract/dsl standalone jar for RuntimeHost staging (npdevBuildRoot=$externalBuildRoot)"
+    Invoke-NPDevCommandStreaming -WorkingDirectory $dslRoot -Executable $dslGradleWrapper -Arguments @("jar", "--project-cache-dir", $dslProjectCacheDir, "--no-daemon", "--console=plain")
+
     Write-NPDevInfo "Building local Kernel/Contract runtime jars for RuntimeHost staging (npdevBuildRoot=$externalBuildRoot)"
     Invoke-NPDevCommandStreaming -WorkingDirectory $kernelRoot -Executable $kernelGradleWrapper -Arguments @("jar", "-PnpdevBuildRoot=$externalBuildRoot", "--project-cache-dir", $kernelProjectCacheDir, "--no-daemon", "--console=plain")
 
+    # :generator:aiToolsJar rides along with the jars already built here (same project graph, same
+    # already-warm configuration) -- see the staging step below for what it is and why it is not a
+    # RuntimeHost lib.
     Write-NPDevInfo "Building local Generator and CLI jars for RuntimeHost staging"
-    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":tools:npdev-cli:jar", "-PnpdevBuildRoot=$externalBuildRoot", "--project-cache-dir", $generatorProjectCacheDir, "--no-daemon", "--console=plain")
+    Invoke-NPDevCommandStreaming -WorkingDirectory $generatorRoot -Executable $generatorGradleWrapper -Arguments @(":generator:jar", ":generator:aiToolsJar", ":tools:npdev-cli:jar", "-PnpdevBuildRoot=$externalBuildRoot", "--project-cache-dir", $generatorProjectCacheDir, "--no-daemon", "--console=plain")
 
     # Stage kernel/dsl/generator jars NOW (before building runtimehost-core) -- runtimehost-core's
     # own build.gradle depends on them via the identical npdevRuntimeHostLibsDir fileTree mechanism
@@ -224,6 +249,42 @@ $sourceDiscoveredJars = $syncResult.sourceDiscoveredJars
 $copied = $syncResult.copied
 $upToDate = $syncResult.upToDate
 $externalOrMissing = $syncResult.externalOrMissing
+
+# R1.1 (warm standalone validator): npdev-ai-tools.jar is the self-contained jar
+# NPDevGenerator/generator/build.gradle's aiToolsJar task emits -- ModelValidatorMain +
+# ModelChangeClassifierMain and their runtime deps in one archive, so NPDevCli can run
+# `java -cp <jar> <MainClass>` instead of forking the Gradle wrapper on every model edit
+# (measured 2026-08-18: `npdev validate model --semantic` median 4.61s -> 2.24s on canonical-demo,
+# and 0 new Gradle processes per call instead of 3). NPDevCli looks for it at
+# <BuildRoot>\ai-tools\npdev-ai-tools.jar and falls back to the Gradle task when it is absent, so
+# this step is an accelerator, never a prerequisite -- it warns and continues rather than failing
+# the sync, unlike the required RuntimeHost jars above.
+#
+# Staged into its OWN directory beside runtimehost-libs and deliberately NOT into it:
+# build.gradle.template puts every *.jar in runtimehost-libs on a generated FinalApp's compile
+# classpath, where a fat jar would shadow each thin platform jar with its own embedded copy of the
+# same classes. That is also why aiToolsJar writes to build/ai-tools/ instead of build/libs/ --
+# Sync-NPDevJars only ever looks under `*/libs/*`, so it cannot sweep this jar into runtimehost-libs
+# by accident, and this explicit step is the only thing that places it anywhere.
+$aiToolsJarName = "npdev-ai-tools.jar"
+$aiToolsJarReport = $null
+if (Test-Path -LiteralPath $externalGradleBuildRoot -PathType Container) {
+    $aiToolsCandidates = @(Get-ChildItem -LiteralPath $externalGradleBuildRoot -Recurse -Filter $aiToolsJarName -File |
+            Where-Object { ($_.FullName -replace "\\", "/") -like "*/ai-tools/*" } |
+            Sort-Object LastWriteTimeUtc -Descending)
+    if ($aiToolsCandidates.Count -gt 0) {
+        $aiToolsSource = $aiToolsCandidates[0].FullName
+        $aiToolsDir = Join-Path $externalBuildRoot "ai-tools"
+        New-Item -ItemType Directory -Force -Path $aiToolsDir | Out-Null
+        $aiToolsStaged = Join-Path $aiToolsDir $aiToolsJarName
+        Copy-Item -LiteralPath $aiToolsSource -Destination $aiToolsStaged -Force
+        $aiToolsJarReport = [pscustomobject]@{ name = $aiToolsJarName; source = $aiToolsSource; target = $aiToolsStaged }
+        Write-NPDevInfo ("Staged " + $aiToolsJarName + " for NPDevCli's warm validator path: " + $aiToolsStaged)
+    }
+    else {
+        Write-NPDevWarn ("No " + $aiToolsJarName + " found under " + $externalGradleBuildRoot + " -- NPDevCli keeps using the slower Gradle validator path. Re-run with -BuildLocalJars to produce it.")
+    }
+}
 
 $requiredLocalJars = @($sourceByName.Keys | Sort-Object)
 $discoveryFailures = @()
@@ -330,6 +391,7 @@ $report = [pscustomobject]@{
     sourceDiscoveredJars = $sourceDiscoveredJars
     requiredStagedJars = $requiredLocalJars
     runtimeHostLibsManifest = $manifestPath
+    aiToolsJar = $aiToolsJarReport
     copied = $copied
     upToDate = $upToDate
     externalOrMissing = $externalOrMissing

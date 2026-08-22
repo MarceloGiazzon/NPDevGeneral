@@ -8,7 +8,7 @@
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/*FilterSupport.java",
     "NPDevKernel/kernel/src/main/java/com/npdev/kernel/auth/RolePermissions.java",
     "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java",
-    "NPDevKernel/adapters/expression-cel/src/main/java/**/*Evaluator.java"
+    "NPDevKernel/adapters/runtime-support/src/main/java/**/*Evaluator.java"
   ],
   "entries": [
     {
@@ -85,9 +85,9 @@
     },
     {
       "id": "X0-11",
-      "class": "NPDevKernel/adapters/expression-cel/src/main/java",
+      "class": "NPDevKernel/adapters/runtime-support/src/main/java",
       "verdict": "NOT_AUDITED",
-      "note": "expression-cel (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, and the only one that is a real expression engine rather than a narrow subset. Not yet audited. Highest-value single item left in X0: access.* is an authorization answer, so a silent-true default would be an information disclosure and a silent-false default would be a support ticket. Not required by this gate until audited; recorded so it cannot be silently dropped from view. (Generated CRUD runtime support / GeneratedCrudRuntimeSupport.java, 158 KB, and the frontend evaluateWhen family beyond visibleWhen/enabledWhen were also out of scope for the original audit.)"
+      "note": "runtime-support (invariants, access.read/access.write, defaultExpression, derivedExpression) -- the largest evaluator in the platform, and the only one that is a real expression engine rather than a narrow subset. Not yet audited. Highest-value single item left in X0: access.* is an authorization answer, so a silent-true default would be an information disclosure and a silent-false default would be a support ticket. Not required by this gate until audited; recorded so it cannot be silently dropped from view. (Generated CRUD runtime support / GeneratedCrudRuntimeSupport.java, 158 KB, and the frontend evaluateWhen family beyond visibleWhen/enabledWhen were also out of scope for the original audit.)"
     },
     {
       "id": "X0-12",

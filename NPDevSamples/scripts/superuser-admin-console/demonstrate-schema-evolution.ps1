@@ -136,6 +136,10 @@ try {
     Info "=== Phase 1: generate + boot the v1 schema ==="
     & (Join-Path $scriptsRoot "generate-sample-app.ps1") -SampleId $sampleId | Out-Null
     if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) { Fail "v1 generation failed" }
+    # T1/C2: application-dev.yml no longer seeds a known key, so provision one before this script's
+    # own raw gradlew boot below -- Start-Process inherits this session's environment. Persists in
+    # $env: for the v2 boot later too (secrets/ is spared across regeneration, same as data/logs).
+    Ensure-NpdevSampleApiKey -AppRoot $sample.AppRoot
     $appCtx = Start-SampleAppProcess -Label "v1"
     Assert-BootLogContains -AppCtx $appCtx -Needle "no stored schema fingerprint found" -Label "v1 boot (fresh database)"
 

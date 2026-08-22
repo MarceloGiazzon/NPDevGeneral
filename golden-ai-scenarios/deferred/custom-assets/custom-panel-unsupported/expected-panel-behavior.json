@@ -1,6 +1,0 @@
-{
-  "schemaVersion": "ai-expected-panel-behavior.v1",
-  "panelId": "readiness-panel",
-  "expectedClass": "FAIL_PANEL_UNSUPPORTED_FEATURE",
-  "assertions": []
-}

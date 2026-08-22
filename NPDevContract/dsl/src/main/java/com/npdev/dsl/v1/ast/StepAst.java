@@ -39,6 +39,8 @@ public final class StepAst {
     private final List<StepAst> onFailureSteps;
     private final String procedure;
     private final Boolean parallelAwait;
+    private final Long timeoutSeconds;
+    private final List<StepAst> onTimeoutSteps;
 
     public StepAst(
             String name,
@@ -290,6 +292,53 @@ public final class StepAst {
             String procedure,
             Boolean parallelAwait
     ) {
+        this(name, type, checkpoint, scope, invariants, capability, operation, capabilityPolicy, input, output, args,
+                event, payload, data, condition, thenSteps, elseSteps, awaitEvent, awaitRef, awaitMatchCorrelation,
+                awaitPayloadMatch, delaySeconds, returnValue, action, generatedActionName, collectionRef, itemKey,
+                loopSteps, maxLoopIterations, onFailureSteps, procedure, parallelAwait, null, List.of());
+    }
+
+    /** R2.5 (durable await timeouts): canonical constructor, adding {@code timeoutSeconds} +
+     * {@code onTimeoutSteps} -- an {@code awaitEvent} step's optional durable deadline and the
+     * escalation steps to run when it passes before the awaited event ever arrives. {@code null}/
+     * empty means no timeout, fully backward compatible (mirrors {@code delaySeconds}/
+     * {@code onFailureSteps}'s own null-means-absent convention). */
+    public StepAst(
+            String name,
+            String type,
+            String checkpoint,
+            String scope,
+            List<String> invariants,
+            String capability,
+            String operation,
+            CapabilityPolicyAst capabilityPolicy,
+            String input,
+            String output,
+            List<String> args,
+            String event,
+            String payload,
+            Map<String, String> data,
+            String condition,
+            List<StepAst> thenSteps,
+            List<StepAst> elseSteps,
+            String awaitEvent,
+            String awaitRef,
+            Boolean awaitMatchCorrelation,
+            Map<String, String> awaitPayloadMatch,
+            Long delaySeconds,
+            String returnValue,
+            ActionMetadataAst action,
+            String generatedActionName,
+            String collectionRef,
+            String itemKey,
+            List<StepAst> loopSteps,
+            Integer maxLoopIterations,
+            List<StepAst> onFailureSteps,
+            String procedure,
+            Boolean parallelAwait,
+            Long timeoutSeconds,
+            List<StepAst> onTimeoutSteps
+    ) {
         this.name = name;
         this.type = type;
         this.checkpoint = checkpoint;
@@ -322,6 +371,8 @@ public final class StepAst {
         this.onFailureSteps = onFailureSteps == null ? List.of() : new ArrayList<>(onFailureSteps);
         this.procedure = procedure;
         this.parallelAwait = parallelAwait;
+        this.timeoutSeconds = timeoutSeconds;
+        this.onTimeoutSteps = onTimeoutSteps == null ? List.of() : new ArrayList<>(onTimeoutSteps);
     }
 
     public String getName() { return name; }
@@ -407,4 +458,14 @@ public final class StepAst {
      *  at once) instead of B15(A)'s default sequential (one-at-a-time) behavior. {@code null}/absent
      *  means sequential -- fully backward compatible. */
     public Boolean getParallelAwait() { return parallelAwait; }
+
+    /** R2.5: an {@code awaitEvent} step's optional durable wait deadline, in seconds from when it
+     *  first parks -- {@code null} means no timeout (default, fully backward compatible). */
+    public Long getTimeoutSeconds() { return timeoutSeconds; }
+
+    /** R2.5: escalation steps run in place of re-parking once {@link #getTimeoutSeconds()}'s
+     *  deadline has passed and the awaited event still has not arrived. */
+    public List<StepAst> getOnTimeoutSteps() {
+        return Collections.unmodifiableList(onTimeoutSteps);
+    }
 }

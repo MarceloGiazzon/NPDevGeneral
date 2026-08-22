@@ -1,0 +1,184 @@
+id: QUAL-21
+title: >-
+  "What breaks if I change this?" took four separate invocations (migration diff, xref usage,
+  author diff-gate, pack diff), so people routinely checked only one
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-19
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R1 "Fast Inner Loop", item R1.6 --
+  "Compose them into a single typed JSON report -- one CLI verb, one MCP tool, one schema under
+  schemas/ai/." Done when: "one command returns a single schema-validated report (migration
+  classification + xref usages + pack diff) for a model pair, verified in CI."
+surface: cli/impact, mcp/tool-registry, schemas/ai
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_impact_cli.py
+  - NPDevCli/tests/test_impact_mcp_tool.py
+  - NPDevMcp/server.py
+  - schemas/ai/change-impact-report.schema.json
+detail: |
+  `npdev impact --baseline <p> --current <p> [--of <target>] [--manifest <j>] [--output <o>]` --
+  new top-level verb, same nested/flat subparser convention as `bench`/`test`/`seed`. Composes the
+  FOUR existing backends the roadmap named, by calling the exact same functions their own standalone
+  commands already call -- no second diffing/classification implementation anywhere:
+    - migration classification: new `_classify_model_change_report` (sibling of the existing
+      `_classify_model_change`, both built on `_classifier_command`/`_run_bounded`, the R1.1 warm
+      npdev-ai-tools.jar fast path) -- same backend `migration diff` and `npdev loop run` use, kept
+      as the FULL report (classification + reasons + MigrationPlan) rather than collapsing to a bare
+      string.
+    - xref usage: `load_model_xref` (unchanged) + two small extractions from `inspect_usage` itself
+      (`_select_usage_edges`, `_usage_report`) so `impact`'s xrefUsage section is byte-for-byte the
+      same shape `inspect usage` prints, not a second rendering. `inspect_usage` was refactored to
+      call the same two helpers -- behavior-preserving, confirmed by its own pre-existing test suite
+      staying green unchanged.
+    - pack diff: new `_pack_diff_report`, extracted from `run_pack_diff`'s own Gradle-call+read (same
+      refactor shape as the classifier).
+    - AI Authoring Contract diff-gate: the existing `_run_authoring_gate`, called exactly as
+      `run_closed_loop` already does for its own diffGate step.
+
+  PREMISE CHECK (STEP 1 of this item's brief: expect overlap, verify before designing). Read
+  `npdev inspect usage`, the `--cascade` rename machinery, `_ops/Check-Provenance.ps1`, and the
+  `migration diff`/`author diff-gate`/`pack diff` commands before writing anything. All four backends
+  the roadmap names already existed and already worked -- extended every one of them (see files list);
+  built no second implementation of any of the four. `_ops/Check-Provenance.ps1` (panel-provenance,
+  a different question -- "did generated code drift from its trusted source", not "what does a model
+  change affect") was read and correctly left untouched; it is orthogonal to this item and owned by
+  another agent's surface (OperationalRunbookEmitter/_ops) in this session's split anyway.
+
+  DOCUMENT-KIND ROUTING, not a single always-all-four report. A pack.json cannot be parsed by
+  JsonModelParser (different required top-level shape: `pack`+`version`+`dslVersion`, no `app`/
+  model.schema.json ROOT_SCALAR_KEYS) and PackDiffEngine has no model.json input at all -- so
+  `_document_kind` (new: a bare top-level string `pack` key means 'pack', its absence means 'model';
+  model.schema.json never defines a top-level `pack` key at all, a model's own pack DEPENDENCIES live
+  under the plural `packs` array, so there is no collision) decides which THREE of the four legs run
+  for a model.json pair (migrationClassification + xrefUsage + authoringGate) versus which ONE runs
+  for a pack.json pair (packDiff). The other kind's legs report `status: notApplicable` with a stated
+  `reason` -- never a silently-omitted key and never a fabricated empty result standing in for "did
+  not check" (measurement honesty, STEP 3 of this item's brief). `authoringGate` always RUNS for a
+  model pair, manifest or not -- omitting `--manifest` does not skip it, it reports the same
+  AUTHORING_MANIFEST_MISSING refusal `author diff-gate` itself would, with a `reason` explaining that
+  (verified live, see MEASURED below).
+
+  `--of` EXISTENCE CHECK AGAINST THE FRAGMENT-COMPOSED VIEW (STEP 4): `resolve_split_model(current)`
+  (the same $ref-composer `npdev add`/`npdev inspect app` already use) resolves the CURRENT model
+  before the Gradle legs run, both to fail fast with a clear message on a malformed/uncomposable
+  model (rather than two separate cryptic Gradle failures ~20-100s later) and to check `--of`'s
+  target concept against the COMPOSED view via the existing `_add_known_names` helper -- so a concept
+  declared only in a bounded-context fragment is not a false miss. Deliberately does NOT hard-refuse
+  when `--of` names something absent (that would diverge from `inspect usage --of`'s own established
+  "an unreferenced target is an empty answer, not an error" contract) -- instead appends a
+  `limitations` note so the caller can tell a real typo from a genuine zero-usages answer.
+  `problemsFound` is a WHOLE-MODEL health signal (xrefUsage's `modelTotals.unresolved`, matching
+  `inspect usage --orphans`'s own rule), not a `--of`-scoped one -- `--of` still answers narrowly even
+  when an unrelated part of the model has a real orphan, exactly like `inspect usage --of` already
+  does; verified live (see MEASURED).
+
+  MEASUREMENT HONESTY (STEP 3): every report carries a `limitations` array, always populated,
+  independent of subjectKind -- (1) a reference embedded as a literal INSIDE an expression string,
+  e.g. `nextNumber('name')`, is invisible to xref/reference-rewriting (R5.3's own finding, cited by
+  id); (2) an UNDECIDABLE xref edge means "could not check", never "checked, safe" -- surfaced via
+  the report's own `xrefUsage.report.counts.undecidable`, never silently rounded to RESOLVED; (3)
+  PACK-13's exporter refuses a broken reference by NAME rather than dropping it, but only for
+  references INSIDE the diffed pack's own declared members, not an external reference pointing IN.
+
+  A REAL BUG FOUND WHILE VERIFYING THIS LIVE (not staged, not a premise -- an actual RED hit building
+  the MCP tool): `_run_authoring_gate`'s Gradle subprocess used a bare `subprocess.run(command,
+  cwd=generator_root, check=True)` with NO `capture_output` -- it inherited this process's own
+  stdout, so any caller reading captured stdout (the MCP tool's `run_cli`, and `npdev impact` itself
+  without `--output`) got ~20-100s of raw Gradle build log (daemon-fork notice, task lines, `BUILD
+  SUCCESSFUL in Ns`) BEFORE the JSON report, breaking `json.loads` outright. Reproduced live:
+  `server.tool_impact({...})` returned `isError: False` with `content[0].text` starting
+  `'To honour the JVM settings for this build a single-use Daemon process will be forked...'` --
+  `json.loads` on that text raised `JSONDecodeError: Expecting value: line 1 column 1`. Confirmed
+  PRE-EXISTING and not something this item's own code introduced: `server.tool_author_diff_gate`
+  (already-shipped, calls the same `_run_authoring_gate`) reproduced the identical polluted-stdout
+  shape independently. Fixed at the source (`_run_authoring_gate`, one `subprocess.run` call):
+  `capture_output=True, text=True, check=False` plus an explicit `decision_report.exists()` check
+  reading the captured detail on a genuine Gradle-level failure -- matching
+  `_classify_model_change_report`/`_pack_diff_report`'s own established shape.
+  `ignoreExitValue = true` on the `authorDiffGate` Gradle task (NPDevGenerator/generator/build.gradle)
+  means a REFUSED gate result never made the Gradle process itself exit non-zero, so `check=True` was
+  never actually the thing keeping a refusal working -- `check=False` is behavior-preserving for that
+  path and adds real diagnostic detail for an actual build break instead of pointing at console
+  output that no longer streams anywhere. Re-verified live after the fix: both `npdev_impact` and
+  `npdev_author_diff_gate`'s MCP tools now return clean, directly `json.loads`-able / plain-text
+  output with no Gradle noise.
+
+  MEASURED, against real models, real Gradle tasks, no mocks (STEP 2 of this item's deliverable):
+    - Model pair, DIRTY (NPDevSamples/npdev-init-seed's Patient/Appointment model, `+phone` field on
+      Patient plus one real query and one query with a deliberately broken `orderBy` field), no
+      `--manifest`, `--of Patient.phone`: real run, 127s cold / 41s warm daemon.
+      migrationClassification: SAFE_ADDITIVE (`ADD_COLUMN patients.phone`). xrefUsage: `--of` itself
+      answers 0 matches (Patient.phone is unreferenced) while `modelTotals` correctly still shows
+      1 unresolved edge from the unrelated broken query -- exactly the "narrow answer, whole-model
+      signal" split above. authoringGate: ran, refused (AUTHORING_MANIFEST_MISSING, no manifest
+      given). `problemsFound: true`. Exit code 2.
+    - Model pair, CLEAN (same baseline, `+phone` field, one valid query, no broken query), with a
+      real `npdev-authoring-submission.v1` manifest (real SHA-256 of the real baseline bytes): 56s
+      warm. migrationClassification: SAFE_ADDITIVE. xrefUsage: 4/4 edges RESOLVED, 0 unresolved.
+      authoringGate: ran, PASSED, 0 diagnostics. `problemsFound: false`. Exit code 0.
+    - Pack pair (a real copy of `NPDevContract/packs/identity/pack.json`, version bumped 1.0.0 ->
+      1.1.0, one new optional `User.phoneNumber` field): 12s. `subjectKind: "pack"`.
+      migrationClassification/xrefUsage/authoringGate: all `notApplicable` with a stated reason.
+      packDiff: ran, `overallClassification: ADDITIVE`, one finding
+      (`concepts.User.fields.phoneNumber`). `problemsFound: false`. Exit code 0.
+    All three REAL reports (not the mocked test fixtures) validated with ZERO schema errors against
+    `schemas/ai/change-impact-report.schema.json` via the same pure-Python `npdev_jsonschema.validate`
+    the test suite uses.
+
+  NPDevCli test suite: 397 passing (was 370), +27 new (20 in test_impact_cli.py covering composition/
+  routing/--of/problemsFound/schema-conformance for both subjectKind branches, 7 in
+  test_impact_mcp_tool.py covering the MCP registry invariant + argv construction), 0 regressions --
+  full `python -m unittest discover -s NPDevCli/tests -p "test_*.py"` run twice (before and after the
+  `_run_authoring_gate` fix), both green.
+
+  NOT DONE, stated plainly: no cross-file `$ref` from change-impact-report.schema.json into
+  model-xref.schema.json for xrefUsage.report's exact shape -- `NPDevCli/npdev_jsonschema.py` (the
+  dependency-free validator this repo's CLI-adjacent tests use) only supports LOCAL `$ref`
+  (`_resolve_ref` raises `UnsupportedSchema` on anything not starting with `#`), and separately,
+  measured live, `model-xref.schema.json`'s OWN top-level `version` key is itself outside that
+  validator's supported keyword set, so that schema cannot be fed to it standalone either -- a
+  pre-existing fact about a schema this item did not touch, not a regression. `xrefUsage.report` is
+  left intentionally untyped in the new schema instead; the real guarantee (same shape `inspect
+  usage` itself produces) is proven by shared-helper reuse (`_select_usage_edges`/`_usage_report`),
+  not by a schema `$ref`. Did not add a `pack diff`-style historical-dependency diff (e.g. "did any
+  package this app depends on change") -- an app model's `packs[]` only ever carries a version
+  CONSTRAINT plus `npdev.lock`'s resolved version, never a prior pack.json snapshot to diff against;
+  inventing that would have been exactly the speculative-abstraction R1.6's own scope does not ask
+  for. Did not touch `NPDevContract/schemas`, `ModelSourceResolver.java`, or any DSL/schema file --
+  `schemas/ai/` is the CLI/tooling-report schema tier this item was explicitly pointed at, distinct
+  from the model/pack DSL schema tier another agent in this session owns.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_impact_cli.py#test_model_pair_report_validates_against_its_own_schema
+  gatedBy: >-
+    python -m unittest discover -s NPDevCli/tests -p "test_*.py" (ai-knowledge gate step
+    [18/35], run-ai-knowledge-gate.ps1).
+  asserts: >-
+    a real report `run_impact` itself produces for a model.json pair (Gradle-backed legs stubbed,
+    composition/routing logic real) validates with ZERO errors against
+    schemas/ai/change-impact-report.schema.json via npdev_jsonschema.validate -- the "single
+    schema-validated report ... verified in CI" half of R1.6's own done-when. Sibling tests in the
+    same file (SchemaConformanceTest) prove the pack.json branch and the 'ran but refused'
+    authoringGate branch equally; ModelPairCompositionTest/PackPairCompositionTest/
+    XrefUsageCompositionTest/KindMismatchAndUsageErrorsTest/DocumentKindDetectionTest cover which
+    legs run per subjectKind, --of narrowing + its unknown-concept limitation, the whole-model
+    problemsFound rule, and refusal on a mismatched-kind or missing-file pair.
+  provenRed: true
+  provenRedNote: >-
+    Genuinely measured while building the MCP tool, not staged: `server.tool_impact({...})` against
+    a real model pair + a real manifest returned isError: False with content[0].text beginning
+    'To honour the JVM settings for this build a single-use Daemon process will be forked...' --
+    `json.loads` on that text raised `json.decoder.JSONDecodeError: Expecting value: line 1 column
+    1 (char 0)`, because `_run_authoring_gate`'s Gradle subprocess inherited this process's stdout
+    instead of being captured. Independently reproduced against the ALREADY-SHIPPED
+    `server.tool_author_diff_gate` (same underlying `_run_authoring_gate` call) to confirm this was
+    pre-existing, not introduced by this item. Fixed by capturing the subprocess output
+    (`capture_output=True, text=True, check=False`, reading the decision-report file exactly as
+    before); re-run of both `server.tool_impact` and `server.tool_author_diff_gate` afterward
+    produced clean output with no Gradle noise, and the full NPDevCli test suite (397 tests) stayed
+    green.

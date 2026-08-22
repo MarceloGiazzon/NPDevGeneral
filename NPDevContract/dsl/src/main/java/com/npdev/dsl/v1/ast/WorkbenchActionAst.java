@@ -1,6 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): a button on the Aggregate Workbench that invokes a
@@ -16,9 +17,11 @@ public record WorkbenchActionAst(
         List<String> inputFields,
         WorkbenchActionApplyToAst applyTo,
         String afterAction,
-        String visibleWhen
+        String visibleWhen,
+        Map<String, String> labelLocales
 ) {
     public WorkbenchActionAst {
         inputFields = inputFields == null ? List.of() : List.copyOf(inputFields);
+        labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 }

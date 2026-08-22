@@ -32,11 +32,25 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.api.internal.SemanticBehaviorWriteBackController");
 
         assertNotPackaged("com.finalexec.HelloController");
-        assertNotPackaged("com.finalexec.api.internal.ModelSyncStatusController");
-        assertNotPackaged("com.finalexec.api.experimental.FlowBuilderController");
-        assertNotPackaged("com.finalexec.api.internal.RuntimePluginPackagesController");
-        assertNotPackaged("com.finalexec.api.internal.RuntimeRefreshController");
-        assertNotPackaged("com.finalexec.api.internal.RuntimeTopologyExplorerController");
+        assertNotPackaged("com.finalexec.api.experimental.FlowBuilderController"); // remains excluded (old path)
+        // REG-163: deferredControllers are now COMPILED (allowedControllers UNION deferredControllers)
+        // so RuntimeControllerAllowlistConfig's runtime bean-removal filter has a real bean to remove
+        // under the default profile and a real one to KEEP under non-default/experimental --
+        // previously they were compiled out of sourceSets.main entirely, making the non-default
+        // profile permanently dead code regardless of what ran at runtime. "Packaged" (present on the
+        // compiled classpath) is no longer the same question as "active under the default profile";
+        // this test only ever asked the former. RuntimePluginPackagesController/RuntimeRefreshController/
+        // ModelSyncStatusController all compile cleanly under the new gate, so they move here.
+        assertPackaged("com.finalexec.api.internal.RuntimePluginPackagesController");
+        assertPackaged("com.finalexec.api.internal.RuntimeRefreshController");
+        assertPackaged("com.finalexec.api.internal.ModelSyncStatusController");
+        // REG-168: RuntimeTopologyExplorerController promoted to allowedControllers -- its service
+        // dependencies (FlowBuilderService, GovernanceWorkspaceService, CapabilityIntegrationPanelService)
+        // are now all in supportedCoreServiceComponents and live in service/internal/, so the
+        // dependency chain is fully satisfiable.
+        assertPackaged("com.finalexec.api.internal.RuntimeTopologyExplorerController");
+        assertPackaged("com.finalexec.api.internal.BetaOnboardingController");
+        assertPackaged("com.finalexec.api.internal.FlowBuilderController");
     }
 
     @Test
@@ -81,11 +95,18 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.npdev.service.internal.SemanticBehaviorWriteBackCanonicalizationService");
 
         assertNotPackaged("com.finalexec.npdev.service.experimental.FlowBuilderService");
-        assertNotPackaged("com.finalexec.npdev.service.internal.ModelSyncStatusService");
         assertNotPackaged("com.finalexec.npdev.service.experimental.PreviewReferenceResolver");
         assertNotPackaged("com.finalexec.npdev.service.experimental.TemplateLibraryManagementService");
-        assertNotPackaged("com.finalexec.npdev.service.internal.RuntimeTopologyExplorerService");
-        assertNotPackaged("com.finalexec.npdev.service.internal.TenantOperationalAdministrationService");
+        // REG-163: see the sibling controller test's own comment -- nonDefaultServicePatterns
+        // services are now compiled so the profile they exist for is reachable at all.
+        assertPackaged("com.finalexec.npdev.service.internal.ModelSyncStatusService");
+        assertPackaged("com.finalexec.npdev.service.internal.TenantOperationalAdministrationService");
+        // REG-168: RuntimeTopologyExplorerService promoted alongside its controller -- all transitive
+        // deps now in service/internal/ and supportedCoreServiceComponents.
+        assertPackaged("com.finalexec.npdev.service.internal.RuntimeTopologyExplorerService");
+        assertPackaged("com.finalexec.npdev.service.internal.BetaOnboardingService");
+        assertPackaged("com.finalexec.npdev.service.internal.FlowBuilderService");
+        assertPackaged("com.finalexec.npdev.service.internal.CapabilityIntegrationPanelService");
     }
 
     private static void assertPackaged(String className) {

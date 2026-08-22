@@ -9,16 +9,26 @@ import com.npdev.kernel.ExecutionStatus;
 import com.npdev.kernel.KernelRunner;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
+import org.springframework.scheduling.support.CronExpression;
 import org.springframework.scheduling.support.CronTrigger;
 import org.springframework.stereotype.Component;
 
+import javax.sql.DataSource;
+import org.springframework.beans.factory.ObjectProvider;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -34,6 +44,16 @@ import java.util.logging.Logger;
  * missed firings from while the app was down. That is deliberate (see
  * {@code docs/LAUNCH_READINESS_GAPS.md#LNCH-12}), not an oversight: inventing catch-up semantics
  * is exactly the kind of undocumented behavior that corrupts data quietly.</p>
+ *
+ * <p><b>R2.7:</b> scale this service to two replicas against one database and, without the claim
+ * below, EVERY tick double-fires -- each JVM registers its own independent {@link CronTrigger} and
+ * calls {@link KernelRunner#execute} with no coordination whatsoever. {@link CronFireClaimStore}
+ * closes that gap by reusing RUN-2's proven claim mechanism: before running, this service computes
+ * a deterministic {@code scheduledFireTime} for the tick (via {@link #advanceFireTime}, calendar
+ * math off the SAME cron expression -- never observed wall-clock "now", which would let scheduler
+ * jitter split one logical tick into two different claim keys) and claims exclusive firing rights
+ * for (flowName, tenantId, scheduledFireTime) before calling {@link KernelRunner#execute}. Losing
+ * the claim means another instance already has this tick -- fall through without running.</p>
  */
 @Component
 @ConditionalOnProperty(name = "npdev.cronScheduler.enabled", havingValue = "true", matchIfMissing = true)
@@ -42,24 +62,87 @@ public class NpdevCronSchedulerService {
     private static final Logger LOG = Logger.getLogger(NpdevCronSchedulerService.class.getName());
     private static final String DEFAULT_TENANT_ID = "default";
 
+    /** One per JVM, mirroring {@code ResumeCoordinator.RESUMER_ID} exactly. */
+    private static final String CLAIMANT_ID = UUID.randomUUID().toString();
+
     private final CompiledModel compiledModel;
     private final KernelRunner kernelRunner;
     private final ScheduleOutcomeTracker tracker;
     private final int poolSize;
+    private final CronFireClaimStore claimStore;
 
     private ThreadPoolTaskScheduler taskScheduler;
     private final List<ScheduledFuture<?>> scheduledFutures = new ArrayList<>();
 
+    /**
+     * R2.7: the deterministic fire-time chain for each (flow, tenant) schedule, keyed by
+     * {@link #scheduleKey}. Seeded at registration to "now" and advanced ONLY via
+     * {@link CronExpression#next}, so the sequence tracks purely off the cron's own calendar grid --
+     * see {@link #advanceFireTime}.
+     */
+    private final Map<String, CronExpression> cronExpressionsByKey = new ConcurrentHashMap<>();
+    private final Map<String, AtomicReference<Instant>> fireAnchorByKey = new ConcurrentHashMap<>();
+
+    /**
+     * QUAL-22: {@code dataSource} is resolved through an {@link ObjectProvider} and is OPTIONAL.
+     *
+     * <p>R2.7 introduced it as a hard constructor dependency, which made this {@code @Component} --
+     * enabled by default via {@code matchIfMissing = true} -- unsatisfiable in any context with no
+     * DataSource bean. That is not a hypothetical configuration: InMemory mode has no DataSource at
+     * all, which is exactly why {@code NpdevCapabilityBindingConfig} resolves its own transaction
+     * manager and sequence allocator the same optional way (B18 / R5.3), and why
+     * {@code AggregateRuntime} takes an {@code ObjectProvider<PlatformTransactionManager>}. It was
+     * caught by {@code NonDefaultRuntimeSurfaceProfileIntegrationTest} failing to load its context
+     * with {@code No qualifying bean of type 'javax.sql.DataSource'} on constructor parameter 4.</p>
+     *
+     * <p>Absent a DataSource the scheduler still runs; what it loses is the multi-instance fire
+     * claim, degrading to the single-instance behaviour it had before R2.7. That is the correct
+     * degradation: without shared storage there is no second instance to coordinate with.</p>
+     */
+    /**
+     * QUAL-22: kept so every direct caller that predates the ObjectProvider form -- notably
+     * {@code NpdevCronSchedulerServiceTest}, which hands in a real DataSource -- compiles and
+     * behaves unchanged. Spring uses the ObjectProvider constructor below; this one is for callers
+     * that already hold the DataSource. Passing a bare {@code null} here is ambiguous between the
+     * two overloads and will not compile; cast it, or use the ObjectProvider form.
+     *
+     * <p>Adding this second public constructor is exactly why the ObjectProvider one below carries
+     * an explicit {@code @Autowired}: with a single public constructor Spring picks it implicitly,
+     * but with two and no annotation it falls back to looking for a no-arg constructor and fails
+     * with "No default constructor found" -- measured, not assumed.</p>
+     */
     public NpdevCronSchedulerService(
             CompiledModel compiledModel,
             KernelRunner kernelRunner,
             ScheduleOutcomeTracker tracker,
-            @Value("${npdev.cronScheduler.poolSize:4}") int poolSize
+            int poolSize,
+            DataSource dataSource
     ) {
         this.compiledModel = compiledModel;
         this.kernelRunner = kernelRunner;
         this.tracker = tracker;
         this.poolSize = poolSize;
+        this.claimStore = dataSource == null ? null : new CronFireClaimStore(dataSource);
+    }
+
+    @Autowired
+    public NpdevCronSchedulerService(
+            CompiledModel compiledModel,
+            KernelRunner kernelRunner,
+            ScheduleOutcomeTracker tracker,
+            @Value("${npdev.cronScheduler.poolSize:4}") int poolSize,
+            ObjectProvider<DataSource> dataSource
+    ) {
+        this.compiledModel = compiledModel;
+        this.kernelRunner = kernelRunner;
+        this.tracker = tracker;
+        this.poolSize = poolSize;
+        DataSource resolved = dataSource == null ? null : dataSource.getIfAvailable();
+        this.claimStore = resolved == null ? null : new CronFireClaimStore(resolved);
+        if (resolved == null) {
+            LOG.info("No DataSource available -- cron fire claiming is disabled, so this instance "
+                    + "fires every scheduled flow itself (single-instance behaviour).");
+        }
     }
 
     @PostConstruct
@@ -82,8 +165,10 @@ public class NpdevCronSchedulerService {
                     ? List.of(DEFAULT_TENANT_ID)
                     : schedule.getTenantScope();
             CronTrigger trigger;
+            CronExpression cronExpression;
             try {
                 trigger = new CronTrigger(schedule.getCron());
+                cronExpression = CronExpression.parse(schedule.getCron());
             } catch (IllegalArgumentException malformedCron) {
                 LOG.log(Level.SEVERE, "Flow " + flow.getName() + " has an invalid schedule.cron '"
                         + schedule.getCron() + "' -- not registered", malformedCron);
@@ -91,15 +176,57 @@ public class NpdevCronSchedulerService {
             }
             for (String tenantId : tenants) {
                 String normalizedTenant = tenantId == null || tenantId.isBlank() ? DEFAULT_TENANT_ID : tenantId.trim();
+                String key = scheduleKey(flow.getName(), normalizedTenant);
+                cronExpressionsByKey.put(key, cronExpression);
+                fireAnchorByKey.put(key, new AtomicReference<>(Instant.now()));
                 tracker.registerPending(flow.getName(), normalizedTenant, schedule.getCron());
                 ScheduledFuture<?> future = taskScheduler.schedule(
-                        () -> runScheduledFlow(flow.getName(), normalizedTenant), trigger);
+                        () -> runScheduledFlow(flow.getName(), normalizedTenant, key), trigger);
                 scheduledFutures.add(future);
             }
         }
     }
 
-    private void runScheduledFlow(String flowName, String tenantId) {
+    private static String scheduleKey(String flowName, String tenantId) {
+        return flowName + "::" + tenantId;
+    }
+
+    /**
+     * R2.7: the deterministic scheduledFireTime for THIS invocation, computed off the cron's own
+     * calendar grid rather than observed wall-clock "now" -- {@link CronExpression#next} always
+     * returns the earliest match strictly after the given instant, so a chain that starts at
+     * registration and is advanced ONLY by feeding each result back in as the next anchor lands on
+     * the SAME sequence of absolute instants regardless of which JVM computes it or how much
+     * scheduler-thread jitter delayed the actual callback -- two instances registering within the
+     * same cron granularity converge on identical claim keys. {@code updateAndGet} makes the
+     * read-compute-write atomic, so two overlapping invocations for the same key (a slow run still
+     * executing when the next tick fires) can never both advance from the same anchor.
+     *
+     * @return null only if the cron expression has no further matches (a fixed-date expression whose
+     *         date has passed) or if this key was never registered -- callers must not block firing
+     *         on that, since it means "no coordinated claim was possible", not "someone else has it".
+     */
+    private Instant advanceFireTime(String key) {
+        CronExpression cronExpression = cronExpressionsByKey.get(key);
+        AtomicReference<Instant> anchor = fireAnchorByKey.get(key);
+        if (cronExpression == null || anchor == null) {
+            return null;
+        }
+        return anchor.updateAndGet(previous -> {
+            ZonedDateTime next = cronExpression.next(previous.atZone(ZoneId.systemDefault()));
+            return next == null ? previous : next.toInstant();
+        });
+    }
+
+    private void runScheduledFlow(String flowName, String tenantId, String scheduleKey) {
+        Instant scheduledFireTime = advanceFireTime(scheduleKey);
+        if (claimStore != null
+                && scheduledFireTime != null
+                && !claimStore.tryClaim(flowName, tenantId, scheduledFireTime, CLAIMANT_ID, 0L)) {
+            LOG.fine(() -> "Scheduled flow " + flowName + " (tenant " + tenantId + ") skipped at "
+                    + scheduledFireTime + " -- another instance already claimed this fire window");
+            return;
+        }
         ExecutionContext context = ExecutionContext.system(tenantId);
         try {
             ExecutionResult result = kernelRunner.execute(flowName, Map.of(), context);

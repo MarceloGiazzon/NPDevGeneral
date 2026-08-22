@@ -3,13 +3,16 @@ package com.finalexec.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.adapters.events.inproc.InProcEventBus;
 import com.npdev.adapters.events.inproc.InProcEventStore;
-import com.npdev.adapters.expression.cel.CelInvariantEngine;
+import com.npdev.runtime.support.CelInvariantEngine;
 import com.npdev.adapters.flowcompiled.CompiledModelFlowDefinitionProvider;
 import com.npdev.adapters.json.jackson.JacksonJsonCodec;
 import com.npdev.adapters.schema.validator.DefaultSchemaValidator;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.adapters.messaging.http.HttpMessagingCapabilityAdapter;
+import com.npdev.adapters.messaging.http.MessagingPeerProfile;
+import com.npdev.adapters.messaging.inproc.InProcMessagingCapabilityAdapter;
 import com.npdev.generated.runtime.config.GeneratedBindingManifestLoader;
 import com.npdev.generated.runtime.config.GeneratedPermissionManifestLoader;
 import com.npdev.generated.runtime.config.GeneratedRuntimeOverridesLoader;
@@ -54,14 +57,20 @@ import com.npdev.runtime.support.RuntimeClock;
 import com.npdev.runtime.support.SystemRuntimeClock;
 import jakarta.persistence.EntityManager;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -74,6 +83,11 @@ public class NpdevCapabilityBindingConfig {
     }
 
     @Bean
+    public com.finalexec.config.ModelHolder modelHolder(CompiledModel compiledModel) {
+        return new com.finalexec.config.ModelHolder(compiledModel);
+    }
+
+    @Bean
     public InvariantEngine invariantEngine(CompiledModel compiledModel) {
         return CelInvariantEngine.fromCompiledModel(compiledModel);
     }
@@ -83,7 +97,8 @@ public class NpdevCapabilityBindingConfig {
             CompiledModel compiledModel,
             ConceptStore conceptStore,
             AuditLogStore auditLogStore,
-            ObjectProvider<org.springframework.transaction.PlatformTransactionManager> transactionManager
+            ObjectProvider<org.springframework.transaction.PlatformTransactionManager> transactionManager,
+            ObjectProvider<DataSource> dataSourceProvider
     ) {
         // B18 (Move 9 A2, docs/ACCEPTED_BOUNDARIES.md): a real transaction manager (present against
         // any real DataSource-backed profile) closes the row-authz check-then-act race; its absence
@@ -93,12 +108,21 @@ public class NpdevCapabilityBindingConfig {
         com.npdev.kernel.ports.TransactionRunner transactionRunner = manager == null
                 ? com.npdev.kernel.ports.TransactionRunner.none()
                 : new SpringTransactionRunner(manager);
+        // R5.3: same "degrade to in-memory when there is no real DataSource" posture as the
+        // transaction runner above -- a JDBC-backed allocator with no DataSource (InMemory mode)
+        // would have nothing to allocate against. Its allocation SQL runs on the SAME ambient
+        // connection SpringTransactionRunner opens above, so a nextNumber() default and the concept
+        // row it defaults onto commit or roll back together -- see JdbcSequenceAllocator's javadoc.
+        var dataSource = dataSourceProvider.getIfAvailable();
+        com.npdev.kernel.ports.SequenceAllocator sequenceAllocator = dataSource == null
+                ? com.npdev.kernel.ports.SequenceAllocator.inMemory()
+                : new com.finalexec.db.JdbcSequenceAllocator(dataSource);
         return new DefaultConceptGateway(
                 conceptStore,
                 PermissionEvaluator.allowAll(),
                 com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
                 auditLogStore,
-                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel),
+                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel, sequenceAllocator),
                 new InMemoryConceptGatewayTraceSink(),
                 transactionRunner
         );
@@ -233,10 +257,146 @@ public class NpdevCapabilityBindingConfig {
         return new StaticPermissionEvaluator(permissionGrants);
     }
 
+    /**
+     * R6.4 runtime wiring: the baseline, single-process half of the cross-app messaging bridge --
+     * always available, zero configuration, no network dependency (see
+     * {@code InProcMessagingCapabilityAdapter}'s javadoc). Cheap and stateless, so unlike
+     * {@link #httpMessagingCapabilityAdapter}, this one is constructed unconditionally rather than
+     * gated on whether a model binding actually requests it.
+     */
+    @Bean
+    public InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter() {
+        return new InProcMessagingCapabilityAdapter();
+    }
+
+    /**
+     * R6.4 runtime wiring: the cross-app, at-least-once half of {@code MessagingCapability}
+     * ({@code HttpMessagingCapabilityAdapter}, {@code NPDevKernel/adapters/messaging-http}).
+     *
+     * <p><b>Lazy, model-gated construction</b> -- same LNCH-11 posture as
+     * {@code NpdevPluginConfig#mailSmtpRuntimePluginRealizationProvider}: this bean is constructed
+     * only when the COMPILED MODEL actually binds {@code MessagingCapability} to adapter id
+     * {@code messaging-http}. Returning {@code null} here
+     * is the standard Spring idiom for "no bean" (an {@link ObjectProvider} injection point sees it
+     * as absent) -- an app that never binds messaging-http never starts the receiver and never
+     * requires {@code npdev.messaging.app-id} to be set.
+     *
+     * <p><b>Config surface</b> (deliberately mirrors {@code npdev.mail.smtp.*}'s secret-by-reference
+     * posture, never a literal secret in the model or in this config):
+     * <ul>
+     *   <li>{@code npdev.messaging.app-id} -- this app's own identity, matched against the
+     *       {@code X-Npdev-Messaging-Sender} header of an inbound delivery and stamped as
+     *       {@code senderAppId} on an outbound one.</li>
+     *   <li>{@code npdev.messaging.http.peers} -- {@code ;}-separated peer entries, each
+     *       {@code peerAppId|baseUrl|hmacSecretEnvVar|topic1,topic2} ({@code topics} may be blank,
+     *       meaning "every topic"). {@code hmacSecretEnvVar} is an ENVIRONMENT VARIABLE NAME, never a
+     *       secret value -- resolved at call time via {@code System::getenv} inside the adapter
+     *       itself, exactly {@code MessagingPeerProfile}'s own contract.</li>
+     * </ul>
+     *
+     * <p><b>No second listening socket.</b> This app already has its own front door (Spring MVC), so
+     * this bean is constructed with a null {@code inboundListenAddress} -- the adapter's embedded
+     * {@code HttpServer} inbound receiver is never started here. Inbound delivery instead reaches this
+     * SAME adapter instance through {@link com.finalexec.api.MessagingDeliveryController}, the one
+     * public route this app exposes for cross-app delivery, which calls
+     * {@link HttpMessagingCapabilityAdapter#receiveInboundDelivery} directly, in-process -- the exact
+     * verify/dedupe/dispatch logic the embedded server would otherwise run, with no loopback hop.
+     *
+     * <p><b>Why this bypasses {@code CapabilityAdapterResolver}/{@code RuntimePluginAdapterRegistry}
+     * entirely</b> -- unlike every other adapter this class wires (mail, webhook, persistence, ...),
+     * this one is NOT constructed through the generic plugin-manifest-driven path. That path requires
+     * a contribution entry in {@code npdev/plugins/*.plugin-manifest.json} (and, for a binding with no
+     * explicit adapter id, a default entry in {@code npdev/bindings/*.bindings.json}) -- both owned by
+     * {@code NPDevGenerator/resources/**}, outside this module's surface for this round. Skipping
+     * straight to a directly-constructed {@code @Bean}, selected in {@link #capabilityRegistry} the
+     * same way {@code eventbus} bindings already skip the generic resolver, keeps the messaging
+     * capability fully reachable from a model's own capability binding without requiring that
+     * generator-owned change. If/when {@code messaging-inproc}/{@code messaging-http} contributions are
+     * added to the generator's plugin manifest, the special case in {@link #capabilityRegistry} can be
+     * retired in favor of the generic path -- this bean itself would not need to change.
+     */
+    @Bean(destroyMethod = "close")
+    public HttpMessagingCapabilityAdapter httpMessagingCapabilityAdapter(
+            CompiledModel compiledModel,
+            IdempotencyStore idempotencyStore,
+            @Value("${npdev.messaging.app-id:}") String appId,
+            @Value("${npdev.messaging.http.peers:}") String peersConfig
+    ) {
+        boolean modelBindsHttpMessaging = compiledModel.getBindings().stream().anyMatch(binding ->
+                "messaging".equalsIgnoreCase(binding.getCapability())
+                        && "messaging-http".equalsIgnoreCase(binding.getAdapter()));
+        if (!modelBindsHttpMessaging) {
+            return null;
+        }
+        if (appId == null || appId.isBlank()) {
+            throw new IllegalStateException(
+                    "Model binds MessagingCapability to adapter 'messaging-http' but npdev.messaging.app-id "
+                            + "is not configured -- set it to this app's own peer identity.");
+        }
+        List<MessagingPeerProfile> peers = parseMessagingPeers(peersConfig);
+        // No inbound listen address: MessagingDeliveryController calls receiveInboundDelivery directly,
+        // in-process, so this instance never starts (and this app never opens) a second HTTP server.
+        return new HttpMessagingCapabilityAdapter(appId.trim(), peers, idempotencyStore);
+    }
+
+    private static List<MessagingPeerProfile> parseMessagingPeers(String rawConfig) {
+        if (rawConfig == null || rawConfig.isBlank()) {
+            return List.of();
+        }
+        List<MessagingPeerProfile> peers = new ArrayList<>();
+        for (String entry : rawConfig.split(";")) {
+            if (entry.isBlank()) {
+                continue;
+            }
+            String[] fields = entry.split("\\|", -1);
+            if (fields.length < 3) {
+                throw new IllegalStateException(
+                        "Malformed npdev.messaging.http.peers entry (expected "
+                                + "'peerAppId|baseUrl|hmacSecretEnvVar[|topic1,topic2]'): '" + entry + "'");
+            }
+            String peerAppId = fields[0].trim();
+            String baseUrl = fields[1].trim();
+            String hmacSecretEnvVar = fields[2].trim();
+            Set<String> topics = (fields.length > 3 && !fields[3].isBlank())
+                    ? Arrays.stream(fields[3].split(","))
+                            .map(String::trim)
+                            .filter(topic -> !topic.isBlank())
+                            .collect(Collectors.toCollection(LinkedHashSet::new))
+                    : Set.of();
+            peers.add(MessagingPeerProfile.of(peerAppId, baseUrl, hmacSecretEnvVar, topics));
+        }
+        return peers;
+    }
+
+    private static Object resolveMessagingAdapter(
+            String adapterId,
+            InProcMessagingCapabilityAdapter inProcAdapter,
+            ObjectProvider<HttpMessagingCapabilityAdapter> httpAdapterProvider
+    ) {
+        String normalized = adapterId == null ? "" : adapterId.trim().toLowerCase(Locale.ROOT);
+        if ("messaging-inproc".equals(normalized)) {
+            return inProcAdapter;
+        }
+        if ("messaging-http".equals(normalized)) {
+            HttpMessagingCapabilityAdapter httpAdapter = httpAdapterProvider.getIfAvailable();
+            if (httpAdapter != null) {
+                return httpAdapter;
+            }
+            throw new IllegalStateException(
+                    "Binding requests messaging adapter 'messaging-http' but its bean was not constructed "
+                            + "-- see NpdevCapabilityBindingConfig#httpMessagingCapabilityAdapter (usually "
+                            + "npdev.messaging.app-id is not configured).");
+        }
+        throw new IllegalStateException(
+                "Unknown messaging adapter id '" + adapterId + "' (expected 'messaging-inproc' or 'messaging-http')");
+    }
+
     @Bean
     public CapabilityRegistry capabilityRegistry(
             CompiledModel compiledModel,
-            CapabilityAdapterResolver capabilityAdapterResolver
+            CapabilityAdapterResolver capabilityAdapterResolver,
+            InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
+            ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider
     ) {
         CapabilityRegistry registry = new CapabilityRegistry();
         Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
@@ -254,6 +414,17 @@ public class NpdevCapabilityBindingConfig {
             CompiledCapability capability = capabilitiesByName.get(binding.getCapability());
             if (capability == null) {
                 throw new IllegalStateException("Binding references unknown capability: " + binding.getCapability());
+            }
+
+            if ("messaging".equalsIgnoreCase(binding.getCapability())) {
+                registry.register(
+                        capability.getName(),
+                        capability.getType(),
+                        binding.getAdapter(),
+                        resolveMessagingAdapter(
+                                binding.getAdapter(), inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider)
+                );
+                continue;
             }
 
             CapabilityAdapterResolver.ResolvedCapabilityAdapter resolvedAdapter =

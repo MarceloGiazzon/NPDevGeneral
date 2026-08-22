@@ -1,0 +1,93 @@
+id: RUN-12
+title: >-
+  `lineTotal = quantity * unitPrice` is refused at author time by a five-function whitelist -- and
+  the write-path evaluator would have silently stored the RAW EXPRESSION TEXT if it were not
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-18
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R4 item R4.1 -- "the single most
+  common derived field in any business app... Pure widening, no codemod." That premise turned out to
+  be half true, which is the substance of this item.
+surface: dsl/validation, kernel/value-expressions
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/FieldValueValidation.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ValueExpressionEvaluator.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/DslTypeCoercionSupport.java
+  - NPDevSamples/dsl-conformance-max
+  - scripts/quality/dsl_coverage/
+detail: |
+  **THE ROADMAP'S PREMISE WAS HALF TRUE, AND THE FALSE HALF IS THE DANGEROUS ONE.** R4.1 was framed
+  as pure author-time widening: "the runtime already evaluates the full grammar". That holds for
+  `SchemaExpressionSupport.evaluateSchemaExpression` (the runtime-support adapter's CRUD path), which
+  does delegate to `ComputedExpression`.
+
+  But there is a **SECOND, parallel evaluator**: `ValueExpressionEvaluator` (kernel), which
+  `DefaultConceptGateway.save` writes through -- the path every model using declarative
+  `capabilities`/`bindings` actually persists by, including `dsl-conformance-max` itself and the
+  mainline generated-CRUD pattern. It had **no arithmetic support at all**. An expression like
+  `"quantity * unitPrice"` fell through every special form (`now()`/`uuid()`/`$field`/quoted
+  literal/bare number) to a bottom `Long.parseLong`/`Double.parseDouble` attempt, which failed --
+  and the method then returned **the raw expression TEXT as the field's value**, writing the literal
+  string `"quantity * unitPrice"` into a decimal column. Measured live: H2 threw parsing it as
+  `BigDecimal` ("Character array is missing 'e' notation").
+
+  So had this item shipped as author-time-only widening -- exactly what the roadmap described -- every
+  model declaring an arithmetic `derivedExpression` would have validated cleanly and then failed at
+  write time, or silently stored garbage on a less strict column type. **The item's own definition of
+  done ("persists the computed value on a booted app") is what caught it**; the author-time half
+  passed all gates on its own.
+
+  THREE SMALL, PRECEDENTED CHANGES -- widen, do not rewrite:
+    1. `FieldValueValidation.analyzeValueBehaviorExpression`: deleted the five-name whitelist
+       (`concat`/`coalesce`/`trim`/`uppercase`/`lowercase`) and the hand-rolled recognizer that had
+       no notion of an operator at all, delegating instead to `ComputedExpression.validate`/
+       `referencedFields` -- mirroring the identical widening `ConceptValidation` already applied to
+       invariant and row-access expressions (LIFT-EXPR-P3). One grammar, one validator.
+       **Deliberately kept**: the id-field refusal, the nested-schema refusal, and cycle detection.
+    2. `ValueExpressionEvaluator.evaluate` (kernel): ONE added fallback branch -- after every
+       existing special case, try `ComputedExpression.evaluate`, else keep the old behaviour. Every
+       prior special case is byte-identical.
+    3. `DslTypeCoercionSupport.normalizeFieldValue` (runtime-support): a computed Long/Double for a
+       `decimal` field now coerces via the existing `toBigDecimal` helper, closing the same class of
+       gap on the sibling `GeneratedCrudRuntimeSupport` path.
+
+  A future `nextNumber()`/`role()` now parses here too (`ComputedExpression` accepts any call
+  syntax) and evaluates to null until actually registered -- the "rides the same widened path"
+  future work the roadmap names for R5.3 and R8.9. Neither was implemented.
+
+  LIVE PROOF (throwaway app, `OrderLine.lineTotal = "quantity * unitPrice"`):
+      POST /api/order_lines {"quantity":7,"unitPrice":3}   -> 201, lineTotal: 21
+      GET  /api/order_lines/{id}                            -> 200, lineTotal: 21.00  (fresh readback)
+      POST /api/order_lines {"quantity":7,"unitPrice":12.50} -> 201, lineTotal: 87.5
+  The fractional case matters: it exercises the decimal coercion in change 3 rather than an integer
+  path that would have passed either way. Throwaway app, its definition, and the process were all
+  deleted afterward -- confirmed by the orchestrator (no directory, no lingering java process).
+
+  GATES, independently re-run by the orchestrator: `:kernel:test` **536/0**,
+  `:adapters:runtime-support:test` **127/0**, `:NPDevContract:dsl:test` 777 with only the known-red
+  pre-existing `AiModelToDslMappingTest`, `check-schema-mirror-consistency.py` OK.
+  `check-dsl-coverage.py` OK with the new tracked feature `field.derivedExpression.arithmetic`
+  covered by `dsl-conformance-max` -- and **RED-proven**: removing the example makes the gate fail
+  naming that feature.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest.java
+  asserts: >-
+    an arithmetic derivedExpression is EVALUATED rather than stored as its own raw text on the
+    generated-CRUD path. Two further guards sit outside this one file and are named here because the
+    checker resolves a single path: the coverage detector
+    `field.derivedExpression.arithmetic` (scripts/quality/dsl_coverage/features.py:174, backed by
+    NPDevSamples/dsl-conformance-max) keeps an arithmetic example in the corpus and was RED-proven by
+    removing it; and the kernel suite covers `ValueExpressionEvaluator`'s new ComputedExpression
+    fallback, which is the write path DefaultConceptGateway.save actually uses.
+  provenRed: true
+  provenRedNote: >-
+    Both halves were observed failing before the fix: the validator refused `quantity * unitPrice`
+    at author time, and once that refusal was lifted the kernel evaluator returned the raw
+    expression string, which H2 rejected as a BigDecimal ("missing 'e' notation") -- a live,
+    measured failure rather than an inferred one. The coverage detector was separately RED-proven by
+    removing the corpus example.

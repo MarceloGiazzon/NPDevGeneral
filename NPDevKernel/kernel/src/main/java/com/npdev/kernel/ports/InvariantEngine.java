@@ -154,6 +154,42 @@ public interface InvariantEngine {
         }
     }
 
+    /**
+     * R4.4: one declared aggregate invariant, in the shape this port needs to evaluate it. A
+     * deliberate mirror of the DSL's {@code CompiledAggregateInvariant} rather than that type
+     * itself -- the kernel's ports stay free of DSL types (no other port takes one), and the
+     * caller that HAS the compiled model, {@code AggregateRuntime}, does the two-field mapping.
+     */
+    record AggregateInvariantSpec(String name, String expression, String message) {
+        public AggregateInvariantSpec {
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException("name must be non-blank");
+            }
+            if (expression == null || expression.isBlank()) {
+                throw new IllegalArgumentException("expression must be non-blank");
+            }
+        }
+    }
+
+    /**
+     * R4.4: evaluates an aggregate's declared invariants against its DRAFT tree -- root fields
+     * bound by name plus every declared collection bound by name to its list of row maps, the same
+     * shape {@code AggregateRuntime} already hands a declared {@code onValidate} procedure. Runs in
+     * that same pre-commit slot, before any write exists to roll back.
+     *
+     * <p>Defaults to "no violations" so an adapter that does not evaluate expressions is unaffected;
+     * the CEL adapter overrides it. Each returned {@link Violation} carries the failing invariant's
+     * name in {@code invariantRef}, which is what lets the commit API name the rule that vetoed.</p>
+     */
+    default List<Violation> evaluateAggregateInvariants(
+            String aggregateName,
+            String rootConcept,
+            List<AggregateInvariantSpec> invariants,
+            Map<String, Object> draftTree
+    ) {
+        return List.of();
+    }
+
     record Violation(
             String code,
             String message,

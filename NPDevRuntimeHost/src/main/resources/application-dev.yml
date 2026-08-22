@@ -5,7 +5,13 @@ spring:
 npdev:
   auth:
     mode: apikey
-    api-keys: "api-dev=dev:developer:admin;dev-key=dev:developer:admin"
+    # T1/C2: no key is seeded here anymore -- dev now fails closed exactly like application-default
+    # and application-prod do. This used to publish "api-dev=dev:developer:admin;dev-key=...", a
+    # known ADMIN credential in a public repository; StartupValidator.validateAuth() now refuses to
+    # boot until one is supplied externally, via NPDEV_AUTH_API_KEYS/NPDEV_AUTH_APIKEYS (env var
+    # takes precedence over this file, replacing it outright -- single String property, no merge) --
+    # exactly what _ops/Run-FinalApp.ps1 / _ops/run-final-app.sh's Ensure-NpdevApiKey already
+    # provisions per app into secrets/api-key.env before every boot.
 
 logging:
   level:

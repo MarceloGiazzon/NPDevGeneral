@@ -27,7 +27,10 @@
         "kind": {
           "enum": [
             "simple-crud-workflow",
-            "expanded-beta-application"
+            "expanded-beta-application",
+            "custom-panel",
+            "custom-procedure",
+            "custom-procedure-panel"
           ]
         }
       },

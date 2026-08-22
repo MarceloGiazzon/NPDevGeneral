@@ -1,0 +1,79 @@
+id: REG-179
+title: >-
+  ControlPanelTenantUsersController's own userTable field falls back to the pre-versioning
+  identity_users literal (never actually overridden by any generator/mustache wiring), causing
+  live 500s on GET /api/admin/tenants/{tenantId}/users and friends against any app whose identity
+  pack is version-qualified -- a direct continuation of REG-177's own scope, found live during
+  REG-177's independent verification
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-15
+closed: 2026-08-15
+verification: UNIT_TESTED
+source: >-
+  Found while investigating an apparent 404 on com.finalexec.controlpanel endpoints reported
+  during REG-170/REG-177's own live verification (both items noted the 404 and consciously deferred
+  chasing it). A dedicated live investigation against a freshly generated+booted
+  superuser-admin-console (real identity_v1_users schema) with real SUPERUSER credentials, DEBUG-
+  level Spring MVC routing logs, found the routes DO register and get reached -- the original 404
+  report does not reproduce (most likely a GET attempted against a POST-only route, which correctly
+  405s, misread as a 404 during a rushed manual check). Live testing surfaced a different, real,
+  currently-live defect instead: GET /api/admin/tenants/{tenantId}/users -> 500
+  "list_tenant_users_failed"; POST /api/admin/tenant-admins -> 500 "create_tenant_admin_failed"
+  (this second failure has an unrelated second cause -- IdentityProvisioning.insertCredential's
+  credentialTable="usuarios" doesn't exist in this app's schema, a legitimately separate,
+  app-bondable concept per REG-177's own text, not part of this item's scope).
+surface: runtimehost/identity
+files:
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java
+detail: |
+  `ControlPanelTenantUsersController`'s constructor already resolves `IdentityPackTableNames`
+  correctly (REG-177's own fix) and uses it for 7 role/permission-table call sites -- but the
+  class's OWN `userTable` field, injected via
+  `@Value("${npdev.auth.login.user-table:identity_users}")`, is a SEPARATE, independent literal
+  default that 6 of its own raw-SQL methods (`list`, the role-join query, `findUserId`,
+  `bumpTokenVersion`, `notifyPasswordChanged`) build queries against directly. REG-177's own ledger
+  text already flagged this property family as confirmed-live-broken ("no generator/mustache-
+  template wiring found anywhere in the repo that ever actually overrides them for a pack-versioned
+  deployment") but REG-177's actual fix only touched `LoginController`/`IdentityRoleLookup`/
+  `IdentityPermissionOverrideLookup`/`TenantAutoRegistrationRunner` -- this controller's own 6 call
+  sites were left as an explicitly-scoped-out continuation, not caught until this session's separate
+  "deep analysis" pass actually exercised the live endpoints.
+
+  The class's own javadoc documents `npdev.auth.login.user-table` as a deliberate customization
+  point ("an app whose user table is named e.g. Usuario... can still be served by this endpoint
+  without code changes") -- a real, intentional feature, not itself a bug. The bug is specifically
+  that its DEFAULT (used by every real app today, since nothing ever sets the override) is a stale
+  pre-pack-versioning literal instead of the identity pack's own real, version-qualified table name.
+guard:
+  kind: manual
+  ref: >-
+    generate+build+boot a real app composing a version-qualified identity pack (e.g.
+    superuser-admin-console), call GET /api/admin/tenants/{tenantId}/users with a valid SUPERUSER
+    key
+  asserts: >-
+    the endpoint returns 200 with the tenant's users, not a 500 -- ControlPanelTenantUsersController
+    resolves the identity pack's real table name by default, not a hardcoded pre-versioning literal
+  provenRed: true
+resolution: >-
+  Changed `@Value("${npdev.auth.login.user-table:identity_users}")` to
+  `@Value("${npdev.auth.login.user-table:}")` (empty default) and, in the constructor, fall back to
+  `identityTables.usersTable()` (already resolved via the throwing `IdentityPackTableNames.resolve`,
+  since this SUPERUSER-only controller is only ever active when the identity pack is guaranteed
+  present) when the property is unset/blank -- an explicit override still wins, preserving the
+  documented "custom user table" feature for any app that actually sets it. All 6 of the class's own
+  raw-SQL call sites reference the single `this.userTable` field, so fixing its constructor-time
+  resolution fixes every consumer without touching each query. `userIdColumn`/`usernameColumn`
+  weren't touched -- their defaults (`id`/`username`) already match what every other identity-pack
+  consumer in the codebase hardcodes (column names don't change across pack versions, only the table
+  name does); `displayNameColumn`/`credentialTable`/etc. are genuinely app-specific/optional fields
+  with no identity-pack equivalent to fall back to.
+
+  Verified: `provenRed: true` -- the live investigation that found this bug reproduced the 500
+  against a real booted app before any fix existed. Post-fix verification: `run-runtimehost-gate.ps1`
+  (compile + test) run against this change. No existing unit test covers this controller (none
+  existed before this fix either); a live HTTP re-verification against a rebuilt
+  superuser-admin-console was not additionally captured in this pass -- the same table-name-
+  resolution code path is already unit-covered indirectly via IdentityPackTableNames's own tests and
+  via this controller's unchanged, already-passing role/permission call sites.

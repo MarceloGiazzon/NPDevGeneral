@@ -60,12 +60,35 @@ public record PackAbiManifest(
         return properties;
     }
 
+    /**
+     * BUILD-2 follow-on: deliberately NOT {@code Properties.store(OutputStream, String)} -- that
+     * method unconditionally appends a second comment line stamped with the CURRENT wall-clock time
+     * ({@code "#Wed Aug 19 ..."}), which made two otherwise-identical seals of the same pack differ by
+     * that one line alone. Nothing in {@code SealedPackBuilderTest}'s own byte-identical proof ever
+     * caught this, because it never diffs the manifest file itself -- {@code
+     * SealedPackJarBuilderTest.sealingTheSamePackTwiceIndependently_producesByteIdenticalJarFiles} does
+     * (it bundles this manifest into the jar it byte-diffs), which is how this was found. Manual,
+     * fixed-format serialization keyed in a stable order -- {@link #readFrom} is unaffected, since
+     * {@code Properties.load} tolerates any comment shape (or none).
+     */
     public void writeTo(OutputStream out) {
+        String content = "# BT-2 sealed pack manifest -- generated, do not hand-edit\n"
+                + KEY_PACK_ID + "=" + escapeValue(packId) + "\n"
+                + KEY_PACK_VERSION + "=" + escapeValue(packVersion) + "\n"
+                + KEY_PACK_MAJOR_VERSION + "=" + packMajorVersion + "\n"
+                + KEY_KERNEL_ABI_VERSION + "=" + escapeValue(kernelAbiVersion) + "\n";
         try {
-            toProperties().store(out, "BT-2 sealed pack manifest -- generated, do not hand-edit");
+            out.write(content.getBytes(java.nio.charset.StandardCharsets.ISO_8859_1));
         } catch (IOException writeError) {
             throw new UncheckedIOException(writeError);
         }
+    }
+
+    /** Same escaping {@link Properties#store} itself applies to a value on the right of {@code '='} --
+     *  narrow (this manifest's four values are pack ids/semver/small integers, never containing more
+     *  than the odd colon), not a general-purpose re-implementation of the whole properties grammar. */
+    private static String escapeValue(String value) {
+        return value.replace("\\", "\\\\").replace(":", "\\:").replace("=", "\\=");
     }
 
     public static PackAbiManifest readFrom(InputStream in) {

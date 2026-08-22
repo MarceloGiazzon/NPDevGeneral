@@ -16,13 +16,16 @@ from .constants import FLOW_STEP_TYPES  # noqa: F401 - the table expands one ent
 
 from .detectors_model import (  # noqa: F401 - every name the table below references
     _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
+    _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
+    _has_concept_soft_delete, _has_concept_temporal, _has_field_access, _has_locale_label,
     _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field, _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
-    _has_groupby_multi_hop_join, _has_on_failure, _has_parallel_await_foreach,
+    _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
     _has_parallel_await_multistep_foreach, _has_post_checkpoint,
-    _has_procedure_create_if_missing, _has_procedure_step_type, _has_renamed_field,
-    _has_sensitive_field, _has_settings, _has_step_type, _nonempty,
+    _has_procedure_create_if_missing, _has_procedure_step_type, _has_query_where_v2, _has_renamed_field,
+    _has_schedule_event_with_delay, _has_sensitive_field, _has_settings, _has_step_type,
+    _has_widened_branch_condition, _nonempty,
 )
 
 from .detectors_ui import (  # noqa: F401 - every name the table below references
@@ -51,6 +54,12 @@ FEATURE_DETECTORS = {
     "autoPanels": lambda m: _nonempty(m, "autoPanels"),
     "documents": lambda m: _nonempty(m, "documents"),
     "guidePages": lambda m: _nonempty(m, "guidePages"),
+    # R6.2 (Roadmap Collection 2026-08-18): model-declared inbound webhook doors -- a new top-level
+    # array sibling of roles/aggregates above, generating POST /api/hooks/{source}.
+    "webhooks": lambda m: _nonempty(m, "webhooks"),
+    # R5.3 (Roadmap Collection 2026-08-18): model-declared document-numbering counters -- a new
+    # top-level array sibling of webhooks above, allocated by field.defaultExpression: nextNumber('name').
+    "sequences": lambda m: _nonempty(m, "sequences"),
     "queries": lambda m: _nonempty(m, "queries"),
     # Move 10 B1 (LC-B1, MOVE10_AI_LOWCODE_PLAN Part B): query.groupBy/aggregates/having --
     # distinct from the top-level "aggregates" (Aggregate Workbench) array above, so named
@@ -66,11 +75,40 @@ FEATURE_DETECTORS = {
     # S8 W1.1 (roadmap deferred item #1): the join chain widened from exactly one hop to a capped
     # multi-hop chain (GroupByJoinGrammar.MAX_JOIN_HOPS).
     "query.groupBy.join.multiHop": _has_groupby_multi_hop_join,
+    # R4.3 lockstep fix (Roadmap Wave 1 gap closure): the query predicate v2 grammar (OR-groups,
+    # in, contains/startsWith, is-null, reference-path joins) -- see _has_query_where_v2's own
+    # docstring for why this needed its own tracked feature, distinct from plain "queries" above.
+    "query.where.v2": _has_query_where_v2,
     "procedures": lambda m: _nonempty(m, "procedures"),
     "panels": lambda m: _nonempty(m, "panels"),
     "ruleProfiles": lambda m: _nonempty(m, "ruleProfiles"),
     "fragments": lambda m: _nonempty(m, "fragments"),
     "packs": lambda m: _nonempty(m, "packs"),
+    # PACK-8 (PACK-ROADMAP card PK-5): a remote pack import via packs[].from -- an OCI/git+...
+    # coordinate (PackCoordinate/OciCoordinate/GitCoordinate). The plain "packs" detector above is
+    # satisfied by a local $ref pack, so without this entry the ONLY supported remote-import syntax
+    # could regress while this gate stays green. The corpus has no remote-import witness (generation
+    # must never fetch, so a fixture needs a committed lock+cache or a vendored git repo -- recorded
+    # in PACK-8 as deliberate non-trivial CI work), hence the allowlist entry below.
+    "packs.from": lambda m: any(
+        isinstance(p, dict) and bool(p.get("from"))
+        for p in (m.get("packs") or [])
+    ),
+    # PACK-10 (PACK-ROADMAP card PK-6): a concept declaring satelliteOf -- a pack-qualified 1:1
+    # satellite extension of a base concept owned by another pack. Distinct from concept.extends
+    # (single-model field-merge inheritance). Live witnesses live in NPDevSamples/probes/p6-...,
+    # which are excluded from DSL coverage, so it is tracked (registered) + allowlisted here rather
+    # than co-opting a probe into counting as corpus coverage.
+    "satelliteOf": lambda m: any(
+        isinstance(c, dict) and c.get("satelliteOf")
+        for c in (m.get("concepts", None) or [])
+    ),
+    # pack-level `extends` (pack inherits another pack) is declared in pack.json, which this gate's
+    # find_models() does not walk (it scans model.json + context fragments only). A vacuous
+    # `lambda: False` detector here would be dead weight the maintainers explicitly reject, so it is
+    # deliberately NOT a FEATURE_DETECTOR entry; pack-composition coverage (extends/satelliteOf/
+    # from across the pack.json + model.json corpus) is checked by scripts/quality/check-pack-coverage.py
+    # instead -- see that file.
     # B20 (S2, ADR-0011): bounded-context declarations -- a new top-level array sibling of
     # packs/fragments, composed the same way.
     "contexts": lambda m: _nonempty(m, "contexts"),
@@ -96,9 +134,18 @@ FEATURE_DETECTORS = {
     "flow.specializes": lambda m: any("specializes" in f for f in _flows(m)),
     "flow.hooks": lambda m: any(f.get("hooks") for f in _flows(m)),
     "step.onFailure": _has_on_failure,
+    # R2.5: an awaitEvent step's durable timeout + onTimeout escalation branch -- see
+    # _has_await_timeout's own docstring for why this is tracked apart from "step.awaitEvent".
+    "step.awaitEvent.timeout": _has_await_timeout,
     "step.forEach.parallelAwait": _has_parallel_await_foreach,
     "step.forEach.parallelAwait.multiStep": _has_parallel_await_multistep_foreach,
     **{f"step.{t}": (lambda m, t=t: _has_step_type(m, t)) for t in FLOW_STEP_TYPES},
+    # R2.4: scheduleEvent's two delivery modes are two code paths now, not one path with a label --
+    # see _has_schedule_event_with_delay. Tracked separately for the same reason
+    # "query.groupBy.join.multiHop" is tracked apart from "query.groupBy.join": the base feature is
+    # satisfied by either mode alone, so a corpus carrying only one leaves the other unexercised.
+    "step.scheduleEvent.deferred": lambda m: _has_schedule_event_with_delay(m, True),
+    "step.scheduleEvent.immediate": lambda m: _has_schedule_event_with_delay(m, False),
     # Move 4 (docs/MOVE4_CROSS_RECORD_WRITE_PLAN.md): procedure.patchConcept and aggregate.onCommit
     # are new features, not caught by the flow-only _all_steps() above -- a procedure's steps live
     # under "procedures", not "flows". Tracked separately so a regression to either has the same
@@ -134,6 +181,26 @@ FEATURE_DETECTORS = {
     # isRowReadable/isRowWritable, fail-closed on a malformed expression), just never declared by
     # any real/fixture model before this.
     "concept.access": _has_concept_access,
+    # R5.5 (Roadmap Wave 1, 2026-08-19): field-level authorization (field.access.read/write) --
+    # confirmed genuinely wired end-to-end (DefaultConceptGateway's field-level read-masking in
+    # filterVisibleFields and deniedWriteFields-driven write rejection, fail-closed on a malformed
+    # expression via the same evaluateAccessRule concept.access already uses), the next rung below
+    # concept.access on the role-ceiling -> row-scope -> field-scope ladder.
+    "field.access": _has_field_access,
+    # R5.6 (Roadmap Wave 1, 2026-08-19): a label site authored as the per-locale object form
+    # ({"default": "...", "<locale>": "..."}) rather than a plain string -- proves the widened
+    # schema/DSL/canonical-JSON chain actually carries a locale map end to end, distinct from every
+    # OTHER corpus model's plain-string labels (which would make a detector that only checked "a
+    # label exists" vacuous -- string-form labels predate this feature entirely).
+    "label.locale": _has_locale_label,
+    # R5.4 (Roadmap Collection 2026-08-18): concept.softDelete -- deletedAt-flip delete, deleted-row-
+    # excluding reads (list/page/aggregate/existsUnique/reference finders), a restore action, and
+    # unique-among-live-rows semantics instead of a physical DELETE.
+    "concept.softDelete": _has_concept_soft_delete,
+    # R5.8 (Roadmap Collection 2026-08-18): concept.temporal -- effective-dated rows resolved by an
+    # as-of date against author-declared validFrom/validTo fields, instead of one current value per
+    # logical entity (price lists, tax rates, assignments).
+    "concept.temporal": _has_concept_temporal,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): an explicit "post" checkpoint on an
     # invariantCheck step -- step.invariantCheck itself has broad corpus coverage already, but every
     # existing declaration relies on JsonModelParser's implicit "pre" default (scope declared, no
@@ -157,6 +224,16 @@ FEATURE_DETECTORS = {
     # type the DSL previously had no way to express (every existing sample worked around it with a
     # priceCents-style integer field name).
     "type.decimal": _has_decimal_field,
+    # R4.1 (roadmap): a default/derivedExpression using arithmetic (+ - * / %), e.g.
+    # "quantity * unitPrice" -- distinct from the plain concat/coalesce/trim/uppercase/lowercase/
+    # identifier shape every prior corpus example used. See _has_arithmetic_derived_expression's
+    # own docstring for why this was a validator-only ceiling, not a runtime gap.
+    "field.derivedExpression.arithmetic": _has_arithmetic_derived_expression,
+    # R4.2 (roadmap): a flow BRANCH step's condition using the widened ComputedExpression grammar
+    # (&&, ||, or an ordered comparison) rather than the ==/!=-only shape KernelRunner.
+    # evaluateCondition's legacy matcher was previously capped at. See
+    # _has_widened_branch_condition's own docstring for why this was zero-witness before.
+    "step.branch.condition.widenedGrammar": _has_widened_branch_condition,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 5): panelAction.binding=conceptQuery -- zero
     # declarations AND zero test coverage anywhere before this (unlike most other Wave 5 items);
     # PanelRuntimeConceptQueryActionTest (RuntimeHost) now proves it end-to-end.
@@ -234,4 +311,11 @@ FEATURE_DETECTORS = {
     # per-op-tracked-separately discipline as copy/split/lookup above.
     "conversions.op.merge": lambda m: _has_conversion_op(m, "merge"),
     "conversions.op.convert": lambda m: _has_conversion_op(m, "convert"),
+    # PACK-9: an app's root provides.roleBindings map -- the app-visible half of the role('logicalName')
+    # compile-time binding token (PackRoleBindingRewriter, NPDevContract/dsl parser package). The
+    # token itself lives inside a pack.json a composing app imports, not in model.json, so it is
+    # invisible to this scanner (find_models only walks model.json, the same limit that made
+    # _merge_context_fragments necessary for contexts[]); roleBindings presence in model.json is the
+    # reachable, correct signal that a real corpus model exercises the feature end to end.
+    "provides.roleBindings": lambda m: bool((m.get("provides") or {}).get("roleBindings")),
 }

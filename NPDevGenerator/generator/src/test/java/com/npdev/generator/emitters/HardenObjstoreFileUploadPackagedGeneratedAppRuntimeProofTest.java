@@ -397,7 +397,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         // below) -- both jars must exist or the generated app fails to compile.
                         ":adapters:document-render-inproc:jar",
                         ":adapters:document-render-stub:jar",
-                        ":adapters:expression-cel:jar",
+                        ":adapters:runtime-support:jar",
                         ":adapters:external-ai-http:jar",
                         ":adapters:external-ai-inproc:jar",
                         ":adapters:external-ai-pack-core:jar",
@@ -413,12 +413,15 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         // clean CI runner only explicitly-built adapters exist -> compile error. Build them.
                         ":adapters:mail-inproc:jar",
                         ":adapters:mail-smtp:jar",
+                        ":adapters:messaging-http:jar",
+                        ":adapters:messaging-inproc:jar",
                         ":adapters:persistence-inproc:jar",
                         ":adapters:persistence-postgres:jar",
                         ":adapters:resume-bootstrap-spring:jar",
                         ":adapters:runtime-validation:jar",
                         ":adapters:schema-validator-default:jar",
                         ":adapters:tracing-redaction-default:jar",
+                        ":adapters:webhook-http:jar",
                         ":adapters:webhook-inproc:jar",
                         "--no-daemon",
                         "--console=plain"
@@ -559,7 +562,10 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
     private static void waitForHealth(int port, Path evidenceRoot) throws Exception {
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(2)).build();
         URI uri = URI.create("http://localhost:" + port + "/actuator/health");
-        Instant deadline = Instant.now().plus(Duration.ofMinutes(2));
+        // REG-176: was 2 minutes -- much shorter than this file's sibling
+        // *PackagedGeneratedAppRuntimeProofTest classes' own 6(->8)-minute HEALTH_TIMEOUT, and the
+        // most likely reason this specific test timed out first/most often under real CI load.
+        Instant deadline = Instant.now().plus(Duration.ofMinutes(8));
         Exception last = null;
         while (Instant.now().isBefore(deadline)) {
             try {

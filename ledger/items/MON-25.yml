@@ -1,0 +1,23 @@
+id: MON-25
+title: >-
+  R9.1 -- fix emitted backup/restore scripts (engine-aware)
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-20
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R9.1 (pull-forward item).
+surface: ops/backup-scripts
+detail: |
+  Backup scripts exec'd into nonexistent postgres service and read undefined variables.
+  Fixed in the R9.4 operational runbook rewrite.
+resolution: >-
+  Already fixed. MON-16 references the rewrite. Ledger item filed retroactively.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/DockerDeploymentEmitterBackupObservabilityTest.java
+  asserts: >-
+    Backup sidecar profile is emitted with correct engine-aware dump/restore commands
+  provenRed: true

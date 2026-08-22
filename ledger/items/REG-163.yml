@@ -5,8 +5,10 @@ title: >-
   sourceSets.main regardless of profile, so the runtime-level allowlist filter has no bean to keep
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-14
+closed: 2026-08-15
+verification: VERIFIED_LIVE
 source: >-
   Found while attempting R1 Stage 3 (MASTER-ROADMAP.md Track C item C3, "revive the 5 full-boot
   @SpringBootTest surface tests one at a time"). Reviving
@@ -66,3 +68,35 @@ guard:
     deferredControllers-listed controller is both compiled and reachable under
     npdev.runtime.surface-profile=non-default
   provenRed: true
+resolution: >-
+  `unsupportedRuntimeHostControllerSources`/`unsupportedRuntimeHostServiceSources` now compile
+  `allowedControllers UNION deferredControllers` (and the analogous
+  `nonDefaultServicePatterns`/`experimentalServicePatterns` union for services), so
+  `RuntimeControllerAllowlistConfig`'s runtime bean-removal filter has real bean definitions to work
+  with under every profile instead of the compile-time gate being strictly narrower than the runtime
+  one it exists only to backstop.
+
+  Verifying this surfaced two further real bugs, both fixed in the same pass: (1) a transitive
+  compile gap -- two services matching `nonDefaultServicePatterns`
+  (`RuntimeTopologyExplorerService`/`CapabilityIntegrationPanelService`) construct-inject classes
+  under `com.finalexec.npdev.service.experimental`, which `FinalAppAssembler` never copies into ANY
+  generated app at all (a separate, hardcoded, copy-time-only exclusion); compiling the referencing
+  file anyway just traded a correct exclusion for a real "cannot find symbol", and the same problem
+  repeats one level up for the controller that depends on that service. Fixed by detecting (via a
+  comment-stripped text scan, matching this file's existing `generatedRuntimeDependentMainSources`
+  precedent) whether a candidate file references an experimental-tier class or an already-excluded
+  service, and excluding it too when it does -- `RuntimeTopologyExplorerController`/`Service` stay
+  correctly excluded (their dependency is genuinely unsatisfiable), while the rest of
+  `deferredControllers`/`nonDefaultServicePatterns` now compile cleanly. (2) `SupportedRuntimeSurfacePackagingTest`'s
+  own assertions for `RuntimePluginPackagesController`/`RuntimeRefreshController`/
+  `ModelSyncStatusController`/`ModelSyncStatusService`/`TenantOperationalAdministrationService`
+  described the OLD, pre-fix "never compiled" reality and needed updating to `assertPackaged` now
+  that REG-163's fix makes "packaged" and "active under the default profile" two different
+  questions.
+
+  The guard's own test, `NonDefaultRuntimeSurfaceProfileIntegrationTest`, was REVIVED (un-excluded)
+  and passes for real against the assembled simple-contact-intake sample -- not just compiles. Its
+  own package filter had an independent bug (`beanPackage.getName().equals("com.finalexec.api")` can
+  never match a controller in the `.internal`/`.experimental` subpackage every real controller this
+  test names actually lives in) which was fixed alongside REG-163's own change. Full assembled-app
+  `gradlew test` (557 tests including the revived one) green, 2026-08-15.

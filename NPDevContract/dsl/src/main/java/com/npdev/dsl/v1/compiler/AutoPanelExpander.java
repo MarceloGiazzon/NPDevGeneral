@@ -554,7 +554,7 @@ final class AutoPanelExpander {
      * workbench-page.html.mustache's {@code evaluateDerived}): {@code sum(<path>)}, where
      * {@code <path>} walks nested collections ({@code itens[].posicoes[].quantidade}) with an
      * optional {@code .filter(field=='literal')} narrowing one array first -- not general CEL
-     * (reusing the platform's actual expression-cel engine client-side in a browser is not
+     * (reusing the platform's actual runtime-support engine client-side in a browser is not
      * realistic), but the same expression LANGUAGE FAMILY, not a second one invented from scratch.
      * Entries missing a name or expression are skipped.
      */

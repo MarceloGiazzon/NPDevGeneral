@@ -30,6 +30,19 @@ final class FlowStateCodec {
     static final String AWAIT_FIELD_STEP_NAME = "stepName";
     static final String AWAIT_FIELD_AWAIT_REF = "awaitRef";
 
+    /** R2.5 (durable await timeouts): the epoch-ms deadline a timed {@code awaitEvent} step
+     *  computes ONCE (the first time it parks) and then carries forward unchanged on every later
+     *  resume attempt -- see {@link #buildAwaitState}'s {@code timeoutDeadlineEpochMs} param and
+     *  {@link #existingAwaitDeadlineEpochMs}, which reads it back so a resume never recomputes
+     *  "now + timeout" and pushes the deadline out indefinitely. Absent from the map entirely for
+     *  an await with no {@code timeout} declared (the vast majority) -- zero extra bytes for the
+     *  common case, and zero DB schema change for the timed case either: this rides the SAME
+     *  {@code _npdev.await} state blob every await already persists into {@code state_json}, per
+     *  the same reasoning {@link #PARALLEL_AWAIT_STATE_KEY_PREFIX}'s javadoc gives for why a new
+     *  durable storage surface was rejected there.
+     */
+    static final String AWAIT_FIELD_DEADLINE_EPOCH_MS = "timeoutDeadlineEpochMs";
+
     /**
      * B15(A) (sequential await-in-loop, see docs/BOUNDARY_LIFT_ROADMAP.md): the marker {@link
      * AwaitEventStep} sets in {@code state} the instant it consumes iteration i's awaited event --
@@ -70,7 +83,8 @@ final class FlowStateCodec {
     static Map<String, Object> buildAwaitState(
             FlowStepDefinition step,
             int stepIndex,
-            String awaitRef
+            String awaitRef,
+            Long timeoutDeadlineEpochMs
     ) {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put(AWAIT_FIELD_EVENT_NAME, step.getAwaitEventName());
@@ -79,7 +93,65 @@ final class FlowStateCodec {
         out.put(AWAIT_FIELD_STEP_INDEX, Math.max(0, stepIndex));
         out.put(AWAIT_FIELD_STEP_NAME, step.getName());
         out.put(AWAIT_FIELD_AWAIT_REF, normalizeAwaitRef(awaitRef));
+        if (timeoutDeadlineEpochMs != null) {
+            out.put(AWAIT_FIELD_DEADLINE_EPOCH_MS, timeoutDeadlineEpochMs);
+        }
         return Map.copyOf(out);
+    }
+
+    /**
+     * R2.5: reads back the deadline a PRIOR park of this exact step already committed to durable
+     * state, if any -- {@code null} on the first-ever park (nothing to read yet) or when the
+     * currently-persisted {@code _npdev.await} blob belongs to a different step (defensive: in
+     * practice {@link #AWAIT_STATE_KEY} is cleared the instant an await resolves, so it can only
+     * ever hold the CURRENTLY-parked step's own descriptor, but the step-name check costs nothing
+     * and matches this file's existing carefulness elsewhere). Callers compute a fresh deadline
+     * ({@code now + timeoutSeconds * 1000}) only when this returns {@code null} -- otherwise every
+     * resume attempt that still finds no matching event would recompute "now + timeout" and the
+     * deadline would recede forever, never actually expiring.
+     */
+    static Long existingAwaitDeadlineEpochMs(Map<String, Object> state, String stepName) {
+        if (state == null || stepName == null || stepName.isBlank()) {
+            return null;
+        }
+        Object raw = state.get(AWAIT_STATE_KEY);
+        if (!(raw instanceof Map<?, ?> waitMap)) {
+            return null;
+        }
+        if (!stepName.equals(Objects.toString(waitMap.get(AWAIT_FIELD_STEP_NAME), null))) {
+            return null;
+        }
+        return parseDeadline(waitMap);
+    }
+
+    /** R2.5: the {@link #resumeAllWaitingExecutions} sweep's counterpart to {@link
+     *  #existingAwaitDeadlineEpochMs} -- reads a WAITING instance's persisted deadline (if any)
+     *  straight off {@code FlowInstance.state()} without needing the step name, since the sweep
+     *  only ever sees whatever is CURRENTLY parked (same invariant the javadoc above relies on). */
+    static Long awaitDeadlineEpochMs(Map<String, Object> state) {
+        if (state == null) {
+            return null;
+        }
+        Object raw = state.get(AWAIT_STATE_KEY);
+        if (!(raw instanceof Map<?, ?> waitMap)) {
+            return null;
+        }
+        return parseDeadline(waitMap);
+    }
+
+    private static Long parseDeadline(Map<?, ?> waitMap) {
+        Object deadline = waitMap.get(AWAIT_FIELD_DEADLINE_EPOCH_MS);
+        if (deadline instanceof Number number) {
+            return number.longValue();
+        }
+        if (deadline == null) {
+            return null;
+        }
+        try {
+            return Long.parseLong(String.valueOf(deadline));
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     /**

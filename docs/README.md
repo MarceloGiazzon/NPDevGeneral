@@ -50,6 +50,7 @@ One file per built-in feature.
 
 ## Understand it
 
+[NPDEV_FEATURE_GUIDE.md](NPDEV_FEATURE_GUIDE.md) ·
 [NPDEV_CONCEPTS_DEEP_DIVE.md](NPDEV_CONCEPTS_DEEP_DIVE.md) ·
 [NPDEV_USER_MANUAL.md](NPDEV_USER_MANUAL.md) ·
 [architecture/](architecture/) ·
@@ -77,7 +78,7 @@ run the commands below to render a local copy into the external Build root.
 
 `OPEN_ITEMS.md` (`ledger/items/*.yml` → `python scripts/quality/generate_open_items.py`) ·
 `OPEN_GAPS_AND_ROADMAP.md` (`ledger/gaps.yml` → `python scripts/docs/generate_gaps_roadmap.py`) ·
-[SECURITY_PATTERN_SWEEP_2026-07.md](SECURITY_PATTERN_SWEEP_2026-07.md)
+[SECURITY_PATTERN_SWEEP_2026-07.md](archive/SECURITY_PATTERN_SWEEP_2026-07.md) (archived — dated point-in-time sweep)
 
 ## Front matter
 
@@ -105,7 +106,6 @@ text records having been mistakenly archived once already (2026-07-27), for exac
 [OFFICIAL_BETA_RELEASE_RUNBOOK.md](maintainers/OFFICIAL_BETA_RELEASE_RUNBOOK.md) ·
 [SAMPLE_MATRIX_RELEASE_POLICY.md](maintainers/SAMPLE_MATRIX_RELEASE_POLICY.md) ·
 [RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md](maintainers/RELEASE_EVIDENCE_SOURCE_OF_TRUTH.md) ·
-[FRONTEND_GATE_REPRODUCIBILITY.md](maintainers/FRONTEND_GATE_REPRODUCIBILITY.md) ·
 [EXTERNAL_SECURITY_REVIEW_BRIEF.md](maintainers/EXTERNAL_SECURITY_REVIEW_BRIEF.md) ·
 [HUMAN_VS_AI_VERIFICATION.md](maintainers/HUMAN_VS_AI_VERIFICATION.md)
 

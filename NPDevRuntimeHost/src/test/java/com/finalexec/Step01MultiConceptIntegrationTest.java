@@ -2,8 +2,6 @@ package com.finalexec;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.npdev.generated.repositories.PatientRepository;
-import com.npdev.generated.repositories.ProviderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,16 +28,9 @@ class Step01MultiConceptIntegrationTest extends AbstractScenarioIntegrationTest 
     @Autowired
     private ObjectMapper objectMapper;
 
-    @Autowired
-    private ProviderRepository providerRepository;
-
-    @Autowired
-    private PatientRepository patientRepository;
-
     @BeforeEach
     void cleanDb() {
-        patientRepository.deleteAll();
-        providerRepository.deleteAll();
+        deleteAllConceptRows("Patient", "Provider");
     }
 
     @Test

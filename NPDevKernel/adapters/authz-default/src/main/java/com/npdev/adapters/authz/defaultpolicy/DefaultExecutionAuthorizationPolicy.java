@@ -2,6 +2,7 @@ package com.npdev.adapters.authz.defaultpolicy;
 
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledRole;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.auth.Permission;
 import com.npdev.kernel.auth.RolePermissions;
@@ -17,6 +18,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.logging.Level;
@@ -28,6 +30,10 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
     private final TenantIsolationPolicy tenantIsolationPolicy;
     private final Map<String, Set<Permission>> appDeclaredRoles;
     private final Supplier<DataSource> dataSourceSupplier;
+    // REG-177: resolved ONCE at construction, not per-request -- empty when compiledModel is null
+    // (several constructors here allow that, see the two-arg ctor's own doc) or this app doesn't
+    // compose the identity pack at all (internal.tables=false is a normal, supported configuration).
+    private final Optional<IdentityPackTableNames> identityTables;
 
     public DefaultExecutionAuthorizationPolicy() {
         this(new DefaultTenantIsolationPolicy());
@@ -68,6 +74,9 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
         this.tenantIsolationPolicy = Objects.requireNonNull(tenantIsolationPolicy, "tenantIsolationPolicy");
         this.appDeclaredRoles = toAppDeclaredRoles(compiledModel);
         this.dataSourceSupplier = dataSourceSupplier == null ? () -> null : dataSourceSupplier;
+        this.identityTables = compiledModel == null
+                ? Optional.empty()
+                : IdentityPackTableNames.tryResolve(compiledModel);
     }
 
     private static Map<String, Set<Permission>> toAppDeclaredRoles(CompiledModel compiledModel) {
@@ -252,10 +261,10 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
     }
 
     private boolean hasPermission(ExecutionContext requester, Permission permission) {
-        Map<String, Set<String>> overrides = requester == null
+        Map<String, Set<String>> overrides = requester == null || identityTables.isEmpty()
                 ? Map.of()
                 : IdentityPermissionOverrideLookup.overridesFor(
-                        dataSourceSupplier.get(), requester.tenantId(), requester.actorId());
+                        dataSourceSupplier.get(), identityTables.get(), requester.tenantId(), requester.actorId());
         return RolePermissions.hasPermission(requester, permission, appDeclaredRoles, overrides);
     }
 }

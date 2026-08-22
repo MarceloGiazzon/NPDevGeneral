@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.schemaevolution;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -60,6 +61,10 @@ public final class RenameResolution {
         remainingMissing.removeAll(explained.keySet());
         Set<String> remainingExtra = new LinkedHashSet<>(extraInDb);
         remainingExtra.removeAll(explained.values());
-        return new Result(Map.copyOf(explained), remainingMissing, remainingExtra);
+        // REG-175/REG-146: MigrationPlanEmitter iterates explainedRenames().entrySet() unsorted into
+        // migration-plan.json's items array -- Map.copyOf's JEP 269 iteration-order randomization
+        // was reaching that emitted plan. `explained` is already a LinkedHashMap built in
+        // declaredRenames' own order; unmodifiableMap preserves it instead of re-randomizing.
+        return new Result(Collections.unmodifiableMap(explained), remainingMissing, remainingExtra);
     }
 }

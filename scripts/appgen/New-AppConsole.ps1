@@ -97,8 +97,15 @@ function Get-AppStatus {
   $reachable = $false
   if ($base) { try { Invoke-RestMethod -Uri "$base/api/flows" -Headers @{ 'X-Api-Key' = $key } -TimeoutSec 2 | Out-Null; $reachable = $true } catch {} }
   $hardError = $false
-  $outlog = Join-Path $OpsDir 'app.out.log'
-  if (-not $reachable -and (Test-Path -LiteralPath $outlog)) { try { $tail = (Get-Content -LiteralPath $outlog -Tail 150) -join "`n"; if ($tail -match 'APPLICATION FAILED TO START|Application run failed') { $hardError = $true } } catch {} }
+  # R9.4: Start-App.ps1 is now emitted by OperationalRunbookEmitter and writes its stdout into the
+  # SAME bounded logs/app-*.log pool Run-FinalApp.ps1 prunes to the newest 20 (R9.2), not a fixed
+  # _ops\app.out.log -- so the newest run's log is whichever of those files sorts latest.
+  $outlog = $null
+  if ($appRoot) {
+    $outlog = Get-ChildItem -LiteralPath (Join-Path $appRoot 'logs') -Filter 'app-*.log' -File -ErrorAction SilentlyContinue |
+      Sort-Object LastWriteTime -Descending | Select-Object -First 1 -ExpandProperty FullName
+  }
+  if (-not $reachable -and $outlog -and (Test-Path -LiteralPath $outlog)) { try { $tail = (Get-Content -LiteralPath $outlog -Tail 150) -join "`n"; if ($tail -match 'APPLICATION FAILED TO START|Application run failed') { $hardError = $true } } catch {} }
   $smokeFail = $false
   $smoke = Join-Path $OpsDir 'smoke-test-report.json'
   if (Test-Path -LiteralPath $smoke) { try { $smokeFail = ((Get-Content -Raw -LiteralPath $smoke | ConvertFrom-Json).status -eq 'FAIL') } catch {} }

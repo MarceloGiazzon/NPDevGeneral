@@ -1,5 +1,7 @@
 package com.finalexec.controlpanel;
 
+import com.finalexec.boundary.BoundaryViolation;
+import com.finalexec.boundary.BoundaryViolationResponse;
 import com.finalexec.db.ExpressionBackfillPreview;
 import com.finalexec.db.ImpactReportJson;
 import com.finalexec.db.SchemaImpactFacade;
@@ -8,6 +10,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -72,14 +75,22 @@ public class SchemaImpactController {
      * {@code BackfillPass} applying them on this app's next boot.
      */
     @GetMapping(value = "/expression-backfill-preview", produces = "application/json")
-    public Map<String, Object> expressionBackfillPreview(HttpServletRequest httpRequest) {
+    public Object expressionBackfillPreview(HttpServletRequest httpRequest, HttpServletResponse httpResponse) {
         requireSuperUser(httpRequest);
         DataSource dataSource = requireDataSource();
         SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
         Map<String, Object> body = new LinkedHashMap<>();
         if (manifest == null || !manifest.physicalDatabase()) {
-            body.put("items", List.of());
-            body.put("ackToken", null);
+            // B2 (expression backfill): no physical database -- backfill is not applicable.
+            try {
+                BoundaryViolationResponse.write(httpResponse, HttpStatus.SERVICE_UNAVAILABLE.value(),
+                        new BoundaryViolation("B2", "backfill",
+                                "Expression backfill is not available: no physical database is configured.",
+                                Instant.now()));
+            } catch (java.io.IOException ioException) {
+                throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Failed writing boundary violation response", ioException);
+            }
             return body;
         }
         List<ExpressionBackfillPreview.Item> items = ExpressionBackfillPreview.preview(dataSource, manifest);

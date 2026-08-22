@@ -646,6 +646,91 @@ class KernelRunnerTest {
         assertEquals("saved-id-1", eventInfrastructure.published.get(0).payload().get("id"));
     }
 
+    /**
+     * R4.2 (roadmap): a BRANCH step's condition used to be a hand-rolled {@code ==}/{@code !=}-only
+     * matcher -- no {@code &&} or ordered comparison. {@link KernelRunner#evaluateCondition} now
+     * tries the {@code ComputedExpression} grammar first, so this is the DoD's own example: a
+     * condition combining {@code &&} and {@code >} decides the branch correctly, and BOTH operands
+     * of the {@code &&} are checked (not just the first) -- qty alone over the threshold with the
+     * wrong status must still take the else branch.
+     */
+    @Test
+    void executeSupportsBranchConditionWithLogicalAndAndOrderedComparison() {
+        InvariantEngine noViolations = new InvariantEngine() {
+            @Override
+            public List<String> evaluate(String entityName, Object payload) {
+                return List.of();
+            }
+
+            @Override
+            public List<InvariantEngine.Violation> evaluate(List<String> invariants, InvariantEngine.EvaluationContext context) {
+                return List.of();
+            }
+        };
+        InMemoryFlowDefinitionProvider flowProvider = new InMemoryFlowDefinitionProvider()
+                .register(new FlowDefinition(
+                        "BulkOrderFlow",
+                        "Order",
+                        List.of(
+                                FlowStepDefinition.branch(
+                                        "branch-bulk",
+                                        "$input.qty > 5 && $input.status == 'open'",
+                                        List.of(FlowStepDefinition.emitEvent(
+                                                "emit-bulk", "BulkOrderFlagged", null, Map.of("qty", "$input.qty")
+                                        )),
+                                        List.of(FlowStepDefinition.emitEvent(
+                                                "emit-standard", "StandardOrderFlagged", null, Map.of("qty", "$input.qty")
+                                        ))
+                                ),
+                                FlowStepDefinition.returnValue("return-qty", "$input.qty")
+                        )
+                ));
+
+        // qty > 5 AND status == 'open' -- both operands true -- takes "then".
+        RecordingEventInfrastructure bulk = new RecordingEventInfrastructure();
+        KernelRunner bulkRunner = new KernelRunner(bulk, noViolations, flowProvider, new CapabilityDispatcherStub(), bulk);
+        ExecutionResult bulkResult = bulkRunner.execute("BulkOrderFlow", Map.of("qty", 9, "status", "open"));
+        assertEquals(ExecutionStatus.OK, bulkResult.getStatus());
+        assertEquals("BulkOrderFlagged", bulk.published.get(0).eventName());
+
+        // qty > 5 is false -- takes "else" even though status matches.
+        RecordingEventInfrastructure lowQty = new RecordingEventInfrastructure();
+        KernelRunner lowQtyRunner = new KernelRunner(lowQty, noViolations, flowProvider, new CapabilityDispatcherStub(), lowQty);
+        lowQtyRunner.execute("BulkOrderFlow", Map.of("qty", 3, "status", "open"));
+        assertEquals("StandardOrderFlagged", lowQty.published.get(0).eventName());
+
+        // qty > 5 is true but status doesn't match -- && must still require BOTH -- takes "else".
+        RecordingEventInfrastructure wrongStatus = new RecordingEventInfrastructure();
+        KernelRunner wrongStatusRunner = new KernelRunner(wrongStatus, noViolations, flowProvider, new CapabilityDispatcherStub(), wrongStatus);
+        wrongStatusRunner.execute("BulkOrderFlow", Map.of("qty", 9, "status", "closed"));
+        assertEquals("StandardOrderFlagged", wrongStatus.published.get(0).eventName());
+    }
+
+    /**
+     * R4.2 (roadmap) regression half: the exact {@code condition} strings that appear in the
+     * in-repo corpus today (grepped 2026-08-18 across NPDevSamples/NPDevGenerator resources --
+     * {@code canonical-demo}, {@code durable-workflow-demo}, {@code medium-expense-approval}) must
+     * still evaluate to the SAME boolean now that {@link KernelRunner#evaluateCondition} tries
+     * {@code ComputedExpression} first. Every one of them is a plain {@code ==} comparison, so
+     * {@code ComputedExpression} parses and evaluates them directly (never falls through to the
+     * legacy matcher) -- this pins the exact value each one produces, both when the condition is
+     * met and when it is not, which is the shape a silent value-level regression would hit.
+     */
+    @Test
+    void existingCorpusBranchConditionsEvaluateIdenticallyUnderComputedExpression() {
+        // canonical-demo: schedule-reminder step, "$saved.status == 'Scheduled'"
+        assertTrue(KernelRunner.evaluateCondition(
+                "$saved.status == 'Scheduled'", Map.of("saved", Map.of("status", "Scheduled")), null));
+        assertFalse(KernelRunner.evaluateCondition(
+                "$saved.status == 'Scheduled'", Map.of("saved", Map.of("status", "Cancelled")), null));
+
+        // durable-workflow-demo / medium-expense-approval: "$saved.needsManagerApproval == true"
+        assertTrue(KernelRunner.evaluateCondition(
+                "$saved.needsManagerApproval == true", Map.of("saved", Map.of("needsManagerApproval", true)), null));
+        assertFalse(KernelRunner.evaluateCondition(
+                "$saved.needsManagerApproval == true", Map.of("saved", Map.of("needsManagerApproval", false)), null));
+    }
+
     @Test
     void executeSupportsAwaitEventUsingEventStore() {
         EventStoreStub eventStore = new EventStoreStub();
@@ -794,11 +879,152 @@ class KernelRunnerTest {
         assertEquals("corr-10", eventInfrastructure.stored.get(0).correlationId());
     }
 
+    /**
+     * R2.4. This test used to be named {@code scheduleEventStepPersistsAndPublishesScheduledIntentMetadata}
+     * and asserted that a 300-second delay published IMMEDIATELY with the delay stamped in
+     * {@code _meta} -- it was the pin holding the defect in place. A delay now means a durable row
+     * and nothing else; the assertions below are the same envelope, checked at the scheduler
+     * instead of at the bus.
+     */
     @Test
-    void scheduleEventStepPersistsAndPublishesScheduledIntentMetadata() {
+    void scheduleEventStepWithADelayHandsTheEnvelopeToTheSchedulerAndPublishesNothingInline() {
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        RecordingDeferredEventScheduler scheduler = new RecordingDeferredEventScheduler(true);
+
+        KernelRunner runner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                scheduleReminderFlowProvider(300L),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure
+        ).withDeferredEventScheduler(scheduler);
+
+        long before = System.currentTimeMillis();
+        ExecutionResult result = runner.execute(
+                "ScheduleReminder",
+                Map.of("appointmentId", "apt-1", "correlationId", "corr-reminder")
+        );
+        long after = System.currentTimeMillis();
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertTrue(eventInfrastructure.published.isEmpty(),
+                "A delayed scheduleEvent must not publish inline, got: " + eventInfrastructure.published);
+        assertTrue(eventInfrastructure.stored.isEmpty(),
+                "A delayed scheduleEvent must not append to the event store either -- ResumeCoordinator's"
+                        + " sweep reads the STORE, so a stored envelope would wake a waiter and defeat the delay");
+        assertTrue(result.getEmittedEvents() == null || result.getEmittedEvents().isEmpty(),
+                "An event that has not been published yet must not be reported as emitted");
+
+        assertEquals(1, scheduler.calls.size());
+        EventEnvelope envelope = scheduler.calls.get(0).envelope();
+        assertEquals("AppointmentReminderDue", envelope.eventName());
+        assertEquals("corr-reminder", envelope.correlationId());
+        assertEquals("ScheduleReminder", envelope.flowName());
+        assertEquals("scheduled", ((Map<?, ?>) envelope.payload().get("_meta")).get("deliveryMode"));
+        assertEquals(300L, ((Map<?, ?>) envelope.payload().get("_meta")).get("delaySeconds"));
+
+        long dueAt = scheduler.calls.get(0).dueAtEpochMs();
+        assertTrue(dueAt >= before + 300_000L && dueAt <= after + 300_000L,
+                "due-at must be now + delay, got " + dueAt + " for a window of ["
+                        + (before + 300_000L) + ", " + (after + 300_000L) + "]");
+    }
+
+    /**
+     * R2.4's back-compat half. A zero delay is NOT routed through the durable table: it publishes
+     * on the same call, in the same order, so that no existing model pays a scheduler tick of
+     * latency for spelling an immediate event as {@code delaySeconds: 0}. The scheduler is wired
+     * here precisely so that "never called" is a real assertion rather than a vacuous one.
+     */
+    @Test
+    void scheduleEventStepWithZeroDelayStillPublishesInlineAndNeverTouchesTheScheduler() {
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        RecordingDeferredEventScheduler scheduler = new RecordingDeferredEventScheduler(true);
+
+        KernelRunner runner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                scheduleReminderFlowProvider(0L),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure
+        ).withDeferredEventScheduler(scheduler);
+
+        ExecutionResult result = runner.execute(
+                "ScheduleReminder",
+                Map.of("appointmentId", "apt-1", "correlationId", "corr-reminder-now")
+        );
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertTrue(scheduler.calls.isEmpty(), "delaySeconds=0 must never reach the durable scheduler");
+        assertEquals(1, eventInfrastructure.published.size());
+        assertEquals(1, eventInfrastructure.stored.size());
+        EventEnvelope envelope = eventInfrastructure.published.get(0);
+        assertEquals(envelope, eventInfrastructure.stored.get(0));
+        assertEquals("AppointmentReminderDue", envelope.eventName());
+        assertEquals("corr-reminder-now", envelope.correlationId());
+        assertEquals("scheduled", ((Map<?, ?>) envelope.payload().get("_meta")).get("deliveryMode"));
+        assertEquals(0L, ((Map<?, ?>) envelope.payload().get("_meta")).get("delaySeconds"));
+        assertNotNull(((Map<?, ?>) envelope.payload().get("_meta")).get("scheduledForEpochMs"));
+    }
+
+    /**
+     * R2.4: with no durable scheduler bound, a delayed step FAILS rather than falling back to
+     * publishing now. The fallback is the defect -- it is invisible by construction, because the
+     * event still arrives and only its timing is wrong.
+     */
+    @Test
+    void scheduleEventStepWithADelayFailsWhenNoDeferredSchedulerIsConfigured() {
         RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
 
-        InMemoryFlowDefinitionProvider flowProvider = new InMemoryFlowDefinitionProvider()
+        KernelRunner runner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                scheduleReminderFlowProvider(300L),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure
+        );
+
+        ExecutionResult result = runner.execute(
+                "ScheduleReminder",
+                Map.of("appointmentId", "apt-1", "correlationId", "corr-reminder-unconfigured")
+        );
+
+        assertEquals(ExecutionStatus.EVENT_PERSIST_FAILED, result.getStatus());
+        assertTrue(eventInfrastructure.published.isEmpty(),
+                "The whole point is that it does NOT publish, got: " + eventInfrastructure.published);
+        assertNotNull(result.getError());
+        assertTrue(result.getError().contains("DeferredEventScheduler"),
+                "The failure must name the missing collaborator, got: " + result.getError());
+    }
+
+    /**
+     * R2.4: a scheduler that cannot persist reports false, and the step fails on it. Same reason as
+     * above -- an unwritable schedule row must not degrade into an immediate publish.
+     */
+    @Test
+    void scheduleEventStepWithADelayFailsWhenTheSchedulerCannotPersist() {
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        RecordingDeferredEventScheduler scheduler = new RecordingDeferredEventScheduler(false);
+
+        KernelRunner runner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                scheduleReminderFlowProvider(300L),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure
+        ).withDeferredEventScheduler(scheduler);
+
+        ExecutionResult result = runner.execute(
+                "ScheduleReminder",
+                Map.of("appointmentId", "apt-1", "correlationId", "corr-reminder-unwritable")
+        );
+
+        assertEquals(ExecutionStatus.EVENT_PERSIST_FAILED, result.getStatus());
+        assertEquals(1, scheduler.calls.size());
+        assertTrue(eventInfrastructure.published.isEmpty());
+    }
+
+    private static InMemoryFlowDefinitionProvider scheduleReminderFlowProvider(long delaySeconds) {
+        return new InMemoryFlowDefinitionProvider()
                 .register(new FlowDefinition(
                         "ScheduleReminder",
                         "Appointment",
@@ -808,33 +1034,30 @@ class KernelRunnerTest {
                                         "AppointmentReminderDue",
                                         "$input",
                                         Map.of(),
-                                        300L
+                                        delaySeconds
                                 ),
                                 FlowStepDefinition.returnValue("return-input", "$input")
                         )
                 ));
+    }
 
-        KernelRunner runner = new KernelRunner(
-                eventInfrastructure,
-                (entityName, payload) -> List.of(),
-                flowProvider,
-                (call, state) -> CapabilityResult.success(null),
-                eventInfrastructure
-        );
+    private record ScheduleCall(EventEnvelope envelope, long dueAtEpochMs) {
+    }
 
-        ExecutionResult result = runner.execute(
-                "ScheduleReminder",
-                Map.of("appointmentId", "apt-1", "correlationId", "corr-reminder")
-        );
+    private static final class RecordingDeferredEventScheduler
+            implements com.npdev.kernel.ports.DeferredEventScheduler {
+        private final List<ScheduleCall> calls = new ArrayList<>();
+        private final boolean persisted;
 
-        assertEquals(ExecutionStatus.OK, result.getStatus());
-        assertEquals(1, eventInfrastructure.published.size());
-        EventEnvelope envelope = eventInfrastructure.published.get(0);
-        assertEquals("AppointmentReminderDue", envelope.eventName());
-        assertEquals("corr-reminder", envelope.correlationId());
-        assertEquals("scheduled", ((Map<?, ?>) envelope.payload().get("_meta")).get("deliveryMode"));
-        assertEquals(300L, ((Map<?, ?>) envelope.payload().get("_meta")).get("delaySeconds"));
-        assertNotNull(((Map<?, ?>) envelope.payload().get("_meta")).get("scheduledForEpochMs"));
+        private RecordingDeferredEventScheduler(boolean persisted) {
+            this.persisted = persisted;
+        }
+
+        @Override
+        public boolean scheduleForLaterDelivery(EventEnvelope envelope, long dueAtEpochMs) {
+            calls.add(new ScheduleCall(envelope, dueAtEpochMs));
+            return persisted;
+        }
     }
 
     private static final class CapabilityDispatcherStub implements com.npdev.kernel.ports.CapabilityDispatcher {

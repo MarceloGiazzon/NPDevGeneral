@@ -161,6 +161,24 @@ public final class ConceptAggregateEngine {
                 case CONTAINS -> actual != null && expected != null
                         && String.valueOf(actual).toLowerCase(Locale.ROOT)
                                 .contains(String.valueOf(expected).toLowerCase(Locale.ROOT));
+                // R4.3 (Roadmap Wave 1): ConceptQuery.Operator grew four constants for the v2
+                // predicate grammar. HAVING is compiled from `query.having()` via
+                // ConceptQueryPredicateCompiler#compile (the v1, AND-only, OR_GROUPS-free grammar),
+                // so none of these five are reachable from a declared query's `having` TODAY --
+                // but the switch is exhaustive by design (no default arm), so every constant needs
+                // a real answer here rather than a silent fallthrough. Semantics mirror
+                // ConceptQueryFilterSupport#matchesPredicateClause exactly, for the day `having`
+                // does grow v2 support.
+                case STARTS_WITH -> actual != null && expected != null
+                        && String.valueOf(actual).toLowerCase(Locale.ROOT)
+                                .startsWith(String.valueOf(expected).toLowerCase(Locale.ROOT));
+                case IN -> actual != null && expected instanceof List<?> candidates
+                        && candidates.stream().anyMatch(candidate -> ConceptQueryEngine.valuesEqual(actual, candidate));
+                case IS_NULL -> actual == null;
+                case IS_NOT_NULL -> actual != null;
+                case OR_GROUPS -> throw new IllegalArgumentException(
+                        "OR_GROUPS is a marker filter (nested OR-of-AND groups) and cannot appear in a flat "
+                                + "having[] list -- ConceptQueryPredicateCompiler#compile never produces one");
             };
             if (!matched) {
                 return false;

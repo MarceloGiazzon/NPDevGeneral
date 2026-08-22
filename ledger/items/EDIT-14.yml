@@ -1,0 +1,24 @@
+id: EDIT-14
+title: >-
+  R10.2 -- emit schema-driven model surface from the generator
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-18
+closed: 2026-08-19
+verification: VERIFIED_LIVE
+source: >-
+  Roadmap Collection 2026-08-18 (npdev-roadmap-collection.md), R10.2.
+surface: generator/model-surface
+detail: |
+  Mustache-emitted surface whose sections are enumerated from the compiled model.
+  model-surface.html is unconditionally emitted alongside model-authoring.html.
+resolution: >-
+  Already implemented. EDIT-12 references model-surface.html as existing.
+  Ledger item filed retroactively.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ModelSurfaceEmitterTest.java
+  asserts: >-
+    model-surface.html is emitted with sections enumerated from the compiled model
+  provenRed: true
