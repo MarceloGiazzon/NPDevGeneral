@@ -6,5 +6,5 @@ dependencies {
     // R8c (RUN-2): the resume-claim proof runs against H2 locally (this session's test-cadence
     // policy -- real Postgres/MySQL/SqlServer are covered by CI's container matrix), matching the
     // version :kernel and :generator already pin for the same purpose.
-    testImplementation 'com.h2database:h2:2.2.224'
+    testImplementation 'com.h2database:h2:2.4.240'
 }

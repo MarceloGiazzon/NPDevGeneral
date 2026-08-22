@@ -4,7 +4,7 @@ dependencies {
     testImplementation project(':adapters:persistence-postgres')
     testImplementation project(':adapters:events-inproc')
     testImplementation project(':adapters:tracing-inproc')
-    testImplementation 'com.h2database:h2:2.2.224'
+    testImplementation 'com.h2database:h2:2.4.240'
     testImplementation 'org.junit.jupiter:junit-jupiter-params:5.11.0'
 
     // Storage dialect conformance (storage/PLAN.md S4a). Testcontainers + the three real JDBC
