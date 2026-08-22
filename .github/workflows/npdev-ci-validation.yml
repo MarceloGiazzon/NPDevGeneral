@@ -1,5 +1,3 @@
-name: NPDev CI Validation
-
 # Manual + nightly + PR: the Linux job below (full test matrix, Playwright*, Postgres
 # Testcontainers, RuntimeHost integration) stays too slow/expensive for every PR (up to 120min) --
 # see npdev-pr-gate.yml for the fast per-PR subset (LNCH-19's "on PR" requirement) -- but the
@@ -108,13 +106,12 @@ jobs:
         run: |
           for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevEditor/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
             [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
-          done      - name: DSL contract check with pack cache override
-        working-directory: NPDevContract\dsl
+          done
+      - name: DSL contract check
+        working-directory: NPDevContract/dsl
         timeout-minutes: 15
         run: |
-          mkdir -p build/pack-cache
-          .\gradlew check --no-daemon --console=plain -Dnpdev.pack.cache.root=.\build\pack-cache
-
+          ./gradlew check --no-daemon --console=plain
       - name: Kernel inproc adapter tests
         working-directory: NPDevKernel
         timeout-minutes: 20
@@ -131,7 +128,6 @@ jobs:
             :adapters:tracing-inproc:test \
             :adapters:webhook-inproc:test \
             --no-daemon --console=plain
-
       - name: Kernel Postgres Testcontainers adapter tests
         working-directory: NPDevKernel
         timeout-minutes: 35
@@ -144,19 +140,16 @@ jobs:
             :adapters:flowinstance-postgres:test \
             :adapters:tracestore-postgres:test \
             --no-daemon --console=plain
-
       - name: Flow compiled tests
         working-directory: NPDevKernel
         timeout-minutes: 15
         run: |
           ./gradlew :adapters:flow-compiled:test --no-daemon --console=plain
-
       - name: Generator unit tests
         working-directory: NPDevGenerator
         timeout-minutes: 30
         run: |
           ./gradlew :generator:test :generator:behaviorTest --no-daemon --console=plain
-
       # A failing generator test printed only "AssertionFailedError at <File>.java:458" -- the
       # assertion MESSAGE (which for the packaged-app proofs is the full output of the command that
       # failed) never reached the log, because the only error-surfacing step in this workflow reads
@@ -189,7 +182,6 @@ jobs:
             fi
           done
           if [ "$found" = "0" ]; then echo "no generator test XML containing failures was found"; fi
-
       - name: Portable NPDev CLI smoke
         timeout-minutes: 45
         run: |
@@ -198,7 +190,6 @@ jobs:
           ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
           ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json > /tmp/npdev-normalized-model.json
           ./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated
-
       # Shared-root fix (2026-07-24): the generated app resolves runtimehost-libs to
       # <repo-parent>/<repo-name>__OutsideRepo/runtimehost-libs and `verifyNpdevRuntimeHostLibs` fails
       # if the manifest is absent. There was NO explicit sync step, so the libs were present only by
@@ -209,7 +200,6 @@ jobs:
         run: |
           chmod +x NPDevKernel/gradlew NPDevGenerator/gradlew NPDevRuntimeHost/gradlew 2>/dev/null || true
           pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
-
       # Fix A / NEW-1 (2026-07-24): the postgres ITs boot a real generated app under mode=postgres,
       # which requires a JDBC DataSource bean. The InMemory `canonical-demo` wires none (in-memory
       # adapters only) -> StartupValidator aborts context load "DataSource bean is required when
@@ -223,7 +213,6 @@ jobs:
             -File "$GITHUB_WORKSPACE/scripts/samples/generate-sample.ps1" \
             -WorkspaceRoot "$GITHUB_WORKSPACE" \
             -SampleIds superuser-admin-console
-
       - name: RuntimeHost generated-app Postgres integration tests
         working-directory: NPDevSamples/superuser-admin-console/Output/App
         timeout-minutes: 45
@@ -232,7 +221,6 @@ jobs:
           ./gradlew integrationTest \
             -Dspring.profiles.active=test,postgres \
             --no-daemon --console=plain
-
       # NEW-1 diagnostic (2026-07-23): the compact console truncates the StartupValidator failure
       # message, so we can't tell WHICH postgres check fired (:260 connectivity / :274 flyway-history
       # missing / :282 no-successful-migrations). Dump the JUnit XML message= attributes on failure so
@@ -258,7 +246,6 @@ jobs:
             grep -oE '<(error|failure)[^>]*type="[^"]*"' "$f" | head -3 || true
             grep -oE '(Flyway[^<"]{0,200}|StartupValidator[^<"]{0,120}|mode=postgres[^<"]{0,120}|schema history[^<"]{0,120}|no successful migrations[^<"]{0,120})' "$f" | head -6 || true
           done
-
       # REG-32 (2026-07-24): `npdev report bootstrap` AGGREGATES ~21 post-beta0 maturity reports —
       # it does NOT generate them; those come from ~21 separate `run-*.ps1` gates this job does not
       # run, so ~19 are expected-missing (REG-3-class precondition, not a defect). FIXED: the
@@ -312,7 +299,6 @@ jobs:
         run: |
           chmod +x ./npdev
           chmod +x ./gradlew
-
           # 0 -> passed. 2 -> PRECONDITION-UNMET, expected in this job (it runs none of the ~21
           # producer gates). Anything else -> a real failure, and the run goes red.
           maturity_command() {
@@ -331,19 +317,15 @@ jobs:
               exit "$rc"
             fi
           }
-
           maturity_command "npdev report bootstrap" ./npdev report bootstrap
-
           # The number, where a checker reads it. A partial miss means a producer DID run in this job,
           # which is not the state this step tolerates -- update the expectation deliberately rather
           # than letting it drift in a comment again.
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); m,r,f,s=d["missingReportCount"],d["requiredReportCount"],d["failedReportCount"],d["schemaInvalidReportCount"]; print("bootstrap precondition profile: %d of %d required reports absent, %d failed, %d schema-invalid" % (m,r,f,s)); sys.exit(0 if (m==r and f==0 and s==0) or (m==0 and f==0 and s==0) else 1)' scripts/reports/out/report-bootstrap-and-regeneration-report.json
-
           maturity_command "gradlew postBeta0MaturityCheck" ./gradlew postBeta0MaturityCheck --no-daemon --console=plain
           maturity_command "validate-report-schemas.ps1" pwsh -NoProfile -File ./scripts/quality/validate-report-schemas.ps1
           maturity_command "generate-final-evidence-bundle.ps1" pwsh -NoProfile -File ./scripts/quality/generate-final-evidence-bundle.ps1
           maturity_command "run-portable-tooling-check.ps1" pwsh -NoProfile -File ./scripts/quality/run-portable-tooling-check.ps1
-
       # CI-2 (2026-07-23): upload-artifact@v4 forbids '..' in path patterns. The evidence bundle lives
       # OUTSIDE the repo (build-output policy). Copy it into an in-workspace dir first, then upload
       # that legal path (mirrors npdev-pr-gate.yml's ci-evidence pattern).
@@ -352,7 +334,6 @@ jobs:
         run: |
           mkdir -p ci-maturity-evidence
           cp -r ../NPDev_General__OutsideRepo/temp/final-evidence-bundle ci-maturity-evidence/ 2>/dev/null || true
-
       - name: Upload Linux maturity evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -398,7 +379,6 @@ jobs:
           java-version: |
             17
             21
-
       # Round-3 finding (2026-07-23): LegacyModelMigrationToolTest shells out to `npdev.bat`, which
       # calls bare `python`. On windows-latest without setup-python, `python` resolves to the App
       # Execution Alias stub (exits non-zero), so the test's `assertEquals(0, exitValue)` failed. The
@@ -416,14 +396,11 @@ jobs:
           Write-Host "JAVA_HOME_17_X64=$env:JAVA_HOME_17_X64"
           Write-Host "JAVA_HOME_21_X64=$env:JAVA_HOME_21_X64"
           java -version
-
           if ([string]::IsNullOrWhiteSpace($env:JAVA_HOME_17_X64)) {
             throw "JAVA_HOME_17_X64 is not available after setup-java."
           }
-
           $gradleUserHome = Join-Path $env:USERPROFILE ".gradle"
           New-Item -ItemType Directory -Force -Path $gradleUserHome | Out-Null
-
           @(
             "org.gradle.daemon=false",
             "org.gradle.console=plain",
@@ -432,9 +409,7 @@ jobs:
             "org.gradle.java.installations.auto-detect=true",
             "org.gradle.java.installations.fromEnv=JAVA_HOME_17_X64,JAVA_HOME_21_X64"
           ) | Set-Content -LiteralPath (Join-Path $gradleUserHome "gradle.properties") -Encoding UTF8
-
           Get-Content (Join-Path $gradleUserHome "gradle.properties")
-
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -442,7 +417,6 @@ jobs:
           cache: npm
           cache-dependency-path: |
             NPDevEditor/ui-react/package-lock.json
-
       # Root-3 fix (2026-07-24): LegacyModelMigrationToolTest runs `npdev migrate`, which validates via
       # the in-repo Node JSON-schema validator and, if its node_modules is absent (gitignored → absent
       # on a fresh checkout), runs `npm install` from INSIDE a Python subprocess. That on-demand install
@@ -460,15 +434,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: |
-      ~/.gradle/caches
-      ~/.gradle/wrapper
-      build/pack-cache
-      NPDevContract/dsl/build
-    
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            build/pack-cache
+            NPDevContract/dsl/build
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
-
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
@@ -476,14 +448,12 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('NPDevEditor/ui-react/package-lock.json') }}
           restore-keys: |
             playwright-${{ runner.os }}-
-
       - name: Install Playwright Chromium
         working-directory: NPDevEditor/ui-react
         timeout-minutes: 15
         run: |
           npm ci
           npm exec playwright install chromium
-
       - name: Preflight Gradle wrappers
         timeout-minutes: 10
         run: |
@@ -494,11 +464,9 @@ jobs:
             "NPDevKernel",
             "NPDevRuntimeHost"
           )
-
           foreach ($project in $projects) {
             $projectRoot = Join-Path $env:NPDEV_WORKSPACE $project
             Write-Host "Checking Gradle wrapper in $projectRoot"
-
             foreach ($relative in @(
               "gradle\wrapper\gradle-wrapper.properties",
               "gradle\wrapper\gradle-wrapper.jar",
@@ -511,7 +479,6 @@ jobs:
               }
             }
           }
-
       - name: Script automation quality
         # REG-31 (2026-07-24): recalibrated -- structured-report-contract now asserts report
         # *behavior* (serializes + persists JSON to the standard reports/out convention) instead
@@ -523,7 +490,6 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-script-automation-quality.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
-
       - name: Runtime surface evidence
         timeout-minutes: 10
         run: |
@@ -535,12 +501,20 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -PendingOk      - name: DSL contract check with pack cache override
+            -PendingOk
+      - name: Create pack cache directory
+        run: mkdir -p build/pack-cache
+      - name: Pre‑resolve DSL dependencies
+        run: ./gradlew :NPDevContract:dsl:dependencies --no-daemon
+      - name: DSL contract check with pack cache override
         working-directory: NPDevContract\dsl
         timeout-minutes: 15
         run: |
-          mkdir -p build/pack-cache
           .\gradlew check --no-daemon --console=plain -Dnpdev.pack.cache.root=.\build\pack-cache
+      # Windows-only diagnostic (2026-07-24): LegacyModelMigrationToolTest shells to `npdev.bat migrate`
+      # and asserts exit 0; it fails ONLY on the CI Windows runner (exit-0 locally), and the console
+      # truncates the captured subprocess output. Dump the test XML (which holds npdev.bat's stdout+
+      # stderr in the assertion message) so we can finally see WHY it exits non-zero on CI.
       - name: On DSL failure, surface LegacyModelMigration output (Windows)
         if: failure()
         run: |
@@ -549,14 +523,12 @@ jobs:
             $raw = Get-Content -Raw -LiteralPath $_.FullName
             Write-Host $raw.Substring(0, [Math]::Min(4000, $raw.Length))
           }
-
       - name: Preflight generator source completeness
         timeout-minutes: 5
         run: |
           $required = @(
             "NPDevGenerator\generator\src\main\java\com\npdev\generator\output\GeneratedSourceWriter.java"
           )
-
           foreach ($relative in $required) {
             $path = Join-Path $env:NPDEV_WORKSPACE $relative
             Write-Host "Checking source file: $path"
@@ -564,9 +536,7 @@ jobs:
               throw "Missing required tracked source file: $relative"
             }
           }
-
           git ls-files "NPDevGenerator/generator/src/main/java/com/npdev/generator/output/*"
-
       # Shared-root fix (2026-07-24): stage runtimehost-libs deterministically before the generator
       # gate (which prepares a RuntimeHost sample and fails "RuntimeHost prerequisite missing" without
       # them). No explicit sync step existed → cache-dependent. Sync mirrors build.gradle's resolution.
@@ -580,16 +550,13 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-generator-gate.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
-
           $outputRoot = Join-Path $env:NPDEV_WORKSPACE "NPDevSamples\simple-contact-intake\Output"
           $appRoot = Join-Path $outputRoot "App"
           $artifactRoot = Join-Path $outputRoot "ArtifactNP"
-
           Write-Host "Checking RuntimeHost sample prerequisite:"
           Write-Host "OutputRoot:   $outputRoot"
           Write-Host "AppRoot:      $appRoot"
           Write-Host "ArtifactRoot: $artifactRoot"
-
           if (-not (Test-Path -LiteralPath $outputRoot)) {
             throw "RuntimeHost prerequisite missing after generator gate: $outputRoot"
           }
@@ -599,7 +566,6 @@ jobs:
           if (-not (Test-Path -LiteralPath $artifactRoot)) {
             throw "RuntimeHost prerequisite missing after generator gate: $artifactRoot"
           }
-
           Get-ChildItem -LiteralPath $outputRoot -Force |
             Select-Object Name, FullName, PSIsContainer |
             Format-Table -AutoSize
@@ -609,7 +575,6 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\evidence\write-security-hardening-maturity-report.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
-
       - name: Runtime security consistency evidence
         timeout-minutes: 10
         run: |
@@ -622,14 +587,12 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtimehost-gate.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
-
       - name: Editor gate
         timeout-minutes: 35
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-editor-gate.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE"
-
       - name: Upload CI evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -640,7 +603,3 @@ jobs:
             scripts/reports/releases
           if-no-files-found: warn
           retention-days: 14
-
-
-
-
