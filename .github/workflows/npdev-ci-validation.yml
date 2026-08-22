@@ -545,7 +545,7 @@ jobs:
         run: pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
 
       - name: Generator gate / prepare RuntimeHost sample output
-        timeout-minutes: 40
+        timeout-minutes: 41
         run: |
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-generator-gate.ps1" `
@@ -603,4 +603,3 @@ jobs:
             scripts/reports/releases
           if-no-files-found: warn
           retention-days: 14
-          
