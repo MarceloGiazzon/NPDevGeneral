@@ -1,4 +1,4 @@
-name: NPDev CI Validation
+ name: NPDev CI Validation
 
 # Manual + nightly + PR: the Linux job below (full test matrix, Playwright*, Postgres
 # Testcontainers, RuntimeHost integration) stays too slow/expensive for every PR (up to 120min) --
