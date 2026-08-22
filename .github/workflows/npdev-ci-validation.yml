@@ -110,14 +110,12 @@ jobs:
             [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
           done
 
-      - name: Create pack cache directory
-        run: mkdir -p build/pack-cache
-      - name: Pre‑resolve DSL dependencies
-        run: ./gradlew :NPDevContract:dsl:dependencies --no-daemon
-      - name: DSL contract check with pack cache override
-        working-directory: NPDevContract\dsl
+      - name: DSL contract check
+        working-directory: NPDevContract/dsl
         timeout-minutes: 15
-        run: .\gradlew check --no-daemon --console=plain -Dnpdev.pack.cache.root=.\build\pack-cache
+        run: |
+          ./gradlew check --no-daemon --console=plain
+
       - name: Kernel inproc adapter tests
         working-directory: NPDevKernel
         timeout-minutes: 20
@@ -462,13 +460,12 @@ jobs:
       - name: Cache Gradle
         uses: actions/cache@v4
         with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-          build/pack-cache
-          NPDevContract/dsl/build
-            ~/.gradle/caches
-            ~/.gradle/wrapper
+          path: |
+      ~/.gradle/caches
+      ~/.gradle/wrapper
+      build/pack-cache
+      NPDevContract/dsl/build
+    
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-
@@ -541,14 +538,16 @@ jobs:
             -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
             -PendingOk
 
-      - name: Create pack cache directory
-        run: mkdir -p build/pack-cache
-      - name: Pre‑resolve DSL dependencies
-        run: ./gradlew :NPDevContract:dsl:dependencies --no-daemon
-      - name: DSL contract check with pack cache override
+      - name: DSL contract check
         working-directory: NPDevContract\dsl
         timeout-minutes: 15
-        run: .\gradlew check --no-daemon --console=plain -Dnpdev.pack.cache.root=.\build\pack-cache
+        run: |
+          .\gradlew check --no-daemon --console=plain
+
+      # Windows-only diagnostic (2026-07-24): LegacyModelMigrationToolTest shells to `npdev.bat migrate`
+      # and asserts exit 0; it fails ONLY on the CI Windows runner (exit-0 locally), and the console
+      # truncates the captured subprocess output. Dump the test XML (which holds npdev.bat's stdout+
+      # stderr in the assertion message) so we can finally see WHY it exits non-zero on CI.
       - name: On DSL failure, surface LegacyModelMigration output (Windows)
         if: failure()
         run: |
@@ -648,6 +647,7 @@ jobs:
             scripts/reports/releases
           if-no-files-found: warn
           retention-days: 14
+
 
 
 
