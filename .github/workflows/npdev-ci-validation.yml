@@ -108,13 +108,12 @@ jobs:
         run: |
           for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevEditor/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
             [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
-          done
-
-      - name: DSL contract check
-        working-directory: NPDevContract/dsl
+          done      - name: DSL contract check with pack cache override
+        working-directory: NPDevContract\dsl
         timeout-minutes: 15
         run: |
-          ./gradlew check --no-daemon --console=plain
+          mkdir -p build/pack-cache
+          .\gradlew check --no-daemon --console=plain -Dnpdev.pack.cache.root=.\build\pack-cache
 
       - name: Kernel inproc adapter tests
         working-directory: NPDevKernel
@@ -536,18 +535,12 @@ jobs:
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `
             -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -PendingOk
-
-      - name: DSL contract check
+            -PendingOk      - name: DSL contract check with pack cache override
         working-directory: NPDevContract\dsl
         timeout-minutes: 15
         run: |
-          .\gradlew check --no-daemon --console=plain
-
-      # Windows-only diagnostic (2026-07-24): LegacyModelMigrationToolTest shells to `npdev.bat migrate`
-      # and asserts exit 0; it fails ONLY on the CI Windows runner (exit-0 locally), and the console
-      # truncates the captured subprocess output. Dump the test XML (which holds npdev.bat's stdout+
-      # stderr in the assertion message) so we can finally see WHY it exits non-zero on CI.
+          mkdir -p build/pack-cache
+          .\gradlew check --no-daemon --console=plain -Dnpdev.pack.cache.root=.\build\pack-cache
       - name: On DSL failure, surface LegacyModelMigration output (Windows)
         if: failure()
         run: |
