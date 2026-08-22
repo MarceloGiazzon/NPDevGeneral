@@ -3,10 +3,12 @@ package com.finalexec.api;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptPage;
 import com.npdev.kernel.concepts.ConceptQuery;
 import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
+import com.npdev.kernel.concepts.ConceptWriteRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -276,9 +278,19 @@ public class ConceptQueryController {
                 result.put("reason", "missing id or fields");
             } else {
                 try {
-                    conceptGateway.update(concept, id, fields, context);
-                    result.put("status", "updated");
-                    succeeded++;
+                    ConceptReadRequest readRequest = new ConceptReadRequest(concept, id, context.tenantId());
+                    ConceptRecord current = conceptGateway.read(readRequest, context).orElse(null);
+                    if (current == null) {
+                        result.put("status", "failed");
+                        result.put("reason", "record not found");
+                    } else {
+                        Map<String, Object> merged = new LinkedHashMap<>(current.data());
+                        merged.putAll(fields);
+                        merged.put("id", id);
+                        conceptGateway.save(new ConceptWriteRequest(concept, id, context.tenantId(), merged), context);
+                        result.put("status", "updated");
+                        succeeded++;
+                    }
                 } catch (Exception e) {
                     result.put("status", "failed");
                     result.put("reason", e.getMessage());
@@ -316,7 +328,7 @@ public class ConceptQueryController {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("id", id);
             try {
-                conceptGateway.delete(concept, id, context);
+                conceptGateway.delete(new ConceptReadRequest(concept, id, context.tenantId()), context);
                 result.put("status", "deleted");
                 succeeded++;
             } catch (Exception e) {
