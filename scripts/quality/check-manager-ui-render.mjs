@@ -20,7 +20,7 @@
  *     node scripts/quality/check-manager-ui-render.mjs [output-dir]
  *
  * Needs Playwright, which is NOT a dependency of this repo. It is resolved from the machine, in
- * order: $PLAYWRIGHT_MODULE, the editor's node_modules, then the ScrapForAI engine root that
+ * order: $PLAYWRIGHT_MODULE, then the ScrapForAI engine root that
  * `npdev monitor engine --json` reports. If none is present it SKIPS with a reason and exits 0 --
  * a check that cannot run must say so rather than fail a gate for a missing optional tool, and must
  * never pass silently.
@@ -37,7 +37,6 @@ const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace
 function resolvePlaywright() {
   const candidates = [];
   if (process.env.PLAYWRIGHT_MODULE) candidates.push(process.env.PLAYWRIGHT_MODULE);
-  candidates.push(path.join(REPO, "NPDevEditor", "ui-react", "node_modules", "playwright", "index.mjs"));
   try {
     const answer = execFileSync(process.env.PYTHON ?? "python",
       [path.join(REPO, "NPDevCli", "npdev_cli.py"), "monitor", "engine", "--json"],
@@ -51,8 +50,8 @@ function resolvePlaywright() {
 const playwrightModule = resolvePlaywright();
 if (!playwrightModule) {
   console.log("SKIPPED -- Playwright is not available on this machine.");
-  console.log("  Tried $PLAYWRIGHT_MODULE, NPDevEditor/ui-react/node_modules, and the engine root");
-  console.log("  reported by `npdev monitor engine --json`. Install one of them to run this check.");
+  console.log("  Tried $PLAYWRIGHT_MODULE and the engine root reported by");
+  console.log("  `npdev monitor engine --json`. Install one of them to run this check.");
   process.exit(0);
 }
 const { chromium } = await import(pathToFileURL(playwrightModule).href);

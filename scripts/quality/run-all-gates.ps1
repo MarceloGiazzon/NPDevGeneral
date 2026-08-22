@@ -16,9 +16,12 @@
                            Run first: if the instruments are broken, later results mean less.
       2. generator      -- the codegen engine.
       3. runtimehost    -- generates an assembled sample app and runs its test suite.
-      4. frontend       -- the authoring UI.
-      5. beta-release   -- the aggregate release checks (it does NOT invoke the four above; it is
+      4. beta-release   -- the aggregate release checks (it does NOT invoke the three above; it is
                            an additional gate, not a superset -- verified, not assumed).
+
+    A fifth gate, frontend (the NPDevEditor authoring UI), existed here until 2026-08-22, when
+    NPDevEditor was removed from the repo entirely. Retired along with it -- there is no frontend
+    left to gate.
 
     Every gate runs even after an earlier one fails (-StopOnFirstFailure opts out). A gate suite
     that stops at the first red tells you one thing per run; this repo's failures cluster, and
@@ -39,7 +42,7 @@
     nobody can verify.
 
 .PARAMETER Only
-    Run just these gates by short name (aiKnowledge, generator, runtimeHost, frontend, betaRelease).
+    Run just these gates by short name (aiKnowledge, generator, runtimeHost, betaRelease).
     Passing betaRelease here runs it even without -IncludeReleaseGate.
 
 .PARAMETER StopOnFirstFailure
@@ -69,7 +72,6 @@ $gates = @(
     [pscustomobject]@{ Name = "aiKnowledge"; Script = "scripts/quality/run-ai-knowledge-gate.ps1"; Why = "static instrument checks + all check-*.py"; Tier = "T2" }
     [pscustomobject]@{ Name = "generator";   Script = "scripts/quality/run-generator-gate.ps1";    Why = "codegen engine"; Tier = "T2" }
     [pscustomobject]@{ Name = "runtimeHost"; Script = "scripts/quality/run-runtimehost-gate.ps1";  Why = "assembled sample app + its test suite"; Tier = "T2" }
-    [pscustomobject]@{ Name = "frontend";    Script = "scripts/quality/run-frontend-gate.ps1";     Why = "authoring UI"; Tier = "T2" }
     [pscustomobject]@{ Name = "betaRelease"; Script = "scripts/quality/run-beta-release-gate.ps1"; Why = "aggregate release checks"; Tier = "T3" }
 )
 

@@ -10,15 +10,18 @@ plugin -- see each build.gradle's own comment for why RuntimeHost's is gated beh
 build.gradle.template ships into a generated FinalApp; the platform-internal builds never do).
 
 Track C card C8 (2026-08-14) extended this same ratchet -- same file, same schema, same gate step --
-to the two ecosystems R3 explicitly deferred: the editor (`NPDevEditor/ui-react`, `@vitest/coverage-v8`
-via `npm test` -> `vitest run --coverage`, `json-summary` reporter) and NPDevCli
-(`coverage.py` wrapping the SAME `python -m unittest discover -s NPDevCli/tests` invocation
-run-ai-knowledge-gate.ps1 already ran). Neither tool emits JaCoCo's XML shape, so each module now
-declares a `reportFormat` (`jacoco-xml` / `istanbul-json-summary` / `coverage-py-json`) and this
-script dispatches to the matching parser -- the RATCHET SEMANTICS below are identical across all
-three formats; only the bytes-on-disk differ. See coverage-baseline.json's own per-module notes for
-why NPDevMcp and the rest of scripts/ stay at the 0.0/null placeholder (no dedicated automated test
-suite exists for either yet -- the same kind of pre-existing, honestly-labelled gap as kernel's).
+to the ecosystem R3 explicitly deferred: NPDevCli (`coverage.py` wrapping the SAME
+`python -m unittest discover -s NPDevCli/tests` invocation run-ai-knowledge-gate.ps1 already ran).
+It does not emit JaCoCo's XML shape, so it declares a `reportFormat` (`coverage-py-json`, alongside
+`jacoco-xml` for the Java modules) and this script dispatches to the matching parser -- the RATCHET
+SEMANTICS below are identical across formats; only the bytes-on-disk differ. See
+coverage-baseline.json's own per-module notes for why NPDevMcp and the rest of scripts/ stay at the
+0.0/null placeholder (no dedicated automated test suite exists for either yet -- the same kind of
+pre-existing, honestly-labelled gap as kernel's).
+
+A second ecosystem, the editor (`NPDevEditor/ui-react`, `@vitest/coverage-v8`), carried an
+`istanbul-json-summary` entry here from C8 until NPDevEditor was removed from the repo entirely on
+2026-08-22. Retired along with it -- there is no ui-react left to measure.
 
 It reads scripts/policy/coverage-baseline.json, looks for a freshly-produced coverage report per
 module, and:

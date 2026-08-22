@@ -121,7 +121,6 @@ PRODUCTION_ROOTS = (
     "NPDevManager/src",
     "NPDevCli",
     "NPDevMcp",
-    "NPDevEditor/ui-react/src",
 )
 
 SOURCE_SUFFIXES = {".java", ".py", ".ps1", ".rs", ".ts", ".tsx", ".kt", ".sql"}

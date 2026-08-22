@@ -159,13 +159,6 @@ jobs:
         run: |
           python scripts/quality/check-dsl-conformance-generates.py
 
-      - name: Editor unit tests
-        working-directory: NPDevEditor/ui-react
-        timeout-minutes: 10
-        run: |
-          npm ci
-          npm run test
-
       - name: Sync RuntimeHost libs for sample generation
         timeout-minutes: 15
         run: |

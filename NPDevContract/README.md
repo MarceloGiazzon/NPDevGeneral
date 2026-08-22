@@ -14,13 +14,13 @@ Run the DSL test suite to verify schema conformance, parser behavior, compiled-m
 
 ## Architecture
 
-NPDevContract sits at the boundary between authoring and execution: the editor writes against it, the generator compiles it, and the runtime consumes the compiled surface.
+NPDevContract sits at the boundary between authoring and execution: authoring tooling writes against it, the generator compiles it, and the runtime consumes the compiled surface.
 
 NPDevContract is the shared agreement between the independent NPDev subprojects.
 
 It contains JSON schemas, examples, and human-readable contract documents used by:
 
-- NPDevEditor, which authors and validates model/config files.
+- NPDevCli/NPDevMcp and the in-app authoring UI every generated app ships, which author and validate model/config files.
 - NPDevGenerator, which compiles those files into generated artifacts.
 - NPDevRuntimeHost, which hosts generated apps.
 - NPDevKernel, which executes flows, events, permissions, traces, and plugin calls at runtime.

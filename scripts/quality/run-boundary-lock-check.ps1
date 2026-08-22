@@ -79,12 +79,8 @@ function Test-ExactClassification {
 }
 
 function Get-UiComponentSurfacePaths {
-    $uiSourceRoot = Join-Path $script:workspaceRoot "NPDevEditor\ui-react\src"
-    return @(
-        Get-ChildItem -LiteralPath $uiSourceRoot -Recurse -File -Filter "*.tsx" |
-            ForEach-Object { Get-RelativePath $_.FullName } |
-            Sort-Object -Unique
-    )
+    # NPDevEditor was removed from the repo 2026-08-22; there is no UI source tree left to classify.
+    return @()
 }
 
 function Test-DeprecatedSchemaAliases {
@@ -182,12 +178,11 @@ $runtimeGroups = @{
 }
 Test-ExactClassification (Get-SourceControllerNames) $runtimeGroups $failures "RuntimeHost controller"
 
-$uiBoundary = Read-JsonFile "NPDevEditor/ui-react/ui-boundary.json"
-$uiGroups = @{
-    allowed = @($uiBoundary.surfaceClassifications.allowed | ForEach-Object { Normalize-RepoPath ([string]$_) })
-    deferred = @($uiBoundary.surfaceClassifications.deferred | ForEach-Object { Normalize-RepoPath ([string]$_) })
-    "test-only" = @($uiBoundary.surfaceClassifications.'test-only' | ForEach-Object { Normalize-RepoPath ([string]$_) })
-}
+# NPDevEditor (and its ui-boundary.json manifest) was removed from the repo 2026-08-22. There is
+# nothing left to classify, so this check is vacuously satisfied rather than crashing on a manifest
+# that can never exist again.
+$uiBoundary = [pscustomobject]@{ surfaceClassifications = [pscustomobject]@{ allowed = @(); deferred = @(); "test-only" = @() } }
+$uiGroups = @{ allowed = @(); deferred = @(); "test-only" = @() }
 Test-ExactClassification (Get-UiComponentSurfacePaths) $uiGroups $failures "UI component surface"
 
 $deprecatedSchema = Test-DeprecatedSchemaAliases $failures
@@ -224,7 +219,7 @@ $report = [pscustomobject]@{
     checks = @(
         [pscustomobject]@{ name = "deprecated-schema-aliases"; status = if ([int]$deprecatedSchema.deprecatedSchemaReferences -eq 0) { "passed" } else { "failed" }; evidence = $deprecatedSchema; details = @{} },
         [pscustomobject]@{ name = "runtime-controller-allowlist"; status = if (@($failures | Where-Object { $_ -like "RuntimeHost controller*" }).Count -eq 0) { "passed" } else { "failed" }; evidence = @{ manifest = "NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json" }; details = @{ allowedCount = @($manifest.allowedControllers).Count; deferredCount = @($manifest.deferredControllers).Count; testOnlyCount = @($manifest.testOnlyControllers).Count } },
-        [pscustomobject]@{ name = "ui-boundary"; status = if (@($failures | Where-Object { $_ -like "UI component surface*" }).Count -eq 0) { "passed" } else { "failed" }; evidence = @{ manifest = "NPDevEditor/ui-react/ui-boundary.json" }; details = @{ allowedCount = @($uiBoundary.surfaceClassifications.allowed).Count; deferredCount = @($uiBoundary.surfaceClassifications.deferred).Count; testOnlyCount = @($uiBoundary.surfaceClassifications.'test-only').Count } },
+        [pscustomobject]@{ name = "ui-boundary"; status = if (@($failures | Where-Object { $_ -like "UI component surface*" }).Count -eq 0) { "passed" } else { "failed" }; evidence = @{ manifest = $null; note = "NPDevEditor removed from the repo 2026-08-22; vacuously satisfied, nothing left to classify" }; details = @{ allowedCount = @($uiBoundary.surfaceClassifications.allowed).Count; deferredCount = @($uiBoundary.surfaceClassifications.deferred).Count; testOnlyCount = @($uiBoundary.surfaceClassifications.'test-only').Count } },
         [pscustomobject]@{ name = "external-verification-url-ban"; status = if ([bool]$externalUrlBan.rejected) { "passed" } else { "failed" }; evidence = $externalUrlBan; details = @{} },
         [pscustomobject]@{ name = "gradle-wrapper-consistency"; status = if ($null -ne $gradleReport -and [string]$gradleReport.overallStatus -eq "passed") { "passed" } else { "failed" }; evidence = @{ report = "scripts/reports/out/gradle-wrapper-consistency-report.json" }; details = @{ wrapperCount = if ($null -ne $gradleReport) { [int]$gradleReport.wrapperCount } else { 0 } } },
         [pscustomobject]@{ name = "workspace-slimness"; status = if ($null -ne $workspaceReport -and [string]$workspaceReport.overallStatus -eq "passed") { "passed" } else { "failed" }; evidence = @{ report = "scripts/reports/out/workspace-cleanliness-report.json" }; details = @{} },

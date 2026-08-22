@@ -29,8 +29,16 @@ detail: |
   (`bundleIoService.schemaLossDetector.test.ts`, `importExportRoundTrip.test.ts`). The vitest run
   itself was not re-executed this pass (`node_modules` not installed in this checkout) -- closed on
   source-level + commit-history evidence, not a fresh test run.
+
+  2026-08-22: NPDevEditor was removed from the repo entirely (this surface no longer exists in any
+  checkout), so the guard's file reference can never resolve again. Downgraded from kind: test to
+  kind: manual pointing at git history rather than a live file -- the fix and its guard test are
+  preserved at commit `74501683` (PR #11) for anyone who needs to re-examine them; nothing live in
+  this checkout implements or tests bundle IO any more.
 guard:
-  kind: test
-  ref: NPDevEditor/ui-react/src/authoring/io/importExportRoundTrip.test.ts (schema-driven loss-detector test)
-  asserts: every model.schema.json root key present in a real packs-bearing model.json (dsl-conformance-max) survives export+import
+  kind: manual
+  ref: >-
+    the editor surface this guarded was removed from the repo 2026-08-22; see commit 74501683
+    (PR #11) for the fix and its schema-driven loss-detector test as they existed
+  asserts: every model.schema.json root key present in a real packs-bearing model.json (dsl-conformance-max) survived export+import, as of the surface's removal
   provenRed: true

@@ -44,10 +44,12 @@ detail: |
   the same self-sufficiency every other npm-invoking gate script in this repo already has.
 guard:
   kind: manual
-  ref: cd NPDevEditor/ui-react && rm -rf node_modules && cd ../.. && pwsh -NoProfile -File
-    scripts/quality/run-editor-complexity-check.ps1
-  asserts: the script installs its own dependencies and passes, rather than failing with "vitest is
-    not recognized"
+  ref: >-
+    the script this guarded (run-editor-complexity-check.ps1) and the NPDevEditor project it tested
+    were both removed from the repo 2026-08-22; see commit history at closure for the fix as it
+    existed
+  asserts: as of closure, the script installed its own dependencies and passed, rather than failing
+    with "vitest is not recognized"
   provenRed: true
 
 resolution: |
@@ -57,3 +59,7 @@ resolution: |
   scripts/quality/run-editor-complexity-check.ps1` self-installed ("added 103 packages"), then ran
   to completion with `overallStatus: passed` in the written report -- no "vitest is not recognized"
   failure.
+
+  2026-08-22: NPDevEditor was removed from the repo entirely, taking run-editor-complexity-check.ps1
+  and the frontend gate it ran inside with it. Guard downgraded to git history -- there is nothing
+  left in this checkout for it to point at.

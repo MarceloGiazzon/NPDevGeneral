@@ -55,14 +55,6 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  - package-ecosystem: "gradle"
-    directory: "/NPDevEditor"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels: ["dependencies", "gradle"]
-    commit-message:
-      prefix: "chore(deps)"
 
   # See the file-level comment above: this scans the DEAD 3.3.2 pin, not the 3.5.16 that ships.
   - package-ecosystem: "gradle"
@@ -85,17 +77,6 @@ updates:
     commit-message:
       prefix: "chore(deps)"
 
-  # ---------------------------------------------------------------------------------------------
-  # npm (the authoring UI)
-  # ---------------------------------------------------------------------------------------------
-  - package-ecosystem: "npm"
-    directory: "/NPDevEditor/ui-react"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels: ["dependencies", "npm"]
-    commit-message:
-      prefix: "chore(deps)"
 
   # ---------------------------------------------------------------------------------------------
   # github-actions (the action/workflow `uses:` pins in .github/workflows/*.yml themselves)

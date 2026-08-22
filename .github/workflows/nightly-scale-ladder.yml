@@ -95,7 +95,7 @@ jobs:
       # dev-machine org.gradle.projectcachedir. Mirrors npdev-ci-validation.yml.
       - name: Neutralize dev-machine gradle projectcachedir (portability)
         run: |
-          foreach ($f in @("gradle.properties", "NPDevContract/dsl/gradle.properties", "NPDevEditor/gradle.properties", "NPDevGenerator/gradle.properties", "NPDevKernel/gradle.properties", "NPDevRuntimeHost/gradle.properties")) {
+          foreach ($f in @("gradle.properties", "NPDevContract/dsl/gradle.properties", "NPDevGenerator/gradle.properties", "NPDevKernel/gradle.properties", "NPDevRuntimeHost/gradle.properties")) {
             if (Test-Path -LiteralPath $f) {
               (Get-Content -LiteralPath $f) | Where-Object { $_ -notmatch 'org\.gradle\.projectcachedir' } | Set-Content -LiteralPath $f -Encoding UTF8
             }

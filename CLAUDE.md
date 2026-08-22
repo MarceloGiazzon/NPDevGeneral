@@ -51,13 +51,19 @@ app definitions and build output live **outside** it (see Layers below).
 | `NPDevKernel/kernel` | Java | Runtime: `KernelRunner` (also hosts the durable flow engine — see `docs/FLOWS.md`), `FlowEngine` port, CapabilityDispatcher, EventStore |
 | `NPDevKernel/adapters/*` | Java | Pluggable adapters, `*-inproc` (dev) / `*-postgres` (prod) pairs; plus `expression-cel`, `auth-context-jwt`, `authz-default`, `persistence-postgres`, … |
 | `NPDevRuntimeHost` | Java/Spring | Spring Boot template **copied into every generated FinalApp** — not a built product subproject. Login/bootstrap/ControlPanel controllers live here (`com.finalexec.*`) |
-| `NPDevEditor/ui-react` | TS/React | Authoring UI — real surface is `src/authoring/` (~15.6k LOC); `src/workbench/` is a thin shell. Tests: 7 vitest files + 1 Playwright spec (`e2e/editor-core.spec.ts`) |
 | `NPDevSamples` | JSON/PS1 | Reference sample apps + browser-verification harness |
 | `NPDevCli` / `NPDevMcp` | Python | Model-validation CLI / MCP server for AI authoring |
 | `golden-ai-scenarios`, `schemas/ai` | JSON | AI safety/verification fixtures + schemas |
 
 Main package roots: `com.npdev.dsl.v1` / `com.npdev.generator` / `com.npdev.kernel` /
 `com.finalexec` (runtime-host).
+
+**`NPDevEditor` (the standalone TS/React authoring UI) was removed from the repo 2026-08-22.** The
+in-app authoring UI baked into every generated app (`/npdev-ui-react/`, served from the generator's
+committed `static-react` bundle) is unaffected — that bundle now ships frozen, with no in-repo source
+to rebuild it from. The `frontend` quality gate, `run-frontend-gate.ps1`/`run-editor-gate.ps1` and
+their siblings, the npm-audit CI job, and every editor-only script/policy entry were retired in the
+same change.
 
 ## Large files — DO NOT full-read (Grep to a line, then Read with offset/limit)
 
@@ -148,8 +154,9 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **Maintainer skills** (tracked, un-ignored under `.claude/skills/`): `rebuild-app` (three-cache
   refresh via `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
 - **Other manual verification scripts, not wired into any gate:** `scripts/quality/run-boundary-lock-check.ps1`
-  (controller/UI-component/deprecated-schema-alias classification vs. reality — run it by hand after
-  adding a controller class or a `NPDevEditor/ui-react/src` component) and
+  (controller/deprecated-schema-alias classification vs. reality — run it by hand after adding a
+  controller class; its UI-component classification is vacuously satisfied since NPDevEditor's
+  removal left no UI source tree to classify) and
   `scripts/proofs/run-item20-postgres-proof.ps1` (a one-off real-Postgres repro for a specific closed
   item; kept for re-running against a suspected regression, not part of any regular cadence).
   `scripts/proofs/classify_runtimehost_sources.py` (BT-1a — standalone app-coupled-vs-app-independent

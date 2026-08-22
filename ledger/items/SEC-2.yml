@@ -75,9 +75,17 @@ resolution: |
   security-scan.yml's npm-audit job is actually green on this card's own merge, not merely
   documented as an expected first-run failure (security-scan.yml is not a required status check
   either way, so this was not a merge-blocker, but a gate that starts red gives no future signal).
+
+  2026-08-22: NPDevEditor was removed from the repo entirely, taking its npm project and the
+  npm-audit-policy checker script and CI job with it (the repo now ships no npm project of its own,
+  so there is nothing left for that job to audit). CodeQL and the per-workflow permissions posture
+  this item also verified are untouched. Guard's npm-audit clause downgraded to git history.
 guard:
   kind: manual
-  ref: python scripts/security/check-npm-audit-policy.py --calibrate; grep -c '^permissions:'
-    .github/workflows/*.yml | grep -c ':1$'
-  asserts: the 5-control self-test passes; exactly 10 of 10 workflow files carry a top-level permissions block
+  ref: grep -c '^permissions:' .github/workflows/*.yml | grep -c ':1$'. The npm-audit self-test half
+    of this guard can no longer run -- its checker script and the npm project it audited were both
+    removed from the repo 2026-08-22; see commit 74501683-era history for what it verified before
+    then.
+  asserts: every workflow file carries a top-level permissions block (was exactly 10 of 10 at
+    closure; more workflows have been added since, see .github/workflows/ for the live count)
   provenRed: true

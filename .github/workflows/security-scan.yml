@@ -1,11 +1,13 @@
 name: Security scan
 
-# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2). Two independent scans that had zero coverage before
-# this workflow: static analysis (CodeQL, across the three languages this repo actually ships --
-# java-kotlin for the DSL/generator/kernel/adapters/RuntimeHost, javascript-typescript for
-# NPDevEditor/ui-react + NPDevManager's UI, python for NPDevCli/NPDevMcp/scripts) and dependency
-# vulnerability scanning for the editor's npm project (scripts/security/check-npm-audit-policy.py,
-# reading the previously-orphaned scripts/policy/frontend-npm-audit-policy.json).
+# R2 (MASTER-ROADMAP.md Step 9 / ledger SEC-2). Static analysis (CodeQL, across the three languages
+# this repo actually ships -- java-kotlin for the DSL/generator/kernel/adapters/RuntimeHost,
+# javascript-typescript for NPDevManager's UI, python for NPDevCli/NPDevMcp/scripts).
+#
+# This workflow also ran a dependency vulnerability scan for NPDevEditor/ui-react's npm project
+# (scripts/security/check-npm-audit-policy.py, reading scripts/policy/frontend-npm-audit-policy.json)
+# until NPDevEditor was removed from the repo entirely on 2026-08-22. Retired along with it -- the
+# repo ships no npm project of its own any more (NPDevManager's UI is plain JS/HTML, no package.json).
 #
 # build-mode: none for every language, deliberately -- this repo has seven independent Gradle roots
 # with a custom external build-root resolution (see any build.gradle's resolveNpdevBuildRoot) and a
@@ -62,25 +64,3 @@ jobs:
         uses: github/codeql-action/analyze@v3
         with:
           category: "/language:${{ matrix.language }}"
-
-  npm-audit:
-    name: npm audit policy (NPDevEditor/ui-react)
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      # --package-lock-only: reads package-lock.json directly, no `npm ci`/install needed first.
-      - name: Check npm audit against frontend-npm-audit-policy.json
-        run: python scripts/security/check-npm-audit-policy.py --project-dir NPDevEditor/ui-react

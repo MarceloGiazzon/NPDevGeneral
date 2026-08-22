@@ -151,18 +151,22 @@ resolution: |
   would have silently ratcheted the dsl/generator/kernel floors up from THAT stale, wrong-checkout
   data had it not been caught and manually reverted before commit -- the script has no mechanism
   tying a discovered report to the currently checked-out source).
+
+  2026-08-22: NPDevEditor was removed from the repo entirely, taking run-frontend-gate.ps1 and its
+  vitest coverage entry with it (coverage-baseline.json's NPDevEditor/ui-react entry was removed in
+  the same change). Guard's frontend-specific clause downgraded to git history -- the RuntimeHost and
+  NPDevCli coverage measurement this item verified is untouched and still live.
 guard:
   kind: manual
   ref: pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (produces
-    scripts/reports/out/runtimehost-jacoco-test-report.xml); pwsh -NoProfile -File
-    scripts/quality/run-frontend-gate.ps1 (produces scripts/reports/out/vitest-coverage/coverage-summary.json);
-    python -m coverage run --source=NPDevCli --omit=NPDevCli/tests/*,NPDevCli/tests/fixtures/* -m
-    unittest discover -s NPDevCli/tests -p test_*.py && python -m coverage json -o
+    scripts/reports/out/runtimehost-jacoco-test-report.xml); python -m coverage run
+    --source=NPDevCli --omit=NPDevCli/tests/*,NPDevCli/tests/fixtures/* -m unittest discover -s
+    NPDevCli/tests -p test_*.py && python -m coverage json -o
     scripts/reports/out/python-coverage/npdevcli-coverage.json; python
-    scripts/quality/check-coverage-ratchet.py --calibrate
+    scripts/quality/check-coverage-ratchet.py --calibrate. The frontend/vitest half of this guard
+    (NPDevEditor/ui-react coverage) can no longer run -- see commit 74501683-era history for what it
+    verified before NPDevEditor was removed 2026-08-22.
   asserts: the RuntimeHost gate run produces a real JaCoCo XML report with a non-zero LINE counter,
-    the frontend gate run produces a real non-zero vitest json-summary report AND leaves no residue
-    inside ui-react, the NPDevCli suite (145 tests) passes under coverage.py and produces a real
-    non-zero coverage.json, and the ratchet script's 9 self-test controls (7 original + 2 for the
-    new formats) all pass
+    the NPDevCli suite (145 tests) passes under coverage.py and produces a real non-zero
+    coverage.json, and the ratchet script's self-test controls all pass
   provenRed: true

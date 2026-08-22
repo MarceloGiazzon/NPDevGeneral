@@ -60,14 +60,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # (label, source tree, committed artefact, how to rebuild)
-PAIRS = [
-    (
-        "authoring React bundle",
-        "NPDevEditor/ui-react/src",
-        "NPDevGenerator/generator/src/main/resources/npdev-templates/static-react/assets",
-        "cd NPDevEditor/ui-react && npm ci && npm run build:templates",
-    ),
-]
+#
+# NPDevEditor (the only entry this list ever had) was removed from the repo 2026-08-22. Its source
+# tree no longer exists anywhere in the checkout, so "is the artefact older than its source" is no
+# longer an answerable question -- there is no source left to compare against. The committed
+# static-react bundle now ships frozen, with no in-repo way to rebuild it.
+PAIRS: list[tuple[str, str, str, str]] = []
 
 # Source changes that cannot reach the artefact. Keeps the common case from crying wolf.
 EXCLUDE_GLOBS = (":(exclude)*.test.ts", ":(exclude)*.test.tsx",

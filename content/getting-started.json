@@ -1,0 +1,136 @@
+{
+  "sourceFile": "docs/GETTING_STARTED.md",
+  "preamble": [
+    {
+      "type": "prose",
+      "text": "# Getting Started\n\nThis is the actual first hour: validate a model, generate an app from it, run it, then change the\nmodel and regenerate to see the change land. Start from the repository root. On Linux and macOS,\nuse the portable `npdev` entrypoint; on Windows use `npdev.bat` with the same arguments (examples\nbelow use `./npdev` — swap in `npdev.bat` and backslash paths on Windows).\n\nRequires Java 17 and, for the run step, Docker.\n"
+    }
+  ],
+  "sections": [
+    {
+      "level": 2,
+      "title": "1. Validate a model",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": ""
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "./npdev --version\n./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json"
+        },
+        {
+          "type": "prose",
+          "text": "\n`validate model` runs full structural + semantic validation by default (it shells out to Gradle,\nso expect a few seconds) and exits non-zero with a diagnostic report if the model has a real\ndefect. Pass `--structural-only` for a fast JSON-Schema-only check that skips Gradle entirely --\nuseful as an inner-loop syntax check, but its success message says explicitly that semantic checks\ndid not run, so it can't be mistaken for the full check. `--semantic` still works too, as a\ndocumented no-op alias (it's already the default).\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "2. Generate and run an app",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": ""
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "./npdev generate app \\\n  --model NPDevContract/dsl/resources/Models/canonical-demo/model.json \\\n  --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \\\n  --output /path/outside/this/repo/canonical-demo-app\ncd /path/outside/this/repo/canonical-demo-app\ncp .env.example .env    # set NPDEV_AUTH_APIKEYS at minimum\ndocker compose up"
+        },
+        {
+          "type": "prose",
+          "text": "\nThe output directory is a complete, buildable Spring Boot project with its own README describing\nthat specific app (namespace, version, where the admin UI/REST API/login route are). Point\n`--output` somewhere outside this repo -- generated apps are not meant to live inside\n`NPDev_General` (see `docs/BUILD_OUTPUT_LOCATION_POLICY.md`). Full deployment options\n(Postgres-first production path, env-var reference, the mail-catcher profile) are in\n`docs/DEPLOYMENT.md`.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "3. Change the model, regenerate",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nEdit the model you generated from -- add a field, add a concept, anything small -- then re-run\nstep 1 (validate; catch mistakes before regenerating) and step 2's `generate app` command again\nagainst the same `--output`. The generator diffs the new shape against what's already there\n(schema evolution, not drop-and-recreate) -- see `docs/DATABASES_AND_MIGRATIONS.md` for how\nrenames and destructive changes are handled.\n\nOnce you have done that by hand once, stop doing it by hand:\n"
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "npdev dev"
+        },
+        {
+          "type": "prose",
+          "text": "\n`npdev dev` generates, builds, boots, and then watches your model -- every save re-runs the whole\nsequence and restarts the app. It validates first, so a typo prints an error and leaves the running\napp alone rather than taking it down.\n\n**Now build something of your own.** `canonical-demo` is a fixed fixture -- copying it, changing\nit, and giving it a database that actually keeps your data is the real next step:\n`docs/YOUR_FIRST_APP.md`.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "Other useful commands",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": ""
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "./npdev doctor\n./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json\n./npdev report bootstrap"
+        },
+        {
+          "type": "prose",
+          "text": "\n`doctor` checks this machine is ready -- Java 17 and `JAVA_HOME` agreement, Python, git, disk\nspace, and whether the runtimehost jars (`./npdev setup`) and AI knowledge index are staged; safe\nto run any time. `normalize ai-model` is the first step of the AI-authoring loop\n(`docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md`). `./npdev report bootstrap` regenerates the\nmaintainer status reports under `scripts/reports/out/`.\n\n`./npdev init my-app` scaffolds a new app directory (model/config/a real database/README/git\nhistory) instead of copying `canonical-demo` by hand -- see `docs/YOUR_FIRST_APP.md`. `./npdev mcp\ninstall --client claude-code` (or `claude-desktop`, or `--print`) connects an AI client to NPDev's\nMCP tools -- see `docs/AUTHORING_WITH_AI.md`.\n"
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "title": "Driving NPDev from a program, not a terminal",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\n`doctor`, `setup`, and `init` all accept `--json`, which is an *additive* second output mode --\nthe human summary printed without the flag is unchanged (byte-for-byte), so this is safe to add to\nan existing script without breaking anyone reading the terminal output. Pass `--json` and nothing\nbut a machine-readable object (or, for `setup`, a stream of them) goes to stdout; any narration\nmoves to stderr instead.\n\n- **`npdev doctor --json`** emits one `npdev-cli-result.v1` object with a `checks` array -- one\n  record per check (`id`, `status`: `pass`/`fail`/`warn`, `found`, `expected`, `detail`, `fix`,\n  `fixCommand`), including the ones that passed (the human summary only ever prints failures and\n  warnings, so passing checks are otherwise invisible to a caller). `java-present`/`java-version`\n  resolve `JAVA_HOME` before falling back to PATH, matching Gradle's own resolution order -- a\n  private JDK works even with nothing on PATH at all.\n- **`npdev setup --json`** emits one `npdev-cli-event.v1` object per line (JSON Lines) as each\n  phase (`jars`, `knowledge-index`) starts and finishes, ending with one `npdev-cli-result.v1`\n  object. `setup` tries a prebuilt `runtimehost-libs-<tag>.zip` Release asset first on a tagged\n  commit (checksum-verified against a sibling `SHA256SUMS`), and always falls back to a full local\n  build -- untagged commit, no asset published, download failure, checksum mismatch, or\n  `--build-local` passed. Either way, the result object's `jarsSource` field (and a trailing\n  `Jars source:` line in the human output) says which path was actually taken.\n- **`npdev init my-app --json`** emits one object with `created.directory` (always absolute --\n  a calling program has no shared working directory to resolve a relative path against),\n  `created.files`, `gitInitialised`, and `nextCommand`. `gitInitialised` is `false` on a machine\n  with no git — the scaffold still succeeds and `gitIdentityNotice` carries the sentence explaining\n  what is missing.\n\nThis exists for the same reason `npdev run app`/`npdev verify` already print structured JSON: an\nAI agent driving NPDev through MCP, CI asserting on fields instead of grepping sentences, or a\nfuture GUI (the NPDev Manager) all need a result they can parse, not prose meant for a human.\n\n`npdev verify --tier T0|T1|T2|T3` is the one entry point for this repo's verification tiers, from\nan inner-loop syntax/schema check (T0, ~1s) up through a full canary build+boot+smoke (T1, a few\nminutes) to the complete gate suite (T2) and release-readiness evidence (T3) -- see\n`scripts/quality/run-fast-gate.ps1`'s own doc comment for what each tier actually covers.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "Authoring in the editor",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nThe browser-based authoring UI (concepts, fields, flows, panels) as an alternative to hand-editing\nmodel JSON is already built into every app you generate -- open **`/npdev-ui-react/`** on your\nrunning app (e.g. `http://localhost:8080/npdev-ui-react/`). No separate install or server needed.\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "When running from another directory",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nSet `NPDEV_ROOT` to the workspace root before invoking `npdev`.\n"
+        },
+        {
+          "type": "fence",
+          "lang": "sh",
+          "text": "export NPDEV_ROOT=\"$(pwd)\"\n./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json"
+        },
+        {
+          "type": "prose",
+          "text": ""
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "PowerShell scripts",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nPowerShell scripts under `scripts/quality` (`run-all-gates.ps1`, `run-fast-gate.ps1`, and friends)\nare the primary maintainer path for this repo's own development, not a legacy compatibility layer\n-- `npdev verify` above shells out to them directly. The portable `npdev`/`npdev.bat` commands in\nthis doc are what an app author or an AI-authoring agent needs; the PowerShell scripts are what a\nplatform maintainer runs to validate a change to NPDev itself.\n"
+        }
+      ]
+    }
+  ]
+}

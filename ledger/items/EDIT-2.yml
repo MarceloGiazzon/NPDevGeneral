@@ -31,13 +31,20 @@ detail: |
   rule profile) finds zero matches -- neither file writes them anymore. No dedicated automated guard
   test exists for this specific check (the roundtrip loss-detector test covers EDIT-1's scope, not
   this one), so this is closed on direct source inspection, not a test run.
+
+  2026-08-22: NPDevEditor was removed from the repo entirely (this surface no longer exists in any
+  checkout), so the guard's file references can never resolve again. Guard text updated to point at
+  git history rather than the now-deleted files -- the fix as verified above is preserved at commit
+  `74501683` (PR #11); nothing live in this checkout implements panels/rule-profile authoring any
+  more.
 guard:
   kind: manual
   ref: >-
-    grep NPDevEditor/ui-react/src/authoring/editors/panels/PanelsEditorSection.tsx and
-    RuleProfilesEditorSection.tsx for a bare `dataSource:`/`concept:` field on a panel or a
-    `permissionRequirements` field on a rule profile
+    the editor surface this guarded was removed from the repo 2026-08-22; see commit 74501683
+    (PR #11) for PanelsEditorSection.tsx and RuleProfilesEditorSection.tsx as they existed, which no
+    longer wrote a bare dataSource:/concept: field on a panel or a permissionRequirements field on a
+    rule profile
   asserts: >-
-    neither file writes a key outside model.schema.json's panel/ruleProfile $def
-    (additionalProperties: false), matching the schema's real shape
+    as of the surface's removal, neither file wrote a key outside model.schema.json's
+    panel/ruleProfile $def (additionalProperties: false), matching the schema's real shape
   provenRed: false

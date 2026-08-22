@@ -123,11 +123,6 @@ The browser-based authoring UI (concepts, fields, flows, panels) as an alternati
 model JSON is already built into every app you generate -- open **`/npdev-ui-react/`** on your
 running app (e.g. `http://localhost:8080/npdev-ui-react/`). No separate install or server needed.
 
-`npm run dev` inside `NPDevEditor/ui-react` (Vite, typically `http://localhost:5173`) is the
-**editor's own development server** -- for someone changing the editor's source code, not for
-authoring a model. Run against a bare `npm run dev` it has no generated app to talk to and shows
-"unavailable" everywhere; that is expected for that workflow, not a bug in the one above.
-
 ## When running from another directory
 
 Set `NPDEV_ROOT` to the workspace root before invoking `npdev`.

@@ -64,7 +64,7 @@ jobs:
       # hardcode a dev-machine absolute Windows org.gradle.projectcachedir.
       - name: Neutralize dev-machine gradle projectcachedir (portability)
         run: |
-          for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevEditor/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
+          for f in gradle.properties NPDevContract/dsl/gradle.properties NPDevGenerator/gradle.properties NPDevKernel/gradle.properties NPDevRuntimeHost/gradle.properties; do
             [ -f "$f" ] && sed -i '/org\.gradle\.projectcachedir/d' "$f" || true
           done
 

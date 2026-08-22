@@ -32,8 +32,16 @@ detail: |
   (`python scripts/security/check-npm-audit-policy.py --project-dir NPDevEditor/ui-react`) reports
   "0 (production: 0)" / OK. Landed as a commit on step9-hygiene alongside the rest of R2, since a
   gate that starts in a permanently-red state provides no future signal.
+
+  2026-08-22: NPDevEditor was removed from the repo entirely, and check-npm-audit-policy.py (which
+  had no remaining npm project to audit) was retired with it -- the repo now ships no npm project of
+  its own. Downgraded to a manual guard pointing at git history; the vulnerability this item fixed no
+  longer exists anywhere in the checkout because the dependency tree it lived in is gone.
 guard:
-  kind: script
-  ref: scripts/security/check-npm-audit-policy.py
-  asserts: NPDevEditor/ui-react has 0 vulnerable packages at or above the high-severity floor
+  kind: manual
+  ref: >-
+    the npm project this guarded (NPDevEditor's ui-react) and its npm-audit-policy checker script
+    were removed from the repo 2026-08-22; see commit 74501683-era history and this item's own
+    resolution for the fix as it existed
+  asserts: as of the surface's removal, NPDevEditor's ui-react had 0 vulnerable packages at or above the high-severity floor
   provenRed: true

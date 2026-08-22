@@ -87,16 +87,6 @@
       ]
     },
     {
-      "id": "frontend-editor-usability",
-      "name": "Frontend and editor usability",
-      "weight": 8,
-      "reports": [
-        "scripts/reports/out/frontend-gate-report.json",
-        "scripts/reports/out/frontend-gate-tests-report.json",
-        "scripts/reports/out/editor-decomplexification-report.json"
-      ]
-    },
-    {
       "id": "ci-speed-maintainability",
       "name": "CI speed and maintainability",
       "weight": 5,

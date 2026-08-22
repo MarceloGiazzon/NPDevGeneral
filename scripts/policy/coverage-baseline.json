@@ -4,8 +4,8 @@
   "metric": "LINE",
   "modules": {
     "NPDevContract/dsl": {
-      "coveragePercent": 0.0,
-      "measuredOn": null,
+      "coveragePercent": 85.0412,
+      "measuredOn": "2026-08-22T15:57:35Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-*/dsl/reports/jacoco/test/jacocoTestReport.xml",
@@ -14,8 +14,8 @@
       "note": "dsl has no settings.gradle of its own; it is built as a subproject of the root, NPDevGenerator, or NPDevKernel multi-project builds, so its jacoco report lands under whichever rootProject.name built it last (layout.buildDirectory is redirected to the external Build root -- see each build.gradle's resolveNpdevBuildRoot)."
     },
     "NPDevGenerator/generator": {
-      "coveragePercent": 0.0,
-      "measuredOn": null,
+      "coveragePercent": 12.0525,
+      "measuredOn": "2026-08-22T15:57:37Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-generator/generator/reports/jacoco/test/jacocoTestReport.xml"
@@ -23,8 +23,8 @@
       "note": "Produced by :generator:test (run-generator-gate.ps1's generatorQualityGate). local-only tests unless -PincludePackagedProofs or CI=1 -- see NPDevGenerator/generator/build.gradle's packaged-proof exclusion. Custom classloaders used by TrustedSourceEmitterGeneratedActionTest et al. compile+load throwaway classes outside src/main/java, so they are invisible to this report by construction, not a defect in the report."
     },
     "NPDevKernel/kernel": {
-      "coveragePercent": 0.0,
-      "measuredOn": null,
+      "coveragePercent": 70.7005,
+      "measuredOn": "2026-08-22T15:57:39Z",
       "aggregate": true,
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
@@ -34,26 +34,17 @@
       "note": "Aggregate across :kernel and every :adapters:* subproject (36 of them), summed by check-coverage-ratchet.py from whichever per-subproject XML reports exist -- there is no dedicated CI gate that runs kernelQualityGate today (a pre-existing gap this card does not close), so this stays at the placeholder until someone runs it (locally: gradlew kernelQualityGate -PenableCoverage is not needed here, kernel never ships into a generated app)."
     },
     "NPDevRuntimeHost": {
-      "coveragePercent": 0.0,
-      "measuredOn": null,
+      "coveragePercent": 11.213,
+      "measuredOn": "2026-08-22T15:57:39Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "scripts/reports/out/runtimehost-jacoco-test-report.xml"
       ],
       "note": "Only produced when the assembled sample app is built with -PenableCoverage=true (run-runtimehost-gate.ps1 does this and copies the report to the stable path above before its own build-cache cleanup runs). JaCoCo does NOT ship inside generated FinalApps by default -- see NPDevRuntimeHost/build.gradle.template's own gating comment."
     },
-    "NPDevEditor/ui-react": {
-      "coveragePercent": 23.6074,
-      "measuredOn": "2026-08-14T14:52:32Z",
-      "reportFormat": "istanbul-json-summary",
-      "reportGlobs": [
-        "scripts/reports/out/vitest-coverage/coverage-summary.json"
-      ],
-      "note": "Track C C8. Produced by `npm test` (`vitest run --coverage`, @vitest/coverage-v8, json-summary reporter) -- unconditional, every run-frontend-gate.ps1 invocation (via the npmTest Gradle task), since ui-react's own test tooling never ships into a generated FinalApp (only the built dist/ bundle does). vitest.config.ts points reportsDirectory at scripts/reports/out/vitest-coverage (already .gitignore'd) specifically because run-frontend-gate.ps1's Find-GeneratedResidue and NPDevEditor/build.gradle's cleanUiReactGenerated both hard-fail on a 'coverage' directory inside ui-react -- see ROADMAP.md card R3's own warning. coverage.all=true + explicit include makes every src/**/*.{ts,tsx} file count in the denominator even if no test imports it, so this floor reflects the whole authoring surface (~254 files), not just the ~13 files under test today."
-    },
     "NPDevCli": {
-      "coveragePercent": 30.1215,
-      "measuredOn": "2026-08-14T16:52:27Z",
+      "coveragePercent": 31.5556,
+      "measuredOn": "2026-08-22T15:09:21Z",
       "reportFormat": "coverage-py-json",
       "reportGlobs": [
         "scripts/reports/out/python-coverage/npdevcli-coverage.json"

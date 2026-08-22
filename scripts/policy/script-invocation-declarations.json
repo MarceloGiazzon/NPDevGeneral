@@ -126,10 +126,6 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
     },
-    "scripts/hygiene/Setup-EditorNodeModules.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
-    },
     "scripts/hygiene/Test-GradleWrapperConsistency.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
@@ -433,12 +429,6 @@
     "scripts/quality/run-docker-linux-proof.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-editor-complexity-check.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/quality/run-editor-gate.ps1": {
-      "invocation": "ci-gate"
-    },
     "scripts/quality/run-engine-app-proof.py": {
       "invocation": "ci-gate"
     },
@@ -458,13 +448,6 @@
     },
     "scripts/quality/run-final-regression-coverage-audit.ps1": {
       "invocation": "orchestrated"
-    },
-    "scripts/quality/run-frontend-gate-tests.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/quality/run-frontend-gate.ps1": {
-      "invocation": "manual-runbook",
-      "documentedIn": "docs/maintainers/FRONTEND_GATE_REPRODUCIBILITY.md"
     },
     "scripts/quality/run-generator-gate.ps1": {
       "invocation": "ci-gate"
@@ -622,9 +605,6 @@
       "invocation": "manual-runbook",
       "documentedIn": "NPDevSamples/README.md"
     },
-    "scripts/security/check-npm-audit-policy.py": {
-      "invocation": "ci-gate"
-    },
     "scripts/security/Invoke-ControlledCommand.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "NPDevMcp/README.md"
@@ -636,9 +616,6 @@
       "invocation": "ci-gate"
     },
     "scripts/statezip-npdev-contract.ps1": {
-      "invocation": "orchestrated"
-    },
-    "scripts/statezip-npdev-editor.ps1": {
       "invocation": "orchestrated"
     },
     "scripts/statezip-npdev-general.ps1": {
