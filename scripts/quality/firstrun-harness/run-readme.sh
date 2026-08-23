@@ -573,61 +573,42 @@ else
        "insert './gradlew bootJar' before any run instruction"
 fi
 
-# probe_editor_surface <base-url> <api-key>
-# The three product checks that need a LIVE app: the editor screen every generated app ships, every
-# chunk the generator claims to have copied, and the JSON shape the editor's default tab renders
-# from. Extracted into a function because their host moved: they used to hang off the app README's
-# quickstart built, and README's documented run path is now a watch loop this harness defers. They
-# are product checks, not documentation checks -- so they run against the app section 4 boots, which
-# does not depend on which flow README happens to document this month.
+# probe_authoring_surface <base-url> <api-key>
+# The product checks that need a LIVE app: the authoring screen every generated app ships, and the
+# JSON shape the editor's default tab renders from. Extracted into a function because their host
+# moved: they used to hang off the app README's quickstart built, and README's documented run path
+# is now a watch loop this harness defers. They are product checks, not documentation checks -- so
+# they run against the app section 4 boots, which does not depend on which flow README happens to
+# document this month.
 #
 # <api-key> is the caller's job to resolve, not this function's: `dev` no longer seeds a known key
 # (T1/C2), so a hardcoded 'dev-key' here would 401 against any app booted after that change -- ask
 # `npdev run app`'s own --json result for the one it actually generated instead.
-probe_editor_surface() {
+probe_authoring_surface() {
   local base="$1" api_key="$2"
 
-  # editor/ANALYSIS.md E4: the editor ships inside every generated app at /npdev-ui-react/ --
-  # a broken screen there is a first-impression defect (the Manager's own hand-off is "open
-  # your running app"), so prove it is actually reachable rather than trusting that it compiled.
-  local editor_html=/work/editor-index.html editor_status
-  # -L: /npdev-ui-react/ 302-redirects to /npdev-ui-react/index.html (UiRedirectController).
-  editor_status=$(curl -sSL -o "$editor_html" -w '%{http_code}' "$base/npdev-ui-react/" 2>/dev/null)
-  if [ "$editor_status" = "200" ] && grep -q 'assets/app\.js' "$editor_html"; then
-    pass "editor responds at /npdev-ui-react/ and references its own bundle"
+  # EDIT-12/R10.3 (2026-08-20): the frozen React bundle at /npdev-ui-react/ was deleted; the
+  # replacement is model-authoring.html, emitted by ModelAuthoringEmitter into every generated app.
+  # Prove the replacement is reachable AND that the deleted route is really gone -- a 200 on the old
+  # route would mean a stale bundle got re-copied.
+  local authoring_html=/work/model-authoring.html authoring_status
+  authoring_status=$(curl -sSL -o "$authoring_html" -w '%{http_code}' "$base/model-authoring.html" 2>/dev/null)
+  if [ "$authoring_status" = "200" ] && grep -q 'showDirectoryPicker' "$authoring_html"; then
+    pass "model authoring page responds and can reach a local folder"
   else
-    fail "editor responds at /npdev-ui-react/ and references its own bundle" \
-         "HTTP status was '$editor_status', or the page did not reference assets/app.js" \
-         "see $editor_html"
+    fail "model authoring page responds and can reach a local folder" \
+         "HTTP status was '$authoring_status', or the page did not reference showDirectoryPicker" \
+         "see $authoring_html"
   fi
 
-  # A 200 on index.html proves nothing about the OTHER shipped files -- Vite code-splits into a
-  # variable number of chunks (e.g. AuthoringApp.js, ReactWorkbenchApp.js) that index.html never
-  # references directly (they're lazy-loaded from app.js only once a user opens that surface), so
-  # a stale/incomplete generator copy step can drop one and still pass the check above. Read the
-  # manifest the SOURCE checkout says it shipped (written by build-templates.ps1, consumed by
-  # RuntimeApiEmitter.emitOptionalReactUiAssets()) and probe every one of those files for real,
-  # rather than trusting index.html's own text.
-  local editor_manifest="$SRC/NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json"
-  local asset asset_status asset_failures
-  if [ -f "$editor_manifest" ]; then
-    asset_failures=""
-    for asset in $(python3 -c "import json,sys; print('\n'.join(json.load(open(sys.argv[1]))))" "$editor_manifest"); do
-      asset_status=$(curl -sS -o /dev/null -w '%{http_code}' "$base/npdev-ui-react/$asset" 2>/dev/null)
-      if [ "$asset_status" != "200" ]; then
-        asset_failures="$asset_failures $asset=$asset_status"
-      fi
-    done
-    if [ -z "$asset_failures" ]; then
-      pass "editor: every manifested asset resolves (not just index.html)"
-    else
-      fail "editor: every manifested asset resolves (not just index.html)" \
-           "non-200 for:$asset_failures" \
-           "check RuntimeApiEmitter.emitOptionalReactUiAssets() actually copied everything the manifest lists"
-    fi
+  local dead_route_status
+  dead_route_status=$(curl -sS -o /dev/null -w '%{http_code}' "$base/npdev-ui-react/" 2>/dev/null)
+  if [ "$dead_route_status" = "404" ]; then
+    pass "the deleted React editor route is gone (EDIT-12/R10.3)"
   else
-    fail "editor: every manifested asset resolves (not just index.html)" \
-         "no manifest at $editor_manifest -- cannot know what the build actually shipped"
+    fail "the deleted React editor route is gone (EDIT-12/R10.3)" \
+         "expected 404, got '$dead_route_status' -- a stale static-react bundle may have been re-copied" \
+         "check RuntimeApiEmitter for a reintroduced emitOptionalReactUiAssets()"
   fi
 
   # R10.1/EDIT-3: the model editor draft endpoint (and its rule/orchestration siblings) was deleted
@@ -767,11 +748,11 @@ if [ "${RUN_APP_OK:-0}" = "1" ]; then
   # where the key was carried as RUN_APP_JSON's own "apiKey" field). ensure_npdev_api_key is
   # idempotent, so calling it again here just reads the existing file.
   ensure_npdev_api_key "$RUN_APP_OUT"
-  probe_editor_surface "http://localhost:$RUN_APP_PORT" "$NPDEV_LIVE_API_KEY"
+  probe_authoring_surface "http://localhost:$RUN_APP_PORT" "$NPDEV_LIVE_API_KEY"
 else
-  skip "editor responds at /npdev-ui-react/ and references its own bundle" \
+  skip "model authoring page responds and can reach a local folder" \
        "npdev run app did not reach READY, so there is no live app to probe (see the failure above)"
-  skip "editor: every manifested asset resolves (not just index.html)" \
+  skip "the deleted React editor route is gone (EDIT-12/R10.3)" \
        "npdev run app did not reach READY, so there is no live app to probe"
   skip "editor: model editor draft endpoint is gone (R10.1 -- read-only editor, no draft write-back)" \
        "npdev run app did not reach READY, so there is no live app to probe"

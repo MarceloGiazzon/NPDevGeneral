@@ -6,7 +6,7 @@ param(
     [string]$Profiles = "dev,step0,ai-beta-local",
     [int]$BootTimeoutSeconds = 120,
     [string]$AcceptanceScenariosPath = "",
-    [string]$AcceptanceApiKey = "dev-key"
+    [string]$AcceptanceApiKey = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -72,6 +72,43 @@ function Stop-ProcessTree {
     }
     if ($RootProcessId -ne $PID) {
         Stop-Process -Id $RootProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# SEC-1/T1-C2: `application-dev.yml` no longer seeds a known api-key -- StartupValidator.validateAuth()
+# refuses to boot without one supplied externally. Every other launcher (_ops/Run-FinalApp.ps1,
+# Build-NpdevApp.ps1/Build-ClaudeApp.ps1, the firstrun harness) was updated to call this; this script
+# was missed, so `bootRun` here has failed closed with "npdev.auth.api-keys must define at least one
+# mapping when auth is enabled" since that change landed. Self-contained copy, per this repo's
+# established convention (SEC-1: "duplicated once per pipeline since every emitted script here is
+# deliberately self-contained") rather than a shared import -- mirrors Build-NpdevApp.ps1's copy.
+function Ensure-NpdevApiKey {
+    param([string]$AppRoot)
+    $secretsDir = Join-Path $AppRoot 'secrets'
+    $keyFile = Join-Path $secretsDir 'api-key.env'
+    $needsGeneration = -not (Test-Path -LiteralPath $keyFile)
+    if (-not $needsGeneration) {
+        $hasUsableMapping = $false
+        foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+            $line = $rawLine.Trim()
+            if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) { $hasUsableMapping = $true; break }
+        }
+        $needsGeneration = -not $hasUsableMapping
+    }
+    if ($needsGeneration) {
+        if (-not (Test-Path -LiteralPath $secretsDir)) { New-Item -ItemType Directory -Force -Path $secretsDir | Out-Null }
+        $bytes = New-Object byte[] 24
+        [System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+        $key = ([Convert]::ToBase64String($bytes) -replace '[^a-zA-Z0-9]', '')
+        Set-Content -LiteralPath $keyFile -Value ('NPDEV_AUTH_API_KEYS=' + $key + '=dev:developer:admin') -Encoding UTF8 -NoNewline
+    }
+    foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
+        $line = $rawLine.Trim()
+        if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+            $parts = $line.Split('=', 2)
+            $name = $parts[0].Trim()
+            if ($name) { Set-Item -Path ("env:" + $name) -Value $parts[1].Trim() }
+        }
     }
 }
 
@@ -147,6 +184,11 @@ $bootStderr = Join-Path $appRootFull "ai-beta-boot.stderr.log"
 # a spurious CAPABILITY_FAILED unrelated to the scenario itself. Widened ONLY for this boot, ONLY
 # when acceptance scenarios were actually requested -- every other caller of this script (and every
 # generated app's own real default) is unaffected.
+Ensure-NpdevApiKey -AppRoot $appRootFull
+if ([string]::IsNullOrWhiteSpace($AcceptanceApiKey) -and -not [string]::IsNullOrWhiteSpace($env:NPDEV_AUTH_API_KEYS)) {
+    $AcceptanceApiKey = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0]
+}
+
 $bootPropertyArgs = "--spring.profiles.active=$Profiles --server.port=$Port"
 if (-not [string]::IsNullOrWhiteSpace($AcceptanceScenariosPath)) {
     $bootPropertyArgs += " --npdev.runtime.plugin-timeout-ms=5000"
@@ -197,7 +239,7 @@ try {
     }
 
     $smokeReportPath = Join-Path (Split-Path -Parent $ReportPath) "rest-smoke-result.json"
-    pwsh -NoProfile -File scripts/ai/Invoke-AiRestSmokeVerifier.ps1 -VerificationPath $VerificationPath -BaseUrl $report.baseUrl -ReportPath $smokeReportPath -ExpectedPort $Port | Out-Null
+    pwsh -NoProfile -File scripts/ai/Invoke-AiRestSmokeVerifier.ps1 -VerificationPath $VerificationPath -BaseUrl $report.baseUrl -ReportPath $smokeReportPath -ExpectedPort $Port -ApiKey $AcceptanceApiKey | Out-Null
     $smokeExit = $LASTEXITCODE
     $smokeResult = if (Test-Path -LiteralPath $smokeReportPath -PathType Leaf) { Get-Content -Raw -LiteralPath $smokeReportPath | ConvertFrom-Json } else { $null }
     $report.smoke = New-StageResult -Status ($(if ($smokeExit -eq 0) { "passed" } else { "failed" })) -Message ($(if ($smokeExit -eq 0) { "REST smoke checks passed." } else { "REST smoke checks failed." })) -Evidence $smokeResult

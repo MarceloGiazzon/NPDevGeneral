@@ -23,6 +23,30 @@ else {
     $ReportPath = Normalize-NPDevPath $ReportPath
 }
 
+# A7: the usual holder of a locked generated-app path is VS Code's Java language server or a
+# leftover single-use Gradle daemon, both of which release the file within a second or two. A
+# bounded retry survives that transient window; a message naming the cause and the remedy (rather
+# than the raw filesystem error) is what a gate failure should report when it still doesn't clear.
+function Remove-NPDevGeneratedTree {
+    param([string]$Path, [int]$Attempts = 5)
+    for ($i = 1; $i -le $Attempts; $i++) {
+        try {
+            if (Test-Path -LiteralPath $Path) {
+                Remove-Item -Recurse -Force -LiteralPath $Path -ErrorAction Stop
+            }
+            return $true
+        }
+        catch {
+            if ($i -eq $Attempts) {
+                Write-NPDevWarn ("Could not delete $Path after $Attempts attempts: " + $_.Exception.Message)
+                Write-NPDevWarn "A Java/Gradle process is holding it. Close VS Code, or run helpers\reset-sample-output.ps1."
+                return $false
+            }
+            Start-Sleep -Milliseconds (400 * $i)
+        }
+    }
+}
+
 function Assert-PathInsideRoot([string]$RootPath, [string]$TargetPath) {
     $root = Normalize-NPDevPath $RootPath
     $target = Normalize-NPDevPath $TargetPath
@@ -55,7 +79,9 @@ foreach ($sampleId in $SampleIds) {
             $cachePath = Join-Path $outputRoot $relativeCache
             Assert-PathInsideRoot $outputRoot $cachePath
             if (Test-Path -LiteralPath $cachePath) {
-                Remove-Item -LiteralPath $cachePath -Recurse -Force
+                if (-not (Remove-NPDevGeneratedTree -Path $cachePath)) {
+                    throw ("Could not delete locked cache path: " + $cachePath)
+                }
                 $removed += (Get-NPDevWorkspaceRelativePath $WorkspaceRoot $cachePath)
             }
         }
@@ -106,7 +132,9 @@ foreach ($sampleId in $SampleIds) {
 
     $removedOutput = Test-Path -LiteralPath $outputRoot
     if ($removedOutput) {
-        Remove-Item -LiteralPath $outputRoot -Recurse -Force
+        if (-not (Remove-NPDevGeneratedTree -Path $outputRoot)) {
+            throw ("Could not delete locked output tree: " + $outputRoot)
+        }
     }
     New-Item -ItemType Directory -Force -Path $outputRoot | Out-Null
     New-Item -ItemType Directory -Force -Path (Join-Path $outputRoot "Reports") | Out-Null

@@ -3,7 +3,13 @@ param(
     [string]$BaseUrl,
     [string]$ReportPath,
     [int]$ExpectedPort = 0,
-    [int]$TimeoutSeconds = 30
+    [int]$TimeoutSeconds = 30,
+    # SEC-1/T1-C2: the default below is a KNOWN-DEAD credential -- application-dev.yml no longer
+    # seeds it, so it 401s against any app booted since that change. Kept as the literal default so
+    # every EXISTING caller/test of this script (none of which pass -ApiKey today) is unaffected;
+    # a caller that has provisioned a real per-app key (run-scale-proof.ps1's own comment names this
+    # exact script as the pattern it is matching) should pass it here instead.
+    [string]$ApiKey = "dev-key"
 )
 
 $ErrorActionPreference = "Stop"
@@ -211,8 +217,8 @@ foreach ($check in @($verification.checks)) {
             -not $headers.ContainsKey("X-NPDEV-API-Key") -and
             -not $headers.ContainsKey("X-API-Key") -and
             -not $headers.ContainsKey("Authorization")) {
-            $headers["X-NPDEV-API-Key"] = "dev-key"
-            $headers["X-API-Key"] = "dev-key"
+            $headers["X-NPDEV-API-Key"] = $ApiKey
+            $headers["X-API-Key"] = $ApiKey
         }
         # NPDEV_V22_CONDITIONAL_LOCAL_API_KEY_END
         $body = $null

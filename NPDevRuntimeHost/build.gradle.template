@@ -644,6 +644,17 @@ tasks.named('processResources', Copy) {
     }
 }
 
+// npdevRuntimeHostLibsDir's fileTree (line ~219) bundles every jar under Build/runtimehost-libs,
+// which includes a local copy of the H2 driver alongside the ordinary Maven-resolved
+// 'com.h2database:h2' runtimeOnly dependency declared above -- both resolve to a same-named
+// h2-<version>.jar, and bootJar (unlike processResources above) had no duplicate-handling strategy,
+// so packaging failed with "Entry BOOT-INF/lib/h2-*.jar is a duplicate" under Gradle 9's stricter
+// Copy task (silent under 8.5, hard error under 9.5.1 -- see the plugins block's Gradle-9 bump
+// note). Both sources are the same artifact/version, so keeping either copy is correct.
+tasks.named('bootJar') {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 tasks.register('enforceSingleSchemaRealizationSource') {
     group = 'verification'
     description = 'Ensures generated apps contain schema-realization artifacts.'
