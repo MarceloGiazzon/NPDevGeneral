@@ -106,8 +106,13 @@ INTERNAL_ONLY = {
     "isReservedIdentifier": "the predicate behind identifier(). Callers ask identifier() and get "
                             "the decision for free; asking this directly would mean re-implementing "
                             "the quoting rule at the call site, which is the STOR-6 defect.",
-    "identifiers": "the list form of identifier(), used by the upsert strategies as they compose "
-                   "statement text inside the dialects.",
+
+    # `identifiers` (the list form of identifier()) graduated OFF this list, T4.2 (2026-08-23):
+    # MissingTableCreationPass now calls it directly (quoting index/primary-key column lists) as
+    # part of fixing the exact STOR-6 defect the entry above already describes -- the pass built
+    # CREATE TABLE/INDEX DDL from raw identifiers, never asking the dialect. Removed rather than
+    # left with a stale reason, per this file's own "callers + allowlisted = stale" rule and the
+    # `require` precedent above.
 
     # --- STOR-13, AFTER the one-hop rule and after its closure. ---
     #
