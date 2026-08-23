@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.finalexec.boundary.BoundaryBootException;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
@@ -811,6 +812,96 @@ class SchemaLifecycleExecutorProofMatrixTest {
         try (Connection connection = dataSource.getConnection()) {
             assertTrue(hasTable(connection.getMetaData(), "flyway_schema_history"),
                     "flyway.migrate() must still run after the wipe, or the tables are never rebuilt");
+        }
+    }
+
+    @Test
+    @DisplayName("Row 18: forcePhysicalSchema overrides a false physicalDatabase and runs realization anyway")
+    void row18_forcePhysicalSchemaOverridesAnInMemoryDeclaredManifest() throws SQLException {
+        // Same physicalDatabase=false shape as Row 16 (an InMemory-declared db.definition.json), but
+        // this time the executor has forcePhysicalSchema set -- as application-postgres.yml sets it,
+        // for a profile that forces a real Postgres testcontainer onto an InMemory-declared model for
+        // testing. Unlike Row 16, this must NOT no-op: the guard's "&& !forcePhysicalSchema" clause
+        // means beforeMigrate/afterMigrate actually run.
+        //
+        // Cannot assert a BUSINESS table (e.g. "widgets") gets created here: like every other test in
+        // this class, locations(new String[0]) means flyway.migrate() has no real migration content to
+        // run, so no business DDL executes regardless of this guard -- that only happens in a real
+        // generated app's own classpath:db/schema-realization migrations. What IS directly executed by
+        // THIS class, via raw JDBC in afterMigrate (not through Flyway), is npdev_schema_metadata --
+        // the exact table Row 16's assertNoNpdevSchemaTablesExist checks for absence. Asserting its
+        // presence here proves afterMigrate ran, the inverse of what Row 16 proves.
+        executor.forcePhysicalSchema = true;
+        try {
+            SchemaLifecycleExecutor.SchemaManifest manifest = new SchemaLifecycleExecutor.SchemaManifest(
+                    "H2Local", "jdbc", false, "sha256:new", List.of(), List.of("widgets"),
+                    Map.of("widgets", List.of("id")), Map.of(), Map.of(), Map.of(), Map.of(), true,
+                    "Ephemeral", "NpdevOwnedTablesOnly",
+                    "I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START", "",
+                    Map.of(), Map.of(), Map.of(), Map.of());
+
+            Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
+            executor.migrate(flyway, manifest);
+
+            try (Connection connection = dataSource.getConnection()) {
+                assertTrue(hasTable(connection.getMetaData(), "npdev_schema_metadata"),
+                        "forcePhysicalSchema=true must let afterMigrate run despite manifest.physicalDatabase()=false");
+            }
+        } finally {
+            executor.forcePhysicalSchema = false;
+        }
+    }
+
+    @Test
+    @DisplayName("Row 19: forcePhysicalSchema creates real business tables from the manifest, usable for CRUD")
+    void row19_forcePhysicalSchemaCreatesUsableBusinessTables() throws SQLException {
+        // canonical-demo's actual shape: an InMemory-declared manifest (physicalDatabase=false) has no
+        // real V1__ migration, so flyway.migrate() in Row 18's scenario creates nothing. This proves
+        // MissingTableCreationPass fills that gap: a real, insertable/queryable table, not just the
+        // npdev_* bookkeeping Row 18 already covers.
+        executor.forcePhysicalSchema = true;
+        try {
+            // Inline construction, not the manifest() helper: that helper hardcodes strategy =
+            // DropAndRecreateOnStructureChange, which would take an entirely different code path than
+            // the Ephemeral one MissingTableCreationPass is wired into -- see Row 18's identical need.
+            SchemaLifecycleExecutor.SchemaManifest manifest = new SchemaLifecycleExecutor.SchemaManifest(
+                    "H2Local", "jdbc", false, "sha256:new", List.of(), List.of("widgets"),
+                    Map.of("widgets", List.of("id", "name")), Map.of(),
+                    Map.of("widgets", Map.of("id", "VARCHAR(36)", "name", "VARCHAR(50)")),
+                    Map.of(), Map.of(), true,
+                    "Ephemeral", "NpdevOwnedTablesOnly",
+                    "I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START", "",
+                    Map.of(), Map.of(), Map.of(), Map.of());
+
+            Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
+            executor.migrate(flyway, manifest);
+
+            try (Connection connection = dataSource.getConnection()) {
+                DatabaseMetaData metadata = connection.getMetaData();
+                assertTrue(hasTable(metadata, "widgets"), "the business table itself must exist");
+                assertTrue(hasColumn(metadata, "widgets", "id"), "the id column must exist");
+                assertTrue(hasColumn(metadata, "widgets", "name"), "the model-declared column must exist");
+            }
+
+            // Not just present in metadata -- genuinely usable, including the id PRIMARY KEY this pass
+            // declares (a second row with a duplicate id must be rejected).
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute("INSERT INTO widgets (id, name) VALUES ('11111111-1111-1111-1111-111111111111', 'alpha')");
+                assertEquals("alpha", queryWidgetName(connection));
+                assertThrows(SQLException.class, () -> statement.execute(
+                        "INSERT INTO widgets (id, name) VALUES ('11111111-1111-1111-1111-111111111111', 'duplicate')"),
+                        "the id PRIMARY KEY this pass declares must actually be enforced");
+            }
+        } finally {
+            executor.forcePhysicalSchema = false;
+        }
+    }
+
+    private static String queryWidgetName(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery("SELECT name FROM widgets WHERE name = 'alpha'")) {
+            assertTrue(rows.next(), "the inserted row must be readable back");
+            return rows.getString(1);
         }
     }
 
@@ -1887,7 +1978,7 @@ class SchemaLifecycleExecutorProofMatrixTest {
                 Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "nickname", "VARCHAR(50)")),
                 Map.of(), Map.of(), true, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
+        BoundaryBootException exception = assertThrows(BoundaryBootException.class,
                 () -> executor.beforeMigrate(dataSource, oldBuildManifest));
         assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
         assertTrue(exception.getMessage().contains("sha256:N+1"), exception.getMessage());

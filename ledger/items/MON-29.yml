@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_monitor_and_explore.py (class SharedIngress -- 10 tests covering npdev_monitor.shared_ingress_config)"
+  asserts: >-
+    npdev monitor ingress generates one shared Caddy reverse-proxy config from the Monitor's live
+    app inventory -- routing by path or hostname, de-duplicating an app discovered at two nesting
+    levels, refusing to route two different apps that collide on one port, and rejecting an unknown
+    mode instead of silently defaulting.
+  provenRed: true

@@ -5,6 +5,7 @@ type: BUG
 severity: HIGH
 status: DONE
 opened: 2026-08-12
+closed: 2026-08-21
 source: >-
   Full-repo maturity audit 2026-08-12 (MASTER-ROADMAP.md, ROADMAP.md card R1). One undifferentiated
   exclusion blob in NPDevRuntimeHost/build.gradle(.template) had three real causes conflated: 4

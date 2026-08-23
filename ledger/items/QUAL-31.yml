@@ -11,3 +11,13 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_monitor_and_explore.py (classes PixelDiffCodec, ScreenshotBaselinePixelDiff -- 10 tests)"
+  asserts: >-
+    the screenshot baseline comparison is a pure-Python pixel diff (npdev_png.py) with a
+    per-screenshot threshold and a stored diff PNG, not sha256 equality -- a 1-pixel change passes
+    below threshold, a moved/changed region fails and names a written diff-image path, a dimension
+    mismatch is reported cleanly rather than crashing, and explore accept re-baselines only the one
+    screenshot it names.
+  provenRed: true

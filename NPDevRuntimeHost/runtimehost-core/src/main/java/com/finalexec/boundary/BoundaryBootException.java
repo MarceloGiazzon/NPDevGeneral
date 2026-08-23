@@ -13,6 +13,11 @@ public class BoundaryBootException extends RuntimeException {
         this.violation = violation;
     }
 
+    public BoundaryBootException(BoundaryViolation violation, Throwable cause) {
+        super(violation.message(), cause);
+        this.violation = violation;
+    }
+
     public BoundaryViolation getViolation() {
         return violation;
     }

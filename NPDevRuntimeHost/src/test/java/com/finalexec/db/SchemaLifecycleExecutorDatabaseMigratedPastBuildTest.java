@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.finalexec.boundary.BoundaryBootException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -75,7 +76,7 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
                 "sha256:N", Map.of("users", List.of("id", "name", "nickname")),
                 Map.of("users", List.of("nickname")));
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
+        BoundaryBootException exception = assertThrows(BoundaryBootException.class,
                 () -> executor.beforeMigrate(dataSource, manifestBuildN));
         assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
         assertTrue(exception.getMessage().contains("sha256:N+1"), exception.getMessage());
@@ -152,7 +153,7 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
         seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", System.currentTimeMillis() + 3_600_000L);
         seedStoredFingerprint(dataSource, "sha256:N+1");
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
+        BoundaryBootException exception = assertThrows(BoundaryBootException.class,
                 () -> executor.beforeMigrate(dataSource, manifestBuildN));
         assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
         assertTrue(exception.getMessage().contains("sha256:N+1"), exception.getMessage());

@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayFieldAccessTest.java#nonManagerWriteOnManagerWriteFieldIsRejected (plus deniedReadFieldIsOmittedNotMaskedForNonManager, managerCanChangeTheManagerWriteField)
+  asserts: >-
+    through the SAME governedBy policy a real generated app runs, a non-manager write on a
+    field.access-restricted field is rejected server-side and a denied field is omitted (not just
+    masked) on read for a non-manager, while the permitted manager write and read succeed -- built
+    from a real CompiledModel/CompiledFieldAccess, not a hand-rolled bypass of the DSL shape.
+  provenRed: true

@@ -12,6 +12,7 @@ import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
@@ -247,6 +248,26 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     @Autowired(required = false)
     private CompiledModel compiledModel;
 
+    /**
+     * npdev.trial.force-physical-schema (default false, preserving Row 16's InMemory no-op for every
+     * normal app): a profile that forces a REAL database onto a model whose db.definition.json
+     * declares InMemory (manifest.physicalDatabase()=false baked in at generation time) needs this
+     * executor to actually run schema realization anyway -- the manifest's baked flag describes what
+     * the model was GENERATED for, not what this profile is deliberately substituting at runtime.
+     * Same "profile intentionally substitutes X, so a generation-time assumption doesn't apply" shape
+     * as npdev.trial.database-override (DatabaseIdentityStartupValidator) and
+     * npdev.trial.flyway-history-check-required (StartupValidator). Package-private, not private, so
+     * SchemaLifecycleExecutorProofMatrixTest can set it directly without a Spring context.
+     *
+     * <p>Also gates {@link MissingTableCreationPass}, called from the Ephemeral branch right after
+     * flyway.migrate(): an InMemory-generated manifest carries no real V1__ migration (nothing for
+     * Flyway to run), so business tables need a manifest-driven fallback here or they simply never
+     * exist -- see that class's javadoc for the full reasoning and its deliberate scope (no FKs/
+     * indexes; unique constraints still come from the normal afterMigrate step).
+     */
+    @Value("${npdev.trial.force-physical-schema:false}")
+    boolean forcePhysicalSchema;
+
     @Override
     public void migrate(Flyway flyway) {
         migrate(flyway, loadManifest());
@@ -254,7 +275,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     /**
      * LNCH-1 Phase 7 (row 16 of the proof matrix: an InMemory-storage app's model change must
-     * no-op the executor entirely). Package-private overload taking the manifest as a parameter
+     * no-op the executor entirely, unless forcePhysicalSchema opts back in -- row 18).
+     * Package-private overload taking the manifest as a parameter
      * so the {@code manifest == null || !manifest.physicalDatabase()} guard above is directly
      * unit-testable against a real (zero-migration) {@link Flyway} instance without needing to
      * fake {@link #loadManifest}'s fixed classpath resource lookup -- see
@@ -341,7 +363,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             flyway.migrate();
             return;
         }
-        if (manifest == null || !manifest.physicalDatabase()) {
+        if (manifest == null || (!manifest.physicalDatabase() && !forcePhysicalSchema)) {
             flyway.migrate();
             return;
         }
@@ -383,6 +405,17 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // runs when a stored fingerprint proves the app has booted before.
             clearSchemaRealizationHistoryForEphemeral(dataSource);
             flyway.migrate();
+            if (forcePhysicalSchema) {
+                // See forcePhysicalSchema's own javadoc + MissingTableCreationPass's class javadoc:
+                // this manifest has no real V1__ migration (it was generated for InMemory), so
+                // flyway.migrate() just did nothing above. Create the business tables straight from
+                // the manifest before afterMigrate's own steps (unique constraints, fingerprint write)
+                // run against them -- and the platform's own npdev_* tables too, since those normally
+                // come from that same absent V1__ migration and afterMigrate only ever hand-creates
+                // npdev_schema_metadata itself.
+                MissingTableCreationPass.createMissingBusinessTables(dataSource, manifest);
+                MissingTableCreationPass.createMissingInternalTables(dataSource);
+            }
             afterMigrate(dataSource, manifest);
             return;
         }
@@ -433,9 +466,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         try {
             claim = MigrationClaimStore.claim(dataSource, freshDatabase);
         } catch (RuntimeException lockFailure) {
+            // Preserve lockFailure's own message verbatim rather than replacing it with a generic
+            // one: MigrationMutex.waitedOutMessage() names the exact wait budget and the holder
+            // instance/host/claim-time, and NPDevCli's MIGRATION_CLAIM_HELD boot-log diagnostic
+            // greps that phrase verbatim -- discarding it silently demotes a named diagnostic to
+            // "unknown boot failure" (the exact regression this comment exists to prevent).
             throw new BoundaryBootException(new BoundaryViolation("B4", "boot",
-                    "Another app instance holds the migration lock. Wait for it to finish or clear the claim.",
-                    Instant.now()));
+                    lockFailure.getMessage(), Instant.now()), lockFailure);
         }
         try {
             boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
@@ -676,8 +713,16 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         Optional<SchemaHistoryStore.HistoryPoint> aheadOfBuild = SchemaHistoryStore.databaseMigratedPastThisBuild(dataSource, manifest);
         if (aheadOfBuild.isPresent()) {
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
+            // Restores the detail a prior rewrite of this message lost: the exact ahead fingerprint
+            // (an operator needs it to tell which later build touched this database) and the
+            // mark-done escape hatch (applyMigrationMark/MigrationMarkStore) -- both asserted by
+            // SchemaLifecycleExecutorDatabaseMigratedPastBuildTest, which caught the loss.
             throw new BoundaryBootException(new BoundaryViolation("B5", "boot",
-                    "This database was migrated by a newer build. Downgrade is not supported.",
+                    "This database was migrated PAST this build: it is already at fingerprint "
+                    + aheadOfBuild.get().toFingerprint() + ", a later state than this build's own "
+                    + manifest.schemaFingerprint() + ". Downgrade is not supported -- deploy a build at "
+                    + "or past that fingerprint, or if this state is intentional, record an operator "
+                    + "mark to fast-forward past this check.",
                     Instant.now()));
         }
 

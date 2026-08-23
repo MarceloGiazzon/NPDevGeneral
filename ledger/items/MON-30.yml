@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_init_externally_provisioned.py#InitExternallyProvisionedTest (3 tests)"
+  asserts: >-
+    npdev init --externally-provisioned is the supported-authoring writer of
+    database.externallyProvisioned in a scaffolded app's db.definition.json -- verified for both an
+    embedded engine (flag correctly has no effect on H2Local, which owns no external server) and a
+    server engine (flag reaches the written file for Postgres).
+  provenRed: true

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
@@ -24,6 +26,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TenantIsolationE2EIT extends AbstractScenarioIntegrationTest {
     private static final String TENANT_A_API_KEY = "tenant-a-key";
     private static final String TENANT_B_API_KEY = "tenant-b-key";
+
+    // See AbstractScenarioIntegrationTest's comment on why this is set per-subclass rather than as a
+    // shared default. Stays consistent with every other subclass here rather than relying on the
+    // app's own "in-memory" default by omission.
+    @DynamicPropertySource
+    static void registerStorageMode(DynamicPropertyRegistry registry) {
+        registry.add("npdev.storage.mode", () -> "jdbc");
+    }
 
     @Autowired
     private MockMvc mockMvc;

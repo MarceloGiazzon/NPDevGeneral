@@ -20,6 +20,17 @@
         [
           "com/finalexec/RuntimeMetadataServiceTest.java",
           "com/finalexec/PanelRuntimeTest.java"
+        ],
+        [
+          "com/finalexec/CanonicalDemoBusinessE2EIT.java",
+          "com/finalexec/InvariantApiIntegrationTest.java",
+          "com/finalexec/Step01MultiConceptIntegrationTest.java",
+          "com/finalexec/Step03NestedJsonbIntegrationTest.java",
+          "com/finalexec/JwtAuthExternalBetaIT.java",
+          "com/finalexec/PublicationRollbackE2EIT.java",
+          "com/finalexec/TenantIsolationE2EIT.java",
+          "com/finalexec/AsyncWaitResumeE2EIT.java",
+          "com/finalexec/Stage12UiModelRuntimeIT.java"
         ]
       ]
     },

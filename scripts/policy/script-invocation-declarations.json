@@ -244,6 +244,13 @@
     "scripts/quality/check-dsl-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-pack-coverage.py": {
+      "invocation": "ci-gate"
+    },
+    "scripts/quality/generate-pack-catalog.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/quality/check-dsl-reference-output-floor.py": {
       "invocation": "ci-gate"
     },

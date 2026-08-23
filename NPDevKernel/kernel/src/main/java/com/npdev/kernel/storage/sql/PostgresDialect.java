@@ -70,6 +70,52 @@ public final class PostgresDialect implements SqlDialect {
         return "postgres";
     }
 
+    /**
+     * STOR-10-class fix, measured live (canonical-demo's Patient.allergies write): a raw
+     * {@code byte[]} bound with plain {@code setObject} arrives as {@code bytea}, and Postgres
+     * refuses to assign it to a {@code json}/{@code jsonb} column ("column ... is of type json but
+     * expression is of type bytea"). {@code JdbcBusinessConceptStore} -- this codebase's only
+     * producer of a {@code byte[]} bind value -- always builds it via
+     * {@code JSON_COLUMN_MAPPER.writeValueAsBytes}, i.e. it is always JSON content; decode it back to
+     * text and let {@link java.sql.Types#OTHER} tell the driver to leave the parameter untyped so
+     * Postgres infers json/jsonb from the target column itself, exactly as it already does for every
+     * other untyped parameter.
+     */
+    @Override
+    public Object bindableValue(Object value) {
+        if (value instanceof byte[] bytes) {
+            return new TypedBindValue(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), java.sql.Types.OTHER);
+        }
+        return value;
+    }
+
+    /**
+     * The read-side twin of {@link #bindableValue}'s STOR-10-class fix, measured the same way
+     * (canonical-demo's Patient.allergies, this time on {@code GET}): {@code ResultSet.getObject} for
+     * a json/jsonb column returns a driver-specific {@code org.postgresql.util.PGobject}, not a
+     * {@code String} or already-parsed value. {@code JdbcBusinessConceptStore#parseJsonColumnValue}
+     * only knows how to parse a {@code byte[]} or {@code String} -- given anything else, its own
+     * comment says "already a structured value... leave it as-is", which was true for no engine this
+     * platform targets and false for Postgres specifically: the untouched PGobject then serialized
+     * through Jackson's default bean introspection as {@code {"type":"json","value":"...",
+     * "null":false}} instead of the JSON content itself (confirmed live: GET /api/patients returned
+     * exactly that shape for the allergies/emergencyContact columns). Unwrapped here via reflection,
+     * not a compile-time {@code PGobject} import: {@code kernel} has no main-scope dependency on the
+     * Postgres driver (only {@code testImplementation}), the same constraint {@link #bindableValue}
+     * avoided by using {@link java.sql.Types#OTHER} instead of {@code PGobject} on the write side.
+     */
+    @Override
+    public Object readValue(Object value) {
+        if (value != null && "org.postgresql.util.PGobject".equals(value.getClass().getName())) {
+            try {
+                return value.getClass().getMethod("getValue").invoke(value);
+            } catch (ReflectiveOperationException exception) {
+                throw new IllegalStateException("Failed reading Postgres json/jsonb column value", exception);
+            }
+        }
+        return value;
+    }
+
     // ------------------------------------------------------------------ identifiers
 
     @Override

@@ -28,7 +28,8 @@ class NpdevBuildInfoInfoContributorTest {
                 30,
                 8,
                 16384,
-                null
+                null,
+                true
         );
 
         InfoEndpoint endpoint = new InfoEndpoint(List.of(new NpdevBuildInfoInfoContributor(settings)));

@@ -11,3 +11,10 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterBulkActionsTest.java#bulkActionsBarOnlyAppearsThroughItsOwnGate
+  asserts: >-
+    the generated grid ships a page-scoped select-all checkbox column, and the bulk-actions bar
+    only appears when the model actually declares bulk actions (gated, not always-on).
+  provenRed: true

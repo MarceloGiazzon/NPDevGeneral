@@ -3,16 +3,13 @@ package com.finalexec;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.generated.entities.InsuranceClaim;
-import com.npdev.kernel.concepts.ConceptGateway;
-import com.npdev.kernel.concepts.ConceptGateways;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.TestConfiguration;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Primary;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -32,13 +29,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     private static final String API_KEY = "dev-key";
 
-    @TestConfiguration
-    static class RelaxedConceptGatewayConfig {
-        @Bean
-        @Primary
-        ConceptGateway relaxedConceptGateway() {
-            return ConceptGateways.inMemory();
-        }
+    // See AbstractScenarioIntegrationTest's comment on why this is set per-subclass rather than as a
+    // shared default: this test exercises canonical-demo's real Patient/Provider/Appointment/
+    // InsuranceClaim tables, so it needs the Postgres-backed ConceptStore/persistence-capability path.
+    @DynamicPropertySource
+    static void registerStorageMode(DynamicPropertyRegistry registry) {
+        registry.add("npdev.storage.mode", () -> "jdbc");
     }
 
     @Autowired
@@ -265,7 +261,7 @@ class CanonicalDemoBusinessE2EIT extends AbstractScenarioIntegrationTest {
     }
 
     private JsonNode listInsuranceClaims() throws Exception {
-        String response = mockMvc.perform(get("/api/insuranceclaims")
+        String response = mockMvc.perform(get("/api/insurance_claims")
                         .header("X-Api-Key", API_KEY))
                 .andExpect(status().isOk())
                 .andReturn()

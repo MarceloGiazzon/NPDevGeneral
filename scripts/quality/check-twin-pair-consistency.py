@@ -46,7 +46,12 @@ def check_sibling_group_in_list(rule: dict, root: Path) -> list[str]:
     if open_bracket == -1 or close_bracket == -1:
         return [f"{rule['id']}: could not find a [...] list body after '{marker}' in {rule['listFile']}"]
     body = text[open_bracket:close_bracket]
-    present = set(re.findall(r"'([^']+)'", body)) | set(re.findall(r'"([^"]+)"', body))
+    # Match within a single line only -- list entries are always one-line string literals, but an
+    # unbounded [^'] class pairs a stray English apostrophe in a // comment (e.g. "manifest's") with
+    # an unrelated quote elsewhere in the body, swallowing every real entry between them into one
+    # bogus multi-line match. Confirmed live: this silently dropped PublicationRollbackE2EIT.java
+    # (among others) from modelSpecificGeneratedAppTests' parsed contents in NPDevRuntimeHost/build.gradle.
+    present = set(re.findall(r"'([^'\n]+)'", body)) | set(re.findall(r'"([^"\n]+)"', body))
     for group in rule["groups"]:
         members_present = [member for member in group if member in present]
         members_absent = [member for member in group if member not in present]

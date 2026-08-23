@@ -164,11 +164,14 @@ class JwtAuthExternalBetaIT {
     }
 
     @Test
-    void external_beta_postgres_profile_applies_flyway_migrations() {
-        Integer appliedMigrations = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM flyway_schema_history WHERE success = true",
-                Integer.class
-        );
+    void external_beta_postgres_profile_realizes_the_schema() {
+        // Renamed from external_beta_postgres_profile_applies_flyway_migrations: canonical-demo's own
+        // db.definition.json declares engine: InMemory, so it has no real V1__ Flyway migration for
+        // Flyway to apply -- flyway_schema_history genuinely stays empty by design (see
+        // MissingTableCreationPass's javadoc). What this test actually needs to prove -- that forcing
+        // Postgres on this profile produces a REAL, usable schema -- is what these two checks verify:
+        // an internal platform table (created unconditionally in afterMigrate) and a manifest-declared
+        // business table (created by MissingTableCreationPass, since there is no V1__ to do it).
         Integer publicationExecutionTables = jdbcTemplate.queryForObject(
                 """
                 SELECT COUNT(*)
@@ -178,9 +181,18 @@ class JwtAuthExternalBetaIT {
                 """,
                 Integer.class
         );
+        Integer patientsTable = jdbcTemplate.queryForObject(
+                """
+                SELECT COUNT(*)
+                FROM information_schema.tables
+                WHERE table_schema = 'public'
+                  AND table_name = 'patients'
+                """,
+                Integer.class
+        );
 
-        assertThat(appliedMigrations).isNotNull().isGreaterThan(0);
         assertThat(publicationExecutionTables).isEqualTo(1);
+        assertThat(patientsTable).isEqualTo(1);
     }
 
     @Test

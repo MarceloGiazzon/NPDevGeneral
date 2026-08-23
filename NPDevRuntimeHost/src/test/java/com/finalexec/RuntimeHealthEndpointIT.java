@@ -12,6 +12,6 @@ class RuntimeHealthEndpointIT {
     void healthEndpointAndMockAlertSinkAreCovered() {
         // Should verify:
         // - GET /actuator/health returns 200 with {"status": "UP"}
-        // - When a dependency is DOWN, the alert sink is triggered
+        // - When a dependency is DOWN, a mock alert sink is triggered and its invocation is asserted
     }
 }

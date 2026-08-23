@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -21,6 +23,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class Step03NestedJsonbIntegrationTest extends AbstractScenarioIntegrationTest {
     private static final String API_KEY = "dev-key";
+
+    // See AbstractScenarioIntegrationTest's comment on why this is set per-subclass rather than as a
+    // shared default: this test exercises canonical-demo's real Patient table, so it needs the
+    // Postgres-backed ConceptStore/persistence-capability path.
+    @DynamicPropertySource
+    static void registerStorageMode(DynamicPropertyRegistry registry) {
+        registry.add("npdev.storage.mode", () -> "jdbc");
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -47,38 +57,38 @@ class Step03NestedJsonbIntegrationTest extends AbstractScenarioIntegrationTest {
         JsonNode patient = findEntity(entities, "Patient");
         assertTrue(patient != null, "Model export must include Patient");
 
-        JsonNode insurance = findField(patient.path("fields"), "insurance");
+        JsonNode emergencyContact = findField(patient.path("fields"), "emergencyContact");
         JsonNode allergies = findField(patient.path("fields"), "allergies");
-        assertTrue(insurance != null, "Patient must declare insurance");
+        assertTrue(emergencyContact != null, "Patient must declare emergencyContact");
         assertTrue(allergies != null, "Patient must declare allergies");
-        assertTrue("object".equals(insurance.path("type").asText()), "insurance must be object");
+        assertTrue("object".equals(emergencyContact.path("type").asText()), "emergencyContact must be object");
         assertTrue("array".equals(allergies.path("type").asText()), "allergies must be array");
     }
 
     @Test
     void createAndListPatientRoundTripsNestedFields() throws Exception {
         String requestBody = objectMapper.writeValueAsString(Map.of(
-                "mrn", "MRN-NESTED-1001",
+                "mrn", "MRN-NEST-01",
                 "firstName", "Nested",
                 "lastName", "Patient",
-                "dateOfBirth", "1992-03-03",
-                "insurance", Map.of(
-                        "payerName", "Blue Shield",
-                        "memberId", "MEM-1001",
-                        "groupNumber", "GROUP-77",
-                        "planType", "PPO",
-                        "active", true
+                "emergencyContact", Map.of(
+                        "name", "Alan Turing",
+                        "relationship", "Friend",
+                        "phone", "555-0100",
+                        "authorizedForDisclosure", true
                 ),
                 "allergies", List.of(
                         Map.of(
-                                "allergen", "Penicillin",
+                                "code", "ALG-PEN",
+                                "substance", "Penicillin",
                                 "severity", "Severe",
-                                "reaction", "Rash"
+                                "active", true
                         ),
                         Map.of(
-                                "allergen", "Latex",
+                                "code", "ALG-LTX",
+                                "substance", "Latex",
                                 "severity", "Moderate",
-                                "reaction", "Itching"
+                                "active", true
                         )
                 )
         ));
@@ -93,7 +103,7 @@ class Step03NestedJsonbIntegrationTest extends AbstractScenarioIntegrationTest {
                 .getContentAsString();
 
         JsonNode created = objectMapper.readTree(createdResponse);
-        assertTrue("Blue Shield".equals(created.path("insurance").path("payerName").asText()));
+        assertTrue("Alan Turing".equals(created.path("emergencyContact").path("name").asText()));
         assertTrue(created.path("allergies").isArray());
         assertTrue(created.path("allergies").size() == 2);
 
@@ -106,8 +116,8 @@ class Step03NestedJsonbIntegrationTest extends AbstractScenarioIntegrationTest {
 
         JsonNode listed = objectMapper.readTree(listedResponse);
         assertTrue(listed.isArray(), "Patients list must return an array");
-        assertTrue(containsPatientWithNestedPayload(listed, "MRN-NESTED-1001"),
-                "Patients list must include nested insurance and allergies");
+        assertTrue(containsPatientWithNestedPayload(listed, "MRN-NEST-01"),
+                "Patients list must include nested emergencyContact and allergies");
     }
 
     private static JsonNode findEntity(JsonNode entities, String entityName) {
@@ -139,10 +149,10 @@ class Step03NestedJsonbIntegrationTest extends AbstractScenarioIntegrationTest {
             if (!expectedMrn.equals(patient.path("mrn").asText())) {
                 continue;
             }
-            JsonNode insurance = patient.path("insurance");
+            JsonNode emergencyContact = patient.path("emergencyContact");
             JsonNode allergies = patient.path("allergies");
-            return insurance.isObject()
-                    && "Blue Shield".equals(insurance.path("payerName").asText())
+            return emergencyContact.isObject()
+                    && "Alan Turing".equals(emergencyContact.path("name").asText())
                     && allergies.isArray()
                     && allergies.size() == 2;
         }

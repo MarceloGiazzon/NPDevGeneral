@@ -45,7 +45,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
         StartupValidator validator = new StartupValidator(
                 settings,
@@ -81,7 +82,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
         StartupValidator validator = new StartupValidator(
                 settings,
@@ -117,7 +119,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("postgres");
@@ -156,7 +159,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
         MockEnvironment environment = new MockEnvironment();
         environment.setActiveProfiles("postgres");
@@ -211,7 +215,58 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
+                null,
+                true
+        );
+
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("postgres");
+
+        StartupValidator validator = new StartupValidator(
+                settings,
+                dataSource,
+                eventStore(),
+                flowInstanceStore(),
+                environment,
+                "apikey",
+                "dev-key=tenant:actor:ADMIN",
+                null,
+                null,
+                null,
                 null
+        );
+
+        assertDoesNotThrow(validator::validate);
+    }
+
+    @Test
+    void shouldPassWithValidPostgresConnectivityWhenFlywayHistoryCheckIsNotRequired() throws Exception {
+        // A schema-lifecycle-managed database (e.g. a profile forcing Postgres onto a model whose
+        // db.definition.json declares schemaLifecycle.strategy=Ephemeral) never gets a real Flyway
+        // migration, so flyway_schema_history legitimately never exists. No such table is created
+        // here at all -- proving the flag genuinely skips the check rather than happening to pass.
+        JdbcDataSource dataSource = new JdbcDataSource();
+        dataSource.setURL("jdbc:h2:mem:runtime_validation_no_flyway;MODE=PostgreSQL;DB_CLOSE_DELAY=-1");
+        dataSource.setUser("sa");
+        dataSource.setPassword("sa");
+
+        RuntimeSettings settings = new RuntimeSettings(
+                "postgres",
+                true,
+                100,
+                2000,
+                true,
+                1024,
+                64,
+                "jdbc:h2:mem:runtime_validation_no_flyway;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+                "sa",
+                "sa",
+                5,
+                30,
+                10,
+                4096,
+                null,
+                false
         );
 
         MockEnvironment environment = new MockEnvironment();
@@ -251,7 +306,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
 
         StartupValidator validator = new StartupValidator(
@@ -288,7 +344,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
 
         StartupValidator validator = new StartupValidator(
@@ -325,7 +382,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
 
         StartupValidator validator = new StartupValidator(
@@ -609,7 +667,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
     }
 
@@ -638,7 +697,8 @@ class StartupValidatorTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
     }
 

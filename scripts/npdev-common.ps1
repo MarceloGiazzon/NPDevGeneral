@@ -524,10 +524,35 @@ function Invoke-NPDevCommandCapture {
         })
     $process.StartInfo.Arguments = $quotedArguments -join " "
 
-    [void]$process.Start()
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
+    $stdoutBuilder = New-Object System.Text.StringBuilder
+    $stderrBuilder = New-Object System.Text.StringBuilder
+    $stdoutEvent = $null
+    $stderrEvent = $null
+
+    try {
+        $stdoutEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
+            if ($null -ne $EventArgs.Data) {
+                [void]$Event.MessageData.AppendLine($EventArgs.Data)
+            }
+        } -MessageData $stdoutBuilder
+        $stderrEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
+            if ($null -ne $EventArgs.Data) {
+                [void]$Event.MessageData.AppendLine($EventArgs.Data)
+            }
+        } -MessageData $stderrBuilder
+
+        [void]$process.Start()
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+        $process.WaitForExit()
+    }
+    finally {
+        if ($null -ne $stdoutEvent) { Unregister-Event -SourceIdentifier $stdoutEvent.Name -ErrorAction SilentlyContinue }
+        if ($null -ne $stderrEvent) { Unregister-Event -SourceIdentifier $stderrEvent.Name -ErrorAction SilentlyContinue }
+    }
+
+    $stdout = $stdoutBuilder.ToString()
+    $stderr = $stderrBuilder.ToString()
 
     $output = @()
     if (-not [string]::IsNullOrWhiteSpace($stdout)) {

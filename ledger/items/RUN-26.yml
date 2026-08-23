@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/document-render-inproc/src/test/java/com/npdev/adapters/documentrender/inproc/AggregateDocumentRenderTest.java#rendersAHeaderPlusMultiLineLineItemBandToARealPdfWithAllRowsPresent
+  asserts: >-
+    the documentRender capability's renderAggregate operation produces a real PDF (verified via
+    PDFBox text extraction, not just a byte-count check) with a header band, every row of a
+    multi-line line-item band, and an embedded logo image all actually present in the output --
+    proving a renderer that silently dropped rows would be caught.
+  provenRed: true
