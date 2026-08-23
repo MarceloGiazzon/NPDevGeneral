@@ -78,3 +78,8 @@ detail: |
   `Action "ativar" completed: FAILED` with the client's real error-red styling (the `payload.status
   === "FAILED"` check now matches), instead of the previous neutral, easy-to-miss `"...completed:
   UNSUPPORTED"` -- a real UX improvement, not just a status-code change.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeFlowActionTest.java#executesFlowBoundActionThroughKernelFacadeAndReturnsExecutionReference
+  asserts: a panel.action.binding of "flow" actually executes through KernelFacade and returns a real execution reference, instead of being schema-valid and unimplemented at runtime.
+  provenRed: true

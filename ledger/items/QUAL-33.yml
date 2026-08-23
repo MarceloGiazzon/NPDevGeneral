@@ -1,0 +1,34 @@
+id: QUAL-33
+title: Five test classes are @Disabled because the infrastructure they need does not exist
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-23
+source: 2026-08-23 platform audit; each annotation's own reason string names its missing dependency.
+surface: testing/infrastructure
+files:
+  - NPDevRuntimeHost/src/test/java/com/finalexec/SandboxedPluginExecutionEngineTest.java
+  - NPDevKernel/adapters/runtime-validation/src/test/java/com/npdev/adapters/runtime/validation/RuntimeRequestSizeFilterTest.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/EventStorePerformanceRegressionTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/RuntimeHealthEndpointIT.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/RuntimePerformanceBaselineIT.java
+detail: |
+  Each of these is annotated with a real reason, not a skip-to-go-green -- re-confirmed live
+  2026-08-23, all five still present and still @Disabled at the cited lines:
+
+  - SandboxedPluginExecutionEngineTest:294 -- malicious-plugin containment needs a real sandbox
+    (SecurityManager or process isolation). This is the one with security weight: the containment
+    claim is currently untested.
+  - RuntimeRequestSizeFilterTest:50 -- chunked/multipart/WebSocket cases need a full servlet
+    container.
+  - EventStorePerformanceRegressionTest -- no standalone in-memory EventStore adapter exists; the
+    only one is EventStoreStub inside KernelRunnerTest.
+  - RuntimeHealthEndpointIT -- needs @SpringBootTest(webEnvironment = RANDOM_PORT).
+  - RuntimePerformanceBaselineIT -- needs embedded Postgres via Testcontainers plus pre-loaded data.
+
+  Separately, HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest carries
+  @DisabledOnOs(WINDOWS), which is a platform statement rather than a missing-infrastructure one --
+  filed here for visibility, not as a sixth instance of the same cause.
+
+  Done when: each is either running, or converted to a narrower test that runs, or closed as
+  WONTFIX with the infrastructure decision recorded. "Still disabled" is not done.

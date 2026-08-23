@@ -68,3 +68,8 @@ detail: |
   (Move 3, `docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md`) -- the plan's own hypothesis ("invoke is the
   candidate mechanism ... if it does not fit, say so and name the gap") held once the real bug
   underneath it was fixed, so no gap needed naming.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/ProcedureRunnerCapabilityCallTest.java#callCapabilityStepResolvesAdapterFromModelBindings
+  asserts: a procedure-side capabilityCall step resolves its adapter id from the model's bindings list instead of reaching the dispatcher with a null adapterId.
+  provenRed: true

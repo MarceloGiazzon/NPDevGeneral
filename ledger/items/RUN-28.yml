@@ -1,0 +1,30 @@
+id: RUN-28
+title: >-
+  The uniqueness pre-checks and every generated listBy* finder still call the unbounded
+  conceptGateway.list(...)
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-23
+source: 2026-08-23 platform audit; both sites are named in service-base.mustache's own comments.
+surface: generator/service-base, runtime/crud
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+detail: |
+  RUN-1/R8a capped the generated CRUD list() endpoint. Two callers were deliberately left
+  unbounded and each needs a DIFFERENT fix, which is why neither was folded into that pass:
+
+  1. existsUniqueInConceptStore / existsUniqueCompoundInConceptStore (service-base.mustache:106-107,
+     738). Their `uniqueValuesEqual` comparison is case-insensitive and whitespace-trimmed, and that
+     does not translate cleanly to a portable indexed SQL lookup across H2/Postgres/MySQL/SQL Server
+     without risking a silent change to WHICH values collide. Needs per-dialect collation handling,
+     not a LIMIT.
+
+  2. listBy* -- the auto-generated GET /api/{route}/by/{name}/{value} foreign-key finder every
+     bonded field gets (service-base.mustache:961-970). It filters AFTER fetching, so capping the
+     fetch would silently drop a legitimate match instead of returning fewer rows -- worse than the
+     bug. It returns a raw List<{{entityName}}>, not a ConceptListSlice, so there is no channel to
+     signal truncation. Needs the filter pushed into the query, or the return type widened.
+
+  Done when: neither site performs an unbounded full-tenant scan, and a test proves the uniqueness
+  semantics (case-insensitive, whitespace-trimmed) are unchanged on every enabled engine.

@@ -55,3 +55,8 @@ detail: |
   and confirmed all 3 pass. Also confirmed live: WmsOffice's new `SyncOcupacaoProcedure` (REG-78)
   successfully created a real `LocalArmazenagemLote` row with no client-supplied id, verified via a
   direct REST GET showing the row persisted with the correct auto-generated id.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorAutoIdSemanticPolicyTest.java#saveConceptWithNoIdRefAutoGeneratesAnIdThatSatisfiesARealRequiredIdField
+  asserts: saveConcept's blank-idRef auto-generate fallback folds the generated id into the write's own data map, so a real governed ConceptGateway does not deny it as CONCEPT_FIELD_REQUIRED.
+  provenRed: true

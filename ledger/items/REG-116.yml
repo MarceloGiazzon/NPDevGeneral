@@ -55,3 +55,8 @@ detail: |
   both declare a `from` (e.g. "estabelecimento" before "user" when the intended precedence is the
   reverse) -- the new validation cannot catch that case (no signal exists to check it against), so
   this is a real, class-limited coverage gap this fix does not close.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/PropertyValidationTest.java#implicitRootScopeDeclaredBeforeAMoreSpecificOneFailsCompilation
+  asserts: a propertyScopes declaration listing the implicit root scope before a more specific one fails compilation instead of silently inverting cascade precedence.
+  provenRed: true

@@ -1,0 +1,32 @@
+id: QUAL-32
+title: >-
+  No CI job runs the kernel coverage aggregate, so its ratchet floor drifted 10 points from reality
+  without anything noticing
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-23
+source: >-
+  2026-08-23 platform audit. scripts/policy/coverage-baseline.json's own note already says it:
+  "there is no dedicated CI gate that runs kernelQualityGate today (a pre-existing gap this card
+  does not close)".
+surface: ci/coverage, kernel
+detail: |
+  The NPDevKernel/kernel floor is an AGGREGATE across :kernel and 36+ :adapters:* subprojects,
+  summed by check-coverage-ratchet.py from whichever per-subproject JaCoCo XML reports happen to
+  exist on that run. Nothing in CI ever produces the full set.
+
+  Consequence, measured 2026-08-23: the recorded floor was 73.0968 (from a partial run on
+  2026-08-20) while a full local aggregate over 42 reports measured 62.6906. The gate was red
+  against a number that had never been true of the whole module. Wave 2 of the 2026-08-23
+  remediation reset the floor to the measured value; that made the ratchet honest, it did not add
+  any coverage.
+
+  Two things are needed and they are separate:
+  1. A CI job that runs the kernel + adapter suites together and emits the full report set, so the
+     floor is measured by the same thing that enforces it.
+  2. Real tests to raise it. 62.69% aggregate is the honest number; nothing here argues it is a
+     good one.
+
+  Done when: a CI workflow produces the aggregate on every run, and the floor recorded here is the
+  number that workflow measured.
