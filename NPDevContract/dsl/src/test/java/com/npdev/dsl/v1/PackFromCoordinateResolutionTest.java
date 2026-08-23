@@ -7,6 +7,7 @@ import com.npdev.dsl.v1.pack.PackLockFile;
 import com.npdev.dsl.v1.parser.ModelSourceResolver;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -17,6 +18,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -169,6 +171,77 @@ class PackFromCoordinateResolutionTest {
         assertTrue(containsConceptNamed(resolved.resolvedRoot(), "catalog::Variant"),
                 "the fragment's concept must have been merged -- this is what used to throw "
                         + "\"escapes the model root\" for every cache-resident fragment");
+    }
+
+    /**
+     * The same scenario as the test above, but the pack cache is reached through a directory
+     * indirection so the cache path and its canonical form differ.
+     *
+     * <p>RED before 2026-08-23: {@code resolveJsonRefUnderRoot} canonicalised the resolved fragment
+     * ({@code toRealPath}) and compared it against an UN-canonicalised containment directory, so
+     * {@code startsWith} was false for a fragment that never left its own pack and the resolver
+     * threw {@code "escapes the pack directory"}. Reproduces the GitHub Windows runner's temp-path
+     * shape, which is why the test above was green on a developer machine and on Linux and red only
+     * on Windows CI.
+     */
+    @Test
+    void aCacheResidentFragmentResolvesWhenTheCacheRootIsReachedThroughALinkedPath() throws Exception {
+        Path realCacheParent = Files.createDirectories(temp.resolve("cache-real"));
+        Path linkedCacheParent = temp.resolve("cache-link");
+        Assumptions.assumeTrue(tryCreateDirectoryLink(linkedCacheParent, realCacheParent),
+                "this platform/user cannot create a directory junction or symlink");
+        System.setProperty(PackCache.PROPERTY_ROOT_OVERRIDE,
+                linkedCacheParent.resolve("packs").toString());
+
+        Path appDir = Files.createDirectories(temp.resolve("app"));
+        Path repo = initRepo(temp.resolve("linked-catalog-repo"));
+        Files.writeString(repo.resolve("pack.json"), """
+                {
+                  "dslVersion": "1.0.0",
+                  "pack": "catalog",
+                  "version": "1.0.0",
+                  "concepts": [
+                    { "name": "Product", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ],
+                  "fragments": [
+                    { "$ref": "fragments/variant.json" }
+                  ]
+                }
+                """);
+        Files.createDirectories(repo.resolve("fragments"));
+        Files.writeString(repo.resolve("fragments").resolve("variant.json"), """
+                {
+                  "concepts": [
+                    { "name": "Variant", "fields": [
+                      { "name": "id", "type": "uuid", "id": true, "required": true }
+                    ] }
+                  ]
+                }
+                """);
+        commitAndTag(repo, "v1.0.0");
+        String from = fileCoordinate(repo, "v1.0.0");
+
+        Path model = appDir.resolve("model.json");
+        Files.writeString(model, """
+                {
+                  "namespace": "pk5.linked",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "from": "%s" } ]
+                }
+                """.formatted(from));
+
+        ModelSourceResolver.PackCliResolution resolution =
+                new ModelSourceResolver().resolvePackGraphForCli(model, NetworkPolicy.ALLOWED);
+        PackLockFile.of(resolution.lockEntries()).write(resolution.rootDirectory());
+        deleteRecursively(repo);
+
+        ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
+        assertTrue(containsConceptNamed(resolved.resolvedRoot(), "catalog::Variant"),
+                "a fragment inside a cache-resident pack must resolve even when the cache root is "
+                        + "reached through a path whose canonical form differs");
     }
 
     /**
@@ -418,6 +491,27 @@ class PackFromCoordinateResolutionTest {
             uri = uri.substring(0, uri.length() - 1);
         }
         return "git+" + uri + "@" + tag;
+    }
+
+    /**
+     * Creates a directory indirection so a path and its canonical form differ, reproducing the
+     * GitHub Windows runner's temp-path shape. A Windows JUNCTION is used rather than a symlink
+     * because {@code mklink /J} needs no elevation or Developer Mode, while
+     * {@code Files.createSymbolicLink} needs one or the other on Windows. Returns false when the
+     * platform refuses, so the caller can skip rather than fail.
+     */
+    private static boolean tryCreateDirectoryLink(Path link, Path target) {
+        boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
+        try {
+            if (windows) {
+                run(link.getParent(), "cmd", "/c", "mklink", "/J", link.toString(), target.toString());
+            } else {
+                Files.createSymbolicLink(link, target);
+            }
+            return Files.exists(link);
+        } catch (IOException | InterruptedException | UnsupportedOperationException unsupported) {
+            return false;
+        }
     }
 
     private static Path initRepo(Path dir) throws IOException, InterruptedException {

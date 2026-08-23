@@ -1,6 +1,7 @@
 """Where the corpus lives, and the flow step types the detectors scan for."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 def _repo_root() -> Path:
@@ -21,8 +22,26 @@ def _repo_root() -> Path:
     raise SystemExit("could not identify the repo root by contents")
 
 
+def _default_appgen_root() -> Path:
+    """Layer 2 (app definitions) lives OUTSIDE the repo and is not a git repo, so CI never has it.
+    Resolve it from the environment, then by walking up from this repo root looking for a sibling
+    AppGen/apps -- by CONTENTS, never by assuming a drive letter (REG-144)."""
+    from_env = os.environ.get("NPDEV_APPGEN_APPS")
+    if from_env:
+        return Path(from_env).expanduser().resolve()
+    here = Path(__file__).resolve()
+    for ancestor in here.parents:
+        candidate = ancestor.parent / "AppGen" / "apps"
+        if candidate.is_dir():
+            return candidate
+        if (ancestor / "NPDevContract").is_dir() and (ancestor / "NPDevKernel").is_dir():
+            # the repo root, identified by contents -- stop walking
+            return ancestor.parent / "AppGen" / "apps"
+    return Path("AppGen") / "apps"
+
+
 REPO_ROOT = _repo_root()
-DEFAULT_APPGEN_ROOT = Path(r"D:\WorkSpace\NPDev\AppGen\apps")
+DEFAULT_APPGEN_ROOT = _default_appgen_root()
 DEFAULT_SAMPLES_ROOT = REPO_ROOT / "NPDevSamples"
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "quality" / "dsl-coverage-allowlist.json"
 

@@ -572,14 +572,27 @@ jobs:
         run: |
           .\gradlew check --no-daemon --console=plain
 
-      # Windows-only diagnostic (2026-07-24): LegacyModelMigrationToolTest shells to `npdev.bat migrate`
-      # and asserts exit 0; it fails ONLY on the CI Windows runner (exit-0 locally), and the console
-      # truncates the captured subprocess output. Dump the test XML (which holds npdev.bat's stdout+
-      # stderr in the assertion message) so we can finally see WHY it exits non-zero on CI.
-      - name: On DSL failure, surface LegacyModelMigration output (Windows)
+      # Windows-only diagnostic. Originally added 2026-07-24 for LegacyModelMigrationToolTest, which
+      # shells to `npdev.bat migrate` and asserts exit 0 -- the console truncates the captured
+      # subprocess output, so the test XML (which holds stdout+stderr in the assertion message) is
+      # the only place the reason is visible. Generalised 2026-08-23: it had stayed filtered to that
+      # one 2026-07 test class AND rooted at the non-redirected build directory, so when the DSL
+      # suite genuinely failed it printed nothing at all.
+      - name: On DSL failure, surface every failing test's XML (Windows)
         if: failure()
         run: |
-          Get-ChildItem -Recurse -Path NPDevContract -Filter "TEST-*LegacyModelMigration*.xml" -ErrorAction SilentlyContinue | ForEach-Object {
+          # The build directory is REDIRECTED to the external build root, so a search rooted at
+          # NPDevContract finds nothing -- the trap CLAUDE.md records catching four call sites
+          # already. Search the redirected root, and do not filter to one test class: the next
+          # failure will not be the one someone hardcoded here.
+          $roots = @(
+            $env:NPDEV_BUILD_ROOT,
+            (Join-Path (Split-Path -Parent $env:NPDEV_WORKSPACE) "Build"),
+            (Join-Path $env:NPDEV_WORKSPACE "Build")
+          ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+          Get-ChildItem -Recurse -Path $roots -Filter "TEST-*.xml" -ErrorAction SilentlyContinue |
+            Where-Object { (Select-String -Path $_.FullName -Pattern "<failure|<error" -Quiet) } |
+            ForEach-Object {
             Write-Host "----- $($_.FullName) -----"
             $raw = Get-Content -Raw -LiteralPath $_.FullName
             Write-Host $raw.Substring(0, [Math]::Min(4000, $raw.Length))
