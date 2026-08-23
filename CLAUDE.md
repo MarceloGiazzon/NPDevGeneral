@@ -268,15 +268,16 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   package satisfies all three (`build.gradle.template` compile-exclusion,
   `RuntimeControllerAllowlistConfig` bean removal, and `run-runtime-surface-evidence.ps1`, which
   fails the RuntimeHost gate for a listed controller whose file is not under `com/finalexec/api`).
-- **RuntimeHost tests that name `com.npdev.generated.` never run in any gate.**
-  `build.gradle.template` excludes every test source containing that string from the `test` task
-  **unconditionally** — not only when the generated-runtime mount is absent, which is the case the
-  neighbouring conditional block handles. Measured 2026-08-12 on the assembled sample app:
-  `com/finalexec/controlpanel/` compiled **zero** test classes and `com/finalexec/api/` compiled 2 of
-  4. So `SchemaImpactControllerTest` and every other controller test that mocks
-  `RuntimeContextService` is dead weight in `run-runtimehost-gate.ps1`. Write such a test if it
-  documents intent, but **do not treat a green RuntimeHost gate as evidence it passed** — prove
-  controller guards against a running app instead.
+- **RuntimeHost tests that name `com.npdev.generated.` DO run in the gate, since 2026-08-12
+  (`a4ea2ca1d`).** This line used to say the opposite — that `build.gradle.template` excluded every
+  such test source unconditionally, making `SchemaImpactControllerTest` and its siblings dead weight
+  — and that was true when measured, but the fix landed the same day: the exclusion moved inside the
+  `generatedRuntimeMountPresent()` guard so it only fires when the mount is genuinely absent (a bare
+  template checkout), reviving `AgentProxyControllerTest`'s 9 SUPERUSER-guard tests plus 5 siblings.
+  This doc was never updated afterward, and the 2026-08-23 defect-remediation roadmap's T4.3 card
+  re-discovered the OLD, already-fixed state as if it were still live. A green `run-runtimehost-gate.ps1`
+  is real evidence these controller guards ran, not dead weight — but still confirm against a running
+  app for anything the gate doesn't itself assert on.
 
 ## Stability policy
 

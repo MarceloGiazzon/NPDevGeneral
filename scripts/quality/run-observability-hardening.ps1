@@ -26,6 +26,17 @@ $ErrorActionPreference = "Stop"
 $WorkspaceRoot = Initialize-Bucket2Workspace -WorkspaceRoot $WorkspaceRoot -ScriptRoot $PSScriptRoot
 $RunId = Resolve-NPDevRunId $RunId "observability-hardening"
 $ReportPath = if ([string]::IsNullOrWhiteSpace($ReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\observability-hardening-report.json" } else { Normalize-NPDevPath $ReportPath }
+
+# 2026-08-22: a hand-run of this script (no -RuntimeHostGatePendingOk / -SurfaceConvergencePendingOk)
+# overwrote the RuntimeHost gate's own artifact at the default path with a harsher verdict, and the
+# stale file was then read as evidence that the supported runtime surface had collapsed. It had not:
+# the seven convergence checks are formally retired (GATE-OBS-1a) and the gate excuses them by
+# design. A run that is not the gate's own writes to a side path unless it explicitly asks not to.
+if (-not $PSBoundParameters.ContainsKey("ReportPath") -and -not $RuntimeHostGatePendingOk -and -not $SurfaceConvergencePendingOk) {
+    $ReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\observability-hardening-standalone-report.json"
+    Write-NPDevInfo "Standalone run: writing to observability-hardening-standalone-report.json so the gate's own artifact is not overwritten. Pass -ReportPath to override."
+}
+
 $RuntimeHostReportPath = if ([string]::IsNullOrWhiteSpace($RuntimeHostReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtimehost-gate-report.json" } else { Normalize-NPDevPath $RuntimeHostReportPath }
 $ClassificationReportPath = if ([string]::IsNullOrWhiteSpace($ClassificationReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtime-surface-classification-report.json" } else { Normalize-NPDevPath $ClassificationReportPath }
 $AllowlistReportPath = if ([string]::IsNullOrWhiteSpace($AllowlistReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtime-surface-allowlist-report.json" } else { Normalize-NPDevPath $AllowlistReportPath }
@@ -178,6 +189,7 @@ $report = [pscustomobject]@{
     scriptPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $PSCommandPath
     workspaceRoot = $WorkspaceRoot
     overallStatus = Get-Bucket2OverallStatus $checks
+    interpretation = if ($SurfaceConvergencePendingOk) { "gate-equivalent" } else { "standalone-strict: the seven GATE-OBS-1a convergence checks are NOT excused in this run; a 'failed' here does not mean the gate fails" }
     correlationProof = [pscustomobject]@{
         canonicalScenario = "AsyncWaitResumeE2EIT"
         testPath = Get-Bucket2RelativePath $WorkspaceRoot $AsyncWaitResumeTestPath

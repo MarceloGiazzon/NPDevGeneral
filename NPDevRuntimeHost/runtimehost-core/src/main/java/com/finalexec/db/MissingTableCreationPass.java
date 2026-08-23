@@ -84,14 +84,19 @@ final class MissingTableCreationPass {
 
     private static void createTable(Connection connection, String tableName, List<String> columnDefs,
             List<InternalIndexDefinition> indexes) throws SQLException {
-        String ddl = "CREATE TABLE " + tableName + " (" + String.join(", ", columnDefs) + ")";
+        // STOR-6: identifiers are quoted when the target engine reserves them. SqlDialect.identifier()
+        // quotes only when necessary and folds case for engines that need it -- never quote blindly.
+        String ddl = "CREATE TABLE " + SqlDialects.active().identifier(tableName)
+                + " (" + String.join(", ", columnDefs) + ")";
         try (PreparedStatement statement = connection.prepareStatement(
                 SqlDialects.active().guardedCreateTable(tableName, ddl))) {
             statement.executeUpdate();
         }
         for (InternalIndexDefinition index : indexes) {
-            String indexDdl = "CREATE " + (index.unique() ? "UNIQUE " : "") + "INDEX " + index.name()
-                    + " ON " + tableName + " (" + String.join(", ", index.columns()) + ")";
+            String indexDdl = "CREATE " + (index.unique() ? "UNIQUE " : "") + "INDEX "
+                    + SqlDialects.active().identifier(index.name())
+                    + " ON " + SqlDialects.active().identifier(tableName)
+                    + " (" + String.join(", ", SqlDialects.active().identifiers(index.columns())) + ")";
             try (PreparedStatement statement = connection.prepareStatement(
                     SqlDialects.active().guardedCreateIndex(index.name(), tableName, indexDdl))) {
                 statement.executeUpdate();
@@ -112,12 +117,20 @@ final class MissingTableCreationPass {
     private static List<String> businessColumnDefs(DesiredTable table) {
         List<String> columnDefs = new ArrayList<>();
         for (DesiredColumn column : table.columns().values()) {
-            String type = column.normalizedSqlType() == null ? "TEXT" : column.normalizedSqlType();
+            // STOR-6: this column's role is unknown here (it may end up the "id" PRIMARY KEY, or
+            // carry a DEFAULT via repairablePlatformColumnDefault below) -- keyableTextColumnType()
+            // is the one dialect answer safe in BOTH roles on every engine (a bounded VARCHAR both
+            // indexes and defaults cleanly), unlike defaultableTextColumnType(), which is only
+            // guaranteed safe with a DEFAULT, not necessarily safe in a key/index.
+            String type = column.normalizedSqlType() == null
+                    ? SqlDialects.active().keyableTextColumnType()
+                    : column.normalizedSqlType();
             String defaultClause = repairablePlatformColumnDefault(column.name());
-            columnDefs.add(column.name() + " " + type + defaultClause + (column.nullable() ? "" : " NOT NULL"));
+            columnDefs.add(SqlDialects.active().identifier(column.name()) + " " + type + defaultClause
+                    + (column.nullable() ? "" : " NOT NULL"));
         }
         if (table.columns().containsKey("id")) {
-            columnDefs.add("PRIMARY KEY (id)");
+            columnDefs.add("PRIMARY KEY (" + SqlDialects.active().identifier("id") + ")");
         }
         return columnDefs;
     }
@@ -146,10 +159,10 @@ final class MissingTableCreationPass {
         for (InternalColumnDefinition column : table.columns()) {
             String defaultClause = column.defaultExpression().isBlank()
                     ? "" : " DEFAULT " + column.defaultExpression();
-            columnDefs.add(column.name() + " " + column.sqlType() + defaultClause
+            columnDefs.add(SqlDialects.active().identifier(column.name()) + " " + column.sqlType() + defaultClause
                     + (column.required() ? " NOT NULL" : ""));
         }
-        columnDefs.add("PRIMARY KEY (" + String.join(", ", table.primaryKey().columns()) + ")");
+        columnDefs.add("PRIMARY KEY (" + String.join(", ", SqlDialects.active().identifiers(table.primaryKey().columns())) + ")");
         return columnDefs;
     }
 }
