@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_pack_lock_tamper_guard.py (classes GuardAgainstRemotePackTamperUnitTest, MutatedTagRefusedOnPackUpdateRoundTripTest, PackTreeDigestMatchesJavaTest -- 13 tests)"
+  asserts: >-
+    npdev pack add/update refuses a mutated git tag (same locked version, different content digest)
+    against a real git+file:// remote and a real Gradle-computed digest, restoring the prior lock
+    rather than silently accepting the new content as truth -- while a legitimate version bump with
+    a new digest is not refused.
+  provenRed: true

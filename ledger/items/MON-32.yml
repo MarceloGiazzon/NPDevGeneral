@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/DockerDeploymentEmitterBackupObservabilityTest.java#observabilityProfileShipsForEveryEngineIncludingEmbeddedOnes (plus prometheusScrapesTheActuatorProxyNotTheAppDirectly, grafanaDashboardAndDatasourceAreProvisionedNotManual, alertRuleFiresOnScrapeFailureAndIsWiredToAlertmanager -- 15 tests total in the file, R9.9+R9.10 combined)"
+  asserts: >-
+    the emitted docker-compose.yml carries an 'observability' profile (Prometheus scraping the app's
+    actuator endpoint through a proxy, a provisioned Grafana dashboard + datasource, and an
+    Alertmanager liveness alert rule) for EVERY database engine including embedded ones, since the
+    profile only ever scrapes the app service, never the database.
+  provenRed: true

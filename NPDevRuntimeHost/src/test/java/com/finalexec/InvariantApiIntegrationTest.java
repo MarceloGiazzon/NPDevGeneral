@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
@@ -22,6 +24,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class InvariantApiIntegrationTest extends AbstractScenarioIntegrationTest {
     private static final String API_KEY = "dev-key";
+
+    // See AbstractScenarioIntegrationTest's comment on why this is set per-subclass rather than as a
+    // shared default: this test exercises canonical-demo's real Provider table, so it needs the
+    // Postgres-backed ConceptStore/persistence-capability path.
+    @DynamicPropertySource
+    static void registerStorageMode(DynamicPropertyRegistry registry) {
+        registry.add("npdev.storage.mode", () -> "jdbc");
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -56,13 +66,16 @@ class InvariantApiIntegrationTest extends AbstractScenarioIntegrationTest {
 
     @Test
     void createDuplicateNpiReturns409() throws Exception {
+        // npi carries domainType NPI (a real 10-digit provider identifier, see model.json) -- these
+        // must fit its VARCHAR(10) column, unlike the free-text-length placeholders this test used
+        // before that constraint existed.
         String first = objectMapper.writeValueAsString(Map.of(
                 "fullName", "Dr. Alice",
-                "npi", "dup-provider-001"
+                "npi", "1112223334"
         ));
         String second = objectMapper.writeValueAsString(Map.of(
                 "fullName", "Dr. Bob",
-                "npi", "DUP-PROVIDER-001"
+                "npi", "1112223334"
         ));
 
         mockMvc.perform(post("/api/providers")
@@ -81,13 +94,14 @@ class InvariantApiIntegrationTest extends AbstractScenarioIntegrationTest {
 
     @Test
     void updateDuplicateNpiReturns409() throws Exception {
+        // Same domainType NPI VARCHAR(10) constraint as createDuplicateNpiReturns409 above.
         String first = objectMapper.writeValueAsString(Map.of(
                 "fullName", "Dr. First",
-                "npi", "provider-first-001"
+                "npi", "1112223334"
         ));
         String second = objectMapper.writeValueAsString(Map.of(
                 "fullName", "Dr. Second",
-                "npi", "provider-second-001"
+                "npi", "2223334445"
         ));
 
         JsonNode created1 = createAndParse(first);
@@ -98,7 +112,7 @@ class InvariantApiIntegrationTest extends AbstractScenarioIntegrationTest {
         assertNotNull(id2);
 
         String updateBody = objectMapper.writeValueAsString(Map.of(
-                "npi", "PROVIDER-FIRST-001"
+                "npi", "1112223334"
         ));
 
         mockMvc.perform(put("/api/providers/{id}", id2)

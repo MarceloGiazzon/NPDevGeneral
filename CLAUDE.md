@@ -173,6 +173,9 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `scripts/proofs/classify_runtimehost_sources.py` (BT-1a — standalone app-coupled-vs-app-independent
   split of `NPDevRuntimeHost/src/main/java`, mirroring the inline Groovy heuristic in
   `build.gradle.template` as a re-runnable artifact) is the same kind of proof, run by hand.
+  `scripts/quality/generate-pack-catalog.py` (PACK-8 Step 7) regenerates the static built-in-pack
+  catalog JSON that `npdev pack search` reads offline; re-run it by hand after adding, removing, or
+  editing a pack under `NPDevContract/packs/`.
 - **R9 nightly model-scale ladder (ledger `SCALE-1`):** `scripts/proofs/run-scale-proof.ps1` synthesizes
   a deterministic model (`synthesize_scale_model.py`) at 26/50/100/260/520 concepts and drives
   synthesize→generate→ddl→build→boot→firstRequest→latency→memory (all 8 measurements written to

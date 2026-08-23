@@ -178,7 +178,8 @@ public class NpdevRuntimeModeConfig {
             @Value("${npdev.capability.circuit.open-seconds:30}") int circuitOpenSeconds,
             @Value("${npdev.capability.bulkhead.max-concurrent-default:8}") int bulkheadMaxConcurrentDefault,
             @Value("${npdev.capability.idempotency.max-bytes:16384}") int idempotencyMaxBytes,
-            @Value("${npdev.capability.policy-overrides-json:}") String capabilityPolicyOverridesJson
+            @Value("${npdev.capability.policy-overrides-json:}") String capabilityPolicyOverridesJson,
+            @Value("${npdev.trial.flyway-history-check-required:true}") boolean flywayHistoryCheckRequired
     ) {
         return new RuntimeSettings(
                 mode,
@@ -195,7 +196,8 @@ public class NpdevRuntimeModeConfig {
                 circuitOpenSeconds,
                 bulkheadMaxConcurrentDefault,
                 idempotencyMaxBytes,
-                capabilityPolicyOverridesJson
+                capabilityPolicyOverridesJson,
+                flywayHistoryCheckRequired
         );
     }
 

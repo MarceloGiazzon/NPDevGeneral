@@ -42,7 +42,11 @@
       "description": "PK-3: transitive pack dependencies. `version` is a minimal constraint: an exact version (\"2.0.3\") or a caret constraint (\"^2.0\", compatible-within-major -- same major, minor/patch at least as high). PACK-8: each entry may optionally declare `from` (a remote coordinate, same grammar as model.schema.json's packRef `from`) or `$ref` (a local file); when neither is present the pre-PACK-8 local-file convention (`packs/<packId>/pack.json`) applies unchanged.",
       "items": {
         "type": "object",
-        "required": ["pack", "version"],
+        "anyOf": [
+          { "required": ["pack", "version"] },
+          { "required": ["from"] },
+          { "required": ["$ref"] }
+        ],
         "properties": {
           "pack": {
             "type": "string",

@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
@@ -21,6 +23,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class Step01MultiConceptIntegrationTest extends AbstractScenarioIntegrationTest {
     private static final String API_KEY = "dev-key";
+
+    // See AbstractScenarioIntegrationTest's comment on why this is set per-subclass rather than as a
+    // shared default: this test exercises canonical-demo's real Patient/Provider tables, so it needs
+    // the Postgres-backed ConceptStore/persistence-capability path.
+    @DynamicPropertySource
+    static void registerStorageMode(DynamicPropertyRegistry registry) {
+        registry.add("npdev.storage.mode", () -> "jdbc");
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -55,8 +65,7 @@ class Step01MultiConceptIntegrationTest extends AbstractScenarioIntegrationTest 
         String requestBody = objectMapper.writeValueAsString(Map.of(
                 "mrn", "MRN-1001",
                 "firstName", "Ana",
-                "lastName", "Silva",
-                "dateOfBirth", "1988-04-20"
+                "lastName", "Silva"
         ));
 
         mockMvc.perform(post("/api/patients")
@@ -70,15 +79,16 @@ class Step01MultiConceptIntegrationTest extends AbstractScenarioIntegrationTest 
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].firstName").value("Ana"))
                 .andExpect(jsonPath("$[0].lastName").value("Silva"))
-                .andExpect(jsonPath("$[0].dateOfBirth").value("1988-04-20"));
+                // chartLabel is a derivedExpression field (concat(lastName, ', ', firstName)), so this
+                // also proves derived fields round-trip through the list endpoint.
+                .andExpect(jsonPath("$[0].chartLabel").value("Silva, Ana"));
     }
 
     @Test
     void patientMissingRequiredFieldReturnsValidationError() throws Exception {
         String requestBody = objectMapper.writeValueAsString(Map.of(
                 "mrn", "MRN-2001",
-                "firstName", "NoLastName",
-                "dateOfBirth", "1990-01-01"
+                "firstName", "NoLastName"
         ));
 
         mockMvc.perform(post("/api/patients")

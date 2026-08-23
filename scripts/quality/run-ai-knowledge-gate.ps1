@@ -347,6 +347,16 @@ try {
         $failures += "a DSL feature has zero corpus coverage: see scripts/quality/check-dsl-coverage.py output above -- add a real example to NPDevSamples/dsl-conformance-max, or record a reviewed exception with a REG id"
     }
 
+    # Same slot as the DSL coverage check above, for pack-composition surfaces check-dsl-coverage.py
+    # cannot see (declarations live in pack.json, or in probe apps its corpus roots exclude). Was an
+    # orphaned script -- written for PACK-8/PACK-10 close-out but never wired into any gate, which
+    # run-script-inventory-check.ps1 (Move 11 W2/O4) flags for every check-*.py.
+    Write-Host "Checking pack-composition surfaces (packs.from / satelliteOf / pack.extends) have corpus coverage..."
+    & $py "scripts/quality/check-pack-coverage.py" "--probes" "--strict"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a pack-composition surface has zero corpus coverage: see scripts/quality/check-pack-coverage.py output above"
+    }
+
     # R4 Part C: check-record-surfaces.py moved to the weekly paperwork gate -- branch-freshness and
     # record-surfaces.json drift are slow-moving, not something a single commit can introduce. See
     # scripts/policy/gate-classification-policy.json.

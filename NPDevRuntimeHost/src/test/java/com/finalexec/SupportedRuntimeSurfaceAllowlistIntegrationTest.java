@@ -52,9 +52,16 @@ class SupportedRuntimeSurfaceAllowlistIntegrationTest {
         assertTrue(activeControllers.contains("RuntimeMetadataController"));
         assertTrue(activeControllers.contains("RuntimePluginStatusController"));
         assertTrue(activeControllers.contains("SupportDiagnosticsController"));
-        assertFalse(activeControllers.contains("RuntimePluginPackagesController"));
-        assertFalse(activeControllers.contains("RuntimeRefreshController"));
-        assertFalse(activeControllers.contains("ModelSyncStatusController"));
+        // Derived from the manifest's OWN deferredControllers list rather than three hardcoded
+        // names: those three (RuntimePluginPackagesController, RuntimeRefreshController,
+        // ModelSyncStatusController) have since moved into allowedControllers (git blame: promoted
+        // months ago, unrelated to this branch), so the hardcoded version silently asserted a state
+        // the manifest itself no longer declares -- exactly the kind of drift a derived check can't have.
+        Set<String> deferredControllers = loadArray("deferredControllers");
+        LinkedHashSet<String> activeButDeferred = new LinkedHashSet<>(activeControllers);
+        activeButDeferred.retainAll(deferredControllers);
+        assertTrue(activeButDeferred.isEmpty(),
+                "Deferred controllers must never be active in the default profile: " + activeButDeferred);
     }
 
     private Set<String> activeRuntimeControllers() {

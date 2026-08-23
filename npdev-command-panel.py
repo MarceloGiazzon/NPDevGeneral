@@ -31,6 +31,7 @@ import threading
 import uuid
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs
 
 # ---------------------------------------------------------------------------
 # Repo root = script directory, overridable via --root. Easiest reliable default.
@@ -169,9 +170,14 @@ SECTIONS = list(dict.fromkeys(c["section"] for c in COMMANDS))
 BY_KEY = {c["key"]: c for c in COMMANDS}
 ANSI_RE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 MAX_OUT = 2_000_000  # cap buffered output chars
+MAX_RUNS = 20        # finished runs retained before the oldest are discarded
 
 RUNS = {}
 RUNS_LOCK = threading.Lock()
+
+
+class LaunchError(RuntimeError):
+    """The child process could not be started (missing exe, bad cwd, ...)."""
 
 
 def _resolve_program(kind, cwd_abs, arg0):
@@ -216,33 +222,61 @@ def start_run(key, extra):
     env = os.environ.copy()
     env.setdefault("PYTHONUNBUFFERED", "1")
     env.setdefault("PYTHONIOENCODING", "utf-8")
-    proc = subprocess.Popen(
-        argv, cwd=cwd_abs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-        text=True, encoding="utf-8", errors="replace", env=env, bufsize=1)
+    try:
+        proc = subprocess.Popen(
+            argv, cwd=cwd_abs, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace", env=env, bufsize=1)
+    except FileNotFoundError:
+        raise LaunchError(
+            "cannot launch %r - executable not found on PATH (needed for kind %r).
+"
+            "  command: %s" % (argv[0], defn["kind"], display))
+    except OSError as e:
+        raise LaunchError("cannot launch %r: %s
+  command: %s" % (argv[0], e, display))
     rid = uuid.uuid4().hex[:12]
     with RUNS_LOCK:
+        _prune_runs()
         RUNS[rid] = {"key": key, "label": defn["label"], "display": display,
-                     "proc": proc, "out": [], "running": True, "exit": None}
+                     "proc": proc, "buf": "", "dropped": 0,
+                     "running": True, "exit": None}
     threading.Thread(target=_reader, args=(rid, proc), daemon=True).start()
     return rid
 
 
 def _reader(rid, proc):
+    """Drain the child's output into a flat, already-ANSI-stripped buffer.
+
+    ANSI is stripped HERE, not at poll time, so a character offset into the
+    buffer is stable: the page polls with a cursor and only ever receives the
+    text it has not seen yet.
+    """
     try:
         for line in proc.stdout:
+            line = ANSI_RE.sub("", line)
             with RUNS_LOCK:
                 run = RUNS.get(rid)
                 if run is None:
-                    return
-                run["out"].append(line)
-                if len("".join(run["out"])) > MAX_OUT:
-                    run["out"] = run["out"][1:]
-        proc.wait()
+                    break
+                run["buf"] += line
+                if len(run["buf"]) > MAX_OUT:
+                    cut = len(run["buf"]) - MAX_OUT
+                    run["buf"] = run["buf"][cut:]
+                    run["dropped"] += cut
     finally:
+        try:
+            proc.wait()
+        except Exception:
+            pass
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
         with RUNS_LOCK:
-            if RUNS.get(rid) is not None:
-                RUNS[rid]["running"] = False
-                RUNS[rid]["exit"] = proc.returncode
+            run = RUNS.get(rid)
+            if run is not None:
+                run["running"] = False
+                run["exit"] = proc.returncode
 
 
 def stop_run(rid):
@@ -258,14 +292,36 @@ def stop_run(rid):
     return True
 
 
-def run_state(rid):
+def run_state(rid, since=0):
+    """Return only the output produced after absolute character offset `since`.
+
+    `next` is the cursor the caller should send on its following poll. When the
+    ring buffer has discarded output the caller had not read yet, `truncated`
+    says so instead of silently skipping lines.
+    """
     with RUNS_LOCK:
         run = RUNS.get(rid)
         if run is None:
             return None
-        text = ANSI_RE.sub("", "".join(run["out"]))
+        dropped, buf = run["dropped"], run["buf"]
+        end = dropped + len(buf)
+        truncated = False
+        if since < dropped:
+            since = dropped
+            truncated = True
+        elif since > end:
+            since = end
         return {"id": rid, "label": run["label"], "display": run["display"],
-                "running": run["running"], "exit": run["exit"], "output": text}
+                "running": run["running"], "exit": run["exit"],
+                "output": buf[since - dropped:], "next": end,
+                "truncated": truncated}
+
+
+def _prune_runs():
+    """Drop the oldest finished runs; called under RUNS_LOCK. Keeps RAM bounded."""
+    finished = [k for k, v in RUNS.items() if not v["running"]]
+    for k in finished[:max(0, len(finished) - MAX_RUNS)]:
+        RUNS.pop(k, None)
 
 
 HTML = """<!doctype html>
@@ -292,7 +348,7 @@ HTML = """<!doctype html>
   .run { background:var(--accent); color:#fff; border:0; border-radius:6px; padding:7px 14px; font-size:13px; cursor:pointer; white-space:nowrap; }
   .run:hover { filter:brightness(1.08); }
   .run.running { background:#64748b; }
-  .outwrap { display:flex; flex-direction:column; min-width:0; overflow:scroll; }
+  .outwrap { display:flex; flex-direction:column; min-width:0; overflow:hidden; }
   .outtop { padding:10px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; background:#fff; }
   .outtop .title { font-size:13px; font-weight:600; flex:1; }
   #status { font-size:12px; padding:3px 10px; border-radius:20px; }
@@ -306,6 +362,7 @@ HTML = """<!doctype html>
   #out { flex:1; margin:0; overflow:auto; padding:14px 16px; white-space:pre-wrap; word-break:break-word; min-height:0;
          font-family:ui-monospace,Consolas,Menlo,monospace; font-size:12.5px; line-height:1.5; background:#0b1220; color:#cbd5e1; }
   #out .cmdline { color:#67e8f9; }
+  #out .err { color:#fca5a5; }
   .empty { color:#64748b; }
 </style>
 </head>
@@ -359,19 +416,25 @@ const statusEl = document.getElementById('status');
 const killBtn = document.getElementById('kill');
 let pollTimer = null;
 let currentId = null;
+let cursor = 0;          // absolute offset of output already rendered
 
 function setStatus(kind, text) {
   statusEl.className = kind; statusEl.textContent = text;
 }
 
-function appendOutput(text, isCmdline) {
-  if (outEl.querySelector('.empty')) outEl.innerHTML = '';
-  const span = document.createElement('div');
-  span.style.whiteSpace = 'pre-wrap';
+function atBottom() {
+  return outEl.scrollHeight - outEl.scrollTop - outEl.clientHeight < 40;
+}
+
+function appendOutput(text, cls) {
+  if (!text) return;
+  const stick = atBottom();                                  // do not yank the view
+  if (outEl.querySelector('.empty')) outEl.innerHTML = '';    // down if the user
+  const span = document.createElement('span');               // scrolled up to read
   span.textContent = text;
-  if (isCmdline) { span.className = 'cmdline'; span.style.color = '#67e8f9'; }
+  if (cls) span.className = cls;
   outEl.appendChild(span);
-  outEl.scrollTop = outEl.scrollHeight;
+  if (stick) outEl.scrollTop = outEl.scrollHeight;
 }
 
 async function run(key, label) {
@@ -379,6 +442,7 @@ async function run(key, label) {
   const inp = document.querySelector('input[data-for="' + key + '"]');
   const extra = inp ? inp.value : '';
   outEl.innerHTML = '';
+  cursor = 0;
   titleEl.textContent = label;
   setStatus('run', 'running…');
   killBtn.style.display = 'inline-block';
@@ -386,31 +450,42 @@ async function run(key, label) {
   try {
     const r = await fetch('/run', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ key, extra }) });
-    const data = await r.json();
-    id = data.id;
+    const raw = await r.text();
+    let data;
+    try { data = JSON.parse(raw); }
+    catch (_) { throw new Error('HTTP ' + r.status + ': ' + (raw.slice(0, 400) || 'no response body')); }
     if (data.error) throw new Error(data.error);
+    if (!data.id) throw new Error('server returned no run id');
+    id = data.id;
+    if (data.display) appendOutput('$ ' + data.display + String.fromCharCode(10) + String.fromCharCode(10), 'cmdline');
   } catch (e) {
     setStatus('fail', 'error'); titleEl.textContent = label + ' — start failed';
-    appendOutput('ERROR: ' + e.message); currentId = null; killBtn.style.display='none'; return;
+    appendOutput('ERROR: ' + e.message + String.fromCharCode(10), 'err');
+    currentId = null; killBtn.style.display='none'; return;
   }
   currentId = id;
   clearInterval(pollTimer);
+  poll(id, label);
   pollTimer = setInterval(() => poll(id, label), 700);
 }
 
 async function poll(id, label) {
+  if (id !== currentId) return;                 // a stale timer from a prior run
   try {
-    const r = await fetch('/poll/' + id);
+    const r = await fetch('/poll/' + id + '?since=' + cursor);
     const s = await r.json();
-    appendOutput(s.output);
+    if (id !== currentId) return;
+    if (s.truncated) appendOutput('[earlier output trimmed]' + String.fromCharCode(10), 'err');
+    appendOutput(s.output);                     // delta only - never the whole buffer
+    if (typeof s.next === 'number') cursor = s.next;
     if (!s.running) {
       clearInterval(pollTimer); pollTimer = null; currentId = null;
       killBtn.style.display = 'none';
-      titleEl.textContent = label + ' — exit ' + (s.exit === 0 ? '0 (passed)' : s.exit);
-      setStatus(s.exit === 0 ? 'ok' : 'fail', s.exit === 0 ? 'ok' : 'failed');
-      outEl.scrollTop = outEl.scrollHeight;
+      const code = s.exit;
+      titleEl.textContent = label + ' — exit ' + (code === 0 ? '0 (passed)' : code);
+      setStatus(code === 0 ? 'ok' : 'fail', code === 0 ? 'ok' : 'failed');
     }
-  } catch (e) { /* transient */ }
+  } catch (e) { /* transient - the next tick retries */ }
 }
 
 function killCurrent(silent) {
@@ -468,10 +543,16 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/" or self.path.startswith("/index.html"):
             self._send(200, HTML.encode("utf-8"), "text/html; charset=utf-8")
         elif self.path.startswith("/poll/"):
-            rid = self.path.split("/")[-1]
-            s = run_state(rid)
+            path, _, query = self.path.partition("?")
+            rid = path.split("/")[-1]
+            try:
+                since = int(parse_qs(query).get("since", ["0"])[0])
+            except ValueError:
+                since = 0
+            s = run_state(rid, since)
             if s is None:
-                self._json(404, {"error": "unknown run", "running": False, "output": ""})
+                self._json(404, {"error": "unknown run", "running": False,
+                                 "output": "", "next": since})
             else:
                 self._json(200, s)
         else:
@@ -483,9 +564,17 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             try:
                 rid = start_run(body.get("key", ""), body.get("extra", ""))
-                self._json(200, {"id": rid})
+                st = run_state(rid)
+                self._json(200, {"id": rid, "display": st["display"] if st else ""})
             except KeyError as e:
-                self._json(400, {"error": str(e)})
+                self._json(400, {"error": "unknown command: %s" % e})
+            except LaunchError as e:
+                # Missing gh / pwsh / gmake lands here. Without this the
+                # exception escaped the handler, the socket was closed, and the
+                # page showed a JSON parse error instead of the real reason.
+                self._json(200, {"error": str(e)})
+            except Exception as e:
+                self._json(200, {"error": "%s: %s" % (type(e).__name__, e)})
         elif self.path.startswith("/stop/"):
             rid = self.path.split("/")[-1]
             ok = stop_run(rid)

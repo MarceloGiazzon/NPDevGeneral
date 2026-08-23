@@ -11,3 +11,11 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_monitor_clone.py (20 tests -- port reservation, datasource-sharing safety refusal, clone/remove round trip, CLI wiring)"
+  asserts: >-
+    npdev monitor clone provisions an isolated app instance on its own reserved port, refuses to
+    clone an app whose datasource would be shared with the original (unsafe), and clone/remove is a
+    clean round trip that releases the reserved port.
+  provenRed: true

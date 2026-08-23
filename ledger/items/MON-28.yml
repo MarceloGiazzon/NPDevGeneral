@@ -11,3 +11,11 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_package_upgrade.py (13 tests -- RunPackageUnitTest + RunUpgradeUnitTest)"
+  asserts: >-
+    npdev package bundles a runnable jar plus a manifest (java version, redacted DB summary) with no
+    source/data/logs/real secrets shipped; npdev upgrade does an in-place upgrade that preserves
+    data/logs/secrets byte-for-byte and refuses a running target without --force.
+  provenRed: true

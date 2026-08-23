@@ -11,3 +11,13 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_pack_verify.py (classes PackSchemaShallowCheckUnitTest, VerifyPackModelUnitTest, VerifyPackStandaloneUnitTest -- 24 tests)"
+  asserts: >-
+    npdev pack verify (run_pack_verify / _verify_pack_standalone / _verify_pack_model) reports a
+    conforming pack.json as passing and a malformed one (bad identifier pattern, wrong dsl version
+    const, unexpected top-level property, digest mismatch) as refused with a named reason, and
+    shares its signature classification with the same code path pack add/update already use rather
+    than inventing a second notion of pack validity.
+  provenRed: true

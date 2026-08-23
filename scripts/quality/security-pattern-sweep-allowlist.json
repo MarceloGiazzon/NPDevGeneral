@@ -11,6 +11,26 @@
     "their full reasoning inline in \"why\"."
   ],
   "cleared": {
+    "028894b4023d": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:717",
+      "why": "Not SQL at all -- the matched text is inside an UnsupportedOperationException message string (MySqlReturningStrategy.inlineClause throws because MySQL has no inline RETURNING clause), never sent to a connection."
+    },
+    "a8d860523008": {
+      "rule": "read-without-tenant-predicate",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java:728",
+      "why": "SELECT LAST_INSERT_ID() with no FROM clause and no arguments -- MySQL's connection-scoped generated-key read-back, reading state private to the current session, not a table. Cannot cross a tenant boundary because there is no row set to filter. Zero RETURNING call sites exist in this codebase today (NPDev's entity keys are client-assigned UUIDs) per the method's own comment."
+    },
+    "8dafba89ea4e": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MissingTableCreationPass.java:87",
+      "why": "tableName/columnDefs come from NpdevInternalTables.all() (a fixed platform-defined list of 17 internal tables) or from DesiredSchemaFactory.fromManifest(manifest) (business tables derived from the compiled model at generation/trial-setup time) -- never from an HTTP request or other runtime caller input. Same trust boundary as the rest of schema-realization DDL (SchemaLifecycleExecutor, ConversionHookEmitter, etc.), which already accounts for 254 of this rule's 255 cleared hits."
+    },
+    "8d12b79aa4e3": {
+      "rule": "unbounded-caller-input",
+      "where": "NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java:2520",
+      "why": "tenantId here is the resolved tenant identifier from the runtime's own auth/tenant-context layer (RuntimeContextService), not raw caller text -- an author-declared identifier, matching the established REG-36 pattern for tenant/capability/operation binds elsewhere in this file."
+    },
     "005d6a4b2834": {
       "rule": "A3",
       "where": "NPDevRuntimeHost/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java:147",

@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.finalexec.boundary.BoundaryBootException;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -89,7 +90,7 @@ class SchemaLifecycleExecutorMigrationClaimTest {
         String previousWait = System.getProperty("npdev.schema.lock.waitSeconds");
         System.setProperty("npdev.schema.lock.waitSeconds", "1");
         try {
-            IllegalStateException exception = assertThrows(IllegalStateException.class,
+            BoundaryBootException exception = assertThrows(BoundaryBootException.class,
                     () -> executor.migrate(flyway, manifest));
             // It WAITED (and said so) rather than refusing on sight, and it named the holder.
             assertTrue(exception.getMessage().contains("timed out after"), exception.getMessage());
@@ -213,7 +214,7 @@ class SchemaLifecycleExecutorMigrationClaimTest {
                 "", "", Map.of(), Map.of(), Map.of(), Map.of());
         Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
+        BoundaryBootException exception = assertThrows(BoundaryBootException.class,
                 () -> executor.migrate(flyway, manifestBuildN));
         assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
 

@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_build_phase_incremental.py#BuildPhaseIncrementalTest (4 tests)"
+  asserts: >-
+    _build_phase now defaults to an incremental build -x test (no clean, no --no-daemon) that falls
+    back to a clean build automatically -- and only once -- on failure, while a caller who still
+    passes clean=True (run_app's one-shot generate/build/boot path) sees the exact original command
+    byte-for-byte, unchanged and never retried a second time.
+  provenRed: true

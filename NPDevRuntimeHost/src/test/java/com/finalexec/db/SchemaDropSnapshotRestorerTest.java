@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.finalexec.boundary.BoundaryBootException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -143,7 +144,7 @@ class SchemaDropSnapshotRestorerTest {
         snapshotNow();
         dropLiveTableEntirely();
 
-        IllegalStateException exception = assertThrows(IllegalStateException.class,
+        BoundaryBootException exception = assertThrows(BoundaryBootException.class,
                 () -> SchemaDropSnapshotRestorer.apply(dataSource, snapshotDir.getFileName().toString(), TABLE));
         assertTrue(exception.getMessage().contains("does not exist"), exception.getMessage());
         assertTrue(exception.getMessage().contains("boot the app normally"), exception.getMessage());

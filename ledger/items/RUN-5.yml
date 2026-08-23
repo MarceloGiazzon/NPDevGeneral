@@ -24,3 +24,13 @@ detail: |
   CelInvariantEngine, IdentityRoleLookup, FileOrphanSweeper, scheduling, value coercion, etc.) with
   no actual CEL library dependency. New name `runtime-support` matches the existing Java package
   `com.npdev.runtime.support` where most classes already lived.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/CelInvariantEngineTest.java (21 tests)
+  asserts: >-
+    the renamed module (directory NPDevKernel/adapters/runtime-support, package
+    com.npdev.runtime.support) builds and its CelInvariantEngine class -- the one explicitly named
+    in the rename's resolution -- passes its full test suite at the new path; a repo-wide grep of
+    every *.gradle file for the old expression-cel/com.npdev.adapters.expression.cel names finds
+    zero remaining references.
+  provenRed: false

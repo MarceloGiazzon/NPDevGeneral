@@ -6,6 +6,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,6 +18,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 class Stage12UiModelRuntimeIT extends AbstractScenarioIntegrationTest {
     private static final String API_KEY = "dev-key";
+
+    // See AbstractScenarioIntegrationTest's comment on why this is set per-subclass rather than as a
+    // shared default. This test only reads model metadata, but stays consistent with every other
+    // subclass here rather than relying on the app's own "in-memory" default by omission.
+    @DynamicPropertySource
+    static void registerStorageMode(DynamicPropertyRegistry registry) {
+        registry.add("npdev.storage.mode", () -> "jdbc");
+    }
 
     @Autowired
     private MockMvc mockMvc;
@@ -37,10 +47,11 @@ class Stage12UiModelRuntimeIT extends AbstractScenarioIntegrationTest {
         JsonNode concepts = root.path("concepts");
         assertThat(concepts.isArray()).isTrue();
         assertThat(concepts).hasSizeGreaterThanOrEqualTo(2);
-        // REG-172: this CI step boots whichever sample -SampleIds names (superuser-admin-console
-        // since 9af8cd7c), not canonical-demo -- assert against that sample's real concepts.
-        assertThat(findConcept(concepts, "Project")).isNotNull();
-        assertThat(findConcept(concepts, "Note")).isNotNull();
+        // REG-172's own comment here named superuser-admin-console's concepts (Project/Note), but
+        // this class runs against canonical-demo (AbstractScenarioIntegrationTest's shared context,
+        // @ActiveProfiles({"test","postgres"})) -- assert against ITS real concepts instead.
+        assertThat(findConcept(concepts, "Patient")).isNotNull();
+        assertThat(findConcept(concepts, "Provider")).isNotNull();
 
         int fieldsWithUi = countFieldsWithUiMetadata(concepts);
         assertThat(fieldsWithUi).isGreaterThanOrEqualTo(6);

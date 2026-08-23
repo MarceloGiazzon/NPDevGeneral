@@ -308,6 +308,16 @@ tasks.named('compileJava') {
 // TOGETHER, so deleting both keeps that rule's sibling-group check trivially satisfied (both absent).
 def modelSpecificGeneratedAppTests = [
         'com/finalexec/AsyncWaitResumeE2EIT.java',
+        // QUAL-5 (2026-08-20) added these 4 to generatedRuntimeIntegrationTestSources below (they
+        // import com.npdev.generated.entities.{Patient,Provider,Appointment,InsuranceClaim}, which
+        // only canonical-demo declares) but never added them here, their twin exclusion list -- so
+        // they still compiled as part of the plain `test` task for every OTHER assembled sample and
+        // failed with "cannot find symbol" (e.g. InsuranceClaim) the moment that sample lacked the
+        // canonical-demo-only concepts. Measured against the assembled simple-contact-intake sample.
+        'com/finalexec/CanonicalDemoBusinessE2EIT.java',
+        'com/finalexec/InvariantApiIntegrationTest.java',
+        'com/finalexec/Step01MultiConceptIntegrationTest.java',
+        'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
         'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         // REG-163: NonDefaultRuntimeSurfaceProfileIntegrationTest REVIVED 2026-08-15 -- the compile-

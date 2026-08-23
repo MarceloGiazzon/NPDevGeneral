@@ -34,7 +34,8 @@ class RuntimeHealthIndicatorsTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
         SchedulerRuntimeState runtimeState = new SchedulerRuntimeState();
         runtimeState.markSuccess(System.currentTimeMillis());
@@ -61,7 +62,8 @@ class RuntimeHealthIndicatorsTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
 
         NpdevDbHealthIndicator indicator = new NpdevDbHealthIndicator(settings, null);
@@ -86,7 +88,8 @@ class RuntimeHealthIndicatorsTest {
                 30,
                 10,
                 4096,
-                null
+                null,
+                true
         );
 
         EventStore store = new EventStore() {

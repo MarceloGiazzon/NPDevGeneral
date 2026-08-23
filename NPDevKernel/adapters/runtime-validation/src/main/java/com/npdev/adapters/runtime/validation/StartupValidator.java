@@ -400,30 +400,39 @@ public final class StartupValidator implements InitializingBean {
                     }
                 }
             }
-            boolean flywayHistoryExists;
-            // "the current schema" is itself dialect-bound: CURRENT_SCHEMA() here, DATABASE() on
-            // MySQL, SCHEMA_NAME() on SQL Server -- so the whole statement comes from the dialect.
-            try (PreparedStatement statement = connection.prepareStatement(
-                    SqlDialects.active().tableExistsInCurrentSchemaSql("flyway_schema_history")
-            )) {
-                try (ResultSet rs = statement.executeQuery()) {
-                    rs.next();
-                    flywayHistoryExists = rs.getInt(1) > 0;
+            if (settings.flywayHistoryCheckRequired()) {
+                boolean flywayHistoryExists;
+                // "the current schema" is itself dialect-bound: CURRENT_SCHEMA() here, DATABASE() on
+                // MySQL, SCHEMA_NAME() on SQL Server -- so the whole statement comes from the dialect.
+                try (PreparedStatement statement = connection.prepareStatement(
+                        SqlDialects.active().tableExistsInCurrentSchemaSql("flyway_schema_history")
+                )) {
+                    try (ResultSet rs = statement.executeQuery()) {
+                        rs.next();
+                        flywayHistoryExists = rs.getInt(1) > 0;
+                    }
                 }
-            }
-            if (!flywayHistoryExists) {
-                throw configError("Flyway schema history table not found in current schema", POSTGRES_ANCHOR);
-            }
-            try (PreparedStatement applied = connection.prepareStatement(
-                    "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE"
-            )) {
-                try (ResultSet rs = applied.executeQuery()) {
-                    rs.next();
-                    if (rs.getInt(1) <= 0) {
-                        throw configError("Flyway has no successful migrations in schema history", POSTGRES_ANCHOR);
+                if (!flywayHistoryExists) {
+                    throw configError("Flyway schema history table not found in current schema", POSTGRES_ANCHOR);
+                }
+                try (PreparedStatement applied = connection.prepareStatement(
+                        "SELECT COUNT(*) FROM flyway_schema_history WHERE success = TRUE"
+                )) {
+                    try (ResultSet rs = applied.executeQuery()) {
+                        rs.next();
+                        if (rs.getInt(1) <= 0) {
+                            throw configError("Flyway has no successful migrations in schema history", POSTGRES_ANCHOR);
+                        }
                     }
                 }
             }
+            // else: npdev.trial.flyway-history-check-required=false -- a profile has intentionally
+            // substituted a schema-lifecycle-managed database (schemaLifecycle.strategy=Ephemeral,
+            // e.g. an InMemory-declared db.definition.json forced into Postgres mode for testing) in
+            // place of one Flyway actually migrates. SchemaLifecycleExecutor, not Flyway, is the real
+            // mechanism realizing this schema, so flyway_schema_history staying empty is expected, not
+            // a sign the schema is missing -- same reasoning as npdev.trial.database-override skipping
+            // DatabaseIdentityStartupValidator's identity check for the same class of substitution.
         } catch (IllegalStateException ex) {
             throw ex;
         } catch (Exception ex) {

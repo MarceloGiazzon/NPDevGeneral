@@ -1,0 +1,10 @@
+{
+  "schemaVersion" : "npdev-lock.v1",
+  "packs" : {
+    "clinicext" : {
+      "resolvedVersion" : "1.0.0",
+      "digest" : "sha256:83a1e23c15045ee80673870fae9c34fe2ef705cf0bd8050d10b9ed6849e5f10a",
+      "sourcePath" : "packs/clinicext/pack.json"
+    }
+  }
+}

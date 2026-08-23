@@ -11,3 +11,12 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: "NPDevCli/tests/test_pack_publish_push.py (classes PushImmutabilityUnitTest, PackPublishPushRoundTripTest -- 6 tests)"
+  asserts: >-
+    npdev pack publish --push commits a verified pack + regenerated catalog-index.json to a real
+    git catalog repo (proven against a throwaway bare remote) such that a fresh clone can consume
+    it by name via pack add --from-catalog, and republishing a mutation of an already-published
+    version is refused locally with the remote left untouched.
+  provenRed: true

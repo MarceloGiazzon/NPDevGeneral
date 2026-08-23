@@ -118,7 +118,7 @@ public final class SchemaDropSnapshotRestorer {
      * (same id, different content) -- those are reported in the result, exactly as {@link #preview}
      * reported them, and are left for the operator to resolve by hand.
      *
-     * @throws IllegalStateException if the target table does not exist live -- restore is DATA-only,
+     * @throws BoundaryBootException if the target table does not exist live -- restore is DATA-only,
      *                                never schema; boot the app normally first so the table exists.
      */
     public static RestoreResult apply(DataSource dataSource, String snapshot, String table) {
@@ -130,8 +130,8 @@ public final class SchemaDropSnapshotRestorer {
             if (!tableExistsLive(connection, table)) {
                 // B9 (snapshot restore): bulk restore refused -- target table must exist first.
                 throw new BoundaryBootException(new BoundaryViolation("B9", "restore",
-                        "Snapshot restore refused: table '" + table + "' does not exist in the live database. "
-                                + "Boot the app normally first so its schema is created, then restore.",
+                        "Snapshot restore refused: table '" + table + "' does not exist in the live database; "
+                                + "boot the app normally first so its schema is created, then restore.",
                         Instant.now()));
             }
             for (Map<String, Object> row : snapshotRows) {

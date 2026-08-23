@@ -56,6 +56,14 @@ class AsyncWaitResumeE2EIT extends AbstractScenarioIntegrationTest {
     @MockitoBean
     private WorkspaceMenuSeeder workspaceMenuSeeder;
 
+    // Deliberately does NOT set npdev.storage.mode (unlike most of this base class's other
+    // subclasses, which each set it to "jdbc" in their own @DynamicPropertySource method -- see
+    // AbstractScenarioIntegrationTest's comment for why that decision lives per-subclass rather than
+    // as a shared default with a carve-out). This test swaps npdev.compiled-model.path (below) to a
+    // narrow async-wait-resume-only fixture whose "User" concept was never part of canonical-demo's
+    // own generated schema -- no "users" table exists under "jdbc" mode for it to write to. Leaving
+    // this property unset keeps the app's own baked-in "in-memory" default, which is what this
+    // fixture actually needs.
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registry.add("npdev.compiled-model.path", AsyncWaitResumeE2EIT::compiledModelPath);

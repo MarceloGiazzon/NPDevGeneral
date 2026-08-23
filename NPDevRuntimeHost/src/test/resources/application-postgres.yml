@@ -1,4 +1,21 @@
 spring:
+  # ROUND2_PLAN.md R1c's exact bug (see application-step0.yml's identical fix): a model that
+  # resolves to the InMemory engine bakes
+  # spring.autoconfigure.exclude=...DataSourceAutoConfiguration,HibernateJpaAutoConfiguration,
+  # JpaRepositoriesAutoConfiguration,FlywayAutoConfiguration into application-npdev-db.properties
+  # (SchemaRealizationEmitter), loaded unconditionally via spring.config.import. This profile forces
+  # a REAL Postgres testcontainer below regardless of the model's own resolved engine.
+  #
+  # The `exclude: []` right below looks like it clears that, and it does NOT: spring.config.import
+  # gives the IMPORTED file higher precedence than the profile document that declares the import, so
+  # application-npdev-db.properties's exclusion always wins over this YAML-level attempt -- confirmed
+  # live (canonical-demo's Postgres integration tests failed at StartupValidator with "DataSource bean
+  # is required when mode=postgres" with this line in place, unchanged). The line is kept because
+  # removing it would look like restoring the exclusion; the REAL fix, which does work, is
+  # AbstractScenarioIntegrationTest's own @DynamicPropertySource entry for the same property --
+  # dynamic properties sit ahead of an imported document in the environment's precedence order.
+  autoconfigure:
+    exclude: []
   datasource:
     url: jdbc:tc:postgresql:15:///npdev_test?TC_REUSABLE=true
     username: test
@@ -19,6 +36,12 @@ npdev:
     enabled: true
   scheduler:
     enabled: false
+  # canonical-demo's own db.definition.json declares engine: InMemory + schemaLifecycle.strategy:
+  # Ephemeral (deliberately, so it boots without Docker for a local trial) -- this profile forces a
+  # REAL Postgres container instead, but the model's schema still gets created by
+  # SchemaLifecycleExecutor, not classic Flyway .sql migrations, so flyway_schema_history stays
+  # legitimately empty. StartupValidator's Flyway-history check assumes classic Flyway everywhere;
+  # tell it not to, the same way trial.database-override below tells the identity check not to.
   # REG-2 / IT-EXTPG-1 (2026-07-21): this profile substitutes a Testcontainers-managed
   # Postgres (jdbc:tc:postgresql, whose database is ALWAYS the container default name
   # 'test') for whatever db.definition.json resolved for the real app (e.g.
@@ -34,3 +57,11 @@ npdev:
   # can change and reads as a real identity when it is not one.
   trial:
     database-override: true
+    flyway-history-check-required: false
+    # canonical-demo's db.definition.json declares engine: InMemory, so its schema-realization
+    # manifest bakes physicalDatabase: false -- SchemaLifecycleExecutor's Row 16 guard correctly
+    # no-ops entirely for a real InMemory app, but this profile forces a real Postgres testcontainer
+    # on top of that same InMemory-declared model, so the guard's premise no longer holds here. This
+    # tells the executor to actually run schema realization anyway (business AND internal npdev_*
+    # tables), matching the executor's own row-18 override test.
+    force-physical-schema: true

@@ -11,3 +11,10 @@ detail: |
   Implemented as part of the roadmap closeout plan (Wave 2/3). See the roadmap item for full specification.
 resolution: |
   Implemented 2026-08-21 during the roadmap closeout session.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ResponsiveShellGridFormWorkbenchTest.java#businessUiStyleHasMobileRules
+  asserts: >-
+    business-ui-style.mustache carries real responsive rules: the grid collapses to cards, forms
+    stack single-column, and touch targets grow at the 768px breakpoint.
+  provenRed: true

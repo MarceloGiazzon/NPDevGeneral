@@ -15,7 +15,8 @@ public record RuntimeSettings(
         int circuitOpenSeconds,
         int bulkheadMaxConcurrentDefault,
         int idempotencyMaxBytes,
-        String capabilityPolicyOverridesJson
+        String capabilityPolicyOverridesJson,
+        boolean flywayHistoryCheckRequired
 ) {
     private static final String DEFAULT_MODE = "inproc";
 

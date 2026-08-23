@@ -117,8 +117,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 + deletedAtFilter(shape);
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, bindable(statement, coerceId(id)));
-            statement.setObject(2, bindable(statement, tenantId));
+            bindObject(statement, 1, coerceId(id));
+            bindObject(statement, 2, tenantId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -149,8 +149,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 "*", sqlId(shape.tableName()), sqlId(shape.idColumn()) + " = ? AND tenant_id = ?" + deletedAtFilter(shape));
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, bindable(statement, coerceId(id)));
-            statement.setObject(2, bindable(statement, tenantId));
+            bindObject(statement, 1, coerceId(id));
+            bindObject(statement, 2, tenantId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -171,7 +171,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 + " ORDER BY " + sqlId(shape.idColumn());
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, bindable(statement, tenantId));
+            bindObject(statement, 1, tenantId);
             try (ResultSet resultSet = statement.executeQuery()) {
                 List<ConceptRecord> out = new ArrayList<>();
                 while (resultSet.next()) {
@@ -202,7 +202,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int nextIndex = 1;
-            statement.setObject(nextIndex++, bindable(statement, tenantId));
+            bindObject(statement, nextIndex++, tenantId);
             for (int pageValue : dialect.limitOffset().values(maxRows + 1, 0)) {
                 statement.setInt(nextIndex++, pageValue);
             }
@@ -876,7 +876,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private int bindParams(PreparedStatement statement, List<Object> params, int startIndex) throws SQLException {
         int index = startIndex;
         for (Object param : params) {
-            statement.setObject(index++, bindable(statement, param));
+            bindObject(statement, index++, param);
         }
         return index;
     }
@@ -927,8 +927,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             try (PreparedStatement statement = connection.prepareStatement(step.sql())) {
                 int index = 1;
                 for (String column : step.bindColumns()) {
-                    statement.setObject(index++, bindable(statement,
-                            coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column))));
+                    bindObject(statement, index++,
+                            coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
                 }
                 if (statement.executeUpdate() > 0) {
                     break;
@@ -969,12 +969,12 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
             for (String column : columnNames) {
-                statement.setObject(index++, bindable(statement, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column))));
+                bindObject(statement, index++, coerceValue(column, dbRecord.get(column), shape.dslTypeByColumn().get(column)));
             }
-            statement.setObject(index++, bindable(statement, newVersion));
-            statement.setObject(index++, bindable(statement, coerceId(record.id())));
-            statement.setObject(index++, bindable(statement, record.tenantId()));
-            statement.setObject(index, bindable(statement, record.rowVersion()));
+            bindObject(statement, index++, newVersion);
+            bindObject(statement, index++, coerceId(record.id()));
+            bindObject(statement, index++, record.tenantId());
+            bindObject(statement, index, record.rowVersion());
             int affected = statement.executeUpdate();
             if (affected == 0) {
                 Optional<ConceptRecord> current = findById(record.tenantId(), record.conceptName(), record.id());
@@ -987,8 +987,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private Optional<Long> currentRowVersion(Connection connection, ConceptShape shape, ConceptRecord record) throws SQLException {
         String sql = "SELECT row_version FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, bindable(statement, coerceId(record.id())));
-            statement.setObject(2, bindable(statement, record.tenantId()));
+            bindObject(statement, 1, coerceId(record.id()));
+            bindObject(statement, 2, record.tenantId());
             try (ResultSet resultSet = statement.executeQuery()) {
                 if (!resultSet.next()) {
                     return Optional.empty();
@@ -1015,9 +1015,9 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                     + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND deleted_at IS NULL";
             Connection connection = openConnection();
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                statement.setObject(1, bindable(statement, java.sql.Timestamp.from(java.time.Instant.now())));
-                statement.setObject(2, bindable(statement, coerceId(id)));
-                statement.setObject(3, bindable(statement, tenantId));
+                bindObject(statement, 1, java.sql.Timestamp.from(java.time.Instant.now()));
+                bindObject(statement, 2, coerceId(id));
+                bindObject(statement, 3, tenantId);
                 statement.executeUpdate();
             } catch (SQLException exception) {
                 throw new IllegalStateException("Failed soft-deleting concept " + conceptName + " from JDBC store", exception);
@@ -1029,8 +1029,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
         String sql = "DELETE FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, bindable(statement, coerceId(id)));
-            statement.setObject(2, bindable(statement, tenantId));
+            bindObject(statement, 1, coerceId(id));
+            bindObject(statement, 2, tenantId);
             statement.executeUpdate();
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed deleting concept " + conceptName + " from JDBC store", exception);
@@ -1060,8 +1060,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
                 + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND deleted_at IS NOT NULL";
         Connection connection = openConnection();
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, bindable(statement, coerceId(id)));
-            statement.setObject(2, bindable(statement, tenantId));
+            bindObject(statement, 1, coerceId(id));
+            bindObject(statement, 2, tenantId);
             return statement.executeUpdate() > 0;
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed restoring concept " + conceptName + " in JDBC store", exception);
@@ -1275,7 +1275,8 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     }
 
     /**
-     * The last step before {@code setObject}: let the connection's dialect shape the value.
+     * The last step before {@code setObject}: let the connection's dialect shape the value, then bind
+     * it at {@code index}.
      *
      * <p>Every bind in this class goes through here. Before STOR-10 they went straight to
      * {@code setObject}, which is correct on the two engines this store was written
@@ -1287,9 +1288,20 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
      * <p>Resolving the dialect from the statement's own
      * connection (rather than {@code SqlDialects.active()}) keeps cross-engine promotion correct,
      * which is the same reason {@code buildUpsertSql} is connection-driven.
+     *
+     * <p>A dialect that needs the 3-arg {@code setObject(index, value, sqlType)} form (Postgres, for
+     * a json/jsonb column -- see {@code PostgresDialect#bindableValue}) returns a
+     * {@link com.npdev.kernel.storage.sql.TypedBindValue} instead of the plain shaped value; every
+     * other dialect keeps returning the value directly, unwrapped by the 2-arg branch below exactly
+     * as before this method also took over the actual {@code setObject} call.
      */
-    private static Object bindable(PreparedStatement statement, Object value) throws SQLException {
-        return SqlDialects.forConnection(statement.getConnection()).bindableValue(value);
+    private static void bindObject(PreparedStatement statement, int index, Object value) throws SQLException {
+        Object shaped = SqlDialects.forConnection(statement.getConnection()).bindableValue(value);
+        if (shaped instanceof com.npdev.kernel.storage.sql.TypedBindValue typed) {
+            statement.setObject(index, typed.value(), typed.sqlType());
+        } else {
+            statement.setObject(index, shaped);
+        }
     }
 
     /**
