@@ -65,3 +65,8 @@ detail: |
   `CrossDocking` row in the actual generated business UI (real browser click, not simulated) now
   correctly transitions `situacao` from `Ativo` to `Concluido`, confirmed both by the panel's
   reloaded table and by the full server response rendered in its "last action result" debug block.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiled/CompiledPluginRequirementGraphBuilderTest.java#collectsCapabilityRequirementsFromProcedureStepsToo
+  asserts: the plugin-mount/requirement-discovery pipeline collects capabilityCall requirements from procedure steps too, not just flow steps, so a procedure-only capability gets mounted.
+  provenRed: true

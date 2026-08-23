@@ -1,0 +1,28 @@
+id: RUN-29
+title: >-
+  R5.6 localizable labels resolve in the kernel but nothing upstream of ExecutionContext ever sets a
+  locale, and RuntimeHost still reads labels as raw strings
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-23
+source: 2026-08-23 platform audit, from BREAKING.md's own R5.6 entry.
+surface: runtimehost/ui-metadata, kernel/i18n
+detail: |
+  All 13 label sites accept a per-locale object, the four-place chain (JsonModelParser ->
+  ModelCompiler -> ModelResolver -> canonical JSON) carries it, and com.npdev.kernel.i18n.
+  LabelResolver implements the resolution order. ExecutionContext.locale() exists, reading the
+  generic tags map's "locale" key.
+
+  Nothing writes that key. There is no JWT claim, no Accept-Language header path, no session field --
+  confirmed by inspection of JwtAuthenticatedContextResolver and the RuntimeContextService mustache
+  template. And RuntimeUiMetadataController / RuntimeMetadataService / PanelRuntime read labels as
+  raw strings off the generically-parsed compiled-metadata JSON tree, so even a populated locale
+  would not reach a rendered label.
+
+  So the feature is authorable and inert. A model can declare pt-BR labels today and no user will
+  ever see one.
+
+  Done when: an Accept-Language header (or an explicit X-Tag-locale) reaches
+  ExecutionContext.withTag("locale", ...), the UI-metadata bundle builder calls LabelResolver, and a
+  running app serves a different label for two different Accept-Language values.

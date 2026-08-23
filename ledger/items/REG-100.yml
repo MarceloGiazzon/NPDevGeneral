@@ -112,3 +112,8 @@ detail: |
     names (`tipo`), so nothing broke.
 
   Left open for a future pass, not attempted here: the `runtime-support` audit named above.
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/procedures/DefaultProcedureExecutorRefUnresolvableTest.java#patchConceptSetWithATypoRefFailsInsteadOfWritingNull
+  asserts: a typo'd patchConcept.set ref fails with REF_UNRESOLVABLE instead of silently writing null (X0-6's fix).
+  provenRed: true

@@ -73,3 +73,8 @@ detail: |
   (`WidgetOrderAggregate.lines.notes`, a new `WidgetOrderLineNote` concept), Gradle-validated (0
   errors, 0 warnings) -- the standing add-a-feature rule, and closes a named zero-coverage gap in
   the real corpus (as opposed to a hand-rolled test fixture).
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/AggregateRuntimeCommitTransactionalTest.java#atomicCommitRollsBackEveryPriorWriteWhenTransactionManagerIsWired
+  asserts: with a transaction manager wired, a failure partway through AggregateRuntime.commit's N+1 writes rolls back every prior write instead of leaving a half-written aggregate.
+  provenRed: true

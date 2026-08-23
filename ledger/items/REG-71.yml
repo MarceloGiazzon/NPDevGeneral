@@ -54,3 +54,8 @@ detail: |
   constructed data map (Bug 2). Verified live: `InventarioHistoricoPanel.confirmar` and
   `ConferenciaFiscalNfePanel.cancelar` both return `status: "OK"` with a real gateway trace showing
   the correct lifecycle transition and every other field preserved from the fresh row read.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeRowScopedActionTest.java#rowScopedConceptMutationMergesFreshRowDataInsteadOfBlankingFields
+  asserts: a row-scoped conceptMutation action merges fresh row data (including "id") with caller overrides instead of blanking every other required field to null.
+  provenRed: true

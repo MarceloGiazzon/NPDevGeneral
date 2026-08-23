@@ -54,3 +54,8 @@ detail: |
   rule. With the fix, all 5 pass. Then proven end to end: the model that produced the error above
   now generates, builds, boots, and the created InventarioArquivo row was confirmed at the data
   layer via REST.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/ProcedurePatchConceptCreateIfMissingValidationTest.java#createIfMissingWithNoIdIsAccepted
+  asserts: patchConcept's author-time "id is required" rule is relaxed for createIfMissing, so a model omitting id on a createIfMissing patch validates clean instead of being unreachable.
+  provenRed: true

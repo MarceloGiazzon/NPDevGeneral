@@ -1,0 +1,32 @@
+id: QUAL-34
+title: Three deferrals recorded only in prose, none citing a tracked ledger id
+type: PROCESS
+severity: LOW
+status: OPEN
+opened: 2026-08-23
+source: 2026-08-23 platform audit. CONTRIBUTING.md says a deferral must cite a tracked id; the
+  checker that enforced that rule was deleted, so these three accumulated with none.
+surface: process/tracking
+detail: |
+  Three separate, unrelated deferrals, filed as one item because they share the same root cause
+  (prose recorded the decision, nothing machine-readable tracks it):
+
+  - D5 -- only 1 of 11 HITTABLE boundaries (see docs/ACCEPTED_BOUNDARIES.md's classification table)
+    carries a machine-readable `boundaryId`. The other ten are enforced by boot refusals or admin
+    REST endpoints outside the ValidationDiagnostic pipeline, so a caller cannot programmatically
+    distinguish a boundary from a bug -- it has to be read as English.
+
+  - D6 -- `beta-release-evidence` and `scale-proof-ladder` report `never-run` in the verification
+    cadence ledger; `betaRelease` last ran 2026-08-17 and failed. Independently reconfirmed
+    2026-08-23 (Wave 3 of this remediation's own fast-gate cadence report): all three still show
+    exactly this state -- `beta-release-evidence (T3): never-run`, `betaRelease (T3): failed-last-run`,
+    `scale-proof-ladder (T3): never-run`.
+
+  - D7 -- `AppGen/apps/**` was never migrated by the DSL-2 label-locale codemod (deliberately
+    skipped as an external non-git directory per source_of_truth_layers, with nothing tracked to
+    remind anyone it is still pending).
+
+  Done when: each of the three either has a tracked follow-up id it can cite (D5's boundary rows
+  gain `boundaryId`s or an id tracks the gap; D6's stale cadence checks are run or their own item
+  tracks why not; D7 gets its own migration item or is explicitly WONTFIX'd), and CONTRIBUTING.md's
+  "cite a tracked id" rule has something real to point at for all three.

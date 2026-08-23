@@ -10,6 +10,8 @@
     "that goes stale unnoticed. Newer entries therefore set \"rule\" to the sweep pattern name and carry",
     "their full reasoning inline in \"why\"."
   ],
+  "frozenCount": 504,
+  "frozenCountWhy": "THE CEILING, set 2026-08-23 at 503, raised to 504 the same day when T4.2's identifier-quoting fix to MissingTableCreationPass.java re-fingerprinted an already-cleared line (fingerprint e8c35c5b0e0e, same trust boundary as 8dafba89ea4e, see its own entry). The sweep's cleared list may SHRINK freely; it may not grow past this number without the number being raised in the same commit, so widening is always a visible, reviewed act. Adding an entry is the last resort -- the first question is whether the pattern can be made unnecessary. Mirrors scripts/policy/markdown-read-exemptions.json's ratchet, which took 37 couplings to 0.",
   "cleared": {
     "028894b4023d": {
       "rule": "read-without-tenant-predicate",
@@ -25,6 +27,11 @@
       "rule": "sql-string-building",
       "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MissingTableCreationPass.java:87",
       "why": "tableName/columnDefs come from NpdevInternalTables.all() (a fixed platform-defined list of 17 internal tables) or from DesiredSchemaFactory.fromManifest(manifest) (business tables derived from the compiled model at generation/trial-setup time) -- never from an HTTP request or other runtime caller input. Same trust boundary as the rest of schema-realization DDL (SchemaLifecycleExecutor, ConversionHookEmitter, etc.), which already accounts for 254 of this rule's 255 cleared hits."
+    },
+    "e8c35c5b0e0e": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MissingTableCreationPass.java:89",
+      "why": "T4.2 (STOR-6, 2026-08-23): same line as fingerprint 8dafba89ea4e, now quoting the table identifier through SqlDialects.active().identifier(tableName) instead of splicing the raw name -- the sweep re-fingerprints on the new text. Identical trust boundary and identical source (tableName is NpdevInternalTables.all() or DesiredSchemaFactory.fromManifest(manifest), never caller input); the dialect call is the FIX for this exact rule's concern (identifier quoting), not a new risk."
     },
     "8d12b79aa4e3": {
       "rule": "unbounded-caller-input",

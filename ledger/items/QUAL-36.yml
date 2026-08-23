@@ -1,0 +1,39 @@
+id: QUAL-36
+title: Two workflows (AI Beta Gate, NPDev Release Gate) have not completed in six days
+type: PROCESS
+severity: LOW
+status: OPEN
+opened: 2026-08-23
+source: >-
+  2026-08-23 platform audit (Wave 5 T5.12/F6). Neither workflow blocks a PR or a push, which is why
+  neither had been looked at.
+surface: ci/workflows
+files:
+  - .github/workflows/ai-beta-gate.yml
+  - .github/workflows/npdev-release-gate.yml
+detail: |
+  Checked both directly via `gh run list` 2026-08-23:
+
+  - **AI Beta Gate** last completed 2026-08-17T16:19:26Z with `conclusion: failure`; every run since
+    (five of them, all `workflow_dispatch`) was `cancelled`. The real failure's log (run
+    32045088383) shows the "Docker/Linux blocking proof" job failing inside
+    `scripts/quality/run-docker-linux-proof.ps1` -- `docker-run-ai-beta-gate` exited 1 after 476s.
+    The report artifact (`docker-linux-parity-report.json`) was uploaded but not inspected here --
+    diagnosing a real Docker-on-Linux-CI failure needs its own session, not a few minutes inside an
+    already-large wave.
+  - **NPDev Release Gate** has no recent completed run at all -- every `workflow_dispatch` attempt
+    since 2026-08-17 was cancelled, and the last REAL conclusion (`failure`) is from 2026-04-28, four
+    months stale; that run's log has since expired (GitHub returns HTTP 410).
+
+  Neither workflow is required by branch protection and neither runs on every push/PR, so a red or
+  cancelled run here has never blocked anything -- which is exactly why both went unnoticed.
+
+  Decision recorded here rather than left implicit: both stay wired and scheduled as-is for now.
+  Fixing the Docker/Linux proof failure needs downloading and reading
+  `docker-linux-parity-report.json` from a real CI run, which needs its own investigation pass;
+  NPDev Release Gate needs a single real `gh workflow run` attempt (not a `workflow_dispatch` that
+  gets immediately cancelled by something else queued) to even produce a current failure to diagnose.
+
+  Done when: AI Beta Gate's Docker/Linux proof either passes or its failure is understood and
+  tracked by its own item, AND NPDev Release Gate has produced one real (not cancelled) run in the
+  current repo state, whatever it reports.

@@ -1,0 +1,32 @@
+id: CLI-1
+title: >-
+  R5.6's label-locale codemod exists and is tested but is wired to no CLI subcommand, so
+  `npdev migrate` cannot run it
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-23
+source: >-
+  2026-08-23 platform audit. BREAKING.md's own R5.6 entry admits it: "not yet wired to a CLI
+  subcommand -- that file is the only one touched here; npdev_cli.py's migrate subparser needs a
+  follow-up commit from whoever owns it."
+surface: cli/migrate
+files:
+  - NPDevCli/dsl_v2_migration.py
+  - NPDevCli/npdev_cli.py
+detail: |
+  `migrate_label_locales(doc, locale)` is implemented at NPDevCli/dsl_v2_migration.py:573, is
+  round-trip verified against a real 18-label model, and is idempotent. The only reference to it
+  anywhere in the repo is its own `def` line.
+
+  `npdev migrate` exposes five subcommands -- legacy-model, dsl-2, rename, db-lifecycle,
+  bounded-contexts. There is no `label-locales`. So the codemod for the 2026-08-19 breaking change
+  cannot be run by the people the breaking change affects.
+
+  This violates the standing convention in CLAUDE.md and README.md: every breaking change to the
+  model DSL ships its `npdev migrate` codemod in the same commit. The codemod was written; only the
+  subparser wiring was skipped.
+
+  Done when: `npdev migrate label-locales <dir> --locale <tag> [--write]` exists, follows the same
+  --write/dry-run convention as `migrate dsl-2` and `migrate rename`, and has a test in
+  NPDevCli/tests/ covering the dry-run/write pair.

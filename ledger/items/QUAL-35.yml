@@ -1,0 +1,34 @@
+id: QUAL-35
+title: >-
+  run-trusted-source-security-check.ps1 writes build litter into repo-root build/, violating the
+  build-output policy
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-23
+source: >-
+  Found during Wave 3 of the 2026-08-23 defect-remediation session, while verifying the generator
+  gate after fixing T3.1-T3.3. Same class of bug T2.1 fixed in run-portable-tooling-check.ps1
+  (Trap 1b), a different script.
+surface: quality/scripts, build-output-policy
+files:
+  - scripts/quality/run-trusted-source-security-check.ps1
+detail: |
+  Line ~195: `$workRoot = Join-Path $root "build/cp10-trusted-source-security"` -- an unconditional
+  repo-root write. A single real generator-gate run left 17 files there, several of them `.java`
+  source fixtures (bytecode-proof/{SafeProcedure,UnsafeBytecodeProcedure,NPDevProcedureContext}.java
+  plus compiled .class files and test-results XML), violating CLAUDE.md's "Build output -> D:\
+  WorkSpace\NPDev\Build. NEVER write generated/build artifacts inside this repo."
+
+  `**/build/` is gitignored, so there is no accidental-commit risk, and this script is called
+  unconditionally by run-generator-gate.ps1 (R4 Part A / QUAL-7), so the litter appears on every
+  green generator-gate run, not just a failing one. Smaller footprint than T2.1's version of this
+  bug (17 files vs. 137) but the same root cause: a script writing straight to a repo-relative
+  `build/` path instead of the resolved external build root.
+
+  Cleaned up by hand during Wave 3 (`rm -rf build`) so it did not carry into later waves' shared
+  build root, but the script itself is unfixed.
+
+  Done when: `$workRoot` resolves through `Get-NPDevBuildRoot`/`$env:NPDEV_BUILD_ROOT` the same way
+  T2.1's fix did for run-portable-tooling-check.ps1, or the script cleans up what it creates in a
+  `finally` block -- either way, a generator-gate run leaves no `build/` directory at the repo root.

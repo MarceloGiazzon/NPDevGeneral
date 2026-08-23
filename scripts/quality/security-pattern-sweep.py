@@ -807,6 +807,35 @@ def load_allowlist(root: Path) -> dict[str, dict]:
     return json.loads(path.read_text(encoding="utf-8")).get("cleared", {})
 
 
+def check_allowlist_ceiling(root: Path) -> list[str]:
+    """T5.10: the cleared list had no ceiling and no re-review cadence, so it could only grow.
+    Same ratchet shape as check-no-markdown-reads.py's frozenCount (5 markdown-linter exemptions,
+    2026-08-11): declared must EQUAL the actual count, so growth requires a visible, reviewed edit
+    to the number in the same commit, and shrinkage must lower the ceiling too, or a later regrowth
+    back up to the old number would pass silently.
+    """
+    path = root / ALLOWLIST
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    declared = data.get("frozenCount")
+    actual = len(data.get("cleared", {}))
+    if declared is None:
+        return ["ALLOWLIST CEILING MISSING: 'frozenCount' is not declared in "
+                f"{ALLOWLIST.as_posix()} -- the ceiling is what stops this list growing without "
+                "review; it must be declared and equal the number of cleared entries."]
+    if actual > declared:
+        return [f"ALLOWLIST CEILING BREACHED: {actual} cleared entries but frozenCount is "
+                f"{declared}. This list may not grow past its ceiling without the ceiling being "
+                f"raised in the same commit -- the first question for a new entry is whether the "
+                f"pattern can be made unnecessary instead."]
+    if actual < declared:
+        return [f"frozenCount is {declared} but only {actual} cleared entr(ies) remain. Lower "
+                f"frozenCount to {actual} in this same commit -- the ceiling ratchets DOWN with the "
+                f"list and must never be left above the real count."]
+    return []
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--root", default=".", help="repo root (default: cwd)")
@@ -826,6 +855,12 @@ def main(argv: list[str]) -> int:
         print("COVERAGE GAP: the sweep is not scanning every module that has main Java:", file=sys.stderr)
         for gap in gaps:
             print(f"  - {gap}", file=sys.stderr)
+        return 2
+
+    ceiling_failures = check_allowlist_ceiling(root)
+    if ceiling_failures:
+        for failure in ceiling_failures:
+            print(failure, file=sys.stderr)
         return 2
 
     if args.self_test:

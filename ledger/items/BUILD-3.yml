@@ -1,0 +1,30 @@
+id: BUILD-3
+title: >-
+  The Windows ci-validation job does not pin NPDEV_BUILD_ROOT, so its build root is a fallback the
+  Linux job does not share
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-23
+source: 2026-08-23 platform audit, found while trying to locate a failing DSL test's XML report.
+surface: ci/windows, build-tooling/root-resolution
+files:
+  - .github/workflows/npdev-ci-validation.yml
+detail: |
+  The linux-maturity-validation job sets `NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build` (line 87)
+  specifically so both resolvers take their first branch and agree structurally rather than by
+  coincidence -- REG-144's whole lesson. The Windows ci-validation job's env block (line 431) sets
+  NPDEV_WORKSPACE, CI and GRADLE_OPTS, but NOT NPDEV_BUILD_ROOT. Re-confirmed against the live file
+  2026-08-23: still true, both line numbers unchanged.
+
+  So on Windows the root falls through to the content-walk fallback and lands at
+  <workspace>/../Build (observed: D:/a/NPDevGeneral/Build while the workspace is
+  D:\a\NPDevGeneral\NPDevGeneral). That is not wrong -- REG-144 made the fallback correct -- but it
+  is a DIFFERENT root from the Linux job's, which is why a diagnostic step written against one
+  path prints nothing on the other. It cost a debugging cycle on 2026-08-23.
+
+  Not fixed immediately because pinning it moves where every Windows CI artifact lands, and several
+  steps glob those paths; the change needs its own verification pass.
+
+  Done when: both jobs pin NPDEV_BUILD_ROOT to the same shape, and every artifact/glob step in the
+  Windows job is confirmed against the new location.

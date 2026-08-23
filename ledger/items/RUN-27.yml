@@ -1,0 +1,28 @@
+id: RUN-27
+title: >-
+  The scheduled-event drain publishes with a fresh correlation id, so a delayed event never
+  satisfies an AWAIT_EVENT declaring matchCorrelation: true
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-23
+source: >-
+  2026-08-23 platform audit, from BREAKING.md's own R2.4 entry ("Known limitation, not introduced
+  here but now more visible").
+surface: kernel/flow-engine, orchestration/scheduled-events
+detail: |
+  The drain ignores the stored `trigger_correlation_id` on the scheduled-event row and publishes
+  with a freshly generated correlation id. An AWAIT_EVENT step declaring `matchCorrelation: true`
+  therefore never matches an event that arrived via a delayed `scheduleEvent`, so a modelled
+  delayed self-wake hangs until its timeout -- silently, with no diagnostic.
+
+  BREAKING.md states the blocker: "fixing it needs tenant propagation the scheduled-event table has
+  no column for." The orchestration-level scheduleEvent action has always behaved this way; R2.4
+  made it visible by removing the publish-now path that masked it.
+
+  Until this is fixed, the honest guidance already in BREAKING.md stands: do not model a delayed
+  self-wake against a correlated await.
+
+  Done when: a delayed scheduleEvent whose row carries a correlation id publishes with THAT id, an
+  AWAIT_EVENT with matchCorrelation: true resumes from it, and a test proves the resume (not just
+  the column).

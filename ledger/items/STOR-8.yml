@@ -69,3 +69,8 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java
   - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionDeclaredConnectionTest.java
   - BREAKING.md
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionDeclaredConnectionTest.java#contradictingJdbcUrlIsRefused
+  asserts: a db.definition.json declaring a jdbcUrl that contradicts the real connection is refused at generation time instead of silently connecting somewhere else.
+  provenRed: true
