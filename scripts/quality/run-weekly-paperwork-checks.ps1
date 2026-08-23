@@ -63,12 +63,22 @@ try {
     $py = (Get-Command python -ErrorAction Stop).Source
     $failures = @()
     $checks = [System.Collections.Generic.List[object]]::new()
+    # T6.3 (2026-08-23): check-adr-decision-implementation.py's own verification-cadence.json entry
+    # said `invokedBy: run-ai-knowledge-gate.ps1` -- stale since R4 Part C moved the check HERE, so
+    # cadence_state.py could never see a run this script actually performed. Fixed the metadata and
+    # wired the same record-on-run pattern run-fast-gate.ps1 already uses.
+    $cadenceScript = Join-Path $repoRoot "scripts\quality\cadence_state.py"
+    function Record-Cadence {
+        param([string]$Id, [string]$Tier, [string]$Result)
+        & $py $cadenceScript record --id $Id --tier $Tier --result $Result 2>&1 | Out-Null
+    }
 
     Write-Host "== Weekly paperwork checks (R4 Part C) ==" -ForegroundColor Cyan
 
     Write-Host "[1/11] Checking accepted ADR decisions carrying a decision-check claim are implemented..."
     & $py "scripts/quality/check-adr-decision-implementation.py"
     $exitCode = $LASTEXITCODE
+    Record-Cadence -Id "check-adr-decision-implementation" -Tier "T1" -Result $(if ($exitCode -eq 0) { "passed" } else { "failed" })
     [void]$checks.Add((New-NPDevCheckResult "adr-decision-implementation" $(if ($exitCode -eq 0) { "passed" } else { "failed" }) $(if ($exitCode -eq 0) { "check-adr-decision-implementation.py passed." } else { "an ADR decision-check block's claim no longer holds." }) @{ scriptPath = "scripts/quality/check-adr-decision-implementation.py"; exitCode = $exitCode }))
     if ($exitCode -ne 0) {
         $failures += "an ADR decision-check block's claim no longer holds: see scripts/quality/check-adr-decision-implementation.py output above"

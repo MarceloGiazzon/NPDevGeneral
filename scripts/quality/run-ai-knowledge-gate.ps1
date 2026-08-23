@@ -162,6 +162,15 @@ Push-Location $repoRoot
 try {
     $py = (Get-Command python -ErrorAction Stop).Source
     $failures = @()
+    # T6.3 (2026-08-23): check-twin-pair-consistency.py runs as step [20/39] below but nothing ever
+    # recorded its cadence -- it has a real maxStaleness (1-wave, verification-cadence.json) and ran
+    # here every time, yet cadence_state.py could never see a fresh run and reported it permanently
+    # OVERDUE. Same record-on-run pattern run-fast-gate.ps1 already uses for its own checks.
+    $cadenceScript = Join-Path $repoRoot "scripts\quality\cadence_state.py"
+    function Record-Cadence {
+        param([string]$Id, [string]$Tier, [string]$Result)
+        & $py $cadenceScript record --id $Id --tier $Tier --result $Result 2>&1 | Out-Null
+    }
 
     Write-Host "== AI knowledge gate ==" -ForegroundColor Cyan
 
@@ -467,7 +476,9 @@ try {
     # family; this checker fails when a registered twin-pair diverges.
     Write-Host "[20/39] Checking registered twin-pair rules (REG-89/104/112's family) haven't diverged..."
     & $py "scripts/quality/check-twin-pair-consistency.py"
-    if ($LASTEXITCODE -ne 0) {
+    $twinPairExit = $LASTEXITCODE
+    Record-Cadence -Id "check-twin-pair-consistency" -Tier "T1" -Result $(if ($twinPairExit -eq 0) { "passed" } else { "failed" })
+    if ($twinPairExit -ne 0) {
         $failures += "a registered twin-pair rule has diverged: see scripts/quality/check-twin-pair-consistency.py output above, or scripts/quality/twin-pair-registry.json"
     }
 

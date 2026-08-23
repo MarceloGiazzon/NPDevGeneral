@@ -58,8 +58,8 @@
       "id": "check-adr-decision-implementation",
       "tier": "T1",
       "maxStaleness": "1-wave",
-      "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
-      "description": "S4 Phase B: an ADR decision the owner accepted (opt-in, via a ```decision-check fenced block naming a file + required substring) still has live code behind it. Closes the gap ADR-0011 D4 exposed -- accepted in S2's own gate, recorded in the ADR, never implemented, found only by running the S3 codemod against real content. Starts with ADR-0011's D1-D4 only."
+      "invokedBy": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "description": "S4 Phase B: an ADR decision the owner accepted (opt-in, via a ```decision-check fenced block naming a file + required substring) still has live code behind it. Closes the gap ADR-0011 D4 exposed -- accepted in S2's own gate, recorded in the ADR, never implemented, found only by running the S3 codemod against real content. Starts with ADR-0011's D1-D4 only. 2026-08-23 (Wave 6 of the 2026-08-23 defect-remediation session): invokedBy corrected -- R4 Part C moved the underlying check from run-ai-knowledge-gate.ps1 to run-weekly-paperwork-checks.ps1, but this entry still named the old caller, so cadence_state.py could never see a fresh run recorded against reality; also wired the missing cadence_state.py record call into the check's real host."
     },
     {
       "id": "canary-build-boot-smoke",
@@ -80,7 +80,7 @@
       "tier": "T1",
       "maxStaleness": "1-wave",
       "invokedBy": "scripts/quality/run-ai-knowledge-gate.ps1",
-      "description": "S6 (drift A3): reads scripts/quality/twin-pair-registry.json's human-curated list of location pairs that must move together (e.g. the four-place chain for a new top-level model array field, both directions of pack-composition) and fails the moment any pair diverges. Ran (hosted by the knowledge gate) but had no staleness deadline of its own, so it could never go overdue -- the ledger's entire premise."
+      "description": "S6 (drift A3): reads scripts/quality/twin-pair-registry.json's human-curated list of location pairs that must move together (e.g. the four-place chain for a new top-level model array field, both directions of pack-composition) and fails the moment any pair diverges. 2026-08-23 (Wave 6 of the 2026-08-23 defect-remediation session): this check ran (hosted by the knowledge gate, step [20/39]) on every gate pass, but nothing ever called cadence_state.py record for it, so this entry's maxStaleness could never be satisfied and it showed permanently OVERDUE no matter how often it actually ran. Wired the missing record call into run-ai-knowledge-gate.ps1 right where the check already executes."
     },
     {
       "id": "check-panel-provenance-impact",
