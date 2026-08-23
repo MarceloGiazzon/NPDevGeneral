@@ -15,8 +15,9 @@ Unlike check-dsl-coverage.py it can INCLUDE NPDevSamples/probes/ (--probes): tho
 pack-composition proofs (e.g. probes/p6-satellite-extension), kept out of DSL coverage only
 because a probe is a narrow fixture, not general DSL evidence.
 
-Corpus roots mirror check-dsl-coverage.py: DEFAULT_APPGEN_ROOT (D:\\WorkSpace\\NPDev\\AppGen\\apps,
-normally absent on a bare CI checkout) plus NPDevSamples. Output dirs, .claude worktrees, and
+Corpus roots mirror check-dsl-coverage.py: the external AppGen apps directory (resolved from
+$NPDEV_APPGEN_APPS or a sibling of the repo root, normally absent on a bare CI checkout) plus
+NPDevSamples. Output dirs, .claude worktrees, and
 storage probes (unless --probes) are excluded.
 
 Exit status is informational (0 unless --strict and something has zero witnesses): this is a
@@ -26,10 +27,29 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
-DEFAULT_APPGEN_ROOT = Path(r"D:\WorkSpace\NPDev\AppGen\apps")
+def _default_appgen_root() -> Path:
+    """Layer 2 (app definitions) lives OUTSIDE the repo and is not a git repo, so CI never has it.
+    Resolve it from the environment, then by walking up from this repo root looking for a sibling
+    AppGen/apps -- by CONTENTS, never by assuming a drive letter (REG-144)."""
+    from_env = os.environ.get("NPDEV_APPGEN_APPS")
+    if from_env:
+        return Path(from_env).expanduser().resolve()
+    here = Path(__file__).resolve()
+    for ancestor in here.parents:
+        candidate = ancestor.parent / "AppGen" / "apps"
+        if candidate.is_dir():
+            return candidate
+        if (ancestor / "NPDevContract").is_dir() and (ancestor / "NPDevKernel").is_dir():
+            # the repo root, identified by contents -- stop walking
+            return ancestor.parent / "AppGen" / "apps"
+    return Path("AppGen") / "apps"
+
+
+DEFAULT_APPGEN_ROOT = _default_appgen_root()
 
 
 def _packs_iter(obj: object) -> list[dict]:
@@ -89,18 +109,27 @@ def main(argv: list[str]) -> int:
     roots = [Path(args.appgen_root), Path(args.samples_root)]
     from_use, sat_use, ext_use = scan(roots, include_probes=args.probes)
 
+    # packs[].from is a REMOTE coordinate: resolving one needs a live git/OCI source at resolve time,
+    # so it cannot exist as a static corpus fixture -- there are zero in NPDevSamples by construction,
+    # and the only witness on a developer machine is the untracked external AppGen tree. That is what
+    # made this check pass locally and fail on every CI run after it was wired in with --strict on
+    # 2026-08-23. Its real proof is a Java test that builds a git repo and resolves a git+file://
+    # coordinate end to end:
+    #   NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/PackFromCoordinateResolutionTest.java
+    # Reported here for visibility; not required.
     rows = [
-        ("packs.from", from_use),
-        ("concept.satelliteOf", sat_use),
-        ("pack.extends", ext_use),
+        ("packs.from", from_use, False),
+        ("concept.satelliteOf", sat_use, True),
+        ("pack.extends", ext_use, True),
     ]
     print(f"Pack-coverage check: roots={[str(r) for r in roots]}, probes={'on' if args.probes else 'off'}\n")
     fails = 0
-    for name, users in rows:
+    for name, users, required in rows:
         example = f"  [{sorted(users)[0]}]" if users else ""
         marker = "OK" if users else "ZERO"
-        print(f"  {name.ljust(18)}  {len(users):2d} file(s)  [{marker}]{example}")
-        if not users and args.strict:
+        note = "" if required else "  (reported, not required -- proven by PackFromCoordinateResolutionTest)"
+        print(f"  {name.ljust(18)}  {len(users):2d} file(s)  [{marker}]{example}{note}")
+        if not users and args.strict and required:
             fails += 1
 
     if fails:

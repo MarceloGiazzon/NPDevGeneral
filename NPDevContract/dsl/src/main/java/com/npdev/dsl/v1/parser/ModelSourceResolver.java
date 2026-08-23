@@ -2093,15 +2093,42 @@ public final class ModelSourceResolver {
         // containment-directory check just below is what still stops a fragment reaching outside
         // its own pack (e.g. path traversal into a sibling cache entry). A LOCAL pack's containment
         // directory is always under the model root, so this changes nothing for it.
-        boolean containedByAPackOutsideTheRoot = containmentDirectory != null && rootDirectory != null
-                && !containmentDirectory.startsWith(rootDirectory);
-        if (!containedByAPackOutsideTheRoot && rootDirectory != null && !real.startsWith(rootDirectory)) {
+        // 2026-08-23: `real` above is CANONICAL -- toRealPath() resolves junctions, symlinks,
+        // Windows 8.3 short names (RUNNER~1) and letter case. The two directories it is compared
+        // against below arrive exactly as the caller supplied them. Any indirection between the
+        // two forms makes startsWith() false for a file that is genuinely inside the directory.
+        // That is the GitHub Windows runner's temp path, which is why the fragment test was green
+        // on a developer machine and on Linux, and red only on Windows CI. Canonicalise BOTH sides
+        // so the comparison is between like and like.
+        Path realRoot = canonicalizeForContainment(rootDirectory);
+        Path realContainment = canonicalizeForContainment(containmentDirectory);
+        boolean containedByAPackOutsideTheRoot = realContainment != null && realRoot != null
+                && !realContainment.startsWith(realRoot);
+        if (!containedByAPackOutsideTheRoot && realRoot != null && !real.startsWith(realRoot)) {
             throw error(referencingFile, "$ref", label + " escapes the model root: " + ref);
         }
-        if (containmentDirectory != null && !real.startsWith(containmentDirectory)) {
+        if (realContainment != null && !real.startsWith(realContainment)) {
             throw error(referencingFile, "$ref", label + " escapes the pack directory: " + ref);
         }
         return real;
+    }
+
+    /**
+     * Canonical form of a containment directory, for comparison against a path that has already
+     * been through {@link Path#toRealPath}. Falls back to an absolute, normalized path when the
+     * directory cannot be canonicalised (it does not exist yet, or the filesystem refuses) -- a
+     * directory that does not exist cannot contain anything, so the comparison stays conservative
+     * either way and a genuine traversal is still refused.
+     */
+    private static Path canonicalizeForContainment(Path directory) {
+        if (directory == null) {
+            return null;
+        }
+        try {
+            return directory.toRealPath();
+        } catch (IOException notCanonicalizable) {
+            return directory.toAbsolutePath().normalize();
+        }
     }
 
     private static void addProvenance(Map<String, Path> provenance, JsonNode node, String pointer, Path source) {
