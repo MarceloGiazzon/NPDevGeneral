@@ -15,6 +15,6 @@ dependencies {
     testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.testcontainers:mssqlserver:1.21.4'
     testImplementation 'com.mysql:mysql-connector-j:9.1.0'
-    testImplementation 'org.postgresql:postgresql:42.7.4'
+    testImplementation 'org.postgresql:postgresql:42.7.13'
     testImplementation 'com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11'
 }
