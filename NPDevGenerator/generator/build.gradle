@@ -221,7 +221,7 @@ dependencies {
     testImplementation project(':adapters:idempotency-postgres')
     testImplementation project(':adapters:tracing-inproc')
     testImplementation project(':adapters:tracestore-postgres')
-    testImplementation 'com.h2database:h2:2.2.224'
+    testImplementation 'com.h2database:h2:2.4.240'
     testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
     testImplementation 'org.testcontainers:postgresql:1.21.4'
     testImplementation 'org.postgresql:postgresql:42.7.4'
