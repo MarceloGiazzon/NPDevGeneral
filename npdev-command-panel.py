@@ -160,7 +160,7 @@ COMMANDS = [
          args=["workflow", "run", "npdev-ci-validation.yml"]),
     dict(key="ci-publish-libs", kind="gh", cwd="", defArgs="beta1.7",
          section="Workflows / CI", label="Publish runtimehost-libs for a tag",
-         args=["workflow", "run", "publish-runtimehost-libs.yml", "-f", "tag=beta1.7"]),
+         args=["workflow", "run", "publish-runtimehost-libs.yml", "-f", "tag={args}"]),
     dict(key="ci-watch", kind="gh", cwd="", defArgs="", section="Workflows / CI",
          label="Watch latest workflow run (blocking)",
          args=["run", "watch", "--exit-status"]),
@@ -201,13 +201,24 @@ def _resolve_program(kind, cwd_abs, arg0):
 
 
 def build_command(defn, extra):
-    """Return (argv_list, working_dir, display_string)."""
+    """Return (argv_list, working_dir, display_string).
+
+    `extra` is the editable text from the page. If any registered arg contains
+    the token ``{args}`` the text is SUBSTITUTED there; otherwise it is appended.
+    Substitution matters for args like ``-f tag={args}``: appending would leave
+    the baked-in default in place and add a stray positional, so the workflow
+    would run against the wrong tag with no visible error.
+    """
     cwd_abs = os.path.join(ROOT, defn["cwd"]) if defn["cwd"] else ROOT
     argv = list(_resolve_program(defn["kind"], cwd_abs, defn["args"][0] if defn["kind"] == "pwsh" else ""))
     tail = list(defn["args"])
     if defn["kind"] == "pwsh":
         tail = tail[1:]  # arg0 is the script, already in the prefix
-    if extra.strip():
+    extra = extra.strip()
+    if any("{args}" in a for a in tail):
+        value = extra or defn.get("defArgs", "")
+        tail = [a.replace("{args}", value) for a in tail]
+    elif extra:
         tail += shlex.split(extra)
     argv += tail
     display = "cd %s && %s" % (defn["cwd"] or ".", " ".join(argv))
@@ -228,12 +239,11 @@ def start_run(key, extra):
             text=True, encoding="utf-8", errors="replace", env=env, bufsize=1)
     except FileNotFoundError:
         raise LaunchError(
-            "cannot launch %r - executable not found on PATH (needed for kind %r).
-"
+            "cannot launch %r - executable not found on PATH (needed for kind %r).\n"
             "  command: %s" % (argv[0], defn["kind"], display))
     except OSError as e:
-        raise LaunchError("cannot launch %r: %s
-  command: %s" % (argv[0], e, display))
+        raise LaunchError("cannot launch %r: %s\n"
+                          "  command: %s" % (argv[0], e, display))
     rid = uuid.uuid4().hex[:12]
     with RUNS_LOCK:
         _prune_runs()
@@ -280,11 +290,26 @@ def _reader(rid, proc):
 
 
 def stop_run(rid):
+    """Terminate a run, including any grandchildren it spawned.
+
+    proc.terminate() alone is not enough here. Every `gradle` command runs as
+    `cmd /c gradlew.bat`, and terminating cmd.exe leaves the Gradle JVM it
+    forked running - measured: the child survived and had to be taskkill'd by
+    hand. So on Windows kill the whole tree by PID.
+    """
     with RUNS_LOCK:
         run = RUNS.get(rid)
         if run is None or not run["running"]:
             return False
+        run["killed"] = True
         proc = run["proc"]
+    if os.name == "nt":
+        try:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(proc.pid)],
+                           capture_output=True, timeout=15)
+            return True
+        except Exception:
+            pass  # fall through to terminate()
     try:
         proc.terminate()
     except Exception:
@@ -313,6 +338,7 @@ def run_state(rid, since=0):
             since = end
         return {"id": rid, "label": run["label"], "display": run["display"],
                 "running": run["running"], "exit": run["exit"],
+                "killed": bool(run.get("killed")),
                 "output": buf[since - dropped:], "next": end,
                 "truncated": truncated}
 
@@ -482,8 +508,13 @@ async function poll(id, label) {
       clearInterval(pollTimer); pollTimer = null; currentId = null;
       killBtn.style.display = 'none';
       const code = s.exit;
-      titleEl.textContent = label + ' — exit ' + (code === 0 ? '0 (passed)' : code);
-      setStatus(code === 0 ? 'ok' : 'fail', code === 0 ? 'ok' : 'failed');
+      if (s.killed) {
+        titleEl.textContent = label + ' — killed';
+        setStatus('fail', 'killed');
+      } else {
+        titleEl.textContent = label + ' — exit ' + (code === 0 ? '0 (passed)' : code);
+        setStatus(code === 0 ? 'ok' : 'fail', code === 0 ? 'ok' : 'failed');
+      }
     }
   } catch (e) { /* transient - the next tick retries */ }
 }
@@ -555,6 +586,9 @@ class Handler(BaseHTTPRequestHandler):
                                  "output": "", "next": since})
             else:
                 self._json(200, s)
+        elif self.path.startswith("/stop/"):
+            # The page sends this as a GET; POST is accepted too (see do_POST).
+            self._json(200, {"stopped": stop_run(self.path.split("/")[-1])})
         else:
             self._send(404, b"not found", "text/plain")
 
@@ -567,7 +601,7 @@ class Handler(BaseHTTPRequestHandler):
                 st = run_state(rid)
                 self._json(200, {"id": rid, "display": st["display"] if st else ""})
             except KeyError as e:
-                self._json(400, {"error": "unknown command: %s" % e})
+                self._json(400, {"error": e.args[0] if e.args else "unknown command"})
             except LaunchError as e:
                 # Missing gh / pwsh / gmake lands here. Without this the
                 # exception escaped the handler, the socket was closed, and the
