@@ -75,13 +75,11 @@ public final class RuntimeApiEmitter extends AbstractEmitter {
         Map<String, String> uiSelection = readCanonicalUiSelection();
         String canonicalSurface = uiSelection.getOrDefault("canonicalSurface", "runtime-served-ui");
         String canonicalUiRoute = uiSelection.getOrDefault("canonicalRoute", "/npdev-ui/");
-        String alternateUiRoute = uiSelection.getOrDefault("alternateRoute", "/npdev-ui-react/");
         String canonicalUiRootRedirect = canonicalUiRoute.endsWith("/")
                 ? canonicalUiRoute + "index.html"
                 : canonicalUiRoute + "/index.html";
         ctx.put("canonicalUiSurface", canonicalSurface);
         ctx.put("canonicalUiRoute", canonicalUiRoute);
-        ctx.put("alternateUiRoute", alternateUiRoute);
         ctx.put("canonicalUiRootRedirect", canonicalUiRootRedirect);
 
         writer.writeRelative(
@@ -365,8 +363,6 @@ writer.writeRelative(
 {
   "canonicalSurface": "runtime-served-ui",
   "canonicalRoute": "/npdev-ui/",
-  "alternateSurface": "react-workbench",
-  "alternateRoute": "/npdev-ui-react/",
   "promotionMode": "explicit-switch"
 }
 """;
@@ -383,7 +379,6 @@ writer.writeRelative(
         Map<String, String> values = new HashMap<>();
         values.put("canonicalSurface", extractJsonStringValue(json, "canonicalSurface", "runtime-served-ui"));
         values.put("canonicalRoute", extractJsonStringValue(json, "canonicalRoute", "/npdev-ui/"));
-        values.put("alternateRoute", extractJsonStringValue(json, "alternateRoute", "/npdev-ui-react/"));
         return values;
     }
 

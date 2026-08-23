@@ -371,7 +371,7 @@ public class GeneratorTestModelLoaderTest {
         String uiIndexContent = Files.readString(uiIndex);
         assertTrue(uiIndexContent.contains("/npdev-ui/app.js"),
                 "Expected generated UI index to reference generated script");
-        assertTrue(uiIndexContent.contains("Current canonical operator UI: /npdev-ui/"),
+        assertTrue(uiIndexContent.contains("Operator UI: /npdev-ui/"),
                 "Expected generated UI index to include canonical route from UI selection");
         assertTrue(uiIndexContent.contains("canonical-ui-selection.json"),
                 "Expected generated UI index to mention canonical selection control");
