@@ -1,0 +1,25 @@
+id: B27
+title: "LIFTED (groupBy only) -- \"query.groupBy/query.aggregates is single-concept only, no cross-concept join\" is closed for groupBy by S4 and widened to 3 hops by S8 W1.1; where/aggregates still name a field on the query's own base concept"
+kind: LIFTED
+userFacingText: ""  # lifted for groupBy: the boundary itself refuses nothing, so there is no message to render
+workaround: "For a same-context or cross-context join of up to 3 hops, declare it directly: groupBy: [\"lote.produtoId\"] (1 hop) or groupBy: [\"a.b.c.d\"] (3 hops, at the cap); an optional context:: prefix names the FINAL joined concept. For a chain LONGER than 3 hops, the capability-backed data-source workaround this row originally named still applies -- listConcepts + mapList + a Java capability join -- since a path beyond the cap is refused, not silently truncated."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  LIFTED for groupBy, so the boundary as stated enforces nothing any more and this entry claims no
+  diagnostic code. B20 (S2, ADR-0011) was sequenced first precisely to make this liftable without
+  ambiguity: context::Concept already claims ::, leaving . free for a join hop, so both
+  groupBy: ["lote.produtoId"] and groupBy: ["inventory::lote.produtoId"] parse unambiguously
+  (GroupByJoinGrammar). The residual scope IS enforced by named code, but none of it was traced to a
+  diagnostic code or a boundaryId for this ledger entry, so do not read this file as claiming one:
+  where/aggregates still name a field on the query's own base concept, unchanged; a path longer than
+  GroupByJoinGrammar.MAX_JOIN_HOPS = 3 is a named compile error, never silently truncated; and
+  access.read is re-checked at EVERY hop crossed, both at compile time
+  (PackValidation#validateAggregateQuery) and as a runtime backstop (DefaultConceptGateway#aggregate,
+  via ConceptGatewaySemanticPolicy#resolveReferenceTarget) -- a join makes a leak strictly worse, not
+  something a join gets to bypass. JDBC emits a real parameterized INNER JOIN; the in-memory adapter
+  pre-materializes the same join in Java, excluding a record whose reference is null or dangling --
+  the SAME rows both engines exclude, proven by a parity test running the identical query against
+  both. Revisit trigger: a real app needs a join deeper than 3 hops badly enough to justify raising
+  MAX_JOIN_HOPS again, or where/aggregates need the same join capability groupBy has.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B27 -- REG-105, docs/adr/ADR-0011-bounded-contexts.md (D1, D3), NPDevContract/dsl/.../query/GroupByJoinGrammar.java, NPDevContract/dsl/.../validation/PackValidation.java#validateAggregateQuery, NPDevRuntimeHost/.../db/JdbcBusinessConceptStore.java#aggregate, NPDevKernel/kernel/.../inproc/InMemoryConceptStore.java#aggregate, NPDevSamples/dsl-conformance-max (shipping.json)"

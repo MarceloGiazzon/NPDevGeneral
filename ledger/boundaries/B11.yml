@@ -1,0 +1,21 @@
+id: B11
+title: "H2 (and MySQL, STOR-2) have no transactional DDL -- a failed hook verifySql rolls back DML but not DDL"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: an upstream engine behaviour, not a refusal NPDev issues
+workaround: "Split destructive DDL and data movement into separate hooks/boots on an engine without DDL_IN_TRANSACTION. ConversionHookRunner prints a WARNING naming the real active engine and that remedy BEFORE running a hook that mixes DDL with a verifySql, and PartialApplicationTruth.afterRollback()'s implicit-commit branch appends the same remedy to the actual failure message. Postgres and SQL Server roll back fully, so the split is only needed on H2/MySQL."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because there is nothing to hit. The limit is upstream engine
+  behaviour, not a refusal NPDev issues -- H2 and MySQL commit DDL implicitly, so a rollback takes the
+  DML and leaves the DDL. What NPDev adds is advisory, not a gate: ConversionHookRunner's
+  MIXES_DDL_PATTERN warning fired before the hook runs (asking
+  SqlDialects.active().supports(StorageCapability.DDL_IN_TRANSACTION) rather than hardcoding "h2",
+  which would have missed MySQL and wrongly fired on SQL Server), and a remedy sentence appended to
+  PartialApplicationTruth#afterRollback's truthful diagnosis. Neither is a ValidationDiagnostic and
+  neither carries a boundaryId. Rule 5 (post-hook re-diff) is the engine-independent backstop and is
+  confirmed to run on the H2 path against a real H2 database. Open, owner-only (B11.4, deliberately
+  unanswered in the row itself): whether H2 (file) should remain the zero-prerequisite default engine
+  given that it is the one engine where a failed conversion hook can leave DDL applied and DML rolled
+  back -- a product tradeoff, not an engineering question this entry can resolve.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B11 -- docs/archive/programme-history/IMPACT_REPORTS.md, ConversionHookRunner javadoc (the MIXES_DDL_PATTERN warning), PartialApplicationTruth#afterRollback, PartialApplicationTruthTest#implicitCommitEngineFailureMessageCarriesTheRemedy, ConversionHookRunnerH2Test#b11_1_*/#rule5_*, STOR-2"

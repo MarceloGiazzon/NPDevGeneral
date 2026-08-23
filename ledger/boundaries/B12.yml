@@ -1,0 +1,16 @@
+id: B12
+title: "Conversion hooks are individually atomic, not collectively atomic"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: no refusal -- each hook simply runs in its own transaction
+workaround: "Write every hook idempotent (ADD COLUMN IF NOT EXISTS, UPDATE ... WHERE <not-yet-converted>)."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because there is nothing to hit. Each hook running in its own
+  transaction is the deliberate design -- so a later failure does not silently undo verified earlier
+  work -- and nothing refuses, warns or validates on the collective-atomicity question, so there is no
+  code path for a boundaryId to attach to. The idempotency discipline the workaround names is an
+  authoring convention on the raw-SQL path; on B13's declarative conversions[] path the generator
+  makes it a compiler guarantee by construction instead. Revisit trigger: a single-transaction
+  multi-hook mode, if operators ask for it.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B12 -- docs/archive/programme-history/IMPACT_REPORTS.md"

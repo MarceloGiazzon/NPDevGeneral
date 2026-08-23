@@ -1,0 +1,15 @@
+id: B14
+title: "Sanctioned destruction: a hook-resolved destructive item needs no token (rule 6)"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: this row REMOVES a gate, so there is no refusal to render
+workaround: "None is needed, and the doc row states no user action: authoring the hook IS the acknowledgment. Unclaimed destructive items remain fully token-gated, and rule 5 verifies every claim by re-diffing."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because there is nothing to hit. This row records the ABSENCE of a
+  gate rather than a refusal -- a destructive item already claimed by a conversion hook is not
+  token-gated, because authoring the hook is the acknowledgment (owner-approved, ADR-0008,
+  2026-07-25, no conditions). The gates that DO exist belong to the surrounding rules, not to this
+  boundary: unclaimed destructive items stay fully token-gated, and rule 5 re-diffs to verify every
+  claim. Revisit trigger: the owner revokes or conditions the ADR.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B14 -- docs/adr/ADR-0008-sanctioned-destruction-conversion-hooks.md"

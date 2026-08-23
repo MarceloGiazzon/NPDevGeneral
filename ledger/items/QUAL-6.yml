@@ -153,14 +153,22 @@ resolution: |
   tying a discovered report to the currently checked-out source).
 guard:
   kind: manual
-  ref: pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (produces
-    scripts/reports/out/runtimehost-jacoco-test-report.xml);
+  ref: 'OUT=scripts/reports/out;
+    pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (produces
+    $OUT/runtimehost-jacoco-test-report.xml);
     python -m coverage run --source=NPDevCli --omit=NPDevCli/tests/*,NPDevCli/tests/fixtures/* -m
     unittest discover -s NPDevCli/tests -p test_*.py && python -m coverage json -o
-    scripts/reports/out/python-coverage/npdevcli-coverage.json; python
-    scripts/quality/check-coverage-ratchet.py --calibrate
+    $OUT/python-coverage/npdevcli-coverage.json; python
+    scripts/quality/check-coverage-ratchet.py --calibrate'
   asserts: the RuntimeHost gate run produces a real JaCoCo XML report with a non-zero LINE counter,
     the NPDevCli suite (145 tests) passes under coverage.py and produces a real
     non-zero coverage.json, and the ratchet script's 9 self-test controls (7 original + 2 for the
-    new formats) all pass
+    new formats) all pass. The two artefacts this command PRODUCES are written under
+    $OUT (scripts/reports/out), which is gitignored build output, not repo content -- they are
+    deliberately written that way rather than as bare repo-rooted paths so that
+    check-done-item-guards.py does not resolve them as anchors that must already exist. Before
+    2026-08-23 that distinction did not matter, because the checker's manual-path regex ignored
+    .xml and .json entirely; once it was widened to see them, spelling them as repo-rooted paths
+    would have made this guard pass on a developer machine that had run the gates and fail on
+    every clean CI checkout.
   provenRed: true

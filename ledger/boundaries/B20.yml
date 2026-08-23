@@ -1,0 +1,26 @@
+id: B20
+title: "LIFTED -- \"no bounded contexts / multi-namespace models: one namespace = one flat vocabulary = one app\" is closed by contexts[]/imports[] (S2), the codemod + corpus migration (S3) and opt-in physical isolation (S8 Wave 4)"
+kind: LIFTED
+userFacingText: ""  # lifted: the boundary itself refuses nothing, so there is no message to render
+workaround: "Declare contexts[]/imports[] directly (ADR-0011 D1-D3 for the syntax; NPDevSamples/dsl-conformance-max is a real corpus witness with both isolated and non-isolated contexts). Still model a genuinely separate SERVICE (its own deployment, its own database instance) as its own app with its own namespace -- contexts organize vocabulary WITHIN one app and one database, they do not replace \"one model = one deployable app\"."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  LIFTED, so this boundary enforces nothing any more -- the row is kept for history and this entry
+  claims no diagnostic. A model declares contexts: [{"name": "...", "$ref": "contexts/....model.json"}]
+  (one context = one physical fragment file, composed via the existing pack/$ref machinery);
+  cross-context references use context::Concept, reusing pack-qualification's existing :: syntax and
+  mangling. The residual limits named in the row's own text ARE real and ARE enforced at compile time
+  -- an undeclared cross-context reference is a compile-time error rather than a silent no-op; two
+  contexts declaring the same concept name is a compile-time duplicate-concept error, not a silent
+  table collision; a context is a DSL/compiler boundary, not a physical-storage or deployment one, so
+  table names ignore the context qualifier unless that context opts in to "physicallyIsolate": true --
+  but NONE of those diagnostics was traced to a diagnostic code or a boundaryId for this ledger entry,
+  so do not read this file as claiming one. Two pre-existing gaps were found empirically while
+  building the lift, not by inspection: REG-98 (the table-name-collision check hashed the qualified
+  name, a different string than the compiler actually derives, so it never caught its own named
+  collision scenario) and a resolver-level malformed-$ref gate that hard-coded which keys a context
+  entry may carry. Revisit trigger: blanket (always-on) table prefixing instead of the current
+  opt-in-per-context default -- deliberately a v2+ decision, since it needs a real migration story for
+  every existing app's already-created tables.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B20 -- docs/adr/ADR-0011-bounded-contexts.md (D1-D4, D8), REG-98, S8 Wave 4, NPDevSamples/dsl-conformance-max"

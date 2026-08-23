@@ -1,0 +1,18 @@
+id: B18
+title: "Row-level write authorization's check-then-act window is closed under a real transaction manager (Move 9 A2)"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: the window is closed by a lock, not by a message
+workaround: "Nothing -- no caller signature changed. TransactionRunner.none() (still every OTHER constructor's default) preserves the old degraded behaviour only where no real transaction manager is wired, e.g. InMemory mode with no DataSource at all."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because there is nothing to hit. The check-then-act window is closed
+  by real database behaviour, not by a refusal: DefaultConceptGateway.save()/delete() run their whole
+  body (read the row, evaluate isRowWritable, persist) inside a TransactionRunner, using
+  ConceptStore.findByIdForUpdate (a real SELECT ... FOR UPDATE on JdbcBusinessConceptStore), so a
+  concurrent writer BLOCKS rather than being told anything. There is no ValidationDiagnostic, no error
+  code and no message, so no boundaryId applies. expectedRowVersion was deliberately NOT defaulted on
+  (no caller holds a version to compare against). Revisit trigger: a degraded, no-transaction-manager
+  deployment still wants this guarantee -- which would need a different mechanism entirely, since
+  there is no transactional resource to lock in that mode.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B18 -- F8 docs/archive/programme-history/DECISION_BRIEFS_2026-07.md, LNCH13-F4 docs/archive/programme-history/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md, docs/reference/ROW_LEVEL_AUTHORIZATION.md, Move 9 A2"

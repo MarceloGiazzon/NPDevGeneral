@@ -321,19 +321,17 @@ detail: |
 
   Engineering recommendation: Option 1.
 guard:
-  kind: manual
-  ref: NPDevGenerator/generator/src/main/resources/npdev-templates/static-react-manifest.json
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ModelAuthoringEmitterTest.java#neverCallsBackIntoThisAppsOwnServer
   asserts: >-
-    The manifest still lists all five bundle assets, and `static-react/assets/AuthoringApp.js` still
-    exists. When R10.3 is finally executed, this item must close in the same change -- and if the
-    manifest is emptied while AuthoringApp's capability still has no replacement, that is the
-    regression this item exists to prevent. All three criteria this guard originally named are now
-    met by `model-authoring.html`: starter templates, all seven scaffolding action types, and (slice
-    3) an editing surface -- rename/delete a concept, rename/retype/remove a field, remove a state,
-    with `renamedFrom` recorded so a rename is not a data-destroying drop-and-create. The residue is
-    named in the page itself: reference-typed and enum fields in the add-field forms, multi-step flow
-    authoring, and editing a flow's or panel's internals. Removing this guard is therefore now an
-    OWNER decision (option 1), not a further engineering prerequisite.
+    The replacement capability is emitted and is a closed surface: every generated app ships
+    static/model-authoring.html, and it contains no "/api/" substring anywhere, so R10.1's deleted
+    draft write-back door stays shut by construction. The original guard asserted that
+    static-react-manifest.json still listed five bundle assets and that AuthoringApp.js still
+    existed -- both were deleted on 2026-08-20 by the owner decision recorded in this item's own
+    resolution, so that guard had been asserting the opposite of the truth. It was never caught
+    because check-done-item-guards.py's manual-path regex did not match .json at all (fixed
+    2026-08-23 in the same change as this correction).
   provenRed: false
 resolution: |
   2026-08-20 (R10.3 executed, owner decision: Option 1): deleted the frozen `static-react/` bundle

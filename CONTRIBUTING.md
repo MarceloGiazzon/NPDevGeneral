@@ -8,9 +8,11 @@ keep moving. That said, the conventions below are stable and enforced by CI, not
 
 - Read `CLAUDE.md` — it's the repo guide (module map, where build output goes, large files to avoid
   reading in full, environment notes). It applies to human contributors as much as to an AI agent.
-- Check `docs/OPEN_ITEMS.md` for known open items before filing a new one. It is GENERATED from
-  `ledger/items/*.yml` — the ledger is the source of truth, so file and edit items there, never in
-  the rendered document. (It used to say `docs/NPDEV_OPEN_ITEMS_REGISTER.md`; that register was
+- Check `ledger/items/*.yml` for known open items before filing a new one. (The rendered
+  `OPEN_ITEMS.md` view of it is GENERATED and is no longer committed — run
+  `python scripts/quality/generate_open_items.py` if you want it.) The ledger is the source of
+  truth, so file and edit items there, never in a rendered document. (This bullet used to point at
+  `NPDEV_OPEN_ITEMS_REGISTER.md`; that register was
   historical, then moved out of the repo entirely by md-zero-2026-08-11 PLAN.md Phase 2 once every
   ledger item's own `detail:` field was confirmed to carry its narrative without it — git history
   keeps the original.)
@@ -94,7 +96,8 @@ every PR via `ai-knowledge-gate.yml`).
 
 ## A plan may not close with an unresolved deferral that has no tracking id
 
-`docs/INVOCATION_TOPOLOGY_PLAN.md` T4: `docs/DSL2_AND_DECOMPOSITION_PLAN.md` closed with its own
+`docs/maintainers/INVOCATION_TOPOLOGY_PLAN.md` T4: the DSL2-and-decomposition plan (moved out of the
+repo by md-zero-2026-08-11 Phase 2; git history keeps it) closed with its own
 Definition of Done recording "`AppGen/apps` deferred as a non-git external directory — owner's
 call", with no ledger item attached. The plan closed and the deferral closed with it — 17 corpus
 models stayed broken for ~3 weeks (REG-63) because nothing tracked that the migration tool's proof
@@ -102,16 +105,17 @@ had a real, unstated gap.
 
 Deferring scope is fine and often the right call. Deferring **without a tracking id** is what
 failed. If a plan marked `EXECUTED`/`DONE`/`CLOSED` in its `STATUS:` banner says `deferred` / `out
-of scope` / `not covered` / `left for later`, cite either a `REG-nn` (`docs/OPEN_ITEMS.md`, a real
-gap) or a `B-nn` (`docs/ACCEPTED_BOUNDARIES.md`, a permanent deliberate boundary — don't file a REG
-for something that isn't a gap or bug) in the same paragraph. `check-register-consistency.py`
-enforces this; a reviewed false positive (prose narrating a pre-existing, already-tracked claim
-rather than a new scope cut) goes in `scripts/quality/plan-deferral-citation-allowlist.json`, not a
-silent rewrite of the check.
+of scope` / `not covered` / `left for later`, cite either a ledger id (`ledger/items/<ID>.yml`, a
+real gap — file one if it does not exist) or a `B-nn` (`docs/ACCEPTED_BOUNDARIES.md`, a permanent
+deliberate boundary — don't file a REG for something that isn't a gap or bug) in the same paragraph.
+This rule is currently unenforced: `check-register-consistency.py`
+was deleted along with the closed-programme plan documents it parsed, and its
+`plan-deferral-citation-allowlist.json` went with it, so nothing checks this mechanically today —
+the rule now rests on review.
 
 ## A `--calibrate` control that cannot run is a failure, not a skip
 
-`docs/FAIL_OPEN_PLAN.md` R1: a control that reads a pinned git revision (`git show <SHA>:<path>`) can
+`docs/maintainers/FAIL_OPEN_PLAN.md` R1: a control that reads a pinned git revision (`git show <SHA>:<path>`) can
 legitimately fail to read it — a shallow clone, a fork without full history, a rebase that orphaned
 the pin. Guarding the *read* is right; several `--calibrate` implementations guard the *whole
 control* instead (`if head_text is not None: report(...)`), so an unreadable revision means that
@@ -121,15 +125,17 @@ exactly how the pre-`fetch-depth: 0` state went unnoticed on CI for as long as i
 `--calibrate` scripts silently lost their real-instance controls, not just one).
 
 If a `calibrate()` guards any `report()` call this way, assert the **count** of controls that actually
-ran against the count the function intends to run (`scripts/quality/check-register-consistency.py`'s
-`EXPECTED_CONTROLS` is the reference implementation) — a skipped control must FAIL the calibration,
+ran against the count the function intends to run (the reference implementation was
+`check-register-consistency.py`'s `EXPECTED_CONTROLS`, which went with that checker when it was
+deleted; no checker in the tree carries the pattern today, so lift it from git history) — a skipped
+control must FAIL the calibration,
 never silently pass one fewer control than advertised. Prove the assertion works before trusting it:
 temporarily point one pinned SHA at something unreachable (e.g. `deadbeef`), confirm `--calibrate`
 goes RED with a "N controls skipped" message, then restore it and confirm GREEN.
 
 ## A new allowlist entry needs a `why` and a REG-nn/B-nn citation
 
-`docs/FAIL_OPEN_PLAN.md` R3: an empty `"cleared": {}` allowlist is self-policing — any entry stands
+`docs/maintainers/FAIL_OPEN_PLAN.md` R3: an empty `"cleared": {}` allowlist is self-policing — any entry stands
 out by existing at all. The moment one gains entries, that stops being true unless something asserts
 each one is reviewed rather than pre-cleared speculatively. `corpus-parse-allowlist.json`,
 `test-task-coverage-allowlist.json`, and `dsl-coverage-allowlist.json` already say this in their own
@@ -138,7 +144,7 @@ each one is reviewed rather than pre-cleared speculatively. `corpus-parse-allowl
 three with no `REG-nn`/`B-nn` citation in its `why` fails the gate.
 
 `plan-deferral-citation-allowlist.json` and `security-pattern-sweep-allowlist.json` use a different,
-already-established citation shape (doc-paragraph narrative; a `docs/SECURITY_PATTERN_SWEEP_2026-07.md`
+already-established citation shape (doc-paragraph narrative; a `docs/archive/SECURITY_PATTERN_SWEEP_2026-07.md`
 cross-reference) and are not held to this rule — `check-allowlist-citations.py` only reports their
 size every run, so growth is visible without retrofitting either one's existing entries.
 
@@ -151,13 +157,13 @@ A test that constructs `CompiledModel` / `CompiledFlow` objects directly (bypass
 This is not hypothetical: `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest` built and
 booted a real packaged app with a `generatedAction`-shaped compiled step and passed for the entire
 time no model could actually express one (`FlowValidation` rejected the schema's own canonical enum
-value as "unsupported" — REG-65, `docs/FINAL_OPEN_ITEMS_PLAN.md` F4). A green runtime proof coexisted
+value as "unsupported" — REG-65, `docs/archive/programme-history/FINAL_OPEN_ITEMS_PLAN.md` F4). A green runtime proof coexisted
 with a broken authoring path, indefinitely, because nothing joined the two ends.
 
 **Any feature reachable from `model.json` needs a corpus fixture too** — see
 `NPDevSamples/dsl-conformance-max` and `scripts/quality/check-dsl-coverage.py` (proves every DSL
 feature parses) plus `scripts/quality/check-dsl-conformance-generates.py` (proves it also
-generates — `docs/CLOSEOUT_PLAN.md` G2/G3). Do **not** rewrite a hand-built compiled-object test to
+generates — `docs/archive/programme-history/CLOSEOUT_PLAN.md` G2/G3). Do **not** rewrite a hand-built compiled-object test to
 go through the full authoring path instead — that would make the suite far slower for little gain.
 The fix is to make sure the authoring path is *also* exercised somewhere, not to convert every
 compiled-contract test into an end-to-end one.
@@ -165,7 +171,7 @@ compiled-contract test into an end-to-end one.
 ## When a new app lands
 
 Re-run the screen classifier and refresh `docs/SCREEN_TAXONOMY.md`'s per-screen table (F1/F6,
-`docs/FRONTEND_STRATEGY_PLAN.md`):
+`docs/maintainers/FRONTEND_STRATEGY_PLAN.md`):
 
 ```
 python <scratchpad>/helpers/classify-screens.py --apps-root D:/WorkSpace/NPDev/AppGen/apps --format md
@@ -176,15 +182,18 @@ python <scratchpad>/helpers/classify-screens.py --apps-root D:/WorkSpace/NPDev/A
 only be crossed by a new app or a new hand-written screen in an existing one, so this is the moment
 that matters, not a periodic calendar check. F6 was gated "nothing recurs yet" as of 2026-07-28
 (zero classes cleared the rule); skipping this re-check on the next app is how a recurring class
-would go unnoticed indefinitely — see `docs/REMEDIATION_PLAN.md` R-G4.
+would go unnoticed indefinitely — see `docs/archive/programme-history/REMEDIATION_PLAN.md` R-G4.
 
 ## Gates that must pass
 
 These aren't optional CI noise — they catch real drift:
 
+`run-all-gates.ps1` runs the AI knowledge, generator and RuntimeHost gates in one pass and keeps
+going past a failure, so you see every red in one run. Budget ~25 minutes. For a fast inner loop
+during editing, run the single `scripts/quality/check-*.py` that covers what you touched.
+
 ```powershell
-python scripts/quality/check-register-consistency.py
-pwsh -NoProfile -File scripts/quality/run-ai-knowledge-gate.ps1
+pwsh -NoProfile -File scripts/quality/run-all-gates.ps1
 ```
 
 Module-specific gates (`run-generator-gate.ps1`, `run-runtimehost-gate.ps1`)
@@ -193,7 +202,7 @@ core subset automatically; the full set is documented in `CLAUDE.md`.
 
 ## A new script under `scripts/` declares what it is and what invokes it
 
-`docs/INVOCATION_TOPOLOGY_PLAN.md` T2: every check exists to catch a bug, but a check nobody
+`docs/maintainers/INVOCATION_TOPOLOGY_PLAN.md` T2: every check exists to catch a bug, but a check nobody
 invokes is a check that exists only on paper — four separate real findings in this repo were
 exactly that shape. `scripts/quality/run-script-inventory-check.ps1` (step `[17/17]` of
 `run-ai-knowledge-gate.ps1`) fails if a script under `scripts/` has no entry in either policy file:

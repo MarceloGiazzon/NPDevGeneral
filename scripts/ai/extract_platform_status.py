@@ -41,7 +41,6 @@ import yaml
 from npdev_ai_common import repo_root
 
 LEDGER = "ledger/gaps.yml"
-SOURCE_DOC = "docs/OPEN_GAPS_AND_ROADMAP.md"
 OUTPUT = "knowledge/platform-status.json"
 
 _ID = re.compile(r"^\s*(#\d+|[A-Z][A-Za-z]*-[A-Za-z0-9][A-Za-z0-9-]*)")
@@ -142,14 +141,24 @@ def extract(root: Path) -> list[dict[str, Any]]:
 
 
 def render(entries: list[dict[str, Any]], root: Path) -> str:
+    note = "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py."
+    if not entries:
+        # A zero here is a real measurement, not an absence of data. Say so, because the MCP tool
+        # npdev_check_support serves this file to an agent asking what is known-broken.
+        note += (
+            " count: 0 is accurate -- ledger/gaps.yml is deliberately empty since the v2 migration,"
+            " which reserves it for cross-cutting gaps that do not fit a single ledger item."
+            " Per-item gaps live in ledger/items/*.yml."
+            ' Do not read a zero here as "nothing is broken".'
+        )
     doc = {
         "schemaVersion": "platform-status.v1",
-        # Kept as the human-facing doc (byte-identical output contract, Phase 1's own acceptance
-        # bar) even though the true machine-read input is now LEDGER ("ledger/gaps.yml") --
-        # SOURCE_DOC is still where a reader goes to see this data, just rendered FROM the YAML now
-        # instead of parsed INTO it.
-        "generatedFrom": SOURCE_DOC,
-        "note": "DERIVED -- do not hand-edit. Regenerate via scripts/ai/extract_platform_status.py.",
+        # 2026-08-23: this used to name docs/OPEN_GAPS_AND_ROADMAP.md, kept as "the human-facing
+        # doc" long after the machine-read input became LEDGER. That doc has since been deleted, so
+        # the projection was claiming provenance from a file that does not exist -- and the MCP tool
+        # npdev_check_support reads this file. Provenance now names the real input.
+        "generatedFrom": LEDGER,
+        "note": note,
         "count": len(entries),
         "items": entries,
     }

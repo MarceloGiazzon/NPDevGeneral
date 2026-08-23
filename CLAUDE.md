@@ -18,7 +18,7 @@ app definitions and build output live **outside** it (see Layers below).
   files / 39,705 lines were read by nothing at all** — 88% of the files. They accumulated one
   session at a time, because a run with no memory externalises its state as a document, and the next
   run cannot tell which documents are still true. Then a gate reads one and it can never be deleted
-  (`check-register-consistency.py` parses four; `extract_platform_status.py` parsed a fifth as a
+  (`check-register-consistency.py` parsed four, until it too was deleted; `extract_platform_status.py` parsed a fifth as a
   database until it was inverted to `ledger/gaps.yml`). **Reorganising does not fix this** — the
   2026-08-11 pass moved 50 files into subdirectories and the tracked total went 301 → 302. Durable
   machine truth → `ledger/*.yml` with a schema. Durable human docs → `docs/`, few, curated,
@@ -51,7 +51,7 @@ app definitions and build output live **outside** it (see Layers below).
 | `NPDevKernel/kernel` | Java | Runtime: `KernelRunner` (also hosts the durable flow engine — see `docs/FLOWS.md`), `FlowEngine` port, CapabilityDispatcher, EventStore |
 | `NPDevKernel/adapters/*` | Java | Pluggable adapters, `*-inproc` (dev) / `*-postgres` (prod) pairs; plus `runtime-support`, `auth-context-jwt`, `authz-default`, `persistence-postgres`, … |
 | `NPDevRuntimeHost` | Java/Spring | Spring Boot template **copied into every generated FinalApp** — not a built product subproject. Login/bootstrap/ControlPanel controllers live here (`com.finalexec.*`) |
-| ~~`NPDevEditor/ui-react`~~ | — | **PARKED OUT OF THIS REPO 2026-08-17** (see `BREAKING.md`). The editor still ships in every generated app at `/npdev-ui-react/`, from the built bundle committed under `npdev-templates/static-react/` — that bundle is now a frozen input with no in-repo producer. Do not look for editor source here. |
+| ~~`NPDevEditor/ui-react`~~ | — | **REMOVED.** Source parked out of the repo 2026-08-17; the frozen `npdev-templates/static-react/` bundle it shipped was deleted 2026-08-20 (EDIT-12 / R10.3, owner decision). **A generated app no longer serves `/npdev-ui-react/` at all.** Its replacement is `static/model-authoring.html`, emitted by `ModelAuthoringEmitter` — starter templates, all seven scaffolding actions, and an editing surface, with zero calls back to the app's own server. See `BREAKING.md`. |
 | `NPDevSamples` | JSON/PS1 | Reference sample apps + browser-verification harness |
 | `NPDevCli` / `NPDevMcp` | Python | Model-validation CLI / MCP server for AI authoring |
 | `golden-ai-scenarios`, `schemas/ai` | JSON | AI safety/verification fixtures + schemas |
@@ -67,9 +67,6 @@ resolves each entry's path and fails if its size has drifted more than the decla
 This prose list is a human-curated summary of that JSON, not itself read by anything — keep it roughly
 aligned when the JSON changes, but only the JSON is enforced:
 
-- `NPDevGenerator/.../npdev-templates/static-react/assets/app.js` (141 KB; sibling chunks
-  `AuthoringApp.js`/`ReactWorkbenchApp.js` in the same `assets/` dir) — **generated bundle, ignore
-  entirely**
 - `NPDevGenerator/.../npdev-templates/business-ui-app.mustache` (169 KB)
 - `NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java` (158 KB)
 - `NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java` (138 KB)
@@ -107,9 +104,11 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **three** gates by default
   (it was four until `frontend` was removed with `NPDevEditor` on 2026-08-17 — see `BREAKING.md`), in
   this order, and keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts 30 of the 31
-  `scripts/quality/check-*.py` across 36 numbered checks — the one exception,
-  `check-dsl-reference-output-floor.py`, runs in `run-generator-gate.ps1` because it needs a build.
+  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts 40 of the 42
+  `scripts/quality/check-*.py` across 39 numbered checks — there are **two** exceptions, not one:
+  `check-dsl-reference-output-floor.py` runs in `run-generator-gate.ps1` because it needs a build,
+  and `check-external-ai-mission-coverage.py` is reachable from no gate at all — it runs in
+  `run-weekly-paperwork-checks.ps1`, a separate cadence.
   **Measured 811 s / ~13.5 min on 2026-08-08**, not the "seconds" this line used to claim;
   budget for it) → `run-generator-gate.ps1`
   → `run-runtimehost-gate.ps1`. `run-beta-release-gate.ps1` (release
@@ -295,14 +294,23 @@ layout, or internal APIs ships its `npdev migrate` codemod in the same commit**,
 
 ## Where the truth lives (read before filing or editing status)
 
-- **Open items:** `ledger/items/*.yml` is authoritative. `docs/OPEN_ITEMS.md` is GENERATED from it
-  (`scripts/quality/generate_open_items.py`) — never hand-edit. `NPDEV_OPEN_ITEMS_REGISTER.md` was
+- **Open items:** `ledger/items/*.yml` is authoritative. The rendered `OPEN_ITEMS.md` view is
+  GENERATED from it (`scripts/quality/generate_open_items.py`) and is **no longer committed** — run
+  the generator if you want it; never hand-edit it. `NPDEV_OPEN_ITEMS_REGISTER.md` was
   HISTORICAL/archived-in-place, then moved out of the repo entirely by md-zero-2026-08-11 PLAN.md
   Phase 2 (git history keeps it) once every ledger item's `detail:` field was confirmed
   self-sufficient without it.
-- **The gaps ledger too:** `ledger/gaps.yml` is authoritative for `docs/OPEN_GAPS_AND_ROADMAP.md`'s
-  Priority-index and Fixed-engine-bugs tables (`scripts/docs/generate_gaps_roadmap.py`) — same
-  never-hand-edit discipline (docs-decoupling-2026-08-11 PLAN.md Phase 1).
+- **Accepted boundaries:** `ledger/boundaries/*.yml` is the structured record; `docs/ACCEPTED_BOUNDARIES.md`
+  is the prose companion with the full reasoning. Both must be updated together — the doc's own
+  classification table is what tells you whether a boundary is HITTABLE (a user reaches a real
+  refusal) or POSTURAL (a real limit with nothing to hit).
+- **The gaps ledger too:** `ledger/gaps.yml` is authoritative for the rendered
+  `OPEN_GAPS_AND_ROADMAP.md` view's Priority-index and Fixed-engine-bugs tables
+  (`scripts/docs/generate_gaps_roadmap.py`) — same never-hand-edit discipline
+  (docs-decoupling-2026-08-11 PLAN.md Phase 1). That view is **no longer committed** either; run the
+  generator if you want it. `ledger/gaps.yml` is deliberately empty today — it is reserved for
+  cross-cutting gaps that do not fit a single ledger item, so per-item gaps live in
+  `ledger/items/*.yml` and a zero there does not mean nothing is broken.
 - **DSL is at 2.0** — retired `flowStep.type` aliases collapsed to their canonical values. See
   `BREAKING.md`. Every breaking change to the DSL, generated code layout, or internal APIs ships its
   `npdev migrate` codemod (`NPDevCli/dsl_v2_migration.py`) in the same commit.

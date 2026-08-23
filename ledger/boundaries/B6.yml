@@ -1,0 +1,14 @@
+id: B6
+title: "mark-done trusts the operator completely"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: the boundary is the ABSENCE of a check, not a refusal
+workaround: "Use -ImpactOnly first to see what NPDev thinks differs, then mark done knowingly."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because there is nothing to hit. mark-done exists precisely for
+  "I fixed it by hand; stop trying to converge", so the boundary IS the absence of verification --
+  there is no refusal, no ValidationDiagnostic and no code path that could carry a boundaryId.
+  Verifying would defeat the command's purpose, which is why the row's own revisit trigger reads
+  "Never -- verification is what the ordinary path already does".
+ref: "docs/ACCEPTED_BOUNDARIES.md#B6 -- DATABASES_AND_MIGRATIONS.md §15"

@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Cited repo-rooted paths that check-cited-paths.py must NOT treat as a claim about a file.",
+    "Every entry needs a path and a reason. The bar for adding one: the citation must be either",
+    "not-a-path (a template, an abbreviation) or a deliberate reference to something the doc's own",
+    "prose already tells the reader is gone or lives outside this repo. A citation that is simply",
+    "STALE is a defect in the document -- fix the document, never add it here.",
+    "Created 2026-08-23 with the checker (Wave 2 T2.6 / finding C5)."
+  ],
+  "placeholderRule": {
+    "segment": "/.../",
+    "reason": "CLAUDE.md abbreviates a long path by eliding its middle segments, e.g. NPDevKernel/kernel/.../KernelRunner.java. A '...' segment cannot name a real directory, so such a citation is a human-readable pointer, never a claim that the literal string exists on disk. Declared as one rule rather than one entry per path so a new abbreviation in an existing prose list does not turn the gate red for a reason nobody can act on."
+  },
+  "exemptions": [
+    {
+      "path": "ledger/items/REG-nn.yml",
+      "reason": "A literal template, not a file: CLAUDE.md uses it to teach the shape of a ledger item path ('check the id's own ledger status ... ledger/items/REG-nn.yml'). 'nn' is a placeholder for a number."
+    },
+    {
+      "path": "scripts/quality/check-query-predicate-compilable.py",
+      "reason": "BREAKING.md's own text says this script is DELETED ('are both **deleted**: the corpus-wide check that script existed for is now done by the real Java validator'). BREAKING.md is a historical record -- an entry describing a removal must be able to name the thing it removed."
+    },
+    {
+      "path": "scripts/quality/query-predicate-allowlist.json",
+      "reason": "Same BREAKING.md sentence as check-query-predicate-compilable.py above: named as deleted, in the entry that deleted it."
+    },
+    {
+      "path": "AppGen/apps/payment-webhook-rehearsal/definition/model.json",
+      "reason": "Layer 2, not layer 1. App definitions live in D-drive AppGen/apps, which is outside this repo and is not a git repo (CLAUDE.md, 'Source-of-truth layers'). BREAKING.md cites it as the corpus the label-widening codemod was round-tripped against, which is a true statement about a real file on the author's machine; it is legitimately absent on every CI checkout and on any other machine, so requiring it to exist would make the gate fail for a reason no contributor could fix."
+    }
+  ]
+}

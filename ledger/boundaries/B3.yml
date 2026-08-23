@@ -1,0 +1,19 @@
+id: B3
+title: "FK/index checking is missing-only for DDL purposes -- surplus is now REPORTED (advisory-only), never acted on"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: the surplus section is informational output, never a refusal
+workaround: "Manage extra indexes outside NPDev; they are respected and never touched, since there is still no drop path, not even a stub. The ImpactReport (boot log, -ImpactOnly/REPORT_ONLY CLI, and the ControlPanel GET /api/admin/schema-migration/impact -- all three share one renderer) now also carries an informational, always-advisory surplus section, present only when there is something to report; it NEVER changes verdict and NEVER proposes a drop."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because there is nothing to hit. Real code exists -- classification
+  (ConstraintSurplusClassifier, 15/15 vectors from b3-classification-vectors.json), the diff hook
+  (SchemaDiffEngine#findSurplusConstraints, reusing the desired/current pair the ordinary diff already
+  computes) and both ImpactReportText/ImpactReportJson renderers -- but every one of them only ADDS an
+  advisory section. There is no refusal, no ValidationDiagnostic and no drop path, so there is no
+  diagnostic identity for a boundaryId to attach to. The row's own text records the choice
+  deliberately: a gate that failed a build on surplus would turn a DBA's performance index into a
+  build failure, a materially larger decision than reporting it, and reporting extras as something to
+  fix would propose dropping primary-key indexes -- which is the failure this boundary exists to
+  prevent.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B3 -- DATABASES_AND_MIGRATIONS.md §15, SER-G8, REG-129, REG-145, NPDevRuntimeHost/.../db/schemastate/ConstraintSurplusClassifier.java, .../SchemaDiffEngine.java#findSurplusConstraints, .../SchemaImpactFacade.java, NPDevGenerator/.../dbconfig/SchemaRealizationEmitter.java#collectIndexes"

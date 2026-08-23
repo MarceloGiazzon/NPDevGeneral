@@ -5,6 +5,34 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-20 — a generated app no longer serves `/npdev-ui-react/` (EDIT-12 / R10.3)
+
+**What changes.** The frozen React editor bundle (`npdev-templates/static-react/` — `app.css`,
+`app.js`, `AuthoringApp.js`, `ReactWorkbenchApp.js`, `index.html`, plus
+`static-react-manifest.json`) was deleted, along with `RuntimeApiEmitter.emitOptionalReactUiAssets()`
+and the `/npdev-ui-react` redirect in the UI redirect controller. **A generated app now returns 404
+for that route.** The bundle had no in-repo producer after `NPDevEditor` was parked on 2026-08-17,
+so it was decaying: `ReactWorkbenchApp.js`'s editor tabs already 404'd against endpoints R10.1
+deleted, and its remaining surface duplicated the vanilla Operator UI at `/npdev-ui/`.
+
+**Who is affected.** Anyone who opened `/npdev-ui-react/` in a generated app, or who linked to it.
+The Operator UI at `/npdev-ui/` is unchanged and is emitted unconditionally.
+
+**What replaces it.** `static/model-authoring.html`, emitted by `ModelAuthoringEmitter` — a
+self-contained page covering both starter templates, all seven scaffolding actions
+(concept/field/flow/panel/invariant/state/transition), and an editing surface (rename/delete a
+concept, rename/retype/remove a field, remove a state) with `renamedFrom` recorded so a rename is
+not a data-destroying drop-and-create. It reads and writes a local folder through
+`window.showDirectoryPicker` and contains no `/api/` call of any kind, so R10.1's deleted
+write-back door stays shut by construction.
+
+**Residue, deliberately not built:** reference-typed and enum fields in the add-field forms,
+multi-step flow authoring, and editing a flow's or panel's internals once created.
+
+**Codemod.** None, and none is needed: no model file changes shape and no generated source
+references the route once regenerated. Regenerate any app built before 2026-08-20 to drop the dead
+route and the operator-UI button that pointed at it.
+
 ## 2026-08-19 — every label site accepts a per-locale object, not just a plain string (R5.6)
 
 **What changes.** All 13 label-shaped fields in the model schema (`property.label`,
@@ -838,7 +866,9 @@ removed in a future release. When both a typed and untyped spelling are declared
 surface, the typed one wins entirely (it is not merged with the untyped list/map), matching the
 precedent Move 6 set for `hooks`/`derivedFields`.
 
-**Why:** docs/MOVE7_IMPLEMENTATION_SPEC.md W1 — the last three untyped `transaction.metadata` keys
+**Why:** the Move 7 implementation spec, W1 (a working document that was never committed to this
+repo — unlike its Move 6 sibling there is no git history for it) — the last three untyped
+`transaction.metadata` keys
 left over after Move 6 typed `hooks`/`derivedFields`/`regions`. `transaction.actions[].procedure`
 and `.afterAction` now also get real semantic validation (must name a declared procedure); a
 `visibleWhen`/`bandPickers` key must name a real address/band derived from the aggregate's own
@@ -872,7 +902,7 @@ the pre-existing `aggregate.onValidate`/`.onCommit` fields — a direct aggregat
 always wins if both are present), and a per-action `afterAction` (declared alongside, not instead
 of, the pre-existing per-action `applyTo`, which it subsumes going forward but does not retire).
 
-**Why:** docs/MOVE6_TYPED_SURFACE_PLAN.md §B — the same feature was typed when it attached to
+**Why:** docs/archive/programme-history/MOVE6_TYPED_SURFACE_PLAN.md §B — the same feature was typed when it attached to
 `panelAction`/`procedure`/`flow`/`aggregate`, and untyped when it attached to
 `autoPanel.transaction.metadata`, purely because of which object it happened to land on. A closed
 `hooks` enum means an author's typo (e.g. `onRowLoad` for `onLoad`) fails at schema time instead of
@@ -898,7 +928,7 @@ load-bearing). DDD's core rule: one aggregate = one transaction = one consistenc
 `referenced` (not `owned`) collection is unaffected — that is a normal cross-aggregate pointer, not
 a boundary the rule cares about.
 
-**Why:** docs/NEXT_EXECUTION_PLAN.md P6.1 (3.7). Cheap to enforce once written, and the exact class
+**Why:** docs/maintainers/NEXT_EXECUTION_PLAN.md P6.1 (3.7). Cheap to enforce once written, and the exact class
 of "the model says one thing, the runtime does another" gap this repo's own register keeps finding
 (REG-52/53-shaped).
 
@@ -942,7 +972,8 @@ unambiguous names; `orchestrationRule`'s scalar `action` is retired in favor of 
 **Why:** the alias vocabulary was 61% redundant relative to the 9 real runtime behaviors, and every
 extra spelling was a way for an LLM authoring a model to produce an inconsistent one — the single
 largest source of avoidable model variance in the AI-authoring path. Full rationale, corpus
-measurements, and the naming decision: `docs/DSL2_AND_DECOMPOSITION_PLAN.md` §2.A.
+measurements, and the naming decision: the DSL2-and-decomposition plan §2.A (moved out of the repo
+by md-zero-2026-08-11 Phase 2; git history keeps it).
 
 **Codemod:** `npdev migrate dsl-2 --input <path...> [--write]` (dry-run by default). Structural,
 idempotent, and refuses to touch anything it detects as a serialized compiled-model fixture rather
