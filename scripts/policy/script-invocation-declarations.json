@@ -220,6 +220,9 @@
     "scripts/quality/check-ci-adapter-coverage.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-cited-paths.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-closeable-streams.py": {
       "invocation": "ci-gate"
     },

@@ -40,7 +40,21 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_APPGEN_ROOT = Path(r"D:\WorkSpace\NPDev\AppGen\apps")
+
+
+def _default_appgen_root() -> Path:
+    """Layer 2 (app definitions) lives OUTSIDE the repo and is not a git repo, so CI never has it.
+    Resolve it from the environment, then as a sibling of the repo root -- by CONTENTS, never by
+    assuming a drive letter (REG-144). Same shape project_cache_dir() below already uses for the
+    build root; this constant was the one place in the file still spelling a machine path out."""
+    import os
+    from_env = os.environ.get("NPDEV_APPGEN_APPS")
+    if from_env:
+        return Path(from_env).expanduser().resolve()
+    return REPO_ROOT.parent / "AppGen" / "apps"
+
+
+DEFAULT_APPGEN_ROOT = _default_appgen_root()
 DEFAULT_SAMPLES_ROOT = REPO_ROOT / "NPDevSamples"
 ALLOWLIST_PATH = REPO_ROOT / "scripts" / "quality" / "corpus-parse-allowlist.json"
 ROLES_PATH = REPO_ROOT / "scripts" / "quality" / "corpus-roles.json"

@@ -177,20 +177,20 @@ try {
     # platform-status.json IS still committed (Phase 1, unaffected by Group G) -- its own --check
     # stays a real drift comparison, unchanged.
     if ($Fix) {
-        Write-Host "[1/36] Regenerating gaps roadmap + platform-status projection..." -ForegroundColor Yellow
+        Write-Host "[1/39] Regenerating gaps roadmap + platform-status projection..." -ForegroundColor Yellow
         & $py "scripts/docs/generate_gaps_roadmap.py"
         if ($LASTEXITCODE -ne 0) { $failures += "gaps-roadmap generation failed" }
         & $py "scripts/ai/extract_platform_status.py"
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status regeneration failed" }
     } else {
-        Write-Host "[2/36] Checking gaps roadmap generates + platform-status projection is current..."
+        Write-Host "[2/39] Checking gaps roadmap generates + platform-status projection is current..."
         & $py "scripts/docs/generate_gaps_roadmap.py" | Out-Null
         if ($LASTEXITCODE -ne 0) { $failures += "gaps-roadmap generation failed: see scripts/docs/generate_gaps_roadmap.py output above" }
         & $py "scripts/ai/extract_platform_status.py" --check
         if ($LASTEXITCODE -ne 0) { $failures += "platform-status projection is STALE (run with -Fix)" }
     }
 
-    Write-Host "[3/36] Validating knowledge cards..."
+    Write-Host "[3/39] Validating knowledge cards..."
     & $py "scripts/ai/build_knowledge.py" --validate-only
     if ($LASTEXITCODE -ne 0) { $failures += "knowledge-card validation failed" }
 
@@ -226,7 +226,7 @@ try {
         if ($LASTEXITCODE -ne 0) { $failures += "a Group D doc or its content/*.json mirror was STALE relative to its content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
     }
 
-    Write-Host "[4/36] Checking failure-signature normalizer..."
+    Write-Host "[4/39] Checking failure-signature normalizer..."
     $sig = & $py "scripts/ai/failure_signatures.py" "Panel 'Orders' references unknown entity 'Customer'"
     $expected = "panel <id> references unknown entity <id>"
     if ($sig.Trim() -ne $expected) {
@@ -240,7 +240,7 @@ try {
     # that reports 350 hits but would have walked past LNCH13-F1 does not just fail to help -- it
     # manufactures confidence. Note this checks the PATTERNS, not the codebase: it cannot fail because
     # someone wrote new code, only because someone broke the detector.
-    Write-Host "[5/36] Checking the security pattern sweep still catches its known bugs..."
+    Write-Host "[5/39] Checking the security pattern sweep still catches its known bugs..."
     & $py "scripts/quality/security-pattern-sweep.py" --self-test
     if ($LASTEXITCODE -ne 0) { $failures += "security-pattern-sweep self-test failed: a pattern no longer catches the bug it was written for" }
 
@@ -255,7 +255,7 @@ try {
     # minute; the allowlist entry is a fingerprint + a reason. It is deliberately BLOCKING rather than
     # advisory, because an advisory count that nobody must act on is the state this replaces.
     # To relax it, drop `--fail-on-new` (the sweep still reports) -- but prefer triaging the hit.
-    Write-Host "[6/36] Checking for untriaged security-pattern hits..."
+    Write-Host "[6/39] Checking for untriaged security-pattern hits..."
     & $py "scripts/quality/security-pattern-sweep.py" --fail-on-new
     if ($LASTEXITCODE -ne 0) {
         $failures += "untriaged security-pattern hits: review each, then record a fingerprint + REASON in scripts/quality/security-pattern-sweep-allowlist.json and the rule in docs/SECURITY_PATTERN_SWEEP_2026-07.md (a false 'safe' is worse than a noisy hit)"
@@ -264,7 +264,7 @@ try {
     # [6/35] T1.3: a custom Gradle Test task (behaviorTest/integrationTest/a future contractTest) that
     # is declared but reachable from no CI workflow is a test that only runs on one laptop -- exactly
     # what REG-49's residual behaviorTest was until T1.2 wired it in. Blocking, same rationale as [5/35].
-    Write-Host "[7/36] Checking every custom Gradle Test task is reachable from a CI workflow..."
+    Write-Host "[7/39] Checking every custom Gradle Test task is reachable from a CI workflow..."
     & $py "scripts/quality/check-test-task-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a custom Gradle Test task is unreachable from CI: see scripts/quality/check-test-task-coverage.py output above, then either wire it into a workflow or record a reviewed exemption in scripts/quality/test-task-coverage-allowlist.json"
@@ -276,7 +276,7 @@ try {
     # copy silently teaches a stale contract to whichever consumer reads it (authoring UI, DSL module,
     # the legacy authoring location), with no error until something built against the stale copy fails
     # far away from the edit that caused it.
-    Write-Host "[8/36] Checking the four model.schema.json copies are still semantically identical..."
+    Write-Host "[8/39] Checking the four model.schema.json copies are still semantically identical..."
     & $py "scripts/quality/check-schema-mirror-consistency.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "the four model.schema.json copies have drifted: see scripts/quality/check-schema-mirror-consistency.py output above for which key differs, then mirror the edit to all four (CLAUDE.md's own standing rule)"
@@ -288,7 +288,7 @@ try {
     # (required fields, no unexpected fields, a well-formed invokes[] id) needs no live app at all.
     # Runs against the AppGen apps workspace when present on this machine; 0 manifests found (e.g.
     # a bare CI checkout, which has no AppGen/apps at all) is a printed PASS, not a silent skip.
-    Write-Host "[9/36] Checking *.panel.json manifests structurally validate (no live app needed)..."
+    Write-Host "[9/39] Checking *.panel.json manifests structurally validate (no live app needed)..."
     & $py "scripts/quality/check-panel-provenance-schema.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a *.panel.json manifest fails structural validation: see scripts/quality/check-panel-provenance-schema.py output above"
@@ -300,7 +300,7 @@ try {
     # parsing as the schema evolved, unnoticed for weeks. Runs against AppGen/apps when present on
     # this machine (a bare CI checkout still gets full NPDevSamples coverage); a reviewed, REG-id'd
     # exception goes in scripts/quality/corpus-parse-allowlist.json -- never pre-cleared.
-    Write-Host "[10/36] Checking every corpus model.json still parses..."
+    Write-Host "[10/39] Checking every corpus model.json still parses..."
     & $py "scripts/quality/validate-corpus.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a corpus model no longer parses: see scripts/quality/validate-corpus.py output above, then either fix the model or record a reviewed exception (with a REG id) in scripts/quality/corpus-parse-allowlist.json"
@@ -317,7 +317,7 @@ try {
     # on every push and PR for hours before anyone noticed. Same "nothing looked" shape as checks
     # 11/14 and 12/14. Syntax only (yaml.safe_load), not GitHub Actions schema validation -- cheapest
     # version of the fix, matching the failure mode that actually happened.
-    Write-Host "[11/36] Checking every workflow file is valid YAML..."
+    Write-Host "[11/39] Checking every workflow file is valid YAML..."
     & $py "scripts/quality/check-workflow-yaml-syntax.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a workflow file is not valid YAML: see scripts/quality/check-workflow-yaml-syntax.py output above"
@@ -328,7 +328,7 @@ try {
     # engine config) -- nothing previously asserted they STAY identical, so a fix applied to one
     # would not visibly propagate to its siblings. Membership is declared (hand-reviewed) in
     # corpus-roles.json; sameness is asserted here, every run.
-    Write-Host "[12/36] Checking engine-variant families stay byte-identical..."
+    Write-Host "[12/39] Checking engine-variant families stay byte-identical..."
     & $py "scripts/quality/check-engine-variant-families.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "an engine-variant family has diverged: see scripts/quality/check-engine-variant-families.py output above"
@@ -341,7 +341,7 @@ try {
     # zero coverage until dsl-conformance-max (F3) closed them -- confirmed live: re-running this
     # exact check against the corpus with that fixture excluded reproduces all 8 as RED. Sequenced
     # after F4 (generatedAction only became reachable once FlowValidation's switch was fixed).
-    Write-Host "[13/36] Checking every DSL feature has at least one corpus model exercising it..."
+    Write-Host "[13/39] Checking every DSL feature has at least one corpus model exercising it..."
     & $py "scripts/quality/check-dsl-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a DSL feature has zero corpus coverage: see scripts/quality/check-dsl-coverage.py output above -- add a real example to NPDevSamples/dsl-conformance-max, or record a reviewed exception with a REG id"
@@ -370,7 +370,7 @@ try {
     # noticed until someone happened to run `--calibrate` by hand. The script list is DERIVED from
     # argparse (any scripts/quality/*.py declaring `--calibrate`), not hand-maintained, so a future
     # calibratable script is picked up automatically instead of needing this list updated too.
-    Write-Host "[14/36] Running every --calibrate self-test (list derived from argparse, not hand-written)..."
+    Write-Host "[14/39] Running every --calibrate self-test (list derived from argparse, not hand-written)..."
     $calibratable = @(Get-ChildItem "scripts/quality/*.py" | Where-Object {
         (Get-Content $_.FullName -Raw) -match 'add_argument\(\s*"--calibrate"'
     })
@@ -389,7 +389,7 @@ try {
     # app's own `_ops/app-plan.json` (it already declares webSourceDir) with the compiled metadata
     # beside it: no live app, no credentials, no new hand-maintained list. 0 built apps found is a
     # printed PASS, same convention as [8/35].
-    Write-Host "[15/36] Checking panel-provenance manifests against each built app's current model..."
+    Write-Host "[15/39] Checking panel-provenance manifests against each built app's current model..."
     & $py "scripts/quality/check-panel-provenance-impact.py" --discover
     if ($LASTEXITCODE -ne 0) {
         $failures += "a confirmed *.panel.json manifest references a model element that no longer exists: see scripts/quality/check-panel-provenance-impact.py output above, then either regenerate the screen or update the model"
@@ -399,7 +399,7 @@ try {
     # directly, but by NO run-*.ps1 -- so running every gate on this machine never exercised it, and
     # "the generator gate passed" never meant "the generator still emits every DSL feature". Hosted
     # next to its parse-side twin, which is where a reader looking for one would expect the other.
-    Write-Host "[16/36] Checking every asserted DSL feature survives GENERATION, not just parsing..."
+    Write-Host "[16/39] Checking every asserted DSL feature survives GENERATION, not just parsing..."
     & $py "scripts/quality/check-dsl-conformance-generates.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a DSL feature parses but no longer survives generation: see scripts/quality/check-dsl-conformance-generates.py output above"
@@ -412,7 +412,7 @@ try {
     # kernel tests passed, because they construct a ProcedureStep and hand it to the executor, so the
     # validator that forbade the declaration was never in the picture. Structural half only (Gradle
     # runs the tests); this answers "is a model-level test even there to run?"
-    Write-Host "[17/36] Checking every step type has a model-level validation test..."
+    Write-Host "[17/39] Checking every step type has a model-level validation test..."
     & $py "scripts/quality/check-step-type-test-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a step type has no model-level validation test: see scripts/quality/check-step-type-test-coverage.py output above -- add an example to the conformance test for that step kind"
@@ -427,7 +427,7 @@ try {
     # every FIXED/CLEAN entry's named regression test still exists and still contains its marker (a
     # proof that regressed is caught, not just a proof that once existed), and no evaluator-shaped
     # class under the registry's own tracked directories is missing an entry entirely.
-    Write-Host "[18/36] Checking the X0 silent-answer registry..."
+    Write-Host "[18/39] Checking the X0 silent-answer registry..."
     & $py "scripts/quality/check-x0-evaluator-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a FIXED/CLEAN finding's proof test regressed, or a new evaluator-shaped class has no entry: see scripts/quality/check-x0-evaluator-coverage.py output above"
@@ -449,7 +449,7 @@ try {
     # since (unlike the Java/editor modules) its real test suite already runs here. `coverage json`
     # always writes a report from whatever ran, even if some tests failed, so a real regression is
     # still visible to the ratchet rather than silently reading as not-measured.
-    Write-Host "[19/36] Checking NPDevCli's own test suite (acceptance runner + dsl-2 migration), under coverage.py..."
+    Write-Host "[19/39] Checking NPDevCli's own test suite (acceptance runner + dsl-2 migration), under coverage.py..."
     & $py -m coverage run --source="NPDevCli" --omit="NPDevCli/tests/*,NPDevCli/tests/fixtures/*" -m unittest discover -s "NPDevCli/tests" -p "test_*.py" -v 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $failures += "NPDevCli/tests failed -- see output above (python -m coverage run -m unittest discover -s NPDevCli/tests)"
@@ -465,7 +465,7 @@ try {
     # has hit three confirmed instances (REG-89, REG-104, REG-112) -- the same threshold that earned
     # X0 a permanent registry+gate. scripts/quality/twin-pair-registry.json is that registry for this
     # family; this checker fails when a registered twin-pair diverges.
-    Write-Host "[20/36] Checking registered twin-pair rules (REG-89/104/112's family) haven't diverged..."
+    Write-Host "[20/39] Checking registered twin-pair rules (REG-89/104/112's family) haven't diverged..."
     & $py "scripts/quality/check-twin-pair-consistency.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a registered twin-pair rule has diverged: see scripts/quality/check-twin-pair-consistency.py output above, or scripts/quality/twin-pair-registry.json"
@@ -480,7 +480,7 @@ try {
     # `LIMIT ? OFFSET ?` inline because that is what every neighbouring line looked like, and it works
     # perfectly until SQL Server -- which binds (offset, limit) in the OPPOSITE order -- returns the
     # wrong page without erroring. Blocking, because that class of defect is found in production.
-    Write-Host "[21/36] Checking no dialect-bound SQL sits outside the dialect package..."
+    Write-Host "[21/39] Checking no dialect-bound SQL sits outside the dialect package..."
     & $py "scripts/quality/check-dialect-sites.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "dialect-bound SQL (LIMIT/OFFSET, ON CONFLICT, jsonb, information_schema, SERIAL, ...) was added outside com.npdev.kernel.storage.sql: see scripts/quality/check-dialect-sites.py output above, which names the file, the line and the SqlDialect method to use instead"
@@ -492,7 +492,7 @@ try {
     # tell "we broke it" from "the image changed", and a gate people cannot trust is a gate they
     # re-run instead of read. RED-verified two ways (2026-08-08): reverting the workflow's PINNED_MYSQL
     # to `mysql:8.4` and, separately, corrupting one digest in the Java map, each failed this check.
-    Write-Host "[22/36] Checking conformance container images are pinned to digests..."
+    Write-Host "[22/39] Checking conformance container images are pinned to digests..."
     & $py "scripts/quality/check-container-images-pinned.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a storage conformance container image is a moving tag, or the Java map and the workflow env block disagree: see scripts/quality/check-container-images-pinned.py output above (re-resolve with --resolve)"
@@ -501,7 +501,7 @@ try {
     # PACK-8: every `from` coordinate in model.json or pack.json must be pinned (digest or semver
     # tag), never a mutable branch name. Same defect class as the container-image pinning check
     # above: a gate on a moving tag cannot distinguish "we broke it" from "the upstream changed".
-    Write-Host "[22b/36] Checking pack `from` coordinates are pinned (no mutable tags)..."
+    Write-Host "[23/39] Checking pack `from` coordinates are pinned (no mutable tags)..."
     & $py "scripts/quality/check-pack-coordinates-pinned.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a pack `from` coordinate uses a mutable tag (latest/main/master): see scripts/quality/check-pack-coordinates-pinned.py output above -- pin to a digest or semver tag"
@@ -514,7 +514,7 @@ try {
     # corrected three call sites by hand; this is what stops instance four -- the sentence has one
     # home (PartialApplicationTruth), which asks DDL_IN_TRANSACTION instead of assuming. RED-verified
     # (2026-08-08): re-inlining STOR-2's original literal into ConversionHookRunner failed this check.
-    Write-Host "[23/36] Checking no storage message claims a rollback without asking the dialect..."
+    Write-Host "[24/39] Checking no storage message claims a rollback without asking the dialect..."
     & $py "scripts/quality/check-rollback-claims.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a storage/schema message asserts a rollback or 'nothing persisted' without consulting DDL_IN_TRANSACTION: see scripts/quality/check-rollback-claims.py output above -- call PartialApplicationTruth instead (STOR-2's defect, mechanised)"
@@ -530,7 +530,7 @@ try {
     # the contract was corrected first and this enforcement added second -- widening a schema nobody
     # checks is widening a comment. RED-verified two ways (2026-08-08): an unknown provider, and a
     # server provider with no host.
-    Write-Host "[24/36] Validating every corpus config.json against config.schema.json..."
+    Write-Host "[25/39] Validating every corpus config.json against config.schema.json..."
     & $py "scripts/quality/check-config-schema.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a config.json violates the config.schema.json its own `$schema property points at: see scripts/quality/check-config-schema.py output above -- either the file is wrong or the schema is, but the pointer must not be a lie"
@@ -547,7 +547,7 @@ try {
     # than findings. --allow-empty because a checkout that has generated nothing yet legitimately has
     # nothing to scan; engine-support.yml is where the check runs against freshly generated output
     # for MySQL and SQL Server, which is the case that matters.
-    Write-Host "[25/36] Checking emitted SQL is portable to the engine each script was generated for..."
+    Write-Host "[26/39] Checking emitted SQL is portable to the engine each script was generated for..."
     & $py "scripts/quality/check-emitted-sql-portability.py" --allow-empty --search-root "NPDevSamples"
     if ($LASTEXITCODE -ne 0) {
         $failures += "an emitted schema script contains a construct the target engine cannot run: see scripts/quality/check-emitted-sql-portability.py output above -- route it through SqlDialect's guarded* methods (STOR-5)"
@@ -565,7 +565,7 @@ try {
     # "Unsupported engine 'MySQL'". This checker fails the moment an engine is special-cased without
     # its siblings, and it self-tests on temp files so it cannot pass merely because the repo is
     # clean today.
-    Write-Host "[26/36] Checking every engine gets the same environment toolbox..."
+    Write-Host "[27/39] Checking every engine gets the same environment toolbox..."
     & $py "scripts/quality/check-engine-parity.py" --self-test
     if ($LASTEXITCODE -ne 0) {
         $failures += "check-engine-parity.py's own self-test failed: it can no longer tell a gap from completeness, so its verdict on the repo means nothing"
@@ -575,7 +575,7 @@ try {
         $failures += "an engine is special-cased without its siblings: see scripts/quality/check-engine-parity.py output above -- handle every server engine, or refuse the unsupported one AT THE POINT OF CHOICE (E15)"
     }
 
-    Write-Host "[27/36] Checking no template resource shadows a generated one..."
+    Write-Host "[28/39] Checking no template resource shadows a generated one..."
     & $py "scripts/quality/check-template-resource-shadowing.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a runtime-host template resource sits at a path the generator also writes, so the generated file is silently dropped from every app: see scripts/quality/check-template-resource-shadowing.py output above (REG-142)"
@@ -584,7 +584,7 @@ try {
     # [27/35] The mirror of [25/35]: that one fails when SQL is written OUTSIDE the dialect package,
     # this one when an answer INSIDE it is never requested -- the shape STOR-4/5/6 each had. Full
     # rationale in the checker's own docstring; it found nine more on its first run (STOR-13).
-    Write-Host "[28/36] Checking every SqlDialect answer has a caller that asks it..."
+    Write-Host "[29/39] Checking every SqlDialect answer has a caller that asks it..."
     & $py "scripts/quality/check-dialect-methods-are-asked.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a SqlDialect method has no production caller, or its allowlist entry is stale: see scripts/quality/check-dialect-methods-are-asked.py"
@@ -600,7 +600,7 @@ try {
     # and was attributed to "a Windows file-lock in the harness" until the leak was found on line 128
     # of a test. RED-proven against ec20ae5^ (the commit before that fix): 11 findings including that
     # very line.
-    Write-Host "[29/36] Checking every Files stream is closed (try-with-resources)..."
+    Write-Host "[30/39] Checking every Files stream is closed (try-with-resources)..."
     & $py "scripts/quality/check-closeable-streams.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "an unclosed Files.list/walk/find/lines stream was added: see scripts/quality/check-closeable-streams.py output above, which names the file and line"
@@ -618,7 +618,7 @@ try {
     # NAIVE fix (strip at any `#`), 5 different cases fail -- `grep '#foo'`, a URL fragment and an
     # escaped `#` all corrupted. It also asserts STATICALLY that README still has the heading the
     # harness keys off, the rename that once produced thirteen false product failures.
-    Write-Host "[30/36] Checking the first-run harness's command extractor against its corpus..."
+    Write-Host "[31/39] Checking the first-run harness's command extractor against its corpus..."
     & $py "scripts/quality/check-firstrun-extractor.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "the first-run harness would extract a documented command wrongly, or README no longer has the heading it keys off: see scripts/quality/check-firstrun-extractor.py output above"
@@ -632,7 +632,7 @@ try {
     # baked the CRLF shebang into the image). It fails ONLY on Windows, so CI -- LF on a Linux
     # runner -- stayed green throughout. `.gitattributes` pins the file types, and this enforces the
     # general rule, because a declaration drifts the moment a new extension or generator appears.
-    Write-Host "[31/36] Checking every shebang'd file has LF line endings..."
+    Write-Host "[32/39] Checking every shebang'd file has LF line endings..."
     & $py "scripts/quality/check-executable-line-endings.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a tracked file declares a shebang and has CRLF line endings, so it cannot run where it is executed: see scripts/quality/check-executable-line-endings.py output above (fix `.gitattributes`, then `git add --renormalize <file>`)"
@@ -661,7 +661,7 @@ try {
     # silently ignoring the other, which is a conformance test reporting green about work it never
     # looked at. Self-tests first, for the same reason check-engine-parity.py does [30/35]: a
     # checker that can no longer tell a broken routine from a good one has a meaningless verdict.
-    Write-Host "[32/36] Checking every checked-in browser routine conforms to the pinned engine schema..."
+    Write-Host "[33/39] Checking every checked-in browser routine conforms to the pinned engine schema..."
     & $py "scripts/quality/check-routine-corpus-conformance.py" --self-test
     if ($LASTEXITCODE -ne 0) {
         $failures += "check-routine-corpus-conformance.py's own self-test failed: it can no longer tell a broken routine from a good one, so its verdict on the corpus means nothing"
@@ -678,7 +678,7 @@ try {
     # invoked it (grep-confirmed at the time), the pattern in miniature. Move 11 W2 added the rule
     # that catches instance five and six of the same class -- a scripts/quality/check-*.py named by
     # no run-*.ps1 -- so it must run LAST, after every checker this gate hosts is in place.
-    Write-Host "[33/36] Checking every script declares a classification + invocation matching reality..."
+    Write-Host "[34/39] Checking every script declares a classification + invocation matching reality..."
     pwsh -NoProfile -File "scripts/quality/run-script-inventory-check.ps1"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a script's classification/invocation declaration is missing or does not match reality, or a scripts/quality/check-*.py is invoked by no gate at all: see scripts/quality/run-script-inventory-check.ps1 output above, or scripts/reports/out/script-inventory-report.json"
@@ -702,7 +702,7 @@ try {
     # history-relative comparison would fail on every single run for reasons no branch caused; see
     # the checker's own module docstring for the RED-proven reasoning. A branch that never touches
     # either pack.json (the common case) always passes trivially.
-    Write-Host "[34/36] Checking every built-in pack's own branch-relative change has a correctly-sized version bump..."
+    Write-Host "[35/39] Checking every built-in pack's own branch-relative change has a correctly-sized version bump..."
     & $py "scripts/quality/check-pack-diff-gate.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a built-in pack changed on this branch without a correctly-sized version bump: see scripts/quality/check-pack-diff-gate.py output above -- bump the version (major for a BREAKING change, minor for ADDITIVE, patch for PATCH-only), then `npdev pack publish <old> <new> --write` to also stamp the empty migrations chain entry"
@@ -717,7 +717,7 @@ try {
     # module legitimately reads not-measured every run -- that is intended, not a bug; see
     # coverage-baseline.json's own _comment. Never fails on a missing report, only on a real
     # regression against a module's recorded floor.
-    Write-Host "[35/36] Checking JaCoCo coverage hasn't dropped below its recorded floor..."
+    Write-Host "[36/39] Checking JaCoCo coverage hasn't dropped below its recorded floor..."
     & $py "scripts/quality/check-coverage-ratchet.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "coverage dropped below its recorded floor for at least one module: see scripts/quality/check-coverage-ratchet.py output above, and scripts/policy/coverage-baseline.json"
@@ -729,7 +729,7 @@ try {
     # from checks that were since deleted or reordered) -- gate step numbers becoming structural
     # ($script:GateSteps + a Write-Step helper, instead of hand-typed literals like this one) is R11's
     # own explicitly deferred follow-up, not redone here.
-    Write-Host "[36/36] Checking every DONE ledger item's DONE claim is falsifiable..."
+    Write-Host "[37/39] Checking every DONE ledger item's DONE claim is falsifiable..."
     & $py "scripts/quality/check-done-item-guards.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a ledger item's falsifiable-DONE guard is missing or unresolvable: see scripts/quality/check-done-item-guards.py output above, and scripts/policy/done-item-guard-policy.json"
@@ -742,10 +742,25 @@ try {
     # 2026-08-19: 21 of 41 modules were in neither workflow, including runtime-support and the two
     # RUN-4 hanging-socket proof adapters. See scripts/quality/check-ci-adapter-coverage.py's own
     # EXCLUDED table for the one deliberate, reviewed exception (postgres-test-support).
-    Write-Host "[37/37] Checking every kernel adapter module runs its tests in some CI workflow..."
+    Write-Host "[38/39] Checking every kernel adapter module runs its tests in some CI workflow..."
     & $py "scripts/quality/check-ci-adapter-coverage.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "a kernel adapter module runs its tests in NO CI workflow and is not excluded: see scripts/quality/check-ci-adapter-coverage.py output above"
+    }
+
+    # C5 (2026-08-23): the other half of the question check-markdown-links.py asks. That checker
+    # validates markdown LINKS, and nobody in this repo cites a path as a link -- every citation in
+    # the five entry-point documents is a CODE SPAN, so the link gate was green over all 26 dead
+    # ones measured that day. Including `python scripts/quality/check-register-consistency.py`, the
+    # FIRST command CONTRIBUTING.md tells a new contributor to run, deleted weeks earlier by
+    # md-zero-2026-08-11 Phase 2. Exemptions (scripts/policy/cited-path-exemptions.json) are for
+    # citations that are not claims about a file -- an abbreviation, a REG-nn template, a file
+    # BREAKING.md names as deleted in the entry that deleted it. A merely STALE citation is a defect
+    # in the document.
+    Write-Host "[39/39] Checking every repo-rooted path cited in an entry-point doc exists..."
+    & $py "scripts/quality/check-cited-paths.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "an entry-point document states a repo path as fact and that path does not exist: see scripts/quality/check-cited-paths.py output above -- fix the DOCUMENT (repoint it, or say plainly the file was deleted); scripts/policy/cited-path-exemptions.json is only for citations that are not claims about a file"
     }
 
     if ($failures.Count -gt 0) {

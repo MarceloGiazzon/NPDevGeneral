@@ -125,7 +125,13 @@ FQCN_RE = re.compile(r"^(?:[a-z][a-z0-9_]*\.)+[A-Z][A-Za-z0-9_]*$")
 # A Gradle task path, e.g. ":NPDevContract:dsl:test" -- at least a module segment and a task segment.
 GRADLE_TASK_PATH_RE = re.compile(r"^:[A-Za-z0-9_]+(?::[A-Za-z0-9_]+)+$")
 TEST_REF_RE = re.compile(r"^([^#]+?)(?:#([A-Za-z_][A-Za-z0-9_]*))?(?:\s*\(.*\))?$")
-MANUAL_PATH_TOKEN_RE = re.compile(r"[A-Za-z0-9_./\\-]+\.(?:py|ps1|sh|java|ts|tsx)\b")
+# 2026-08-23: this listed code extensions only, so a guard naming a .json/.yml/.md/.mustache/.html
+# file was never resolved at all -- the checker reported "0 repo-rooted anchor(s) checked" and
+# passed. EDIT-12's guard pointed at static-react-manifest.json, deleted in the same commit that
+# closed the item, and no gate ever noticed. A guard's proof is just as often a manifest or a
+# fixture as it is a script.
+MANUAL_PATH_TOKEN_RE = re.compile(
+    r"[A-Za-z0-9_./\\-]+\.(?:py|ps1|sh|java|ts|tsx|json|ya?ml|md|mustache|html|xml|sql|gradle)\b")
 
 # JUnit test-method annotations recognized by resolve_test's .java declaration scan.
 JAVA_TEST_ANNOTATIONS = ("@Test", "@ParameterizedTest", "@RepeatedTest", "@TestFactory", "@TestTemplate")
@@ -634,6 +640,15 @@ def calibrate() -> int:
                bool(ev(items_with({
                    "id": "ZZZ-M3", "status": "OPEN",
                    "guard": {"kind": "manual", "ref": "run scripts/quality/gone-check.py by hand",
+                              "asserts": "x", "provenRed": True},
+               }), base_policy)),
+               True)
+        report("kind: manual naming a MISSING repo-rooted .json MUST fire "
+               "(2026-08-23: .json was outside MANUAL_PATH_TOKEN_RE, so this guard resolved to "
+               "zero anchors and passed silently -- EDIT-12's real blind spot)",
+               bool(ev(items_with({
+                   "id": "ZZZ-M4", "status": "OPEN",
+                   "guard": {"kind": "manual", "ref": "scripts/policy/gone-manifest.json",
                               "asserts": "x", "provenRed": True},
                }), base_policy)),
                True)

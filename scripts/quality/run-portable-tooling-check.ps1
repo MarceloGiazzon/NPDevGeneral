@@ -108,7 +108,17 @@ function Get-PathNeutralityScanScope {
         "NPDevCli/**/*.md",
         "NPDevCli/**/*.json",
         "NPDevCli/**/*.txt",
-        "NPDevCli/**/*.bat"
+        "NPDevCli/**/*.bat",
+        "NPDevMcp/**/*.py",
+        "NPDevMcp/**/*.md",
+        "NPDevMcp/**/*.json",
+        "NPDevMcp/**/*.txt",
+        "NPDevMcp/**/*.bat",
+        "scripts/**/*.py",
+        "scripts/**/*.md",
+        "scripts/**/*.json",
+        "scripts/**/*.txt",
+        "scripts/**/*.bat"
     )
 }
 
@@ -123,7 +133,49 @@ function Get-PathNeutralityExcludedPaths {
         [pscustomobject]@{ path = "docs/archive/programme-history/RELEASE_BLOCKER_EXECUTION_ROADMAP.md"; reason = "Historical release-blocker evidence path is outside CP5 portable quick-start scope." },
         [pscustomobject]@{ path = "**/MIGRATION_DIGEST.md"; reason = "Historical migration digests preserve source-local path provenance." },
         [pscustomobject]@{ path = "scripts/quality/run-controlled-command-runner-tests.ps1"; reason = "Intentional security-test fixture uses drive-letter examples." },
-        [pscustomobject]@{ path = "NPDevCli/tests/test_pack_signing.py"; reason = "GitCoordinateParseUnitTest.test_without_subpath constructs a synthetic git+file:///D:/x/y@v2.0.0 coordinate specifically to test Windows drive-letter parsing -- the string IS the test." }
+        [pscustomobject]@{ path = "NPDevCli/tests/test_pack_signing.py"; reason = "GitCoordinateParseUnitTest.test_without_subpath constructs a synthetic git+file:///D:/x/y@v2.0.0 coordinate specifically to test Windows drive-letter parsing -- the string IS the test." },
+        # 2026-08-23 (T2.1): the entries below are the triage of the first run that ever scanned
+        # NPDevMcp/ and scripts/. Every one is a hit that CANNOT reach CI: prose, recorded run
+        # output, a synthetic test fixture, or a manual-runbook script CI never invokes. There is
+        # deliberately NO blanket "scripts/*" entry -- that would restore the blind spot the
+        # widened scan just closed. Anything gate-reachable (script-invocation-declarations.json
+        # says "ci-gate") is fixed at the source instead, never excluded here.
+        [pscustomobject]@{
+            path   = "scripts/policy/scale-proof-baseline.json"
+            reason = "Recorded run OUTPUT, not source config: run-scale-proof.ps1 appends each nightly rung's measurement messages, which quote the out-of-repo Input/Output paths of the machine that ran it. Same class as the scripts/reports/out/** entry above. Nothing reads these strings as a path (schemas/ai/scale-proof-report.schema.json treats them as free-text messages) and nightly-scale-ladder.yml deliberately does not commit CI's copy back, so no CI job can ever consume this machine's values."
+        },
+        [pscustomobject]@{
+            path   = "scripts/policy/maturity-max-roadmap-policy.json"
+            reason = "Historical CP0 evidence provenance (authoritativeRoadmapInput, evidencePathPolicy.cursorLocalDefault, humanActionRegister evidencePath) recording where a past roadmap input and its checkpoint bundles physically lived. scripts/docs/generate_maturity_max_roadmap_docs.py only RENDERS these strings into docs/maintainers/ROADMAP_BOUNDARY_POLICY.md and POST_BETA0_HUMAN_ACTION_REGISTER.md -- both of which are already excluded above for this exact reason -- and never opens them as paths, so nothing on CI resolves them."
+        },
+        [pscustomobject]@{
+            path   = "scripts/hygiene/out-of-tree-generation-baseline.json"
+            reason = "The only match is inside a `reason` string that itself explains why a hardcoded D:/WorkSpace build-output path must not be used. Prose about the defect is not the defect (the same rule the Python prose stripper applies to comments); the field is displayed by the hygiene report, never resolved."
+        },
+        [pscustomobject]@{
+            path   = "scripts/external-review/missions.json"
+            reason = "The only match is inside mission M1's human-readable `description`, explaining that emitted Java lives per-generated-app under the out-of-repo Build root and therefore has NO static in-repo path configured. It is documentation of an absent path, not a path: the schema-validated `paths` array it describes is empty."
+        },
+        [pscustomobject]@{
+            path   = "scripts/external-review/build-review-pack.py"
+            reason = "Operator convenience: DEFAULT_OUT_ROOT points at this developer machine's __OutsideRepo/external-ai-review/packs because ADR-0009 requires review packs to be written OUTSIDE the repo, and --out-root overrides it. Declared `invocation: manual-runbook` in scripts/policy/script-invocation-declarations.json -- no run-*.ps1 gate and no .github workflow invokes it, so CI never evaluates the default."
+        },
+        [pscustomobject]@{
+            path   = "scripts/quality/check-workflow-yaml-syntax.py"
+            reason = 'False positive, not a path: the matches are the two-character escape sequence in the inline YAML calibration fixture ''jobs:\n  x:\n    steps:\n'' -- the regex reads the single-letter YAML key x plus :\ as a drive. The file holds no filesystem default at all (it walks .github/workflows relative to __file__).'
+        },
+        [pscustomobject]@{
+            path   = "scripts/quality/check-ci-adapter-coverage.py"
+            reason = 'False positive, same shape as check-workflow-yaml-syntax.py above: the match is the x:\n escape inside the synthetic workflow text built by its --calibrate control. The file holds no filesystem default (settings.gradle and .github/workflows are resolved relative to __file__).'
+        },
+        [pscustomobject]@{
+            path   = "scripts/quality/firstrun-harness/README.md"
+            reason = 'Prose: one sentence listing the local preconditions a warm developer machine happens to satisfy (a Gradle cache, and this machine''s own Build root "present") to contrast them with the cold container the harness actually builds. The harness itself takes its source root from the LOCAL_SRC docker mount, so no CI path is derived from this line.'
+        },
+        [pscustomobject]@{
+            path   = "NPDevMcp/README.md"
+            reason = "Prose: a worked example of the MCP client's own claude_desktop_config.json, which requires an absolute path by protocol -- the reader must substitute their own checkout either way. Nothing executes or parses this README; the server resolves its root from the NPDEV_ROOT env var shown in the same snippet."
+        }
     )
 }
 
@@ -141,7 +193,12 @@ function Get-ScopedPathNeutralityFiles {
         $full = Join-Path $Root $path
         if (Test-Path -LiteralPath $full -PathType Leaf) { Get-Item -LiteralPath $full }
     }
-    foreach ($dir in @("NPDevCli")) {
+    # 2026-08-23: this scan covered six named files plus NPDevCli only, while its report line reads
+    # as repo-wide. scripts/ was invisible, which is how check-pack-coverage.py shipped with
+    # `Path(r"D:\WorkSpace\NPDev\AppGen\apps")` as a DEFAULT and turned the AI knowledge gate red on
+    # every pull request. These are the trees whose contents run in a gate, on CI, or on a
+    # contributor's machine -- the places REG-144's rule actually has to hold.
+    foreach ($dir in @("NPDevCli", "NPDevMcp", "scripts")) {
         $fullDir = Join-Path $Root $dir
         if (Test-Path -LiteralPath $fullDir -PathType Container) {
             Get-ChildItem -LiteralPath $fullDir -Recurse -File | Where-Object {
@@ -161,8 +218,8 @@ function Get-ScopedPathNeutralityFiles {
 # scope, so a real `default = "D:\WorkSpace\Build"` still fails -- which is the point, since
 # NPDevCli is exactly where REG-144's "never hardcode a drive letter as a default" would be broken.
 # Excluding the two whole files was the cheap alternative and was rejected for blinding the scan in
-# the file most likely to acquire one. Note also that Get-PathNeutralityExcludedPaths is REPORTED
-# but never applied as a filter, so an exclusion entry would not have worked anyway.
+# the file most likely to acquire one. (Get-PathNeutralityExcludedPaths was REPORTED but never
+# applied as a filter until 23a3403f; it is a real filter now -- see Get-HardcodedDriveMatches.)
 $script:PythonProseStrippedFileCount = 0
 function Get-PythonScannableText {
     param([string]$Root, [string[]]$Paths)
@@ -388,5 +445,30 @@ try {
     exit 0
 }
 finally {
+    # 2026-08-23: this check runs the README's own documented commands, two of which write into
+    # `build/` at the REPO ROOT -- `npdev normalize ai-model > build/npdev-normalized-model.json`
+    # and `npdev generate app --output build/npdev-generated` (which also emits build/ArtifactNP).
+    # The relative paths are deliberate: they are exactly what content/readme.json tells a user to
+    # run, and rewriting them to an absolute external root would put a hardcoded drive letter in
+    # the very script whose job is to refuse them. What was wrong is that the artefacts were LEFT
+    # BEHIND, so this check violated CLAUDE.md's first rule ("NEVER write generated/build artifacts
+    # inside this repo") every time it ran, and left 137 generated .java files in the tree.
+    # That is not cosmetic: security-pattern-sweep.py's coverage_gaps() then found two unknown
+    # module roots and failed the AI knowledge gate at steps [5/39] and [6/39] -- a gate turned red
+    # by another gate's litter, with nothing pointing at the cause. Nothing reads these outputs;
+    # only the commands' exit codes are asserted. So clean up what we created.
+    foreach ($leftover in @("build/npdev-generated", "build/ArtifactNP", "build/npdev-normalized-model.json")) {
+        $leftoverPath = Join-Path $workspaceRootPath $leftover
+        if (Test-Path -LiteralPath $leftoverPath) {
+            Remove-Item -LiteralPath $leftoverPath -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+    # Only remove `build/` itself if this run left it empty -- never delete a directory that
+    # already held something else.
+    $buildDir = Join-Path $workspaceRootPath "build"
+    if ((Test-Path -LiteralPath $buildDir) -and
+        -not (Get-ChildItem -LiteralPath $buildDir -Force -ErrorAction SilentlyContinue)) {
+        Remove-Item -LiteralPath $buildDir -Force -ErrorAction SilentlyContinue
+    }
     Pop-Location
 }

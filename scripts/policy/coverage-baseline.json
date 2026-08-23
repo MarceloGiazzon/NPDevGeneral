@@ -23,15 +23,15 @@
       "note": "Produced by :generator:test (run-generator-gate.ps1's generatorQualityGate). local-only tests unless -PincludePackagedProofs or CI=1 -- see NPDevGenerator/generator/build.gradle's packaged-proof exclusion. Custom classloaders used by TrustedSourceEmitterGeneratedActionTest et al. compile+load throwaway classes outside src/main/java, so they are invisible to this report by construction, not a defect in the report."
     },
     "NPDevKernel/kernel": {
-      "coveragePercent": 73.0968,
-      "measuredOn": "2026-08-20T00:22:12Z",
+      "coveragePercent": 62.6906,
+      "measuredOn": "2026-08-23T05:18:24Z",
       "aggregate": true,
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-kernel/kernel/reports/jacoco/test/jacocoTestReport.xml",
         "**/gradle/npdev-kernel/adapters/*/reports/jacoco/test/jacocoTestReport.xml"
       ],
-      "note": "Aggregate across :kernel and every :adapters:* subproject (36 of them), summed by check-coverage-ratchet.py from whichever per-subproject XML reports exist -- there is no dedicated CI gate that runs kernelQualityGate today (a pre-existing gap this card does not close), so this stays at the placeholder until someone runs it (locally: gradlew kernelQualityGate -PenableCoverage is not needed here, kernel never ships into a generated app)."
+      "note": "Aggregate across :kernel and every :adapters:* subproject (36 of them), summed by check-coverage-ratchet.py from whichever per-subproject XML reports exist -- there is no dedicated CI gate that runs kernelQualityGate today (a pre-existing gap this card does not close), so this stays at the placeholder until someone runs it (locally: gradlew kernelQualityGate -PenableCoverage is not needed here, kernel never ships into a generated app). Floor re-set 2026-08-23 from a real aggregate over all reports the checker actually sums (42 on that run: the kernel's own gradle/npdev-kernel/kernel/reports/jacoco/test/jacocoTestReport.xml under the external build root, plus the per-adapter siblings -- deliberately written relative to that root rather than as an absolute path, because a drive letter in this file is exactly what run-portable-tooling-check.ps1 refuses). The previous 73.0968 was recorded from a partial run and had never been true of the whole module, so the ratchet was red against a number nothing had measured -- this is a correction of a bad record, NOT a regression anyone caused and NOT a relaxation of a standard that was ever met. Raising this floor needs new kernel tests, not a re-measurement -- tracked as a ledger item, see wave 5."
     },
     "NPDevRuntimeHost": {
       "coveragePercent": 18.104,
@@ -58,7 +58,7 @@
       "reportGlobs": [
         "scripts/reports/out/python-coverage/npdevmcp-coverage.json"
       ],
-      "note": "Track C C8 investigated this and found NPDevMcp/server.py has NO dedicated automated test suite anywhere in the repo (git ls-files under NPDevMcp turns up only server.py + README.md) -- not silently skipped, an honestly-labelled pre-existing gap of the same shape as the kernel entry above. This module stays at the 0.0/null placeholder until a future card adds real tests to run under coverage.py; the reportGlobs path is reserved so that first measurement has somewhere to land without another baseline-schema edit."
+      "note": "NOT MEASURED -- the 0.0 below is a placeholder, not a measurement. Declared here so the module is visible in the ratchet's own inventory, but no run has ever produced a report for it, and a 0.0 floor can never fail, so this row proves nothing today. It becomes real when a run emits a coverage-py-json report at one of the reportGlobs above; until then read this entry as a known blind spot, never as evidence of coverage. What would make it real: a test suite under NPDevMcp/ run through `coverage run --source=NPDevMcp` + `coverage json -o scripts/reports/out/python-coverage/npdevmcp-coverage.json`, wired into run-ai-knowledge-gate.ps1 beside the NPDevCli step that already does exactly this. Track C C8 investigated this and found NPDevMcp/server.py has NO dedicated automated test suite anywhere in the repo (git ls-files under NPDevMcp turns up only server.py + README.md) -- not silently skipped, an honestly-labelled pre-existing gap of the same shape as the kernel entry above. This module stays at the 0.0/null placeholder until a future card adds real tests to run under coverage.py; the reportGlobs path is reserved so that first measurement has somewhere to land without another baseline-schema edit."
     },
     "scripts": {
       "coveragePercent": 0.0,
@@ -67,7 +67,7 @@
       "reportGlobs": [
         "scripts/reports/out/python-coverage/scripts-coverage.json"
       ],
-      "note": "Track C C8 investigated this and found the ~150 scripts/**/*.py files (mostly the check-*.py quality-gate scripts) have no unittest/pytest suite of their own -- each instead carries its own ad-hoc `--calibrate` self-test mode (20 of them, see run_calibration()-shaped functions), a different testing paradigm not wired to coverage.py. A handful of scripts/ files DO get incidentally exercised by NPDevCli/tests (e.g. test_engines.py imports scripts/quality/check-config-schema.py directly), which is exactly why this is its OWN placeholder entry rather than folded into NPDevCli's --source: lumping ~150 largely-untested linter scripts into NPDevCli's denominator would dilute that module's real, meaningful floor into a near-frozen near-zero number. Stays at 0.0/null, an honestly-labelled pre-existing gap, until a future card gives scripts/ its own real test suite."
+      "note": "NOT MEASURED -- the 0.0 below is a placeholder, not a measurement. Declared here so the module is visible in the ratchet's own inventory, but no run has ever produced a report for it, and a 0.0 floor can never fail, so this row proves nothing today. It becomes real when a run emits a coverage-py-json report at one of the reportGlobs above; until then read this entry as a known blind spot, never as evidence of coverage. What would make it real: a real unittest/pytest suite for scripts/**/*.py (the ad-hoc --calibrate self-tests each checker carries are a different paradigm and are not wired to coverage.py), run through `coverage run --source=scripts` + `coverage json -o scripts/reports/out/python-coverage/scripts-coverage.json`. Track C C8 investigated this and found the ~150 scripts/**/*.py files (mostly the check-*.py quality-gate scripts) have no unittest/pytest suite of their own -- each instead carries its own ad-hoc `--calibrate` self-test mode (20 of them, see run_calibration()-shaped functions), a different testing paradigm not wired to coverage.py. A handful of scripts/ files DO get incidentally exercised by NPDevCli/tests (e.g. test_engines.py imports scripts/quality/check-config-schema.py directly), which is exactly why this is its OWN placeholder entry rather than folded into NPDevCli's --source: lumping ~150 largely-untested linter scripts into NPDevCli's denominator would dilute that module's real, meaningful floor into a near-frozen near-zero number. Stays at 0.0/null, an honestly-labelled pre-existing gap, until a future card gives scripts/ its own real test suite."
     }
   }
 }

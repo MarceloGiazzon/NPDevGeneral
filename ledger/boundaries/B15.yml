@@ -1,0 +1,26 @@
+id: B15
+title: "LIFTED (both halves) -- B15(A) \"await cannot be nested inside a loop body\" closed for the SEQUENTIAL case (Move 16 Phase B, 2026-08-03); B15(B) \"parallel awaits inside a loop (N iterations blocking at once)\" closed for a single-step await-only body (S6 Phase B, 2026-08-03) and widened to a genuinely multi-step body (S8 Wave 3, 2026-08-04)"
+kind: LIFTED
+userFacingText: ""  # lifted: the boundary itself refuses nothing, so there is no message to render
+workaround: "Sequential (B15(A)): author a forEach loop body with exactly one reachable await step -- validation now accepts it. Parallel (B15(B)): author a forEach body with \"parallelAwait\": true and exactly one reachable await step AT THE LOOP BODY'S TOP LEVEL (not nested inside a branch); any number of other non-forEach steps may now precede or follow it. A forEach nested inside a parallel forEach still needs sequential mode or a flow restructure."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  LIFTED, so this boundary refuses nothing any more -- the row is kept for history and this entry
+  claims no diagnostic. This boundary spans TWO doc rows, B15(A) and B15(B), which is why
+  docs/ACCEPTED_BOUNDARIES.md carries 24 table rows across 23 distinct boundary ids; one ledger file
+  covers both halves because they are one boundary number closed in two stages. The residual limits
+  named in the rows' own text ARE real and ARE enforced at compile time -- FlowValidation still
+  rejects two or more reachable awaits in the same sequential loop body, and refuses a forEach nested
+  inside a parallel forEach with a named compile error (composing two independent per-iteration
+  scoping schemes was never attempted) -- but NEITHER was traced to a diagnostic code or a boundaryId
+  for this ledger entry, so do not read this file as claiming one. Worth preserving from the lift:
+  the general parallel case was correctly diagnosed as a structural wall by Move 9 A5 in 2026-07-31,
+  and what actually closed both halves was not new schema but the observation that FlowInstance.state
+  is already a flexible JSON blob that round-trips through persistence in full on every checkpoint --
+  so per-iteration correlation ids and namespaced descriptors needed no new table, no adapter change
+  and no migration. The originally-costed "new flow_instance_wait table" was found to buy nothing.
+  Two previously-unreachable bugs surfaced only by building it: ForEachStep re-wrapped ANY nested
+  failure -- including a legitimate WAITING_EVENT -- as a generic terminal FAILED, and its finally
+  block wiped progress/correlation/marker state even when returning early for a genuine wait.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B15 -- FlowStateCodec.java, ForEachStep.java, AwaitEventStep.java, ParallelAwaitForEachStep.java, ParallelLoopIterationScope.java, ResumeCoordinator.java (NPDevKernel/kernel/...), FlowValidation.java (NPDevContract/dsl/...), KernelRunnerAwaitInLoopRestartProofTest.java, KernelRunnerParallelAwaitInLoopRestartProofTest.java, ParallelAwaitForEachStepIsolationTest.java, docs/FLOWS.md, Move 9 A5, Move 16 Phase B, S6 Phase B, S8 Wave 3"

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -99,7 +100,23 @@ def check(root: Path, metadata_path: Path) -> tuple[list[str], list[str]]:
     return problems, warnings
 
 
-DEFAULT_BUILD_ROOT = Path(r"D:\WorkSpace\NPDev\Build")
+def _default_build_root() -> Path:
+    """The external build root, resolved the way CLAUDE.md's REG-144 rule requires: from
+    $NPDEV_BUILD_ROOT, else as a sibling of the repo root identified by CONTENTS -- never by
+    assuming a drive letter, and never by matching the repo directory's NAME (GitHub checks this
+    repo out as NPDevGeneral, which is exactly how eleven copies of this resolution once produced
+    three different build roots in one checkout)."""
+    from_env = os.environ.get("NPDEV_BUILD_ROOT")
+    if from_env:
+        return Path(from_env).expanduser().resolve()
+    here = Path(__file__).resolve()
+    for ancestor in here.parents:
+        if (ancestor / "NPDevContract").is_dir() and (ancestor / "NPDevKernel").is_dir():
+            return ancestor.parent / "Build"
+    return Path("Build")
+
+
+DEFAULT_BUILD_ROOT = _default_build_root()
 
 # Where a built app keeps the model surface, relative to its own `_ops` directory. The regenerated
 # compiled metadata is preferred over a captured bundle: the bundle is a SNAPSHOT written by the last

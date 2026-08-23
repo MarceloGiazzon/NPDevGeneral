@@ -39,9 +39,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
+
+
+def _default_appgen_root() -> Path:
+    """Layer 2 (app definitions) lives OUTSIDE the repo and is not a git repo, so CI never has it.
+    Resolve it from $NPDEV_APPGEN_APPS, else as a sibling of the repo root identified by CONTENTS --
+    never by assuming a drive letter (REG-144)."""
+    from_env = os.environ.get("NPDEV_APPGEN_APPS")
+    if from_env:
+        return Path(from_env).expanduser().resolve()
+    here = Path(__file__).resolve()
+    for ancestor in here.parents:
+        if (ancestor / "NPDevContract").is_dir() and (ancestor / "NPDevKernel").is_dir():
+            return ancestor.parent / "AppGen" / "apps"
+    return Path("AppGen") / "apps"
 
 # Optional `<namespace>::` prefix before the concept name -- pack-provided concepts (identity::User,
 # workspace::Menu) are real and namespaced this way (schemas/panel-provenance.schema.json, same
@@ -191,8 +206,9 @@ def calibrate() -> int:
 
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--root", default=r"D:\WorkSpace\NPDev\AppGen\apps",
-                     help="where to look for *.panel.json (default: the AppGen apps workspace)")
+    ap.add_argument("--root", default=str(_default_appgen_root()),
+                     help="where to look for *.panel.json (default: the AppGen apps workspace, "
+                          "resolved from $NPDEV_APPGEN_APPS or as a sibling of the repo root)")
     ap.add_argument("--calibrate", action="store_true")
     args = ap.parse_args(argv[1:])
 

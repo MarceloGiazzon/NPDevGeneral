@@ -1,0 +1,15 @@
+id: B7
+title: "Refusals are not side-effect-free"
+kind: POSTURAL
+userFacingText: ""  # nothing user-reachable: this describes what a refusal leaves behind, not a refusal of its own
+workaround: "Treat a refused boot as \"inspect before retrying\"; the history table records what ran."
+enforcingDiagnosticCodes: []
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because there is nothing to hit. This row describes a property of
+  every OTHER refusal -- a refusal can happen after an idempotent Flyway step already ran -- rather
+  than a refusal of its own, so there is no dedicated code path, no ValidationDiagnostic and nothing
+  for a boundaryId to attach to. Making the whole boot transactional is impossible across engines
+  (H2 has no transactional DDL), which is why the revisit trigger is "only if every supported engine
+  gains transactional DDL".
+ref: "docs/ACCEPTED_BOUNDARIES.md#B7 -- DATABASES_AND_MIGRATIONS.md §13, §15"
