@@ -122,7 +122,8 @@ function Get-PathNeutralityExcludedPaths {
         [pscustomobject]@{ path = "docs/maintainers/OFFICIAL_BETA_RELEASE_RUNBOOK.md"; reason = "Historical Beta0 release runbook is outside CP5 portable quick-start scope." },
         [pscustomobject]@{ path = "docs/archive/programme-history/RELEASE_BLOCKER_EXECUTION_ROADMAP.md"; reason = "Historical release-blocker evidence path is outside CP5 portable quick-start scope." },
         [pscustomobject]@{ path = "**/MIGRATION_DIGEST.md"; reason = "Historical migration digests preserve source-local path provenance." },
-        [pscustomobject]@{ path = "scripts/quality/run-controlled-command-runner-tests.ps1"; reason = "Intentional security-test fixture uses drive-letter examples." }
+        [pscustomobject]@{ path = "scripts/quality/run-controlled-command-runner-tests.ps1"; reason = "Intentional security-test fixture uses drive-letter examples." },
+        [pscustomobject]@{ path = "NPDevCli/tests/test_pack_signing.py"; reason = "GitCoordinateParseUnitTest.test_without_subpath constructs a synthetic git+file:///D:/x/y@v2.0.0 coordinate specifically to test Windows drive-letter parsing -- the string IS the test." }
     )
 }
 
@@ -192,8 +193,19 @@ function Get-HardcodedDriveMatches {
     # $Matches variable (set by any -match/-notmatch, including ones in a nested scriptblock),
     # which silently replaces the accumulator with a regex-capture Hashtable and later breaks
     # ConvertTo-Json ("System.Collections.Hashtable is not supported"). See Get-GradlePwshCoreTaskMatches.
+    #
+    # Get-PathNeutralityExcludedPaths WAS computed and reported elsewhere but never actually applied
+    # as a filter here -- confirmed live: NPDevCli/tests/test_pack_signing.py's
+    # GitCoordinateParseUnitTest.test_without_subpath legitimately constructs a synthetic
+    # "git+file:///D:/x/y@v2.0.0" coordinate to test Windows drive-letter parsing, which is exactly
+    # the "intentional test fixture" class the existing run-controlled-command-runner-tests.ps1
+    # exclusion entry already exists to cover -- it just never took effect for any entry.
+    $excludedPaths = @(Get-PathNeutralityExcludedPaths)
     $found = @()
-    $scopedFiles = @(Get-ScopedPathNeutralityFiles -Root $Root)
+    $scopedFiles = @(Get-ScopedPathNeutralityFiles -Root $Root) | Where-Object {
+        $candidate = Convert-ToRepoPath -Root $Root -PathValue $_.FullName
+        -not @($excludedPaths | Where-Object { $candidate -like $_.path }).Count
+    }
     $pythonPaths = @($scopedFiles | Where-Object { $_.Extension -eq ".py" } | ForEach-Object { $_.FullName })
     $scannable = Get-PythonScannableText -Root $Root -Paths $pythonPaths
     $script:PythonProseStrippedFileCount = @($scannable.Keys).Count
