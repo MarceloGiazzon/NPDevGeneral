@@ -75,7 +75,7 @@ then the two big subsystems (LIFT-UPLOAD, LIFT-LOOP) last where the most design 
 (already does arithmetic / comparison / logical / parens / field-refs for AutoPanel computed columns)
 into the *single* expression grammar for both computed values **and** invariants — retiring the
 hand-rolled DNF matcher in
-[`CelInvariantEngine`](../../../NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/adapters/runtime/support/CelInvariantEngine.java).
+[`CelInvariantEngine`](../../../NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/CelInvariantEngine.java).
 
 ### LIFT-EXPR-P1 — Boolean-complete the evaluator
 - **Status:** DONE (2026-07-13) · **Risk:** Medium

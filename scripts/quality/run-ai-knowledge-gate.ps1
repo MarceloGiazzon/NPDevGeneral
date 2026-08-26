@@ -380,14 +380,31 @@ try {
     # argparse (any scripts/quality/*.py declaring `--calibrate`), not hand-maintained, so a future
     # calibratable script is picked up automatically instead of needing this list updated too.
     Write-Host "[14/39] Running every --calibrate self-test (list derived from argparse, not hand-written)..."
-    $calibratable = @(Get-ChildItem "scripts/quality/*.py" | Where-Object {
+    # W3.4 (2026-08-25 remediation plan / QUAL-32's COV-SCRIPTS finding): widened from scripts/quality/
+    # alone to also catch scripts/security/ -- check-npm-audit-policy.py declares --calibrate too and
+    # was invisible to this scan purely because of which subdirectory it lives in.
+    $calibratable = @(Get-ChildItem "scripts/quality/*.py", "scripts/security/*.py" | Where-Object {
         (Get-Content $_.FullName -Raw) -match 'add_argument\(\s*"--calibrate"'
     })
     Write-Host "  found $($calibratable.Count) calibratable script(s): $($calibratable.Name -join ', ')"
+    # W3.4: each --calibrate run wrapped in `coverage run -a` (append), so this SAME loop -- the
+    # already-proven-good self-tests the plan itself calls out ("proved their own RED in this
+    # audit's gate run") -- also feeds the scripts/ coverage-ratchet entry below, instead of it
+    # staying a permanent 0.0/null placeholder no run has ever measured.
+    $npdevCliCoverageDir = "scripts/reports/out/python-coverage"
+    New-Item -ItemType Directory -Force -Path $npdevCliCoverageDir | Out-Null
+    $scriptsCoverageDataFile = ".coverage.scripts"
+    if (Test-Path -LiteralPath $scriptsCoverageDataFile) { Remove-Item -LiteralPath $scriptsCoverageDataFile -Force }
     foreach ($s in $calibratable) {
-        & $py $s.FullName --calibrate
+        & $py -m coverage run "--data-file=$scriptsCoverageDataFile" -a --source="scripts" $s.FullName --calibrate
         if ($LASTEXITCODE -ne 0) {
             $failures += "$($s.Name) --calibrate FAILED: it can no longer prove it detects its own target bug"
+        }
+    }
+    if ($calibratable.Count -gt 0) {
+        & $py -m coverage json "--data-file=$scriptsCoverageDataFile" -o (Join-Path $npdevCliCoverageDir "scripts-coverage.json") 2>&1 | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            $failures += "coverage.py could not write scripts/'s coverage report -- see output above (python -m coverage json)"
         }
     }
 
@@ -463,11 +480,23 @@ try {
     if ($LASTEXITCODE -ne 0) {
         $failures += "NPDevCli/tests failed -- see output above (python -m coverage run -m unittest discover -s NPDevCli/tests)"
     }
-    $npdevCliCoverageDir = "scripts/reports/out/python-coverage"
-    New-Item -ItemType Directory -Force -Path $npdevCliCoverageDir | Out-Null
     & $py -m coverage json -o (Join-Path $npdevCliCoverageDir "npdevcli-coverage.json") 2>&1 | Out-Host
     if ($LASTEXITCODE -ne 0) {
         $failures += "coverage.py could not write NPDevCli's coverage report -- see output above (python -m coverage json)"
+    }
+
+    # W3.4 (2026-08-25 remediation plan / QUAL-32's COV-MCP finding): NPDevMcp had ZERO tests --
+    # `git ls-files` under it returned exactly server.py + README.md. Same coverage.py wrapping as
+    # NPDevCli above, on its own --data-file so the two `coverage run` invocations never overwrite
+    # each other's data (both would otherwise default to the same ./.coverage file).
+    Write-Host "[19b/39] Checking NPDevMcp's own test suite (the 3 AI-authoring-bridge tools), under coverage.py..."
+    & $py -m coverage run --data-file=".coverage.npdevmcp" --source="NPDevMcp" --omit="NPDevMcp/tests/*" -m unittest discover -s "NPDevMcp/tests" -p "test_*.py" -v 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "NPDevMcp/tests failed -- see output above (python -m coverage run -m unittest discover -s NPDevMcp/tests)"
+    }
+    & $py -m coverage json --data-file=".coverage.npdevmcp" -o (Join-Path $npdevCliCoverageDir "npdevmcp-coverage.json") 2>&1 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "coverage.py could not write NPDevMcp's coverage report -- see output above (python -m coverage json)"
     }
 
     # [19/35] Move 14 Phase E item E1 (U2): "a rule applied in one place, not mirrored to its twin"

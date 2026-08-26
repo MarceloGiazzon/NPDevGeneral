@@ -430,6 +430,17 @@ jobs:
 
     env:
       NPDEV_WORKSPACE: ${{ github.workspace }}
+      # BUILD-3: pinned to the same shape as the Linux job's NPDEV_BUILD_ROOT (line 87 above),
+      # <workspace>/Build. Before this, Get-NPDevBuildRoot's content-walk fallback landed at
+      # <workspace>/../Build here (one directory ABOVE the checkout) instead -- a different root
+      # from the Linux job's, not wrong on its own (REG-144 made that fallback correct), but it cost
+      # a debugging cycle when a diagnostic step written against one job's root printed nothing on
+      # the other. Every script in this job resolves its build root through Get-NPDevBuildRoot
+      # (scripts/npdev-common.ps1), which checks $env:NPDEV_BUILD_ROOT first, so pinning it here is
+      # the whole fix -- no other step in this job hardcodes the old sibling-of-checkout path; the
+      # one step that DID reference it (the DSL-failure diagnostic below) already searches BOTH
+      # candidate roots as a fallback list, so it is unaffected either way.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
       CI: true
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false
 

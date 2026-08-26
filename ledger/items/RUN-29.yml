@@ -4,25 +4,42 @@ title: >-
   locale, and RuntimeHost still reads labels as raw strings
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-23
-source: 2026-08-23 platform audit, from BREAKING.md's own R5.6 entry.
+closed: 2026-08-25
+verification: VERIFIED_LIVE
+source: >-
+  2026-08-23 platform audit, from BREAKING.md's own R5.6 entry. The entry it read was stale: the gap
+  it describes was already closed by EDIT-13 on 2026-08-19, four days before this item was opened.
 surface: runtimehost/ui-metadata, kernel/i18n
 detail: |
-  All 13 label sites accept a per-locale object, the four-place chain (JsonModelParser ->
-  ModelCompiler -> ModelResolver -> canonical JSON) carries it, and com.npdev.kernel.i18n.
-  LabelResolver implements the resolution order. ExecutionContext.locale() exists, reading the
-  generic tags map's "locale" key.
+  Duplicate of EDIT-13, closed 2026-08-19. Both halves this item claims are missing are wired:
 
-  Nothing writes that key. There is no JWT claim, no Accept-Language header path, no session field --
-  confirmed by inspection of JwtAuthenticatedContextResolver and the RuntimeContextService mustache
-  template. And RuntimeUiMetadataController / RuntimeMetadataService / PanelRuntime read labels as
-  raw strings off the generically-parsed compiled-metadata JSON tree, so even a populated locale
-  would not reach a rendered label.
+  - `npdev-runtime-context-service.mustache` populates `ExecutionContext`'s `locale` tag from an
+    explicit `X-Tag-locale` header or, failing that, `Accept-Language` (`X-Tag-locale` constant at
+    line 23; `resolveRequestedLocale` at line 111).
+  - `RuntimeUiMetadataController.java:169-184` derives the same locale on the render path and applies
+    it via `ExecutionContext.withTag("locale", ...)`.
+  - `PanelRuntime.java:993,1007` and `RuntimeMetadataService.java:637-660` resolve `label`/`shortLabel`
+    through `com.npdev.kernel.i18n.LabelResolver.resolve(...)` before a value ever leaves the service --
+    not raw strings off the parsed JSON tree.
 
-  So the feature is authorable and inert. A model can declare pt-BR labels today and no user will
-  ever see one.
+  EDIT-13's own guard proved this live against a booted app (`npdev-canary`, locale-patched):
+  no locale header -> `"Canary task"`; `X-Tag-locale: pt-BR` -> `"Tarefa canaria"`;
+  `Accept-Language: pt-BR,pt;q=0.9,en;q=0.8` -> `"Tarefa canaria"`. Re-verified by code inspection for
+  this closure (2026-08-25): no regression since.
 
-  Done when: an Accept-Language header (or an explicit X-Tag-locale) reaches
-  ExecutionContext.withTag("locale", ...), the UI-metadata bundle builder calls LabelResolver, and a
-  running app serves a different label for two different Accept-Language values.
+  This item was opened from a stale "Known limitation" style read of BREAKING.md's R5.6 entry that
+  predates EDIT-13's same-day fix note appended below it. No production code changed to close this
+  item -- it is a record correction (2026-08-25 remediation plan, W1.2).
+guard:
+  kind: manual
+  ref: NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledMetadataCanonicalJson.java
+  asserts: >-
+    Same guard as EDIT-13 -- see that item. CompiledMetadataCanonicalJson emits per-locale label maps
+    (grep -c getLabelLocales > 0) and a booted app serves a different label per Accept-Language/
+    X-Tag-locale value.
+  provenRed: false
+  provenRedNote: >-
+    No new code change; this item is a record correction. EDIT-13's own guard (provenRed: true)
+    already covers the behavior this item mistakenly re-described as missing.

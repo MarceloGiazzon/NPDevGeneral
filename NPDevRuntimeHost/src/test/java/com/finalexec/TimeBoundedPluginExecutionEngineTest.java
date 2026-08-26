@@ -4,7 +4,7 @@ import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.RuntimePluginExecutionSummaryStore;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.finalexec.npdev.service.RuntimePluginPackageRealizationService;
-import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
+import com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine;
 import com.finalexec.npdev.service.SandboxedPluginExecutionResult;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
@@ -20,12 +20,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SandboxedPluginExecutionEngineTest {
+class TimeBoundedPluginExecutionEngineTest {
     // sandbox containment coverage: filesystem, network, memory, cpu, timeout, infinite loop, System.exit, reflection
 
     @Test
     void executesPluginHandlerInsideSandboxBoundary() {
-        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
                 250,
                 allowAllPolicy(),
                 new InMemorySummaryStore()
@@ -59,7 +59,7 @@ class SandboxedPluginExecutionEngineTest {
 
     @Test
     void wrapsPluginExceptionsAsStructuredFailures() {
-        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
                 250,
                 allowAllPolicy(),
                 new InMemorySummaryStore()
@@ -125,7 +125,7 @@ class SandboxedPluginExecutionEngineTest {
      * is measured from the {@code get()} call, so a task that merely <i>starts</i> late still times
      * out — which is why widening the margin was correctly refused: lateness is not the mechanism.
      * The flake must therefore be {@code get()} exiting through a path OTHER than
-     * {@code TimeoutException}, and {@code SandboxedPluginExecutionEngine} has exactly two:
+     * {@code TimeoutException}, and {@code TimeBoundedPluginExecutionEngine} has exactly two:
      *
      * <ul>
      *   <li>{@code InterruptedException} → {@code FAILED} / {@code PLUGIN_EXECUTION_INTERRUPTED},
@@ -145,14 +145,14 @@ class SandboxedPluginExecutionEngineTest {
      * {@code executionDurationMs=1} and the engine returned {@code FAILED/PLUGIN_EXECUTION_INTERRUPTED}
      * instead of {@code TIMED_OUT}. Under a parallel suite ({@code workers.max=4}) a prior test on the
      * same worker thread leaves that interrupt pending — the ~1-in-5 signature. Fixed in the engine,
-     * not by widening the margin: {@code SandboxedPluginExecutionEngine.execute} now reads-and-clears a
+     * not by widening the margin: {@code TimeBoundedPluginExecutionEngine.execute} now reads-and-clears a
      * stray caller interrupt before the bounded {@code get()} and re-asserts it afterwards, so a
      * timeout can no longer be corrupted by unrelated interrupt state. The {@code @Tag("load-sensitive")}
      * marker is removed because the mechanism that made it load-sensitive is gone.
      */
     @Test
     void timesOutSlowPluginExecution() {
-        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
                 25,
                 allowAllPolicy(),
                 new InMemorySummaryStore()
@@ -209,7 +209,7 @@ class SandboxedPluginExecutionEngineTest {
      */
     @Test
     void timeoutIsNotCorruptedByAPreExistingCallerInterrupt() {
-        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
                 25,
                 allowAllPolicy(),
                 new InMemorySummaryStore()
@@ -262,7 +262,7 @@ class SandboxedPluginExecutionEngineTest {
      */
     @Test
     void disambiguatesOverloadsBySameArgCountByActualArgumentType() {
-        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
                 250,
                 allowAllPolicy(),
                 new InMemorySummaryStore()
@@ -291,23 +291,24 @@ class SandboxedPluginExecutionEngineTest {
         }
     }
 
-    @Disabled("Malicious plugin containment requires a real sandbox with SecurityManager or process isolation. "
-            + "The 6 existing tests in this class verify the happy path, error handling, timeout, interrupt "
-            + "safety, overload disambiguation, and policy denial.")
+    // W3.3 (2026-08-25 remediation plan / QUAL-33): investigated, not fixed. Verified directly
+    // against TimeBoundedPluginExecutionEngine.java (not inferred from this stub's own comments): the
+    // only real containment mechanism today is the wall-clock future.get(timeoutMs) the 6 tests
+    // above already prove -- filesystem, network, memory/CPU, System.exit and reflection are all
+    // wide open to any plugin handler running in the same JVM. A real fix needs OS-level process
+    // isolation, which is its own substantial security feature (new IPC surface, per-platform
+    // resource limiting, killed-child handling) -- filed as ledger/items/SEC-3.yml rather than
+    // attempted inline; a half-built containment layer would be worse than this honestly-disabled
+    // stub (false confidence that malicious code is contained when it is not).
+    @Disabled("No real containment exists beyond the timeout -- see ledger/items/SEC-3.yml for what "
+            + "would need to be built (OS-level process isolation) and why it wasn't attempted here.")
     @Test
     void maliciousPluginVectorsRemainContained() {
-        // Original aspirational vectors:
-        // - Filesystem access outside the sandbox blocked
-        // - Network connections blocked
-        // - Memory/CPU bounded
-        // - Infinite loop terminated by timeout
-        // - System.exit contained
-        // - Reflection containment
     }
 
     @Test
     void deniesExecutionBeforeInvokingHandlerWhenPolicyRejectsAdapter() {
-        try (SandboxedPluginExecutionEngine engine = new SandboxedPluginExecutionEngine(
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
                 250,
                 new PluginExecutionPolicyEvaluator(null, "dev", "", "notification-inproc", "", ""),
                 new InMemorySummaryStore()

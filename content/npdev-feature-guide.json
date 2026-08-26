@@ -45,7 +45,7 @@
     {
       "level": 2,
       "title": "9. Custom capabilities — code NPDev does not generate",
-      "body": "\n**What it is.** A capability is a verb your app needs but does not implement itself: send an\nemail, call a payment provider, score a risk. The model declares the verb; an adapter provides\nit. Swap the adapter and nothing in the model changes.\n\n**When to reach for it.** Anything that leaves the process. Declaring it as a capability keeps\nit out of your flows' logic and makes it substitutable in tests.\n\n`plugin:java-source` lets you ship the implementation as your own Java, compiled into the\ngenerated app with its dependencies declared alongside it.\n"
+      "body": "\n**What it is.** A capability is a verb your app needs but does not implement itself: send an\nemail, call a payment provider, score a risk. The model declares the verb; an adapter provides\nit. Swap the adapter and nothing in the model changes.\n\n**When to reach for it.** Anything that leaves the process. Declaring it as a capability keeps\nit out of your flows' logic and makes it substitutable in tests.\n\n`plugin:java-source` lets you ship the implementation as your own Java, compiled into the\ngenerated app with its dependencies declared alongside it.\n\n**Trust boundary.** A `plugin:java-*` handler runs in-process with the application's full\nprivileges (only wall-clock time is bounded) and must be trusted like your own code — see SEC-3\nfor the tracked upgrade path to real containment (process isolation).\n"
     },
     {
       "level": 2,

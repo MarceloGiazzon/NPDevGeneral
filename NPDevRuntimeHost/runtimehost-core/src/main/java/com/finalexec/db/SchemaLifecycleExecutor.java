@@ -671,6 +671,22 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // see SchemaLifecycleExecutorTableRenameBlindSpotTest for the pre-fix behavior this closes).
         // Idempotent-by-check and a no-op when manifest.businessTableRenames() is empty or nothing
         // matches, so it is always safe to attempt eagerly here, ahead of every other step.
+        // Item 5, SUPPORT_FEATURES_PLAN_2026-08-26 (B11): the capability to know an engine commits
+        // DDL implicitly already existed (SqlDialects.active().supports(DDL_IN_TRANSACTION), used by
+        // ConversionHookRunner's narrower per-hook MIXES_DDL_PATTERN warning below) but was never
+        // surfaced for the general migration path -- the structural passes below (renames/relax/
+        // tighten, and classify()'s own additive/destructive follow-on) issue real DDL on H2 (the
+        // DEFAULT development engine) and MySQL just as much as a conversion hook's convert.sql does.
+        // One line, once per migration run (not per statement) -- a warning printed on every ALTER is
+        // a warning nobody reads.
+        if (!SqlDialects.active().supports(com.npdev.kernel.storage.sql.StorageCapability.DDL_IN_TRANSACTION)) {
+            System.out.println("NPDev schema lifecycle: WARNING -- '" + SqlDialects.active().name()
+                    + "' commits DDL implicitly (no transactional DDL). If this migration fails "
+                    + "partway, any schema change already applied will stay applied even though its "
+                    + "data changes roll back -- the database can end up in a state this build's model "
+                    + "does not fully describe. Postgres and SQL Server roll back fully. Run `npdev why "
+                    + "B11` for the full explanation and workaround.");
+        }
         attemptInPlaceTableRenames(dataSource, manifest);
         // LNCH-1 Phase 7 rehearsal fix: field-level renames MUST also be attempted before classify()
         // for the same reason table renames are (above) -- see attemptInPlaceRenames' own javadoc for
@@ -717,8 +733,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // (an operator needs it to tell which later build touched this database) and the
             // mark-done escape hatch (applyMigrationMark/MigrationMarkStore) -- both asserted by
             // SchemaLifecycleExecutorDatabaseMigratedPastBuildTest, which caught the loss.
+            // B5:schema_ahead_detected (2026-08-25 W2.3, docs/ACCEPTED_BOUNDARIES.md): BoundaryViolation
+            // has no separate `code` field, only `boundaryId` -- the code is carried as a message
+            // prefix, the same convention B2/B4 use, so it survives into both the boot log and the
+            // 503 JSON body BoundaryViolationResponse writes (BoundaryViolation.toJson()'s "message").
             throw new BoundaryBootException(new BoundaryViolation("B5", "boot",
-                    "This database was migrated PAST this build: it is already at fingerprint "
+                    "B5:schema_ahead_detected:This database was migrated PAST this build: it is already at fingerprint "
                     + aheadOfBuild.get().toFingerprint() + ", a later state than this build's own "
                     + manifest.schemaFingerprint() + ". Downgrade is not supported -- deploy a build at "
                     + "or past that fingerprint, or if this state is intentional, record an operator "
@@ -1520,10 +1540,13 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             DatabaseMetaData metadata, DataSource dataSource, SchemaManifest manifest) throws SQLException {
         Set<String> owned = readOwnedBusinessTables(dataSource);
         if (owned == null || owned.isEmpty()) {
-            // B8 (ownership history): no ownership evidence recorded -- cannot prove any live table is
-            // NPDev-owned, so skipping drop of unowned tables. Warn so the operator sees the boundary.
-            System.out.println("NPDev schema lifecycle: WARNING [B8] no ownership history recorded -- "
-                    + "skipping drop of unowned tables (no ownership evidence to act on).");
+            // B8:no_ownership_history (2026-08-25 W2.3, docs/ACCEPTED_BOUNDARIES.md): no ownership
+            // evidence recorded -- cannot prove any live table is NPDev-owned, so skipping drop of
+            // unowned tables. This is a soft skip, not a boot refusal (the boot continues normally),
+            // so the code is carried on the log line itself, not a thrown BoundaryBootException --
+            // there is nothing to refuse here, only an action silently not taken.
+            System.out.println("NPDev schema lifecycle: WARNING [B8:no_ownership_history] no ownership history "
+                    + "recorded -- skipping drop of unowned tables (no ownership evidence to act on).");
             return Set.of();
         }
         Set<String> stillDeclared = new LinkedHashSet<>();

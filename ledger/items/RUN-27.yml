@@ -4,25 +4,34 @@ title: >-
   satisfies an AWAIT_EVENT declaring matchCorrelation: true
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-25
+verification: UNIT_TESTED
 source: >-
   2026-08-23 platform audit, from BREAKING.md's own R2.4 entry ("Known limitation, not introduced
-  here but now more visible").
+  here but now more visible"). That entry was stale: the limitation it described was already fixed
+  by RUN-10 on 2026-08-20, three days before this item was opened.
 surface: kernel/flow-engine, orchestration/scheduled-events
 detail: |
-  The drain ignores the stored `trigger_correlation_id` on the scheduled-event row and publishes
-  with a freshly generated correlation id. An AWAIT_EVENT step declaring `matchCorrelation: true`
-  therefore never matches an event that arrived via a delayed `scheduleEvent`, so a modelled
-  delayed self-wake hangs until its timeout -- silently, with no diagnostic.
+  Duplicate of RUN-10, closed 2026-08-20. The drain already passes the row's stored
+  `trigger_correlation_id` (and now a `tenant_id` column added by the RUN-10 fix) through
+  `publishScheduledDueEvent` to `kernelRunner.publishExternalEvent` --
+  `GeneratedCrudRuntimeSupport.java:1171-1188`. `NpdevScheduledEventTable.java:26,31` confirms both
+  `trigger_correlation_id` and `tenant_id` exist on the schema. A correlated `AWAIT_EVENT` is
+  satisfied; see RUN-10's guard (`GeneratedCrudRuntimeSupportDeferredFlowEventTest`) for the test
+  proof.
 
-  BREAKING.md states the blocker: "fixing it needs tenant propagation the scheduled-event table has
-  no column for." The orchestration-level scheduleEvent action has always behaved this way; R2.4
-  made it visible by removing the publish-now path that masked it.
-
-  Until this is fixed, the honest guidance already in BREAKING.md stands: do not model a delayed
-  self-wake against a correlated await.
-
-  Done when: a delayed scheduleEvent whose row carries a correlation id publishes with THAT id, an
-  AWAIT_EVENT with matchCorrelation: true resumes from it, and a test proves the resume (not just
-  the column).
+  This item was opened from a stale "Known limitation" paragraph in `BREAKING.md`'s R2.4 entry that
+  was never removed after the RUN-10 fix landed. That paragraph is deleted as part of closing this
+  item (2026-08-25 remediation plan, W1.4) so it cannot generate a third false report.
+guard:
+  kind: test
+  ref: NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportDeferredFlowEventTest.java
+  asserts: >-
+    Same guard as RUN-10 -- see that item. The drain echoes the stored correlation id (and tenant),
+    so a correlated AWAIT_EVENT (matchCorrelation:true) resumes.
+  provenRed: false
+  provenRedNote: >-
+    No new code change; this item is a record correction. RUN-10's own guard already covers the
+    behavior this item mistakenly re-described as broken.

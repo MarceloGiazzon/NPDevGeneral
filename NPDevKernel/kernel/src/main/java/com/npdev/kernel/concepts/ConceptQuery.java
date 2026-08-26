@@ -47,6 +47,17 @@ public record ConceptQuery(
 
     public enum Operator {
         EQ("=="), NEQ("!="), LT("<"), LTE("<="), GT(">"), GTE(">="),
+        /**
+         * RUN-28 (2026-08-25 remediation plan W2.2): case-insensitive, trimmed, STRING-CAST equality
+         * -- the same rule {@code ConceptStore#uniqueValuesCollide} and the generated CRUD's own
+         * (pre-pushdown) {@code uniqueValuesEqual} apply whenever either side is a {@link String}.
+         * Unlike {@link #EQ}, this always compares the field's TEXTUAL representation (cast to text
+         * first, even for a UUID/numeric/date column) -- correct for a caller whose comparison value
+         * is inherently a string (a URL path segment, an HTML form field) and does not know or care
+         * about the field's declared DSL type. {@link #EQ} stays untouched (native-typed, exact,
+         * case-sensitive) for every existing caller.
+         */
+        EQ_CI("==~"),
         /** Case-insensitive substring match -- SQL {@code LIKE '%value%'} on the JDBC adapters. */
         CONTAINS("contains"),
         /** R4.3 (Roadmap Wave 1): case-insensitive prefix match -- SQL {@code LIKE 'value%'} on the
@@ -113,6 +124,12 @@ public record ConceptQuery(
 
         public static Filter eq(String field, Object value) {
             return new Filter(field, Operator.EQ, value);
+        }
+
+        /** RUN-28: {@code field ==~ value} -- case-insensitive, trimmed, string-cast equality. See
+         *  {@link Operator#EQ_CI}'s own javadoc for exactly when to prefer this over {@link #eq}. */
+        public static Filter eqCaseInsensitive(String field, Object value) {
+            return new Filter(field, Operator.EQ_CI, value);
         }
 
         /** R4.3: {@code field startsWith value} (case-insensitive prefix match). */

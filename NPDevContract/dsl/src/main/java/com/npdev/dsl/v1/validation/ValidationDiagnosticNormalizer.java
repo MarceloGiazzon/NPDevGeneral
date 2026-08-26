@@ -45,12 +45,13 @@ final class ValidationDiagnosticNormalizer {
             "selectorRef", "B16"
     );
 
-    // B1, B13: boundary-prefixed diagnostic codes. The validator embeds `B1:<code>:` at the start
-    // of the message string; this map extracts the boundary id and strips the prefix so downstream
-    // patterns (CONCEPT_PATTERN, etc.) still match the rest of the message.
+    // B1, B13, B19: boundary-prefixed diagnostic codes. The validator embeds `B1:<code>:` at the
+    // start of the message string; this map extracts the boundary id and strips the prefix so
+    // downstream patterns (CONCEPT_PATTERN, etc.) still match the rest of the message.
     private static final Map<String, String> BOUNDARY_PREFIX_IDS = Map.of(
             "B1:", "B1",
-            "B13:", "B13"
+            "B13:", "B13",
+            "B19:", "B19"
     );
 
     /**

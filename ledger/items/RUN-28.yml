@@ -1,30 +1,114 @@
 id: RUN-28
 title: >-
-  The uniqueness pre-checks and every generated listBy* finder still call the unbounded
-  conceptGateway.list(...)
+  Every generated listBy* finder still calls the unbounded conceptGateway.list(...) and filters
+  after fetching the whole tenant table
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-23
-source: 2026-08-23 platform audit; both sites are named in service-base.mustache's own comments.
+closed: 2026-08-25
+verification: UNIT_TESTED
+source: 2026-08-23 platform audit; rewritten 2026-08-25 (remediation plan W1.3) to drop a stale claim.
 surface: generator/service-base, runtime/crud
 files:
   - NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/controller-base.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/controller-custom.mustache
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQuery.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryFilterSupport.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptAggregateEngine.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
 detail: |
-  RUN-1/R8a capped the generated CRUD list() endpoint. Two callers were deliberately left
-  unbounded and each needs a DIFFERENT fix, which is why neither was folded into that pass:
+  DROPPED (fixed by R5.2, closes RUN-1 item 4): `existsUniqueInConceptStore` /
+  `existsUniqueCompoundInConceptStore` now delegate to `ConceptStore#existsUnique`. See W1.3's
+  rewrite of this item for the trace.
 
-  1. existsUniqueInConceptStore / existsUniqueCompoundInConceptStore (service-base.mustache:106-107,
-     738). Their `uniqueValuesEqual` comparison is case-insensitive and whitespace-trimmed, and that
-     does not translate cleanly to a portable indexed SQL lookup across H2/Postgres/MySQL/SQL Server
-     without risking a silent change to WHICH values collide. Needs per-dialect collation handling,
-     not a LIMIT.
+  FIXED: `listBy*` now routes through `ConceptGateway#query` -- the same pushdown path
+  `PanelRuntime.java:443-444` uses -- via a new kernel-level primitive,
+  `ConceptQuery.Operator#EQ_CI`: case-insensitive, trimmed, ALWAYS-cast-to-text equality. This is
+  not `EQ` (native-typed, exact) with a flag -- it is the correct, separately-named operator for a
+  comparison value that is inherently a string (a URL path segment) regardless of the target
+  field's declared type, matching the OLD Java-side `uniqueValuesEqual`'s actual behavior exactly
+  (its `right instanceof String` branch always fired for this caller, since `value` was always a
+  `@PathVariable String`).
 
-  2. listBy* -- the auto-generated GET /api/{route}/by/{name}/{value} foreign-key finder every
-     bonded field gets (service-base.mustache:961-970). It filters AFTER fetching, so capping the
-     fetch would silently drop a legitimate match instead of returning fewer rows -- worse than the
-     bug. It returns a raw List<{{entityName}}>, not a ConceptListSlice, so there is no channel to
-     signal truncation. Needs the filter pushed into the query, or the return type widened.
+  Both audit-identified dead ends were avoided as instructed: `listCapped` was NOT used (this is a
+  real WHERE-pushed query, not a capped-then-filtered fetch), and the predicate semantics were
+  NOT silently swapped to plain `EQ`'s exact-match rule -- `EQ_CI` reproduces
+  `ConceptStore#uniqueValuesCollide`'s trim/case-insensitive rule exactly, proven by both the
+  in-memory and SQL-rendering tests below.
 
-  Done when: neither site performs an unbounded full-tenant scan, and a test proves the uniqueness
-  semantics (case-insensitive, whitespace-trimmed) are unchanged on every enabled engine.
+  Implementation, by layer:
+  - `ConceptQuery.Operator.EQ_CI` + `Filter.eqCaseInsensitive(field, value)` (kernel contract).
+  - In-memory: `ConceptQueryEngine`, `ConceptQueryFilterSupport`, `ConceptAggregateEngine` each
+    gained an `EQ_CI` case (all three have exhaustive switches over `Operator` -- verified by
+    `git grep -l "case OR_GROUPS"`, the enum's own unambiguous marker, finding exactly the four
+    files that needed a new case, including the JDBC store below).
+  - SQL: `JdbcBusinessConceptStore.renderPredicateClause` compiles `EQ_CI` to
+    `LOWER(dialect.trimmedText(dialect.cast(columnRef, SqlType.TEXT))) = ?`, binding a
+    Java-pre-trimmed-and-lowercased parameter -- reusing `trimmedText`/`cast`/`caseInsensitiveText`-
+    shaped dialect primitives ALREADY proven portable across H2/Postgres/MySQL/SQL Server by
+    `existsUnique`'s own identical-rule SQL rendering (STOR-3). `sqlOperator()`'s exhaustive switch
+    also updated (throws for EQ_CI, matching its other non-binary operators).
+  - Generator: `service-base.mustache`'s `listBy{{capName}}` rewritten to build a
+    `ConceptQuery`/`Filter.eqCaseInsensitive` and call `conceptGateway.query(...)`, returning
+    `ConceptListSlice<{{entityTypeName}}>` (truncation = `page.hasMore()`) instead of a raw `List`.
+    Dead code removed: `findAllUnboundedFromConceptStore()` and `uniqueValuesEqual` (each had
+    exactly one caller, this method). `controller-base.mustache` gained a shared `listByBase(slice)`
+    helper mirroring `listBase()`'s existing `X-List-Truncated`/`X-List-Limit` header convention --
+    the REST JSON body stays the wire-compatible plain array (`slice.records()`); nothing about the
+    HTTP contract changed, only the internal service method's return type (documented in
+    `BREAKING.md`, 2026-08-25, since a hand-written caller of the generated service method directly
+    would see that type change).
+
+  Row-level `access.read` scoping is preserved: `DefaultConceptGateway.query()` applies
+  `semanticPolicy.isRowReadable`/`filterVisibleFields` to the returned page, confirmed by reading
+  its implementation (the same enforcement `listCapped`/`list` already apply).
+
+  Tests (all green, live-run, not merely written):
+  - `ConceptQueryEngineEqCiTest` (kernel, in-memory): 7 tests -- exact match, case-insensitive,
+    whitespace-trim on either side, non-match exclusion, non-String stored value compared by text
+    representation, null-on-either-side never matches.
+  - `JdbcBusinessConceptStoreEqCiTest` (RuntimeHost, real H2): 6 tests -- the same semantics proven
+    through REAL SQL via `store.query(...)`, including a numeric column compared by text
+    representation and tenant isolation.
+  - `AutoPanelWorkbenchTypedSurfaceValidationTest`'s pre-existing style extended is NOT this item
+    (that is B19/W2.5) -- unrelated, mentioned only to avoid confusion with a similarly-named DSL
+    test touched in the same session.
+  - `BondJavaEmitterTest` (generator): rewrote the RUN-1-era test that used to LOCK IN the old
+    unbounded-fetch exemption to instead lock in the new pushdown shape (asserts
+    `conceptGateway.query(`, `Filter.eqCaseInsensitive("productId", value)`, the widened return
+    type, the controller's `listByBase(...)` wiring, and the absence of both removed methods as
+    call/declaration sites -- not as a bare substring, since a javadoc comment legitimately still
+    names `uniqueValuesEqual` in prose explaining why it was removed).
+  - Full suite runs, not just the touched classes: `:kernel:test` (72/72 concepts-package tests
+    green, includes the new EQ_CI test), `:generator:test` (444/444 green), and the RuntimeHost
+    gate (`run-runtimehost-gate.ps1`) against a real assembled sample app -- `BUILD SUCCESSFUL`
+    through `:compileTestJava`/`:test` for both the assembled app and `runtimehost-core` (Gradle
+    fails the build on any test failure or compile error, so this is a real pass, not a skip).
+
+  `verification: UNIT_TESTED`, not `VERIFIED_LIVE`, and this item's own original "Done when" (a test
+  proving the predicate is unchanged "on every enabled engine") is only PARTIALLY met: everything
+  above ran on H2 only, per the standing local-test-profile policy (Postgres/MySQL off by default on
+  this machine). The dialect primitives used (`trimmedText`, `cast`, case-insensitive text
+  comparison) are the SAME ones `existsUnique` already proved portable across all four engines
+  (STOR-3) -- strong evidence, not proof for THIS specific new call site. Per the remediation plan's
+  own instruction for this item ("push it and read CI rather than trusting a local H2 pass"): CI's
+  matrix run against Postgres/MySQL/SQL Server is the remaining confirmation, not yet observed as
+  of this closure (nothing has been pushed this session).
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ConceptQueryEngineEqCiTest.java
+  asserts: >-
+    ConceptQuery.Operator.EQ_CI reproduces ConceptStore#uniqueValuesCollide's trim/case-insensitive/
+    string-cast rule exactly, in memory: exact match, case-insensitive match, whitespace trimmed on
+    either side, non-matching values excluded, a non-String stored value compared by its string
+    representation, and null on either side never matches.
+  provenRed: true
+  provenRedNote: >-
+    Before this fix, ConceptQuery.Operator had no EQ_CI constant and listBy* fetched the whole
+    tenant table via conceptGateway.list(...) then filtered in Java -- measured directly by reading
+    service-base.mustache's pre-fix listBy{{capName}} body (findAllUnboundedFromConceptStore().
+    stream().filter(uniqueValuesEqual(...))), matching this item's own pre-fix detail. The new test
+    file did not exist at all before this session.

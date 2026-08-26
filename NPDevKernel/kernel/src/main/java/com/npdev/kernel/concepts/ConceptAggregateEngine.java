@@ -154,6 +154,11 @@ public final class ConceptAggregateEngine {
             boolean matched = switch (filter.operator()) {
                 case EQ -> ConceptQueryEngine.valuesEqual(actual, expected);
                 case NEQ -> !ConceptQueryEngine.valuesEqual(actual, expected);
+                // RUN-28: matches ConceptStore#uniqueValuesCollide's String-branch rule exactly.
+                // Not reachable from a declared query's `having` today (same footnote as STARTS_WITH
+                // below), kept for switch exhaustiveness.
+                case EQ_CI -> actual != null && expected != null
+                        && String.valueOf(actual).trim().equalsIgnoreCase(String.valueOf(expected).trim());
                 case LT -> ConceptQueryEngine.compare(actual, expected) < 0;
                 case LTE -> ConceptQueryEngine.compare(actual, expected) <= 0;
                 case GT -> ConceptQueryEngine.compare(actual, expected) > 0;

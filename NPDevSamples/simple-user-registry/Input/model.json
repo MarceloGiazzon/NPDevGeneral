@@ -7,7 +7,10 @@
     {
       "name": "User",
       "ui": {
-        "label": "User"
+        "label": {
+          "default": "User",
+          "en": "User"
+        }
       },
       "fields": [
         {
@@ -21,7 +24,10 @@
           "type": "string",
           "required": true,
           "ui": {
-            "label": "Name"
+            "label": {
+              "default": "Name",
+              "en": "Name"
+            }
           }
         },
         {
@@ -29,7 +35,10 @@
           "type": "string",
           "required": true,
           "ui": {
-            "label": "Email"
+            "label": {
+              "default": "Email",
+              "en": "Email"
+            }
           }
         },
         {
@@ -37,7 +46,10 @@
           "type": "boolean",
           "required": true,
           "ui": {
-            "label": "Active"
+            "label": {
+              "default": "Active",
+              "en": "Active"
+            }
           }
         }
       ],

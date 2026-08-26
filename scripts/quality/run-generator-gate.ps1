@@ -40,7 +40,7 @@ Invoke-NPDevReportedCommand `
     -GateName "generator" `
     -WorkingDirectory $projectRoot `
     -Executable $gradleWrapperPath `
-    -Arguments @(":dsl:clean", "generatorQualityGate", "--no-daemon", "--console=plain") | Out-Null
+    -Arguments @(":dsl:clean", ":dsl:test", "generatorQualityGate", "--no-daemon", "--console=plain") | Out-Null
 
 $gateReport = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json
 $deterministicGenerationError = $null
@@ -291,6 +291,34 @@ $trustedSourceSecurityEvidence = [pscustomobject]@{
 }
 $gateReport | Add-Member -NotePropertyName trustedSourceSecurity -NotePropertyValue $trustedSourceSecurityEvidence -Force
 
+# W3.2 (2026-08-25 remediation plan / QUAL-32, COV-RATCHET): the coverage ratchet used to live only
+# in run-ai-knowledge-gate.ps1, which is static by design and runs FIRST in run-all-gates.ps1's T2
+# sequence -- so within one invocation it could only ever see reports left over from some earlier,
+# separate run, and REG-168's own staleness guard then rejected them the moment source changed since.
+# The dsl/generator arm belongs here instead: :dsl:test and generatorQualityGate (both just run above)
+# are the freshest possible evidence for these two modules, produced in the same process that is
+# about to check them.
+$coverageRatchetScript = "scripts/quality/check-coverage-ratchet.py"
+$coverageRatchetError = $null
+$coverageRatchetExitCode = $null
+$coverageRatchetOutput = @()
+try {
+    $pyExe = (Get-Command python -ErrorAction Stop).Source
+    $coverageRatchetOutput = & $pyExe $coverageRatchetScript 2>&1 | ForEach-Object { $_.ToString() }
+    $coverageRatchetExitCode = $LASTEXITCODE
+}
+catch {
+    $coverageRatchetError = $_.Exception.Message
+}
+$coverageRatchetPassed = ($null -eq $coverageRatchetError) -and ($coverageRatchetExitCode -eq 0)
+$coverageRatchetEvidence = [pscustomobject]@{
+    overallStatus = if ($coverageRatchetPassed) { "passed" } else { "failed" }
+    exitCode = $coverageRatchetExitCode
+    output = @($coverageRatchetOutput | Select-Object -Last 30)
+    error = $coverageRatchetError
+}
+$gateReport | Add-Member -NotePropertyName coverageRatchet -NotePropertyValue $coverageRatchetEvidence -Force
+
 if (
     -not [string]::IsNullOrWhiteSpace($outOfTreeError) -or
     -not [string]::IsNullOrWhiteSpace($deterministicGenerationError) -or
@@ -304,7 +332,8 @@ if (
     (-not $releaseGatePassed) -or
     (-not [string]::IsNullOrWhiteSpace($trustedSourceSecurityError)) -or
     ($null -eq $trustedSourceSecurityReport) -or
-    ([string]$trustedSourceSecurityReport.overallStatus -ne "passed")
+    ([string]$trustedSourceSecurityReport.overallStatus -ne "passed") -or
+    (-not $coverageRatchetPassed)
 ) {
     $gateReport.overallStatus = "failed"
     $gateReport.failureReasons = @(
@@ -344,6 +373,14 @@ if (
             }
             elseif ($null -ne $trustedSourceSecurityReport -and [string]$trustedSourceSecurityReport.overallStatus -ne "passed") {
                 "Trusted-source security check (AST validation + bytecode-restriction proof) returned status '" + [string]$trustedSourceSecurityReport.overallStatus + "' -- see " + (Get-NPDevWorkspaceRelativePath $WorkspaceRoot $trustedSourceSecurityReportPath) + "."
+            }
+            if (-not $coverageRatchetPassed) {
+                if (-not [string]::IsNullOrWhiteSpace($coverageRatchetError)) {
+                    "Coverage ratchet invocation error: " + $coverageRatchetError
+                }
+                else {
+                    "Coverage ratchet (scripts/quality/check-coverage-ratchet.py) reported a regression against a recorded floor -- see output above (dsl/generator's freshly-produced JaCoCo reports from this same run)."
+                }
             }
         )
     )

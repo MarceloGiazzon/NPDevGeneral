@@ -1,17 +1,39 @@
 package com.finalexec;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.web.client.TestRestTemplate;
+import org.springframework.http.ResponseEntity;
+import org.springframework.test.context.ActiveProfiles;
 
-@Disabled("Health endpoint integration test requires @SpringBootTest(webEnvironment = RANDOM_PORT) with "
-        + "TestRestTemplate. Other IT tests in NPDevGenerator already cover /actuator/health. "
-        + "This file lacks the Spring Boot test infrastructure.")
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+// W3.3 (2026-08-25 remediation plan / QUAL-33): revived from @Disabled. The "when a dependency is
+// DOWN" half lives in NPDevKernel/adapters/runtime-validation's own
+// RuntimeHealthIndicatorsTest#eventHealthShouldBeDownWhenStoreDependencyIsDown -- a plain unit test
+// of NpdevEventStoreHealthIndicator.health(), not a second @SpringBootTest here. A @SpringBootTest
+// version was tried first (substituting a broken EventStore @Primary bean) and abandoned: its
+// override leaked into THIS class's separate @SpringBootTest run in the same Gradle test JVM (both
+// showed the identical test-double exception despite genuinely distinct Spring Boot startup
+// banners), and neither @Import(explicit) nor @DirtiesContext fixed it. The unit test proves the
+// same real logic with no Spring context at all, so there is nothing to leak.
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "spring.flyway.enabled=false"
+})
+@ActiveProfiles("test")
 class RuntimeHealthEndpointIT {
 
+    @Autowired
+    private TestRestTemplate restTemplate;
+
     @Test
-    void healthEndpointAndMockAlertSinkAreCovered() {
-        // Should verify:
-        // - GET /actuator/health returns 200 with {"status": "UP"}
-        // - When a dependency is DOWN, a mock alert sink is triggered and its invocation is asserted
+    void healthEndpointReportsUp() {
+        ResponseEntity<String> response = restTemplate.getForEntity("/actuator/health", String.class);
+        String body = response.getBody() == null ? "" : response.getBody();
+
+        assertEquals(200, response.getStatusCode().value(), "body was: " + body);
+        assertTrue(body.contains("\"status\":\"UP\""), "expected {\"status\":\"UP\",...}, got: " + body);
     }
 }

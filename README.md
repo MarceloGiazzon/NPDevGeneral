@@ -210,6 +210,8 @@ purpose, because a stale limitations page costs more trust than a short feature 
 ./npdev validate model <path>     # full structural + semantic check, no generation
 ./npdev generate app --model <m> --config <c> --output <dir>
 ./npdev mcp install               # connect an AI tool to NPDev
+./npdev why B13                   # explain an accepted design limit (id or the code you just hit)
+./npdev db verify --app <dir>     # does the live database match the model? No app boot required.
 ```
 
 `npdev --help` describes every command. **Windows:** `npdev.bat`, same arguments.

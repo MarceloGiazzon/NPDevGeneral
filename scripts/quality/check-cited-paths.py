@@ -46,13 +46,12 @@ THIS SCRIPT READS MARKDOWN, AND THAT IS WORTH SAYING OUT LOUD
     one of the five. It cannot be inverted into structured data: the input it validates is the
     prose itself.
 
-    As written it does not TRIP check-no-markdown-reads.py (that checker's Python taint tracking
-    does not follow a module-level tuple of literals through `for doc in DOCS`), so no exemption
-    entry was added -- growing that list is an owner decision, never a checker change, and its
-    frozenCount is deliberately a ratchet that only goes down. Recorded here so a reader who
-    notices later finds a declared position rather than an evasion. If that taint tracking is ever
-    widened to catch this shape, the honest resolution is an owner-approved sixth entry plus a
-    frozenCount bump in the same commit -- not a rewrite of this file to stay under the detector.
+    2026-08-25 (remediation plan W5.2): check-no-markdown-reads.py's taint tracking DID catch this
+    shape (this file's own read of a `.md` path, not the module-level DOCS tuple this docstring
+    used to assume was invisible to it), and it went red on 2026-08-23. The owner-approved
+    resolution named above happened: a sixth entry in
+    scripts/policy/markdown-read-exemptions.json, frozenCount raised 5->6 in the same commit. See
+    that file's own `why` for this entry.
 """
 from __future__ import annotations
 

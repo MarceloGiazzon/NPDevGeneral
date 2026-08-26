@@ -13,14 +13,17 @@ app definitions and build output live **outside** it (see Layers below).
   log, handoff, retrospective, session digest, snapshot or status register is your WORKING STATE,
   not documentation. It goes to the evidence directory above, or into `ledger/` as structured data.
   Enforced by `scripts/quality/check-doc-inventory.py` (ai-knowledge gate [45/45]) against
-  `scripts/policy/doc-inventory-policy.json`; the 57 pre-ban files are frozen in a `legacy` list
-  that may only **shrink**. Measured 2026-08-11: of 302 tracked `.md` files / 59,754 lines, **265
-  files / 39,705 lines were read by nothing at all** — 88% of the files. They accumulated one
-  session at a time, because a run with no memory externalises its state as a document, and the next
-  run cannot tell which documents are still true. Then a gate reads one and it can never be deleted
+  `scripts/policy/doc-inventory-policy.json`; the `legacy` list of pre-ban files may only **shrink**
+  — frozen at 57 when the ban started (2026-08-11), currently **28** (measured 2026-08-25) as later
+  waves fixed/removed/converted files off it; the ratchet is doing its job. Measured 2026-08-11: of
+  302 tracked `.md` files / 59,754 lines, **265 files / 39,705 lines were read by nothing at all** —
+  88% of the files. They accumulated one session at a time, because a run with no memory
+  externalises its state as a document, and the next run cannot tell which documents are still true.
+  Then a gate reads one and it can never be deleted
   (`check-register-consistency.py` parsed four, until it too was deleted; `extract_platform_status.py` parsed a fifth as a
   database until it was inverted to `ledger/gaps.yml`). **Reorganising does not fix this** — the
-  2026-08-11 pass moved 50 files into subdirectories and the tracked total went 301 → 302. Durable
+  2026-08-11 pass moved 50 files into subdirectories and the tracked total went 301 → 302 (currently
+  **257** as of 2026-08-25 — the same ongoing ratchet, not a new measurement methodology). Durable
   machine truth → `ledger/*.yml` with a schema. Durable human docs → `docs/`, few, curated,
   generated where possible, and indexed in `docs/README.md`. Everything else → outside the repo.
 - **NO SCRIPT MAY READ A `.md` FILE — and the exemption list may never grow.** Markdown is output
@@ -100,24 +103,41 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   CLI/MCP/Manager + the appgen/runtimehost/samples build scripts; **no** `src/test`, no
   `scripts/quality`, no `ledger`/`docs`/`NPDevSamples`), and writes to `<BuildRoot>\source-zip\`.
   **To change what ships, edit the manifest — the script holds no path knowledge.**
-- **Quality gates — "all gates green" means ONE command:**
-  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **three** gates by default
-  (it was four until `frontend` was removed with `NPDevEditor` on 2026-08-17 — see `BREAKING.md`), in
-  this order, and keeps going past a failure so you see every red in one run:
-  `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts 40 of the 42
-  `scripts/quality/check-*.py` across 39 numbered checks — there are **two** exceptions, not one:
+- **Quality gates — "all gates green" means ONE command, and the command now names what it covers:**
+  `pwsh -NoProfile -File scripts/quality/run-all-gates.ps1` (T2). It runs **four** gates by default
+  (three from 2026-08-17, when `frontend` was removed with `NPDevEditor`, until `kernel` was added
+  2026-08-25 W3.2 — see `BREAKING.md`), in this order, and keeps going past a failure so you see every
+  red in one run: `run-generator-gate.ps1` (codegen engine — builds dsl + generator, runs tests, and
+  since W3.2 also checks the dsl/generator coverage ratchet right after producing it)
+  → `run-runtimehost-gate.ps1` (assembled sample app + its test suite; since W3.2 also checks the
+  RuntimeHost coverage ratchet the same way) → `run-kernel-quality-gate.ps1` (new, W3.2/QUAL-32:
+  `kernelQualityGate` — `:kernel:test` + all 36+ `:adapters:*:test` — then the kernel aggregate
+  coverage ratchet; this Gradle task existed and was invoked by nothing, in any gate or workflow,
+  before this date, which is why the recorded floor had silently drifted 10 points from what the full
+  suite actually measures) → `run-ai-knowledge-gate.ps1` (static — no build, no boot; hosts 40 of the
+  42 `scripts/quality/check-*.py` across 39 numbered checks — there are **two** exceptions, not one:
   `check-dsl-reference-output-floor.py` runs in `run-generator-gate.ps1` because it needs a build,
   and `check-external-ai-mission-coverage.py` is reachable from no gate at all — it runs in
-  `run-weekly-paperwork-checks.ps1`, a separate cadence.
-  **Measured 811 s / ~13.5 min on 2026-08-08**, not the "seconds" this line used to claim;
-  budget for it) → `run-generator-gate.ps1`
-  → `run-runtimehost-gate.ps1`. `run-beta-release-gate.ps1` (release
-  posture, T3) is **deferred by default** since the Fast Lane plan's item 4 — pass
+  `run-weekly-paperwork-checks.ps1`, a separate cadence. Its own coverage-ratchet step still runs
+  too, for NPDevCli/NPDevMcp/scripts — the modules this gate genuinely measures for real.
+  **Measured 811 s / ~13.5 min on 2026-08-08 for the three-gate shape**, not the "seconds" this line
+  used to claim; kernel adds roughly another 3 min locally — budget for it). `run-beta-release-gate.ps1`
+  (release posture, T3) is **deferred by default** since the Fast Lane plan's item 4 — pass
   `-IncludeReleaseGate` or `-Only betaRelease` to run it too. Run one gate with `-Only aiKnowledge`.
   **Never report "gates green" from a single gate** — that claim was made in three consecutive move
   reports while a checker sat red, which is what `run-all-gates.ps1` exists to prevent. A new
   `scripts/quality/check-*.py` MUST be invoked by some `run-*.ps1`; `run-script-inventory-check.ps1`
   fails otherwise (Move 11 W2/O4).
+  **GATE-SPLIT (2026-08-25 W4.5):** 11 of 42 checkers (the ones `run-weekly-paperwork-checks.ps1`
+  hosts) used to run in NO gate `run-all-gates.ps1` invoked at all — so "all gates green" was true
+  on this command while three of those eleven sat red in CI, unnoticed for a week (one of the three
+  was two gates contradicting each other). `run-all-gates.ps1` now knows about a sixth gate,
+  `weeklyPaperwork`, deferred by default exactly like `betaRelease` — pass `-IncludePaperwork` or
+  `-Only weeklyPaperwork` to run it. **The bare, no-args command's own claim is still narrower than
+  "everything":** it covers the four T2 gates only; the weekly checkers and release posture are
+  each one flag away, never silently included, and never silently forgotten — every gate this
+  script knows about is declared in `scripts/quality/verification-cadence.json`
+  (`check-cadence-coverage.py` fails the build the moment one is not).
 - **Generator determinism IS checked, and the checker is easy to miss.** It is
   `scripts/hygiene/check-deterministic-generation.ps1` — note `hygiene`, not `quality`, and
   `deterministic`, not `determinism`, which is why a `*determinism*` search finds nothing and
@@ -268,16 +288,15 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   package satisfies all three (`build.gradle.template` compile-exclusion,
   `RuntimeControllerAllowlistConfig` bean removal, and `run-runtime-surface-evidence.ps1`, which
   fails the RuntimeHost gate for a listed controller whose file is not under `com/finalexec/api`).
-- **RuntimeHost tests that name `com.npdev.generated.` DO run in the gate, since 2026-08-12
-  (`a4ea2ca1d`).** This line used to say the opposite — that `build.gradle.template` excluded every
-  such test source unconditionally, making `SchemaImpactControllerTest` and its siblings dead weight
-  — and that was true when measured, but the fix landed the same day: the exclusion moved inside the
-  `generatedRuntimeMountPresent()` guard so it only fires when the mount is genuinely absent (a bare
-  template checkout), reviving `AgentProxyControllerTest`'s 9 SUPERUSER-guard tests plus 5 siblings.
-  This doc was never updated afterward, and the 2026-08-23 defect-remediation roadmap's T4.3 card
-  re-discovered the OLD, already-fixed state as if it were still live. A green `run-runtimehost-gate.ps1`
-  is real evidence these controller guards ran, not dead weight — but still confirm against a running
-  app for anything the gate doesn't itself assert on.
+- **RuntimeHost tests that name `com.npdev.generated.` DO run in the gate**, since 2026-08-12
+  (`a4ea2ca1d`): `build.gradle.template`'s exclusion of that test source lives inside the
+  `generatedRuntimeMountPresent()` guard, firing only when the mount is genuinely absent (a bare
+  template checkout) — `SchemaImpactControllerTest`, `AgentProxyControllerTest`'s 9 SUPERUSER-guard
+  tests, and their siblings all run for real. A green `run-runtimehost-gate.ps1` is real evidence
+  these controller guards ran, not dead weight — but still confirm against a running app for
+  anything the gate doesn't itself assert on. (History: this line said the opposite before
+  `a4ea2ca1d` landed same-day, and the doc went unupdated long enough that a later audit
+  re-discovered the already-fixed state as if it were still live — W5.4, 2026-08-25.)
 
 ## Stability policy
 

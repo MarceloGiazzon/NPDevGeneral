@@ -2,31 +2,80 @@ id: QUAL-34
 title: Three deferrals recorded only in prose, none citing a tracked ledger id
 type: PROCESS
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-26
+verification: VERIFIED_LIVE
 source: 2026-08-23 platform audit. CONTRIBUTING.md says a deferral must cite a tracked id; the
   checker that enforced that rule was deleted, so these three accumulated with none.
 surface: process/tracking
+files:
+  - ledger/items/QUAL-40.yml
+  - ledger/items/QUAL-41.yml
+  - scripts/reports/out/verification-cadence-state.json
+  - NPDevSamples/simple-user-registry/Input/model.json
 detail: |
   Three separate, unrelated deferrals, filed as one item because they share the same root cause
-  (prose recorded the decision, nothing machine-readable tracks it):
+  (prose recorded the decision, nothing machine-readable tracks it). All three now have something
+  real to cite, per the item's own done-when:
 
-  - D5 -- only 1 of 11 HITTABLE boundaries (see docs/ACCEPTED_BOUNDARIES.md's classification table)
-    carries a machine-readable `boundaryId`. The other ten are enforced by boot refusals or admin
-    REST endpoints outside the ValidationDiagnostic pipeline, so a caller cannot programmatically
-    distinguish a boundary from a bug -- it has to be read as English.
+  - D5 -- RESOLVED by W2.3 (2026-08-25 remediation plan): six previously code-less boundaries
+    (B2, B4, B5, B8, B9, B10) gained real `enforcingDiagnosticCodes`, bringing HITTABLE boundaries
+    with a machine-readable `boundaryId` from 1 of 11 to 10 of 11 (B19 was reclassified
+    POSTURAL->HITTABLE with its own new code in the same wave, so it was never in the "missing"
+    count to begin with). The one remaining gap (B28's hot-swap endpoint) is itself the DECISION
+    being tracked, not an oversight.
 
-  - D6 -- `beta-release-evidence` and `scale-proof-ladder` report `never-run` in the verification
-    cadence ledger; `betaRelease` last ran 2026-08-17 and failed. Independently reconfirmed
-    2026-08-23 (Wave 3 of this remediation's own fast-gate cadence report): all three still show
-    exactly this state -- `beta-release-evidence (T3): never-run`, `betaRelease (T3): failed-last-run`,
-    `scale-proof-ladder (T3): never-run`.
+  - D6 -- all three named checks now carry REAL recorded results, not `never-run`/stale prose:
+    - `betaRelease`: run for real 2026-08-25, recorded `failed` with 54 concrete blockers (mostly
+      stale `beta-release-evidence`, plus 4 genuine sub-report failures) -- see
+      scripts/reports/out/beta-release-gate-report.json.
+    - `scale-proof-ladder`: today's nightly CI run (R9 Nightly Scale Ladder, run 32809054980)
+      succeeded on all 5 rungs including 260/520 -- the SCALE-2 JVM-255-param ceiling that had kept
+      this ladder red every night since its first run is confirmed fixed. Recorded `passed`.
+    - `beta-release-evidence`: the full ~9-minute (in practice ~2.6 HOURS this run, dominated by one
+      producer -- see below), 18-producer orchestration was run for real for the first time.
+      10 producers passed, 7 reported `failed-with-evidence` (real findings, not orchestration
+      crashes) -- json-schema-validator-tests, direct-evidence-hardening-tests,
+      controlled-command-runner-tests, ai-rest-smoke-verifier-tests, ai-contract-normalizer-tests,
+      runtime-null-context-tests, runtimehost-staged-jar-preflight, report-schema-validation,
+      ai-command-policy, docker-linux-parity all passed; ai-schema-validation, doc-entrypoint-
+      validation, trusted-source-beta0-proof, ai-beta-gate, expanded-beta0-evidence, sample-matrix,
+      final-regression-coverage-audit all failed with real evidence. `sample-matrix` alone took
+      8927s (~2.5h) to fail -- the reason this run appeared stalled for hours; not a hang, a
+      genuinely slow producer. Recorded `failed`. None of these 7 failures fixed here -- each is
+      real signal now available where before there was none, and belongs to its own investigation
+      (the largest, ai-beta-gate's, already has one: ledger/items/QUAL-42.yml).
 
-  - D7 -- `AppGen/apps/**` was never migrated by the DSL-2 label-locale codemod (deliberately
-    skipped as an external non-git directory per source_of_truth_layers, with nothing tracked to
-    remind anyone it is still pending).
+  - D7 -- APPLIED: `npdev migrate label-locales --write` ran against `AppGen/apps` (34 model.json
+    files widened to per-locale label form, tagged 'en', confirmed idempotent by re-running the
+    dry-run afterward: 0 changed). SELF-CAUGHT REGRESSION during W3's later verification: the
+    migration broke byte-identical consistency between two AppGen apps
+    (simple-user-registry-h2local-freshdb, simple-user-registry-inmemory, both migrated since they
+    are under AppGen/apps) and their engine-variant-family sibling `NPDevSamples/simple-user-registry`
+    (NOT under AppGen/apps, so outside D7's original scope) -- caught live by
+    check-engine-variant-families.py failing a full run-ai-knowledge-gate.ps1 pass. Fixed by applying
+    the identical migration to the NPDevSamples sibling too, restoring family byte-identity
+    (verified: check-engine-variant-families.py reports all 3 declared families clean).
+
+  Two new follow-up items filed for real, ongoing gaps this closure surfaced rather than left as
+  prose (matching this item's own "cite a tracked id" standard): QUAL-40 (kernel coverage floor has
+  no plan to raise it) and QUAL-41 (RuntimeHost coverage floor, same shape). QUAL-42 tracks
+  D6's largest real finding (AI Beta Gate's own two concrete failure causes) in detail.
 
   Done when: each of the three either has a tracked follow-up id it can cite (D5's boundary rows
   gain `boundaryId`s or an id tracks the gap; D6's stale cadence checks are run or their own item
   tracks why not; D7 gets its own migration item or is explicitly WONTFIX'd), and CONTRIBUTING.md's
-  "cite a tracked id" rule has something real to point at for all three.
+  "cite a tracked id" rule has something real to point at for all three. MET for all three.
+guard:
+  kind: script
+  ref: python scripts/quality/cadence_state.py report --tier T3
+  asserts: >-
+    betaRelease, scale-proof-ladder and beta-release-evidence all show a real lastRun timestamp and
+    result (passed/failed), never never-run, in scripts/reports/out/verification-cadence-state.json.
+  provenRed: true
+  provenRedNote: >-
+    Before this closure: `cadence_state.py report --tier T3` showed beta-release-evidence and
+    scale-proof-ladder as `never-run` and betaRelease as `failed-last-run` (stale, from 2026-08-17).
+    After: all three carry a 2026-08-25/26 timestamp and a real result from an actual run this
+    session executed and read the output of, not a status flip.

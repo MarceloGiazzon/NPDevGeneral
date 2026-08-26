@@ -1,0 +1,167 @@
+{
+  "schemaVersion": "npdev-accepted-boundaries.v1",
+  "note": "The user-facing half of the accepted-boundaries register (id, kind, userFacingText, workaround, enforcingDiagnosticCodes). This is the ONLY home for these fields -- ledger/boundaries/*.yml keeps provenance (title, ref, codeLinkedNote) and does not repeat them. Read by `npdev why <token>`. Do not hand-edit the provenance fields back in here, and do not add these fields back to the ledger.",
+  "boundaries": [
+    {
+      "id": "B1",
+      "kind": "HITTABLE",
+      "userFacingText": "This concept appears to have been renamed. Add a 'renamedFrom' field pointing to the original name, or rename it back.",
+      "workaround": "Declare renamedFrom by hand, pointing at the original concept/field name.",
+      "enforcingDiagnosticCodes": ["B1:rename_self_reference", "B1:rename_source_missing", "B1:rename_ambiguous"]
+    },
+    {
+      "id": "B2",
+      "kind": "HITTABLE",
+      "userFacingText": "Expression-valued backfills require a dry-run preview and explicit acknowledgment. Preview affected rows first via the schema migration preview endpoint.",
+      "workaround": "Call GET /api/admin/schema-migration/expression-backfill-preview, review affected rows, then acknowledge via the existing /acknowledge endpoint.",
+      "enforcingDiagnosticCodes": ["B2:expression_backfill_requires_ack"]
+    },
+    {
+      "id": "B3",
+      "kind": "POSTURAL",
+      "userFacingText": "FK/index checking only ever adds MISSING constraints; an extra constraint your database already has is reported as informational, never proposed for removal.",
+      "workaround": "Manage extra indexes outside NPDev; NPDev respects them and never drops them. The impact report (boot log, -ImpactOnly, and ControlPanel's schema-migration/impact endpoint) includes an advisory surplus section when there is one, but it never changes the verdict.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B4",
+      "kind": "HITTABLE",
+      "userFacingText": "Another app instance holds the migration lock. Wait for it to finish or clear the claim via the admin endpoint.",
+      "workaround": "The second instance waits under the real lock (a Postgres advisory lock or an H2 atomic claim row); use ControlPanel's clear() only as a deliberate manual escape hatch.",
+      "enforcingDiagnosticCodes": ["B4:migration_lock_held"]
+    },
+    {
+      "id": "B5",
+      "kind": "HITTABLE",
+      "userFacingText": "This database was migrated by a newer build. Deploy a build at or after that version -- downgrade is not supported.",
+      "workaround": "Roll forward, or use mark-done deliberately after verifying by hand (or with `npdev db verify`).",
+      "enforcingDiagnosticCodes": ["B5:schema_ahead_detected"]
+    },
+    {
+      "id": "B6",
+      "kind": "POSTURAL",
+      "userFacingText": "mark-done tells NPDev to stop trying to converge the schema and trust that you already fixed it by hand -- nothing verifies that you actually did.",
+      "workaround": "Use -ImpactOnly first to see what NPDev thinks differs, then mark done knowingly. `npdev db verify` can also check the result independently before you mark done.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B7",
+      "kind": "POSTURAL",
+      "userFacingText": "A refused boot can happen AFTER an earlier step already ran (e.g. an idempotent Flyway migration) -- a refusal is not guaranteed to leave the database exactly as it found it.",
+      "workaround": "Treat a refused boot as \"inspect before retrying\"; the schema history table records what already ran. `npdev db verify` can tell you the database's actual current state without booting.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B8",
+      "kind": "HITTABLE",
+      "userFacingText": "This table was not dropped because no ownership history exists. Boot once with the current build to register ownership.",
+      "workaround": "Boot once with the concept present (recording ownership), then remove it.",
+      "enforcingDiagnosticCodes": ["B8:no_ownership_history"]
+    },
+    {
+      "id": "B9",
+      "kind": "HITTABLE",
+      "userFacingText": "Snapshot restore is scoped to one table at a time. Preview and restore each table individually.",
+      "workaround": "Call the preview endpoint first, resolve any reported conflicts by hand, then restore for that exact (snapshot, table) pair -- repeat per table.",
+      "enforcingDiagnosticCodes": ["B9:single_table_scope"]
+    },
+    {
+      "id": "B10",
+      "kind": "HITTABLE",
+      "userFacingText": "H2 to Postgres promotion copies data only. Boot against Postgres first to create the schema, then promote data.",
+      "workaround": "Call /promote/preview first, review type-mapping notes, realize the target schema by booting normally against Postgres, then call /promote/apply.",
+      "enforcingDiagnosticCodes": ["B10:data_only_promotion"]
+    },
+    {
+      "id": "B11",
+      "kind": "POSTURAL",
+      "userFacingText": "H2 and MySQL commit DDL implicitly, so if a migration hook fails partway, its data changes roll back but any schema change it already made stays applied -- the database can end up in a state your model doesn't fully describe.",
+      "workaround": "Split destructive DDL and data movement into separate hooks/boots on an engine without transactional DDL (H2, MySQL). NPDev prints a warning naming the active engine before running a hook that mixes DDL with a verifySql. Postgres and SQL Server roll back fully, so the split is only needed on H2/MySQL.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B12",
+      "kind": "POSTURAL",
+      "userFacingText": "Each conversion hook runs in its own transaction; a later hook failing does not undo an earlier hook that already succeeded.",
+      "workaround": "Write every hook idempotent (ADD COLUMN IF NOT EXISTS, UPDATE ... WHERE <not-yet-converted>) so it is safe to re-run after a partial failure.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B13",
+      "kind": "HITTABLE",
+      "userFacingText": "This conversion references a concept or field that does not exist in the pack.",
+      "workaround": "Declare a conversions[] entry (copy/split/lookup/merge/convert) instead of hand-writing convert.sql; for the uncovered case (retyping an EXISTING column in place), fall back to an operator-authored SQL hook.",
+      "enforcingDiagnosticCodes": ["B13:unresolvable_join_path"]
+    },
+    {
+      "id": "B14",
+      "kind": "POSTURAL",
+      "userFacingText": "A destructive schema change already claimed by a conversion hook needs no separate acknowledgment token -- authoring the hook is itself the acknowledgment.",
+      "workaround": "None needed for a hook-claimed item. An unclaimed destructive item still requires the normal acknowledgment token.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B15",
+      "kind": "LIFTED",
+      "userFacingText": "A forEach loop body may contain an await step, both sequentially (exactly one reachable await per iteration) and, with parallelAwait: true, in parallel across iterations (one reachable await at the loop body's top level).",
+      "workaround": "Sequential: author a forEach loop body with exactly one reachable await step. Parallel: set parallelAwait: true and put exactly one reachable await step at the loop body's top level (not nested inside a branch); other non-forEach steps may precede or follow it. A forEach nested inside a parallel forEach still needs sequential mode or a flow restructure.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B16",
+      "kind": "HITTABLE",
+      "userFacingText": "A field's auto-picker supports a declared filter/multi-select via field.picker; declaring the separate selectorRef property is not supported.",
+      "workaround": "Use field.picker.filter / field.picker.multiSelect directly on the reference field; the older referenceSemantics.defaultFilter grammar still works unchanged.",
+      "enforcingDiagnosticCodes": ["json_schema_additionalproperties"]
+    },
+    {
+      "id": "B17",
+      "kind": "HITTABLE",
+      "userFacingText": "The super-user key you provided was rejected. Read the auto-generated key from SUPER_USER_KEY.txt in the app's working directory.",
+      "workaround": "Read the issued key from its file path (SUPER_USER_KEY.txt), never over HTTP -- it is issued, not supplied.",
+      "enforcingDiagnosticCodes": ["super_user_auth_failed"]
+    },
+    {
+      "id": "B18",
+      "kind": "POSTURAL",
+      "userFacingText": "Row-level write authorization's check-then-act window is closed by a real database lock (SELECT ... FOR UPDATE inside a transaction), not by a message you'd see -- a concurrent writer simply blocks.",
+      "workaround": "Nothing to do in the normal (transactional) case. In a degraded deployment with no real transaction manager wired (e.g. in-memory mode with no DataSource), this guarantee does not hold.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B19",
+      "kind": "HITTABLE",
+      "userFacingText": "A bandPickers entry is missing its required 'panel' -- filter/multiSelect have nothing to apply to without a panel to fetch rows from.",
+      "workaround": "Declare filter/multiSelect alongside a real panel on a bandPickers entry; for a genuinely dynamic band filter today, give the referenced Selection panel its own declared query where clause instead.",
+      "enforcingDiagnosticCodes": ["B19:band_picker_requires_panel"]
+    },
+    {
+      "id": "B20",
+      "kind": "LIFTED",
+      "userFacingText": "Bounded contexts let one app declare multiple namespaces (contexts[]/imports[]) inside a single model and database -- but a genuinely separate service (its own deployment, its own database) still needs its own app and namespace.",
+      "workaround": "Declare contexts[]/imports[] directly (see ADR-0011 and NPDevSamples/dsl-conformance-max for a real corpus example with both isolated and non-isolated contexts). Model a separate service as its own app, not as a context.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B27",
+      "kind": "LIFTED",
+      "userFacingText": "query.groupBy can join up to 3 hops across concepts (same-context or cross-context); query.where and query.aggregates still name a field on the query's own base concept only.",
+      "workaround": "Declare a join directly: groupBy: [\"lote.produtoId\"] (1 hop) or groupBy: [\"a.b.c.d\"] (3 hops, at the cap); an optional context:: prefix names the final joined concept. For a chain longer than 3 hops, use a capability-backed data source instead (listConcepts + mapList + a Java capability join) -- a path beyond the cap is refused, never silently truncated.",
+      "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B28",
+      "kind": "HITTABLE",
+      "userFacingText": "Model changes require an app restart. Hot reload is available for metadata/UI-only changes via the admin reload endpoint, but full model changes (schema, flows) still require a restart -- the endpoint that would do a full reload is disabled by default.",
+      "workaround": "Restart the app (~30s) for a schema/logic-shaped model change; use the metadata-only fast path for a label/panel-only change (no restart needed). Full model reload can be opted into (npdev.runtime.hotswap.full-model-reload-enabled=true) but only ModelHolder.get() consumers observe the new model -- anything with a directly-injected model keeps the old one, a known split-brain risk.",
+      "enforcingDiagnosticCodes": ["FULL_MODEL_RELOAD_DISABLED"]
+    },
+    {
+      "id": "B29",
+      "kind": "POSTURAL",
+      "userFacingText": "SQL Server has no way to express a bare 'take the last N rows' suffix -- asking for one throws rather than silently returning the wrong rows. In practice nothing in NPDev asks for it: every real call site wants 'at most N rows', which every engine can answer.",
+      "workaround": "Ask for 'at most N rows' rather than a suffix-specific row cap -- that is what every real caller in NPDev already does.",
+      "enforcingDiagnosticCodes": []
+    }
+  ]
+}

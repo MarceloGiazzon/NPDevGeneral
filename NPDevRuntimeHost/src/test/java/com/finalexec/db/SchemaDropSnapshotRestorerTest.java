@@ -148,6 +148,10 @@ class SchemaDropSnapshotRestorerTest {
                 () -> SchemaDropSnapshotRestorer.apply(dataSource, snapshotDir.getFileName().toString(), TABLE));
         assertTrue(exception.getMessage().contains("does not exist"), exception.getMessage());
         assertTrue(exception.getMessage().contains("boot the app normally"), exception.getMessage());
+        // B9 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 W2.3): the violation carries both the
+        // boundaryId (already wired) and the declared code (previously absent, now a message prefix).
+        assertEquals("B9", exception.getViolation().boundaryId());
+        assertTrue(exception.getMessage().contains("B9:single_table_scope:"), exception.getMessage());
     }
 
     @Test

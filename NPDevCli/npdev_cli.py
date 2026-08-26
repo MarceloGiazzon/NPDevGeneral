@@ -1206,6 +1206,82 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_migrate_label_locales(args: argparse.Namespace) -> int:
+    """CLI-1: wires `dsl_v2_migration.migrate_label_locales` (written and round-trip tested for
+    R5.6, but never callable) to `npdev migrate label-locales`. Deliberately a separate pass from
+    `migrate dsl-2` -- see `migrate_label_locales`'s own docstring for why it needs one extra
+    argument (`--locale`) `migrate_document` never requires. Mirrors `run_migrate_dsl2`'s
+    scan/report/write shape exactly, including skipping serialized compiled-model fixtures.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dsl_v2_migration import _looks_compiled, migrate_label_locales  # local import: optional dep
+
+    inputs = [Path(p).expanduser().resolve() for p in args.input]
+    files: list[Path] = []
+    for p in inputs:
+        if p.is_dir():
+            files.extend(sorted(p.rglob("*.json")))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"npdev migrate label-locales: input not found: {p}", file=sys.stderr)
+            return 2
+
+    changed_count = 0
+    compiled_skipped_count = 0
+    unchanged_count = 0
+    invalid_count = 0
+    report_entries = []
+
+    for f in files:
+        try:
+            doc = read_json(f)
+        except CliError as exc:
+            invalid_count += 1
+            print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(doc, dict):
+            continue
+        if _looks_compiled(doc):
+            compiled_skipped_count += 1
+            report_entries.append({"file": str(f), "changed": False, "isCompiled": True, "changes": []})
+            continue
+
+        result = migrate_label_locales(doc, args.locale)
+        report_entries.append({
+            "file": str(f),
+            "changed": result.changed,
+            "isCompiled": False,
+            "changes": result.changes,
+        })
+
+        if result.changed:
+            changed_count += 1
+            verb = "CHANGED" if args.write else "WOULD CHANGE"
+            for c in result.changes:
+                print(f"  [{verb}] {f}: {c}")
+            if args.write:
+                f.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        else:
+            unchanged_count += 1
+
+    print(
+        f"\n{len(files)} file(s) scanned: {changed_count} changed, {compiled_skipped_count} "
+        f"compiled-model (skipped), {unchanged_count} already widened or no label sites present, "
+        f"{invalid_count} invalid JSON (skipped)"
+    )
+    if not args.write and changed_count > 0:
+        print("Dry run -- pass --write to apply.")
+
+    if args.report:
+        report_path = Path(args.report).expanduser()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written: {report_path}")
+
+    return 1 if invalid_count > 0 else 0
+
+
 def run_migrate_dsl2(args: argparse.Namespace) -> int:
     """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
     aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
@@ -3777,6 +3853,209 @@ def run_db_test_connection(args: argparse.Namespace) -> int:
         print("row above -- usually that this machine has no JDBC driver for this engine yet.")
         print("Run `npdev setup` (or build an app once) to fetch it, then test again.")
     return exit_code
+
+
+# Item 1, SUPPORT_FEATURES_PLAN_2026-08-26: the per-engine JDBC URL formula, mirrored from
+# UserDatabaseDefinitionLoader.jdbcUrl (NPDevGenerator/.../dbconfig/UserDatabaseDefinitionLoader.java)
+# -- the SAME formula the app itself is generated with. Blocker B's "do not fork the diff" rule is
+# about SchemaDiffEngine's semantics, not this: a JDBC connection-string template is not diff logic,
+# and this exact mapping is ALREADY duplicated a second time today, embedded as a Java string inside
+# _DATABASE_PROBE_SOURCE above -- a third, Python-native copy here is the same kind of stable
+# boilerplate, not a new category of drift risk.
+def _jdbc_url_for_verify(engine_key: str, app_root: Path, database: dict) -> str | None:
+    host = database.get("host") or "localhost"
+    port = database.get("port") or npdev_engines.resolve(engine_key)["port"]
+    db_name = database.get("databaseName") or ""
+    if engine_key == "postgres":
+        return f"jdbc:postgresql://{host}:{port}/{db_name}"
+    if engine_key == "mysql":
+        return (f"jdbc:mysql://{host}:{port}/{db_name}?characterEncoding=UTF-8"
+                f"&connectionCollation=utf8mb4_unicode_ci&serverTimezone=UTC&rewriteBatchedStatements=true")
+    if engine_key == "sqlserver":
+        return f"jdbc:sqlserver://{host}:{port};databaseName={db_name};encrypt=true;trustServerCertificate=true"
+    if engine_key == "h2server":
+        return (f"jdbc:h2:tcp://{host}:{port}/./data/{db_name};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
+                f"DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0")
+    if engine_key == "h2local":
+        # "./data/..." is resolved against the JVM's OWN working directory (PORT-1) -- the caller
+        # below launches SchemaVerifyMain with cwd=app_root, exactly as a real boot does, so this
+        # relative path names <app_root>/data/<db>, not wherever npdev itself happens to run from.
+        return f"jdbc:h2:file:./data/{db_name};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
+    return None
+
+
+def run_db_verify(args: argparse.Namespace) -> int:
+    """`npdev db verify` -- item 1, SUPPORT_FEATURES_PLAN_2026-08-26. "Does my database match my
+    model?" with NO app boot required. Closes the recovery hole B6 (mark-done trusts the operator
+    completely) and B7 (a refusal is not side-effect-free) leave open, and works even when the app
+    itself refuses to boot (B5 schema-ahead, B4 lock) -- the one diagnostic that answered this before
+    (GET /api/admin/schema-migration/impact) needs a running app, unavailable exactly then.
+
+    Blocker B (day one of the plan): SchemaDiffEngine/CurrentSchemaReader/DesiredSchemaFactory all
+    live in runtimehost-core and are free of Spring -- confirmed by reading them directly, not
+    assumed -- so this shells to a real compiled Main class there
+    (`com.finalexec.db.SchemaVerifyMain`), following the SAME `java -cp <jar> <MainClass>` pattern
+    the 8 existing NPDevContract/dsl cli Main classes use, rather than forking the diff into Python.
+    Reuses `test-connection`'s JVM resolution (`java_launcher`) and the same staged runtimehost jars
+    every other Java shell-out in this file uses.
+
+    Exit codes, deliberately not collapsed (SchemaVerifyMain owns the real mapping; this wrapper
+    passes it straight through): 0 = matches, 1 = drift found, 2 = could not determine.
+    """
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    manifest_resources_root = app_root / "npdev-generated" / "src" / "main" / "resources"
+    manifest_file = manifest_resources_root / "npdev" / "db" / "schema-realization-manifest.json"
+
+    def fail(message: str) -> int:
+        if getattr(args, "json", False):
+            print(json.dumps({
+                "schemaVersion": "npdev-cli-result.v1", "command": "db verify",
+                "ok": False, "exitCode": 2, "detail": message,
+            }, indent=2))
+        else:
+            print(f"npdev db verify: {message}", file=sys.stderr)
+        return 2
+
+    if not manifest_file.is_file():
+        return fail(f"no schema-realization-manifest.json found under {app_root} (looked for "
+                    f"{manifest_file}). Generate/build this app at least once first.")
+
+    if args.url:
+        url = args.url
+        user = args.db_user
+        password = args.db_password or ""
+    else:
+        # Prefer _ops/resolved-db-plan.json: it is emitted for EVERY generated app (both AppGen's
+        # Build-NpdevApp.ps1 and NPDevSamples' generate-sample-app.ps1 write it, per MON-9/PORT-1),
+        # and it already carries a fully-resolved jdbcUrl -- including H2Local's app-relative
+        # "./data/<db>" form, which this command must launch with cwd=app_root to resolve correctly
+        # anyway (see below). db.definition.json (the AUTHORING file) is not always copied into the
+        # generated app itself, which resolved-db-plan.json always is, so it is tried second, only
+        # as a fallback for an app that has been generated but never actually built/planned yet.
+        plan_path = app_root / "_ops" / "resolved-db-plan.json"
+        db_def_path = app_root / "db.definition.json"
+        if plan_path.is_file():
+            plan = read_json(plan_path)
+            if not plan.get("physicalDatabase", False):
+                print("npdev db verify: this app has no physical database (InMemory storage) -- nothing to verify.")
+                return 0
+            try:
+                engine_key = npdev_engines.resolve(plan.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {plan_path})")
+            url = plan.get("jdbcUrl") or None
+            if url is None:
+                return fail(f"{plan_path} has no jdbcUrl recorded -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else (plan.get("username") or None)
+            password = args.db_password if args.db_password is not None else (plan.get("password") or "")
+        elif db_def_path.is_file():
+            database = read_json(db_def_path).get("database", {})
+            try:
+                engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {db_def_path})")
+            if engine_key == "inmemory":
+                print("npdev db verify: this app has no physical database (InMemory storage) -- nothing to verify.")
+                return 0
+            url = _jdbc_url_for_verify(engine_key, app_root, database)
+            if url is None:
+                return fail(f"do not know how to build a JDBC URL for engine '{engine_key}' -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else database.get("username")
+            password = args.db_password if args.db_password is not None else (database.get("password") or "")
+        else:
+            return fail(f"neither {plan_path} nor {db_def_path} was found, and no --url was given. "
+                        f"Pass --url (with --db-user/--db-password as needed), or run this from "
+                        f"the app's own directory.")
+
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        return fail("runtimehost jars are not staged -- run `npdev setup`")
+    java_bin = java_launcher()
+    if java_bin is None:
+        return fail("no java found (see `npdev doctor`'s java checks)")
+
+    # SchemaLifecycleExecutor implements org.springframework.boot.autoconfigure.flyway.
+    # FlywayMigrationStrategy -- Blocker B's "free of Spring" is about needing no ApplicationContext
+    # (confirmed by reading the class directly), which is a different, lower bar than the JVM being
+    # able to LOAD the class at all: linking `implements FlywayMigrationStrategy` requires that
+    # interface to be resolvable, and runtimehost-libs (NPDev's OWN jars only) does not carry Spring
+    # Boot or Flyway themselves -- measured live: a plain classpath of runtimehost-libs/* throws
+    # NoClassDefFoundError the moment SchemaVerifyMain calls SchemaLifecycleExecutor.loadManifest().
+    # Fixed by pulling the exact jars this APP was built with straight out of its own Spring Boot fat
+    # jar's BOOT-INF/lib/ -- guaranteed version-matched (no separate driver-jar hunting needed either;
+    # the fat jar already bundles every JDBC driver NPDev supports), never stale, and self-contained.
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        return fail(f"no built jar found under {app_root / 'build' / 'libs'}. Build this app at "
+                    f"least once first (e.g. `_ops/Build-FinalApp.ps1`).")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-db-verify-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([
+            str(manifest_resources_root), str(Path(libs) / "*"), str(extracted_libs / "*"),
+        ])
+
+        command = [java_bin, "-cp", classpath, "com.finalexec.db.SchemaVerifyMain", "--url", url]
+        if user:
+            command += ["--user", user]
+        if password:
+            command += ["--password", password]
+        if getattr(args, "json", False):
+            command.append("--json")
+
+        try:
+            # cwd=app_root: H2Local's URL is "./data/<db>", app-relative BY DESIGN (PORT-1) --
+            # resolved against the JVM's working directory, which must be the app's own root for
+            # that to name the right file, exactly as a real boot (always launched from the app
+            # directory) resolves it.
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return fail(f"could not run SchemaVerifyMain ({exc})")
+
+    if completed.stdout:
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
+# spring-jcl's LogAdapter writes this to STDOUT (not stderr) on first use whenever a
+# commons-logging jar is also on the classpath -- which it is, because `db verify` runs against the
+# app's own fat-jar libraries. It is not ours, it is not actionable by the reader, and on stdout it
+# is not merely noise: it lands AHEAD of the report, so `npdev db verify --json` emitted a stream no
+# JSON parser could read, defeating the whole point of --json conforming to
+# impact-report.schema.json. Filtered by exact match on the one known line so nothing else -- least
+# of all a real message from SchemaVerifyMain -- can be swallowed by accident.
+_SPRING_JCL_NOTICE = (
+    "Standard Commons Logging discovery in action with spring-jcl: please remove "
+    "commons-logging.jar from classpath in order to avoid potential conflicts"
+)
+
+
+def _strip_spring_jcl_notice(text: str) -> str:
+    if _SPRING_JCL_NOTICE not in text:
+        return text
+    kept = [line for line in text.splitlines(keepends=True)
+            if line.strip() != _SPRING_JCL_NOTICE]
+    return "".join(kept)
+
+
+def _finalexec_fat_jar_for(app_root: Path) -> Path | None:
+    """The app's own Spring Boot fat jar (build/libs/*.jar, excluding the plain one Gradle also
+    produces) -- newest first, in case a stale one was left behind by an older build."""
+    libs_dir = app_root / "build" / "libs"
+    if not libs_dir.is_dir():
+        return None
+    candidates = sorted(
+        (jar for jar in libs_dir.glob("*.jar") if not jar.name.endswith("-plain.jar")),
+        key=lambda jar: jar.stat().st_mtime, reverse=True)
+    return candidates[0] if candidates else None
 
 
 # M14: the five environment operations, mapped to the scripts the GENERATOR already emits.
@@ -8630,6 +8909,107 @@ def run_add_member(args: argparse.Namespace, kind: str) -> int:
     return 0
 
 
+_ACCEPTED_BOUNDARIES_CACHE: list | None = None
+
+
+def _load_accepted_boundaries() -> list:
+    """The shipped, user-facing half of the accepted-boundaries register: id/kind/userFacingText/
+    workaround/enforcingDiagnosticCodes (item 2, SUPPORT_FEATURES_PLAN_2026-08-26, Blocker A).
+    `ledger/boundaries/*.yml` keeps provenance only (title/ref/codeLinkedNote) and does not repeat
+    these fields -- this file is their ONLY home, so there is nothing to keep in sync."""
+    global _ACCEPTED_BOUNDARIES_CACHE
+    if _ACCEPTED_BOUNDARIES_CACHE is not None:
+        return _ACCEPTED_BOUNDARIES_CACHE
+    path = repo_root() / "NPDevContract" / "schemas" / "accepted-boundaries.json"
+    if not path.is_file():
+        raise CliError(f"accepted-boundaries.json not found at {path}")
+    boundaries = read_json(path).get("boundaries") or []
+    _ACCEPTED_BOUNDARIES_CACHE = boundaries
+    return boundaries
+
+
+def _match_boundary(token: str, boundaries: list) -> dict | None:
+    """Accept any of the three forms a user might have in front of them: a bare id (`B13`), a bare
+    diagnostic code (`schema_ahead_detected`), or the prefixed form a validator/boot refusal
+    actually prints (`B5:schema_ahead_detected`). Whatever was copy-pasted from the error works."""
+    raw = token.strip()
+    if not raw:
+        return None
+    upper = raw.upper()
+
+    for boundary in boundaries:  # 1. bare id, case-insensitive
+        if boundary["id"].upper() == upper:
+            return boundary
+
+    for boundary in boundaries:  # 2. the code exactly as recorded (already the full prefixed form
+        for code in boundary.get("enforcingDiagnosticCodes", []):  #    for a boundary-specific one)
+            if code == raw or code.upper() == upper:
+                return boundary
+
+    for boundary in boundaries:  # 3. bare code -- the suffix after "<Bn>:", or the whole code for
+        for code in boundary.get("enforcingDiagnosticCodes", []):  # one with no id prefix at all
+            suffix = code.split(":", 1)[1] if ":" in code else code
+            if suffix == raw or suffix.upper() == upper:
+                return boundary
+
+    return None
+
+
+_BOUNDARY_KIND_NOTE = {
+    "HITTABLE": "You will see this as an error.",
+    "POSTURAL": "This fails silently -- no error names it; it is a real limit with nothing to hit.",
+    "LIFTED": "This limit no longer applies -- it has been lifted.",
+}
+
+
+def run_why(args: argparse.Namespace) -> int:
+    """`npdev why <id-or-code>` -- item 2, SUPPORT_FEATURES_PLAN_2026-08-26. Makes the accepted-
+    boundaries register reachable from the terminal, where a boundary's code actually appears (a
+    validator diagnostic or a boot refusal), instead of only from docs/ACCEPTED_BOUNDARIES.md, which
+    does not ship outside this repo (Blocker A)."""
+    boundaries = _load_accepted_boundaries()
+    match = _match_boundary(args.token, boundaries)
+
+    if match is None:
+        known_ids = [b["id"] for b in boundaries]
+        if getattr(args, "json", False):
+            print(json.dumps({
+                "schemaVersion": "npdev-cli-result.v1",
+                "command": "why",
+                "ok": False,
+                "exitCode": 1,
+                "token": args.token,
+                "detail": f"no accepted boundary matches '{args.token}'",
+                "knownIds": known_ids,
+            }, indent=2))
+        else:
+            print(f"npdev why: no accepted boundary matches '{args.token}'")
+            print(f"Known ids: {', '.join(known_ids)}")
+        return 1
+
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": "why",
+            "ok": True,
+            "exitCode": 0,
+            "token": args.token,
+            "boundary": match,
+        }, indent=2))
+        return 0
+
+    print(f"{match['id']} -- {match['kind']}")
+    print("=" * 60)
+    print(match["userFacingText"])
+    note = _BOUNDARY_KIND_NOTE.get(match["kind"], "")
+    if note:
+        print(f"\n({note})")
+    print(f"\nWorkaround: {match['workaround']}")
+    if match.get("enforcingDiagnosticCodes"):
+        print(f"\nDiagnostic code(s): {', '.join(match['enforcingDiagnosticCodes'])}")
+    return 0
+
+
 def _print_boundary_limits(report: dict) -> None:
     """REG-135: a diagnostic carrying boundaryId is hitting a NAMED, accepted NPDev design limit
     (docs/ACCEPTED_BOUNDARIES.md), not a mistake in the model -- render it distinctly from an
@@ -8644,7 +9024,7 @@ def _print_boundary_limits(report: dict) -> None:
         print(
             f"\n  LIMIT   {diag.get('message', '')} (boundary {boundary_id})\n"
             f"          This is a designed limit, not a mistake in your model.\n"
-            f"          -> details: docs/ACCEPTED_BOUNDARIES.md#{boundary_id}",
+            f"          -> run: npdev why {boundary_id}",
             file=sys.stderr,
         )
         _record_boundary_hit(boundary_id, diag.get("code", ""))
@@ -10612,6 +10992,36 @@ def build_parser() -> argparse.ArgumentParser:
              "renderer for that reason.",
     )
 
+    # Item 1, SUPPORT_FEATURES_PLAN_2026-08-26: "does my database match my model?" with NO app boot
+    # required -- the recovery hole B6 (mark-done trusts the operator) and B7 (a refusal is not
+    # side-effect-free) leave open, and the one diagnostic that DOES answer this today
+    # (GET /api/admin/schema-migration/impact) is unavailable exactly when a boot refuses (B5
+    # schema-ahead, B4 lock).
+    db_verify = db_sub.add_parser(
+        "verify",
+        help="Check whether the live database matches this app's model -- reads the generated "
+             "manifest and connects directly, with no app boot required.",
+    )
+    db_verify.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory (holds npdev-generated/, a built jar under build/libs/, and -- unless "
+             "--url is given -- _ops/resolved-db-plan.json or db.definition.json for the connection). "
+             "Defaults to the current directory.",
+    )
+    db_verify.add_argument(
+        "--url", default=None,
+        help="An explicit JDBC URL, overriding the app's own resolved connection -- e.g. to verify a "
+             "cross-engine promotion's TARGET database (B10), which is not the app's configured one.",
+    )
+    db_verify.add_argument("--db-user", default=None, help="Overrides the resolved username.")
+    db_verify.add_argument("--db-password", default=None, help="Overrides the resolved password.")
+    db_verify.add_argument(
+        "--json", action="store_true",
+        help="Emit the impact report as JSON (conforming to NPDevContract/schemas/impact-report."
+             "schema.json -- the SAME shape the boot-time impact report and ControlPanel use) instead "
+             "of the text table.",
+    )
+
     # M14: the five environment operations. Each RUNS the generated `_ops` script of the same name
     # rather than reimplementing it -- see _DB_OPERATIONS.
     for _op_name, (_script, _help) in _DB_OPERATIONS.items():
@@ -10672,6 +11082,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--json", action="store_true",
         help="Emit the matrix as JSON (npdev-storage-capability-matrix.v1) instead of the grid.",
     )
+
+    # Item 2, SUPPORT_FEATURES_PLAN_2026-08-26: the limits register (docs/ACCEPTED_BOUNDARIES.md),
+    # made reachable from the terminal -- where an error's `B5:schema_ahead_detected`-style code
+    # actually appears -- instead of only from a markdown file that does not ship to a third-party
+    # user (Blocker A: the user-facing fields now live in NPDevContract/schemas/accepted-boundaries.json,
+    # which DOES ship).
+    why_parser = subparsers.add_parser(
+        "why", help="Explain an accepted NPDev design limit by id or diagnostic code, e.g. "
+                    "`npdev why B13` or `npdev why B5:schema_ahead_detected`."
+    )
+    why_parser.add_argument(
+        "token", metavar="<id-or-code>",
+        help="A boundary id (B13), a bare diagnostic code (schema_ahead_detected), or the prefixed "
+             "form a validator/boot error actually prints (B5:schema_ahead_detected). Whatever you "
+             "copy-pasted from the error works.",
+    )
+    why_parser.add_argument("--json", action="store_true")
 
     dev_parser = subparsers.add_parser(
         "dev", help="Watch the model and rebuild + restart the app on every save -- the "
@@ -10798,6 +11225,30 @@ def build_parser() -> argparse.ArgumentParser:
              "what would change and exits",
     )
     migrate_bc.add_argument("--report", help="write a JSON report of every model's outcome to this path")
+
+    # CLI-1: the R5.6 label-locale codemod (dsl_v2_migration.migrate_label_locales) existed and was
+    # tested but was never wired to a subparser -- this is that wiring, following dsl-2's own
+    # --input/--write/--report convention.
+    migrate_label_locales = migrate_sub.add_parser(
+        "label-locales",
+        help="Widen plain-string label sites to per-locale form, tagged with an existing locale.",
+    )
+    migrate_label_locales.add_argument(
+        "--input", required=True, nargs="+",
+        help="one or more files or directories (searched recursively for *.json) to migrate",
+    )
+    migrate_label_locales.add_argument(
+        "--locale", required=True,
+        help="the locale tag the file's EXISTING plain-string label text is written in, e.g. "
+             "en or pt-BR -- not read from doc.settings.locale (informational only, per its own "
+             "schema description); every widened site is tagged with this value verbatim.",
+    )
+    migrate_label_locales.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place; without this flag, reports what would change and exits",
+    )
+    migrate_label_locales.add_argument(
+        "--report", help="write a JSON report of every file's outcome to this path")
 
     # PK-3: transitive pack dependency resolution -- add/update both resolve the live pack graph
     # and (re)write npdev.lock (same operation, two names for UX clarity); list reads the
@@ -11999,6 +12450,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_migrate_dsl2(args)
         if args.command == "migrate" and args.migrate_command == "bounded-contexts":
             return run_migrate_bounded_contexts(args)
+        if args.command == "migrate" and args.migrate_command == "label-locales":
+            return run_migrate_label_locales(args)
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0
@@ -12070,12 +12523,16 @@ def main(argv: list[str] | None = None) -> int:
             return _dev_run(args, sys.modules[__name__])
         if args.command == "capabilities":
             return run_capabilities(args)
+        if args.command == "why":
+            return run_why(args)
         if args.command == "engines":
             return run_engines(args)
         if args.command == "doctor":
             return run_doctor(args)
         if args.command == "db" and args.db_command == "test-connection":
             return run_db_test_connection(args)
+        if args.command == "db" and args.db_command == "verify":
+            return run_db_verify(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
         if args.command == "mcp" and args.mcp_command == "install":

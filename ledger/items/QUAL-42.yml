@@ -1,0 +1,59 @@
+id: QUAL-42
+title: >-
+  AI Beta Gate's Docker/Linux proof fails on ~25 of 30 golden-ai-scenarios, in at least two distinct
+  real ways -- not a Docker/Linux-specific issue, a genuine drift between fixtures/schema/auth config
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-26
+source: >-
+  2026-08-25 remediation plan W4.4 (closing QUAL-36): dispatched a fresh AI Beta Gate run
+  (workflow_dispatch, run 32917370685) to get real, current signal after 6 days of cancelled
+  dispatches. It completed (not cancelled) with `conclusion: failure` after 472s in the
+  docker-run-ai-beta-gate step -- real signal, downloaded and read (docker-linux-ai-beta-gate-report.json,
+  docker-linux-parity-report.json), not left as "still red, cause unknown" the way QUAL-36 found it.
+surface: ai-beta-gate, golden-ai-scenarios, ai schema validation
+files:
+  - golden-ai-scenarios/auth-disabled-protected-endpoint/ai-model.json
+  - schemas/ai/ai-model.schema.json
+detail: |
+  Read the real report, not just the pass/fail headline. Two DISTINCT, unrelated failure patterns
+  account for the vast majority of the 30 scenarios' red:
+
+  1. SCHEMA/FIXTURE MISMATCH (~14 scenarios: 4,5,6,7,15,16,18,19,20,24,25,26,27,29 by index --
+     everything whose stage 3 shows `schemaValidation.schemas[1]: failed`). Concretely, for
+     `auth-disabled-protected-endpoint`:
+       - `golden-ai-scenarios/auth-disabled-protected-endpoint/ai-model.json`'s `/auth/mode` does not
+         equal the schema's required constant `"generated-test-token"`.
+       - the same file's `/auth/testUsers` has fewer than the schema's required `minItems: 2`.
+     This is a genuine drift between `schemas/ai/ai-model.schema.json`'s current constraints and the
+     golden-ai-scenarios fixtures -- NOT a Docker-vs-Windows environment difference (schema
+     validation is pure JSON, no OS-sensitive behavior). Whichever side is correct, the OTHER 13
+     scenarios sharing this pattern were not individually inspected -- this item's own detail is
+     scoped to what was actually read, not extrapolated.
+
+  2. AUTH/API-KEY MISMATCH (multiple scenarios including scenario index 1, "base-ai-loop"): the
+     REST smoke check's `create-learner` step (`POST /api/learners`) gets 401
+     `{"error":"invalid_api_key"}` where 201 is expected. `health-ok` (`GET /actuator/health`) passes
+     on the SAME running app, so the app itself boots and serves traffic -- this is specifically an
+     API-key/auth-mode configuration mismatch between what the scenario's smoke verifier sends and
+     what the generated app (profiles `dev,step0,ai-beta-local`) accepts, not a boot failure. The
+     `appSmoke.boot: stopped` status seen alongside this is the harness's OWN deliberate shutdown
+     after the smoke run ("Generated app process stopped after verification"), not a crash --
+     correctly distinguished here from a real boot failure, which this is not.
+
+  NOT a new regression from the 2026-08-25 remediation plan session: this run's dispatch predates
+  nearly all of that session's commits reaching main (dispatched early, queued/ran independently),
+  and the failure signature (472s in docker-run-ai-beta-gate, same step) matches the LAST real
+  conclusion on 2026-08-17 (476s) closely enough to be the same underlying, persistent issue, not a
+  new one this session introduced.
+
+  Explicitly NOT fixed here: per QUAL-36's own prior finding, "diagnosing a real Docker-on-Linux-CI
+  failure needs its own session" -- this item exists so that investigation has a concrete starting
+  point (two named, reproducible failure shapes with file/field-level detail) instead of starting
+  from "the gate is red" again.
+
+  Done when: either the schema/fixture mismatch is resolved (fixtures updated to match the schema,
+  or the schema relaxed with a recorded reason) and the create-learner 401 is traced to its real
+  cause (scenario config vs. generated-app auth wiring) and fixed, or an owner reviews this report
+  and reclassifies pieces of it as intentional/out of scope with reasons recorded here.

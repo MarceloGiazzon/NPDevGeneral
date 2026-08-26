@@ -1,9 +1,22 @@
 id: B10
 title: "H2->Postgres data promotion is a real, operator-driven command -- schema reconciliation is out of scope"
-kind: HITTABLE
-userFacingText: "H2 to Postgres promotion copies data only. Boot against Postgres first to create the schema, then promote data."
-workaround: "Call /promote/preview first, review type-mapping notes, realize the target schema by booting normally against Postgres, then call /promote/apply."
-enforcingDiagnosticCodes: ["B10:data_only_promotion"]
 codeLinked: true
-codeLinkedNote: "Enforced by an admin REST endpoint (CrossEngineDataPromotion's preview/apply pair), not the DSL ValidationDiagnostic pipeline -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+codeLinkedNote: >-
+  2026-08-25 (remediation plan W2.3). CrossEngineDataPromotion.copyTable already threw
+  `BoundaryBootException(new BoundaryViolation("B10", "promotion", ...))` before this session (Wave
+  2, commit 50ddf3ea). Code carried as a `B10:data_only_promotion:` message prefix, same convention
+  as the other five.
+
+  SEPARATE FINDING, not fixed here (outside W2.3's scope, flagged as ledger item QUAL-38): the same
+  Wave 2 commit changed this refusal from returning a per-table `TableCopyResult(..., error=...)` to
+  THROWING -- but `apply()`'s loop over `manifest.businessTables()` never catches
+  `BoundaryBootException`, so a missing target table now aborts the WHOLE promotion (every table
+  after it in iteration order is never attempted), contradicting this class's own javadoc ("does NOT
+  abort the remaining tables -- the caller always gets a complete, honest per-table report") and the
+  pre-existing test `CrossEngineDataPromotionTest#applyReportsFailureWhenTargetTableMissing`, which
+  still asserts the old `TableCopyResult.error()` shape. Undetected because that test requires
+  Testcontainers Postgres and is excluded from the plain `test` task
+  (`-PincludePostgresMatrix` only) -- see QUAL-38 for the real fix (either restore per-table catching
+  or update the javadoc/test to the now-intentional stricter behavior; a genuine product decision,
+  not a mechanical fix).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B10"

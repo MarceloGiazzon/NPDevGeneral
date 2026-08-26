@@ -135,9 +135,10 @@ public class {{entityName}}ServiceBase {
      * truncated the tenant's table -- used by the typed REST list endpoint
      * (controller-base.mustache's {@code listBase()}) to set the {@code X-List-Truncated}/
      * {@code X-List-Limit} response headers. {@link #list()} itself keeps its historical
-     * {@code List<{{entityName}}>} signature (other callers: the generic concepts controller's
-     * free-text-filter fallback, {@code listBy*} reference finders below) since neither has a
-     * channel for a second return value.
+     * {@code List<{{entityName}}>} signature (another caller: the generic concepts controller's
+     * free-text-filter fallback) since that one has no channel for a second return value.
+     * {@code listBy*} reference finders below are a different case since RUN-28 (2026-08-25): they
+     * DO have a truncation channel now ({@code ConceptListSlice}, surfaced the same way).
      */
     public com.npdev.kernel.concepts.ConceptListSlice<{{entityTypeName}}> listCapped() {
 {{#kernelControlled}}
@@ -167,23 +168,35 @@ public class {{entityName}}ServiceBase {
 
 {{#referenceFinders}}
     /**
-     * RUN-1 (R8a): deliberately routed through {@link #findAllUnboundedFromConceptStore()}, NOT the
-     * capped {@link #findAllFromConceptStore()} that backs {@link #list()} -- a reference finder
-     * filters AFTER the fetch, so capping the fetch first would silently drop a legitimate match
-     * whose id happens to sort past the cap, with no truncation signal at all (this method still
-     * returns a raw {@code List<{{entityName}}>}, not a {@code ConceptListSlice}). R8a's own scope
-     * was three specific unbounded-read paths (the plain list() endpoint, the generic controller's
-     * free-text fallback, and the uniqueness pre-checks) -- reference finders were never one of
-     * them, so this stays unbounded rather than being silently, incorrectly capped as a side effect
-     * of sharing a helper method.
+     * RUN-28 (2026-08-25 remediation plan W2.2): pushed down through {@link ConceptGateway#query},
+     * the same pushdown path {@link #page} and {@code PanelRuntime} already use -- NOT the
+     * fetch-then-filter shape this method used before (an unbounded {@code conceptGateway.list(...)}
+     * materializing the whole tenant table, then filtering in Java). {@code EQ_CI} (case-insensitive,
+     * trimmed, string-cast equality) preserves the EXACT comparison rule the old Java-side
+     * {@code uniqueValuesEqual} applied -- see {@code ConceptQuery.Operator#EQ_CI}'s own javadoc for
+     * why this, not the native-typed {@code EQ}, is the correct operator for a value that is always a
+     * raw path segment ({@code @PathVariable String}) regardless of the target field's declared type.
+     * Bounded at {@code ConceptQuery.MAX_LIMIT} and returns a {@link com.npdev.kernel.concepts.ConceptListSlice}
+     * so truncation is signallable (the controller surfaces it via the same {@code X-List-Truncated}/
+     * {@code X-List-Limit} headers {@code listBase()} already uses) instead of silently, incompletely
+     * matching -- the channel a raw {@code List} never had.
      */
-    public List<{{entityTypeName}}> listBy{{capName}}(Object value) {
+    public com.npdev.kernel.concepts.ConceptListSlice<{{entityTypeName}}> listBy{{capName}}(Object value) {
 {{#kernelControlled}}
         runtimeSupport.checkCrudPermission("{{conceptName}}", "LIST", generatedCrudExecutionContext());
 {{/kernelControlled}}
-        return findAllUnboundedFromConceptStore().stream()
-                .filter(entity -> uniqueValuesEqual(mapFromEntity(entity).get("{{name}}"), value))
+        com.npdev.kernel.concepts.ConceptQuery query = new com.npdev.kernel.concepts.ConceptQuery(
+                List.of(com.npdev.kernel.concepts.ConceptQuery.Filter.eqCaseInsensitive("{{name}}", value)),
+                List.of(), 0, com.npdev.kernel.concepts.ConceptQuery.MAX_LIMIT
+        );
+        com.npdev.kernel.concepts.ConceptPage page = conceptGateway.query(
+                new com.npdev.kernel.concepts.ConceptQueryRequest(CONCEPT_NAME, currentTenantId(), query),
+                generatedCrudExecutionContext()
+        );
+        List<{{entityTypeName}}> entities = page.items().stream()
+                .map(this::entityFromRecord)
                 .toList();
+        return new com.npdev.kernel.concepts.ConceptListSlice<>(entities, page.hasMore());
     }
 
 {{/referenceFinders}}
@@ -941,9 +954,10 @@ public class {{entityName}}ServiceBase {
      * {@code ConceptQuery.MAX_LIMIT} via {@link com.npdev.kernel.concepts.ConceptGateway#listCapped},
      * which still applies row-level {@code access.read} scoping the same way
      * {@link #findByIdFromConceptStore} does (LNCH-13), now against the capped slice rather than the
-     * whole tenant table. Deliberately NOT used by {@code listBy*} reference finders below -- see
-     * {@link #findAllUnboundedFromConceptStore()}'s own javadoc for why capping a filter-after-fetch
-     * read would silently drop matches instead of just being slow.
+     * whole tenant table. RUN-28 (2026-08-25): {@code listBy*} reference finders no longer need their
+     * own unbounded fetch either -- they route through {@link ConceptGateway#query} directly (a real
+     * pushdown WHERE, not a post-fetch filter), so this is now the only unbounded-adjacent read path
+     * left, and it was never unbounded to begin with.
      */
     private com.npdev.kernel.concepts.ConceptListSlice<{{entityTypeName}}> findAllSliceFromConceptStore() {
         com.npdev.kernel.concepts.ConceptListSlice<ConceptRecord> slice = conceptGateway.listCapped(
@@ -955,24 +969,6 @@ public class {{entityName}}ServiceBase {
                 .map(this::entityFromRecord)
                 .toList();
         return new com.npdev.kernel.concepts.ConceptListSlice<>(entities, slice.truncated());
-    }
-
-    /**
-     * RUN-1 (R8a): the pre-R8a, still-unbounded {@code conceptGateway.list(...)} fetch -- kept
-     * ALIVE, on purpose, ONLY for {@code listBy*} reference finders (see that method's javadoc).
-     * Every REST-facing list surface (the plain {@code list()} endpoint, the generic concepts
-     * controller's free-text fallback) goes through the capped
-     * {@link #findAllSliceFromConceptStore()} instead; this method must never be wired to a new
-     * caller without re-deriving whether that caller can tolerate a silently-partial result the way
-     * a post-fetch equality filter can (it cannot signal truncation -- it returns a raw {@code List}).
-     */
-    private List<{{entityTypeName}}> findAllUnboundedFromConceptStore() {
-        return conceptGateway.list(
-                new ConceptListRequest(CONCEPT_NAME, currentTenantId()),
-                generatedCrudExecutionContext()
-        ).stream()
-                .map(this::entityFromRecord)
-                .toList();
     }
 
     private {{entityTypeName}} saveToConceptStore({{entityTypeName}} entity) {
@@ -1003,9 +999,10 @@ public class {{entityName}}ServiceBase {
      * the JVM for every single create/update, the platform's worst remaining data-scale landmine.
      * The comparison semantics are UNCHANGED: {@link ConceptStore#uniqueValuesCollide} is the exact
      * same trim/case-insensitive-when-either-side-is-a-String, cross-type-tolerant rule this method's
-     * inline loop used to apply by calling {@link #uniqueValuesEqual} (still defined below, and still
-     * used by {@code listBy*} reference finders, which are a different call site with a different
-     * fetch-then-filter shape RUN-1's own scope never covered).
+     * inline loop used to apply by calling a private {@code uniqueValuesEqual} helper, removed by
+     * RUN-28 (2026-08-25) once {@code listBy*} reference finders below -- its only other caller --
+     * stopped needing it too (they now push {@code EQ_CI} down to the same kernel-level rule via
+     * {@link ConceptGateway#query} instead of fetching everything and filtering in Java).
      */
     private boolean existsUniqueInConceptStore(String fieldName, Object value, UUID excludeId) {
         if (fieldName == null || fieldName.isBlank() || value == null) {
@@ -1039,16 +1036,6 @@ public class {{entityName}}ServiceBase {
 
     private Map<String, Object> mapFromEntity({{entityTypeName}} entity) {
         return new LinkedHashMap<>(OBJECT_MAPPER.convertValue(entity, MAP_TYPE));
-    }
-
-    private static boolean uniqueValuesEqual(Object left, Object right) {
-        if (left == null || right == null) {
-            return false;
-        }
-        if (left instanceof String || right instanceof String) {
-            return String.valueOf(left).trim().equalsIgnoreCase(String.valueOf(right).trim());
-        }
-        return left.equals(right) || String.valueOf(left).equals(String.valueOf(right));
     }
 
     private void publishMutationEvent(String action, UUID id, {{entityTypeName}} snapshot) {

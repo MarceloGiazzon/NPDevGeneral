@@ -1,12 +1,5 @@
 id: B1
 title: "No automatic rename inference -- a rename must be declared via renamedFrom"
-kind: HITTABLE
-userFacingText: "This concept appears to have been renamed. Add a 'renamedFrom' field pointing to the original name, or rename it back."
-workaround: "Declare renamedFrom by hand, or rename via NPDevEditor's Field Details panel (stamps it automatically)."
-enforcingDiagnosticCodes:
-  - "B1:rename_self_reference"
-  - "B1:rename_source_missing"
-  - "B1:rename_ambiguous"
 codeLinked: true
 codeLinkedNote: "ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B1"

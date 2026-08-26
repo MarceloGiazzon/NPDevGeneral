@@ -9,6 +9,7 @@ param(
     [string]$FootprintReportPath = "",
     [string]$AsyncWaitResumeTestPath = "",
     [string]$HealthTestPath = "",
+    [string]$HealthDegradedTestPath = "",
     [string]$RuntimeModeConfigPath = "",
     [switch]$RuntimeHostGatePendingOk,
     # LNCH-1 T5 (GATE-OBS-1): accept the KNOWN surface-governance convergence drift as advisory,
@@ -43,6 +44,13 @@ $AllowlistReportPath = if ([string]::IsNullOrWhiteSpace($AllowlistReportPath)) {
 $FootprintReportPath = if ([string]::IsNullOrWhiteSpace($FootprintReportPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\runtime-footprint-report.json" } else { Normalize-NPDevPath $FootprintReportPath }
 $AsyncWaitResumeTestPath = if ([string]::IsNullOrWhiteSpace($AsyncWaitResumeTestPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\test\java\com\finalexec\AsyncWaitResumeE2EIT.java" } else { Normalize-NPDevPath $AsyncWaitResumeTestPath }
 $HealthTestPath = if ([string]::IsNullOrWhiteSpace($HealthTestPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\src\test\java\com\finalexec\RuntimeHealthEndpointIT.java" } else { Normalize-NPDevPath $HealthTestPath }
+# W3.3 (2026-08-25 remediation plan / QUAL-33): the "dependency is DOWN" half lives as a plain unit
+# test of NpdevEventStoreHealthIndicator in NPDevKernel/adapters/runtime-validation, not as a second
+# @SpringBootTest beside RuntimeHealthEndpointIT -- a @SpringBootTest version was tried and abandoned
+# after its @Primary EventStore override leaked into RuntimeHealthEndpointIT's own SEPARATE
+# @SpringBootTest run in the same Gradle test JVM (see RuntimeHealthEndpointIT.java's own comment).
+# Both files are scanned together below so the split doesn't itself fail this check.
+$HealthDegradedTestPath = if ([string]::IsNullOrWhiteSpace($HealthDegradedTestPath)) { Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevKernel\adapters\runtime-validation\src\test\java\com\npdev\adapters\runtime\validation\RuntimeHealthIndicatorsTest.java" } else { Normalize-NPDevPath $HealthDegradedTestPath }
 # BT-1: NpdevRuntimeModeConfig.java is app-independent (no com.npdev.generated. reference) and now
 # lives under runtimehost-core, RuntimeHost's app-independent module (scripts/proofs/
 # classify_runtimehost_sources.py).
@@ -62,12 +70,23 @@ $correlationPatterns = @(
 )
 $correlationMissingPatterns = @(Get-Bucket2MissingPatterns -PathValue $AsyncWaitResumeTestPath -Patterns $correlationPatterns)
 
+$healthTestCombinedContent = @(
+    if (Test-Path -LiteralPath $HealthTestPath -PathType Leaf) { Get-Content -LiteralPath $HealthTestPath -Raw }
+    if (Test-Path -LiteralPath $HealthDegradedTestPath -PathType Leaf) { Get-Content -LiteralPath $HealthDegradedTestPath -Raw }
+) -join "`n"
+# W3.3 (2026-08-25 remediation plan / QUAL-33): "mock alert sink" removed -- verified live (grep for
+# AlertSink across NPDevRuntimeHost/src/main, zero hits) that no such mechanism exists anywhere in
+# this codebase. This pattern was satisfied only by the OLD @Disabled stub's own aspirational
+# comment describing a feature that was never built; keeping it would mean the checker passes only
+# when the test file contains a specific fictional phrase, exactly the vacuous-check shape this
+# whole remediation plan exists to fix. "dependency is DOWN" is kept -- it is now backed by a real
+# test (RuntimeHealthEndpointDegradedIT substitutes a broken EventStore bean and reads the actual
+# aggregated /actuator/health response), not by prose.
 $healthPatterns = @(
     "/actuator/health",
-    "dependency is DOWN",
-    "mock alert sink"
+    "dependency is DOWN"
 )
-$healthMissingPatterns = @(Get-Bucket2MissingPatterns -PathValue $HealthTestPath -Patterns $healthPatterns)
+$healthMissingPatterns = @($healthPatterns | Where-Object { $healthTestCombinedContent -notmatch $_ })
 
 # LNCH-1 closeout C7.1 (2026-07-21). This scraped `public <Type> postgresXxx(...)` bean methods, a
 # naming convention NpdevRuntimeModeConfig no longer uses -- its store-backed beans are named
@@ -84,10 +103,9 @@ $storeBackedSurfaces = @(
     Select-Object -Unique
 )
 $brokenBackendPatterns = @(
-    "dependency is DOWN",
-    "mock alert sink"
+    "dependency is DOWN"
 )
-$brokenBackendMissingPatterns = @(Get-Bucket2MissingPatterns -PathValue $HealthTestPath -Patterns $brokenBackendPatterns)
+$brokenBackendMissingPatterns = @($brokenBackendPatterns | Where-Object { $healthTestCombinedContent -notmatch $_ })
 $healthCoveragePassed = ($healthMissingPatterns.Count -eq 0 -and $storeBackedSurfaces.Count -gt 0)
 $brokenBackendAggregationPassed = ($brokenBackendMissingPatterns.Count -eq 0)
 # LNCH-1 T5 (GATE-OBS-1, 2026-07-21). This check required all three surface reports to be
@@ -180,7 +198,7 @@ $checks = @(
     (New-NPDevCheckResult -Name "runtime-surface-reports-current" -Status $(if ($runtimeSurfaceReportsGreen) { "passed" } else { "failed" }) -Summary $(if ($runtimeSurfaceReportsStrictlyGreen) { "Runtime surface evidence is current and green." } elseif ($runtimeSurfaceGovernanceDriftAccepted) { "RETIRED (GATE-OBS-1a, REG-5 2026-07-21): the only non-green runtime-surface sub-checks [" + ($surfaceFailingCheckNames -join ", ") + "] are the formally-retired package-convention convergence checks, superseded by the exact-list allowlist (runtime-surface-allowlist-report.json), which is BLOCKING and green. Not a pending item; informational only. See docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a." } elseif (-not $surfaceReportsPresent) { "Runtime surface evidence is missing." } else { "Runtime surface evidence is failing on check(s) OUTSIDE the retired GATE-OBS-1a convergence set: " + ($surfaceUnexpectedFailures -join ", ") }) -Data ([pscustomobject]@{ classification = if ($null -eq $classificationReport) { $null } else { [string]$classificationReport.overallStatus }; allowlist = if ($null -eq $allowlistReport) { $null } else { [string]$allowlistReport.overallStatus }; footprint = if ($null -eq $footprintReport) { $null } else { [string]$footprintReport.overallStatus }; failingChecks = @($surfaceFailingCheckNames); unexpectedFailures = @($surfaceUnexpectedFailures); governanceDriftAccepted = $runtimeSurfaceGovernanceDriftAccepted }))
     (New-NPDevCheckResult -Name "correlation-timeline-proof" -Status $(if ($correlationMissingPatterns.Count -eq 0) { "passed" } else { "failed" }) -Summary $(if ($correlationMissingPatterns.Count -eq 0) { "Async wait/resume canonical scenario proves correlation timeline and trace retrieval." } else { "Async wait/resume canonical scenario is missing required correlation timeline assertions." }) -Data ([pscustomobject]@{ testPath = Get-Bucket2RelativePath $WorkspaceRoot $AsyncWaitResumeTestPath; missingPatterns = @($correlationMissingPatterns) }))
     (New-NPDevCheckResult -Name "health-indicator-coverage" -Status $(if ($healthCoveragePassed) { "passed" } else { "failed" }) -Summary $(if ($healthCoveragePassed) { "Health coverage is documented against the store-backed runtime surface set." } else { "Health coverage evidence is incomplete for the store-backed runtime surface set." }) -Data ([pscustomobject]@{ testPath = Get-Bucket2RelativePath $WorkspaceRoot $HealthTestPath; storeBackedSurfaces = @($storeBackedSurfaces); missingPatterns = @($healthMissingPatterns) }))
-    (New-NPDevCheckResult -Name "broken-backend-aggregation" -Status $(if ($brokenBackendAggregationPassed) { "passed" } else { "failed" }) -Summary $(if ($brokenBackendAggregationPassed) { "Health evidence includes broken-backend aggregation and alert-sink assertions." } else { "Broken-backend aggregation evidence is missing required assertions." }) -Data ([pscustomobject]@{ testPath = Get-Bucket2RelativePath $WorkspaceRoot $HealthTestPath; missingPatterns = @($brokenBackendMissingPatterns) }))
+    (New-NPDevCheckResult -Name "broken-backend-aggregation" -Status $(if ($brokenBackendAggregationPassed) { "passed" } else { "failed" }) -Summary $(if ($brokenBackendAggregationPassed) { "Health evidence includes a real broken-backend aggregation assertion." } else { "Broken-backend aggregation evidence is missing required assertions." }) -Data ([pscustomobject]@{ testPath = Get-Bucket2RelativePath $WorkspaceRoot $HealthTestPath; degradedTestPath = Get-Bucket2RelativePath $WorkspaceRoot $HealthDegradedTestPath; missingPatterns = @($brokenBackendMissingPatterns) }))
 )
 
 $report = [pscustomobject]@{

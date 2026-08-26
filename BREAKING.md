@@ -5,6 +5,30 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-08-25 — generated `listBy*` reference finders return `ConceptListSlice<T>`, not `List<T>` (RUN-28)
+
+**What changes.** Every bonded field's generated `ServiceBase.listBy<Field>(Object value)` method
+(the one backing `GET /api/{route}/by/{name}/{value}`) now returns
+`com.npdev.kernel.concepts.ConceptListSlice<T>` instead of a raw `List<T>`. The finder also no
+longer fetches the whole tenant table and filters in Java — it pushes an `EQ_CI` (case-insensitive,
+trimmed, string-cast equality, the exact rule the old Java-side comparison applied) filter down
+through `ConceptGateway#query`, the same pushdown path the plain paginated `page()` endpoint and
+`PanelRuntime` already use. This was the platform's last unbounded read path (RUN-1/R8a deliberately
+left it unbounded because the old fetch-then-filter shape could not signal truncation; it now can).
+
+**Who is affected.** The generated REST endpoint's JSON response is UNCHANGED — the generated
+controller still returns the plain array via `slice.records()`, with truncation surfaced
+out-of-band via the same `X-List-Truncated`/`X-List-Limit` headers the plain `list()` endpoint
+already sets, so an existing HTTP client sees no shape change. Only a caller of the generated
+`...ServiceBase.listBy<Field>(...)` Java method directly — a hand-written custom controller or
+procedure that bypasses the generated controller — sees the return type change from `List<T>` to
+`ConceptListSlice<T>`; call `.records()` on the result to get the list back.
+
+**Codemod.** None, and none is needed: no model file changes shape, and the REST wire contract is
+unchanged. A hand-written caller of the generated service method directly needs a one-line edit
+(`.records()`), the same migration `ConceptListSlice`'s own introduction (RUN-1/R8a, `listCapped()`)
+already established as the pattern for this exact situation.
+
 ## 2026-08-20 — a generated app no longer serves `/npdev-ui-react/` (EDIT-12 / R10.3)
 
 **What changes.** The frozen React editor bundle (`npdev-templates/static-react/` — `app.css`,
@@ -75,9 +99,19 @@ module's `RuntimeUiMetadataController`/`RuntimeMetadataService`/`PanelRuntime` c
 labels as raw strings off the generically-parsed compiled-metadata JSON tree) — out of scope here
 and not yet done.
 
-**Codemod.** `NPDevCli/dsl_v2_migration.py`'s new `migrate_label_locales(doc, locale)` (not yet
-wired to a CLI subcommand — that file is the only one touched here; `npdev_cli.py`'s `migrate`
-subparser needs a follow-up commit from whoever owns it) widens every plain-string label site it
+**Fixed the same day (EDIT-13, 2026-08-19).** The RuntimeHost half above landed same-day: the
+generated `RuntimeContextService` now populates `ExecutionContext`'s `locale` tag from an explicit
+`X-Tag-locale` header or `Accept-Language`, and `RuntimeUiMetadataController`/`RuntimeMetadataService`/
+`PanelRuntime` resolve through `LabelResolver` before serving — proven live against a booted app
+(three calls to the UI-metadata bundle endpoint: no header → default text, `X-Tag-locale: pt-BR` and
+`Accept-Language: pt-BR,...` → the pt-BR text). See `ledger/items/EDIT-13.yml`. This paragraph is
+left in place, not deleted, because it is the accurate record of what R5.6 itself shipped; the fix
+landed as a separate same-day item.
+
+**Codemod.** `NPDevCli/dsl_v2_migration.py`'s new `migrate_label_locales(doc, locale)` — wired to
+`npdev migrate label-locales --input <files-or-dirs> --locale <tag> [--write]` on 2026-08-25
+(`ledger/items/CLI-1.yml`; a stale copy of this paragraph, unfixed for six days, was what a
+2026-08-23 audit read to (correctly, at the time) flag the gap) — widens every plain-string label site it
 finds into `{"default": <original text>, "<locale>": <original text>}`, structurally (walks the
 same shapes the parser recognizes, never a blind string replace), losslessly (the original text
 survives byte-for-byte as both `default` and the locale entry), and idempotently (an
@@ -183,12 +217,6 @@ a delayed step returns `EVENT_PERSIST_FAILED` naming `DeferredEventScheduler` wh
 scheduler is bound or the row cannot be written. That is deliberate — there is **no publish-now
 fallback**, because silently firing a 24-hour reminder immediately is the exact defect this change
 removes.
-
-**Known limitation, not introduced here but now more visible.** The drain publishes with a fresh
-correlation id (it ignores the row's stored `trigger_correlation_id`), so a deferred event does not
-satisfy an `AWAIT_EVENT` declaring `matchCorrelation: true`. The orchestration-level `scheduleEvent`
-action has always behaved this way; fixing it needs tenant propagation the scheduled-event table has
-no column for. Until that lands, do not model a delayed self-wake against a correlated await.
 
 **Codemod.** None, and none is needed: no model file changes shape. Every affected model is already
 spelled correctly — it simply now behaves the way it always read as behaving. A model that silently

@@ -1993,6 +1993,39 @@ class SchemaLifecycleExecutorProofMatrixTest {
         assertEquals("REFUSED", row.outcome());
     }
 
+    @Test
+    @DisplayName("B8 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 W2.3): dropping a concept with no "
+            + "recorded ownership history is silently skipped, and the warning carries the boundary code")
+    void b8_droppedConceptTablesSkipsAndWarnsWithCodeWhenNoOwnershipRecorded() throws SQLException {
+        // No afterMigrate() call precedes this -- readOwnedBusinessTables returns null/empty, the
+        // exact "no ownership evidence recorded" precondition B8 describes. This is a SOFT skip, not
+        // a boot refusal: the boot continues, so the code is carried on the log line, not a thrown
+        // BoundaryBootException (unlike B4/B5/B9/B10 above).
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
+        }
+        SchemaLifecycleExecutor.SchemaManifest manifestWithoutWidgets = manifest(
+                "sha256:new", List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+                true, "", Map.of(), Map.of(), Map.of(), Map.of(), true);
+
+        java.io.ByteArrayOutputStream capturedOut = new java.io.ByteArrayOutputStream();
+        java.io.PrintStream originalOut = System.out;
+        Set<String> dropped;
+        try (Connection connection = dataSource.getConnection()) {
+            System.setOut(new java.io.PrintStream(capturedOut, true, java.nio.charset.StandardCharsets.UTF_8));
+            dropped = SchemaLifecycleExecutor.droppedConceptTables(
+                    connection.getMetaData(), dataSource, manifestWithoutWidgets);
+        } finally {
+            System.setOut(originalOut);
+        }
+
+        assertEquals(Set.of(), dropped, "with no ownership history, no table can be proven NPDev-owned, "
+                + "so nothing may be swept into the destructive drop path");
+        String logged = capturedOut.toString(java.nio.charset.StandardCharsets.UTF_8);
+        assertTrue(logged.contains("B8:no_ownership_history"), logged);
+        assertTrue(logged.contains("no ownership history recorded"), logged);
+    }
+
     /** Two concepts shaped the way the generator really emits them -- the business columns PLUS the
      * platform columns {@code SchemaRealizationEmitter#fullColumnNames} always appends (id/version/
      * row_version/tenant_id) -- so the manifests built on top of them can carry a realistic

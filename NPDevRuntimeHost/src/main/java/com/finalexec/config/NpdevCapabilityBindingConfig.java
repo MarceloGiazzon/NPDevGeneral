@@ -234,7 +234,7 @@ public class NpdevCapabilityBindingConfig {
             Environment environment,
             com.finalexec.npdev.service.RuntimePluginAdapterRegistry runtimePluginAdapterRegistry,
             com.finalexec.npdev.service.RuntimePluginPackageRealizationService runtimePluginPackageRealizationService,
-            com.finalexec.npdev.service.SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine,
+            com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine,
             com.finalexec.npdev.service.RuntimePluginProfileResolver.ResolvedRuntimePluginProfile runtimePluginProfile
     ) {
         return new CapabilityAdapterResolver(
@@ -243,7 +243,7 @@ public class NpdevCapabilityBindingConfig {
                 runtimePluginProfile.executionEnvironment(),
                 runtimePluginAdapterRegistry,
                 runtimePluginPackageRealizationService,
-                sandboxedPluginExecutionEngine
+                timeBoundedPluginExecutionEngine
         );
     }
 

@@ -99,6 +99,9 @@ class SchemaLifecycleExecutorMigrationClaimTest {
             // dropping it would silently demote a named diagnostic to "unknown boot failure".
             assertTrue(exception.getMessage().contains("Another NPDev instance is currently migrating this database"),
                     exception.getMessage());
+            // B4 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 W2.3): carries a boundaryId-linked code so
+            // a boot log line or future orchestrator hook can key on it rather than on English.
+            assertTrue(exception.getMessage().contains("B4:migration_lock_held:"), exception.getMessage());
             // Deliberately NOT the old "clear the stale claim via clear-claim" advice: the mutex is
             // connection-scoped, so clearing the row cannot free it and saying so would send an
             // operator to a control that does nothing for the state they are actually in.

@@ -30,7 +30,7 @@ import com.finalexec.npdev.service.RuntimePluginRealizationProviderCatalog;
 import com.finalexec.npdev.service.RuntimePluginRuntimeRefResolver;
 import com.finalexec.npdev.service.RuntimePluginStatusSummary;
 import com.finalexec.npdev.service.RuntimeRefArtifactRealizationProvider;
-import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
+import com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine;
 import com.npdev.adapters.mail.inproc.InProcMailCapabilityAdapter;
 import com.npdev.adapters.mail.smtp.SmtpMailCapabilityAdapter;
 import com.npdev.adapters.notification.inproc.InProcNotificationCapabilityAdapter;
@@ -389,12 +389,12 @@ public class NpdevPluginConfig {
     }
 
     @Bean(destroyMethod = "close")
-    public SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine(
+    public TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine(
             PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator,
             RuntimePluginExecutionSummaryStore runtimePluginExecutionSummaryStore,
             @Value("${npdev.runtime.plugin-timeout-ms:1000}") long pluginTimeoutMs
     ) {
-        return new SandboxedPluginExecutionEngine(
+        return new TimeBoundedPluginExecutionEngine(
                 pluginTimeoutMs,
                 pluginExecutionPolicyEvaluator,
                 runtimePluginExecutionSummaryStore
@@ -474,7 +474,7 @@ public class NpdevPluginConfig {
             RuntimePluginPackagedArtifactHandlerResolver runtimePluginPackagedArtifactHandlerResolver,
             RuntimePluginRealizationProviderCatalog runtimePluginRealizationProviderCatalog,
             PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator,
-            SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine
+            TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine
     ) {
         return new RuntimePluginStatusSummary(
                 runtimePluginProfile,
@@ -485,7 +485,7 @@ public class NpdevPluginConfig {
                 runtimePluginPackagedArtifactHandlerResolver,
                 runtimePluginRealizationProviderCatalog,
                 pluginExecutionPolicyEvaluator,
-                sandboxedPluginExecutionEngine
+                timeBoundedPluginExecutionEngine
         );
     }
 
