@@ -2,7 +2,7 @@
   "schemaVersion": "ai-model.v1",
   "app": {
     "name": "Custom Panel Procedure Mismatch",
-    "kind": "custom-procedure-panel"
+    "kind": "simple-crud-workflow"
   },
   "entities": [
     {

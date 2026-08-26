@@ -12,18 +12,18 @@ public final class SandboxedCapabilityAdapter implements CapabilityAdapter {
     private final RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution;
     private final RuntimePluginPackageRealizationService.RealizationSummaryItem realizationSummary;
     private final Object handler;
-    private final SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine;
+    private final TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine;
 
     public SandboxedCapabilityAdapter(
             RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution,
             RuntimePluginPackageRealizationService.RealizationSummaryItem realizationSummary,
             Object handler,
-            SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine
+            TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine
     ) {
         this.contribution = Objects.requireNonNull(contribution, "contribution");
         this.realizationSummary = Objects.requireNonNull(realizationSummary, "realizationSummary");
         this.handler = Objects.requireNonNull(handler, "handler");
-        this.sandboxedPluginExecutionEngine = Objects.requireNonNull(sandboxedPluginExecutionEngine, "sandboxedPluginExecutionEngine");
+        this.timeBoundedPluginExecutionEngine = Objects.requireNonNull(timeBoundedPluginExecutionEngine, "timeBoundedPluginExecutionEngine");
     }
 
     @Override
@@ -43,7 +43,7 @@ public final class SandboxedCapabilityAdapter implements CapabilityAdapter {
 
     @Override
     public CapabilityResult invoke(CapabilityCall call, Map<String, Object> contextState) {
-        return sandboxedPluginExecutionEngine.execute(
+        return timeBoundedPluginExecutionEngine.execute(
                 contribution,
                 realizationSummary,
                 call,

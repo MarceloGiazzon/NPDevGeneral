@@ -33,7 +33,7 @@ public final class RuntimePluginStatusSummary {
     private final RuntimePluginPackagedArtifactHandlerResolver runtimePluginPackagedArtifactHandlerResolver;
     private final RuntimePluginRealizationProviderCatalog runtimePluginRealizationProviderCatalog;
     private final PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator;
-    private final SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine;
+    private final TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine;
 
     public RuntimePluginStatusSummary(
             RuntimePluginProfileResolver.ResolvedRuntimePluginProfile runtimePluginProfile,
@@ -44,7 +44,7 @@ public final class RuntimePluginStatusSummary {
             RuntimePluginPackagedArtifactHandlerResolver runtimePluginPackagedArtifactHandlerResolver,
             RuntimePluginRealizationProviderCatalog runtimePluginRealizationProviderCatalog,
             PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator,
-            SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine
+            TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine
     ) {
         this.runtimePluginProfile = Objects.requireNonNull(runtimePluginProfile, "runtimePluginProfile");
         this.runtimePluginManifest = Objects.requireNonNull(runtimePluginManifest, "runtimePluginManifest");
@@ -60,7 +60,7 @@ public final class RuntimePluginStatusSummary {
                 "runtimePluginRealizationProviderCatalog"
         );
         this.pluginExecutionPolicyEvaluator = Objects.requireNonNull(pluginExecutionPolicyEvaluator, "pluginExecutionPolicyEvaluator");
-        this.sandboxedPluginExecutionEngine = Objects.requireNonNull(sandboxedPluginExecutionEngine, "sandboxedPluginExecutionEngine");
+        this.timeBoundedPluginExecutionEngine = Objects.requireNonNull(timeBoundedPluginExecutionEngine, "timeBoundedPluginExecutionEngine");
     }
 
     public Map<String, Object> toSummary() {
@@ -70,7 +70,7 @@ public final class RuntimePluginStatusSummary {
         RuntimePluginPackageRealizationService.Summary realizationSummary =
                 runtimePluginPackageRealizationService.toSummary();
         List<SandboxedPluginExecutionResult.Summary> recentExecutions =
-                sandboxedPluginExecutionEngine.recentExecutions().stream().limit(10).toList();
+                timeBoundedPluginExecutionEngine.recentExecutions().stream().limit(10).toList();
         List<RuntimePluginPackageCatalog.PackageSummary> admittedPackages = packageSummary.packages().stream()
                 .filter(RuntimePluginPackageCatalog.PackageSummary::admitted)
                 .toList();
@@ -153,8 +153,8 @@ public final class RuntimePluginStatusSummary {
         response.put("realization", realizationSummary);
         response.put("policy", pluginExecutionPolicyEvaluator.policySummary());
         response.put("recentExecutionSummary", Map.of(
-                "timeoutMs", sandboxedPluginExecutionEngine.timeoutMs(),
-                "executionStore", sandboxedPluginExecutionEngine.executionStoreDiagnostics(),
+                "timeoutMs", timeBoundedPluginExecutionEngine.timeoutMs(),
+                "executionStore", timeBoundedPluginExecutionEngine.executionStoreDiagnostics(),
                 "recentExecutionCount", recentExecutions.size(),
                 "statusCounts", Map.copyOf(recentExecutionStatusCounts),
                 "recentExecutions", recentExecutions
@@ -403,7 +403,7 @@ public final class RuntimePluginStatusSummary {
                 ),
                 new ConfigurationReference(
                         "npdev.runtime.plugin-execution-summary-path",
-                        String.valueOf(sandboxedPluginExecutionEngine.executionStoreDiagnostics().get("storePath")),
+                        String.valueOf(timeBoundedPluginExecutionEngine.executionStoreDiagnostics().get("storePath")),
                         "runtime-selected-configuration"
                 )
         ));

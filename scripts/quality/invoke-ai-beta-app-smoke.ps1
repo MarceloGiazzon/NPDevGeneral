@@ -178,7 +178,8 @@ if ($build.ExitCode -ne 0) {
 $bootStdout = Join-Path $appRootFull "ai-beta-boot.stdout.log"
 $bootStderr = Join-Path $appRootFull "ai-beta-boot.stderr.log"
 # Move 14 Phase D item D1: acceptance scenarios add several persistence writes (seed rows) in quick
-# succession right after boot -- SandboxedPluginExecutionEngine's default 1000ms budget
+# succession right after boot -- TimeBoundedPluginExecutionEngine's (renamed 2026-08-26 from
+# SandboxedPluginExecutionEngine) default 1000ms budget
 # (npdev.runtime.plugin-timeout-ms) was observed to occasionally miss on a cold H2 MVStore's first
 # write under load (a JVM just booted, competing with other local processes for disk I/O), throwing
 # a spurious CAPABILITY_FAILED unrelated to the scenario itself. Widened ONLY for this boot, ONLY

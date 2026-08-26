@@ -1,9 +1,5 @@
 id: B28
 title: "Live model reload (LC-C3) -- DO NOT SHIP; the app restarts to pick up a model change"
-kind: HITTABLE
-userFacingText: "Model changes require an app restart. Hot reload is available for metadata/UI changes via the admin reload endpoint, but full model changes (schema, flows) still require restart -- the endpoint that would do it is disabled by default and requires an explicit operator opt-in that accepts a known split-brain risk."
-workaround: "Restart the app (~30s) for a schema/logic-shaped model change; use LC-C2's metadata-only fast path for a label/panel-only change (no restart needed). If you have deliberately opted in to full model reload anyway (npdev.runtime.hotswap.full-model-reload-enabled=true), understand that only ModelHolder.get() consumers observe the new model -- everything with a directly-injected CompiledModel keeps the old one."
-enforcingDiagnosticCodes: ["FULL_MODEL_RELOAD_DISABLED"]
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.4a). `ModelHolder.java` (AtomicReference<CompiledModel> +

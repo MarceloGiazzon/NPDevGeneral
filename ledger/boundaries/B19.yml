@@ -1,9 +1,5 @@
 id: B19
 title: "bandPickers accepts the same filter/multiSelect shape a plain FK field's picker does -- but a band picker still requires a named panel, so filter/multiSelect declared without one has nothing to apply to"
-kind: HITTABLE
-userFacingText: "A bandPickers entry is missing its required 'panel' -- filter/multiSelect have nothing to apply to without a panel to fetch rows from."
-workaround: "Declare filter/multiSelect alongside a real panel on a bandPickers entry; for a genuinely dynamic band filter today, give the referenced Selection panel its own declared query where clause instead."
-enforcingDiagnosticCodes: ["B19:band_picker_requires_panel"]
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.5). Re-traced from the real code, not the prior classification:

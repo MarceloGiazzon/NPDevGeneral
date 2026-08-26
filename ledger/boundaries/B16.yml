@@ -1,9 +1,5 @@
 id: B16
 title: "A field's auto-picker supports a declared filter/multi-select via field.picker -- selectorRef itself stays descoped (0 Java, 0 schema, never built)"
-kind: HITTABLE
-userFacingText: ""  # deliberately empty pending the trial (REG-135 step 6)
-workaround: "Use field.picker.filter / field.picker.multiSelect directly on the reference field; the older referenceSemantics.defaultFilter grammar still works unchanged."
-enforcingDiagnosticCodes: ["json_schema_additionalproperties"]
 codeLinked: true
 codeLinkedNote: "Declaring selectorRef anywhere in a model fails JSON-schema structural validation (additionalProperties:false) with code json_schema_additionalproperties -- a GENERIC code shared by every unrecognized-property case, not unique to selectorRef on its own. ValidationDiagnosticNormalizer.structuralDiagnostic() (NPDevContract/dsl/.../validation/ValidationDiagnosticNormalizer.java) now special-cases message.getProperty()=='selectorRef' to also populate boundaryId='B16' on the emitted ValidationDiagnostic -- the one boundary this session wired concretely, proving the mechanism end to end (RED/GREEN verified against a live model declaring selectorRef)."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B16"

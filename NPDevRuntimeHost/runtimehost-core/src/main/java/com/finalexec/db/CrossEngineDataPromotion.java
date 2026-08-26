@@ -1,12 +1,10 @@
 package com.finalexec.db;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.finalexec.boundary.*;
 import org.postgresql.util.PGobject;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.time.Instant;
 import com.npdev.kernel.storage.sql.PostgresDialect;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -136,14 +134,20 @@ public final class CrossEngineDataPromotion {
         try (Connection sourceConnection = source.getConnection(); Connection targetConnection = target.getConnection()) {
             long sourceCount = tableExistsLive(sourceConnection, table) ? countRows(sourceConnection, table) : 0L;
             if (!tableExistsLive(targetConnection, table)) {
-                // B10:data_only_promotion (2026-08-25 W2.3, docs/ACCEPTED_BOUNDARIES.md): schema
-                // reconciliation is out of scope for data promotion -- the target schema must
-                // already exist. Code carried as a message prefix, same convention B2/B4/B5/B9 use.
-                throw new BoundaryBootException(new BoundaryViolation("B10", "promotion",
-                        "B10:data_only_promotion:Cross-engine promotion refused: target table '" + table + "' does not exist. "
-                                + "Realize the schema on the target first (boot the app pointed at the target database), "
-                                + "then promote data. Schema reconciliation is not supported.",
-                        Instant.now()));
+                // QUAL-38 (item 4, SUPPORT_FEATURES_PLAN_2026-08-26): a missing target table is a
+                // per-table SKIP, not a whole-promotion abort. This used to THROW BoundaryBootException,
+                // which apply()'s loop never caught -- silently aborting every table after this one in
+                // iteration order, contradicting this class's own javadoc ("does NOT abort the remaining
+                // tables -- the caller always gets a complete, honest per-table report") and the
+                // pre-existing CrossEngineDataPromotionTest#applyReportsFailureWhenTargetTableMissing,
+                // which asserts exactly this TableCopyResult.error() shape. B10:data_only_promotion
+                // (2026-08-25 W2.3, docs/ACCEPTED_BOUNDARIES.md) is still carried as the message prefix,
+                // same convention B2/B4/B5/B9 use, even though this path no longer throws.
+                return new TableCopyResult(table, sourceCount, 0L, 0L, false,
+                        "B10:data_only_promotion:Cross-engine promotion refused for table '" + table
+                                + "': target table does not exist. Realize the schema on the target first "
+                                + "(boot the app pointed at the target database), then promote data. Schema "
+                                + "reconciliation is not supported. Run `npdev why B10` for the full explanation.");
             }
             Set<String> sourceColumns = SchemaLifecycleExecutor.readActualColumns(sourceConnection.getMetaData(), table);
             Set<String> targetColumns = SchemaLifecycleExecutor.readActualColumns(targetConnection.getMetaData(), table);

@@ -1,9 +1,5 @@
 id: B4
 title: "Multi-instance migration is a real lock, not detect-and-refuse"
-kind: HITTABLE
-userFacingText: "Another app instance holds the migration lock. Wait for it to finish or clear the claim via the admin endpoint."
-workaround: "The second instance waits/refuses under the real lock (Postgres advisory lock or H2 atomic claim row); use ControlPanel's clear() only as a deliberate manual escape hatch."
-enforcingDiagnosticCodes: ["B4:migration_lock_held"]
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). Re-traced: the real timeout refusal is thrown by

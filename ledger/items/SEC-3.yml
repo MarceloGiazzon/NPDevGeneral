@@ -1,29 +1,33 @@
 id: SEC-3
 title: >-
-  SandboxedPluginExecutionEngine has no real containment for malicious plugin code -- filesystem,
-  network, memory/CPU, System.exit, and reflection are all unbounded; only a wall-clock timeout exists
+  TimeBoundedPluginExecutionEngine (renamed 2026-08-26 from SandboxedPluginExecutionEngine, item 3 of
+  SUPPORT_FEATURES_PLAN_2026-08-26, to stop the class name promising containment it does not have) has
+  no real containment for malicious plugin code -- filesystem, network, memory/CPU, System.exit, and
+  reflection are all unbounded; only a wall-clock timeout exists
 type: GAP
 severity: HIGH
 status: OPEN
 opened: 2026-08-25
 source: >-
-  2026-08-25 remediation plan W3.3 (QUAL-33), investigating SandboxedPluginExecutionEngineTest's
-  disabled maliciousPluginVectorsRemainContained. EXT-1 shipped plugin:java-controller and
-  plugin:java-source, both of which let a model author ship COMPILED CODE that runs inside a
-  generated app's own process -- the containment claim implied by "sandboxed" in this engine's name
-  was never built beyond the timeout.
+  2026-08-25 remediation plan W3.3 (QUAL-33), investigating the engine test's (then
+  SandboxedPluginExecutionEngineTest, renamed TimeBoundedPluginExecutionEngineTest 2026-08-26) disabled
+  maliciousPluginVectorsRemainContained. EXT-1 shipped plugin:java-controller and plugin:java-source,
+  both of which let a model author ship COMPILED CODE that runs inside a generated app's own process
+  -- the containment claim implied by "sandboxed" in the engine's ORIGINAL name was never built beyond
+  the timeout, which is exactly why the class itself was renamed (not just this item's title): SEC-3
+  stays open as the tracked upgrade path to real (e.g. process-isolation) containment.
 surface: runtimehost, plugin-execution, security
 files:
-  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/SandboxedPluginExecutionEngine.java
-  - NPDevRuntimeHost/src/test/java/com/finalexec/SandboxedPluginExecutionEngineTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/TimeBoundedPluginExecutionEngine.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/TimeBoundedPluginExecutionEngineTest.java
 detail: |
-  Read SandboxedPluginExecutionEngine.java directly (not inferred from the test file's own
-  aspirational comments). Handler invocation runs in-process, on a thread from a plain
-  Executors.newCachedThreadPool(), via reflection. The ONLY containment mechanism that exists at all
-  is a bounded future.get(timeoutMs) -- proven real by 6 tests already in
-  SandboxedPluginExecutionEngineTest (happy path, error wrapping, timeout, interrupt safety, overload
-  resolution, policy denial). Every other vector the class's own name implies "sandboxed" covers is
-  wide open to any plugin handler running in the same JVM:
+  Read the engine class directly (not inferred from the test file's own aspirational comments).
+  Handler invocation runs in-process, on a thread from a plain Executors.newCachedThreadPool(), via
+  reflection. The ONLY containment mechanism that exists at all is a bounded future.get(timeoutMs) --
+  proven real by 6 tests already in TimeBoundedPluginExecutionEngineTest (happy path, error wrapping,
+  timeout, interrupt safety, overload resolution, policy denial). Every other vector the class's
+  ORIGINAL name ("Sandboxed") implied it covered is wide open to any plugin handler running in the
+  same JVM:
     - Filesystem: no restriction: a plugin can read/write anything the app process can.
     - Network: no restriction: a plugin can make arbitrary outbound connections.
     - Memory/CPU: no bound beyond the wall-clock timeout -- a plugin can allocate freely or spin a

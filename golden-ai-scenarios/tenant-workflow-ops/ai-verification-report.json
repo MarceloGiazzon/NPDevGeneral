@@ -117,9 +117,6 @@
       "type": "http",
       "method": "GET",
       "path": "/api/admin/runtime/metadata/concepts/Ticket",
-      "headers": {
-        "X-Api-Key": "dev-key"
-      },
       "expectedStatus": 200,
       "expectedJsonContains": {
         "concept": {

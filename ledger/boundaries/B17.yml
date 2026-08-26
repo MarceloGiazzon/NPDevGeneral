@@ -1,10 +1,5 @@
 id: B17
 title: "Super-user key is issued, not supplied"
-kind: HITTABLE
-userFacingText: "The super-user key you provided was rejected. Read the auto-generated key from SUPER_USER_KEY.txt in the app's working directory."
-workaround: "Read the issued key from its file path (SUPER_USER_KEY.txt), never over HTTP."
-enforcingDiagnosticCodes:
-  - "super_user_auth_failed"
 codeLinked: true
 codeLinkedNote: "SuperUserCredentialAuthFilter now returns a structured JSON error with boundaryId B17 and error code super_user_auth_failed."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B17"

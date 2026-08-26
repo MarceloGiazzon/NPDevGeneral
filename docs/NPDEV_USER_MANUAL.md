@@ -639,6 +639,10 @@ scoring/triage), design a screen that looks exactly the way you want instead of 
 table/form, and build workflows that don't complete in one HTTP call — they create a ticket,
 notify someone, and **wait** until that someone acts, potentially hours later.
 
+**Trust boundary:** a `plugin:java-source` handler runs in-process with the application's full
+privileges (only wall-clock time is bounded) — trust it like your own code. See SEC-3 for the
+tracked upgrade path to real containment (process isolation).
+
 This exact pattern is the `Claude` (Claude Support Desk) reference app, already proven
 green end-to-end. Three pieces, trimmed from its real `model.json`:
 

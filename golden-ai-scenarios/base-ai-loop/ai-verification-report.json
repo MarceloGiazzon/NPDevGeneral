@@ -19,8 +19,7 @@
       "method": "POST",
       "path": "/api/learners",
       "headers": {
-        "Content-Type": "application/json",
-        "X-Api-Key": "dev-key"
+        "Content-Type": "application/json"
       },
       "body": {
         "name": "Beta Zero",

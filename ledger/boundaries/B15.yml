@@ -1,9 +1,5 @@
 id: B15
 title: "LIFTED (both halves) -- B15(A) \"await cannot be nested inside a loop body\" closed for the SEQUENTIAL case (Move 16 Phase B, 2026-08-03); B15(B) \"parallel awaits inside a loop (N iterations blocking at once)\" closed for a single-step await-only body (S6 Phase B, 2026-08-03) and widened to a genuinely multi-step body (S8 Wave 3, 2026-08-04)"
-kind: LIFTED
-userFacingText: ""  # lifted: the boundary itself refuses nothing, so there is no message to render
-workaround: "Sequential (B15(A)): author a forEach loop body with exactly one reachable await step -- validation now accepts it. Parallel (B15(B)): author a forEach body with \"parallelAwait\": true and exactly one reachable await step AT THE LOOP BODY'S TOP LEVEL (not nested inside a branch); any number of other non-forEach steps may now precede or follow it. A forEach nested inside a parallel forEach still needs sequential mode or a flow restructure."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   LIFTED, so this boundary refuses nothing any more -- the row is kept for history and this entry
