@@ -111,7 +111,9 @@ function Assert-RebuildableTarget([string]$TargetPath, [string]$Category) {
             }
         }
         "runtimehost-generated-file" {
-            if ($relative -notin @("NPDevRuntimeHost\build.gradle", "NPDevRuntimeHost\npdev-build-info.properties")) {
+            # NPDevRuntimeHost\build.gradle is deliberately ABSENT from this list -- see the target
+            # list below for why. Only genuinely generated, untracked files belong here.
+            if ($relative -notin @("NPDevRuntimeHost\npdev-build-info.properties")) {
                 throw ("Refusing unexpected RuntimeHost generated file: " + $relative)
             }
         }
@@ -154,7 +156,21 @@ foreach ($target in @(
         @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\npdev-generated"); category = "runtimehost-generated-dir" },
         @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\npdev-meta"); category = "runtimehost-generated-dir" },
         @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\runtime-data"); category = "runtimehost-generated-dir" },
-        @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\build.gradle"); category = "runtimehost-generated-file" },
+        # NPDevRuntimeHost\build.gradle USED TO BE listed here and must not be: it is a TRACKED file,
+        # not a generated one, so deleting it dirties a clean checkout. That single deletion is what
+        # set `officialReleaseEligible: false` on every Beta 0 release-gate run -- the gate reports
+        # `git.dirty: true, dirtyPaths: ["NPDevRuntimeHost/build.gradle"]` within seconds of checkout,
+        # and a dirty workspace blocks official eligibility outright.
+        #
+        # The classification was CORRECT when written (2026-04-27): back then this file really was a
+        # generated artifact. It went stale on 2026-07-27 (97a24914), when the file was committed as
+        # the deliberate "BARE-CHECKOUT PIN" its own header comment describes -- the copy Dependabot
+        # scans, kept manually in sync with build.gradle.template. Nothing updated this list, so a
+        # hygiene script has been deleting tracked source ever since.
+        #
+        # npdev-build-info.properties below IS genuinely generated and untracked, which is exactly the
+        # distinction this entry got wrong. Before adding anything here, confirm with
+        # `git ls-files --error-unmatch <path>` that it is NOT tracked.
         @{ path = (Resolve-NPDevWorkspacePath $WorkspaceRoot "NPDevRuntimeHost\npdev-build-info.properties"); category = "runtimehost-generated-file" }
     )) {
     $candidate = New-RebuildableTarget -PathValue $target.path -Category $target.category
