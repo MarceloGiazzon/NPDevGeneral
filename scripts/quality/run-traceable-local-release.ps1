@@ -50,6 +50,16 @@ function Invoke-PwshScript {
         [string]$StdoutPath,
         [string]$StderrPath
     )
+    # Streams live to the host (visible in a CI log as it happens) instead of buffering the whole
+    # child process's output in memory until it exits -- the previous ReadToEnd()-then-WaitForExit()
+    # shape made a long-running canonical release script (which itself already emits per-gate
+    # [HH:mm:ss] START/END progress lines) show up as ONE opaque hour-plus-silent step. Uses the
+    # standard async OutputDataReceived/ErrorDataReceived event pattern rather than a second,
+    # naive fix of just adding `| Out-Host` -- this exact area was already stalled once that way
+    # (commit 5a10f6dc, "Avoid final release gate output pipeline stall", in the inner
+    # run-beta0-final-release-check.ps1) and moved OFF piping for that reason. Async event
+    # callbacks read both streams concurrently, so neither can block the other from draining --
+    # the classic sequential-ReadToEnd() deadlock risk this replaces.
     $startedAt = (Get-Date).ToUniversalTime()
     $psi = [System.Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = "pwsh"
@@ -60,14 +70,66 @@ function Invoke-PwshScript {
     foreach ($arg in @("-NoProfile", "-File", $ScriptPath) + $Arguments) {
         $psi.ArgumentList.Add($arg)
     }
-    $process = [System.Diagnostics.Process]::Start($psi)
-    $stdout = $process.StandardOutput.ReadToEnd()
-    $stderr = $process.StandardError.ReadToEnd()
-    $process.WaitForExit()
+
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo = $psi
+    $process.EnableRaisingEvents = $true
+
+    # .NET raises OutputDataReceived/ErrorDataReceived on thread-pool threads, and under a fast
+    # burst of lines their PowerShell Register-ObjectEvent handlers can be DEQUEUED out of arrival
+    # order (measured directly: a 40-line/200-char burst reordered 2 lines by a few positions,
+    # both live on screen and in the captured content). Harmless for a live console glance, but the
+    # log FILE is this repo's durable evidence artifact, so each line is tagged at capture time with
+    # Stopwatch.GetTimestamp() -- a monotonic, lock-free hardware counter reading, far finer
+    # resolution than DateTime.UtcNow -- and the file is written back sorted by that tag,
+    # independent of whatever order the handlers happened to run in.
+    $captured = [System.Collections.Concurrent.ConcurrentBag[pscustomobject]]::new()
+
+    $stdoutEvent = Register-ObjectEvent -InputObject $process -EventName OutputDataReceived -Action {
+        if ($null -ne $EventArgs.Data) {
+            $Event.MessageData.Add([pscustomobject]@{
+                Ticks = [System.Diagnostics.Stopwatch]::GetTimestamp()
+                Stream = "out"
+                Text = $EventArgs.Data
+            })
+            Write-Host $EventArgs.Data
+        }
+    } -MessageData $captured
+    $stderrEvent = Register-ObjectEvent -InputObject $process -EventName ErrorDataReceived -Action {
+        if ($null -ne $EventArgs.Data) {
+            $Event.MessageData.Add([pscustomobject]@{
+                Ticks = [System.Diagnostics.Stopwatch]::GetTimestamp()
+                Stream = "err"
+                Text = $EventArgs.Data
+            })
+            Write-Host $EventArgs.Data -ForegroundColor Red
+        }
+    } -MessageData $captured
+
+    try {
+        $process.Start() | Out-Null
+        $process.BeginOutputReadLine()
+        $process.BeginErrorReadLine()
+        $process.WaitForExit()
+    }
+    finally {
+        Unregister-Event -SourceIdentifier $stdoutEvent.Name -ErrorAction SilentlyContinue
+        Unregister-Event -SourceIdentifier $stderrEvent.Name -ErrorAction SilentlyContinue
+        Remove-Job -Name $stdoutEvent.Name -ErrorAction SilentlyContinue
+        Remove-Job -Name $stderrEvent.Name -ErrorAction SilentlyContinue
+    }
+
     $finishedAt = (Get-Date).ToUniversalTime()
+    $orderedCaptures = $captured | Sort-Object -Property Ticks
+    $stdoutBuilder = [System.Text.StringBuilder]::new()
+    $stderrBuilder = [System.Text.StringBuilder]::new()
+    foreach ($line in $orderedCaptures) {
+        if ($line.Stream -eq "out") { $stdoutBuilder.AppendLine($line.Text) | Out-Null }
+        else { $stderrBuilder.AppendLine($line.Text) | Out-Null }
+    }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $StdoutPath) | Out-Null
-    $stdout | Set-Content -LiteralPath $StdoutPath -Encoding UTF8
-    $stderr | Set-Content -LiteralPath $StderrPath -Encoding UTF8
+    $stdoutBuilder.ToString() | Set-Content -LiteralPath $StdoutPath -Encoding UTF8
+    $stderrBuilder.ToString() | Set-Content -LiteralPath $StderrPath -Encoding UTF8
     return [pscustomobject]@{
         startedAt = $startedAt.ToString("o")
         finishedAt = $finishedAt.ToString("o")
