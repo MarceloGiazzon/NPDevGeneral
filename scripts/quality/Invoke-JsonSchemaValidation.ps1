@@ -65,9 +65,31 @@ else {
 }
 
 if (-not (Test-Path -LiteralPath $nodeModules -PathType Container) -or $existingFingerprint -ne $packageLockFingerprint) {
-    npm --prefix $validatorRuntimeRoot install --silent | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install JSON Schema validator dependencies."
+    # Install with the validator runtime root as the WORKING DIRECTORY, not via `npm --prefix`.
+    # This is not stylistic. npm resolves package.json from the current directory, and
+    # `npm --prefix <dir> install` launched from the repo root ENOENTs on a Windows runner because
+    # there is no package.json at the repo root -- the exact failure npdev-ci-validation.yml already
+    # documents (REG-33) and works around by pre-installing from inside the validator directory.
+    # Everything npm needs (package.json, package-lock.json, the .mjs) was copied to
+    # $validatorRuntimeRoot immediately above, so a cwd-based install is well-defined there.
+    #
+    # This is what kept the Beta 0 release gate red. It runs on windows-latest from the repo root, so
+    # this install threw on every run; the caller (run-json-schema-validator-tests.ps1) invokes this
+    # script with `2>$null | Out-Null`, so the thrown reason was discarded and all 9 cases surfaced
+    # only as `actualStatus: "no-report"`, `engine: ""` -- a silent failure that read as "the
+    # validator disagrees" when it actually meant "the validator never started". That failed gate 1
+    # of 27 and aborted the whole release pipeline before any real check ran.
+    Push-Location -LiteralPath $validatorRuntimeRoot
+    try {
+        npm install --silent --no-audit --no-fund | Out-Null
+        $npmExit = $LASTEXITCODE
+    }
+    finally {
+        Pop-Location
+    }
+    if ($npmExit -ne 0) {
+        throw ("Failed to install JSON Schema validator dependencies (npm exit " + $npmExit +
+               ") in " + $validatorRuntimeRoot)
     }
     Set-Content -LiteralPath $dependencyFingerprintPath -Value $packageLockFingerprint -Encoding ASCII
 }
