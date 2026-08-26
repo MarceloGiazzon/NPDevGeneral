@@ -81,6 +81,10 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
         assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
         assertTrue(exception.getMessage().contains("sha256:N+1"), exception.getMessage());
         assertTrue(exception.getMessage().contains("mark"), "must point at the mark-done escape hatch: " + exception.getMessage());
+        // B5 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 W2.3): the violation carries both the
+        // boundaryId (already wired) and the declared code (previously absent, now a message prefix).
+        assertEquals("B5", exception.getViolation().boundaryId());
+        assertTrue(exception.getMessage().contains("B5:schema_ahead_detected:"), exception.getMessage());
 
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();

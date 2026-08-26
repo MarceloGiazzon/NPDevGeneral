@@ -733,7 +733,7 @@ class KernelRunnerTest {
 
     @Test
     void executeSupportsAwaitEventUsingEventStore() {
-        EventStoreStub eventStore = new EventStoreStub();
+        InMemoryEventStore eventStore = new InMemoryEventStore();
         eventStore.append(EventEnvelope.of(
                 "InvoiceApproved",
                 Map.of("status", "APPROVED", "receipt", "rcpt-1"),
@@ -771,7 +771,7 @@ class KernelRunnerTest {
 
     @Test
     void executeSupportsAwaitEventPayloadMatching() {
-        EventStoreStub eventStore = new EventStoreStub();
+        InMemoryEventStore eventStore = new InMemoryEventStore();
         eventStore.append(EventEnvelope.of(
                 "InvoiceApproved",
                 Map.of("status", "APPROVED", "receipt", "rcpt-77"),
@@ -1072,40 +1072,9 @@ class KernelRunnerTest {
         }
     }
 
-    private static final class EventStoreStub implements EventBus, EventStore {
-        private final List<EventEnvelope> events = new ArrayList<>();
-
-        @Override
-        public void publish(EventEnvelope event) {
-            append(event);
-        }
-
-        @Override
-        public void append(EventEnvelope event) {
-            events.add(event);
-        }
-
-        @Override
-        public java.util.Optional<EventEnvelope> findFirst(String eventName, String correlationId) {
-            return events.stream()
-                    .filter(event -> eventName.equals(event.eventName()) && correlationId.equals(event.correlationId()))
-                    .findFirst();
-        }
-
-        @Override
-        public List<EventEnvelope> readByCorrelation(String correlationId) {
-            return events.stream()
-                    .filter(event -> correlationId.equals(event.correlationId()))
-                    .toList();
-        }
-
-        @Override
-        public List<EventEnvelope> readByEventName(String eventName) {
-            return events.stream()
-                    .filter(event -> eventName.equals(event.eventName()))
-                    .toList();
-        }
-    }
+    // W3.3 (2026-08-25 remediation plan / QUAL-33): the private EventStoreStub that used to live here
+    // was extracted to InMemoryEventStore.java (same package) so EventStorePerformanceRegressionTest
+    // could use it too without duplicating it.
 
     private static final class RecordingEventInfrastructure implements EventBus, EventStore {
         private final List<EventEnvelope> published = new ArrayList<>();

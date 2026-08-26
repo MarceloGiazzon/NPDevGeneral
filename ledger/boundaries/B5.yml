@@ -5,5 +5,16 @@ userFacingText: "This database was migrated by a newer build. Deploy a build at 
 workaround: "Roll forward, or use mark-done deliberately after verifying by hand."
 enforcingDiagnosticCodes: ["B5:schema_ahead_detected"]
 codeLinked: true
-codeLinkedNote: "Enforced at boot time by SchemaLifecycleExecutor (REG-8 Trigger C), a boot-time refusal in NPDevRuntimeHost, not a DSL ValidationDiagnostic -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+codeLinkedNote: >-
+  2026-08-25 (remediation plan W2.3). SchemaLifecycleExecutor.beforeMigrate already threw
+  `BoundaryBootException(new BoundaryViolation("B5", "boot", ...))` for REG-8 Trigger C before this
+  session (Wave 2, commit 50ddf3ea, 2026-08-21 -- landed before the 2026-08-23 audit that produced
+  this remediation plan, which read the OLD pre-Wave-2 note describing this as unwired without
+  re-tracing the live code, exactly the same stale-premise shape as B19). `BoundaryViolation` has no
+  separate `code` field, only `boundaryId` -- the declared code is now carried as a
+  `B5:schema_ahead_detected:` message prefix, the same convention B2/B4/B9/B10 use, so it appears in
+  both the boot log and BoundaryViolationResponse's JSON body (BoundaryViolation.toJson()'s
+  "message" field).
+  Proven by SchemaLifecycleExecutorDatabaseMigratedPastBuildTest (asserts both boundaryId=="B5" and
+  the code prefix).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B5"

@@ -1,0 +1,54 @@
+id: QUAL-38
+title: >-
+  CrossEngineDataPromotion.apply aborts the whole promotion on the first missing target table,
+  contradicting its own javadoc and a pre-existing (Docker-gated, never-run-locally) test
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-08-25
+source: >-
+  2026-08-25 remediation plan W2.3 (making B10 machine-identifiable), found while tracing B10's real
+  enforcement point to add its diagnostic code -- not itself part of W2.3's scope.
+surface: db/cross-engine-promotion, boundary/B10
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/CrossEngineDataPromotionTest.java
+detail: |
+  Commit 50ddf3ea (2026-08-21, "boundary violation envelope -- B2/B4/B5/B8/B9/B10 wired to REST+boot
+  channels") changed `CrossEngineDataPromotion.copyTable`'s missing-target-table case from returning
+  a per-table `TableCopyResult(..., error="target table does not exist...")` to THROWING
+  `BoundaryBootException(new BoundaryViolation("B10", "promotion", ...))`.
+
+  `apply()`'s loop (`for (String table : manifest.businessTables()) { results.add(copyTable(...)); }`)
+  never catches `BoundaryBootException`, so the new throw propagates out of `apply()` entirely --
+  the FIRST table (in `manifest.businessTables()`'s iteration order) that doesn't exist on the
+  target aborts the WHOLE promotion. Every table after it is never attempted, and the caller gets no
+  `PromotionResult` at all, just a thrown exception.
+
+  This contradicts three things the commit did not update:
+  1. `apply()`'s own javadoc: "A table whose target does not yet exist is reported as a per-table
+     failure (never a schema-creating fallback)... the caller always gets a complete, honest
+     per-table report, never a silent partial run."
+  2. The class-level javadoc: "...a target table that doesn't exist yet is reported as a clear
+     per-table failure rather than silently skipped or a thrown exception that hides every other
+     table's result."
+  3. The pre-existing test `CrossEngineDataPromotionTest#applyReportsFailureWhenTargetTableMissing`
+     (`@DisplayName("apply reports a clear per-table failure (not a thrown exception)...")`), which
+     still asserts `tableResult.error().contains("does not exist")` against a `TableCopyResult` --
+     that assertion would fail against the current code (the call never returns; it throws).
+
+  Undetected for a real reason, not negligence: `CrossEngineDataPromotionTest` is `@Tag("integration")`
+  and Docker/Testcontainers-Postgres-dependent, excluded from the plain `test` task and only run via
+  `-PincludePostgresMatrix` (confirmed by the class's own javadoc and this session's
+  `local-test-profile.json` policy, which disables Postgres/Docker by default on a dev/agent
+  machine). The regression has been live since 2026-08-21 with nothing exercising it.
+
+  NOT fixed as part of the 2026-08-25 W2.3 pass that found it: this needs a real product decision,
+  not a mechanical one -- is the NEW stricter behavior (any missing table aborts the whole
+  promotion) actually correct now that B10 formalizes "schema reconciliation is out of scope" more
+  strictly, or was the OLD per-table-graceful behavior the intended contract and the throw is the
+  bug? Either answer requires updating code AND docs AND the test together, which is real work
+  deserving its own pass, not a change bundled into a documentation-metadata fix.
+
+  Done when: `apply()`'s actual behavior, its own javadoc, and `CrossEngineDataPromotionTest` all
+  agree with each other -- whichever of the two behaviors is chosen.

@@ -2,33 +2,154 @@ id: QUAL-33
 title: Five test classes are @Disabled because the infrastructure they need does not exist
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-25
+verification: VERIFIED_LIVE
 source: 2026-08-23 platform audit; each annotation's own reason string names its missing dependency.
 surface: testing/infrastructure
 files:
-  - NPDevRuntimeHost/src/test/java/com/finalexec/SandboxedPluginExecutionEngineTest.java
-  - NPDevKernel/adapters/runtime-validation/src/test/java/com/npdev/adapters/runtime/validation/RuntimeRequestSizeFilterTest.java
-  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/EventStorePerformanceRegressionTest.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/RuntimeHealthEndpointIT.java
+  - NPDevKernel/adapters/runtime-validation/src/test/java/com/npdev/adapters/runtime/validation/RuntimeHealthIndicatorsTest.java
+  - NPDevKernel/adapters/runtime-validation/src/test/java/com/npdev/adapters/runtime/validation/RuntimeRequestSizeFilterTest.java
+  - NPDevKernel/adapters/runtime-validation/src/main/java/com/npdev/adapters/runtime/validation/RuntimeRequestSizeFilter.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/EventStorePerformanceRegressionTest.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/InMemoryEventStore.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerTest.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/RuntimePerformanceBaselineIT.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/SandboxedPluginExecutionEngineTest.java
+  - scripts/quality/run-observability-hardening.ps1
 detail: |
-  Each of these is annotated with a real reason, not a skip-to-go-green -- re-confirmed live
-  2026-08-23, all five still present and still @Disabled at the cited lines:
+  Four of five genuinely revived with real, running tests; the fifth investigated and deliberately
+  NOT revived, with the real reason recorded. "Still disabled" is not done -- per each:
 
-  - SandboxedPluginExecutionEngineTest:294 -- malicious-plugin containment needs a real sandbox
-    (SecurityManager or process isolation). This is the one with security weight: the containment
-    claim is currently untested.
-  - RuntimeRequestSizeFilterTest:50 -- chunked/multipart/WebSocket cases need a full servlet
-    container.
-  - EventStorePerformanceRegressionTest -- no standalone in-memory EventStore adapter exists; the
-    only one is EventStoreStub inside KernelRunnerTest.
-  - RuntimeHealthEndpointIT -- needs @SpringBootTest(webEnvironment = RANDOM_PORT).
-  - RuntimePerformanceBaselineIT -- needs embedded Postgres via Testcontainers plus pre-loaded data.
+  1. RuntimeHealthEndpointIT -- implemented for real (@SpringBootTest RANDOM_PORT + TestRestTemplate,
+     GET /actuator/health returns 200 UP). The stub's second claim ("mock alert sink triggered") was
+     verified false before being dropped: grep for AlertSink across NPDevRuntimeHost/src/main found
+     zero hits -- that mechanism was never built. The REAL substance behind "dependency is DOWN" is
+     RuntimeHealthIndicatorsTest#eventHealthShouldBeDownWhenStoreDependencyIsDown (NPDevKernel/
+     adapters/runtime-validation, same file that already tested the UP case and literally listed
+     "UP / DOWN / UNKNOWN detail coverage" as an unaddressed TODO in its own header comment) -- a
+     PLAIN UNIT TEST that constructs NpdevObservabilityConfig's actual NpdevEventStoreHealthIndicator
+     directly with a broken EventStore double and asserts Health.down(), no Spring context at all.
 
-  Separately, HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest carries
-  @DisabledOnOs(WINDOWS), which is a platform statement rather than a missing-infrastructure one --
-  filed here for visibility, not as a sixth instance of the same cause.
+     GENUINE DEAD END, tried and abandoned before landing on the unit test: a first version put the
+     "dependency is DOWN" case in a second @SpringBootTest class (RuntimeHealthEndpointDegradedIT),
+     substituting a broken EventStore via a @Primary @TestConfiguration bean and reading the real
+     aggregated /actuator/health response. Found live, by running the full runtimehost gate, not by
+     design review: that bean LEAKED into RuntimeHealthEndpointIT's own SEPARATE @SpringBootTest run
+     in the same Gradle test JVM -- both test classes' health responses showed the IDENTICAL
+     "event store dependency is DOWN (test double)" exception, even though each printed its own
+     distinct Spring Boot startup banner (genuinely different ApplicationContext instances, not
+     context-cache reuse -- ruled out by inspecting both banners). Neither of the two standard fixes
+     for exactly this shape of problem worked: explicit `@Import(BrokenEventStoreConfig.class)`
+     (removes nested-class auto-detection ambiguity) and `@DirtiesContext` (prevents cache reuse)
+     were both tried, separately verified live, and both left the leak unchanged. Root Spring
+     mechanism not conclusively identified within this session's timebox; rather than keep debugging
+     Spring's context-isolation internals, switched to testing the same real logic
+     (NpdevEventStoreHealthIndicator.health()) with no Spring context at all -- which cannot leak
+     because there is no shared container to leak through. RuntimeHealthEndpointDegradedIT.java was
+     deleted, not left behind half-working.
 
-  Done when: each is either running, or converted to a narrower test that runs, or closed as
-  WONTFIX with the infrastructure decision recorded. "Still disabled" is not done.
+     SELF-CAUGHT REGRESSION #2, found the same way: run-observability-hardening.ps1's
+     health-indicator-coverage / broken-backend-aggregation checks are pure TEXT-PATTERN scans of
+     RuntimeHealthEndpointIT.java's source for the literal phrases "dependency is DOWN" and "mock
+     alert sink" -- previously satisfied only by the OLD @Disabled stub's own aspirational comments,
+     which is exactly the vacuous-check shape this whole remediation plan exists to fix. Fixed
+     properly, not routed around: "mock alert sink" REMOVED from both pattern lists (verified
+     vaporware, see above); "dependency is DOWN" KEPT, scanned across RuntimeHealthEndpointIT.java
+     AND RuntimeHealthIndicatorsTest.java together (the checker's $HealthDegradedTestPath re-pointed
+     at the unit test file once the Spring-context approach was abandoned), genuinely backed by a
+     real assertion rather than prose either way. Live-verified: standalone
+     run-observability-hardening.ps1 pass, both checks "passed".
+
+  2. RuntimeRequestSizeFilterTest -- revived AND found a real product bug in the same pass. The
+     original @Disabled reason ("requires a full servlet container") did not hold for the
+     length-unknown case: MockHttpServletRequest can simulate a chunked body (declared
+     Content-Length -1, real bytes still present) without one. Doing so found that
+     RuntimeRequestSizeFilter.doFilterInternal only ever checked getContentLengthLong() >
+     maxBodyBytes -- a chunked request reports -1, which is never > anything, so an oversized
+     chunked body passed through completely uninspected. This is the exact payload-size DoS the
+     filter exists to prevent. FIXED in the same commit: the filter now buffers up to
+     maxBodyBytes + 1 bytes unconditionally (safe here -- every path it guards, flow-execute and
+     event-publish, expects a small body) and replays the buffered bytes via both getInputStream()
+     AND getReader() (ServletRequestWrapper.getReader() defaults to the ORIGINAL request's reader,
+     which would read from an already-drained stream -- a real regression for any getReader()
+     caller if only getInputStream() were overridden). New tests:
+     chunkedRequestWithNoDeclaredContentLengthIsStillSizeLimited (both the 413-rejection AND that a
+     within-limit body is still correctly replayed to the downstream filter chain) and
+     webSocketUpgradeRequestsAreSkippedBecauseTheyNeverMatchTheGuardedPaths (a WebSocket upgrade
+     never targets the guarded paths at all -- the "aspirational" WebSocket claim was already true
+     by construction, now pinned as a regression guard). Live-verified: `gradlew
+     :adapters:runtime-validation:test` BUILD SUCCESSFUL.
+
+  3. EventStorePerformanceRegressionTest -- the plan's own recommended path taken exactly:
+     EventStoreStub (private, buried inside KernelRunnerTest, the only in-memory EventBus+EventStore
+     fake in the repo) extracted to InMemoryEventStore.java (same package, thread-safe via
+     CopyOnWriteArrayList since it is now also exercised concurrently), with KernelRunnerTest updated
+     to use the extracted class. The stub's "10,000 events/second" / "p99 < 10ms" targets are
+     PERFORMANCE claims, not tested (this repo's own standing rule: a stored cross-run timing
+     baseline measures machine load, not code). "Crash recovery without data loss" does not apply to
+     an in-memory store at all (nothing to recover FROM); "compaction" describes a capability
+     EventStore's interface does not have. What DOES apply and IS real: concurrent writers must never
+     lose an append -- tested deterministically (16 threads x 500 appends each, exact count
+     asserted, not timed) alongside functional volume (5,000 events, correct retrieval by
+     correlation/name) and findFirst correctness among many candidates. Live-verified: `gradlew
+     :kernel:test --tests EventStorePerformanceRegressionTest --tests KernelRunnerTest` BUILD
+     SUCCESSFUL.
+
+  4. RuntimePerformanceBaselineIT -- investigated, deliberately left disabled, not silently skipped.
+     Its query-shape/pushdown CORRECTNESS half is already covered by two tests that exist
+     independently of this stub (db/ConceptQueryPushDownTest.java,
+     db/ConceptAggregateGroupByJoinPushDownTest.java) -- reviving it to test the same property again
+     would be redundant. Its remaining, unique ask is pure latency/throughput under volume, which
+     conflicts directly with this repo's own standing rule against unreliable CI timing assertions.
+     The volume/plan-verification aspiration it half-described already has a real home: ledger
+     SCALE-1's "scale-baseline" manual runbook (verification-cadence.json) does exactly what its
+     "EXPLAIN ANALYZE query plans" bullet wanted, as a periodic manual measurement rather than a
+     per-commit gate assertion. @Disabled reason rewritten to name both, replacing the vague original.
+
+  5. SandboxedPluginExecutionEngineTest's maliciousPluginVectorsRemainContained -- investigated, NOT
+     fixed, and not routed around with a partial implementation. Verified directly against
+     SandboxedPluginExecutionEngine.java (not inferred from the stub's own comments): the only real
+     containment mechanism today is the wall-clock future.get(timeoutMs) the class's 6 existing
+     tests already prove -- filesystem, network, memory/CPU, System.exit and reflection are all wide
+     open to any plugin handler running in the same JVM (Executors.newCachedThreadPool(), plain
+     reflective invocation, no isolation). A real fix needs OS-level process isolation -- its own
+     substantial security feature (new IPC surface, per-platform resource limiting, killed-child
+     handling), not a same-session test revival. Filed as ledger/items/SEC-3.yml (HIGH severity, new)
+     rather than attempted inline: a half-built containment layer would be worse than this honestly-
+     disabled stub (false confidence that malicious code is contained when it is not). @Disabled
+     reason rewritten to point at SEC-3 instead of the original vague "requires a real sandbox" text.
+
+  Separately named in the source item: HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest's
+  @DisabledOnOs(WINDOWS) is a platform statement, not a missing-infrastructure one -- unchanged,
+  correctly excluded from this item's scope.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1
+  asserts: >-
+    RuntimeHealthEndpointIT passes inside a real assembled sample app's test run; :adapters:
+    runtime-validation:test passes standalone, including RuntimeHealthIndicatorsTest's UP and DOWN
+    cases and RuntimeRequestSizeFilterTest; run-observability-hardening.ps1's
+    health-indicator-coverage and broken-backend-aggregation checks both report "passed" against the
+    revived files (not the old stub's comment text). gradlew :kernel:test
+    (EventStorePerformanceRegressionTest + KernelRunnerTest) passes standalone.
+  provenRed: true
+  provenRedNote: >-
+    Multiple real REDs, not synthesized. (1) RuntimeRequestSizeFilterTest's new chunked test failed
+    against the ORIGINAL filter before the fix (an oversized chunked body was let through, 200
+    instead of 413) -- confirmed by writing the test against the unfixed filter first. (2)
+    run-observability-hardening.ps1's health-indicator-coverage / broken-backend-aggregation checks
+    genuinely failed (status: failed, missingPatterns: ["dependency is DOWN"]) the first time the
+    full runtimehost gate ran against the revived RuntimeHealthEndpointIT.java, because the new file
+    no longer carried the old stub's exact "mock alert sink" wording -- caught live by the gate
+    itself, not anticipated, and fixed by correcting the checker (removing a requirement for a
+    mechanism confirmed not to exist) rather than reinserting dishonest comment text to satisfy it.
+    (3) The abandoned RuntimeHealthEndpointDegradedIT approach itself: `gradlew test --tests
+    RuntimeHealthEndpointIT --tests RuntimeHealthEndpointDegradedIT` against the assembled sample
+    app FAILED both tests with the identical "event store dependency is DOWN (test double)" error in
+    RuntimeHealthEndpointIT's own response body -- reproduced three times (bare nested
+    @TestConfiguration, then again after adding explicit @Import, then again after also adding
+    @DirtiesContext), confirming the leak was real and not fixed by either standard remedy, before
+    switching to the unit-test approach that made the problem structurally impossible.

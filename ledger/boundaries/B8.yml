@@ -5,5 +5,15 @@ userFacingText: "This table was not dropped because no ownership history exists.
 workaround: "Boot once with the concept present (recording ownership), then remove it."
 enforcingDiagnosticCodes: ["B8:no_ownership_history"]
 codeLinked: true
-codeLinkedNote: "Enforced at boot/schema-diff time in NPDevRuntimeHost (the ownership-history guard before a table drop is proposed), not a DSL ValidationDiagnostic -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+codeLinkedNote: >-
+  2026-08-25 (remediation plan W2.3). Unlike B4/B5/B9/B10, this is NOT a thrown refusal -- boot
+  continues normally, the drop of the unowned table is just silently skipped.
+  `SchemaLifecycleExecutor.droppedConceptTables` prints a WARNING log line and returns an empty set
+  rather than throwing `BoundaryBootException`; `BoundaryBootException`'s own class javadoc lists B8
+  as one of its three boot-refusal boundaries, which overclaims -- it is not currently wired that
+  way, and this note does not extend it (throwing here would be a real behavior change: today's boot
+  succeeds with a warning, not a refusal). The declared code is carried on the log line itself:
+  `WARNING [B8:no_ownership_history] no ownership history recorded -- skipping drop of unowned
+  tables`. Proven by SchemaLifecycleExecutorProofMatrixTest#b8_droppedConceptTablesSkipsAndWarnsWithCodeWhenNoOwnershipRecorded
+  (captures stdout, asserts both the code and the empty result).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B8"

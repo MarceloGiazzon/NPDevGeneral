@@ -62,7 +62,17 @@ from pathlib import Path
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent
 
-CITATION_RE = re.compile(r"\b(?:REG|B)-\d+\b")
+# W5.3 (2026-08-25 remediation plan): widened from (?:REG|B) -- the ledger has ~17 id families
+# under ledger/items/*.yml (measured directly: `ls ledger/items/*.yml | sed -E 's/-[0-9]+.*$//'`),
+# plus B-nn for ledger/boundaries/*.yml. The narrow REG/B-only regex was a false red for any other
+# family's citation (PACK-8/PACK-10, both real, both rejected) since 2026-08-17 -- and a false red
+# is how a team learns to stop reading a workflow's output, the documented cause behind W4.4's own
+# two abandoned gates. Kept as an explicit, reviewable list (not a bare `[A-Z]+-\d+`, which would
+# accept a typo'd or invented family silently) -- add a new family here in the same commit that
+# introduces it in the ledger.
+CITATION_RE = re.compile(
+    r"\b(?:REG|B|BUILD|CLI|DOC|EDIT|EXT|GAP|MON|PACK|PORT|PROC|QUAL|RUN|SCALE|SEC|STOR|XREF)-\d+\b"
+)
 
 # Files whose own _comment header already promises a REG id -- enforced.
 ENFORCED = (
@@ -121,6 +131,18 @@ def calibrate() -> int:
            expect_fire=False)
     report("synthetic entry with an empty why",
            check_citations({"synthetic": {"why": ""}}),
+           expect_fire=True)
+
+    # W5.3 (2026-08-25): the widened family list must genuinely accept a non-REG/B family, not just
+    # silently keep working for the two it already accepted -- PACK-8/PACK-10 were real, rejected
+    # citations before this fix (dsl-coverage-allowlist.json), so this control reproduces that shape
+    # directly rather than trusting the regex change by inspection alone.
+    print("Calibration -- the widened family list accepts a real non-REG/B id (W5.3):")
+    report("synthetic entry citing PACK-8",
+           check_citations({"synthetic": {"why": "PACK-8 (PACK-ROADMAP card PK-5): see the pack docs."}}),
+           expect_fire=False)
+    report("synthetic entry citing an INVENTED family (must still fire -- not a bare [A-Z]+-\\d+ catch-all)",
+           check_citations({"synthetic": {"why": "NOTAREALFAMILY-1 is not one of the declared families."}}),
            expect_fire=True)
 
     if not ok:

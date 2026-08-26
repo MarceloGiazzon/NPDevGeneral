@@ -5,5 +5,15 @@ userFacingText: "Expression-valued backfills require a dry-run preview and expli
 workaround: "Call GET /api/admin/schema-migration/expression-backfill-preview, review affected rows, then acknowledge via the existing /acknowledge endpoint."
 enforcingDiagnosticCodes: ["B2:expression_backfill_requires_ack"]
 codeLinked: true
-codeLinkedNote: "Enforced by an admin REST endpoint/workflow (ExpressionBackfillPreview, BackfillPass), not the DSL ValidationDiagnostic pipeline -- a user hits this via the schema-migration API, not npdev validate model. boundaryId as currently scoped (ValidationDiagnostic-only) cannot reach this without extending the concept to REST error responses."
+codeLinkedNote: >-
+  2026-08-25 (remediation plan W2.3). Re-traced from the real code: the actual "requires ack"
+  refusal is a BOOT-time refusal (BackfillPass.applyRequiredFieldBackfills, merged into
+  SchemaLifecycleExecutor's required-field-backfill pass), not purely a REST endpoint as this note
+  previously said -- the REST preview/acknowledge endpoints
+  (GET .../expression-backfill-preview, POST .../acknowledge) are how an operator RESOLVES it, not
+  where it fires. The refusal string is now prefixed `B2:expression_backfill_requires_ack:`,
+  discoverable in the boot log/exception message; `BoundaryViolation("B2", "backfill", ...)` (Wave 2,
+  commit 50ddf3ea) separately covers a DIFFERENT B2 precondition (no physical database configured)
+  at the REST preview endpoint -- not this code, since that failure is not the "requires ack" case.
+  Proven by SchemaLifecycleExecutorRequiredFieldBackfillTest#unacknowledgedExpressionDefaultWithRealExpressionTextStillRefusesUnchanged.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B2"

@@ -1,0 +1,24 @@
+id: QUAL-40
+title: Kernel+adapters aggregate coverage floor (62.69%) is now measured by a real gate but has no
+  tracked plan to raise it
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-25
+source: 2026-08-25 remediation plan W3.2 (QUAL-32's own point 2, split out once point 1 -- the
+  missing CI job -- was closed for real).
+surface: kernel, adapters, coverage
+detail: |
+  QUAL-32 closed the measurement gap: scripts/quality/run-kernel-quality-gate.ps1 and
+  .github/workflows/kernel-quality-gate.yml now run kernelQualityGate (:kernel:test + all 36+
+  :adapters:*:test) for real, on every relevant push/PR and locally, and the coverage ratchet reads
+  the fresh aggregate it produces -- gate #3 in run-all-gates.ps1's default T2 sequence.
+
+  What that measurement gate does NOT do is raise the number it measures. 62.6905% aggregate LINE
+  coverage across :kernel + 36 adapters is the honest floor as of 2026-08-25 -- nothing here argues
+  it is a good one. This is the same shape of gap as W3.5/COV-RTH (RuntimeHost's 17.2% floor): a
+  real, honestly-labelled measurement with no tracked plan behind raising it.
+
+  Done when: either a real test-writing effort raises the aggregate floor with evidence (which
+  modules, which paths, by how much), or an owner explicitly accepts 62.69% as the working floor for
+  now and this item is closed as WONTFIX with that reasoning recorded.

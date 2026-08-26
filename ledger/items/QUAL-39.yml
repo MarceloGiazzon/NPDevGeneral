@@ -1,0 +1,73 @@
+id: QUAL-39
+title: >-
+  "all gates green" (run-all-gates.ps1) was true while 11 of 42 checkers -- hosted only by
+  run-weekly-paperwork-checks.ps1 -- ran in no gate it invoked, so a red among them went unnoticed
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-08-25
+closed: 2026-08-25
+verification: VERIFIED_LIVE
+source: >-
+  2026-08-25 remediation plan W4.5 (GATE-SPLIT), rated LOW/decision-only there. Re-scoped during
+  implementation once the fix itself surfaced a live regression (see detail).
+surface: quality/gate-orchestration
+files:
+  - scripts/quality/run-all-gates.ps1
+  - scripts/quality/check-cadence-coverage.py
+  - scripts/quality/verification-cadence.json
+  - CLAUDE.md
+detail: |
+  `run-all-gates.ps1`'s own claim ("all gates green") only ever covered the three T2 gates
+  (generator/runtimeHost/aiKnowledge) plus the opt-in T3 betaRelease gate. The 11 checkers hosted by
+  `run-weekly-paperwork-checks.ps1` (check-adr-decision-implementation, check-allowlist-citations,
+  check-cadence-coverage itself, check-doc-inventory, check-external-ai-mission-coverage,
+  check-ledger-status-reverse-freshness, check-markdown-links, check-no-markdown-reads,
+  check-pinned-download-links, check-readme-contract, check-record-surfaces) ran on a weekly GitHub
+  Actions schedule (`weekly-paperwork-checks.yml`), invoked by nothing `run-all-gates.ps1` itself
+  ever called -- so a red among them was invisible to "all gates green" for up to a week.
+
+  Fixed per the plan's own recommended option (a): `run-all-gates.ps1` gained a fifth gate entry,
+  `weeklyPaperwork`, deferred by default (like betaRelease) and opted into with the new
+  `-IncludePaperwork` switch or `-Only weeklyPaperwork` -- narrowing what a bare invocation claims
+  rather than silently folding 11 slower-moving checks into the mandatory T2 path. Reuses cadence
+  tier T3 (the only "deferred, not mandatory" tier this repo's cadence system has) rather than
+  inventing a fifth tier for a decision this small.
+
+  SELF-CAUGHT REGRESSION, worth recording: the first version of this fix added the gate WITHOUT a
+  matching `verification-cadence.json` entry, and `check-cadence-coverage.py` -- one of the 11
+  checkers THIS SAME FIX just made reachable -- immediately caught it live ("run-all-gates.ps1 gate
+  'weeklyPaperwork' has no entry in verification-cadence.json"). Fixed by adding the entry and
+  extending `check-cadence-coverage.py`'s `GATE_TIER_OVERRIDES` to `{"betaRelease": "T3",
+  "weeklyPaperwork": "T3"}`. Left in this item's own record as a concrete demonstration that making
+  the weekly checks reachable from `run-all-gates.ps1` was not cosmetic -- it found a real, live
+  inconsistency in the same session that introduced it, before it could ever reach main unnoticed.
+
+  `CLAUDE.md`'s "ONE command" claim (the line this whole finding traces back to) updated to name the
+  new switch and state explicitly that the bare command's claim is still narrower than "everything" --
+  the weekly checkers and release posture are each one flag away, never silently included.
+
+  NOT fixed here (explicitly out of scope, tracked separately per the plan's own W5 batch): the
+  three PRE-EXISTING real findings `-Only weeklyPaperwork` surfaced once it could actually run --
+  two citation-format false reds (W5.3: check-allowlist-citations.py's regex rejects real PACK-8/
+  PACK-10 ids) and the 6th-markdown-reader question (W5.2: check-cited-paths.py). Both were already
+  named in the remediation plan as separate W5 items; this item only restores the SIGNAL that lets
+  them be seen, not the underlying fixes.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 -Only weeklyPaperwork
+  asserts: >-
+    weeklyPaperwork is a recognized gate name (not "Unknown gate name(s)"), runs all 11 checkers,
+    and check-cadence-coverage.py's own step within that run reports "OK: verification-cadence.json
+    covers every run-all-gates.ps1 gate" rather than flagging weeklyPaperwork itself as undeclared.
+    A bare `run-all-gates.ps1` invocation's gate list (verified by isolated unit test of the
+    filtering logic, all four -IncludeReleaseGate/-IncludePaperwork combinations) excludes both
+    betaRelease and weeklyPaperwork by default.
+  provenRed: true
+  provenRedNote: >-
+    Measured directly, twice. First: before this item, "all gates green" from a bare run-all-
+    gates.ps1 invocation was true while `pwsh -File scripts/quality/run-weekly-paperwork-checks.ps1`
+    run directly showed 3 real failures nothing in the T2 path could see. Second (the self-caught
+    regression above): the first draft of this exact fix, run live via `-Only weeklyPaperwork`,
+    failed with "run-all-gates.ps1 gate 'weeklyPaperwork' has no entry in verification-cadence.json"
+    -- a real RED from the checker this fix was making reachable, fixed in the same pass.

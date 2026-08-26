@@ -192,7 +192,15 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "trusted-source-security-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }
 
-$workRoot = Join-Path $root "build/cp10-trusted-source-security"
+# QUAL-35: this used to be `Join-Path $root "build/cp10-trusted-source-security"` -- an
+# unconditional repo-root write. A single generator-gate run left 17 files there (several `.java`
+# source fixtures plus compiled .class files and test-results XML), violating CLAUDE.md's "Build
+# output -> D:\WorkSpace\NPDev\Build. NEVER write generated/build artifacts inside this repo."
+# Nothing downstream reads this directory's contents directly -- run-generator-gate.ps1 only reads
+# the final -ReportPath (already the sanctioned scripts/reports/out/ location) -- so it is pure
+# scratch space, resolved the same way every other build-output path in this repo is:
+# Get-NPDevBuildRoot (scripts/npdev-common.ps1), which honours $env:NPDEV_BUILD_ROOT first.
+$workRoot = Join-Path (Get-NPDevBuildRoot $root) "cp10-trusted-source-security"
 if (Test-Path -LiteralPath $workRoot) {
     Remove-Item -LiteralPath $workRoot -Recurse -Force
 }

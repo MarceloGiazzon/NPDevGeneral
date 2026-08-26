@@ -4,8 +4,10 @@ title: >-
   build-output policy
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-25
+verification: NOT_VERIFIED
 source: >-
   Found during Wave 3 of the 2026-08-23 defect-remediation session, while verifying the generator
   gate after fixing T3.1-T3.3. Same class of bug T2.1 fixed in run-portable-tooling-check.ps1
@@ -16,19 +18,43 @@ files:
 detail: |
   Line ~195: `$workRoot = Join-Path $root "build/cp10-trusted-source-security"` -- an unconditional
   repo-root write. A single real generator-gate run left 17 files there, several of them `.java`
-  source fixtures (bytecode-proof/{SafeProcedure,UnsafeBytecodeProcedure,NPDevProcedureContext}.java
-  plus compiled .class files and test-results XML), violating CLAUDE.md's "Build output -> D:\
-  WorkSpace\NPDev\Build. NEVER write generated/build artifacts inside this repo."
+  source fixtures plus compiled .class files and test-results XML, violating CLAUDE.md's "Build
+  output -> D:\WorkSpace\NPDev\Build. NEVER write generated/build artifacts inside this repo."
 
-  `**/build/` is gitignored, so there is no accidental-commit risk, and this script is called
-  unconditionally by run-generator-gate.ps1 (R4 Part A / QUAL-7), so the litter appears on every
-  green generator-gate run, not just a failing one. Smaller footprint than T2.1's version of this
-  bug (17 files vs. 137) but the same root cause: a script writing straight to a repo-relative
-  `build/` path instead of the resolved external build root.
+  Note on the ledger's own original "Done when" (worth recording so the next reader does not
+  re-verify it): it described T2.1's `run-portable-tooling-check.ps1` fix as an example of the
+  Get-NPDevBuildRoot redirect. Re-checked directly at HEAD -- that script's actual fix was the OTHER
+  option this item's own done-when also allowed: a `finally` block that deletes
+  `build/npdev-generated`, `build/ArtifactNP` and `build/npdev-normalized-model.json` after every
+  run, not a build-root redirect (its default `-ReportPath` stays `scripts/reports/out/...`, the
+  sanctioned evidence directory, which is why the plan's shorthand description of it as precedent
+  for `Get-NPDevBuildRoot` didn't match that file). Confirmed nothing downstream reads
+  `run-trusted-source-security-check.ps1`'s `$workRoot` directly either -- `run-generator-gate.ps1`
+  only reads the script's final `-ReportPath` -- so either fix shape was valid here; chosen: the
+  `Get-NPDevBuildRoot` redirect, since `npdev-common.ps1` is already dot-sourced in this file and a
+  redirect avoids scratch litter entirely rather than depending on a `finally` block running to
+  cleanly delete it after the fact.
 
-  Cleaned up by hand during Wave 3 (`rm -rf build`) so it did not carry into later waves' shared
-  build root, but the script itself is unfixed.
+  Fix: `$workRoot` now resolves via `Get-NPDevBuildRoot $root` (scripts/npdev-common.ps1), the same
+  shared resolver every other build-root-aware script in this repo uses -- honours
+  `$env:NPDEV_BUILD_ROOT` first, falls back to the content-walked `<repo-parent>/Build` otherwise.
+  Verified directly: dot-sourcing `npdev-common.ps1` and calling `Get-NPDevBuildRoot` against this
+  repo's real root resolves `$workRoot` to `D:\WorkSpace\NPDev\Build\cp10-trusted-source-security`
+  -- outside the repo tree, confirmed by string-prefix check.
 
-  Done when: `$workRoot` resolves through `Get-NPDevBuildRoot`/`$env:NPDEV_BUILD_ROOT` the same way
-  T2.1's fix did for run-portable-tooling-check.ps1, or the script cleans up what it creates in a
-  `finally` block -- either way, a generator-gate run leaves no `build/` directory at the repo root.
+  `verification: NOT_VERIFIED` (not `VERIFIED_LIVE`): the path resolution itself is verified live
+  (above), but a full end-to-end run of this script (which shells to a real `:generator:test --tests
+  "*TrustedSource*"` Gradle invocation) was not executed as part of this fix -- that is exercised by
+  `run-generator-gate.ps1`'s own T2 gate run, not repeated here.
+guard:
+  kind: manual
+  ref: scripts/quality/run-trusted-source-security-check.ps1
+  asserts: >-
+    `$workRoot` is `Join-Path (Get-NPDevBuildRoot $root) "cp10-trusted-source-security"`, not a
+    repo-relative `build/...` path. A generator-gate run leaves no `build/cp10-trusted-source-
+    security` directory at the repo root; re-open if one reappears.
+  provenRed: true
+  provenRedNote: >-
+    Pre-fix state directly cited by this item's own `source`/`detail`: a real generator-gate run
+    measured 17 files left under repo-root `build/cp10-trusted-source-security` (2026-08-23), not a
+    synthetic reproduction.

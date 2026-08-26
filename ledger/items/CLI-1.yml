@@ -4,8 +4,10 @@ title: >-
   `npdev migrate` cannot run it
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-25
+verification: UNIT_TESTED
 source: >-
   2026-08-23 platform audit. BREAKING.md's own R5.6 entry admits it: "not yet wired to a CLI
   subcommand -- that file is the only one touched here; npdev_cli.py's migrate subparser needs a
@@ -14,19 +16,34 @@ surface: cli/migrate
 files:
   - NPDevCli/dsl_v2_migration.py
   - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_migrate_label_locales.py
 detail: |
-  `migrate_label_locales(doc, locale)` is implemented at NPDevCli/dsl_v2_migration.py:573, is
-  round-trip verified against a real 18-label model, and is idempotent. The only reference to it
-  anywhere in the repo is its own `def` line.
+  `npdev migrate label-locales --input <files-or-dirs> --locale <tag> [--write] [--report <path>]`
+  now exists, added beside the other five `migrate` subcommands, following `migrate dsl-2`'s own
+  `--input`/`--write`/`--report` convention (recursive `*.json` directory search, skips serialized
+  compiled-model fixtures via the same `_looks_compiled` guard, dry-run by default).
 
-  `npdev migrate` exposes five subcommands -- legacy-model, dsl-2, rename, db-lifecycle,
-  bounded-contexts. There is no `label-locales`. So the codemod for the 2026-08-19 breaking change
-  cannot be run by the people the breaking change affects.
+  `run_migrate_label_locales` (npdev_cli.py) dispatches to the pre-existing
+  `migrate_label_locales(doc, locale)` (dsl_v2_migration.py:573), which was already implemented,
+  round-trip verified and idempotent -- only the CLI wiring was missing.
 
-  This violates the standing convention in CLAUDE.md and README.md: every breaking change to the
-  model DSL ships its `npdev migrate` codemod in the same commit. The codemod was written; only the
-  subparser wiring was skipped.
-
-  Done when: `npdev migrate label-locales <dir> --locale <tag> [--write]` exists, follows the same
-  --write/dry-run convention as `migrate dsl-2` and `migrate rename`, and has a test in
-  NPDevCli/tests/ covering the dry-run/write pair.
+  6 new tests in `NPDevCli/tests/test_migrate_label_locales.py`: dry-run leaves the file untouched,
+  `--write` widens plain-string label/shortLabel sites to `{"default": ..., "<locale>": ...}`, a
+  second `--write` run is idempotent (no further change), a blank `--locale` is a hard no-op, a
+  directory input is searched recursively, and `--report` writes the expected JSON. All 6 pass.
+  Also smoke-tested through the real `npdev_cli.py` entry point (not just the handler function)
+  end-to-end: dry-run reports `WOULD CHANGE` and leaves the file byte-identical; `--write` applies
+  the same widening and the file round-trips through `json.loads` with the expected
+  `{"default": "Widget", "en": "Widget"}` shape.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_migrate_label_locales.py
+  asserts: >-
+    `npdev migrate label-locales` dry-run leaves files untouched, `--write` widens plain-string
+    label sites to per-locale form and is idempotent on a second run, a blank --locale is a
+    no-op, directory input is searched recursively, and --report writes the expected JSON.
+  provenRed: true
+  provenRedNote: >-
+    Before this fix, `run_migrate_label_locales` did not exist and `migrate label-locales` was not
+    a registered subcommand at all -- `npdev migrate label-locales --help` failed with argparse's
+    "invalid choice" error. Measured directly before adding the subparser/handler.

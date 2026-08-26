@@ -322,9 +322,15 @@ final class PanelValidation {
 
     /**
      * Move 7 W1: typed replacement for {@code transaction.metadata.bandPickers} -- keys must name a
-     * real declared band (a nested collection one level under a top-level collection); {@code panel}
-     * is an opaque reference to an authored Selection surface with no closed universe to validate
-     * against yet, so it is left unchecked (matching the untyped form's existing behavior).
+     * real declared band (a nested collection one level under a top-level collection). {@code panel}
+     * is an opaque reference to an authored Selection surface with no closed universe to validate its
+     * VALUE against, but its PRESENCE is required (B19, docs/ACCEPTED_BOUNDARIES.md): without a
+     * panel, a {@code filter}/{@code multiSelect} declared on the picker has nothing to apply to and
+     * would be silently inert at runtime -- {@link WorkbenchBandPickerAst}'s own class javadoc floats
+     * a future "targets its own collection's concept directly" no-panel path, but that path was never
+     * built, so this refuses up front instead. The B19-prefixed message is the boundaryId link
+     * {@code ValidationDiagnosticNormalizer}'s {@code BOUNDARY_PREFIX_IDS} map strips before
+     * pattern-matching -- same convention {@code B1}/{@code B13} already use.
      */
     private static void validateBandPickers(
             String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate, List<String> errors) {
@@ -343,7 +349,8 @@ final class PanelValidation {
                 errors.add(panelLabel + " transaction.bandPickers: unrecognized band '" + entry.getKey()
                         + "' -- must be a declared nested (band) collection name");
             } else if (!hasText(entry.getValue().panel())) {
-                errors.add(panelLabel + " transaction.bandPickers." + entry.getKey() + ": panel is required");
+                errors.add("B19:band_picker_requires_panel:" + panelLabel + " transaction.bandPickers."
+                        + entry.getKey() + ": panel is required");
             }
         }
     }

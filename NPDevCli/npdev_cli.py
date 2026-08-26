@@ -1206,6 +1206,82 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_migrate_label_locales(args: argparse.Namespace) -> int:
+    """CLI-1: wires `dsl_v2_migration.migrate_label_locales` (written and round-trip tested for
+    R5.6, but never callable) to `npdev migrate label-locales`. Deliberately a separate pass from
+    `migrate dsl-2` -- see `migrate_label_locales`'s own docstring for why it needs one extra
+    argument (`--locale`) `migrate_document` never requires. Mirrors `run_migrate_dsl2`'s
+    scan/report/write shape exactly, including skipping serialized compiled-model fixtures.
+    """
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from dsl_v2_migration import _looks_compiled, migrate_label_locales  # local import: optional dep
+
+    inputs = [Path(p).expanduser().resolve() for p in args.input]
+    files: list[Path] = []
+    for p in inputs:
+        if p.is_dir():
+            files.extend(sorted(p.rglob("*.json")))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"npdev migrate label-locales: input not found: {p}", file=sys.stderr)
+            return 2
+
+    changed_count = 0
+    compiled_skipped_count = 0
+    unchanged_count = 0
+    invalid_count = 0
+    report_entries = []
+
+    for f in files:
+        try:
+            doc = read_json(f)
+        except CliError as exc:
+            invalid_count += 1
+            print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(doc, dict):
+            continue
+        if _looks_compiled(doc):
+            compiled_skipped_count += 1
+            report_entries.append({"file": str(f), "changed": False, "isCompiled": True, "changes": []})
+            continue
+
+        result = migrate_label_locales(doc, args.locale)
+        report_entries.append({
+            "file": str(f),
+            "changed": result.changed,
+            "isCompiled": False,
+            "changes": result.changes,
+        })
+
+        if result.changed:
+            changed_count += 1
+            verb = "CHANGED" if args.write else "WOULD CHANGE"
+            for c in result.changes:
+                print(f"  [{verb}] {f}: {c}")
+            if args.write:
+                f.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        else:
+            unchanged_count += 1
+
+    print(
+        f"\n{len(files)} file(s) scanned: {changed_count} changed, {compiled_skipped_count} "
+        f"compiled-model (skipped), {unchanged_count} already widened or no label sites present, "
+        f"{invalid_count} invalid JSON (skipped)"
+    )
+    if not args.write and changed_count > 0:
+        print("Dry run -- pass --write to apply.")
+
+    if args.report:
+        report_path = Path(args.report).expanduser()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written: {report_path}")
+
+    return 1 if invalid_count > 0 else 0
+
+
 def run_migrate_dsl2(args: argparse.Namespace) -> int:
     """2.A.3 (docs/DSL2_AND_DECOMPOSITION_PLAN.md): rewrite flowStep.type spellings and field
     aliases to their DSL 2.0 canonical form, across one or more files/directories. Dry-run by
@@ -10799,6 +10875,30 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_bc.add_argument("--report", help="write a JSON report of every model's outcome to this path")
 
+    # CLI-1: the R5.6 label-locale codemod (dsl_v2_migration.migrate_label_locales) existed and was
+    # tested but was never wired to a subparser -- this is that wiring, following dsl-2's own
+    # --input/--write/--report convention.
+    migrate_label_locales = migrate_sub.add_parser(
+        "label-locales",
+        help="Widen plain-string label sites to per-locale form, tagged with an existing locale.",
+    )
+    migrate_label_locales.add_argument(
+        "--input", required=True, nargs="+",
+        help="one or more files or directories (searched recursively for *.json) to migrate",
+    )
+    migrate_label_locales.add_argument(
+        "--locale", required=True,
+        help="the locale tag the file's EXISTING plain-string label text is written in, e.g. "
+             "en or pt-BR -- not read from doc.settings.locale (informational only, per its own "
+             "schema description); every widened site is tagged with this value verbatim.",
+    )
+    migrate_label_locales.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place; without this flag, reports what would change and exits",
+    )
+    migrate_label_locales.add_argument(
+        "--report", help="write a JSON report of every file's outcome to this path")
+
     # PK-3: transitive pack dependency resolution -- add/update both resolve the live pack graph
     # and (re)write npdev.lock (same operation, two names for UX clarity); list reads the
     # committed lock (or a live dry-run if none exists); why explains a version selection.
@@ -11999,6 +12099,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_migrate_dsl2(args)
         if args.command == "migrate" and args.migrate_command == "bounded-contexts":
             return run_migrate_bounded_contexts(args)
+        if args.command == "migrate" and args.migrate_command == "label-locales":
+            return run_migrate_label_locales(args)
         if args.command == "migration" and args.migration_command == "diff":
             run_migration_diff(args)
             return 0

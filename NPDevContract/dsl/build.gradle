@@ -9,6 +9,20 @@ plugins {
 group = 'com.npdev'
 version = '0.1.0'
 
+// REG-181 (2026-08-25 remediation plan W4.1): this build.gradle is built by TWO different Gradle
+// projects -- standalone (rootProject.name = 'npdev-dsl', per settings.gradle) AND as NPDevKernel's/
+// NPDevGenerator's own `include 'dsl'` subproject reference, where Gradle's jar-naming default falls
+// back to the SUBPROJECT's own name ("dsl") instead of the including build's rootProject.name. Two
+// names for one artifact meant sync-runtimehost-libs.ps1's jar discovery could track one name's
+// freshness while silently leaving a stale copy staged under the other -- REG-181's original fix
+// added an explicit standalone-build step to keep npdev-dsl-0.1.0.jar refreshed, but left the
+// naming duality itself in place. Pinning archivesName here, unconditionally, closes it at the
+// source: every build of this module -- standalone or as a subproject -- now produces the exact
+// same jar name, so there is only ever one name to discover, stage, or go stale.
+base {
+    archivesName = 'npdev-dsl'
+}
+
 def resolveNpdevBuildRoot = {
     def configured = System.getenv('NPDEV_BUILD_ROOT')
     if (configured != null && !configured.trim().isEmpty()) {

@@ -37,3 +37,35 @@ detail: |
   Done when: AI Beta Gate's Docker/Linux proof either passes or its failure is understood and
   tracked by its own item, AND NPDev Release Gate has produced one real (not cancelled) run in the
   current repo state, whatever it reports.
+
+  2026-08-26 (remediation plan W4.4): both halves of the done-when have real evidence now, one fully
+  met and one still open.
+
+  AI Beta Gate -- MET. Dispatched fresh (run 32917370685, workflow_dispatch): completed for real
+  (not cancelled) with `conclusion: failure`, docker-run-ai-beta-gate exiting 1 after 472s -- the
+  same failing step, near-identical timing, as the last real conclusion on 2026-08-17 (476s),
+  confirming this is one persistent issue, not new flakiness. The failure IS now understood, not
+  just re-confirmed red: downloaded and read docker-linux-ai-beta-gate-report.json (previously left
+  un-inspected). ~25 of 30 golden-ai-scenarios fail, in (at least) two distinct, concrete, unrelated
+  ways -- a schema/fixture mismatch (auth-disabled-protected-endpoint's ai-model.json violates
+  ai-model.schema.json's `/auth/mode` const and `/auth/testUsers` minItems) and a real 401
+  invalid_api_key on POST /api/learners in the base-ai-loop scenario's smoke check, on an app that
+  demonstrably booted fine (GET /actuator/health passed on the same run). Neither is Docker/Linux-
+  environment-specific in nature (schema validation is pure JSON; the 401 is an app-level auth
+  config mismatch) -- Linux CI is simply the only place anything runs this scenario suite for real.
+  Tracked as its own item, ledger/items/QUAL-42.yml (HIGH, since it affects the majority of the
+  scenario corpus), rather than fixed inline -- this item's own prior note already said that
+  diagnosis needs its own session, and now that session has a concrete starting point instead of
+  "still red."
+
+  NPDev Release Gate -- NOT YET MET. Dispatched fresh (run 32917372613, workflow_dispatch) at the
+  same time as the AI Beta Gate run above. Still `in_progress`, not cancelled, after 3+ hours (started
+  2026-08-26T01:01:17Z), stuck on its "Run traceable Beta 0 release check" step the entire time --
+  genuinely hung, not merely slow (every prior dispatch attempt since 2026-08-17 was cancelled within
+  minutes; this is the first to run this long uncancelled). This is itself new, real signal (a
+  workflow that hangs rather than completing or being cancelled is a different failure mode than
+  either), but the done-when's letter ("has produced one real run") is not yet satisfied by a run
+  still in progress. Left running rather than cancelled -- cancelling a currently-executing shared CI
+  run is not a call to make unilaterally mid-session. If it eventually completes, record the result
+  here; if it is still hung after a reasonable wait, that hang is itself the finding worth its own
+  item.

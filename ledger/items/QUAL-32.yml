@@ -4,29 +4,88 @@ title: >-
   without anything noticing
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-25
+verification: VERIFIED_LIVE
 source: >-
-  2026-08-23 platform audit. scripts/policy/coverage-baseline.json's own note already says it:
+  2026-08-23 platform audit. scripts/policy/coverage-baseline.json's own note already said it:
   "there is no dedicated CI gate that runs kernelQualityGate today (a pre-existing gap this card
   does not close)".
 surface: ci/coverage, kernel
+files:
+  - scripts/quality/run-kernel-quality-gate.ps1
+  - .github/workflows/kernel-quality-gate.yml
+  - scripts/quality/run-all-gates.ps1
+  - scripts/quality/run-generator-gate.ps1
+  - scripts/quality/run-runtimehost-gate.ps1
+  - scripts/quality/check-coverage-ratchet.py
+  - scripts/quality/verification-cadence.json
+  - scripts/policy/coverage-baseline.json
+  - scripts/policy/script-invocation-declarations.json
 detail: |
-  The NPDevKernel/kernel floor is an AGGREGATE across :kernel and 36+ :adapters:* subprojects,
-  summed by check-coverage-ratchet.py from whichever per-subproject JaCoCo XML reports happen to
-  exist on that run. Nothing in CI ever produces the full set.
+  The NPDevKernel/kernel floor is an AGGREGATE across :kernel and 36+ :adapters:* subprojects. The
+  Gradle task that produces the full set (`kernelQualityGate`, registered in NPDevKernel/build.gradle)
+  existed and was invoked by NOTHING -- no run-*.ps1, no CI workflow -- before this item closed.
+  Consequence, measured 2026-08-23: the recorded floor was 73.0968 (from a partial run on 2026-08-20)
+  while a full local aggregate over 42 reports measured 62.6906.
 
-  Consequence, measured 2026-08-23: the recorded floor was 73.0968 (from a partial run on
-  2026-08-20) while a full local aggregate over 42 reports measured 62.6906. The gate was red
-  against a number that had never been true of the whole module. Wave 2 of the 2026-08-23
-  remediation reset the floor to the measured value; that made the ratchet honest, it did not add
-  any coverage.
+  Two things were needed and they were kept separate, per the item's own done-when:
 
-  Two things are needed and they are separate:
-  1. A CI job that runs the kernel + adapter suites together and emits the full report set, so the
-     floor is measured by the same thing that enforces it.
-  2. Real tests to raise it. 62.69% aggregate is the honest number; nothing here argues it is a
-     good one.
+  1. `scripts/quality/run-kernel-quality-gate.ps1` (new) runs `gradlew kernelQualityGate` from
+     NPDevKernel's own Gradle root, then `check-coverage-ratchet.py` against the fresh aggregate it
+     just produced. Wired as gate `kernel` (T2) in `run-all-gates.ps1`'s default sequence -- "all
+     gates green" now covers four T2 gates, not three (CLAUDE.md updated). Measured locally:
+     `kernelQualityGate` BUILD SUCCESSFUL in 3m2s, 42 fresh JaCoCo reports, matching the audit's own
+     42-report full aggregate.
+  2. `.github/workflows/kernel-quality-gate.yml` (new) runs the same two steps on GitHub Actions
+     (ubuntu-latest, paths-scoped to NPDevKernel/** + the ratchet/baseline files + itself), so the
+     floor is now measured by the same thing that enforces it on every relevant push/PR, not just a
+     developer's local machine.
 
-  Done when: a CI workflow produces the aggregate on every run, and the floor recorded here is the
-  number that workflow measured.
+  A SECOND, PRE-EXISTING structural bug was found and fixed in the same pass, not separately filed
+  because it is the direct cause of "coverage ratchet OK" being vacuous for every Java module, not
+  just kernel: `run-ai-knowledge-gate.ps1` (which hosts the ratchet check) runs FIRST in
+  `run-all-gates.ps1`'s T2 sequence, so within one invocation its ratchet step could only ever see
+  reports left over from some earlier, SEPARATE run -- and REG-168's own staleness guard then
+  rejected them the moment source changed since (measured live: "1 of 7 modules" read as fresh on a
+  bare gate run). Fixed by adding a coverage-ratchet step directly to `run-generator-gate.ps1` (right
+  after `:dsl:test` + `generatorQualityGate`) and `run-runtimehost-gate.ps1` (right after its own
+  JaCoCo report is copied to its stable path) -- each gate now checks its own freshest-possible
+  evidence, produced moments earlier in the same script. `run-generator-gate.ps1` also gained an
+  explicit `:dsl:test` task (previously only `:dsl:clean` ran there, so dsl's own floor was equally
+  unmeasured by any gate before this fix).
+
+  Real signal, not simulated, surfaced immediately once the mechanism went live:
+  - `NPDevKernel/kernel`'s recorded 62.6906% was 0.0001pp above a fresh, complete, gate-produced
+    62.6905% measurement (the same real full run as 2026-08-23's, not a regression) -- re-pinned by
+    hand, since a DOWN move can never auto-ratchet.
+  - `NPDevGenerator/generator` dropped for real, 81.5284% -> 81.5111%, traced to this session's own
+    W2.2/RUN-28 fix: `BondJavaEmitterTest.java` was rewritten to stop asserting the now-deleted
+    `uniqueValuesEqual`/`findAllUnboundedFromConceptStore` code path, so the emitter's dead-code
+    handling lost real test exercise along with the dead code. A small, explainable cost of a real
+    fix, re-pinned with the trace recorded in coverage-baseline.json.
+  - `NPDevContract/dsl` ratcheted UP for real, 85.0412% -> 85.0422%, once `:dsl:test` ran fresh for
+    the first time from any gate.
+
+  Raising the kernel floor itself (point 2 of the original done-when: "real tests to raise it") is
+  explicitly NOT this item -- filed separately as ledger/items/QUAL-40.yml, the same shape of gap as
+  W3.5/COV-RTH for RuntimeHost.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-kernel-quality-gate.ps1
+  asserts: >-
+    kernelQualityGate runs :kernel:test + all 36+ :adapters:*:test for real (not skipped), produces
+    fresh JaCoCo XML for each, and check-coverage-ratchet.py then reads the aggregate and reports
+    "Coverage ratchet OK" against scripts/policy/coverage-baseline.json's recorded floor rather than
+    "not measured this run". A deliberately-inflated recorded floor (proven live, see provenRedNote)
+    must fail this same script with a real REGRESSION line, not a false pass.
+  provenRed: true
+  provenRedNote: >-
+    Measured directly. Before this item: `check-coverage-ratchet.py` run standalone read kernel as
+    "not measured this run" on a bare `run-all-gates.ps1` pass (aiKnowledge runs before any build).
+    After the fix: ran `run-kernel-quality-gate.ps1` for real (BUILD SUCCESSFUL, 3m2s, 42 reports),
+    then deliberately set the recorded floor to 70.0% (above the real 62.6905% measurement) and
+    re-ran `check-coverage-ratchet.py` directly -- it failed with "NPDevKernel/kernel: coverage
+    DROPPED to 62.6905% (recorded floor 70.0%)", exit 1. Restored the real floor immediately after;
+    the inflated value was never committed.
