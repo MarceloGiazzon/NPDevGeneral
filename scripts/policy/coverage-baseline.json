@@ -35,8 +35,8 @@
       "note": "Aggregate across :kernel and every :adapters:* subproject (36 of them), summed by check-coverage-ratchet.py from whichever per-subproject XML reports exist. 2026-08-25 (remediation plan W3.2, QUAL-32): the 'nobody runs kernelQualityGate' gap this note used to describe is closed -- scripts/quality/run-kernel-quality-gate.ps1 (new) runs `gradlew kernelQualityGate` from NPDevKernel's own root, then this same ratchet script, and is now gate #3 in run-all-gates.ps1's default T2 sequence (see .github/workflows/kernel-quality-gate.yml for the CI half). First real gate-produced measurement: 62.6905% (42 reports, BUILD SUCCESSFUL in 3m2s) -- 0.0001pp below the prior 62.6906%, i.e. the same real full run as 2026-08-23's, not a regression; re-pinned by hand for the same reason 73.0968->62.6906 was (a DOWN move can never auto-ratchet, only fail forever). Raising this floor for real needs new kernel tests, not a re-measurement -- tracked as ledger/items/QUAL-40.yml, the same shape of gap as W3.5/COV-RTH for RuntimeHost. `minReportCount: 30` added the same day, found LIVE not designed in: editing runtime-validation/kernel source for W3.3/W3.4 made REG-168 correctly drop 40 of 42 stale sibling reports, and the aggregate path had no floor on how few survivors is too few to trust -- summed the remaining 2 and reported a false 'DROPPED to 25.24%' regression. check-coverage-ratchet.py's aggregate branch now refuses (not-measured) below this count instead of trusting a tiny remainder; 30 tolerates normal single/handful staleness while catching a catastrophic drop like this one."
     },
     "NPDevRuntimeHost": {
-      "coveragePercent": 17.4451,
-      "measuredOn": "2026-08-26T02:04:31Z",
+      "coveragePercent": 17.4997,
+      "measuredOn": "2026-08-26T15:22:42Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "scripts/reports/out/runtimehost-jacoco-test-report.xml"
