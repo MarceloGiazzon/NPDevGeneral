@@ -137,9 +137,22 @@ public final class SchemaVerifyMain {
             out.println(ImpactReportText.render(report, storedFingerprint, toFingerprint, null, surplus));
         }
 
-        boolean matches = report.verdict() == ImpactReport.Verdict.NO_CHANGES
-                || report.verdict() == ImpactReport.Verdict.SAFE;
-        return matches ? EXIT_MATCHES : EXIT_DRIFT;
+        return exitCodeFor(report.verdict());
+    }
+
+    /**
+     * The verdict -> exit-code mapping, package-private so it is directly unit-testable over all
+     * four {@link ImpactReport.Verdict} values rather than only through a live database.
+     *
+     * <p>ONLY {@code NO_CHANGES} means "the live schema matches the model". {@code SAFE} does NOT:
+     * it means changes EXIST and are safe to apply -- a completely empty database verifies as
+     * {@code SAFE} (every table reported as a SAFE_TABLE_CREATE), which is maximal drift, not a
+     * match. Treating SAFE as a match (the shape this method replaced) returned exit 0 for exactly
+     * the case this command exists to catch: an operator who hand-migrated outside NPDev (B13),
+     * created nothing, and is about to `mark-done` on the strength of a green verify (B6).
+     */
+    static int exitCodeFor(ImpactReport.Verdict verdict) {
+        return verdict == ImpactReport.Verdict.NO_CHANGES ? EXIT_MATCHES : EXIT_DRIFT;
     }
 
     /** Minimal {@link DataSource} over a single JDBC URL -- this command needs no pooling, and must

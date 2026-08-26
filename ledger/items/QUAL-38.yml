@@ -4,8 +4,10 @@ title: >-
   contradicting its own javadoc and a pre-existing (Docker-gated, never-run-locally) test
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-25
+closed: 2026-08-26
+verification: UNIT_TESTED
 source: >-
   2026-08-25 remediation plan W2.3 (making B10 machine-identifiable), found while tracing B10's real
   enforcement point to add its diagnostic code -- not itself part of W2.3's scope.
@@ -52,3 +54,37 @@ detail: |
 
   Done when: `apply()`'s actual behavior, its own javadoc, and `CrossEngineDataPromotionTest` all
   agree with each other -- whichever of the two behaviors is chosen.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/db/CrossEngineDataPromotionTest.java#applyReportsFailureWhenTargetTableMissing
+  asserts: >-
+    apply() returns a complete per-table PromotionResult when a target table is missing -- the
+    missing table reports TableCopyResult.error() containing "does not exist", and every LATER table
+    in manifest.businessTables() order is still attempted, instead of a thrown BoundaryBootException
+    aborting the whole promotion at the first missing table
+  provenRed: true
+  provenRedNote: >-
+    The test pre-existed the regression and asserts the returned-result shape directly, so it could
+    not have passed against commit 50ddf3ea's throwing code (the call never returned). It did not
+    FAIL visibly because it is @Tag("integration") and Docker/Testcontainers-gated, excluded from
+    the plain `test` task -- the regression was live and unexercised from 2026-08-21 to 2026-08-26.
+resolution: >-
+  Fixed as item 4 of SUPPORT_FEATURES_PLAN_2026-08-26 (this item's own first option: the OLD
+  per-table-graceful behaviour was the intended contract, and the throw introduced by 50ddf3ea was
+  the bug). copyTable's missing-target-table branch returns a TableCopyResult carrying the
+  B10:data_only_promotion message prefix again -- keeping the boundary-id convention W2.3 introduced
+  for B2/B4/B5/B9 -- instead of throwing BoundaryBootException, so apply()'s loop completes and the
+  caller gets the complete per-table report both javadocs promise. The message now also points at
+  `npdev why B10` (item 2 of the same plan), so an operator who hits this gets the full explanation
+  of why schema reconciliation is out of scope rather than only the one-line refusal.
+
+  All three sources named in this item's "done when" now agree: apply()'s behaviour, both javadocs,
+  and the test.
+
+  HONEST NOTE on verification: the guard test is Docker/Testcontainers-gated and was NOT run on this
+  Windows machine (local-test-profile.json disables Docker/Postgres for dev/agent work by design).
+  Its proving run is `./gradlew integrationTest` in .github/workflows/npdev-ci-validation.yml, which
+  is queued on PR #112 behind the 2026-08-26 GitHub Actions outage. verification is UNIT_TESTED, not
+  VERIFIED_LIVE, precisely because that run has not yet reported -- if it comes back red, reopen
+  rather than re-closing on the strength of the code reading alone (the REG-181 lesson).
