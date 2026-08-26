@@ -46,7 +46,7 @@ public class FinalExecApplication {
         }
     }
 
-    private static BoundaryBootException findBoundaryBootException(Throwable failure) {
+    static BoundaryBootException findBoundaryBootException(Throwable failure) {
         Throwable current = failure;
         int guard = 0;
         while (current != null && guard++ < 32) {
