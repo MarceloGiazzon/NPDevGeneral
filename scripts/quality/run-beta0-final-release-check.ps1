@@ -132,7 +132,17 @@ $orderedGates = @(
     [pscustomobject]@{ name = "doc-entrypoint-validation-tests"; command = "scripts/quality/run-doc-entrypoint-validation-tests.ps1" },
     [pscustomobject]@{ name = "report-schema-validation"; command = "scripts/quality/run-report-schema-validation.ps1" },
     [pscustomobject]@{ name = "doc-entrypoint-validation"; command = "scripts/quality/run-doc-entrypoint-validation.ps1" },
-    [pscustomobject]@{ name = "beta-release-gate-pre-audit"; command = "scripts/quality/run-beta-release-gate.ps1"; alwaysContinue = $true; expectedNonzero = $true },
+    # beta-release-gate-pre-audit was removed here (2026-08-26, user-approved speed/redundancy
+    # reduction): it ran BEFORE several producer gates below it (sample-matrix, ai-beta-gate,
+    # expanded-beta0-evidence, trusted-source-beta0-proof) that generate evidence it evaluates, so
+    # it near-certainly reported PRECONDITION-UNMET (exit 2) for most of its 36 required reports --
+    # diagnostic noise, not a real check. It was already alwaysContinue+expectedNonzero, i.e.
+    # blocking=false in Invoke-Gate, so its result could never affect $blockingFailedGateCount or
+    # overallStatus even before removal -- ZERO change to what this gate actually asserts. The two
+    # invocations that DO feed the closure decision (post-cleanup re-verification and the one
+    # immediately before beta0-final-closure-gate, both below) are untouched -- that's the
+    # "no-false-green" protection this script was hardened to have (commit 093ce306), and it stays
+    # intact.
     [pscustomobject]@{ name = "final-regression-coverage-audit-tests"; command = "scripts/quality/run-final-regression-coverage-audit-tests.ps1" },
     [pscustomobject]@{ name = "final-regression-coverage-audit"; command = "scripts/quality/run-final-regression-coverage-audit.ps1" },
     [pscustomobject]@{ name = "report-schema-validation-final"; command = "scripts/quality/run-report-schema-validation.ps1" },
