@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -102,5 +103,37 @@ class AutoPanelWorkbenchTypedSurfaceValidationTest {
         assertTrue(errors.stream().anyMatch(e -> e.contains("transaction.bandPickers")
                         && e.contains("unrecognized band") && e.contains("naoExiste")),
                 "expected an unrecognized-band error, got: " + errors);
+    }
+
+    /**
+     * B19 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 remediation plan W2.5): a band picker declaring
+     * only {@code filter} with no {@code panel} used to be silently inert -- nothing to apply the
+     * filter to. This is now a hard validation refusal, regardless of filter/multiSelect: {@code
+     * panel} is unconditionally required on a declared band picker.
+     */
+    @Test
+    void bandPickersMissingPanelIsRejected() throws Exception {
+        List<String> errors = validate(modelWithTransaction(
+                "{ \"bandPickers\": { \"posicoes\": { \"filter\": \"$root.ativo == 'true'\" } } }"));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("transaction.bandPickers.posicoes")
+                        && e.contains("panel is required")),
+                "expected a panel-required error, got: " + errors);
+    }
+
+    /** B19: the panel-required refusal carries boundaryId B19 on the normalized diagnostic, the
+     * same {@code B<n>:<code>:} prefix mechanism B1/B13 already use, so a caller can programmatically
+     * distinguish this designed refusal from an ordinary validation bug. */
+    @Test
+    void bandPickersMissingPanelDiagnosticCarriesB19BoundaryId() throws Exception {
+        ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(modelWithTransaction(
+                "{ \"bandPickers\": { \"posicoes\": { \"multiSelect\": true } } }")));
+        List<ValidationDiagnostic> diagnostics = new SemanticValidator().validateWithWarnings(ast).getDiagnostics();
+        List<ValidationDiagnostic> b19 = diagnostics.stream()
+                .filter(d -> "B19".equals(d.getBoundaryId()))
+                .toList();
+        assertEquals(1, b19.size(), "expected exactly one B19-linked diagnostic, got: " + diagnostics);
+        assertTrue(b19.get(0).getMessage().contains("panel is required"),
+                "boundaryId must survive prefix-stripping without eating the rest of the message: "
+                        + b19.get(0).getMessage());
     }
 }

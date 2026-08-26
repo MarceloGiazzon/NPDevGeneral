@@ -258,6 +258,10 @@ it out of your flows' logic and makes it substitutable in tests.
 `plugin:java-source` lets you ship the implementation as your own Java, compiled into the
 generated app with its dependencies declared alongside it.
 
+**Trust boundary.** A `plugin:java-*` handler runs in-process with the application's full
+privileges (only wall-clock time is bounded) and must be trusted like your own code — see SEC-3
+for the tracked upgrade path to real containment (process isolation).
+
 ## 10. Properties and scoped settings — configuration that is not a rebuild
 
 **What it is.** A typed setting with a resolution order. Declare the scopes most-specific-first,

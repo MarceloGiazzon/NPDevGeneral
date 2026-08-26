@@ -1,9 +1,5 @@
 id: B7
 title: "Refusals are not side-effect-free"
-kind: POSTURAL
-userFacingText: ""  # nothing user-reachable: this describes what a refusal leaves behind, not a refusal of its own
-workaround: "Treat a refused boot as \"inspect before retrying\"; the history table records what ran."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   POSTURAL: no diagnostic fires because there is nothing to hit. This row describes a property of

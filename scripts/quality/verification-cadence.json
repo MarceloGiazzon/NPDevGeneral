@@ -118,11 +118,25 @@
       "description": "run-runtimehost-gate.ps1 -- an assembled sample app + its test suite, including WmsOffice-class interaction surfaces."
     },
     {
+      "id": "kernel",
+      "tier": "T2",
+      "maxStaleness": "1-move",
+      "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: kernel) / .github/workflows/kernel-quality-gate.yml",
+      "description": "W3.2 (2026-08-25 remediation plan / QUAL-32): run-kernel-quality-gate.ps1 -- kernelQualityGate (:kernel:test + all 36+ :adapters:*:test) from NPDevKernel's own Gradle root, then the coverage ratchet against the fresh aggregate. Closes the gap the kernel note in scripts/policy/coverage-baseline.json used to describe: kernelQualityGate existed as a real Gradle task invoked by nothing, so the recorded floor (73.0968) had drifted 10 points from a full-suite measurement (62.69) before anything noticed."
+    },
+    {
       "id": "betaRelease",
       "tier": "T3",
       "maxStaleness": "7-days",
       "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: betaRelease, opt-in since item 4) / npdev verify --tier T3",
       "description": "run-beta-release-gate.ps1 evaluate-only pass (fast: does the evidence that already exists say the release is ready)."
+    },
+    {
+      "id": "weeklyPaperwork",
+      "tier": "T3",
+      "maxStaleness": "7-days",
+      "invokedBy": "scripts/quality/run-all-gates.ps1 (gate: weeklyPaperwork, opt-in via -IncludePaperwork since GATE-SPLIT 2026-08-25 W4.5) / .github/workflows/weekly-paperwork-checks.yml (schedule)",
+      "description": "GATE-SPLIT (2026-08-25 remediation plan W4.5): the gate-level entry for run-weekly-paperwork-checks.ps1's 11 doc/process-hygiene checkers -- distinct from each individual checker's own cadence entry above (check-adr-decision-implementation, etc.), this tracks the AGGREGATE gate run itself so run-all-gates.ps1's own -Only weeklyPaperwork invocation satisfies check-cadence-coverage.py the same way every other gate in its $gates array must. Reuses T3 (not a new tier) since this repo's cadence system has exactly four; deferred for a DIFFERENT reason than betaRelease (slower-moving process hygiene, not release ceremony), hence its own -IncludePaperwork switch rather than sharing -IncludeReleaseGate."
     },
     {
       "id": "beta-release-evidence",

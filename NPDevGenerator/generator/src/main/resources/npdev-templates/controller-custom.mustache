@@ -29,7 +29,7 @@ public class {{entityName}}Controller extends {{entityName}}ControllerBase {
 {{#referenceFinders}}
     @GetMapping("/by/{{name}}/{value}")
     public Object listBy{{capName}}(@PathVariable String value) {
-        return service.listBy{{capName}}(value);
+        return listByBase(service.listBy{{capName}}(value));
     }
 
 {{/referenceFinders}}

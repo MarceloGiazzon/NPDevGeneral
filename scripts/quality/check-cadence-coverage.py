@@ -32,10 +32,12 @@ import cadence_state  # noqa: E402
 REQUIRED_FIELDS = ["id", "tier", "maxStaleness", "invokedBy", "description"]
 VALID_TIERS = {"T0", "T1", "T2", "T3"}
 
-# run-all-gates.ps1 assigns betaRelease to T3 by convention (item 4's split), every other gate
-# name in its $gates array is T2. Kept explicit here rather than inferred, so a future change to
-# which gates are T3 is a one-line, reviewable diff in this exact spot.
-GATE_TIER_OVERRIDES = {"betaRelease": "T3"}
+# run-all-gates.ps1 assigns betaRelease and weeklyPaperwork to T3 by convention (item 4's split;
+# GATE-SPLIT, 2026-08-25 W4.5, reuses the same tier for a second, differently-reasoned deferred
+# gate rather than inventing a fifth tier), every other gate name in its $gates array is T2. Kept
+# explicit here rather than inferred, so a future change to which gates are T3 is a one-line,
+# reviewable diff in this exact spot.
+GATE_TIER_OVERRIDES = {"betaRelease": "T3", "weeklyPaperwork": "T3"}
 
 
 def load_cadence_checks():

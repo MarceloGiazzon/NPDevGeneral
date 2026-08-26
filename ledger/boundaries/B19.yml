@@ -1,19 +1,26 @@
 id: B19
-title: "bandPickers accepts the same filter/multiSelect shape a plain FK field's picker does -- but a band picker still requires a named panel, so without one they are inert"
-kind: POSTURAL
-userFacingText: ""  # nothing user-reachable: a filter/multiSelect with no panel is silently inert, never refused
-workaround: "Declare filter/multiSelect alongside a real panel on a bandPickers entry; for a genuinely dynamic band filter today, give the referenced Selection panel its own declared query where clause instead."
-enforcingDiagnosticCodes: []
-codeLinked: false
+title: "bandPickers accepts the same filter/multiSelect shape a plain FK field's picker does -- but a band picker still requires a named panel, so filter/multiSelect declared without one has nothing to apply to"
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. Re-traced by REG-135 step 1 (B19 was
-  missing from that session's own starting classification draft):
-  PanelValidation.validateBandPickers checks band NAMES, not whether a picker's filter/multiSelect has
-  a panel to work with, so a band picker declared without a panel simply does not fetch -- the
-  filter/multiSelect are inert, silently. That silence IS the boundary; there is no refusal for a
-  boundaryId to attach to. WorkbenchBandPickerAst/CompiledWorkbenchBandPicker do carry the same two
-  properties FieldPickerAst declares (one shape, two authoring surfaces); what is genuinely still
-  unmerged is a no-panel fetch path targeting the band's own concept directly, plus client/server
-  enforcement of a dynamic per-request filter on the panel-data endpoint. Revisit trigger: a no-panel
-  band picker becomes a real authoring need.
+  2026-08-25 (remediation plan W2.5). Re-traced from the real code, not the prior classification:
+  PanelValidation.validateBandPickers (NPDevContract/dsl/.../validation/PanelValidation.java) has
+  ALWAYS required panel unconditionally on every declared band picker -- not "band names only" as
+  this boundary's prior POSTURAL classification claimed (that claim was traced from
+  JsonModelParser's own comment about the AST widening, not from reading validateBandPickers itself,
+  which already contained `else if (!hasText(entry.getValue().panel())) { errors.add(...  "panel is
+  required"); }` before this session touched it). So a no-panel band picker was never silently
+  inert -- it was always a hard validation refusal; the boundary's only real gap was that the
+  refusal carried no boundaryId, so nothing could programmatically distinguish it as B19 rather than
+  an ordinary validation bug. Fixed: the error message is now prefixed `B19:band_picker_requires_panel:`,
+  following the exact `B1:`/`B13:` convention (ValidationDiagnosticNormalizer.BOUNDARY_PREFIX_IDS
+  strips the prefix before downstream pattern-matching, same as those two). Proven by
+  AutoPanelWorkbenchTypedSurfaceValidationTest#bandPickersMissingPanelDiagnosticCarriesB19BoundaryId,
+  which asserts exactly one ValidationDiagnostic with getBoundaryId()=="B19" for a bandPickers entry
+  declaring multiSelect with no panel.
+
+  Not added to NPDevSamples/dsl-conformance-max: that corpus is scanned for POSITIVE feature
+  coverage by check-dsl-coverage.py (bandPicker.filter is already covered there, WITH a panel) --
+  it has no mechanism for an intentionally-invalid fixture, and adding one would break that sample's
+  own validity for every other tracked feature in the same file. The DSL unit test above is the real
+  witness for this negative case.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B19 -- AW-P2 (7e1096e), docs/architecture/AGGREGATE_WORKBENCH_PLAN.md, Move 9 A3"

@@ -1,6 +1,6 @@
 package com.finalexec.api;
 
-import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
+import com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine;
 import com.finalexec.npdev.service.SandboxedPluginExecutionResult;
 import com.npdev.generated.runtime.dto.FlowExecutionResponse;
 import org.springframework.core.MethodParameter;
@@ -18,12 +18,12 @@ import java.util.Objects;
 @ControllerAdvice
 public class FlowExecutionPluginEvidenceAdvice implements ResponseBodyAdvice<Object> {
 
-    private final SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine;
+    private final TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine;
 
-    public FlowExecutionPluginEvidenceAdvice(SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine) {
-        this.sandboxedPluginExecutionEngine = Objects.requireNonNull(
-                sandboxedPluginExecutionEngine,
-                "sandboxedPluginExecutionEngine"
+    public FlowExecutionPluginEvidenceAdvice(TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine) {
+        this.timeBoundedPluginExecutionEngine = Objects.requireNonNull(
+                timeBoundedPluginExecutionEngine,
+                "timeBoundedPluginExecutionEngine"
         );
     }
 
@@ -56,7 +56,7 @@ public class FlowExecutionPluginEvidenceAdvice implements ResponseBodyAdvice<Obj
             return body;
         }
 
-        SandboxedPluginExecutionResult.Summary executionSummary = sandboxedPluginExecutionEngine.recentExecutions().stream()
+        SandboxedPluginExecutionResult.Summary executionSummary = timeBoundedPluginExecutionEngine.recentExecutions().stream()
                 .filter(summary -> bodyView.correlationId().equals(summary.correlationId()))
                 .filter(summary -> "notification".equalsIgnoreCase(summary.capability()))
                 .filter(summary -> "send".equalsIgnoreCase(summary.operation()))

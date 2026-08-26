@@ -23,16 +23,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-public final class SandboxedPluginExecutionEngine implements AutoCloseable {
+public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
 
-    private static final Logger LOG = Logger.getLogger(SandboxedPluginExecutionEngine.class.getName());
+    private static final Logger LOG = Logger.getLogger(TimeBoundedPluginExecutionEngine.class.getName());
 
     private final long timeoutMs;
     private final ExecutorService executorService;
     private final PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator;
     private final RuntimePluginExecutionSummaryStore executionSummaryStore;
 
-    public SandboxedPluginExecutionEngine(
+    public TimeBoundedPluginExecutionEngine(
             long timeoutMs,
             PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator,
             RuntimePluginExecutionSummaryStore executionSummaryStore

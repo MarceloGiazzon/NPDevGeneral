@@ -1,13 +1,15 @@
 id: B29
 title: "SQL Server has no SUFFIX row cap -- SqlDialect.rowLimit() throws there; callers ask rowLimited() instead"
-kind: POSTURAL
-userFacingText: ""  # nothing user-reachable: no model, no request and no CLI input reaches this
-workaround: "Call dialect.rowLimited(sql, n) -- 'at most n rows', which every engine can answer -- rather than dialect.rowLimit(n), which asks for a SUFFIX specifically. For an existence probe, dialect.existsProbe(table, column) builds the whole statement."
-enforcingDiagnosticCodes: []
-codeLinked: true
+codeLinked: false
 codeLinkedNote: >-
-  Enforced by SqlServerDialect.rowLimit() itself, which throws UnsupportedOperationException naming
-  both alternatives. Deliberately NOT a ValidationDiagnostic and NOT a StorageCapability token:
+  2026-08-25 (W5.5, remediation plan): corrected from codeLinked: true, the only POSTURAL boundary
+  that said so (every sibling POSTURAL entry -- B3/B6/B7/B11/B12/B14/B18 -- correctly says false).
+  SqlServerDialect.rowLimit() DOES throw a real UnsupportedOperationException naming both
+  alternatives, but per this row's own userFacingText ("nothing user-reachable: no model, no
+  request and no CLI input reaches this") and the measurement below (ZERO production call sites),
+  that throw is unreachable code, not a diagnostic anything can ever observe firing -- which is
+  exactly what makes this POSTURAL rather than HITTABLE, not evidence for codeLinked: true. A real,
+  UNREACHABLE exception is deliberately NOT a ValidationDiagnostic and NOT a StorageCapability token:
   storage/OPEN_ITEMS_PLAN.md 6 warns that "a thrown exception with no declared capability behind it
   is a sharp edge, not a boundary", and the measurement is what makes this one a boundary anyway --
   ZERO production sites call rowLimit() directly. All four real sites (two existence probes in

@@ -4,27 +4,57 @@ title: >-
   Linux job does not share
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-25
+verification: NOT_VERIFIED
 source: 2026-08-23 platform audit, found while trying to locate a failing DSL test's XML report.
 surface: ci/windows, build-tooling/root-resolution
 files:
   - .github/workflows/npdev-ci-validation.yml
 detail: |
-  The linux-maturity-validation job sets `NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build` (line 87)
-  specifically so both resolvers take their first branch and agree structurally rather than by
-  coincidence -- REG-144's whole lesson. The Windows ci-validation job's env block (line 431) sets
-  NPDEV_WORKSPACE, CI and GRADLE_OPTS, but NOT NPDEV_BUILD_ROOT. Re-confirmed against the live file
-  2026-08-23: still true, both line numbers unchanged.
+  The `linux-maturity-validation` job sets `NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build`
+  (line 87) specifically so both resolvers take their first branch and agree structurally rather
+  than by coincidence -- REG-144's whole lesson. The Windows `ci-validation` job's env block set
+  `NPDEV_WORKSPACE`, `CI` and `GRADLE_OPTS`, but not `NPDEV_BUILD_ROOT`, so `Get-NPDevBuildRoot`'s
+  content-walk fallback landed at `<workspace>/../Build` (one directory ABOVE the checkout) --
+  correct per REG-144, but a different root from the Linux job's, which cost a debugging cycle on
+  2026-08-23 when a diagnostic step written against one root printed nothing on the other.
 
-  So on Windows the root falls through to the content-walk fallback and lands at
-  <workspace>/../Build (observed: D:/a/NPDevGeneral/Build while the workspace is
-  D:\a\NPDevGeneral\NPDevGeneral). That is not wrong -- REG-144 made the fallback correct -- but it
-  is a DIFFERENT root from the Linux job's, which is why a diagnostic step written against one
-  path prints nothing on the other. It cost a debugging cycle on 2026-08-23.
+  Fixed: the `ci-validation` job's env block now sets
+  `NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build`, the same shape the Linux job already pins.
+  `Get-NPDevBuildRoot` (scripts/npdev-common.ps1:423-444) checks `$env:NPDEV_BUILD_ROOT` first and
+  returns it unconditionally when set, so every script in the Windows job that resolves its build
+  root through that shared function (`run-script-automation-quality.ps1`,
+  `run-runtime-surface-evidence.ps1`, `run-generator-gate.ps1`, `run-runtimehost-gate.ps1`,
+  `write-security-hardening-maturity-report.ps1`, `run-runtime-security-consistency.ps1`,
+  `sync-runtimehost-libs.ps1`) now redirects consistently -- confirmed none of these seven scripts
+  hardcode a Build-relative path outside that shared resolver (grep, zero hits).
 
-  Not fixed immediately because pinning it moves where every Windows CI artifact lands, and several
-  steps glob those paths; the change needs its own verification pass.
+  Walked every artifact/glob step in the job per this item's own done-when: the "On DSL failure,
+  surface every failing test's XML (Windows)" diagnostic already searches BOTH candidate roots
+  (`$env:NPDEV_BUILD_ROOT`, `<parent>/Build`, `<workspace>/Build`) as a fallback list, so it is
+  unaffected either way -- no longer needs the old fallback now that the env var is always set, but
+  is harmless left as-is. The `outputRoot`/`appRoot`/`artifactRoot` checks in the "Generator gate"
+  step and the final `upload-artifact` step are all rooted at `$env:NPDEV_WORKSPACE` or a workspace-
+  relative path (`scripts/reports/out`, `scripts/reports/releases`), never at the Build root, so
+  neither is affected by this change.
 
-  Done when: both jobs pin NPDEV_BUILD_ROOT to the same shape, and every artifact/glob step in the
-  Windows job is confirmed against the new location.
+  `verification: NOT_VERIFIED` (not `VERIFIED_LIVE`): the resolution logic is proven correct by
+  reading `Get-NPDevBuildRoot`'s own source (env var wins unconditionally, matching the Linux job's
+  established pattern) and by the exhaustive grep above, but no actual GitHub Actions Windows run
+  has executed this changed workflow yet -- that only happens on push/PR.
+guard:
+  kind: manual
+  ref: .github/workflows/npdev-ci-validation.yml
+  asserts: >-
+    The `ci-validation` (Windows) job's env block sets `NPDEV_BUILD_ROOT: ${{ github.workspace
+    }}/Build`, matching `linux-maturity-validation`'s own `NPDEV_BUILD_ROOT: ${{ github.workspace
+    }}/Build`. A future GitHub Actions run of this job is the live proof; re-open if a Windows run
+    shows a build-root mismatch after this change.
+  provenRed: false
+  provenRedNote: >-
+    Not proven red by a captured failing run -- the pre-fix state (both roots disagreeing) was
+    established by direct inspection of the two env blocks and Get-NPDevBuildRoot's fallback logic,
+    matching this item's own `source` line (a real debugging cycle on 2026-08-23), not a synthetic
+    reproduction.

@@ -80,6 +80,7 @@
     "StructuralPublicationMappingService",
     "SupportDiagnosticsService",
     "TenantStoragePathResolver",
+    "TimeBoundedPluginExecutionEngine",
     "PromotionStateService",
     "TenantRegistryService",
     "CredentialRegistryService",

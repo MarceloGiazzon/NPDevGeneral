@@ -1,0 +1,57 @@
+id: SEC-3
+title: >-
+  TimeBoundedPluginExecutionEngine (renamed 2026-08-26 from SandboxedPluginExecutionEngine, item 3 of
+  SUPPORT_FEATURES_PLAN_2026-08-26, to stop the class name promising containment it does not have) has
+  no real containment for malicious plugin code -- filesystem, network, memory/CPU, System.exit, and
+  reflection are all unbounded; only a wall-clock timeout exists
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-25
+source: >-
+  2026-08-25 remediation plan W3.3 (QUAL-33), investigating the engine test's (then
+  SandboxedPluginExecutionEngineTest, renamed TimeBoundedPluginExecutionEngineTest 2026-08-26) disabled
+  maliciousPluginVectorsRemainContained. EXT-1 shipped plugin:java-controller and plugin:java-source,
+  both of which let a model author ship COMPILED CODE that runs inside a generated app's own process
+  -- the containment claim implied by "sandboxed" in the engine's ORIGINAL name was never built beyond
+  the timeout, which is exactly why the class itself was renamed (not just this item's title): SEC-3
+  stays open as the tracked upgrade path to real (e.g. process-isolation) containment.
+surface: runtimehost, plugin-execution, security
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/TimeBoundedPluginExecutionEngine.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/TimeBoundedPluginExecutionEngineTest.java
+detail: |
+  Read the engine class directly (not inferred from the test file's own aspirational comments).
+  Handler invocation runs in-process, on a thread from a plain Executors.newCachedThreadPool(), via
+  reflection. The ONLY containment mechanism that exists at all is a bounded future.get(timeoutMs) --
+  proven real by 6 tests already in TimeBoundedPluginExecutionEngineTest (happy path, error wrapping,
+  timeout, interrupt safety, overload resolution, policy denial). Every other vector the class's
+  ORIGINAL name ("Sandboxed") implied it covered is wide open to any plugin handler running in the
+  same JVM:
+    - Filesystem: no restriction: a plugin can read/write anything the app process can.
+    - Network: no restriction: a plugin can make arbitrary outbound connections.
+    - Memory/CPU: no bound beyond the wall-clock timeout -- a plugin can allocate freely or spin a
+      CPU-bound (non-blocking) loop that the timeout cannot interrupt (future.get(timeout) does not
+      forcibly stop a running thread; cancel(true) only sets an interrupt flag a tight CPU loop with
+      no interruption check will never observe).
+    - System.exit: uncontained -- a plugin calling System.exit() kills the whole app process,
+      including every other tenant's in-flight request.
+    - Reflection: uncontained -- a plugin can use reflection to reach outside its intended surface
+      (e.g. setAccessible on a private field of an unrelated class).
+
+  Why this was not fixed in the same session that found it: SecurityManager-based containment is
+  deprecated-for-removal (JEP 411, and gone entirely as of JDK 24) and was never the right target
+  regardless of this platform's own JDK 17 pin. The plan's own recommendation -- OS-level process
+  isolation (spawn a child JVM per plugin invocation, communicate over a narrow IPC protocol, apply
+  platform-specific resource limits: Linux cgroups/namespaces, Windows Job Objects) -- is a real,
+  substantial security feature: new IPC/serialization surface, per-OS resource-limiting code, restart/
+  crash handling for a killed child, and its own dedicated test matrix. That is a different-sized
+  piece of work than reviving a disabled unit test, and a half-built containment layer would be worse
+  than the current honestly-absent one (false confidence that malicious code is contained when it is
+  not) -- so it was deliberately NOT attempted inline here. maliciousPluginVectorsRemainContained
+  stays @Disabled, with its reason updated to point at this item instead of the vague original text.
+
+  Done when: a real process-isolation (or equivalent) containment layer exists for at least the
+  System.exit and filesystem/network vectors, with its own live-fired regression tests (a plugin that
+  actually calls System.exit and does NOT take down the host process; a plugin that actually attempts
+  a forbidden file/socket operation and is actually blocked) -- not a design document.

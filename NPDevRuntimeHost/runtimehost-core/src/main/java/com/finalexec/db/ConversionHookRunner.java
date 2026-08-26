@@ -184,7 +184,7 @@ public final class ConversionHookRunner {
                         + "IMPLICITLY ON DDL, so if the verify fails the DDL will NOT be rolled back (data "
                         + "changes made after it will be). Split destructive DDL and data movement into "
                         + "separate hooks/boots, or run this conversion on an engine with transactional DDL "
-                        + "(Postgres, SQL Server) -- see docs/ACCEPTED_BOUNDARIES.md B11.");
+                        + "(Postgres, SQL Server). Run `npdev why B11` for the full explanation.");
             }
 
             String sqlHash = sha256Hex(sql);

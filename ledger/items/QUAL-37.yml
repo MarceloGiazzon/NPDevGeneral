@@ -1,0 +1,59 @@
+id: QUAL-37
+title: >-
+  check-coverage-ratchet.py has no platform guard, so any local Windows run silently re-pins a
+  Linux-CI-measured floor -- has now happened nine times to NPDevCli alone
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-08-25
+closed: 2026-08-25
+verification: UNIT_TESTED
+source: >-
+  2026-08-23 platform audit (labelled COV-WINDOWS there), and coverage-baseline.json's own NPDevCli
+  `note` field, which had grown a dated paragraph for each of nine re-pins between 2026-08-14 and
+  2026-08-23 documenting the same root cause each time without ever fixing it.
+surface: quality/coverage-ratchet
+files:
+  - scripts/quality/check-coverage-ratchet.py
+  - scripts/policy/coverage-baseline.json
+detail: |
+  `check-coverage-ratchet.py` auto-writes a module's `coveragePercent` floor upward from whatever
+  fresh report it finds, with no `os.name`/`platform` guard anywhere in the script. NPDevCli has
+  dozens of `os.name == "nt"` branches, so the same test suite covers a few more lines on Windows
+  than on Linux -- small enough (~0.05-0.3pp) to look like noise, large enough to fail the next
+  Linux CI run outright. The note on `coverage-baseline.json`'s `NPDevCli` entry names NINE separate
+  re-pins (2026-08-14 through 2026-08-23) of the exact same mechanism: a Windows measurement
+  overwriting the Linux-CI-measured floor, sometimes from a deliberate gate run, sometimes from
+  running the checker ALONE just to verify a previous restore, at least once from a run whose own
+  overall verdict was green.
+
+  Fix: `coverage-baseline.json` module entries may now declare `"platformDependent": true`
+  (NPDevCli's does). `check-coverage-ratchet.py`'s ratchet-up branch (`main`, the `elif pct >
+  recorded` case) refuses to raise a `platformDependent` module's floor unless `CI` env var is
+  literally `"true"` or the new `--write-baseline` flag is passed explicitly -- it prints a refusal
+  message and leaves the floor untouched instead. The REGRESSION branch (`pct < recorded`) is
+  unaffected by design: a platform-dependent module can still fail the gate for a real drop; only
+  the auto-write-up path is gated. Non-platform-dependent modules ratchet exactly as before (no
+  behavior change for the Java/istanbul modules).
+
+  Three new calibration controls (`--calibrate`, controls 8a-8c) prove: a bare local run (no
+  `CI=true`, no `--write-baseline`) leaves a `platformDependent` module's floor unchanged despite a
+  genuinely higher fresh measurement; `--write-baseline` overrides the guard; `CI=true` also
+  overrides the guard. All pass, alongside the pre-existing 15 controls (none regressed).
+
+  Done when: a tenth re-pin from a bare local Windows run is mechanically impossible, not merely
+  discouraged by a growing note. It now is -- the note's own "Real fix (follow-up)" line, written at
+  the third re-pin, is implemented rather than left as a TODO.
+guard:
+  kind: script
+  ref: python scripts/quality/check-coverage-ratchet.py --calibrate
+  asserts: >-
+    All calibration controls pass, including the three new ones (8a-8c): a platformDependent
+    module's floor is NOT auto-ratcheted on a bare local run despite a higher fresh measurement, but
+    IS ratcheted when --write-baseline is passed or when CI=true.
+  provenRed: true
+  provenRedNote: >-
+    Measured directly: with the guard temporarily removed (the pre-fix `elif pct > recorded:` body,
+    no platformDependent check), control 8a's bare-local-run case ratchets the fixture floor from
+    50.0 to 90.0 -- reproducing the exact NINTH-RE-PIN shape the note documents. With the guard in
+    place, the same input leaves the floor at 50.0 (control 8a PASS).

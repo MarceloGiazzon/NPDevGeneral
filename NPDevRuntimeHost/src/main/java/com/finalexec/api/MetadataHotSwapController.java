@@ -11,6 +11,7 @@ import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -71,15 +72,18 @@ public class MetadataHotSwapController {
     private final RuntimeMetadataService runtimeMetadataService;
     private final RuntimeContextService runtimeContextService;
     private final ModelHolder modelHolder;
+    private final boolean fullModelReloadEnabled;
 
     public MetadataHotSwapController(
             RuntimeMetadataService runtimeMetadataService,
             RuntimeContextService runtimeContextService,
-            ModelHolder modelHolder
+            ModelHolder modelHolder,
+            @Value("${npdev.runtime.hotswap.full-model-reload-enabled:false}") boolean fullModelReloadEnabled
     ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.runtimeContextService = runtimeContextService;
         this.modelHolder = modelHolder;
+        this.fullModelReloadEnabled = fullModelReloadEnabled;
     }
 
     /**
@@ -158,10 +162,30 @@ public class MetadataHotSwapController {
     /**
      * B28: hot model reload -- parse, compile, and atomically swap the CompiledModel without restart.
      * Requires SUPERUSER. The new model is read from a model.json file at the given path.
+     *
+     * <p><b>B28 is registered DO NOT SHIP</b> (docs/ACCEPTED_BOUNDARIES.md): {@link #modelHolder}
+     * gives only a PARTIAL swap -- consumers reading it via {@link ModelHolder#get()} observe the new
+     * model, but every singleton constructed with a directly-injected {@code CompiledModel} at
+     * application-context startup ({@code KernelRunner}, {@code ConceptGateway}, {@code PanelRuntime},
+     * {@code CelInvariantEngine}, {@code CapabilityRegistry}, and a dozen others -- see this class's own
+     * javadoc above) keeps the OLD model, which is a split-brain state, not a feature with rough edges.
+     * Disabled by default (2026-08-25 remediation plan W2.4a) behind an explicit opt-in property so a
+     * do-not-ship mechanism cannot be reached by accident just because a caller holds SUPERUSER --
+     * completing the migration to {@link ModelHolder#get()} everywhere (option (b) in the plan) is
+     * its own follow-up roadmap item, not done here.
      */
     @PostMapping("/model-reload")
     public ResponseEntity<Map<String, Object>> modelReload(HttpServletRequest request, @RequestBody Map<String, String> body) {
         requireSuperUser(request);
+
+        if (!fullModelReloadEnabled) {
+            return failure(HttpStatus.NOT_FOUND, "FULL_MODEL_RELOAD_DISABLED",
+                    "B28 (docs/ACCEPTED_BOUNDARIES.md): full model hot-reload is DO NOT SHIP -- it "
+                            + "gives only a partial swap (ModelHolder.get() consumers see the new "
+                            + "model, direct CompiledModel injection keeps the old one). Disabled by "
+                            + "default; set npdev.runtime.hotswap.full-model-reload-enabled=true to "
+                            + "opt in with that split-brain risk understood.");
+        }
 
         String modelPath = body.get("modelPath");
         if (modelPath == null || modelPath.isBlank()) {

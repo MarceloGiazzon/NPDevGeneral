@@ -67,7 +67,7 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.npdev.service.RuntimeMetadataValidationService");
         assertPackaged("com.finalexec.npdev.service.RuntimePluginPackageCatalog");
         assertPackaged("com.finalexec.npdev.service.RuntimePluginProfileResolver");
-        assertPackaged("com.finalexec.npdev.service.SandboxedPluginExecutionEngine");
+        assertPackaged("com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine");
         assertPackaged("com.finalexec.npdev.service.RuntimePluginPackageDiscoveryService");
         assertPackaged("com.finalexec.npdev.service.RuntimePluginPackageRealizationService");
         assertPackaged("com.finalexec.npdev.service.SupportDiagnosticsService");

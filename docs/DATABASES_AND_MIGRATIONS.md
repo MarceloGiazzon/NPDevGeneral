@@ -338,7 +338,12 @@ The `schemaLifecycle` block in `db.definition.json` gives operators explicit con
 - **Mark-migration-done** — a ControlPanel operation (`POST /api/admin/schema-migration/mark-done`,
   SUPERUSER-gated) that fast-forwards the stored fingerprint for an exact `from→to` transition, on the
   operator's word, running **zero** passes. The "I already migrated this by hand, stop trying" button.
-  It trusts the operator completely — it does not verify the claim.
+  It trusts the operator completely — it does not verify the claim. Run **`npdev db verify --app <dir>`**
+  first if you want that claim checked independently: it reads the SAME manifest and runs the SAME
+  diff engine the boot-time impact report does, connecting directly to the database with no app boot
+  required — so it still works when the app itself refuses to boot (B4 lock, B5 schema-ahead), which is
+  exactly when this question is hardest to answer any other way. Exit code `0` means it matches, `1`
+  means real drift, `2` means it could not tell (no manifest, connection refused) — never conflated.
 
 Mapping to the four operator "options" one naturally wants:
 

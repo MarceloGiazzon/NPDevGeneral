@@ -1,9 +1,5 @@
 id: B27
 title: "LIFTED (groupBy only) -- \"query.groupBy/query.aggregates is single-concept only, no cross-concept join\" is closed for groupBy by S4 and widened to 3 hops by S8 W1.1; where/aggregates still name a field on the query's own base concept"
-kind: LIFTED
-userFacingText: ""  # lifted for groupBy: the boundary itself refuses nothing, so there is no message to render
-workaround: "For a same-context or cross-context join of up to 3 hops, declare it directly: groupBy: [\"lote.produtoId\"] (1 hop) or groupBy: [\"a.b.c.d\"] (3 hops, at the cap); an optional context:: prefix names the FINAL joined concept. For a chain LONGER than 3 hops, the capability-backed data-source workaround this row originally named still applies -- listConcepts + mapList + a Java capability join -- since a path beyond the cap is refused, not silently truncated."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   LIFTED for groupBy, so the boundary as stated enforces nothing any more and this entry claims no
