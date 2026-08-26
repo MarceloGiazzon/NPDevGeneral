@@ -44,6 +44,24 @@ jobs:
         with:
           node-version: "20"
 
+      # This gate's FIRST-EVER non-cancelled run (33014757518, 2026-08-26) failed here, and the
+      # cascade started in exactly one place: all 9 run-json-schema-validator-tests cases reported
+      # `actualStatus: "no-report"` with `engine: ""` -- the validator never RAN, it did not disagree
+      # about anything. scripts/quality/json-schema-validator needs ajv + ajv-formats, its
+      # node_modules is gitignored (so absent on a fresh checkout), and `Setup Node` above installs
+      # Node but no dependencies. From there every report-schema-validation failed, which failed
+      # beta-release-gate + beta0-final-closure-gate, which failed the traceable release, which
+      # failed all 4 downstream roadmap-closure assertions -- 5 red steps, one missing install.
+      #
+      # `working-directory` rather than `npm --prefix`, and this is NOT stylistic: npm reads
+      # package.json from cwd, and `npm --prefix <dir> install` from the repo root ENOENTs on a
+      # Windows runner because there is no root package.json. This gate is windows-latest, so it hits
+      # exactly that trap. Mirrors the identical step npdev-ci-validation.yml already proved (Root-3,
+      # 2026-07-24) rather than inventing a second way to do it.
+      - name: Pre-install JSON Schema validator deps
+        working-directory: scripts/quality/json-schema-validator
+        run: npm install --no-audit --no-fund
+
       - name: Run traceable Beta 0 release check
         run: pwsh ./scripts/quality/run-traceable-local-release.ps1 -WorkspaceRoot .
 
