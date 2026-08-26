@@ -4019,10 +4019,31 @@ def run_db_verify(args: argparse.Namespace) -> int:
             return fail(f"could not run SchemaVerifyMain ({exc})")
 
     if completed.stdout:
-        print(completed.stdout, end="")
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
     if completed.stderr:
         print(completed.stderr, end="", file=sys.stderr)
     return completed.returncode
+
+
+# spring-jcl's LogAdapter writes this to STDOUT (not stderr) on first use whenever a
+# commons-logging jar is also on the classpath -- which it is, because `db verify` runs against the
+# app's own fat-jar libraries. It is not ours, it is not actionable by the reader, and on stdout it
+# is not merely noise: it lands AHEAD of the report, so `npdev db verify --json` emitted a stream no
+# JSON parser could read, defeating the whole point of --json conforming to
+# impact-report.schema.json. Filtered by exact match on the one known line so nothing else -- least
+# of all a real message from SchemaVerifyMain -- can be swallowed by accident.
+_SPRING_JCL_NOTICE = (
+    "Standard Commons Logging discovery in action with spring-jcl: please remove "
+    "commons-logging.jar from classpath in order to avoid potential conflicts"
+)
+
+
+def _strip_spring_jcl_notice(text: str) -> str:
+    if _SPRING_JCL_NOTICE not in text:
+        return text
+    kept = [line for line in text.splitlines(keepends=True)
+            if line.strip() != _SPRING_JCL_NOTICE]
+    return "".join(kept)
 
 
 def _finalexec_fat_jar_for(app_root: Path) -> Path | None:

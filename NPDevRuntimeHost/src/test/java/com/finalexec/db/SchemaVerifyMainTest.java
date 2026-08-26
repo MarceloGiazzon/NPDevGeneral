@@ -70,4 +70,36 @@ class SchemaVerifyMainTest {
             assertTrue(err.contains("could not connect to"), () -> "unexpected stderr: " + err);
         }
     }
+
+    /**
+     * The arm nobody exercised, which is why the bug shipped: every test above lands on
+     * EXIT_COULD_NOT_DETERMINE, so the matches-vs-drift decision itself had zero coverage.
+     *
+     * <p>Measured RED before the fix: verifying a real canary app against an EMPTY database
+     * reported {@code verdict: SAFE} with two SAFE_TABLE_CREATE rows -- the entire schema missing --
+     * and exited 0 while the CLI's own contract says 0 means "matches". Only NO_CHANGES is a match.
+     */
+    @Test
+    void onlyNoChangesCountsAsAMatch() {
+        assertEquals(SchemaVerifyMain.EXIT_MATCHES,
+                SchemaVerifyMain.exitCodeFor(ImpactReport.Verdict.NO_CHANGES));
+
+        // SAFE means "changes exist and are safe to apply" -- an empty database verifies as SAFE.
+        assertEquals(SchemaVerifyMain.EXIT_DRIFT,
+                SchemaVerifyMain.exitCodeFor(ImpactReport.Verdict.SAFE));
+        assertEquals(SchemaVerifyMain.EXIT_DRIFT,
+                SchemaVerifyMain.exitCodeFor(ImpactReport.Verdict.NEEDS_ATTENTION));
+        assertEquals(SchemaVerifyMain.EXIT_DRIFT,
+                SchemaVerifyMain.exitCodeFor(ImpactReport.Verdict.DESTRUCTIVE));
+    }
+
+    /** Every Verdict maps to a real exit code -- a new enum constant must not silently read as a match. */
+    @Test
+    void everyVerdictMapsToMatchesOrDrift() {
+        for (ImpactReport.Verdict verdict : ImpactReport.Verdict.values()) {
+            int exitCode = SchemaVerifyMain.exitCodeFor(verdict);
+            assertTrue(exitCode == SchemaVerifyMain.EXIT_MATCHES || exitCode == SchemaVerifyMain.EXIT_DRIFT,
+                    () -> verdict + " mapped to unexpected exit code " + SchemaVerifyMain.exitCodeFor(verdict));
+        }
+    }
 }
