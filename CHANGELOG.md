@@ -2,6 +2,85 @@
 
 Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit dates.
 
+## [beta1.20] - 2026-08-26
+
+Scoped to the 213 commits between `beta1.19` (`522b0c8c`, 2026-08-15) and this tag (`c389da8a`).
+Every releases since `beta1.8` landed with no `CHANGELOG.md` entry (recorded as a known gap in
+`scripts/policy/changelog-versions.json`); this entry does not attempt to reconstruct that backlog
+retroactively, only to bring the file current from here forward. Highlights, not an exhaustive
+commit-by-commit list — see `git log beta1.19..beta1.20` for that.
+
+### Added
+- New `npdev` CLI verbs: `impact` (change-preview report over the existing migration-diff/
+  inspect-usage/pack-diff backends, R1.6), `bench` (per-app latency probe with saved baselines,
+  R3.7), `service` (install/uninstall wrappers around the guarded launchers, R9.6/R8.4),
+  `package`/`upgrade` and `pack verify` (R9.5/R8.3), `pack search` + NPR catalog (R8.4), `monitor
+  hotswap` and `monitor clone` (isolated instances for parallel testers, R3.8), `inspect bonds
+  --diagram` (self-contained ER-diagram HTML/SVG), and pixel-diff visual regression with
+  incremental dev-loop builds (R3.6/R1.2/R9.8).
+- Pack system: an `extends` keyword on `pack.json` (PACK-10, R8.11), sealed-pack jar building with
+  real REST-layer CRUD wiring (BUILD-2), Ed25519 pack signing + a trust policy (PACK-8/R8.7), OCI
+  Distribution API v2 pull, `pack publish --push` with digest pinning and shared multi-app ingress,
+  transitive pack dependencies with mutable tag pinning, pack-declared seed data (R8.8), pack role
+  bindings and document bands (PACK-9/R8.9, R5.7), and additive pack extensions with collision/
+  sealedness refusal (R8.11).
+- DSL: effective-dated values (`concept.temporal` + `asOf` resolution, R5.8), `concept.softDelete`
+  (R5.4), declarative `sequences[]`/`nextNumber()` (R5.3), cross-concept invariants at aggregate
+  scope (R4.4), per-locale label maps (R5.6), predicate grammar v2 — OR/IN/contains/null tests/
+  reference paths (R4.3), inbound `webhooks[]` with HMAC (R6.2) and a real outbound webhook adapter
+  (R6.1), document rendering with real MIME mail (R6.3), and a cross-app messaging event bridge
+  (R6.4).
+- UI: bulk selection and bulk actions on every concept grid (R7.8, with batched PATCH/DELETE
+  endpoints), a generic CSV import wizard (R7.6), keyboard-first entry in modal/picker/workbench
+  grid (R7.9), a responsive pass on grid/forms/workbench/sidebar (R7.10), dashboard gadgets that
+  drill through to a pre-filtered grid (R7.5), an async-flow-execution rail (R7.7), and a routine
+  recorder in the generated shell (R3.9).
+- Ops: scheduled backups with retention and an observability profile (R9.9/R9.10), model-wide
+  reference index + orphan validation + `rename --cascade` (xref), and server-enforced field-level
+  access (R5.5).
+- Quality: JaCoCo coverage ratchet baseline across all four Java builds (R3), Dependabot + CodeQL +
+  workflow-permissions hardening (R2).
+
+### Changed
+- **`NPDevKernel/adapters/expression-cel` renamed to `runtime-support`** (RUN-5, 598 references
+  across settings/build files, CI workflows, policy JSON, docs and ledger) — the module never had a
+  CEL library dependency; the old name was simply wrong. Zero functional change.
+- `EDIT-12`/`R10.3`: the frozen `npdev-templates/static-react/` bundle was deleted (owner decision)
+  now that `static/model-authoring.html` covers starter templates and all seven scaffolding
+  actions — a generated app no longer serves `/npdev-ui-react/` at all. See `BREAKING.md`.
+- `RUN-24`/`RUN-22`: `npdev dev` now hot-swaps a `METADATA_ONLY` model edit with no app restart,
+  and the served UI manifest patches in place — proven live by a real browser routine, not staged.
+
+### Fixed
+- **R5.2/RUN-1 (the last one): a concept's uniqueness check no longer loads the whole tenant table
+  into memory to compare in the JVM.** `ConceptStore#existsUnique` pushes a candidate-narrowing `WHERE`
+  down to SQL first; every row it returns is still re-checked in Java against the canonical rule, so a
+  dialect formatting wrinkle can only ever cost a harmless false positive. Measured 7.4x on 100k rows.
+- **RUN-11/R9.3: a `MigrationMutex` now stops two instances booting against the same database from
+  both running the schema migration at once** — closes a real hole where a concurrently-applied,
+  half-finished migration could leave a database in an inconsistent, half-migrated state.
+- **REG-193 (found live, not staged): a platform-added internal table now self-heals onto an
+  already-migrated database.** Internal-table `CREATE TABLE` was emitted only into Flyway's
+  one-time `V1__` script, so a newly-registered internal table appeared on fresh databases and was
+  silently absent from existing ones — hit in the wild via `npdev_cron_fire_claim`, causing an HTTP
+  503 on three app/config combinations.
+- REG-195: access rules using `$user.roles.contains(...)` no longer always deny.
+- RUN-4/R2.6: capability calls (`external-ai-http`, `mail-smtp`) now carry an enforced deadline via
+  a context-propagating executor, closing a case where a hung adapter call never timed out.
+- RUN-3/R8b: `NULLS FIRST` ordering now routes through `SqlDialect` instead of being hardcoded,
+  fixing a cross-engine ordering divergence.
+- QUAL-22/R2.7: the cron scheduler no longer hard-requires a `DataSource`, and each cron window is
+  claimed so two instances cannot double-fire it.
+- SCALE-2: the JVM's 255-constructor-parameter ceiling no longer silently caps a model at 255
+  concepts with a compile failure nobody had read (`SCALE-1`'s nightly ladder had been red every
+  night since its first run).
+- QUAL-12/13/14, REG-182/183: `engine-support.yml` now runs on every push to `main`, not only a tag
+  or manual dispatch — it had gone dark for 15 merges, including the one that shipped a
+  non-executable `gradlew` into `beta1.18`. `run-runtimehost-core/gradlew` itself is restored to
+  executable, which is what unblocked this release's own CI.
+- Security: `fast-uri` bumped 3.1.4 → 3.1.5 in `json-schema-validator` (audit finding).
+- Manager: an ops-lock leak, Flyway/DB-identity test gaps, and a JWT cookie-auth NPE.
+
 ## [beta1.8] - 2026-08-08
 
 Everything below is scoped to the 12 commits that landed on `main` between `beta1.7`
