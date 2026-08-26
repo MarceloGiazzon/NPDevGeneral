@@ -503,11 +503,10 @@ Tracked as accepted boundaries B15(A) (closed, Move 16) / B15(B) (closed, S6, th
   `scheduledForEpochMs` onto the envelope as metadata "for a consumer to honor" — i.e. the
   canonical demo's 24-hour reminder fired instantly. See `BREAKING.md` (2026-08-18).
 
-  **Known limitation:** the drain publishes with a FRESH correlation id (it ignores the row's stored
-  `trigger_correlation_id`), so a deferred event does not satisfy an `AWAIT_EVENT` declaring
-  `matchCorrelation: true`. This predates R2.4 — the orchestration `scheduleEvent` action has the
-  same behaviour — and fixing it needs tenant propagation the table has no column for. Tracked
-  separately; do not model a delayed self-wake against a correlated await until it is closed.
+  **Fixed 2026-08-20 (RUN-10):** the drain now publishes with the SAME correlation id AND tenant the
+  event was scheduled under (`npdev_scheduled_event` gained a `tenant_id` column), so a deferred
+  event correctly satisfies an `AWAIT_EVENT` declaring `matchCorrelation: true`. A delayed self-wake
+  against a correlated await is safe to model.
 
 **Flow-level cron scheduling (LNCH-12)** is a completely different, model-top-level feature: a
 `flowSchedule` declaration with a `cron` expression and a `tenantScope`. Full doc:

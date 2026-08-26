@@ -5,5 +5,16 @@ userFacingText: "Another app instance holds the migration lock. Wait for it to f
 workaround: "The second instance waits/refuses under the real lock (Postgres advisory lock or H2 atomic claim row); use ControlPanel's clear() only as a deliberate manual escape hatch."
 enforcingDiagnosticCodes: ["B4:migration_lock_held"]
 codeLinked: true
-codeLinkedNote: "Enforced at boot time by MigrationClaimStore (a lock/claim mechanism), surfaced as a boot-time refusal/exception in NPDevRuntimeHost, not a DSL ValidationDiagnostic -- outside this session's ValidationDiagnostic-scoped boundaryId mechanism."
+codeLinkedNote: >-
+  2026-08-25 (remediation plan W2.3). Re-traced: the real timeout refusal is thrown by
+  MigrationMutex.acquire (waitedOutMessage), not MigrationClaimStore directly -- MigrationClaimStore
+  no longer refuses at all since R9.3 (it WAITS for the lock instead), only MigrationMutex's wait
+  BUDGET can time out. SchemaLifecycleExecutor.beforeMigrate (line ~474) already wraps that failure
+  in `BoundaryBootException(new BoundaryViolation("B4", "boot", lockFailure.getMessage(), ...))`
+  (Wave 2, commit 50ddf3ea) -- boundaryId "B4" already reached the REST 503/boot-log channel before
+  this session, but the message carried no specific CODE. `waitedOutMessage` now prefixes its return
+  value `B4:migration_lock_held:`, preserved verbatim through the wrapper (BoundaryBootException's
+  message IS the violation's message). NPDevCli's MIGRATION_CLAIM_HELD boot-log classifier still
+  matches (its grep is a substring check, unaffected by a leading prefix).
+  Proven by SchemaLifecycleExecutorMigrationClaimTest (waits-then-times-out scenario).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B4"

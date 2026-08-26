@@ -29,8 +29,8 @@
     "twin-pair-registry.json). R3-equivalent: an entry naming a file that no longer exists must be",
     "removed in the same commit that removes the file."
   ],
-  "frozenCount": 5,
-  "frozenCountWhy": "THE CEILING. The owner accepted these 5 markdown linters on 2026-08-11 and ruled the list may never grow. check-no-markdown-reads.py fails if the entry count exceeds this number, and equally fails if it drops below without this number being lowered in the same commit -- so the ceiling ratchets DOWN with the list and can never be silently re-widened. A 6th exemption is an owner decision, never a checker change: the correct response to a new markdown read is to invert it into structured data (md-zero-2026-08-11 PLAN.md), which is how 37 couplings became 0.",
+  "frozenCount": 6,
+  "frozenCountWhy": "THE CEILING. The owner accepted these 5 markdown linters on 2026-08-11 and ruled the list may never grow without an explicit owner decision. check-no-markdown-reads.py fails if the entry count exceeds this number, and equally fails if it drops below without this number being lowered in the same commit -- so the ceiling ratchets DOWN with the list and can never be silently re-widened. A 6th exemption is an owner decision, never a checker change -- the default response to a new markdown read is still to invert it into structured data (md-zero-2026-08-11 PLAN.md, which is how 37 couplings became 0). 2026-08-25 (remediation plan W5.2): raised 5->6, owner-approved, for check-cited-paths.py -- a genuine markdown linter of the same shape as the other five (validates hand-authored path citations, cannot be inverted because the prose itself is what it checks), not a data-coupling that should have been inverted instead. See that entry's own `why` for the full case; check-cited-paths.py's own module docstring independently reasons through the same tension and reaches the same conclusion.",
   "exemptFiles": [
     {
       "path": "scripts/quality/check-markdown-links.py",
@@ -51,6 +51,10 @@
     {
       "path": "scripts/quality/run-portable-tooling-check.ps1",
       "why": "Scans NPDevCli/**/*.md (among other extensions) for hardcoded drive-letter paths (REG-144). The .md files under NPDevCli are hand-authored, not generated, and a hardcoded path IN the doc's prose is itself the defect this check exists to catch -- there is no registry to move the assertion into."
+    },
+    {
+      "path": "scripts/quality/check-cited-paths.py",
+      "why": "2026-08-25 (remediation plan W5.2), owner-approved sixth entry. Validates that a repo-rooted path cited as fact in CLAUDE.md/CONTRIBUTING.md/README.md/BREAKING.md/docs/README.md's CODE-SPAN prose (not markdown LINKS, which check-markdown-links.py already covers) actually exists -- e.g. CONTRIBUTING.md once told a new contributor to run a script deleted weeks earlier, and nothing caught it because the dead reference was a code span, not a link. Same shape as check-markdown-links.py, already exempted: the input being validated IS the hand-authored prose itself, so there is no structured-data source to invert this into -- the citation only exists as text someone typed. check-cited-paths.py's own module docstring independently reaches this same conclusion before this entry existed."
     }
   ]
 }

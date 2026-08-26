@@ -89,6 +89,10 @@ public final class ConceptQueryEngine {
         return switch (filter.operator()) {
             case EQ -> valuesEqual(actual, expected);
             case NEQ -> !valuesEqual(actual, expected);
+            // RUN-28: matches ConceptStore#uniqueValuesCollide's String-branch rule exactly --
+            // trimmed, case-insensitive, string-cast comparison, regardless of either side's type.
+            case EQ_CI -> actual != null && expected != null
+                    && String.valueOf(actual).trim().equalsIgnoreCase(String.valueOf(expected).trim());
             case LT -> compare(actual, expected) < 0;
             case LTE -> compare(actual, expected) <= 0;
             case GT -> compare(actual, expected) > 0;

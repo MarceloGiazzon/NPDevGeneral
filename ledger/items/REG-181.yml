@@ -7,72 +7,81 @@ type: BUG
 severity: MEDIUM
 status: DONE
 opened: 2026-08-15
-closed: 2026-08-15
-verification: NOT_VERIFIED
+closed: 2026-08-25
+verification: VERIFIED_LIVE
 source: >-
   Found while investigating a reported com.finalexec.controlpanel 404 (see REG-179's source note).
   Getting a real app to boot with REG-177's new IdentityPackTableNames class actually present
   required working around this bug by hand (building NPDevContract/dsl's own standalone gradlew jar
   directly) -- a normal `sync-runtimehost-libs.ps1 -BuildLocalJars` restage was not sufficient.
+  Reopened 2026-08-25 (remediation plan W4.1): the 2026-08-15 fix was a mechanical patch to the sync
+  script only, its own repro was never run, and the naming duality itself -- the item's own stated
+  root cause -- was untouched.
 surface: build-tooling/runtimehost-libs-sync
 files:
   - scripts/runtimehost/sync-runtimehost-libs.ps1
+  - NPDevContract/dsl/build.gradle
 detail: |
   `NPDevContract/dsl`'s sources are compiled into a jar by TWO different, independent Gradle
-  projects with two different artifact names: `NPDevKernel`'s and `NPDevGenerator`'s own `:dsl`
-  subproject references produce `dsl-0.1.0.jar`, while `NPDevContract/dsl`'s OWN standalone
-  `gradlew jar` (its real, canonical build) produces `npdev-dsl-0.1.0.jar`. The generated app's
-  `verifyNpdevRuntimeHostLibs` task requires `npdev-dsl-0.1.0.jar` specifically (per
-  `runtimehost-libs-manifest.json`'s `requiredStagedJars`).
+  projects with two different DEFAULT artifact names: `NPDevKernel`'s and `NPDevGenerator`'s own
+  `:dsl` subproject reference (`include 'dsl'` in each `settings.gradle`) falls back to the
+  SUBPROJECT's own name ("dsl") for jar naming, producing `dsl-0.1.0.jar`, while
+  `NPDevContract/dsl`'s OWN standalone build (`rootProject.name = 'npdev-dsl'`, its
+  `settings.gradle`) produces `npdev-dsl-0.1.0.jar`. Two names for one artifact meant
+  `sync-runtimehost-libs.ps1`'s jar-discovery scan could track one name's freshness while a stale
+  copy sat unnoticed and unrefreshed under the other.
 
-  `sync-runtimehost-libs.ps1 -BuildLocalJars` invokes `NPDevKernel`'s and `NPDevGenerator`'s own
-  gradlew (producing/refreshing `dsl-0.1.0.jar` as a side effect of their own `:dsl` subproject
-  dependency) and `NPDevRuntimeHost/runtimehost-core`'s gradlew, but never invokes
-  `NPDevContract/dsl`'s OWN standalone gradlew directly -- so `npdev-dsl-0.1.0.jar` is only ever
-  refreshed if something ELSE, outside this script, happens to have built it recently and left it
-  under `NPDevContract/dsl/build/libs/` (or the external Gradle build root) for `Sync-NPDevJars`'s
-  scan to pick up. When that hasn't happened, the script's own REG-162 content-hash safety net
-  (`stagedContentMismatches`) does not fire -- it only compares a jar it DECIDED to copy against its
-  own source of truth, and a `npdev-dsl-0.1.0.jar` the script's discovery pass never found at all
-  (because nothing recently built it) is simply left as whatever was already staged from a prior
-  run, reported as "already current" alongside genuinely-current jars with no distinction.
+  2026-08-15 fix (kept, still correct): `-BuildLocalJars` also runs `NPDevContract/dsl`'s OWN
+  standalone `gradlew jar` before the kernel/generator builds, guaranteeing `npdev-dsl-0.1.0.jar` is
+  rebuilt from current source on every restage. This alone closes the STALENESS symptom but leaves
+  the ROOT CAUSE (two names) in place -- both `dsl-0.1.0.jar` and `npdev-dsl-0.1.0.jar` still get
+  discovered and staged side by side, duplicate classes on the classpath, and the class of bug
+  remains latent for any future consumer that does not happen to get the standalone-build-first
+  treatment.
 
-  Not deeply root-caused past this point -- worth its own investigation into whether the fix belongs
-  in `sync-runtimehost-libs.ps1` (add an explicit `NPDevContract/dsl` standalone `gradlew jar`
-  invocation under `-BuildLocalJars`, mirroring the runtimehost-core step) or in unifying the two
-  Gradle projects' jar-naming so `dsl-0.1.0.jar`/`npdev-dsl-0.1.0.jar` aren't two names for
-  (supposedly) the same artifact in the first place.
+  2026-08-25 fix (this pass, the item's own originally-flagged "deeper alternative"):
+  `NPDevContract/dsl/build.gradle` now sets `base { archivesName = 'npdev-dsl' }` unconditionally.
+  This is read by Gradle's `jar` task regardless of HOW the project is included -- standalone (where
+  it was already the default via `rootProject.name`) or as a subproject (where it previously fell
+  back to the subproject's own name). Verified directly: building `:dsl:jar` via
+  `NPDevKernel/gradlew` now also produces `npdev-dsl-0.1.0.jar` (not `dsl-0.1.0.jar`) under
+  `<build-root>/gradle/npdev-kernel/dsl/libs/`. There is now only ONE name for this artifact,
+  produced identically by every build context that compiles it.
+
+  LIVE-VERIFIED end to end (the guard that was never run in the 2026-08-15 pass): added a temporary
+  canary method to `SemanticValidator.java` with a unique fingerprint string, confirmed via
+  `unzip -p ... | grep` that it was ABSENT from the currently-staged `npdev-dsl-0.1.0.jar`, ran
+  `sync-runtimehost-libs.ps1 -BuildLocalJars` with NO other manual `NPDevContract/dsl` build step,
+  then confirmed via the same extraction method that the fingerprint WAS present in the freshly
+  staged jar. Repeated with a second, differently-fingerprinted edit for an unambiguous result. The
+  canary was then removed and the workspace restaged to a clean state (`git diff` on
+  `SemanticValidator.java` confirms no net change).
+
+  HONEST NOTE on method: an early verification attempt used `grep -a` directly against the (zip-
+  compressed) `.jar` file, which can false-negative on a compressed entry -- corrected by extracting
+  the `.class` entry first (`unzip -p ... > file.class`) before grepping its raw, uncompressed bytes.
+  Recorded here because it produced a confusing false failure mid-verification before being caught.
 guard:
   kind: manual
   ref: >-
-    modify a class in NPDevContract/dsl, run `sync-runtimehost-libs.ps1 -BuildLocalJars` with NO
-    other manual NPDevContract/dsl build step, then generate+compile a sample app referencing the
-    new class
+    modify a class in NPDevContract/dsl (or add one), run `sync-runtimehost-libs.ps1
+    -BuildLocalJars` with NO other manual NPDevContract/dsl build step, then extract
+    `com/npdev/dsl/v1/.../<Class>.class` from the staged `npdev-dsl-0.1.0.jar`
+    (`D:\WorkSpace\NPDev\Build\runtimehost-libs\npdev-dsl-0.1.0.jar`) via `unzip -p` and grep the
+    raw bytes for the change -- grepping the `.jar` file directly is NOT reliable (compressed
+    entries can hide a literal string match)
   asserts: >-
-    the sample app's compile can see the new class -- sync-runtimehost-libs.ps1 alone (no manual
-    workaround) staged a truly current npdev-dsl-0.1.0.jar
+    the staged npdev-dsl-0.1.0.jar's class bytecode reflects the source change -- sync-runtimehost-
+    libs.ps1 alone (no manual workaround) staged a truly current jar, and only ONE jar name
+    (npdev-dsl-0.1.0.jar) is ever produced for this artifact regardless of build context
   provenRed: true
+  provenRedNote: >-
+    Measured directly, twice (two different fingerprint strings): before the sync-script run, the
+    staged jar's extracted class bytes did not contain the new method/string; after running
+    `sync-runtimehost-libs.ps1 -BuildLocalJars` alone, they did. The naming-unification half was
+    separately measured RED-then-GREEN by building `:dsl:jar` via NPDevKernel's gradlew before and
+    after the `archivesName` change (dsl-0.1.0.jar before, npdev-dsl-0.1.0.jar after).
 resolution: >-
-  Implemented this item's own first likely-fix option: `-BuildLocalJars` now also runs
-  `NPDevContract/dsl`'s OWN standalone `gradlew jar` (producing `npdev-dsl-0.1.0.jar`, its real
-  `rootProject.name`-derived artifact) before the kernel/generator builds, mirroring the existing
-  `runtimehost-core` step's pattern. `NPDEV_BUILD_ROOT` is already exported into this script's
-  process environment earlier in the file, so dsl's own `resolveNpdevBuildRoot()` picks it up with
-  no extra `-P` flag (unlike kernel/generator's `-PnpdevBuildRoot` convention) -- confirmed by
-  reading `NPDevContract/dsl/build.gradle`'s own resolver, which checks the `NPDEV_BUILD_ROOT` env
-  var first. This guarantees `npdev-dsl-0.1.0.jar` is rebuilt from current source on every
-  `-BuildLocalJars` run, so `Sync-NPDevJars`'s discovery always finds and stages a genuinely fresh
-  copy under that exact name, rather than only picking it up if something else happened to have
-  built it recently.
-
-  Not additionally implemented: unifying the two Gradle projects' jar-naming (`dsl-0.1.0.jar` vs
-  `npdev-dsl-0.1.0.jar`) so they're not two names for one artifact -- this item's own text flagged
-  that as the deeper alternative fix, out of scope for a mechanical patch to the sync script.
-
-  Not live-verified in this pass (the guard's own repro -- modify a dsl class, run
-  `-BuildLocalJars` with no manual workaround, generate+compile a sample referencing the new class
-  -- was not re-run end to end); PowerShell syntax was checked
-  (`[System.Management.Automation.PSParser]::Tokenize`), and the new step's logic (working
-  directory, executable resolution, `--project-cache-dir` override) directly mirrors the adjacent
-  `runtimehost-core` step already proven working in this exact script. `verification: NOT_VERIFIED`
-  reflects that a live end-to-end repro was not performed, not that the change is unreasoned.
+  Superseded by this item's own `detail` field above (2026-08-25 W4.1 closes what the 2026-08-15
+  mechanical patch left open: the naming duality itself, plus the live end-to-end guard that patch's
+  own `verification: NOT_VERIFIED` admitted was never run).

@@ -226,6 +226,9 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 () -> executor.afterMigrate(dataSource, manifest));
         assertTrue(refusal.getMessage().contains("auditQuantity"), refusal.getMessage());
         assertTrue(refusal.getMessage().contains("unless explicitly acknowledged"), refusal.getMessage());
+        // B2 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 W2.3): the refusal carries a boundaryId-linked
+        // code so a boot log line or future orchestrator hook can key on it rather than on English.
+        assertTrue(refusal.getMessage().contains("B2:expression_backfill_requires_ack:"), refusal.getMessage());
 
         try (Connection connection = dataSource.getConnection()) {
             assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"),

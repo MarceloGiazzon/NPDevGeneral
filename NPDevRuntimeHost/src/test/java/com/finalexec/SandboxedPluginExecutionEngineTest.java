@@ -291,18 +291,19 @@ class SandboxedPluginExecutionEngineTest {
         }
     }
 
-    @Disabled("Malicious plugin containment requires a real sandbox with SecurityManager or process isolation. "
-            + "The 6 existing tests in this class verify the happy path, error handling, timeout, interrupt "
-            + "safety, overload disambiguation, and policy denial.")
+    // W3.3 (2026-08-25 remediation plan / QUAL-33): investigated, not fixed. Verified directly
+    // against SandboxedPluginExecutionEngine.java (not inferred from this stub's own comments): the
+    // only real containment mechanism today is the wall-clock future.get(timeoutMs) the 6 tests
+    // above already prove -- filesystem, network, memory/CPU, System.exit and reflection are all
+    // wide open to any plugin handler running in the same JVM. A real fix needs OS-level process
+    // isolation, which is its own substantial security feature (new IPC surface, per-platform
+    // resource limiting, killed-child handling) -- filed as ledger/items/SEC-3.yml rather than
+    // attempted inline; a half-built containment layer would be worse than this honestly-disabled
+    // stub (false confidence that malicious code is contained when it is not).
+    @Disabled("No real containment exists beyond the timeout -- see ledger/items/SEC-3.yml for what "
+            + "would need to be built (OS-level process isolation) and why it wasn't attempted here.")
     @Test
     void maliciousPluginVectorsRemainContained() {
-        // Original aspirational vectors:
-        // - Filesystem access outside the sandbox blocked
-        // - Network connections blocked
-        // - Memory/CPU bounded
-        // - Infinite loop terminated by timeout
-        // - System.exit contained
-        // - Reflection containment
     }
 
     @Test

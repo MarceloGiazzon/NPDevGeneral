@@ -136,10 +136,11 @@ public final class CrossEngineDataPromotion {
         try (Connection sourceConnection = source.getConnection(); Connection targetConnection = target.getConnection()) {
             long sourceCount = tableExistsLive(sourceConnection, table) ? countRows(sourceConnection, table) : 0L;
             if (!tableExistsLive(targetConnection, table)) {
-                // B10 (H2→Postgres): schema reconciliation is out of scope for data promotion --
-                // the target schema must already exist. Refuse with a boundary violation.
+                // B10:data_only_promotion (2026-08-25 W2.3, docs/ACCEPTED_BOUNDARIES.md): schema
+                // reconciliation is out of scope for data promotion -- the target schema must
+                // already exist. Code carried as a message prefix, same convention B2/B4/B5/B9 use.
                 throw new BoundaryBootException(new BoundaryViolation("B10", "promotion",
-                        "Cross-engine promotion refused: target table '" + table + "' does not exist. "
+                        "B10:data_only_promotion:Cross-engine promotion refused: target table '" + table + "' does not exist. "
                                 + "Realize the schema on the target first (boot the app pointed at the target database), "
                                 + "then promote data. Schema reconciliation is not supported.",
                         Instant.now()));

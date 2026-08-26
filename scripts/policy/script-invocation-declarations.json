@@ -478,6 +478,9 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/beta/ai-only-beta-0-no-false-green-scope.md"
     },
+    "scripts/quality/run-kernel-quality-gate.ps1": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/run-library-probe.py": {
       "invocation": "ci-gate"
     },

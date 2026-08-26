@@ -1,9 +1,27 @@
 id: B28
 title: "Live model reload (LC-C3) -- DO NOT SHIP; the app restarts to pick up a model change"
 kind: HITTABLE
-userFacingText: "Model changes require an app restart. Hot reload is available for metadata/UI changes via the admin reload endpoint, but full model changes (schema, flows) still require restart."
-workaround: "Restart the app (~30s) for a schema/logic-shaped model change; use LC-C2's metadata-only fast path for a label/panel-only change (no restart needed)."
-enforcingDiagnosticCodes: []
+userFacingText: "Model changes require an app restart. Hot reload is available for metadata/UI changes via the admin reload endpoint, but full model changes (schema, flows) still require restart -- the endpoint that would do it is disabled by default and requires an explicit operator opt-in that accepts a known split-brain risk."
+workaround: "Restart the app (~30s) for a schema/logic-shaped model change; use LC-C2's metadata-only fast path for a label/panel-only change (no restart needed). If you have deliberately opted in to full model reload anyway (npdev.runtime.hotswap.full-model-reload-enabled=true), understand that only ModelHolder.get() consumers observe the new model -- everything with a directly-injected CompiledModel keeps the old one."
+enforcingDiagnosticCodes: ["FULL_MODEL_RELOAD_DISABLED"]
 codeLinked: true
-codeLinkedNote: "ModelHolder.java provides AtomicReference<CompiledModel> + ReadWriteLock. MetadataHotSwapController exposes POST /api/admin/runtime/metadata-hotswap/model-reload. Note: only consumers using ModelHolder.get() see the swap — direct CompiledModel injection retains the old model."
+codeLinkedNote: >-
+  2026-08-25 (remediation plan W2.4a). `ModelHolder.java` (AtomicReference<CompiledModel> +
+  ReadWriteLock) and `MetadataHotSwapController`'s `POST /api/admin/runtime/metadata-hotswap/
+  model-reload` both exist and give only a PARTIAL swap -- only `ModelHolder.get()` consumers
+  observe the new model, every singleton constructed with a directly-injected `CompiledModel` at
+  application-context startup keeps the old one, a split-brain state. This session gated the
+  endpoint: disabled by default behind `npdev.runtime.hotswap.full-model-reload-enabled` (checked
+  AFTER the pre-existing SUPERUSER auth gate, so a caller cannot even discover the flag's existence
+  without already holding SUPERUSER), so the reachable do-not-ship mechanism cannot be invoked by
+  accident. The disabled-by-default refusal returns a structured JSON body carrying
+  `code: "FULL_MODEL_RELOAD_DISABLED"` -- the same `{"ok": false, "code": ..., "message": ...}`
+  shape `MetadataHotSwapController`'s own `/apply` endpoint already used for its failures, not the
+  `BoundaryViolation`/`ValidationDiagnostic` prefix conventions the other ten HITTABLE boundaries
+  use (a third ad-hoc shape; see docs/ACCEPTED_BOUNDARIES.md's classification-table note for the
+  full inventory of shapes in use). Proven by 3 tests in
+  MetadataHotSwapControllerStandaloneTest.java: disabled-by-default returns 404 with this code even
+  for an authenticated SUPERUSER, auth is still checked ahead of the flag, and the explicit opt-in
+  genuinely works. Completing the fix -- migrating every direct `CompiledModel` injection to
+  `ModelHolder.get()` -- is real follow-up work (plan option (b)), not attempted this session.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"

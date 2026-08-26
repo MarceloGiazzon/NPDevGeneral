@@ -168,7 +168,13 @@ final class BackfillPass {
                     .findMatching(dataSource, manifest.schemaFingerprint(), expectedToken).isPresent();
             if (!acknowledged) {
                 for (ExpressionBackfillPreview.Item candidate : expressionCandidates) {
-                    refusals.add(candidate.table() + "." + candidate.column()
+                    // B2 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 W2.3): the leading
+                    // "B2:expression_backfill_requires_ack:" tag lets a boot log line or future
+                    // orchestrator hook key on this specific refusal reason even though it may be
+                    // thrown merged with unrelated LNCH-1 Phase 5 literal-default refusals below
+                    // (`refusals` is one shared list for both reasons, by design -- an operator
+                    // sees every blocking reason in one boot attempt, not one at a time).
+                    refusals.add("B2:expression_backfill_requires_ack:" + candidate.table() + "." + candidate.column()
                             + " (an expression default is declared, but only literal defaults are backfilled "
                             + "automatically in v1 unless explicitly acknowledged -- preview it via GET "
                             + "/api/admin/schema-migration/expression-backfill-preview, then acknowledge via POST "

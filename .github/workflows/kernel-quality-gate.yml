@@ -1,0 +1,78 @@
+name: Kernel quality gate
+
+# W3.2 (2026-08-25 remediation plan / QUAL-32, COV-RATCHET). NPDevKernel/kernel's coverage floor is
+# an AGGREGATE across :kernel and 36+ :adapters:* subprojects, produced by the real `kernelQualityGate`
+# Gradle task -- which existed and was invoked by NOTHING, in any gate or any workflow, before this
+# file. Consequence, measured 2026-08-23: the recorded floor was 73.0968 (from a partial run) while a
+# full local aggregate measured 62.6906 -- the ratchet was red against a number that had never been
+# true of the whole module, and nothing running on a schedule would ever have caught the drift.
+#
+# This is the CI half of the fix; scripts/quality/run-kernel-quality-gate.ps1 is the local half, and
+# both are now gate #3 (kernel) in scripts/quality/run-all-gates.ps1's default T2 sequence.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'NPDevKernel/**'
+      - 'scripts/quality/run-kernel-quality-gate.ps1'
+      - 'scripts/quality/check-coverage-ratchet.py'
+      - 'scripts/policy/coverage-baseline.json'
+      - '.github/workflows/kernel-quality-gate.yml'
+  pull_request:
+    paths:
+      - 'NPDevKernel/**'
+      - 'scripts/quality/run-kernel-quality-gate.ps1'
+      - 'scripts/quality/check-coverage-ratchet.py'
+      - 'scripts/policy/coverage-baseline.json'
+      - '.github/workflows/kernel-quality-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-quality-gate:
+    name: kernelQualityGate + coverage ratchet
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      CI: true
+      # REG-144: pin the build root so Gradle and this job's own python step cannot resolve different
+      # ones on a checkout not named NPDev_General -- same reasoning as every other workflow here.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      # :kernel:test + every :adapters:*:test, each finalizedBy jacocoTestReport (NPDevKernel/build.gradle).
+      # Postgres-backed adapters start their own Testcontainers container; ubuntu-latest ships Docker,
+      # so no `services:` block is needed (same reasoning as storage-dialect-conformance.yml).
+      - name: kernelQualityGate
+        working-directory: NPDevKernel
+        run: ./gradlew kernelQualityGate --no-daemon --console=plain
+
+      # Reads the fresh reports the step above just wrote and fails on any real regression against
+      # scripts/policy/coverage-baseline.json's recorded floor. Does NOT commit a ratchet-up; whoever
+      # runs this locally and wants to raise the floor for real commits that themselves (same
+      # convention as every other module's entry in that file).
+      - name: Coverage ratchet
+        run: python3 scripts/quality/check-coverage-ratchet.py
+
+      - name: Upload kernel/adapters test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-quality-gate-test-results
+          path: Build/gradle/npdev-kernel/**/test-results/**/*.xml
+          if-no-files-found: warn

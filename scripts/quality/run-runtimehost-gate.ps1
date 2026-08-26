@@ -57,6 +57,7 @@ $cleanupEvidence = $null
 $observabilityHardening = $null
 $runtimeSecurityConsistency = $null
 $sampleDiagnosticsEnrichment = $null
+$coverageRatchetEvidence = $null
 try {
     Write-NPDevInfo ("Synchronizing RuntimeHost local dependency jars for sample " + $SampleId)
     & $syncRuntimeHostLibsScript `
@@ -120,6 +121,24 @@ try {
             New-Item -ItemType Directory -Force -Path (Split-Path -Parent $runtimeHostJacocoDestination) | Out-Null
             Copy-Item -LiteralPath $runtimeHostJacocoSource -Destination $runtimeHostJacocoDestination -Force
             Write-NPDevInfo ("Preserved RuntimeHost JaCoCo report before cleanup: " + $runtimeHostJacocoDestination)
+        }
+
+        # W3.2 (2026-08-25 remediation plan / QUAL-32, COV-RATCHET): check the ratchet HERE, right
+        # after the report above is copied to its stable path -- this is the freshest this module's
+        # coverage evidence will ever be. Previously the only ratchet check lived in
+        # run-ai-knowledge-gate.ps1, which runs FIRST in run-all-gates.ps1 and so could never see this
+        # run's own output within one invocation.
+        Write-NPDevInfo "Checking RuntimeHost coverage against its recorded floor"
+        $coverageRatchetPyExe = (Get-Command python -ErrorAction Stop).Source
+        $coverageRatchetOutput = & $coverageRatchetPyExe "scripts/quality/check-coverage-ratchet.py" 2>&1 | ForEach-Object { $_.ToString() }
+        $coverageRatchetExitCode = $LASTEXITCODE
+        $coverageRatchetEvidence = [pscustomobject]@{
+            overallStatus = if ($coverageRatchetExitCode -eq 0) { "passed" } else { "failed" }
+            exitCode = $coverageRatchetExitCode
+            output = @($coverageRatchetOutput | Select-Object -Last 30)
+        }
+        if ($coverageRatchetExitCode -ne 0) {
+            throw "Coverage ratchet failed for RuntimeHost -- see scripts/quality/check-coverage-ratchet.py output above."
         }
     }
     finally {
@@ -244,6 +263,7 @@ $report = [pscustomobject]@{
     verificationTasks = @("enforceSingleSchemaRealizationSource", "test", "runtimehost-core:test")
     verificationCommand = $verificationCommand
     runtimeHostCoreCommand = $runtimeHostCoreCommand
+    coverageRatchet = $coverageRatchetEvidence
     cleanup = $cleanupEvidence
     observabilityHardening = if ($null -eq $observabilityHardening) {
         $null

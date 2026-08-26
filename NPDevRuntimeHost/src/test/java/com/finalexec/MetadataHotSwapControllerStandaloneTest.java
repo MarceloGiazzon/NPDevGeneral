@@ -53,7 +53,8 @@ class MetadataHotSwapControllerStandaloneTest {
 
         when(runtimeContextService.currentContext(any())).thenReturn(executionContext);
 
-        MetadataHotSwapController controller = new MetadataHotSwapController(runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder());
+        MetadataHotSwapController controller = new MetadataHotSwapController(
+                runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), false);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -113,6 +114,72 @@ class MetadataHotSwapControllerStandaloneTest {
         when(executionContext.hasRole("ADMIN")).thenReturn(false);
         mockMvc.perform(get("/api/admin/runtime/metadata-hotswap/status"))
                 .andExpect(status().isForbidden());
+    }
+
+    // W2.4a (2026-08-25 remediation plan): B28's full model hot-reload is registered DO NOT SHIP
+    // (split-brain risk -- ModelHolder.get() consumers see the new model, direct CompiledModel
+    // injection does not), so it must not be reachable by accident just because a caller holds
+    // SUPERUSER. These three tests prove the gate: disabled by default even for an authorized
+    // caller, auth is still checked ahead of the flag, and the explicit opt-in genuinely works.
+
+    @Test
+    void modelReloadDisabledByDefaultReturnsNotFoundEvenForSuperUser() throws Exception {
+        when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
+
+        mockMvc.perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(appExternalRoot.resolve("model.json").toString()) + "\"}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.ok").value(false))
+                .andExpect(jsonPath("$.code").value("FULL_MODEL_RELOAD_DISABLED"));
+    }
+
+    @Test
+    void modelReloadStillRequiresSuperUserEvenWhenFlagIsEnabled() throws Exception {
+        MetadataHotSwapController enabledController = new MetadataHotSwapController(
+                runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), true);
+        MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
+        when(executionContext.hasRole("SUPERUSER")).thenReturn(false);
+
+        enabledMockMvc.perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(appExternalRoot.resolve("model.json").toString()) + "\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void modelReloadSwapsTheModelWhenExplicitlyEnabled() throws Exception {
+        Path modelPath = appExternalRoot.resolve("model.json");
+        writeFixture(modelPath, minimalModelJson());
+        com.finalexec.config.ModelHolder modelHolder =
+                new com.finalexec.config.ModelHolder(compiledModel(minimalModelJson()));
+        MetadataHotSwapController enabledController = new MetadataHotSwapController(
+                runtimeMetadataService, runtimeContextService, modelHolder, true);
+        MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
+        when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
+
+        enabledMockMvc.perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(modelPath.toString()) + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.concepts").value(1));
+
+        org.junit.jupiter.api.Assertions.assertEquals(1, modelHolder.get().getConcepts().size());
+    }
+
+    private static com.npdev.dsl.v1.compiled.CompiledModel compiledModel(String modelJson) throws Exception {
+        com.npdev.dsl.v1.ast.ModelAst ast = new com.npdev.dsl.v1.parser.JsonModelParser()
+                .parse(new ObjectMapper().readTree(modelJson));
+        return new com.npdev.dsl.v1.compiler.ModelCompiler().compile(ast);
+    }
+
+    private static String minimalModelJson() {
+        return "{"
+                + "\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+                + "\"concepts\":[{\"name\":\"Thing\",\"fields\":["
+                + "{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]}]"
+                + "}";
     }
 
     private void assertOverviewNamespace(String expected) {

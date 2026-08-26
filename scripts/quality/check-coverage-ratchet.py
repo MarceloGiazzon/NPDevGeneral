@@ -39,22 +39,24 @@ module, and:
 
 WHERE REPORTS COME FROM
 ------------------------
-This script is wired into run-ai-knowledge-gate.ps1, which is static by design (no Gradle, no npm
-install, no boot). Reports only exist here because an EARLIER step in the same `run-all-gates.ps1`
-invocation (run-generator-gate.ps1 for dsl/generator, run-runtimehost-gate.ps1 for RuntimeHost)
-already ran the real test command, and each tool's own
-report-writing left a file on disk: JaCoCo's `finalizedBy jacocoTestReport` wiring in each
-build.gradle, vitest's `coverage.reporter: ["text","json-summary"]` in vitest.config.ts, or (for
-NPDevCli) run-ai-knowledge-gate.ps1's OWN step [18/35] running the suite under `coverage run` before
-this later step reads its `coverage json` output. In the STANDALONE ai-knowledge-gate.yml CI job
-(which never builds the Java/frontend modules), the Java and editor modules legitimately read
-not-measured every time -- that is the intended behaviour, not a bug: those checks become
-load-bearing when a developer runs the full `run-all-gates.ps1` locally, or in a future CI job that
-combines a build with this check. NPDevCli is the one module measured for real even in the
-standalone CI job, since step [18/35] already runs its tests there. Kernel has no dedicated CI gate
-at all yet (kernelQualityGate is a real Gradle task nobody invokes) -- a pre-existing gap this card
-does not close; see coverage-baseline.json's kernel note. NPDevMcp and the rest of scripts/ have no
-dedicated automated test suite at all yet -- same shape of gap, see their own baseline notes.
+2026-08-25 (remediation plan W3.2 / QUAL-32, COV-RATCHET): this script is now invoked from THREE
+places, not one -- run-ai-knowledge-gate.ps1 (NPDevCli, NPDevMcp, scripts/), run-generator-gate.ps1
+(dsl, generator, right after :dsl:test + generatorQualityGate produce fresh reports in the same
+process), and run-runtimehost-gate.ps1 (RuntimeHost, right after its own jacocoTestReport.xml is
+copied to its stable path). This replaced a single invocation living only in
+run-ai-knowledge-gate.ps1, which runs FIRST in run-all-gates.ps1's T2 sequence -- so within one
+`run-all-gates.ps1` invocation it could only ever see reports left over from some earlier, SEPARATE
+run, and REG-168's own staleness guard then rejected them the moment source changed since (measured
+2026-08-23: 1 of 7 modules read as measured on a live run). Each of the three invocations now reads
+its own freshest-possible evidence, produced moments earlier in the same script. NPDevCli's report
+still comes from run-ai-knowledge-gate.ps1's OWN step running the suite under `coverage run` before
+its later step reads `coverage json` output -- unchanged, since NPDevCli never builds so the static
+gate genuinely measures it for real. Kernel is measured by run-kernel-quality-gate.ps1 (new,
+W3.2/QUAL-32), which runs `kernelQualityGate` (:kernel:test + all :adapters:*:test) from
+NPDevKernel's own Gradle root, then this same script -- see that script and
+.github/workflows/kernel-quality-gate.yml. NPDevMcp and the rest of scripts/ have no dedicated
+automated test suite at all yet -- same shape of gap as kernel had, see their own baseline notes
+(W3.4, not yet done as of this note).
 
 Usage:
     python scripts/quality/check-coverage-ratchet.py
@@ -345,6 +347,19 @@ def measure_module(
             return None, None
 
     if module_cfg.get("aggregate", False):
+        # W3.2/W3.4 verification (2026-08-25): found LIVE, not synthesized -- QUAL-27's partial-
+        # report guard only ever covered the single-report path below. Editing kernel/adapter source
+        # (fresh, unrelated to the module actually being measured) made REG-168 correctly drop 40 of
+        # 42 stale sibling reports, and the aggregate branch summed the 2 survivors with no floor on
+        # HOW FEW reports is too few to trust -- reporting a real "62.69% -> 25.24%" REGRESSION off
+        # 2 reports, the aggregate-shaped twin of the exact failure mode QUAL-27 fixed for one report.
+        # minReportCount (declared per aggregate module in coverage-baseline.json) is that floor.
+        min_reports = module_cfg.get("minReportCount")
+        if min_reports is not None and len(candidates) < min_reports:
+            print(f"    (QUAL-27-aggregate: refusing partial aggregate for {module_name}: only "
+                  f"{len(candidates)} of an expected >= {min_reports} report(s) survived staleness "
+                  "filtering)", file=sys.stderr)
+            return None, None
         pct = sum_line_coverage(candidates, report_format)
         evidence = f"{len(candidates)} report(s), e.g. {candidates[0]}"
         return pct, evidence
@@ -379,6 +394,15 @@ def main(argv: list[str]) -> int:
         "--calibrate",
         action="store_true",
         help="Self-test: verify this checker's own regression/ratchet-up/not-measured branches are reachable.",
+    )
+    parser.add_argument(
+        "--write-baseline",
+        action="store_true",
+        help="QUAL-37: explicitly allow ratcheting a platformDependent module's floor up on THIS "
+        "machine, overriding the CI-only guard below. Every invocation without this flag on a "
+        "non-CI machine leaves a platformDependent module's floor untouched even when the fresh "
+        "measurement is higher -- nine re-pins on NPDevCli (coverage-baseline.json's own note) were "
+        "all a Windows number silently overwriting a Linux-CI-measured floor with no flag to stop it.",
     )
     args = parser.parse_args(argv)
 
@@ -425,6 +449,16 @@ def main(argv: list[str]) -> int:
             )
             print(f"  - {name}: {pct}% <-- REGRESSION vs floor {recorded}% ({evidence})")
         elif pct > recorded:
+            allowed = args.write_baseline or os.environ.get("CI") == "true"
+            if cfg.get("platformDependent") and not allowed:
+                print(
+                    f"  - {name}: {pct}% is ABOVE floor {recorded}%, but this module is "
+                    f"platformDependent and this is not a CI run (CI != 'true') and --write-baseline "
+                    f"was not passed -- refusing to auto-ratchet (floor stays {recorded}%). See the "
+                    f"module's own 'note' for why: a local measurement on the wrong platform has "
+                    f"silently broken this floor before."
+                )
+                continue
             print(f"  - {name}: {pct}% (ratcheting floor up from {recorded}%, {evidence})")
             cfg["coveragePercent"] = pct
             cfg["measuredOn"] = _now_iso()
@@ -543,6 +577,34 @@ def run_calibration() -> int:
         print(f"  [{'PASS' if pass4b else 'FAIL'}] a skewed pair (90%/weight100, 0%/weight1) aggregates by weighted sum, not naive average (measured: {pct_agg2}, expected ~89.11)")
         ok = ok and pass4b
 
+        # Control 4f (2026-08-25, found live during W3.4 verification): an aggregate module whose
+        # sibling reports mostly went stale (REG-168) must be refused, not summed from the few
+        # survivors -- the aggregate-shaped twin of Control 7's single-report partial-run guard.
+        # Without minReportCount, this exact shape reported kernel's real 62.69% floor as a false
+        # "DROPPED to 25.24%" off 2 of an expected 42 reports.
+        agg_dir3 = tmp / "agg3"
+        make_xml(agg_dir3 / "one.xml", covered=90, missed=10)
+        pct_agg3_blocked, _ = measure_module(
+            tmp, {"reportGlobs": ["agg3/*.xml"], "aggregate": True, "minReportCount": 5}, None
+        )
+        pass4f_blocked = pct_agg3_blocked is None
+        print(f"  [{'PASS' if pass4f_blocked else 'FAIL'}] an aggregate with 1 report and minReportCount=5 is refused as not-measured (measured: {pct_agg3_blocked})")
+        ok = ok and pass4f_blocked
+
+        pct_agg3_allowed, _ = measure_module(
+            tmp, {"reportGlobs": ["agg3/*.xml"], "aggregate": True, "minReportCount": 1}, None
+        )
+        pass4f_allowed = pct_agg3_allowed is not None and abs(pct_agg3_allowed - 90.0) < 1e-6
+        print(f"  [{'PASS' if pass4f_allowed else 'FAIL'}] the same aggregate with minReportCount=1 is accepted (measured: {pct_agg3_allowed})")
+        ok = ok and pass4f_allowed
+
+        pct_agg3_unset, _ = measure_module(
+            tmp, {"reportGlobs": ["agg3/*.xml"], "aggregate": True}, None
+        )
+        pass4f_unset = pct_agg3_unset is not None and abs(pct_agg3_unset - 90.0) < 1e-6
+        print(f"  [{'PASS' if pass4f_unset else 'FAIL'}] an aggregate module with no minReportCount declared is unaffected (measured: {pct_agg3_unset})")
+        ok = ok and pass4f_unset
+
         # Control 4c (Track C C8): the editor's `istanbul-json-summary` format (vitest
         # coverage-v8's json-summary reporter) parses covered/total from total.lines, not from a
         # <counter> element -- proves the format dispatch actually routes to a different parser.
@@ -654,6 +716,69 @@ def run_calibration() -> int:
         pass7 = _report_is_partial(partial_xml, "jacoco-xml") and not _report_is_partial(full_xml, "jacoco-xml")
         print(f"  [{'PASS' if pass7 else 'FAIL'}] a partial report (116/148 classes fully uncovered) is refused; a full one (7/148) is not")
         ok = ok and pass7
+
+        # Control 8 (QUAL-37): a platformDependent module's floor must NOT be auto-ratcheted up on
+        # a bare local run (no CI=true, no --write-baseline) even when the fresh measurement is
+        # genuinely higher -- this is the exact mechanism that re-pinned NPDevCli's floor nine times
+        # (coverage-baseline.json's own note). --write-baseline and CI=true must each still allow it.
+        pd_repo = tmp / "pd-repo"
+        (pd_repo / "scripts" / "policy").mkdir(parents=True, exist_ok=True)
+        pd_baseline_file = pd_repo / BASELINE_PATH
+        pd_baseline_file.write_text(
+            json.dumps({
+                "modules": {
+                    "pd/module": {
+                        "coveragePercent": 50.0, "measuredOn": None, "reportGlobs": [],
+                        "platformDependent": True,
+                    }
+                }
+            }),
+            encoding="utf-8",
+        )
+        pd_report = make_xml(tmp / "pd-improved.xml", covered=90, missed=10)
+        prior_ci = os.environ.pop("CI", None)
+        try:
+            rc_pd_bare = main(["--repo-root", str(pd_repo), "--report", f"pd/module={pd_report}"])
+        finally:
+            if prior_ci is not None:
+                os.environ["CI"] = prior_ci
+        pd_floor_after_bare = json.loads(pd_baseline_file.read_text(encoding="utf-8"))["modules"]["pd/module"]["coveragePercent"]
+        pass8a = rc_pd_bare == 0 and abs(pd_floor_after_bare - 50.0) < 1e-6
+        print(f"  [{'PASS' if pass8a else 'FAIL'}] platformDependent module's floor stays put on a bare local run despite a higher measurement (exit={rc_pd_bare}, floor={pd_floor_after_bare})")
+        ok = ok and pass8a
+
+        rc_pd_flag = main(
+            ["--repo-root", str(pd_repo), "--report", f"pd/module={pd_report}", "--write-baseline"]
+        )
+        pd_floor_after_flag = json.loads(pd_baseline_file.read_text(encoding="utf-8"))["modules"]["pd/module"]["coveragePercent"]
+        pass8b = rc_pd_flag == 0 and abs(pd_floor_after_flag - 90.0) < 1e-6
+        print(f"  [{'PASS' if pass8b else 'FAIL'}] --write-baseline overrides the guard and ratchets the floor up (exit={rc_pd_flag}, floor={pd_floor_after_flag})")
+        ok = ok and pass8b
+
+        pd_baseline_file.write_text(
+            json.dumps({
+                "modules": {
+                    "pd/module": {
+                        "coveragePercent": 50.0, "measuredOn": None, "reportGlobs": [],
+                        "platformDependent": True,
+                    }
+                }
+            }),
+            encoding="utf-8",
+        )
+        prior_ci = os.environ.get("CI")
+        os.environ["CI"] = "true"
+        try:
+            rc_pd_ci = main(["--repo-root", str(pd_repo), "--report", f"pd/module={pd_report}"])
+        finally:
+            if prior_ci is None:
+                os.environ.pop("CI", None)
+            else:
+                os.environ["CI"] = prior_ci
+        pd_floor_after_ci = json.loads(pd_baseline_file.read_text(encoding="utf-8"))["modules"]["pd/module"]["coveragePercent"]
+        pass8c = rc_pd_ci == 0 and abs(pd_floor_after_ci - 90.0) < 1e-6
+        print(f"  [{'PASS' if pass8c else 'FAIL'}] CI=true also overrides the guard and ratchets the floor up (exit={rc_pd_ci}, floor={pd_floor_after_ci})")
+        ok = ok and pass8c
 
     if not ok:
         print("\nFAIL: calibration did not reproduce the expected PASS/FAIL pairs.", file=sys.stderr)

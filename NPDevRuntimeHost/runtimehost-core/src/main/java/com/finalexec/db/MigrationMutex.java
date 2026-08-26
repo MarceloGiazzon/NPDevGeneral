@@ -321,11 +321,15 @@ final class MigrationMutex {
                 .map(claim -> "instance " + claim.instanceId() + " on host " + claim.hostname()
                         + ", claimed at epoch-ms " + claim.claimedAtUtc())
                 .orElse("an instance that did not record a readable claim row");
-        // The first sentence is matched VERBATIM by NPDevCli's boot-log classifier
-        // (npdev_cli.py's MIGRATION_CLAIM_HELD diagnostic greps this exact phrase), so it is kept
-        // word for word even though the surrounding explanation changed: rewording it silently
-        // downgrades a named diagnostic to "unknown boot failure" with nothing to notice it.
-        return "Another NPDev instance is currently migrating this database (" + holder + "), and this boot "
+        // The "Another NPDev instance is currently migrating..." sentence is matched VERBATIM by
+        // NPDevCli's boot-log classifier (npdev_cli.py's MIGRATION_CLAIM_HELD diagnostic greps this
+        // exact phrase as a substring), so it is kept word for word even though the surrounding
+        // explanation changed: rewording it silently downgrades a named diagnostic to "unknown boot
+        // failure" with nothing to notice it. The "B4:migration_lock_held:" prefix (2026-08-25 W2.3,
+        // docs/ACCEPTED_BOUNDARIES.md) is safe alongside it -- a leading prefix does not break a
+        // substring `in` check -- and lets a boot log line or future orchestrator hook key on this
+        // specific boundary rather than parsing English.
+        return "B4:migration_lock_held:Another NPDev instance is currently migrating this database (" + holder + "), and this boot "
                 + "timed out after " + (budgetMillis / 1000L) + "s waiting for it. Concurrent boots serialize "
                 + "on a migration lock rather than refusing, so waiting the full budget means the other "
                 + "migration is still running or its process is hung -- the lock is scoped to that instance's "

@@ -77,6 +77,9 @@ public final class ConceptQueryFilterSupport {
         return switch (filter.operator()) {
             case EQ -> Objects.equals(normalizeForCompare(fieldValue), normalizeForCompare(expected));
             case NEQ -> !Objects.equals(normalizeForCompare(fieldValue), normalizeForCompare(expected));
+            // RUN-28: matches ConceptStore#uniqueValuesCollide's String-branch rule exactly.
+            case EQ_CI -> fieldValue != null && expected != null
+                    && String.valueOf(fieldValue).trim().equalsIgnoreCase(String.valueOf(expected).trim());
             case CONTAINS -> fieldValue != null && expected != null
                     && String.valueOf(fieldValue).toLowerCase(java.util.Locale.ROOT)
                     .contains(String.valueOf(expected).toLowerCase(java.util.Locale.ROOT));

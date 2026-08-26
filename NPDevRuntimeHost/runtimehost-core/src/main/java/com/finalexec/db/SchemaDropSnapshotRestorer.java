@@ -128,9 +128,14 @@ public final class SchemaDropSnapshotRestorer {
         List<String> conflicts = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             if (!tableExistsLive(connection, table)) {
-                // B9 (snapshot restore): bulk restore refused -- target table must exist first.
+                // B9:single_table_scope (2026-08-25 W2.3, docs/ACCEPTED_BOUNDARIES.md): restore is
+                // scoped to exactly one (snapshot, table) pair per call -- this is that scope's one
+                // runtime refusal (the named table itself must exist before it can be restored into;
+                // there is no separate "you asked for more than one table" check because the API
+                // signature itself never accepts more than one). Code carried as a message prefix,
+                // same convention B2/B4/B5 use.
                 throw new BoundaryBootException(new BoundaryViolation("B9", "restore",
-                        "Snapshot restore refused: table '" + table + "' does not exist in the live database; "
+                        "B9:single_table_scope:Snapshot restore refused: table '" + table + "' does not exist in the live database; "
                                 + "boot the app normally first so its schema is created, then restore.",
                         Instant.now()));
             }

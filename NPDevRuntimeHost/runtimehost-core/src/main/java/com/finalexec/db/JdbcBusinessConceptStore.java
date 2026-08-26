@@ -737,6 +737,7 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     private static String sqlOperator(ConceptQuery.Operator operator) {
         return switch (operator) {
             case EQ -> "=";
+            case EQ_CI -> throw new IllegalStateException("EQ_CI is compiled to a case-insensitive text comparison, not a binary operator");
             case NEQ -> "<>";
             case LT -> "<";
             case LTE -> "<=";
@@ -842,6 +843,16 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
             case EQ, NEQ, LT, LTE, GT, GTE -> {
                 whereParams.add(coerceValue(rawColumn, clause.value(), dslType));
                 yield columnRef + " " + sqlOperator(clause.operator()) + " ?";
+            }
+            // RUN-28 (2026-08-25 remediation plan W2.2): same WHERE-fragment shape #existsUnique's
+            // text-like branch already uses for the identical uniqueValuesCollide rule -- ALWAYS
+            // cast-to-text (unlike existsUnique, which only does this conditionally per dslType),
+            // because EQ_CI's own contract is "compare the field's textual representation", not
+            // "compare natively unless the incoming value happens to be a String". See
+            // ConceptQuery.Operator#EQ_CI's javadoc.
+            case EQ_CI -> {
+                whereParams.add(String.valueOf(clause.value()).trim().toLowerCase(Locale.ROOT));
+                yield "LOWER(" + dialect.trimmedText(dialect.cast(columnRef, SqlType.TEXT)) + ") = ?";
             }
             case CONTAINS -> {
                 // The lower-cased text expression is the dialect's to spell, not this call site's:

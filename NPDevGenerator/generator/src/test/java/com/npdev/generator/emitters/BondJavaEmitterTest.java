@@ -50,16 +50,17 @@ class BondJavaEmitterTest {
     }
 
     /**
-     * RUN-1 (R8a): {@code listBy*} reference finders must stay on the platform's original UNBOUNDED
-     * fetch, never the cap introduced for {@link #scalarBondJavaFieldsUseResolvedAnchorType} to lock
-     * around -- caught in review before merge: a reference finder filters AFTER the fetch
-     * ({@code findAllX(...).stream().filter(matches value)}), so routing it through the capped path
-     * would silently drop a legitimate match whose id sorts past the cap, with no truncation signal
-     * at all (this method returns a raw {@code List}, not a {@code ConceptListSlice}). Locks in the
-     * exemption explicitly so a future refactor that re-shares the helper trips this test.
+     * RUN-28 (2026-08-25 remediation plan W2.2): {@code listBy*} reference finders no longer fetch
+     * the whole tenant table and filter in Java -- they push an {@code EQ_CI} (case-insensitive,
+     * trimmed, string-cast equality -- the exact rule the old Java-side {@code uniqueValuesEqual}
+     * applied) filter down through {@code ConceptGateway#query}, the platform's last remaining
+     * unbounded read path before this fix. Supersedes the RUN-1-era test that used to lock in the
+     * OPPOSITE exemption (deliberately staying unbounded because the old fetch-then-filter shape
+     * could not tolerate a cap without silently dropping matches) -- that shape is gone, not merely
+     * capped, so this test locks in the pushdown instead.
      */
     @Test
-    void listByFinderStaysOnTheUnboundedFetchNotTheCappedOne() throws Exception {
+    void listByFinderPushesEqCiThroughConceptGatewayQueryNotAnUnboundedFetch() throws Exception {
         CompiledModel model = modelWithNaturalKeyBond(false);
         TemplateEngine templates = new TemplateEngine("npdev-templates/");
         GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
@@ -77,10 +78,26 @@ class BondJavaEmitterTest {
         int bodyEnd = service.indexOf("\n    }", bodyStart);
         String methodBody = service.substring(bodyStart, bodyEnd < 0 ? service.length() : bodyEnd);
 
-        assertTrue(methodBody.contains("findAllUnboundedFromConceptStore()"), methodBody);
-        assertFalse(methodBody.contains("findAllSliceFromConceptStore"), methodBody);
-        assertFalse(methodBody.contains("findAllFromConceptStore()"), methodBody);
-        assertFalse(methodBody.contains("listCapped"), methodBody);
+        assertTrue(methodBody.contains("conceptGateway.query("), methodBody);
+        assertTrue(methodBody.contains("Filter.eqCaseInsensitive(\"productId\", value)"), methodBody);
+        assertFalse(methodBody.contains("findAllUnboundedFromConceptStore()"), methodBody);
+        assertFalse(methodBody.contains("uniqueValuesEqual"), methodBody);
+
+        // The method itself no longer exists anywhere in the file -- RUN-28 removed it as dead code
+        // once listBy* (its only caller) stopped needing it. Checked as a call/declaration site
+        // (trailing '('), not a bare substring: a javadoc comment explaining WHY it was removed
+        // legitimately still names it in prose.
+        assertFalse(service.contains("findAllUnboundedFromConceptStore("), service);
+        assertFalse(service.contains("uniqueValuesEqual("), service);
+
+        // Return type widened so truncation is signallable -- see ConceptListSlice's own javadoc.
+        assertTrue(service.contains(
+                "public com.npdev.kernel.concepts.ConceptListSlice<Invoice> listByProductId(Object value)"),
+                service);
+
+        String controller = Files.readString(
+                tempDir.resolve("src/main/java/com/npdev/generated/controllers/InvoiceController.java"));
+        assertTrue(controller.contains("listByBase(service.listByProductId(value))"), controller);
     }
 
     @Test
