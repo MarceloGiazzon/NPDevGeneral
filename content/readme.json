@@ -185,7 +185,7 @@
         {
           "type": "fence",
           "lang": "sh",
-          "text": "./npdev doctor                    # check this machine\n./npdev setup                     # build NPDev's jars locally (once per clone)\n./npdev init <name>               # scaffold a new model, with git history\n./npdev dev                       # watch the model; rebuild + restart on save\n./npdev run app                   # generate, build, boot, health-check (one shot)\n./npdev validate model <path>     # full structural + semantic check, no generation\n./npdev generate app --model <m> --config <c> --output <dir>\n./npdev mcp install               # connect an AI tool to NPDev"
+          "text": "./npdev doctor                    # check this machine\n./npdev setup                     # build NPDev's jars locally (once per clone)\n./npdev init <name>               # scaffold a new model, with git history\n./npdev dev                       # watch the model; rebuild + restart on save\n./npdev run app                   # generate, build, boot, health-check (one shot)\n./npdev validate model <path>     # full structural + semantic check, no generation\n./npdev generate app --model <m> --config <c> --output <dir>\n./npdev mcp install               # connect an AI tool to NPDev\n./npdev why B13                   # explain an accepted design limit (id or the code you just hit)\n./npdev db verify --app <dir>     # does the live database match the model? No app boot required."
         },
         {
           "type": "prose",
