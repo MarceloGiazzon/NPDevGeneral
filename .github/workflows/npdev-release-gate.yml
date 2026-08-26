@@ -33,11 +33,28 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Java 17 FIRST, and 17 is the one that matters: NPDev's Gradle builds request a
+      # languageVersion=17 toolchain, and no toolchain download repository is configured, so a runner
+      # with only 21 installed cannot satisfy them. This gate previously set up 21 alone, which made
+      # gate 8/27 (runtimehost-staged-jar-preflight) fail with
+      #   "No matching toolchains found for requested specification: {languageVersion=17 ...}
+      #    No locally installed toolchains match and toolchain download repositories
+      #    have not been configured."
+      # when it shelled out to NPDevContract/dsl's gradlew. Every other workflow in this repo
+      # (ci-validation, pr-gate, kernel-quality-gate, ai-knowledge-gate) already sets up 17; this one
+      # was the outlier, and nobody could see it because the run always died at gate 1/27 long before
+      # reaching gate 8.
+      #
+      # Both versions are installed, mirroring npdev-ci-validation.yml: setup-java points JAVA_HOME at
+      # the LAST version listed, so 21 stays the default JVM while 17 remains discoverable as a
+      # toolchain -- keeping this gate's JAVA_HOME behaviour identical to what it was before.
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: |
+            17
+            21
 
       - name: Setup Node
         uses: actions/setup-node@v4
