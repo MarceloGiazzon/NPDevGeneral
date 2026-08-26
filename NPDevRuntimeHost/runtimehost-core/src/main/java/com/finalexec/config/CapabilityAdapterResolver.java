@@ -3,7 +3,7 @@ package com.finalexec.config;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.finalexec.npdev.service.RuntimePluginPackageRealizationService;
 import com.finalexec.npdev.service.SandboxedCapabilityAdapter;
-import com.finalexec.npdev.service.SandboxedPluginExecutionEngine;
+import com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
 import com.npdev.kernel.capabilities.CapabilityBindingDescriptor;
@@ -20,7 +20,7 @@ public final class CapabilityAdapterResolver {
     private final String runtimeEnvironment;
     private final RuntimePluginAdapterRegistry runtimePluginAdapterRegistry;
     private final RuntimePluginPackageRealizationService runtimePluginPackageRealizationService;
-    private final SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine;
+    private final TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine;
 
     public CapabilityAdapterResolver(
             CapabilityBindingResolver capabilityBindingResolver,
@@ -28,7 +28,7 @@ public final class CapabilityAdapterResolver {
             String runtimeEnvironment,
             RuntimePluginAdapterRegistry runtimePluginAdapterRegistry,
             RuntimePluginPackageRealizationService runtimePluginPackageRealizationService,
-            SandboxedPluginExecutionEngine sandboxedPluginExecutionEngine
+            TimeBoundedPluginExecutionEngine timeBoundedPluginExecutionEngine
     ) {
         this.capabilityBindingResolver = Objects.requireNonNull(capabilityBindingResolver, "capabilityBindingResolver");
         this.environment = environment;
@@ -38,7 +38,7 @@ public final class CapabilityAdapterResolver {
                 runtimePluginPackageRealizationService,
                 "runtimePluginPackageRealizationService"
         );
-        this.sandboxedPluginExecutionEngine = Objects.requireNonNull(sandboxedPluginExecutionEngine, "sandboxedPluginExecutionEngine");
+        this.timeBoundedPluginExecutionEngine = Objects.requireNonNull(timeBoundedPluginExecutionEngine, "timeBoundedPluginExecutionEngine");
     }
 
     public ResolvedCapabilityAdapter resolve(CompiledCapability capability, CompiledCapabilityBinding binding) {
@@ -81,7 +81,7 @@ public final class CapabilityAdapterResolver {
                 contribution,
                 realizedAdapter.summary(),
                 realizedAdapter.handler(),
-                sandboxedPluginExecutionEngine
+                timeBoundedPluginExecutionEngine
         );
         return new ResolvedCapabilityAdapter(adapterId, adapterClass, sandboxedHandler);
     }

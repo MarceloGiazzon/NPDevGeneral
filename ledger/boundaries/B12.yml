@@ -1,9 +1,5 @@
 id: B12
 title: "Conversion hooks are individually atomic, not collectively atomic"
-kind: POSTURAL
-userFacingText: ""  # nothing user-reachable: no refusal -- each hook simply runs in its own transaction
-workaround: "Write every hook idempotent (ADD COLUMN IF NOT EXISTS, UPDATE ... WHERE <not-yet-converted>)."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   POSTURAL: no diagnostic fires because there is nothing to hit. Each hook running in its own

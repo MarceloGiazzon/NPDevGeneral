@@ -1,9 +1,5 @@
 id: B9
 title: "Snapshot restore is operator-driven, one (snapshot, table) pair at a time -- never restore all"
-kind: HITTABLE
-userFacingText: "Snapshot restore is scoped to one table at a time. Preview and restore each table individually."
-workaround: "Call the preview endpoint first, resolve any reported conflicts by hand, then restore for that exact (snapshot, table) pair -- repeat per table."
-enforcingDiagnosticCodes: ["B9:single_table_scope"]
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). SchemaDropSnapshotRestorer.apply already threw

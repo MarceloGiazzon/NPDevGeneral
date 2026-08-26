@@ -1,9 +1,5 @@
 id: B20
 title: "LIFTED -- \"no bounded contexts / multi-namespace models: one namespace = one flat vocabulary = one app\" is closed by contexts[]/imports[] (S2), the codemod + corpus migration (S3) and opt-in physical isolation (S8 Wave 4)"
-kind: LIFTED
-userFacingText: ""  # lifted: the boundary itself refuses nothing, so there is no message to render
-workaround: "Declare contexts[]/imports[] directly (ADR-0011 D1-D3 for the syntax; NPDevSamples/dsl-conformance-max is a real corpus witness with both isolated and non-isolated contexts). Still model a genuinely separate SERVICE (its own deployment, its own database instance) as its own app with its own namespace -- contexts organize vocabulary WITHIN one app and one database, they do not replace \"one model = one deployable app\"."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   LIFTED, so this boundary enforces nothing any more -- the row is kept for history and this entry

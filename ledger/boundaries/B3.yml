@@ -1,9 +1,5 @@
 id: B3
 title: "FK/index checking is missing-only for DDL purposes -- surplus is now REPORTED (advisory-only), never acted on"
-kind: POSTURAL
-userFacingText: ""  # nothing user-reachable: the surplus section is informational output, never a refusal
-workaround: "Manage extra indexes outside NPDev; they are respected and never touched, since there is still no drop path, not even a stub. The ImpactReport (boot log, -ImpactOnly/REPORT_ONLY CLI, and the ControlPanel GET /api/admin/schema-migration/impact -- all three share one renderer) now also carries an informational, always-advisory surplus section, present only when there is something to report; it NEVER changes verdict and NEVER proposes a drop."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   POSTURAL: no diagnostic fires because there is nothing to hit. Real code exists -- classification

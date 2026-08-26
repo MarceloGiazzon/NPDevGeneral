@@ -1,9 +1,5 @@
 id: B10
 title: "H2->Postgres data promotion is a real, operator-driven command -- schema reconciliation is out of scope"
-kind: HITTABLE
-userFacingText: "H2 to Postgres promotion copies data only. Boot against Postgres first to create the schema, then promote data."
-workaround: "Call /promote/preview first, review type-mapping notes, realize the target schema by booting normally against Postgres, then call /promote/apply."
-enforcingDiagnosticCodes: ["B10:data_only_promotion"]
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). CrossEngineDataPromotion.copyTable already threw

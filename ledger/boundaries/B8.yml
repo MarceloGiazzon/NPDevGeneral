@@ -1,9 +1,5 @@
 id: B8
 title: "Dropping a concept needs one boot of ownership history first"
-kind: HITTABLE
-userFacingText: "This table was not dropped because no ownership history exists. Boot once with the current build to register ownership."
-workaround: "Boot once with the concept present (recording ownership), then remove it."
-enforcingDiagnosticCodes: ["B8:no_ownership_history"]
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). Unlike B4/B5/B9/B10, this is NOT a thrown refusal -- boot

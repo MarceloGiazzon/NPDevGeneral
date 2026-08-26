@@ -2,7 +2,7 @@
   "schemaVersion": "ai-model.v1",
   "app": {
     "name": "Custom Procedure Invalid",
-    "kind": "custom-procedure"
+    "kind": "simple-crud-workflow"
   },
   "entities": [
     {

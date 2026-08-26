@@ -1,9 +1,5 @@
 id: B29
 title: "SQL Server has no SUFFIX row cap -- SqlDialect.rowLimit() throws there; callers ask rowLimited() instead"
-kind: POSTURAL
-userFacingText: ""  # nothing user-reachable: no model, no request and no CLI input reaches this
-workaround: "Call dialect.rowLimited(sql, n) -- 'at most n rows', which every engine can answer -- rather than dialect.rowLimit(n), which asks for a SUFFIX specifically. For an existence probe, dialect.existsProbe(table, column) builds the whole statement."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   2026-08-25 (W5.5, remediation plan): corrected from codeLinked: true, the only POSTURAL boundary

@@ -1,9 +1,5 @@
 id: B5
 title: "Schema-ahead detection closes by refusal, not reconstruction"
-kind: HITTABLE
-userFacingText: "This database was migrated by a newer build. Deploy a build at or after that version — downgrade is not supported."
-workaround: "Roll forward, or use mark-done deliberately after verifying by hand."
-enforcingDiagnosticCodes: ["B5:schema_ahead_detected"]
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). SchemaLifecycleExecutor.beforeMigrate already threw

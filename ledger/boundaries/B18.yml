@@ -1,9 +1,5 @@
 id: B18
 title: "Row-level write authorization's check-then-act window is closed under a real transaction manager (Move 9 A2)"
-kind: POSTURAL
-userFacingText: ""  # nothing user-reachable: the window is closed by a lock, not by a message
-workaround: "Nothing -- no caller signature changed. TransactionRunner.none() (still every OTHER constructor's default) preserves the old degraded behaviour only where no real transaction manager is wired, e.g. InMemory mode with no DataSource at all."
-enforcingDiagnosticCodes: []
 codeLinked: false
 codeLinkedNote: >-
   POSTURAL: no diagnostic fires because there is nothing to hit. The check-then-act window is closed
