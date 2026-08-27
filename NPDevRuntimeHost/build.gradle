@@ -111,7 +111,7 @@ dependencies {
     // LNCH-8: the Prometheus registry so /actuator/prometheus actually exposes something --
     // Actuator alone only gives the generic /actuator/metrics JSON view, not the scrape format.
     implementation 'io.micrometer:micrometer-registry-prometheus'
-    implementation 'com.networknt:json-schema-validator:1.5.6'
+    implementation 'com.networknt:json-schema-validator:3.0.7'
 
     // HARDEN-OBJSTORE-P2: the S3-compatible file-store adapter (file-store-objectstore, staged via
     // npdevRuntimeHostLibsDir like the other kernel adapters) needs the AWS SDK v2 S3 client on the
