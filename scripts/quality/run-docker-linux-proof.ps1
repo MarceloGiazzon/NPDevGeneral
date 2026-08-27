@@ -259,6 +259,76 @@ if ([string]$version.status -ne "passed") {
     Add-Failure -Code "docker-version-failed" -Message "Docker CLI/version probe failed." -Path $DockerExecutable -Details @{ exitCode = $version.exitCode; timedOut = $version.timedOut; stdoutPath = $version.stdoutPath; stderrPath = $version.stderrPath }
 }
 
+# NOT-APPLICABLE, which is deliberately NOT "passed": this proof builds a LINUX image
+# (Dockerfile.ai-beta starts `FROM debian:12-slim`), and a Docker daemon in Windows-container mode
+# cannot pull or build one at all. The failure it produces is not a defect in NPDev or in the
+# Dockerfile -- it is a category error:
+#
+#   Step 1/8 : FROM debian:12-slim
+#   no matching manifest for windows(10.0.26100)/amd64 in the manifest list entries
+#
+# That is what the Beta 0 release gate hit at gate 10/27 on 2026-08-26 (run 33024568006): the gate
+# runs on windows-latest, where the daemon defaults to Windows containers, so a gate literally named
+# `docker-linux-proof` could never pass there no matter how healthy the product was.
+#
+# This records SKIPPED and exits 3, never 0. The distinction matters and is the whole point of doing
+# it this way: exit 0 would make run-beta0-final-release-check.ps1 log `=> passed` and the release
+# gate treat a proof that never ran as evidence that it succeeded -- the silent-skip conflation this
+# repo has been bitten by before. Exit 3 maps to an explicit `skipped-not-applicable` status that is
+# visible in the gate sequence, in the report, and in the release-eligibility evidence.
+#
+# The proof still runs FOR REAL on a Linux daemon -- ai-beta-gate.yml's ubuntu-latest job is its
+# proper home, and nothing here weakens that. This only stops a Windows runner reporting a verdict it
+# is not equipped to reach.
+$dockerServerOs = ""
+if ([string]$version.status -eq "passed") {
+    $ErrorActionPreference = "Continue"
+    $dockerServerOs = (& $DockerExecutable version --format "{{.Server.Os}}" 2>$null | Out-String).Trim()
+    $ErrorActionPreference = "Stop"
+}
+if ($failures.Count -eq 0 -and $dockerServerOs -and $dockerServerOs -ne "linux") {
+    $skipReason = ("Docker daemon is in '" + $dockerServerOs + "'-container mode; this proof builds a Linux image " +
+                   "(Dockerfile.ai-beta: FROM debian:12-slim) and cannot run here. Its real home is a Linux daemon " +
+                   "(ai-beta-gate.yml's ubuntu-latest job).")
+    Write-DockerProofMessage ("SKIPPED (not applicable): " + $skipReason)
+    $skipReport = [pscustomobject]@{
+        schemaVersion = "npdev-docker-linux-parity-report.v1"
+        runId         = $RunId
+        generatedAt   = (Get-Date).ToUniversalTime().ToString("o")
+        scriptPath    = "scripts/quality/run-docker-linux-proof.ps1"
+        workspaceRoot = $workspaceRoot
+        overallStatus = "skipped"
+        skipped       = $true
+        skipReason    = $skipReason
+        dockerServerOs = $dockerServerOs
+        platform      = [pscustomobject]@{
+            hostOS      = [System.Runtime.InteropServices.RuntimeInformation]::OSDescription
+            proofTarget = "linux-container"
+            dockerfile  = Convert-ToRepoPath -Root $workspaceRoot -PathValue $dockerfileFull
+            imageTag    = $imageTag
+        }
+        ciCompatibility = $workflowCompatibility
+        timeoutPolicy = [pscustomobject]@{
+            dockerVersionTimeoutSeconds = 60
+            dockerBuildTimeoutSeconds   = $BuildTimeoutSeconds
+            dockerRunTimeoutSeconds     = $RunTimeoutSeconds
+        }
+        commands  = @($commands)
+        exitCodes = @($commands | ForEach-Object { [pscustomobject]@{ name = $_.name; exitCode = $_.exitCode; status = $_.status; timedOut = $_.timedOut } })
+        durations = [pscustomobject]@{
+            totalCommandDurationSeconds = [int](($commands | Measure-Object -Property durationSeconds -Sum).Sum)
+            commands = @($commands | ForEach-Object { [pscustomobject]@{ name = $_.name; durationSeconds = $_.durationSeconds } })
+        }
+        artifacts = @($artifacts)
+        failures  = @()
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $reportPathFull) | Out-Null
+    $skipReport | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $reportPathFull -Encoding UTF8
+    Write-Host ("Docker/Linux proof SKIPPED (not applicable on a " + $dockerServerOs + " daemon). Report: " +
+                (Convert-ToRepoPath -Root $workspaceRoot -PathValue $reportPathFull))
+    exit 3
+}
+
 if ($failures.Count -eq 0) {
     # Every Gradle distribution this repo's wrappers ask for, DERIVED rather than restated, and
     # baked into the image so the container never fetches Gradle over the network at run time.

@@ -282,7 +282,9 @@
       "schemaVersion": "npdev-docker-linux-parity-report.v1",
       "statusProperty": "overallStatus",
       "passValue": "passed",
-      "schemaPath": "schemas/ai/docker-linux-parity-report.schema.json"
+      "schemaPath": "schemas/ai/docker-linux-parity-report.schema.json",
+      "skipValue": "skipped",
+      "skipValueWhy": "This proof builds a LINUX image (Dockerfile.ai-beta: FROM debian:12-slim). On a Docker daemon in Windows-container mode it cannot run at all, so run-docker-linux-proof.ps1 records 'skipped' and exits 3 rather than inventing a verdict. 'skipped' is NOT a pass: the gate lists it under skippedReports so release evidence shows the check did not run here. Its real home is a Linux daemon (ai-beta-gate.yml's ubuntu-latest job)."
     }
   ],
   "informationalReports": [
