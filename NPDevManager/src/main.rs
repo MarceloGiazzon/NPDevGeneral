@@ -558,6 +558,40 @@ async fn read_info_json(state: State<'_, AppState>, app_dir: String) -> Result<V
     monitor_probe(state, app_dir, Some(true)).await
 }
 
+/// VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 3: the Verification tab reads one
+/// npdev-verification-panel.v1 document from `npdev verify --panel --json`. Thin command, same
+/// shape as monitor_scan -- no decision lives in Rust.
+#[tauri::command]
+async fn verification_panel(state: State<'_, AppState>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_verification_panel(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                             java_home.as_deref()).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_verification_panel(&python, &cli, java_home.as_deref()).await
+}
+
+/// VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 5: Run one panel item. The ID is the only
+/// input; npdev_executor.py resolves the command from the trusted panel document and executes it
+/// through the controlled runner. Manager-local only -- the emitted app page never gets this.
+#[tauri::command]
+async fn verification_run_item(state: State<'_, AppState>, item_id: String,
+                               timeout_seconds: Option<u32>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_verification_run_item(&PathBuf::from("python"),
+                                                &PathBuf::from("npdev_cli.py"),
+                                                java_home.as_deref(), &item_id,
+                                                timeout_seconds.unwrap_or(0)).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_verification_run_item(&python, &cli, java_home.as_deref(), &item_id,
+                                     timeout_seconds.unwrap_or(0)).await
+}
+
 /// D7's inspect paths were type-in-a-folder-path-by-hand only -- fine for a terminal user, hostile
 /// for anyone who does not already know the exact string to type. A native multi-select folder
 /// dialog is the same affordance every other Windows app uses for "pick some folders."
@@ -1706,6 +1740,8 @@ fn main() {
             monitor_scan,
             monitor_probe,
             read_info_json,
+            verification_panel,
+            verification_run_item,
             pick_inspect_folders,
             get_inspect_paths,
             set_inspect_paths,

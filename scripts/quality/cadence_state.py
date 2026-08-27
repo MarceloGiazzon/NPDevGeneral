@@ -9,7 +9,7 @@ the same staleness concept run-beta-release-gate.ps1 already uses for evidence f
 rather than building a second mechanism.
 
 Usage:
-    python scripts/quality/cadence_state.py record --id <check-id> --tier <T0|T1|T2|T3> --result <passed|failed> [--commit <sha>]
+    python scripts/quality/cadence_state.py record --id <check-id> --tier <T0|T1|T2|T3> --result <passed|failed> [--commit <sha>] [--duration-seconds <seconds>]
     python scripts/quality/cadence_state.py report --tier <T0|T1|T2|T3> [--json]
     python scripts/quality/cadence_state.py list-ids
 
@@ -107,13 +107,25 @@ def cmd_record(args):
             f"but --tier {args.tier} was passed -- fix the caller, not this check."
         )
     state = load_state()
-    state[args.id] = {
+    now = datetime.now(timezone.utc).isoformat()
+    # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 2: record how long a run took (None when the
+    # caller did not measure) AND a bounded history, so the panel can surface last-duration and,
+    # once >= 3 samples exist, typicalDurationSeconds. Backward compatible: a pre-existing row with
+    # no history/durationSeconds key keeps working untouched.
+    duration = getattr(args, "duration_seconds", None)
+    prior = state.get(args.id, {})
+    history = list(prior.get("history", [])) if isinstance(prior.get("history"), list) else []
+    entry = {
         "id": args.id,
         "tier": args.tier,
-        "lastRun": datetime.now(timezone.utc).isoformat(),
+        "lastRun": now,
         "result": args.result,
         "commit": args.commit or current_commit(),
+        "durationSeconds": duration,
     }
+    history.append({k: entry[k] for k in ("lastRun", "result", "durationSeconds")})
+    entry["history"] = history[-20:]  # keep the last 20 runs, no more
+    state[args.id] = entry
     write_state(state)
     print(f"Recorded {args.id} ({args.tier}): {args.result}")
     return 0
@@ -245,6 +257,10 @@ def main(argv):
     record_parser.add_argument("--tier", required=True, choices=TIER_ORDER)
     record_parser.add_argument("--result", required=True, choices=["passed", "failed"])
     record_parser.add_argument("--commit", default="")
+    record_parser.add_argument("--duration-seconds", type=float, default=None,
+                               help="Optional wall-clock duration of this run in seconds. When "
+                                    "omitted, durationSeconds is stored as null and the panel shows "
+                                    "no last-duration for it.")
 
     report_parser = sub.add_parser("report")
     report_parser.add_argument("--tier", required=True, choices=TIER_ORDER)
