@@ -137,9 +137,10 @@ else {
 }
 
 function Record-CadenceRun {
-    param([string]$Id, [string]$Tier, [string]$Result)
+    param([string]$Id, [string]$Tier, [string]$Result, [float]$DurationSeconds = 0)
     $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
-    & $py "scripts/quality/cadence_state.py" record --id $Id --tier $Tier --result $Result 2>&1 | Out-Null
+    & $py "scripts/quality/cadence_state.py" record --id $Id --tier $Tier --result $Result `
+        --duration-seconds $DurationSeconds 2>&1 | Out-Null
 }
 
 Push-Location $repoRoot
@@ -164,7 +165,7 @@ try {
         $seconds = [math]::Round(((Get-Date) - $started).TotalSeconds, 1)
         $status = if ($exit -eq 0) { "passed" } else { "failed" }
         $results += [pscustomobject]@{ Name = $gate.Name; Status = $status; Seconds = $seconds }
-        Record-CadenceRun -Id $gate.Name -Tier $gate.Tier -Result $status
+        Record-CadenceRun -Id $gate.Name -Tier $gate.Tier -Result $status -DurationSeconds $seconds
         Write-Host ("--- [{0}] {1} in {2}s ---" -f $gate.Name, $status.ToUpperInvariant(), $seconds) `
             -ForegroundColor $(if ($exit -eq 0) { "Green" } else { "Red" })
         Write-Host ""

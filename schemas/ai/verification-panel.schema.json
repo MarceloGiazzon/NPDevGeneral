@@ -1,0 +1,127 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.internal/schemas/verification-panel.schema.json",
+  "title": "NPDev verification panel",
+  "description": "npdev-verification-panel.v1: one JSON document describing an inventory of verification items (gates, check-scripts, test-suites, probes, acceptance scenarios, browser routines, workflows) and the last known run of each. Two producers emit it (the NPDev repo itself via `npdev verify --panel`; a generated app via its emitted verification page); one renderer consumes it. See PLAN 2026-08-27 S1. The Kanban column is DERIVED by the renderer, never stored in this document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "subject", "items"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "npdev-verification-panel.v1"
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name", "root", "commit"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["npdev-repo", "generated-app"]
+        },
+        "name": {
+          "type": "string",
+          "description": "Repo name for an npdev-repo, or the app's namespace for a generated-app."
+        },
+        "root": {
+          "type": ["string", "null"],
+          "description": "Absolute filesystem root of the subject (repo root, or the app dir). Null when not a file-backed subject."
+        },
+        "commit": {
+          "type": ["string", "null"],
+          "description": "Current HEAD sha for an npdev-repo; null for a generated app with no git."
+        }
+      }
+    },
+    "items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/verificationItem" }
+    }
+  },
+  "$defs": {
+    "verificationItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "description", "category", "runnable", "lastRun"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable, unique within the document."
+        },
+        "name": {
+          "type": "string",
+          "description": "Human label for the first column."
+        },
+        "description": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "enum": ["gate", "check-script", "test-suite", "probe", "acceptance", "browser-routine", "workflow"]
+        },
+        "tier": {
+          "type": ["string", "null"],
+          "description": "Null when not tiered."
+        },
+        "command": {
+          "type": ["string", "null"],
+          "description": "The concrete command that re-runs this item, for the Run button. Null when the panel cannot re-run it (and runnable must then be false)."
+        },
+        "runnable": {
+          "type": "boolean",
+          "description": "false => the renderer shows no Run control."
+        },
+        "maxStaleness": {
+          "type": ["string", "null"],
+          "description": "Threshold label from STALENESS_TO_TIMEDELTA (scripts/quality/cadence_state.py). Drives the STALE column; must stay a member of that vocabulary. Null when staleness does not apply."
+        },
+        "lastRun": {
+          "type": ["object", "null"],
+          "description": "null => never run (NEVER RUN column).",
+          "additionalProperties": false,
+          "required": ["startedAt", "result", "commit", "reportPath", "logPath"],
+          "properties": {
+            "startedAt": { "type": "string", "format": "date-time" },
+            "result": {
+              "type": "string",
+              "enum": ["passed", "failed", "skipped", "not-applicable", "cancelled", "running"]
+            },
+            "durationSeconds": {
+              "type": ["number", "null"],
+              "description": "Wall-clock duration of this run, when the caller measured it."
+            },
+            "commit": {
+              "type": ["string", "null"],
+              "description": "Commit this run executed against, when known."
+            },
+            "reportPath": {
+              "type": ["string", "null"],
+              "description": "Where the run wrote its machine-readable report, when any. Rendered as a 'View report' link."
+            },
+            "logPath": {
+              "type": ["string", "null"],
+              "description": "Where the run wrote its log, when any."
+            }
+          }
+        },
+        "typicalDurationSeconds": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["p10", "p50", "p90", "sampleCount"],
+          "properties": {
+            "p10": { "type": ["number", "null"] },
+            "p50": { "type": ["number", "null"] },
+            "p90": { "type": ["number", "null"] },
+            "sampleCount": { "type": "integer" }
+          },
+          "description": "Percentiles computed from the run history, only once >= 3 samples exist. null until then -- never synthesise a range from a single run."
+        }
+      }
+    }
+  }
+}
