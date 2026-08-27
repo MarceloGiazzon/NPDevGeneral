@@ -411,8 +411,30 @@ function Test-RequiredReport {
         Add-Blocker $reportBlockers ("Expected schemaVersion " + [string]$Definition.schemaVersion + " but got " + $schemaVersion)
     }
 
+    # A producer may declare, in the policy, ONE additional status that is acceptable-but-not-a-pass
+    # (`skipValue`). Today only docker-linux-parity uses it: that proof builds a Linux image and is a
+    # category error on a Windows-container daemon, so it records `skipped` rather than inventing a
+    # verdict it cannot reach. See run-docker-linux-proof.ps1's own comment for why.
+    #
+    # This is deliberately NOT the same as passing, and the difference is recorded rather than
+    # smoothed over: a skipped report does not block the gate, but it is listed in `skippedReports`
+    # below so release evidence shows plainly that the check did not run on this host. A gate that
+    # silently treats "never ran" as "succeeded" is the exact conflation this file exists to prevent.
+    # Absent a `skipValue`, behaviour is unchanged: anything other than passValue is a blocker.
+    $skipValue = [string](Get-JsonPropertyValue $Definition "skipValue")
     $actualStatus = if ($null -ne $report) { [string](Get-JsonPropertyValue $report ([string]$Definition.statusProperty)) } else { "" }
-    if ($null -ne $report -and $actualStatus -ne [string]$Definition.passValue) {
+    $statusIsSkip = ($null -ne $report) -and (-not [string]::IsNullOrWhiteSpace($skipValue)) -and ($actualStatus -eq $skipValue)
+    if ($statusIsSkip) {
+        $skipReason = [string](Get-JsonPropertyValue $report "skipReason")
+        [void]$script:skippedReports.Add([pscustomobject]@{
+            name = [string]$Definition.name
+            path = $relativePath
+            status = $actualStatus
+            reason = $skipReason
+        })
+        Write-Host ("  SKIPPED (not applicable, not passed): " + [string]$Definition.name + " -- " + $skipReason)
+    }
+    elseif ($null -ne $report -and $actualStatus -ne [string]$Definition.passValue) {
         Add-Blocker $reportBlockers ("Expected " + [string]$Definition.statusProperty + "=" + [string]$Definition.passValue + " but got " + $actualStatus)
     }
 
@@ -520,6 +542,10 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
 }
 $maxAge = if ($MaxReportAgeHours -gt 0) { $MaxReportAgeHours } else { [int]$policy.maxReportAgeHours }
 $blockers = [System.Collections.Generic.List[string]]::new()
+# Reports whose producer recorded an acceptable-but-not-passing status (see the skipValue
+# handling above). Surfaced in the emitted report so "this check did not run here" is visible
+# evidence rather than an absence nobody notices.
+$script:skippedReports = [System.Collections.Generic.List[object]]::new()
 $orchestration = $null
 
 if ($GenerateReports) {
@@ -736,6 +762,8 @@ $preconditionSummary = [pscustomobject]@{
     checkBlockerCount = $checkBlockers.Count
     preconditionBlockers = $preconditionBlockers
     checkBlockers = $checkBlockers
+    skippedReports = @($script:skippedReports)
+    skippedReportCount = @($script:skippedReports).Count
     generateReportsRequested = [bool]$GenerateReports
     orchestrationStatus = if ($null -eq $orchestration) { "not-run" } else { [string]$orchestration.overallStatus }
     orchestrationReport = if ($null -eq $orchestration) { $null } else { "scripts/reports/out/beta-release-evidence-orchestration-report.json" }
