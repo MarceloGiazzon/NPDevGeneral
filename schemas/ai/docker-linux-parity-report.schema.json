@@ -40,8 +40,10 @@
       "type": "string",
       "enum": [
         "passed",
-        "failed"
-      ]
+        "failed",
+        "skipped"
+      ],
+      "description": "passed = the Linux-container proof ran and succeeded. failed = it ran and failed. skipped = NOT APPLICABLE on this host: the Docker daemon is not in Linux-container mode, so a Linux image cannot be built at all. 'skipped' is deliberately distinct from 'passed' -- a proof that never ran must never read as evidence that it succeeded."
     },
     "platform": {
       "type": "object"
@@ -88,6 +90,39 @@
     },
     "failures": {
       "type": "array"
+    },
+    "skipped": {
+      "type": "boolean",
+      "description": "True only when overallStatus is 'skipped'."
+    },
+    "skipReason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required when overallStatus is 'skipped': why this host cannot run the proof."
+    },
+    "dockerServerOs": {
+      "type": "string",
+      "description": "The Docker daemon's reported OS (docker version --format {{.Server.Os}})."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "overallStatus": {
+            "const": "skipped"
+          }
+        },
+        "required": [
+          "overallStatus"
+        ]
+      },
+      "then": {
+        "required": [
+          "skipReason",
+          "skipped"
+        ]
+      }
+    }
+  ]
 }

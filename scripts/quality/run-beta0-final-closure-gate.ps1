@@ -106,7 +106,7 @@ $requiredReports = @(
     [pscustomobject]@{ name = "ai-rest-smoke-verifier-tests"; path = "scripts/reports/out/ai-rest-smoke-verifier-tests-report.json"; schemaVersion = "npdev-ai-rest-smoke-verifier-test-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
     [pscustomobject]@{ name = "runtime-null-context-tests"; path = "scripts/reports/out/runtime-null-context-tests-report.json"; schemaVersion = "npdev-runtime-null-context-test-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
     [pscustomobject]@{ name = "runtimehost-staged-jar-preflight"; path = "scripts/reports/out/runtimehost-staged-jar-preflight-report.json"; schemaVersion = "npdev-runtimehost-staged-jar-preflight-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
-    [pscustomobject]@{ name = "docker-linux-parity"; path = "scripts/reports/out/docker-linux-parity-report.json"; schemaVersion = "npdev-docker-linux-parity-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
+    [pscustomobject]@{ name = "docker-linux-parity"; path = "scripts/reports/out/docker-linux-parity-report.json"; schemaVersion = "npdev-docker-linux-parity-report.v1"; statusProperty = "overallStatus"; passValue = "passed"; skipValue = "skipped" },
     [pscustomobject]@{ name = "sample-matrix"; path = "scripts/reports/out/sample-matrix-report.json"; schemaVersion = "npdev-sample-matrix-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
     [pscustomobject]@{ name = "report-schema-validation"; path = "scripts/reports/out/report-schema-validation-report.json"; schemaVersion = "npdev-report-schema-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
     [pscustomobject]@{ name = "doc-entrypoint-validation"; path = "scripts/reports/out/doc-entrypoint-validation-report.json"; schemaVersion = "npdev-doc-entrypoint-validation-report.v1"; statusProperty = "overallStatus"; passValue = "passed" },
@@ -137,7 +137,15 @@ foreach ($definition in $requiredReports) {
         if ($schemaVersion -ne [string]$definition.schemaVersion) {
             Add-Blocker $blockers ([string]$definition.name + " schemaVersion mismatch.")
         }
-        if ($status -ne [string]$definition.passValue) {
+        # skipValue: ONE acceptable-but-not-passing status a producer may record. Only
+        # docker-linux-parity uses it -- that proof builds a Linux image and is a category error on a
+        # Windows-container daemon, so it records `skipped` instead of a verdict it cannot reach. This
+        # does not block closure, and it is NOT counted as passing: the row below carries the real
+        # status, so evidence shows the check did not run here rather than implying it succeeded.
+        if ($status -eq [string]$definition.skipValue -and -not [string]::IsNullOrWhiteSpace([string]$definition.skipValue)) {
+            Write-Host ("  SKIPPED (not applicable, not passed): " + [string]$definition.name)
+        }
+        elseif ($status -ne [string]$definition.passValue) {
             Add-Blocker $blockers ([string]$definition.name + " is not passing.")
         }
     }
