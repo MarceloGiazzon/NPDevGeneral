@@ -29,7 +29,16 @@ function Invoke-Gate {
     $ErrorActionPreference = "Stop"
     $finishedAt = (Get-Date).ToUniversalTime()
     $durationSeconds = [int]([DateTimeOffset]$finishedAt - [DateTimeOffset]$startedAt).TotalSeconds
-    $status = if ($exitCode -eq 0) { "passed" } elseif ($ExpectedNonzero) { "failed-as-expected" } else { "failed" }
+    # Exit 3 = NOT APPLICABLE ON THIS HOST, and it must never collapse into "passed". Only
+    # run-docker-linux-proof.ps1 emits it today: that proof builds a Linux image, so on a
+    # Windows-container daemon it cannot run at all and records `skipped` rather than a verdict
+    # it is not equipped to reach. Exiting 0 there would print "=> passed" and let a check that
+    # never ran read as evidence that it succeeded -- the same conflation this file's own header
+    # describes for exit 2 vs 1. A distinct status keeps it visible in the gate sequence.
+    $status = if ($exitCode -eq 3) { "skipped-not-applicable" }
+        elseif ($exitCode -eq 0) { "passed" }
+        elseif ($ExpectedNonzero) { "failed-as-expected" }
+        else { "failed" }
     Write-ReleaseCheckMessage ($prefix + "END   " + $Name + " => " + $status + " (exit " + $exitCode + ", " + $durationSeconds + "s)")
     $result = [pscustomobject]@{
         name = $Name
@@ -43,7 +52,7 @@ function Invoke-Gate {
         durationSeconds = $durationSeconds
     }
     $script:gateResults += $result
-    if ($exitCode -ne 0 -and -not $ContinueOnFailure -and -not $AlwaysContinue) {
+    if ($exitCode -ne 0 -and $exitCode -ne 3 -and -not $ContinueOnFailure -and -not $AlwaysContinue) {
         throw "Gate failed: $Name"
     }
     return $result
