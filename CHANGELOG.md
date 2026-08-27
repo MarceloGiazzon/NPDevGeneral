@@ -2,9 +2,39 @@
 
 Format: see `docs/RELEASE_PROCESS.md`. Dates are release-tag dates, not commit dates.
 
+## [Unreleased]
+
+Landed on `main` AFTER the `beta1.20` tag (`ec0350a9`) and therefore **not** in that
+release. Ships in the next tag.
+
+### Added
+- **Verification panel** (`npdev verify --panel`): one inventory of what verifies this system --
+  name, category, command, last result, last run, last duration -- rendered as a Kanban and a table.
+  A new Manager tab for the repo, and a READ-ONLY `verification.html` emitted into every generated
+  app. One contract (`npdev-verification-panel.v1`), two producers, one renderer.
+- **`npdev probe`**: an occasional runtime diagnostic that boots a generated app under the JaCoCo
+  agent and reports EXECUTION REACH -- what a real session actually executed, including code
+  delivered as prebuilt jars that build-time coverage structurally cannot see. Deliberately never
+  called "coverage", and it never writes a coverage floor.
+- **`npdev verify --run <id>`**: run a declared verification item from the Manager. ID-only input
+  resolved from the cadence ledger, executed through the existing controlled-command runner. No HTTP
+  surface; the generated app's panel has no execute path at all.
+
+### Fixed
+- The **Beta 0 release gate** had never completed a run since April, for three stacked reasons in its
+  own plumbing, none of them a defect in NPDev: `npm --prefix` ENOENTing on Windows so the schema
+  validator never started (gate 1 of 27); the gate installing Java 21 while the builds request a
+  Java 17 toolchain (gate 8); and a hygiene script deleting `NPDevRuntimeHost/build.gradle` -- a
+  TRACKED file -- which dirtied a clean checkout and blocked release eligibility outright.
+- `docker-linux-proof` now records SKIPPED with a reason on a non-Linux Docker daemon instead of
+  failing. It builds a Linux image, so on a Windows-container daemon it cannot run at all. Skipped is
+  never reported as passed.
+- `runtimehost-core/gradlew.bat` was committed with CRLF in the object database, so it read as
+  modified on every checkout since the Gradle wrapper bump. Renormalized.
+
 ## [beta1.20] - 2026-08-26
 
-Scoped to the 231 commits between `beta1.19` (`522b0c8c`, 2026-08-15) and this tag (`50315e0f`).
+Scoped to the 214 commits between `beta1.19` (`522b0c8c`, 2026-08-15) and this tag (`ec0350a9`).
 Every releases since `beta1.8` landed with no `CHANGELOG.md` entry (recorded as a known gap in
 `scripts/policy/changelog-versions.json`); this entry does not attempt to reconstruct that backlog
 retroactively, only to bring the file current from here forward. Highlights, not an exhaustive
@@ -40,31 +70,6 @@ commit-by-commit list — see `git log beta1.19..beta1.20` for that.
   access (R5.5).
 - Quality: JaCoCo coverage ratchet baseline across all four Java builds (R3), Dependabot + CodeQL +
   workflow-permissions hardening (R2).
-
-### Added (after the entry above was first drafted)
-- **Verification panel** (`npdev verify --panel`): one inventory of what verifies this system --
-  name, category, command, last result, last run, last duration -- rendered as a Kanban and a table.
-  A new Manager tab for the repo, and a READ-ONLY `verification.html` emitted into every generated
-  app. One contract (`npdev-verification-panel.v1`), two producers, one renderer.
-- **`npdev probe`**: an occasional runtime diagnostic that boots a generated app under the JaCoCo
-  agent and reports EXECUTION REACH -- what a real session actually executed, including code
-  delivered as prebuilt jars that build-time coverage structurally cannot see. Deliberately never
-  called "coverage", and it never writes a coverage floor.
-- **`npdev verify --run <id>`**: run a declared verification item from the Manager. ID-only input
-  resolved from the cadence ledger, executed through the existing controlled-command runner. No HTTP
-  surface; the generated app's panel has no execute path at all.
-
-### Fixed (after the entry above was first drafted)
-- The **Beta 0 release gate** had never completed a run since April, for three stacked reasons in its
-  own plumbing, none of them a defect in NPDev: `npm --prefix` ENOENTing on Windows so the schema
-  validator never started (gate 1 of 27); the gate installing Java 21 while the builds request a
-  Java 17 toolchain (gate 8); and a hygiene script deleting `NPDevRuntimeHost/build.gradle` -- a
-  TRACKED file -- which dirtied a clean checkout and blocked release eligibility outright.
-- `docker-linux-proof` now records SKIPPED with a reason on a non-Linux Docker daemon instead of
-  failing. It builds a Linux image, so on a Windows-container daemon it cannot run at all. Skipped is
-  never reported as passed.
-- `runtimehost-core/gradlew.bat` was committed with CRLF in the object database, so it read as
-  modified on every checkout since the Gradle wrapper bump. Renormalized.
 
 ### Changed
 - **`NPDevKernel/adapters/expression-cel` renamed to `runtime-support`** (RUN-5, 598 references
