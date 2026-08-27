@@ -11,23 +11,31 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class FieldWidgetDefaultsTest {
 
     private static FieldWidgetDefaults.FieldShape scalar(String dslType) {
-        return new FieldWidgetDefaults.FieldShape(dslType, false, false, false, false, false, false, false);
+        return new FieldWidgetDefaults.FieldShape(dslType, false, false, false, false, false, false, false, false, false);
+    }
+
+    private static FieldWidgetDefaults.FieldShape numericWithRange(String dslType, boolean hasRangeBounds) {
+        return new FieldWidgetDefaults.FieldShape(dslType, false, false, false, false, false, false, false, hasRangeBounds, false);
+    }
+
+    private static FieldWidgetDefaults.FieldShape fileField(boolean isImageOnly) {
+        return new FieldWidgetDefaults.FieldShape("file", false, false, false, false, false, false, false, false, isImageOnly);
     }
 
     private static FieldWidgetDefaults.FieldShape enumField(boolean hasValues, boolean hasIcon) {
-        return new FieldWidgetDefaults.FieldShape("enum", false, false, hasValues, false, hasIcon, false, false);
+        return new FieldWidgetDefaults.FieldShape("enum", false, false, hasValues, false, hasIcon, false, false, false, false);
     }
 
     private static FieldWidgetDefaults.FieldShape singleReference(boolean hasImageField) {
-        return new FieldWidgetDefaults.FieldShape("reference", true, false, false, false, false, hasImageField, false);
+        return new FieldWidgetDefaults.FieldShape("reference", true, false, false, false, false, hasImageField, false, false, false);
     }
 
     private static FieldWidgetDefaults.FieldShape multiReference() {
-        return new FieldWidgetDefaults.FieldShape("reference", true, true, false, false, false, false, false);
+        return new FieldWidgetDefaults.FieldShape("reference", true, true, false, false, false, false, false, false, false);
     }
 
     private static FieldWidgetDefaults.FieldShape array(boolean closedEnum) {
-        return new FieldWidgetDefaults.FieldShape("array", false, false, false, closedEnum, false, false, false);
+        return new FieldWidgetDefaults.FieldShape("array", false, false, false, closedEnum, false, false, false, false, false);
     }
 
     // -- defaultWidget() --
@@ -65,6 +73,13 @@ class FieldWidgetDefaultsTest {
     }
 
     @Test
+    void passwordIsCompatibleOnlyWithString() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "password"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "password"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("uuid"), "password"));
+    }
+
+    @Test
     void numberIsCompatibleOnlyWithIntegerFamily() {
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "number"));
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("integer"), "number"));
@@ -74,19 +89,32 @@ class FieldWidgetDefaultsTest {
     }
 
     @Test
-    void checkboxIsCompatibleOnlyWithBoolean() {
+    void rangeRequiresDeclaredBoundsAndNumericType() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(numericWithRange("int", true), "range"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(numericWithRange("decimal", true), "range"));
+        assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(numericWithRange("int", false), "range"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(numericWithRange("string", true), "range"));
+    }
+
+    @Test
+    void checkboxAndToggleAreCompatibleOnlyWithBoolean() {
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("boolean"), "checkbox"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("boolean"), "toggle"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "checkbox"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "toggle"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(enumField(true, false), "checkbox"));
     }
 
     @Test
-    void selectAndAutocompleteAcceptEnumWithValuesOrSingleReference() {
+    void selectAndAutocompleteAndRadioAcceptEnumWithValuesOrSingleReference() {
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(enumField(true, false), "select"));
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(singleReference(false), "select"));
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(enumField(true, false), "autocomplete"));
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(singleReference(false), "autocomplete"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(enumField(true, false), "radio"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(singleReference(false), "radio"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "select"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "radio"));
         // A many-to-many field is force-overridden to multiselect regardless of what's declared --
         // covered separately (and precisely) by anyWidgetOtherThanMultiselectOnManyToManyIsDiscouraged.
     }
@@ -99,11 +127,15 @@ class FieldWidgetDefaultsTest {
     }
 
     @Test
-    void multiselectAcceptsManyToManyReferenceOrClosedEnumArray() {
+    void multiselectAndChipsAcceptManyToManyReferenceOrClosedEnumArray() {
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(multiReference(), "multiselect"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(multiReference(), "chips"));
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(array(true), "multiselect"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(array(true), "chips"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(array(false), "multiselect"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(array(false), "chips"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "multiselect"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "chips"));
     }
 
     @Test
@@ -116,8 +148,15 @@ class FieldWidgetDefaultsTest {
     }
 
     @Test
+    void imagePreviewIsCompatibleOnlyOnAnImageOnlyFileField() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(fileField(true), "image-preview"));
+        assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(fileField(false), "image-preview"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "image-preview"));
+    }
+
+    @Test
     void customRequiresACustomWidgetRef() {
-        FieldWidgetDefaults.FieldShape withRef = new FieldWidgetDefaults.FieldShape("string", false, false, false, false, false, false, true);
+        FieldWidgetDefaults.FieldShape withRef = new FieldWidgetDefaults.FieldShape("string", false, false, false, false, false, false, true, false, false);
         FieldWidgetDefaults.FieldShape withoutRef = scalar("string");
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(withRef, "custom"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(withoutRef, "custom"));
@@ -125,7 +164,7 @@ class FieldWidgetDefaultsTest {
 
     @Test
     void groupAndListAreCompatibleOnlyWithTheirOwnStructuralType() {
-        FieldWidgetDefaults.FieldShape object = new FieldWidgetDefaults.FieldShape("object", false, false, false, false, false, false, false);
+        FieldWidgetDefaults.FieldShape object = new FieldWidgetDefaults.FieldShape("object", false, false, false, false, false, false, false, false, false);
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(object, "group"));
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(array(false), "list"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "group"));
@@ -135,21 +174,32 @@ class FieldWidgetDefaultsTest {
     // -- classify(): discouraged (renders, but mismatched or silently ignored) --
 
     @Test
-    void textLikeWidgetsAreDiscouragedOnNumericOrUuidFields() {
-        assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(scalar("int"), "email"));
+    void textareaAndTelAreDiscouragedOnNumericOrUuidFieldsSinceNeitherHasANativeFormatConstraint() {
+        assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(scalar("int"), "tel"));
         assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(scalar("uuid"), "textarea"));
-        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("boolean"), "email"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("boolean"), "tel"));
+    }
+
+    @Test
+    void emailAndUrlAreIncompatibleOnNumericOrUuidFieldsSinceBothImposeANativeFormatConstraint() {
+        // email/url render a native browser format constraint inside a real <form> -- on a
+        // numeric/uuid field that silently blocks submit for any non-email/URL-shaped value, so
+        // (unlike textarea/tel above) these do NOT get a numeric/uuid discouraged carve-out.
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "email"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("uuid"), "url"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "email"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "url"));
     }
 
     @Test
     void anyWidgetOnObjectOrPlainArrayIsDiscouragedAsDeadDeclaration() {
-        FieldWidgetDefaults.FieldShape object = new FieldWidgetDefaults.FieldShape("object", false, false, false, false, false, false, false);
+        FieldWidgetDefaults.FieldShape object = new FieldWidgetDefaults.FieldShape("object", false, false, false, false, false, false, false, false, false);
         assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(object, "text"));
         assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(array(false), "text"));
     }
 
     @Test
-    void anyWidgetOtherThanMultiselectOnManyToManyIsDiscouraged() {
+    void anyWidgetOtherThanMultiselectOrChipsOnManyToManyIsDiscouraged() {
         assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(multiReference(), "lookup"));
         assertEquals(DISCOURAGED, FieldWidgetDefaults.classify(multiReference(), "select"));
     }

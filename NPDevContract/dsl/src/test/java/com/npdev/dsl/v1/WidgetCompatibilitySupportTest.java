@@ -127,7 +127,7 @@ class WidgetCompatibilitySupportTest {
                       "name": "Ticket",
                       "fields": [
                         { "name": "id", "type": "uuid", "id": true, "required": true },
-                        { "name": "referenceCode", "type": "int", "required": true, "ui": { "label": "Reference code", "widget": "email" } },
+                        { "name": "referenceCode", "type": "int", "required": true, "ui": { "label": "Reference code", "widget": "tel" } },
                         {
                           "name": "attachments",
                           "type": "array",

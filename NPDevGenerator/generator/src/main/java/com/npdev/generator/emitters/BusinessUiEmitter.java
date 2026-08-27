@@ -489,6 +489,15 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 node.put("fileMaxSizeBytes", field.getFile().maxSizeBytes());
                 node.put("fileMultiple", field.getFile().multiple());
             }
+            if (List.of("int", "integer", "long", "decimal").contains(manifestType(field)) && field.getSchema() != null) {
+                CompiledSchema schema = field.getSchema();
+                if (schema.getMin() != null) {
+                    node.put("min", schema.getMin());
+                }
+                if (schema.getMax() != null) {
+                    node.put("max", schema.getMax());
+                }
+            }
             fields.add(node);
         }
         return fields;

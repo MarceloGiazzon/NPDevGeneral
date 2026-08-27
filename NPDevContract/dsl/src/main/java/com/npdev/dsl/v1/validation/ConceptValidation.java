@@ -667,6 +667,15 @@ final class ConceptValidation {
         PresentationMetadataAst ui = field.getUi();
         boolean hasImageFieldHint = ui != null && hasText(ui.getImageField());
         boolean hasCustomWidgetRef = ui != null && hasText(ui.getCustomWidgetRef());
+        boolean hasRangeBounds = Set.of("int", "integer", "long", "decimal").contains(normalizedType)
+                && field.getSchema() != null
+                && field.getSchema().getMin() != null
+                && field.getSchema().getMax() != null;
+        boolean isImageOnlyFile = "file".equals(normalizedType)
+                && field.getFile() != null
+                && !field.getFile().contentTypes().isEmpty()
+                && field.getFile().contentTypes().stream()
+                        .allMatch(ct -> ct != null && ct.trim().toLowerCase(Locale.ROOT).startsWith("image/"));
         return new FieldWidgetDefaults.FieldShape(
                 normalizedType,
                 isReference,
@@ -675,7 +684,9 @@ final class ConceptValidation {
                 isClosedEnumArray,
                 hasAnyEnumOptionIcon,
                 hasImageFieldHint,
-                hasCustomWidgetRef
+                hasCustomWidgetRef,
+                hasRangeBounds,
+                isImageOnlyFile
         );
     }
 

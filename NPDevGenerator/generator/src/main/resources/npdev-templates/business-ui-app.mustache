@@ -3830,16 +3830,30 @@
         target.textContent = "-";
         return;
       }
-      const link = document.createElement("a");
-      link.target = "_blank";
-      link.rel = "noopener";
-      link.textContent = value.originalName || "Download";
-      link.href = "/api/files?" + new URLSearchParams({
+      const fileUrl = "/api/files?" + new URLSearchParams({
         storeId: value.storeId || "",
         key: value.key || "",
         contentType: value.contentType || "",
         originalName: value.originalName || ""
       }).toString();
+      if (field.widget === "image-preview" && (value.contentType || "").toLowerCase().indexOf("image/") === 0) {
+        const link = document.createElement("a");
+        link.target = "_blank";
+        link.rel = "noopener";
+        link.href = fileUrl;
+        const thumb = document.createElement("img");
+        thumb.className = "np-image-preview";
+        thumb.src = fileUrl;
+        thumb.alt = value.originalName || "";
+        link.appendChild(thumb);
+        target.appendChild(link);
+        return;
+      }
+      const link = document.createElement("a");
+      link.target = "_blank";
+      link.rel = "noopener";
+      link.textContent = value.originalName || "Download";
+      link.href = fileUrl;
       target.appendChild(link);
       return;
     }
@@ -4347,7 +4361,9 @@
     if (field.type === "file") {
       return createFileInput(field, value);
     }
-    if (field.type === "array" && field.widget === "multiselect" && field.itemsSchema && field.itemsSchema.type === "enum") {
+    if (field.type === "array" && (field.widget === "multiselect" || field.widget === "chips") && field.itemsSchema && field.itemsSchema.type === "enum") {
+      // "chips" is a visual variant of the same closed-enum-array multiselect -- same data
+      // binding, styled as tags via the .np-chips class the created element carries.
       return createArrayEnumMultiselectInput(field, Array.isArray(value) ? value : []);
     }
     if (field.type === "array" && field.itemsSchema) {
@@ -4356,7 +4372,7 @@
     if (field.type === "object" && field.objectSchema) {
       return createObjectInput(field, value && typeof value === "object" ? value : {});
     }
-    if (field.widget === "multiselect" && field.reference) {
+    if ((field.widget === "multiselect" || field.widget === "chips") && field.reference) {
       return createMultiSelectInput(field, recordId);
     }
     if (field.widget === "select" && field.reference) {
@@ -4371,6 +4387,9 @@
     if (field.widget === "image-select" && (field.reference || (field.enumValues && field.enumValues.length))) {
       return createImageSelectInput(field, value);
     }
+    if (field.widget === "radio" && (field.reference || (field.enumValues && field.enumValues.length))) {
+      return createRadioGroupInput(field, value);
+    }
     if (field.enumValues && field.enumValues.length) {
       if (field.widget === "autocomplete") {
         return createEnumAutocompleteInput(field, value);
@@ -4382,6 +4401,9 @@
       input.name = field.name;
       input.type = "checkbox";
       input.checked = Boolean(value);
+      if (field.widget === "toggle") {
+        input.className = "np-toggle";
+      }
       return input;
     }
     if (field.widget === "textarea") {
@@ -4397,10 +4419,16 @@
       input.type = "datetime-local";
     } else if (field.widget === "date" || field.type === "date") {
       input.type = "date";
+    } else if (field.widget === "range") {
+      input.type = "range";
+      if (field.min !== undefined && field.min !== null) { input.min = field.min; }
+      if (field.max !== undefined && field.max !== null) { input.max = field.max; }
     } else if (field.widget === "number" || field.type === "number" || field.type === "integer" || field.type === "decimal") {
       input.type = "number";
     } else if (field.widget === "color") {
       input.type = "color";
+    } else if (field.widget === "password") {
+      input.type = "password";
     } else if (field.widget === "email") {
       input.type = "email";
     } else if (field.widget === "tel") {
@@ -4412,6 +4440,39 @@
     }
     input.value = value === null || value === undefined ? "" : String(value);
     return input;
+  }
+
+  // `radio` is an alternative rendering of createEnumSelect()/createReferenceSelectInput() for an
+  // enum-with-values or single-reference field -- same eligibility, same hidden-input value
+  // contract, a radio-button group instead of a dropdown.
+  function createRadioGroupInput(field, value) {
+    const group = document.createElement("div");
+    group.className = "np-radio-group";
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = value === null || value === undefined ? "" : String(value);
+    group.appendChild(hidden);
+    const options = !field.reference && field.enumOptions && field.enumOptions.length ? field.enumOptions : null;
+    if (options) {
+      options.forEach(function (option) {
+        const label = document.createElement("label");
+        label.className = "np-radio-option";
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = field.name + "__radio";
+        radio.value = option.value;
+        radio.checked = String(value) === String(option.value);
+        radio.addEventListener("change", function () { hidden.value = option.value; });
+        label.appendChild(radio);
+        label.appendChild(document.createTextNode(" " + (option.label || option.value)));
+        group.appendChild(label);
+      });
+      return group;
+    }
+    // Reference field with no static option list available client-side -- fall back to the
+    // existing reference select so a value can still be chosen.
+    return createReferenceSelectInput(field, value);
   }
 
 
@@ -4965,7 +5026,7 @@
   function createMultiSelectInput(field, recordId) {
     const reference = field.reference || {};
     const wrapper = document.createElement("div");
-    wrapper.className = "multiselect-control";
+    wrapper.className = field.widget === "chips" ? "multiselect-control np-chips" : "multiselect-control";
     wrapper.dataset.bondField = "true";
 
     const hidden = document.createElement("input");
@@ -5059,7 +5120,7 @@
   // not a separate bond endpoint.
   function createArrayEnumMultiselectInput(field, values) {
     const wrapper = document.createElement("div");
-    wrapper.className = "multiselect-control";
+    wrapper.className = field.widget === "chips" ? "multiselect-control np-chips" : "multiselect-control";
 
     const hidden = document.createElement("input");
     hidden.type = "hidden";

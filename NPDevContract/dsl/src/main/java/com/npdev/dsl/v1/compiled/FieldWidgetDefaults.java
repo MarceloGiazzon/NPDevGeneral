@@ -35,10 +35,23 @@ public final class FieldWidgetDefaults {
     public static final String GROUP = "group";
     /** Structural label for an {@code array} field's nested editor; the editor itself always wins. */
     public static final String LIST = "list";
+    /** Numeric slider; compatible only when the field declares both {@code schema.min} and {@code schema.max}. */
+    public static final String RANGE = "range";
+    /** Boolean switch -- a purely visual variant of {@link #CHECKBOX}, same value contract. */
+    public static final String TOGGLE = "toggle";
+    /** Masked string input. */
+    public static final String PASSWORD = "password";
+    /** Radio-button group -- an alternative to {@link #SELECT} for enum/reference fields. */
+    public static final String RADIO = "radio";
+    /** Tag/chip-style variant of {@link #MULTISELECT}, same eligibility, different rendering. */
+    public static final String CHIPS = "chips";
+    /** Thumbnail preview for a {@code file}-typed field, in place of a bare download link. */
+    public static final String IMAGE_PREVIEW = "image-preview";
 
     public static final Set<String> SUPPORTED_WIDGETS = Set.of(
             TEXT, TEXTAREA, NUMBER, EMAIL, TEL, URL, COLOR, DATE, DATETIME_LOCAL, CHECKBOX,
-            SELECT, AUTOCOMPLETE, LOOKUP, SEARCH_DIALOG, MULTISELECT, IMAGE_SELECT, CUSTOM, GROUP, LIST
+            SELECT, AUTOCOMPLETE, LOOKUP, SEARCH_DIALOG, MULTISELECT, IMAGE_SELECT, CUSTOM, GROUP, LIST,
+            RANGE, TOGGLE, PASSWORD, RADIO, CHIPS, IMAGE_PREVIEW
     );
 
     private static final Set<String> NUMERIC_TYPES = Set.of("int", "integer", "long", "decimal");
@@ -66,7 +79,9 @@ public final class FieldWidgetDefaults {
             boolean isClosedEnumArray,
             boolean hasAnyEnumOptionIcon,
             boolean hasImageFieldHint,
-            boolean hasCustomWidgetRef
+            boolean hasCustomWidgetRef,
+            boolean hasRangeBounds,
+            boolean isImageOnlyFile
     ) {
     }
 
@@ -115,13 +130,14 @@ public final class FieldWidgetDefaults {
         }
 
         if (shape.isMultiReference()) {
-            return MULTISELECT.equals(normalized) ? Compatibility.COMPATIBLE : Compatibility.DISCOURAGED;
+            return (MULTISELECT.equals(normalized) || CHIPS.equals(normalized))
+                    ? Compatibility.COMPATIBLE : Compatibility.DISCOURAGED;
         }
 
         String type = shape.dslType() == null ? "" : shape.dslType().trim().toLowerCase(Locale.ROOT);
 
         if ("array".equals(type)) {
-            if (MULTISELECT.equals(normalized)) {
+            if (MULTISELECT.equals(normalized) || CHIPS.equals(normalized)) {
                 return shape.isClosedEnumArray() ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
             }
             if (LIST.equals(normalized)) {
@@ -134,12 +150,21 @@ public final class FieldWidgetDefaults {
             return GROUP.equals(normalized) ? Compatibility.COMPATIBLE : Compatibility.DISCOURAGED;
         }
 
+        if (IMAGE_PREVIEW.equals(normalized)) {
+            if (!"file".equals(type)) {
+                return Compatibility.INCOMPATIBLE;
+            }
+            return shape.isImageOnlyFile() ? Compatibility.COMPATIBLE : Compatibility.DISCOURAGED;
+        }
+
         boolean isEnumWithValues = "enum".equals(type) && shape.hasEnumValues();
 
         if (TEXT.equals(normalized)) {
             return Compatibility.COMPATIBLE;
         }
-        if (TEXTAREA.equals(normalized) || EMAIL.equals(normalized) || TEL.equals(normalized) || URL.equals(normalized)) {
+        if (TEXTAREA.equals(normalized) || TEL.equals(normalized)) {
+            // Neither carries a native HTML format constraint, so on a numeric/uuid field they
+            // still render and accept the value -- mismatched, but not data-entry-breaking.
             if ("string".equals(type)) {
                 return Compatibility.COMPATIBLE;
             }
@@ -148,11 +173,27 @@ public final class FieldWidgetDefaults {
             }
             return Compatibility.INCOMPATIBLE;
         }
+        if (EMAIL.equals(normalized) || URL.equals(normalized)) {
+            // Both impose a native browser format constraint (an "@" / URL-shaped value) inside a
+            // real, non-novalidate <form> -- on a numeric/uuid field this silently blocks submit
+            // for any value that isn't email/URL-shaped, which is worse than merely discouraged.
+            return "string".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (PASSWORD.equals(normalized)) {
+            return "string".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
         if (COLOR.equals(normalized)) {
             return "string".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
         }
         if (NUMBER.equals(normalized)) {
             return NUMERIC_TYPES.contains(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (RANGE.equals(normalized)) {
+            if (!NUMERIC_TYPES.contains(type)) {
+                return Compatibility.INCOMPATIBLE;
+            }
+            // Still a valid number input without declared bounds, just not a meaningful slider.
+            return shape.hasRangeBounds() ? Compatibility.COMPATIBLE : Compatibility.DISCOURAGED;
         }
         if (DATE.equals(normalized)) {
             return "date".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
@@ -160,10 +201,10 @@ public final class FieldWidgetDefaults {
         if (DATETIME_LOCAL.equals(normalized)) {
             return "datetime".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
         }
-        if (CHECKBOX.equals(normalized)) {
+        if (CHECKBOX.equals(normalized) || TOGGLE.equals(normalized)) {
             return "boolean".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
         }
-        if (SELECT.equals(normalized)) {
+        if (SELECT.equals(normalized) || RADIO.equals(normalized)) {
             return (shape.isReference() || isEnumWithValues) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
         }
         if (AUTOCOMPLETE.equals(normalized)) {
@@ -179,7 +220,7 @@ public final class FieldWidgetDefaults {
             boolean hasImageSource = shape.isReference() ? shape.hasImageFieldHint() : shape.hasAnyEnumOptionIcon();
             return hasImageSource ? Compatibility.COMPATIBLE : Compatibility.DISCOURAGED;
         }
-        if (MULTISELECT.equals(normalized)) {
+        if (MULTISELECT.equals(normalized) || CHIPS.equals(normalized)) {
             // Reached only for a scalar/enum/single-reference field -- neither eligible collection
             // shape (many-to-many bond, closed-enum array) applies here.
             return Compatibility.INCOMPATIBLE;
