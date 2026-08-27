@@ -4058,6 +4058,227 @@ def _finalexec_fat_jar_for(app_root: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def _resolve_app_jdbc_connection(
+    app_root: Path, url_override: str | None, user_override: str | None, password_override: str | None,
+) -> tuple[str, str | None, str | None] | str:
+    """Resolves one app's JDBC connection the SAME way `run_db_verify` does (prefer
+    `_ops/resolved-db-plan.json`, fall back to `db.definition.json`) -- deliberately NOT sharing
+    code with that function (it is on the same recovery-diagnostic path `db verify` is, and this is
+    a separate, unrelated feature; duplicating ~20 lines here is lower-risk than refactoring a
+    function other commands already depend on). Returns `(url, user, password)` on success, or a
+    plain error-message string on failure -- the caller decides how to report it (plain text vs
+    `--json`).
+    """
+    if url_override:
+        return url_override, user_override, (password_override or "")
+    plan_path = app_root / "_ops" / "resolved-db-plan.json"
+    db_def_path = app_root / "db.definition.json"
+    if plan_path.is_file():
+        plan = read_json(plan_path)
+        if not plan.get("physicalDatabase", False):
+            return f"{app_root} has no physical database (InMemory storage) -- nothing to move."
+        url = plan.get("jdbcUrl") or None
+        if url is None:
+            return f"{plan_path} has no jdbcUrl recorded -- pass --url explicitly."
+        user = user_override if user_override is not None else (plan.get("username") or None)
+        password = password_override if password_override is not None else (plan.get("password") or "")
+        return url, user, password
+    if db_def_path.is_file():
+        database = read_json(db_def_path).get("database", {})
+        try:
+            engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
+        except ValueError as exc:
+            return f"{exc} (in {db_def_path})"
+        if engine_key == "inmemory":
+            return f"{app_root} has no physical database (InMemory storage) -- nothing to move."
+        url = _jdbc_url_for_verify(engine_key, app_root, database)
+        if url is None:
+            return f"do not know how to build a JDBC URL for engine '{engine_key}' -- pass --url explicitly."
+        user = user_override if user_override is not None else database.get("username")
+        password = password_override if password_override is not None else (database.get("password") or "")
+        return url, user, password
+    return (f"neither {plan_path} nor {db_def_path} was found, and no --url was given. Pass --url "
+            f"(with --db-user/--db-password as needed), or run this from the app's own directory.")
+
+
+class _DataMobilityClasspathError(Exception):
+    pass
+
+
+@contextlib.contextmanager
+def _datamobility_classpath(app_root: Path):
+    """Same classpath `run_db_verify` builds for `SchemaVerifyMain` (manifest resources +
+    runtimehost-libs + this app's own extracted fat-jar `BOOT-INF/lib/*`) for `DataTransferMain`.
+    One app's fat jar is enough for EVERY data-mobility verb, including cross-engine ones: it
+    already bundles the JDBC driver for every engine NPDev supports (H2/Postgres/MySQL/SqlServer),
+    so a `db structure-check`/`db import` between two different engines needs no separate
+    driver-jar assembly -- confirmed by reading `run_db_verify`'s own comment on this before relying
+    on it here, not assumed.
+
+    Yields the assembled classpath string, or raises `_DataMobilityClasspathError` with a
+    human-readable reason.
+    """
+    manifest_resources_root = app_root / "npdev-generated" / "src" / "main" / "resources"
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        raise _DataMobilityClasspathError("runtimehost jars are not staged -- run `npdev setup`")
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        raise _DataMobilityClasspathError(
+            f"no built jar found under {app_root / 'build' / 'libs'}. Build this app at least once "
+            f"first (e.g. `_ops/Build-FinalApp.ps1`).")
+    with tempfile.TemporaryDirectory(prefix="npdev-data-mobility-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+        separator = ";" if os.name == "nt" else ":"
+        yield separator.join([str(manifest_resources_root), str(Path(libs) / "*"), str(extracted_libs / "*")])
+
+
+def _run_data_transfer_main(app_root: Path, verb_args: list[str], as_json: bool, command_label: str) -> int:
+    """Shells to `com.finalexec.db.DataTransferMain` with `verb_args`, using `app_root`'s own
+    classpath (see `_datamobility_classpath`). Mirrors `run_db_verify`'s subprocess pattern exactly,
+    including running with `cwd=app_root` (an H2Local URL is app-relative by design, PORT-1)."""
+    java_bin = java_launcher()
+    if java_bin is None:
+        return _fail_data_mobility(command_label, "no java found (see `npdev doctor`'s java checks)", as_json)
+    try:
+        with _datamobility_classpath(app_root) as classpath:
+            command = [java_bin, "-cp", classpath, "com.finalexec.db.DataTransferMain", *verb_args]
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=300)
+    except _DataMobilityClasspathError as exc:
+        return _fail_data_mobility(command_label, str(exc), as_json)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return _fail_data_mobility(command_label, f"could not run DataTransferMain ({exc})", as_json)
+    if completed.stdout:
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
+def _fail_data_mobility(command_label: str, message: str, as_json: bool) -> int:
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": command_label,
+            "ok": False, "exitCode": 2, "detail": message,
+        }, indent=2))
+    else:
+        print(f"npdev {command_label}: {message}", file=sys.stderr)
+    return 2
+
+
+def run_db_export(args: argparse.Namespace) -> int:
+    """`npdev db export` -- DB -> file, one of the data-mobility feature's directions. Shells to
+    `com.finalexec.db.DataTransferMain export`, which does the real work (schema introspection,
+    row streaming, CSV/SQL-insert writing) -- see that class's javadoc."""
+    as_json = getattr(args, "json", False)
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    resolved = _resolve_app_jdbc_connection(app_root, args.url, args.db_user, args.db_password)
+    if isinstance(resolved, str):
+        return _fail_data_mobility("db export", resolved, as_json)
+    url, user, password = resolved
+    verb_args = ["export", "--url", url, "--format", args.format, "--tables", args.tables, "--out", args.out]
+    if user:
+        verb_args += ["--user", user]
+    if password:
+        verb_args += ["--password", password]
+    if as_json:
+        verb_args.append("--json")
+    return _run_data_transfer_main(app_root, verb_args, as_json, "db export")
+
+
+def run_db_import(args: argparse.Namespace) -> int:
+    """`npdev db import` -- file -> DB. Always runs the DB Structure Check first (inside
+    `DataTransferMain`/`DataImporter`); an EQUAL verdict proceeds automatically, COMPATIBLE needs
+    `--confirm`, INCOMPATIBLE always blocks regardless of `--confirm`."""
+    as_json = getattr(args, "json", False)
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    resolved = _resolve_app_jdbc_connection(app_root, args.url, args.db_user, args.db_password)
+    if isinstance(resolved, str):
+        return _fail_data_mobility("db import", resolved, as_json)
+    url, user, password = resolved
+    verb_args = ["import", "--bundle", args.bundle, "--format", args.format, "--url", url]
+    if user:
+        verb_args += ["--user", user]
+    if password:
+        verb_args += ["--password", password]
+    if args.include_ddl:
+        verb_args.append("--include-ddl")
+    if args.confirm:
+        verb_args.append("--confirm")
+    if as_json:
+        verb_args.append("--json")
+    return _run_data_transfer_main(app_root, verb_args, as_json, "db import")
+
+
+def run_db_transfer(args: argparse.Namespace) -> int:
+    """`npdev db transfer` -- DB -> DB directly, no file touched. Runs with the SOURCE app's
+    classpath, same reasoning as `run_db_structure_check` (one app's fat jar bundles every engine's
+    JDBC driver)."""
+    as_json = getattr(args, "json", False)
+    source_root = Path(args.source_app).expanduser().resolve() if args.source_app else Path.cwd()
+    target_root = Path(args.target_app).expanduser().resolve() if args.target_app else Path.cwd()
+    source_resolved = _resolve_app_jdbc_connection(source_root, args.source_url, args.source_db_user, args.source_db_password)
+    if isinstance(source_resolved, str):
+        return _fail_data_mobility("db transfer", f"source: {source_resolved}", as_json)
+    target_resolved = _resolve_app_jdbc_connection(target_root, args.target_url, args.target_db_user, args.target_db_password)
+    if isinstance(target_resolved, str):
+        return _fail_data_mobility("db transfer", f"target: {target_resolved}", as_json)
+    source_url, source_user, source_password = source_resolved
+    target_url, target_user, target_password = target_resolved
+    verb_args = ["transfer", "--source-url", source_url, "--target-url", target_url, "--tables", args.tables]
+    if source_user:
+        verb_args += ["--source-user", source_user]
+    if source_password:
+        verb_args += ["--source-password", source_password]
+    if target_user:
+        verb_args += ["--target-user", target_user]
+    if target_password:
+        verb_args += ["--target-password", target_password]
+    if args.include_ddl:
+        verb_args.append("--include-ddl")
+    if args.confirm:
+        verb_args.append("--confirm")
+    if as_json:
+        verb_args.append("--json")
+    return _run_data_transfer_main(source_root, verb_args, as_json, "db transfer")
+
+
+def run_db_structure_check(args: argparse.Namespace) -> int:
+    """`npdev db structure-check` -- the standalone DB Structure Check between two LIVE databases
+    (the pre-flight step of a DB-to-DB transfer, or usable on its own). Runs with the SOURCE app's
+    classpath -- one app's fat jar has every engine's JDBC driver bundled (see
+    `_datamobility_classpath`), so this works even when source and target are different engines."""
+    as_json = getattr(args, "json", False)
+    source_root = Path(args.source_app).expanduser().resolve() if args.source_app else Path.cwd()
+    target_root = Path(args.target_app).expanduser().resolve() if args.target_app else Path.cwd()
+    source_resolved = _resolve_app_jdbc_connection(source_root, args.source_url, args.source_db_user, args.source_db_password)
+    if isinstance(source_resolved, str):
+        return _fail_data_mobility("db structure-check", f"source: {source_resolved}", as_json)
+    target_resolved = _resolve_app_jdbc_connection(target_root, args.target_url, args.target_db_user, args.target_db_password)
+    if isinstance(target_resolved, str):
+        return _fail_data_mobility("db structure-check", f"target: {target_resolved}", as_json)
+    source_url, source_user, source_password = source_resolved
+    target_url, target_user, target_password = target_resolved
+    verb_args = ["structure-check", "--source-url", source_url, "--target-url", target_url, "--tables", args.tables]
+    if source_user:
+        verb_args += ["--source-user", source_user]
+    if source_password:
+        verb_args += ["--source-password", source_password]
+    if target_user:
+        verb_args += ["--target-user", target_user]
+    if target_password:
+        verb_args += ["--target-password", target_password]
+    if args.include_ddl:
+        verb_args.append("--include-ddl")
+    if as_json:
+        verb_args.append("--json")
+    return _run_data_transfer_main(source_root, verb_args, as_json, "db structure-check")
+
+
 # M14: the five environment operations, mapped to the scripts the GENERATOR already emits.
 #
 # Nothing here knows how to start a database. Each entry names a generated script, and that script
@@ -11022,6 +11243,82 @@ def build_parser() -> argparse.ArgumentParser:
              "of the text table.",
     )
 
+    # Data mobility: export/import/structure-check, backed by com.finalexec.db.DataTransferMain
+    # (see that class's javadoc). "transfer" (DB-to-DB with no file touched) is not wired yet --
+    # today's DB-to-DB path is export then import through a temp directory.
+    db_export = db_sub.add_parser(
+        "export", help="Export this app's database (or a scoped subset of it) to a file bundle -- "
+                       "CSV or SQL-insert, optionally including CREATE TABLE/INDEX DDL.",
+    )
+    db_export.add_argument("--app", default=None, metavar="DIR", help="Defaults to the current directory.")
+    db_export.add_argument("--url", default=None, help="An explicit JDBC URL, overriding the app's own resolved connection.")
+    db_export.add_argument("--db-user", default=None)
+    db_export.add_argument("--db-password", default=None)
+    db_export.add_argument("--format", required=True, choices=["csv", "sql"])
+    db_export.add_argument(
+        "--tables", required=True, metavar="all|business|<comma-list>",
+        help="'all' every table, 'business' only concepts with no pack origin (excludes platform "
+             "built-ins and imported packs alike), or an explicit comma-separated table list.",
+    )
+    db_export.add_argument("--out", required=True, metavar="DIR", help="Directory to write the export bundle into.")
+    db_export.add_argument("--json", action="store_true")
+
+    db_import = db_sub.add_parser(
+        "import", help="Import a file bundle (from `db export`) into this app's database, after a "
+                       "DB Structure Check.",
+    )
+    db_import.add_argument("--app", default=None, metavar="DIR", help="Defaults to the current directory.")
+    db_import.add_argument("--url", default=None, help="An explicit JDBC URL, overriding the app's own resolved connection.")
+    db_import.add_argument("--db-user", default=None)
+    db_import.add_argument("--db-password", default=None)
+    db_import.add_argument("--bundle", required=True, metavar="DIR", help="The export bundle directory (from `db export`).")
+    db_import.add_argument("--format", required=True, choices=["csv", "sql"])
+    db_import.add_argument(
+        "--include-ddl", action="store_true",
+        help="Create a table/column the target is missing (using the source's declared type) "
+             "instead of blocking on it.",
+    )
+    db_import.add_argument(
+        "--confirm", action="store_true",
+        help="Required to proceed past a COMPATIBLE structure-check verdict (extra target "
+             "tables/columns the source doesn't need). Never overrides an INCOMPATIBLE verdict.",
+    )
+    db_import.add_argument("--json", action="store_true")
+
+    db_transfer = db_sub.add_parser(
+        "transfer", help="DB-to-DB: stream rows directly from one app's database into another's, "
+                         "no file touched -- after a DB Structure Check, same confirm/include-ddl "
+                         "rules as `db import`.",
+    )
+    db_transfer.add_argument("--source-app", default=None, metavar="DIR", help="Defaults to the current directory.")
+    db_transfer.add_argument("--source-url", default=None)
+    db_transfer.add_argument("--source-db-user", default=None)
+    db_transfer.add_argument("--source-db-password", default=None)
+    db_transfer.add_argument("--target-app", default=None, metavar="DIR", help="Defaults to the current directory.")
+    db_transfer.add_argument("--target-url", default=None)
+    db_transfer.add_argument("--target-db-user", default=None)
+    db_transfer.add_argument("--target-db-password", default=None)
+    db_transfer.add_argument("--tables", required=True, metavar="all|business|<comma-list>")
+    db_transfer.add_argument("--include-ddl", action="store_true")
+    db_transfer.add_argument("--confirm", action="store_true")
+    db_transfer.add_argument("--json", action="store_true")
+
+    db_structure_check = db_sub.add_parser(
+        "structure-check", help="Run the DB Structure Check between two LIVE databases on its own "
+                                "(EQUAL/COMPATIBLE/INCOMPATIBLE), without importing anything.",
+    )
+    db_structure_check.add_argument("--source-app", default=None, metavar="DIR", help="Defaults to the current directory.")
+    db_structure_check.add_argument("--source-url", default=None)
+    db_structure_check.add_argument("--source-db-user", default=None)
+    db_structure_check.add_argument("--source-db-password", default=None)
+    db_structure_check.add_argument("--target-app", default=None, metavar="DIR", help="Defaults to the current directory.")
+    db_structure_check.add_argument("--target-url", default=None)
+    db_structure_check.add_argument("--target-db-user", default=None)
+    db_structure_check.add_argument("--target-db-password", default=None)
+    db_structure_check.add_argument("--tables", required=True, metavar="all|business|<comma-list>")
+    db_structure_check.add_argument("--include-ddl", action="store_true")
+    db_structure_check.add_argument("--json", action="store_true")
+
     # M14: the five environment operations. Each RUNS the generated `_ops` script of the same name
     # rather than reimplementing it -- see _DB_OPERATIONS.
     for _op_name, (_script, _help) in _DB_OPERATIONS.items():
@@ -12533,6 +12830,14 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_test_connection(args)
         if args.command == "db" and args.db_command == "verify":
             return run_db_verify(args)
+        if args.command == "db" and args.db_command == "export":
+            return run_db_export(args)
+        if args.command == "db" and args.db_command == "import":
+            return run_db_import(args)
+        if args.command == "db" and args.db_command == "transfer":
+            return run_db_transfer(args)
+        if args.command == "db" and args.db_command == "structure-check":
+            return run_db_structure_check(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
         if args.command == "mcp" and args.mcp_command == "install":

@@ -20,6 +20,7 @@ function showScreen(name) {
   // Same reasoning as the Scrap Manager: the Prompter's app picker is fed from the Monitor's last
   // scan, and its provider list can be edited from its own modal, so both are re-read on entry.
   if (name === "prompter" && window.__npdevRefreshPrompter) window.__npdevRefreshPrompter();
+  if (name === "data-transfer" && window.__npdevRefreshDataTransfer) window.__npdevRefreshDataTransfer();
   // The five original screens had NO on-entry refresh at all -- everything they showed was whatever
   // init() found at launch. That is how the Install tab could report "not run yet" after a setup run
   // and "no Python found" after installing one: the facts changed, the window did not re-ask. These

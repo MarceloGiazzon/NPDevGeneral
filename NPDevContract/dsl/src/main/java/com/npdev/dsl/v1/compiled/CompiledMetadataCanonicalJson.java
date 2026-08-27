@@ -588,6 +588,11 @@ public final class CompiledMetadataCanonicalJson {
             node.set("invariantRefs", toStringArray(sortedInvariantRefs(entity)));
             node.set("flowNames", toStringArray(sortStrings(flowNamesByConcept.get(entity.getName()))));
             node.set("eventNames", toStringArray(sortStrings(eventNamesByConcept.get(entity.getName()))));
+            // Data-mobility Phase A: "business" = the app's own root-declared concept (no pack
+            // origin). A pack-contributed concept is never business, whether it's a platform
+            // built-in (identity/workspace) or a third-party imported pack.
+            node.put("packId", entity.getOrigin() == null ? "" : safe(entity.getOrigin().packId()));
+            node.put("isBusiness", entity.getOrigin() == null);
             concepts.add(node);
         }
         return concepts;

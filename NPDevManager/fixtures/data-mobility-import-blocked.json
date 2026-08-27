@@ -1,0 +1,9 @@
+{
+  "outcome": "BLOCKED",
+  "verdict": "INCOMPATIBLE",
+  "incompatibleReasons": [
+    "customer: table exists in source but not on target (rerun with includeDdl to create it before import, or add it manually)"
+  ],
+  "compatibleReasons": [],
+  "rowCountsByTable": {}
+}

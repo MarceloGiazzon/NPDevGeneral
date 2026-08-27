@@ -5,6 +5,7 @@
 <title>NPDev Manager</title>
 <link rel="stylesheet" href="app.css" />
 <link rel="stylesheet" href="monitor.css" />
+<link rel="stylesheet" href="data-transfer.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -28,6 +29,7 @@
     <button class="tab" data-screen="run">Run</button>
     <button class="tab" data-screen="versions">Versions</button>
     <button class="tab" data-screen="scrap">Scrap Manager</button>
+    <button class="tab" data-screen="data-transfer">Data Transfer</button>
     <button class="tab" data-screen="prompter">Prompter</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
@@ -333,6 +335,97 @@
       </div>
     </section>
 
+    <!-- Data Transfer: export/import/transfer/structure-check over com.finalexec.db.DataTransferMain. -->
+    <section id="screen-data-transfer" class="screen" hidden>
+      <h1>Data Transfer</h1>
+      <p class="subtitle">Move an app's data DB&#8596;file or DB&#8596;DB, across any supported engine. Import and transfer always run a DB Structure Check first.</p>
+
+      <div class="dt-row">
+        <label>Direction
+          <select id="dt-direction">
+            <option value="export">Export (DB &#8594; file)</option>
+            <option value="import">Import (file &#8594; DB)</option>
+            <option value="transfer">Transfer (DB &#8594; DB, no file)</option>
+            <option value="structure-check">Structure Check only</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="dt-source-group" class="dt-group">
+        <h2>Source</h2>
+        <div class="dt-row">
+          <label>App
+            <select id="dt-source-app-picker"><option value="">(type a folder below)</option></select>
+          </label>
+          <button id="dt-source-app-refresh">&#10227; Refresh list</button>
+        </div>
+        <label>App folder <input id="dt-source-app-dir" placeholder="D:\Apps\my-app" /></label>
+        <label id="dt-source-url-label" hidden>Explicit JDBC URL (overrides app) <input id="dt-source-url" placeholder="jdbc:..." /></label>
+      </div>
+
+      <div id="dt-target-group" class="dt-group">
+        <h2>Target</h2>
+        <div class="dt-row">
+          <label>App
+            <select id="dt-target-app-picker"><option value="">(type a folder below)</option></select>
+          </label>
+          <button id="dt-target-app-refresh">&#10227; Refresh list</button>
+        </div>
+        <label>App folder <input id="dt-target-app-dir" placeholder="D:\Apps\my-app" /></label>
+        <label id="dt-target-url-label" hidden>Explicit JDBC URL (overrides app) <input id="dt-target-url" placeholder="jdbc:..." /></label>
+      </div>
+
+      <div id="dt-bundle-group" class="dt-group" hidden>
+        <h2>File bundle</h2>
+        <label>Bundle directory <input id="dt-bundle-dir" placeholder="D:\exports\my-app-2026-08-27" /></label>
+      </div>
+
+      <div class="dt-group">
+        <h2>Options</h2>
+        <div class="dt-row">
+          <label id="dt-format-label">Format
+            <select id="dt-format">
+              <option value="csv">CSV</option>
+              <option value="sql">SQL Insert Statements</option>
+            </select>
+          </label>
+          <label>Tables
+            <select id="dt-tables-mode">
+              <option value="all">All tables</option>
+              <option value="business">Business tables only</option>
+              <option value="explicit">Choose tables&hellip;</option>
+            </select>
+          </label>
+        </div>
+        <label id="dt-tables-explicit-label" hidden>Comma-separated table names <input id="dt-tables-explicit" placeholder="customer, order_item" /></label>
+        <label id="dt-out-label">Output directory <input id="dt-out-dir" placeholder="D:\exports\my-app-2026-08-27" /></label>
+        <label class="dt-checkbox"><input id="dt-include-ddl" type="checkbox" /> Include CREATE TABLE/INDEX DDL for anything the target is missing</label>
+      </div>
+
+      <div class="run-buttons">
+        <button id="dt-run-btn" class="primary">&#9654; Run</button>
+      </div>
+
+      <!--
+        The DB Structure Check is always shown as its own explicit step/result before anything is
+        written -- EQUAL proceeds automatically (the run above already did it), COMPATIBLE shows this
+        panel with a Confirm button, INCOMPATIBLE shows this panel with no way to proceed.
+      -->
+      <div id="dt-structure-check" class="dt-group" hidden>
+        <h2>DB Structure Check</h2>
+        <div id="dt-verdict-badge" class="dt-badge"></div>
+        <ul id="dt-reasons"></ul>
+        <button id="dt-confirm-btn" class="primary" hidden>Confirm &amp; run</button>
+      </div>
+
+      <div id="dt-result" class="dt-group" hidden>
+        <h2>Result</h2>
+        <div id="dt-result-summary"></div>
+        <ul id="dt-row-counts"></ul>
+      </div>
+      <div id="dt-error" class="dt-error" hidden></div>
+    </section>
+
     <!-- Prompter (Phase F) -->
     <section id="screen-prompter" class="screen" hidden>
       <h1>▚ PROMPTER <span class="dim">// ask a model about an app</span></h1>
@@ -582,6 +675,7 @@
   <script src="monitor.js"></script>
   <script src="scrap.js"></script>
   <script src="prompter.js"></script>
+  <script src="data-transfer.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these

@@ -1,0 +1,77 @@
+/* Data Transfer screen. Reuses app.css's tokens (--accent/--pass/--warn/--fail/--border/--muted)
+   rather than redefining them, so a theme change there stays in sync here automatically. */
+
+.dt-group {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 0 0 14px;
+}
+
+.dt-group h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.dt-row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.dt-row label, .dt-group > label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  margin-bottom: 10px;
+}
+
+.dt-group > label:last-child { margin-bottom: 0; }
+
+.dt-checkbox {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.dt-badge {
+  display: inline-block;
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  padding: 3px 10px;
+  border-radius: 999px;
+  margin-bottom: 10px;
+}
+
+.dt-badge-equal { background: color-mix(in srgb, var(--pass) 18%, transparent); color: var(--pass); }
+.dt-badge-compatible { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.dt-badge-incompatible { background: color-mix(in srgb, var(--fail) 18%, transparent); color: var(--fail); }
+
+#dt-reasons {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+#dt-reasons li { margin-bottom: 4px; }
+
+#dt-row-counts {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+
+.dt-error {
+  border: 1px solid var(--fail);
+  color: var(--fail);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+}

@@ -1,0 +1,9 @@
+{
+  "outcome": "TRANSFERRED",
+  "verdict": "EQUAL",
+  "incompatibleReasons": [],
+  "compatibleReasons": [],
+  "rowCountsByTable": {
+    "customer": 2
+  }
+}

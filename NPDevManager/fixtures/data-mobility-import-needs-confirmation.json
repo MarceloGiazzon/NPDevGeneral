@@ -1,0 +1,9 @@
+{
+  "outcome": "NEEDS_CONFIRMATION",
+  "verdict": "COMPATIBLE",
+  "incompatibleReasons": [],
+  "compatibleReasons": [
+    "customer.notes: SAFE_ADDITIVE -- harmless (target has this, source does not)"
+  ],
+  "rowCountsByTable": {}
+}

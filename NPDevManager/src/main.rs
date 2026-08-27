@@ -155,6 +155,138 @@ async fn test_connection(
 }
 
 // -------------------------------------------------------------------------------------------
+// Data Transfer screen: export / import / transfer / structure-check.
+// -------------------------------------------------------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn data_mobility_export(
+    state: State<'_, AppState>,
+    app_dir: Option<String>,
+    url: Option<String>,
+    db_user: Option<String>,
+    db_password: Option<String>,
+    format: String,
+    tables: String,
+    out: String,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_data_mobility_export(
+            &PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref(),
+            app_dir.as_deref(), url.as_deref(), db_user.as_deref(), db_password.as_deref(),
+            &format, &tables, &out,
+        ).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_data_mobility_export(
+        &python, &cli, java_home.as_deref(),
+        app_dir.as_deref(), url.as_deref(), db_user.as_deref(), db_password.as_deref(),
+        &format, &tables, &out,
+    ).await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn data_mobility_import(
+    state: State<'_, AppState>,
+    app_dir: Option<String>,
+    url: Option<String>,
+    db_user: Option<String>,
+    db_password: Option<String>,
+    bundle: String,
+    format: String,
+    include_ddl: bool,
+    confirm: bool,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_data_mobility_import(
+            &PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref(),
+            app_dir.as_deref(), url.as_deref(), db_user.as_deref(), db_password.as_deref(),
+            &bundle, &format, include_ddl, confirm,
+        ).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_data_mobility_import(
+        &python, &cli, java_home.as_deref(),
+        app_dir.as_deref(), url.as_deref(), db_user.as_deref(), db_password.as_deref(),
+        &bundle, &format, include_ddl, confirm,
+    ).await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn data_mobility_transfer(
+    state: State<'_, AppState>,
+    source_app: Option<String>,
+    source_url: Option<String>,
+    source_db_user: Option<String>,
+    source_db_password: Option<String>,
+    target_app: Option<String>,
+    target_url: Option<String>,
+    target_db_user: Option<String>,
+    target_db_password: Option<String>,
+    tables: String,
+    include_ddl: bool,
+    confirm: bool,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_data_mobility_transfer(
+            &PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref(),
+            source_app.as_deref(), source_url.as_deref(), source_db_user.as_deref(), source_db_password.as_deref(),
+            target_app.as_deref(), target_url.as_deref(), target_db_user.as_deref(), target_db_password.as_deref(),
+            &tables, include_ddl, confirm,
+        ).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_data_mobility_transfer(
+        &python, &cli, java_home.as_deref(),
+        source_app.as_deref(), source_url.as_deref(), source_db_user.as_deref(), source_db_password.as_deref(),
+        target_app.as_deref(), target_url.as_deref(), target_db_user.as_deref(), target_db_password.as_deref(),
+        &tables, include_ddl, confirm,
+    ).await
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+async fn data_mobility_structure_check(
+    state: State<'_, AppState>,
+    source_app: Option<String>,
+    source_url: Option<String>,
+    source_db_user: Option<String>,
+    source_db_password: Option<String>,
+    target_app: Option<String>,
+    target_url: Option<String>,
+    target_db_user: Option<String>,
+    target_db_password: Option<String>,
+    tables: String,
+    include_ddl: bool,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_data_mobility_structure_check(
+            &PathBuf::from("python"), &PathBuf::from("npdev_cli.py"), java_home.as_deref(),
+            source_app.as_deref(), source_url.as_deref(), source_db_user.as_deref(), source_db_password.as_deref(),
+            target_app.as_deref(), target_url.as_deref(), target_db_user.as_deref(), target_db_password.as_deref(),
+            &tables, include_ddl,
+        ).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_data_mobility_structure_check(
+        &python, &cli, java_home.as_deref(),
+        source_app.as_deref(), source_url.as_deref(), source_db_user.as_deref(), source_db_password.as_deref(),
+        target_app.as_deref(), target_url.as_deref(), target_db_user.as_deref(), target_db_password.as_deref(),
+        &tables, include_ddl,
+    ).await
+}
+
+// -------------------------------------------------------------------------------------------
 // M3: private JDK -- the thesis. Emits `jdk-progress` events as it downloads.
 // -------------------------------------------------------------------------------------------
 
@@ -1679,6 +1811,10 @@ fn main() {
             set_fake_doctor_scenario,
             check_doctor,
             test_connection,
+            data_mobility_export,
+            data_mobility_import,
+            data_mobility_transfer,
+            data_mobility_structure_check,
             jdk_status,
             install_jdk,
             python_status,

@@ -71,6 +71,16 @@ const FIXTURE_EXPLORE_RUN_RED: &str = include_str!("../fixtures/explore-run-red.
 const FIXTURE_EXPLORE_VALIDATE_OK: &str = include_str!("../fixtures/explore-validate-ok.json");
 const FIXTURE_EXPLORE_VALIDATE_BAD: &str = include_str!("../fixtures/explore-validate-bad.json");
 const FIXTURE_EXPLORE_PREFLIGHT: &str = include_str!("../fixtures/explore-preflight.json");
+// Data mobility. All six captured live on 2026-08-27 from a real `com.finalexec.db.DataTransferMain`
+// invocation against real H2 databases (export -> import in each of its three verdicts, a direct
+// DB-to-DB transfer, and a standalone structure-check) -- never hand-written, same discipline as
+// every other fixture in this list bar the two documented exceptions above.
+const FIXTURE_DATA_MOBILITY_EXPORT_OK: &str = include_str!("../fixtures/data-mobility-export-ok.json");
+const FIXTURE_DATA_MOBILITY_IMPORT_EQUAL: &str = include_str!("../fixtures/data-mobility-import-equal.json");
+const FIXTURE_DATA_MOBILITY_IMPORT_NEEDS_CONFIRMATION: &str = include_str!("../fixtures/data-mobility-import-needs-confirmation.json");
+const FIXTURE_DATA_MOBILITY_IMPORT_BLOCKED: &str = include_str!("../fixtures/data-mobility-import-blocked.json");
+const FIXTURE_DATA_MOBILITY_TRANSFER_OK: &str = include_str!("../fixtures/data-mobility-transfer-ok.json");
+const FIXTURE_DATA_MOBILITY_STRUCTURE_CHECK_EQUAL: &str = include_str!("../fixtures/data-mobility-structure-check-equal.json");
 
 /// Which doctor fixture stub mode serves -- switchable at runtime (see `set_fake_doctor_scenario`
 /// command) so every failure screen (missing Java, wrong version, unstaged jars) can be exercised
@@ -298,6 +308,187 @@ pub async fn run_db_test_connection(
     // Exit 1 here means "the checks ran and some FAILED", which is a result to render, not an error
     // to raise. Only a total absence of output is a real failure -- parse_single_json says so.
     parse_single_json(&output.stdout, &output.stderr, "db test-connection")
+}
+
+// ---------------------------------------------------------------------------------------------
+// data mobility: export / import / transfer / structure-check
+//
+// Thin wrappers around `npdev db export|import|transfer|structure-check`, exactly like every
+// other function in this file -- see this module's own header comment. The Data Transfer screen
+// is a multi-step wizard (pick source, pick target/file, pick format/scope/DDL, run the DB
+// Structure Check, show its verdict, confirm, run) built entirely in JS/HTML over these four
+// commands; nothing here decides what to show, it only relays what the CLI already decided.
+// ---------------------------------------------------------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_data_mobility_export(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: Option<&str>,
+    url: Option<&str>,
+    db_user: Option<&str>,
+    db_password: Option<&str>,
+    format: &str,
+    tables: &str,
+    out: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_DATA_MOBILITY_EXPORT_OK)
+            .map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args: Vec<String> = vec!["db".into(), "export".into(), "--json".into(), "--format".into(), format.into(), "--tables".into(), tables.into(), "--out".into(), out.into()];
+    for (flag, value) in [("--app", app_dir), ("--url", url), ("--db-user", db_user), ("--db-password", db_password)] {
+        if let Some(value) = value.filter(|v| !v.is_empty()) {
+            args.push(flag.into());
+            args.push(value.into());
+        }
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run the export: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "db export")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_data_mobility_import(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: Option<&str>,
+    url: Option<&str>,
+    db_user: Option<&str>,
+    db_password: Option<&str>,
+    bundle: &str,
+    format: &str,
+    include_ddl: bool,
+    confirm: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        // Stub-mode scenario switch: the UI can drive any of the three verdicts by pointing
+        // `--bundle` at a path containing one of these sentinel substrings -- same trick
+        // `run_db_test_connection` uses (port 59999) to reach its refused-fixture screen with no
+        // real broken state to hand.
+        let text = if bundle.contains("needs-confirm") {
+            FIXTURE_DATA_MOBILITY_IMPORT_NEEDS_CONFIRMATION
+        } else if bundle.contains("blocked") {
+            FIXTURE_DATA_MOBILITY_IMPORT_BLOCKED
+        } else {
+            FIXTURE_DATA_MOBILITY_IMPORT_EQUAL
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args: Vec<String> = vec!["db".into(), "import".into(), "--json".into(), "--bundle".into(), bundle.into(), "--format".into(), format.into()];
+    for (flag, value) in [("--app", app_dir), ("--url", url), ("--db-user", db_user), ("--db-password", db_password)] {
+        if let Some(value) = value.filter(|v| !v.is_empty()) {
+            args.push(flag.into());
+            args.push(value.into());
+        }
+    }
+    if include_ddl {
+        args.push("--include-ddl".into());
+    }
+    if confirm {
+        args.push("--confirm".into());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run the import: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "db import")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_data_mobility_transfer(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    source_app: Option<&str>,
+    source_url: Option<&str>,
+    source_db_user: Option<&str>,
+    source_db_password: Option<&str>,
+    target_app: Option<&str>,
+    target_url: Option<&str>,
+    target_db_user: Option<&str>,
+    target_db_password: Option<&str>,
+    tables: &str,
+    include_ddl: bool,
+    confirm: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_DATA_MOBILITY_TRANSFER_OK)
+            .map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args: Vec<String> = vec!["db".into(), "transfer".into(), "--json".into(), "--tables".into(), tables.into()];
+    for (flag, value) in [
+        ("--source-app", source_app), ("--source-url", source_url),
+        ("--source-db-user", source_db_user), ("--source-db-password", source_db_password),
+        ("--target-app", target_app), ("--target-url", target_url),
+        ("--target-db-user", target_db_user), ("--target-db-password", target_db_password),
+    ] {
+        if let Some(value) = value.filter(|v| !v.is_empty()) {
+            args.push(flag.into());
+            args.push(value.into());
+        }
+    }
+    if include_ddl {
+        args.push("--include-ddl".into());
+    }
+    if confirm {
+        args.push("--confirm".into());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run the transfer: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "db transfer")
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_data_mobility_structure_check(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    source_app: Option<&str>,
+    source_url: Option<&str>,
+    source_db_user: Option<&str>,
+    source_db_password: Option<&str>,
+    target_app: Option<&str>,
+    target_url: Option<&str>,
+    target_db_user: Option<&str>,
+    target_db_password: Option<&str>,
+    tables: &str,
+    include_ddl: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_DATA_MOBILITY_STRUCTURE_CHECK_EQUAL)
+            .map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args: Vec<String> = vec!["db".into(), "structure-check".into(), "--json".into(), "--tables".into(), tables.into()];
+    for (flag, value) in [
+        ("--source-app", source_app), ("--source-url", source_url),
+        ("--source-db-user", source_db_user), ("--source-db-password", source_db_password),
+        ("--target-app", target_app), ("--target-url", target_url),
+        ("--target-db-user", target_db_user), ("--target-db-password", target_db_password),
+    ] {
+        if let Some(value) = value.filter(|v| !v.is_empty()) {
+            args.push(flag.into());
+            args.push(value.into());
+        }
+    }
+    if include_ddl {
+        args.push("--include-ddl".into());
+    }
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run the structure check: {e}"))?;
+    parse_single_json(&output.stdout, &output.stderr, "db structure-check")
 }
 
 // ---------------------------------------------------------------------------------------------

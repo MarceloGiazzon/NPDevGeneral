@@ -1,0 +1,7 @@
+{
+  "status": "ok",
+  "tableCount": 1,
+  "rowCountsByTable": {
+    "customer": 2
+  }
+}
