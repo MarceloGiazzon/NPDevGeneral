@@ -89,6 +89,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/appgen/New-VerificationPanelPage.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/appgen/Rebuild-And-Restage.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md"

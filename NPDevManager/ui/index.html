@@ -5,6 +5,7 @@
 <title>NPDev Manager</title>
 <link rel="stylesheet" href="app.css" />
 <link rel="stylesheet" href="monitor.css" />
+<link rel="stylesheet" href="verification.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -29,6 +30,7 @@
     <button class="tab" data-screen="versions">Versions</button>
     <button class="tab" data-screen="scrap">Scrap Manager</button>
     <button class="tab" data-screen="prompter">Prompter</button>
+    <button class="tab" data-screen="verification">Verification</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -429,6 +431,31 @@
         </div>
       </div>
     </section>
+
+    <!-- Verification (VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 3). Two views over the one
+         npdev-verification-panel.v1 document from `npdev verify --panel --json`. The renderer owns no
+         decision about what any state means -- kanban_column() in the CLI does, so this window and a
+         terminal agree on what counts as failing vs stale vs never-run. -->
+    <section id="screen-verification" class="screen" hidden>
+      <h1>▚ VERIFICATION <span class="dim">// what checks exist and what they last said</span></h1>
+      <p class="subtitle" id="verify-subject">…</p>
+
+      <div class="statusbar">
+        <button class="btn" id="verify-refresh">⟳ REFRESH</button>
+        <div class="viewtoggle" id="verify-view">
+          <button data-v="kanban" class="active" title="Four columns by derived state">▦ KANBAN</button>
+          <button data-v="table" title="Full table of every item">☰ TABLE</button>
+        </div>
+      </div>
+
+      <!-- Phase 5: the executor's status line. Run buttons re-run an item through the controlled
+           runner (Manager-local only; the app-side page has no Run control) and the result lands
+           here + in the cadence ledger behind the panel. -->
+      <p id="verify-run-status" class="status-line" aria-live="polite"></p>
+
+      <div class="verify-kanban" id="verify-kanban"></div>
+      <div class="verify-table-wrap" id="verify-table-wrap" hidden></div>
+    </section>
   </main>
 
   <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
@@ -582,6 +609,7 @@
   <script src="monitor.js"></script>
   <script src="scrap.js"></script>
   <script src="prompter.js"></script>
+  <script src="verification.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these
@@ -590,6 +618,7 @@
     try { window.__npdevInitMonitor(); } catch (e) { console.error("Monitor init failed", e); }
     try { window.__npdevInitScrap(); } catch (e) { console.error("Scrap Manager init failed", e); }
     try { window.__npdevInitPrompter(); } catch (e) { console.error("Prompter init failed", e); }
+    try { window.__npdevInitVerification(); } catch (e) { console.error("Verification init failed", e); }
   </script>
 </body>
 </html>

@@ -1997,6 +1997,12 @@ def _emit_static_pages(repo_root_path: Path, final_app_out: Path, config_path: P
          ["-StaticDir", str(static_dir), "-AppId", app_id]),
         ("properties.html", scripts_dir / "New-PropertiesAdminPage.ps1",
          ["-StaticDir", str(static_dir), "-AppId", app_id]),
+        # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 4: the app's OWN read-only
+        # verification panel -- same contract document the repo emits, produced by the app-side
+        # emitter from the app's _ops (operations + browser routines + their last-known runs).
+        ("verification.html", scripts_dir / "New-VerificationPanelPage.ps1",
+         ["-StaticDir", str(static_dir), "-OpsDir", str(final_app_out.parent / "_ops"),
+          "-AppId", app_id]),
     ]
     for label, script, script_args in pages:
         command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *script_args]
@@ -7154,6 +7160,45 @@ def run_report_bootstrap() -> None:
     subprocess.run(["pwsh", "-NoProfile", "-File", str(script)], cwd=root, check=True)
 
 
+def run_probe(args: argparse.Namespace) -> int:
+    """VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 P1: `npdev probe` -- boot a generated app with
+    the JaCoCo agent and report execution reach. All logic lives in npdev_probe.py; this is a thin
+    arg-forwarding shell, exactly like run_monitor/run_explore."""
+    import npdev_probe
+
+    if args.probe_command == "start":
+        return npdev_probe.run_probe_start(args.app, args.agent_port, args.wait, args.json)
+    if args.probe_command == "dump":
+        return npdev_probe.run_probe_dump(json_out=args.json)
+    if args.probe_command == "stop":
+        return npdev_probe.run_probe_stop(args.baseline, args.json)
+    if args.probe_command == "run":
+        return npdev_probe.run_probe_run(args.app, args.seconds, args.agent_port, args.json)
+    raise CliError("usage: npdev probe {start|dump|stop|run}")
+
+
+def run_verify_execute(args: argparse.Namespace) -> int:
+    """VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 5: `npdev verify --run <id>`. The
+    executor -- the one part of the panel feature with a security surface, and deliberately built
+    last. All policy (which executables, which file roots, what network, what timeout cap) lives in
+    npdev_executor.py's thin shell over the controlled runner; this forwards."""
+    import npdev_executor
+
+    return npdev_executor.execute_item(
+        repo_root(), args.run, args.timeout_seconds,
+        json_out=bool(getattr(args, "json", False)))
+
+
+def run_verify_panel(args: argparse.Namespace) -> int:
+    """VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 1: `npdev verify --panel`. Pure viewer --
+    never runs a check, never fails a build. `--json` emits the raw contract document (the Manager's
+    Tauri command shells this); without `--json`, a human table on stdout."""
+    import npdev_panel
+
+    table = not bool(getattr(args, "json", False))
+    return npdev_panel.print_repo_panel(as_human_table=table)
+
+
 def run_verify(args: argparse.Namespace) -> dict:
     """Fast Lane plan item 6 (2026-08-01): one entry point for all four verification tiers,
     reading the same staleness ledger every tier writes to (scripts/quality/cadence_state.py)
@@ -7167,6 +7212,9 @@ def run_verify(args: argparse.Namespace) -> dict:
     """
     root = repo_root()
     tier = args.tier
+    if not tier:
+        raise CliError("npdev verify needs --tier <T0|T1|T2|T3> to run a gate, or --panel to print "
+                       "the verification panel.")
     py = sys.executable or "python"
     cadence_script = root / "scripts" / "quality" / "cadence_state.py"
 
@@ -11982,11 +12030,31 @@ def build_parser() -> argparse.ArgumentParser:
     report_sub.add_parser("bootstrap", help="Regenerate the maintainer status reports under scripts/reports/out/.")
 
     verify = subparsers.add_parser(
-        "verify", help="Run a verification tier: T0 inner loop, T1 fast gate, T2 full, T3 release."
+        "verify", help="Run a verification tier: T0 inner loop, T1 fast gate, T2 full, T3 release; "
+                       "or print the verification panel inventory with --panel."
     )
-    verify.add_argument("--tier", required=True, choices=["T0", "T1", "T2", "T3"],
+    # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27: --tier is only required on the gate path. The
+    # --panel path is independent of tiers and reads the same cadence ledger; it is handled in
+    # main() before run_verify(), so run_verify() still always sees a real tier.
+    verify.add_argument("--tier", required=False, choices=["T0", "T1", "T2", "T3"],
                          help="Fast Lane plan tiers -- T0 inner loop, T1 fast gate (one canary app), "
                               "T2 full gate (run-all-gates.ps1), T3 release ceremony.")
+    verify.add_argument("--panel", action="store_true",
+                         help="Print the verification panel (npdev-verification-panel.v1) instead of "
+                              "running a tier. With --json, the raw contract document; otherwise a "
+                              "human table. Read-only -- never runs a check, never fails a build.")
+    verify.add_argument("--json", action="store_true",
+                         help="--panel only: emit the raw contract document instead of a table.")
+    # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 5: the executor. `--run <id>` re-runs one
+    # runnable item from the panel through the platform's controlled-command runner and records the
+    # outcome into the cadence ledger. Input is an ID, never a command string (see
+    # npdev_executor.py's module docstring for the security posture).
+    verify.add_argument("--run", default=None, metavar="ID",
+                         help="Re-run the named panel item (must be marked runnable) through the "
+                              "controlled runner and record the outcome in the cadence ledger.")
+    verify.add_argument("--timeout-seconds", type=int, default=0,
+                         help="--run only: timeout for the controlled runner, capped by its own "
+                              "policy maximum.")
     verify.add_argument("--model-path", help="T0/T1: the model.json currently being edited.")
     verify.add_argument("--dsl-test-filter", help="T0/T1: --tests filter for gradlew :NPDevContract:dsl:test.")
     verify.add_argument("--generate-reports", action="store_true",
@@ -12163,6 +12231,40 @@ def build_parser() -> argparse.ArgumentParser:
     )
     monitor_clone_remove.add_argument("--clone-dir", required=True)
     monitor_clone_remove.add_argument("--json", action="store_true")
+
+    # ------------------------------------------------------------------------------------------
+    # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27: `npdev probe`. An occasional diagnostic, never
+    # a gate: boots a generated app with the JaCoCo agent attached and reports which code was
+    # EXECUTED at runtime. Tooling + output go under `<workspace>__OutsideRepo/`, never the repo
+    # and never the app (regeneration wipes non-data/logs/secrets dirs). npdev_probe.py owns all
+    # the logic; this parser is a thin mirror of its argparse, so a terminal user gets the same
+    # verbs the module's own entry point serves.
+    # ------------------------------------------------------------------------------------------
+    probe = subparsers.add_parser(
+        "probe", help="Boot a generated app with the JaCoCo agent and report execution reach "
+                      "(an occasional diagnostic, not a gate)."
+    )
+    probe_sub = probe.add_subparsers(dest="probe_command")
+
+    probe_start = probe_sub.add_parser("start", help="Boot the app with the agent attached.")
+    probe_start.add_argument("--app", required=True)
+    probe_start.add_argument("--agent-port", type=int, default=6300)
+    probe_start.add_argument("--wait", type=float, default=0.0)
+    probe_start.add_argument("--json", action="store_true")
+
+    probe_dump = probe_sub.add_parser("dump", help="Mid-session execution-data snapshot.")
+    probe_dump.add_argument("--json", action="store_true")
+
+    probe_stop = probe_sub.add_parser("stop", help="Final dump, stop the app, emit the reach report.")
+    probe_stop.add_argument("--baseline", default=None,
+                            help="P2: a JaCoCo test report XML to intersect against.")
+    probe_stop.add_argument("--json", action="store_true")
+
+    probe_run = probe_sub.add_parser("run", help="One-shot: start, hold N seconds, stop.")
+    probe_run.add_argument("--app", required=True)
+    probe_run.add_argument("--seconds", type=float, default=30.0)
+    probe_run.add_argument("--agent-port", type=int, default=6300)
+    probe_run.add_argument("--json", action="store_true")
 
     # ------------------------------------------------------------------------------------------
     # MONITOR_PLAN A4: `npdev explore`. The Scrap Manager screen calls these; so does the
@@ -12578,12 +12680,18 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "report" and args.report_command == "bootstrap":
             run_report_bootstrap()
             return 0
+        if args.command == "verify" and getattr(args, "panel", False):
+            return run_verify_panel(args)
+        if args.command == "verify" and getattr(args, "run", None):
+            return run_verify_execute(args)
         if args.command == "verify":
             result = run_verify(args)
             print(json.dumps(result, indent=2))
             return 0 if result.get("ok") else 2
         if args.command == "monitor":
             return run_monitor(args)
+        if args.command == "probe":
+            return run_probe(args)
         if args.command == "explore":
             return run_explore(args)
         if args.command == "ai" and args.ai_command == "generate-routine":

@@ -71,6 +71,10 @@ const FIXTURE_EXPLORE_RUN_RED: &str = include_str!("../fixtures/explore-run-red.
 const FIXTURE_EXPLORE_VALIDATE_OK: &str = include_str!("../fixtures/explore-validate-ok.json");
 const FIXTURE_EXPLORE_VALIDATE_BAD: &str = include_str!("../fixtures/explore-validate-bad.json");
 const FIXTURE_EXPLORE_PREFLIGHT: &str = include_str!("../fixtures/explore-preflight.json");
+/// VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 3. Captured live from
+/// `python NPDevCli/npdev_cli.py verify --panel --json` -- verbatim, not edited. Re-capture with
+/// that exact command when the cadence or its schema drifts.
+const FIXTURE_VERIFICATION_PANEL: &str = include_str!("../fixtures/verification-panel.json");
 
 /// Which doctor fixture stub mode serves -- switchable at runtime (see `set_fake_doctor_scenario`
 /// command) so every failure screen (missing Java, wrong version, unstaged jars) can be exercised
@@ -741,6 +745,60 @@ pub async fn run_monitor_engine(
         args.push(root.to_string());
     }
     run_json(python_exe, npdev_cli, &args, java_home, "monitor engine").await
+}
+
+// ---------------------------------------------------------------------------------------------
+// verify --panel
+// ---------------------------------------------------------------------------------------------
+
+/// The Verification tab's data -- the npdev-verification-panel.v1 document for the NPDev repo, read
+/// from `npdev verify --panel --json`. A thin pipe, per the file's standing rule: every decision
+/// about what a check is, when it last ran, and what it said lives in the CLI (npdev_panel.py), so
+/// this window and a terminal cannot reach different conclusions about the same ledger.
+pub async fn run_verification_panel(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_VERIFICATION_PANEL)
+            .map_err(|e| format!("fixture verification-panel did not parse: {e}"));
+    }
+    let args = vec!["verify".to_string(), "--panel".to_string(), "--json".to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "verify --panel").await
+}
+
+/// VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 5: the executor. Re-runs one runnable panel
+/// item through the platform's controlled command runner and records the outcome. The item ID is
+/// the ONLY input -- npdev_executor.py resolves the command from the freshly produced panel
+/// document (which derives commands from the cadence declarations alone) and shells it through
+/// Invoke-ControlledCommand.ps1, so no command string ever crosses this boundary and no HTTP
+/// surface exists (the Phase 4 emitted app page stays read-only by construction: runnable=false).
+pub async fn run_verification_run_item(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    item_id: &str,
+    timeout_seconds: u32,
+) -> Result<Value, String> {
+    if fake_mode() {
+        // Stub mode cannot run a real gate; an honest synthetic result keeps the Run-button UI
+        // shape reachable without a real execution.
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-verify-run-result.v1",
+            "itemId": item_id,
+            "stubMode": true,
+            "result": "skipped",
+            "ledger": {"recorded": false, "detail": "STUB MODE -- no gate was run."},
+        }));
+    }
+    let mut args = vec!["verify".to_string(), "--run".to_string(), item_id.to_string(),
+                        "--json".to_string()];
+    if timeout_seconds > 0 {
+        args.push("--timeout-seconds".to_string());
+        args.push(timeout_seconds.to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "verify --run").await
 }
 
 pub async fn run_monitor_logs(

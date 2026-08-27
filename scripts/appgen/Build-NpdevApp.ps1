@@ -1234,6 +1234,14 @@ Write-Step "Emitted Agent Prompter page: http://localhost:$ServerPort/agent-prom
   -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId $AppId
 Write-Step "Emitted properties admin page: http://localhost:$ServerPort/properties.html"
 
+# VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 4: the app's own READ-ONLY verification panel
+# (operations + browser routines + last-known results, from _ops) -- the emitted-app half of the
+# panel contract, same schema the repo's `npdev verify --panel` emits.
+& (Join-Path $PSScriptRoot 'New-VerificationPanelPage.ps1') `
+  -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') `
+  -OpsDir $OpsDir -AppId $AppId
+Write-Step "Emitted verification panel page: http://localhost:$ServerPort/verification.html"
+
 # ---- emit the local control console (if enabled in config.console.mode) -----
 if ($ConsoleMode -ne 'none') {
   & (Join-Path $PSScriptRoot 'New-AppConsole.ps1') -OpsDir $OpsDir -AppId $AppId -ConsolePort $ConsolePort -OutRoot $OutRoot -Mode $ConsoleMode
