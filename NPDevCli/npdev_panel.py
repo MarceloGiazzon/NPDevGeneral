@@ -235,9 +235,36 @@ def _command_for(cadence_entry: dict) -> tuple[str | None, bool]:
                 break
     if gate_hint and Path(command).name == "run-all-gates.ps1":
         command = f"{command} -Only {gate_hint}"
-    if not re.match(r"^scripts/[A-Za-z0-9_./-]+\.(ps1|py)( -[A-Za-z0-9][A-Za-z0-9_-]*( [^\s<>]+)?)*$",
-                    command):
+    # Validate TOKEN BY TOKEN, deliberately not with one regex over the whole string.
+    #
+    # The previous shape was
+    #     ^scripts/[A-Za-z0-9_./-]+\.(ps1|py)( -[A-Za-z0-9][A-Za-z0-9_-]*( [^\s<>]+)?)*$
+    # and CodeQL flagged it as py/redos (HIGH). The nested quantifier is genuinely exponential: in
+    # " -0 -0", the second " -0" can be read either as a new flag OR as the optional value of the
+    # first, so a non-matching tail makes the engine explore every split. Measured on this machine
+    # against `scripts/-.py` + N repetitions of " -0 -0" + " <":
+    #     10 -> 0.004s   14 -> 0.207s   16 -> 1.466s   18 -> 11.276s   (~7x per two additions)
+    #
+    # Input reaching here is repo-controlled (verification-cadence.json's invokedBy), so this was
+    # not reachable by an outside caller -- but "the input is trusted" is exactly the argument that
+    # lets a ReDoS survive, and this function is the trusted-input boundary the executor relies on.
+    # Each token is now matched with an anchored, quantifier-flat pattern; the walk is linear.
+    #
+    # Grammar, unchanged in intent: <script.ps1|py> then zero or more groups of
+    # <-flag> optionally followed by exactly one value. A token starting with '-' is always a flag,
+    # never a value -- which is precisely the ambiguity that caused the backtracking.
+    tokens = command.split()
+    if not tokens or not re.fullmatch(r"scripts/[A-Za-z0-9_./-]+\.(?:ps1|py)", tokens[0]):
         return None, False
+    index = 1
+    while index < len(tokens):
+        if not re.fullmatch(r"-[A-Za-z0-9][A-Za-z0-9_-]*", tokens[index]):
+            return None, False
+        index += 1
+        if index < len(tokens) and not tokens[index].startswith("-"):
+            if not re.fullmatch(r"[^<>]+", tokens[index]):
+                return None, False
+            index += 1
     # Controlled-runner gate: pwsh is allowed, python is not; the SCRIPT token must sit in pwsh's
     # allowed file roots (scripts/quality). Anything else is honest `runnable: false` until the
     # policy is reviewed, never a Run button that the runner would just refuse.
