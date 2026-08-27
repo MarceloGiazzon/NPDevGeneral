@@ -622,6 +622,13 @@ Write-Step "Emitted app tree v2 page: http://localhost:$ServerPort/app-tree-v2.h
   -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') -AppId 'claude-support-desk'
 Write-Step "Emitted Agent Prompter page: http://localhost:$ServerPort/agent-prompter.html"
 
+# VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 4: the app's own READ-ONLY verification panel
+# -- same contract document the repo's `npdev verify --panel` emits, produced from this app's _ops.
+& (Join-Path $PSScriptRoot 'New-VerificationPanelPage.ps1') `
+  -StaticDir (Join-Path $GeneratedAppRoot 'src\main\resources\static') `
+  -OpsDir $OpsDir -AppId 'claude-support-desk'
+Write-Step "Emitted verification panel page: http://localhost:$ServerPort/verification.html"
+
 if ($ConsoleMode -ne 'none') {
   & (Join-Path $PSScriptRoot 'New-AppConsole.ps1') -OpsDir $OpsDir -AppId 'claude-support-desk' -ConsolePort $ConsolePort -OutRoot $OutRoot -Mode $ConsoleMode
   Write-Step "Emitted local console (mode=$ConsoleMode): & '$OpsDir\Serve-AppConsole.ps1'  ->  http://127.0.0.1:$ConsolePort/"

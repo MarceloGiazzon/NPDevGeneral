@@ -1,0 +1,120 @@
+/* Verification tab -- VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 3. */
+
+#screen-verification h1 {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  letter-spacing: 4px;
+  color: var(--ok);
+  text-shadow: 0 0 8px rgba(52, 255, 109, .55), 0 0 24px rgba(52, 255, 109, .25);
+  margin: 6px 0 2px;
+}
+#screen-verification h1 .dim {
+  color: var(--muted); text-shadow: none; font-size: 14px; letter-spacing: 2px;
+}
+#screen-verification .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+#screen-verification .btn {
+  font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;
+  padding: 7px 16px; border-radius: 6px; cursor: pointer;
+  background: #1c2b1f; color: var(--ok); border: 1px solid #2c5236;
+}
+#screen-verification .btn:hover { background: #234030; }
+#screen-verification .btn.ghost { background: transparent; color: var(--muted); border-color: #262c33; }
+#screen-verification .btn.ghost:hover { color: var(--text); }
+#screen-verification .btn[disabled] { opacity: .4; cursor: not-allowed; }
+/* Phase 5: the compact Run control. Only ever rendered from item.runnable -- the executor has no
+   other reach, and the emitted app page never gets one. */
+.btn.run {
+  margin-left: auto;
+  font-size: 10.5px; letter-spacing: 1px;
+  padding: 3px 10px;
+  color: var(--ok); border-color: #2c5236; background: transparent;
+  cursor: pointer;
+}
+.btn.run:hover { background: #1c2b1f; }
+.btn.run[disabled] { opacity: .45; color: var(--muted); border-color: #262c33; }
+
+/* The four columns, tinted by the §1.2 derived state. */
+.vcols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px;
+  margin-top: 4px;
+}
+.vcol {
+  background: var(--bg2);
+  border: 1px solid #1f242b;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.vcol h3 {
+  font-family: var(--font-mono);
+  font-size: 12px; letter-spacing: 2px;
+  color: var(--muted);
+  margin: 0 0 10px;
+  display: flex; align-items: center; gap: 8px;
+}
+.vcount { color: var(--text); }
+.vcol[data-column="failing"]    h3 { color: var(--err); }
+.vcol[data-column="stale"]      h3 { color: var(--warn); }
+.vcol[data-column="never-run"]  h3 { color: var(--off); }
+.vcol[data-column="healthy"]    h3 { color: var(--ok); }
+.vcol-body { display: flex; flex-direction: column; gap: 8px; }
+.vempty { color: var(--muted); font-size: 12px; }
+
+.vcard {
+  background: #0d1117;
+  border: 1px solid #262c33;
+  border-left: 3px solid var(--off);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.vcard[data-column="failing"] { border-left-color: var(--err); }
+.vcard[data-column="stale"]   { border-left-color: var(--warn); }
+.vcard[data-column="healthy"] { border-left-color: var(--ok); }
+.vcard-head { display: flex; align-items: center; gap: 8px; }
+.vname { font-weight: 700; font-size: 13px; color: var(--text); line-height: 1.25; }
+.vcat { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-left: auto; }
+.vdesc {
+  font-size: 11.5px; color: var(--muted); line-height: 1.35;
+  margin-top: 5px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.vmeta { margin-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.vwhen { font-size: 11px; color: var(--muted); }
+.vtier { font-size: 10px; font-family: var(--font-mono); color: var(--info); border: 1px solid #26415a; padding: 0 5px; border-radius: 4px; }
+.vdur { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+.vbadge {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px;
+  padding: 1px 7px; border-radius: 4px;
+}
+.vbadge.passed  { color: var(--ok); background: #12241a; border: 1px solid #1d4028; }
+.vbadge.failed  { color: var(--err); background: #271318; border: 1px solid #4a2230; }
+/* skipped / not-applicable are deliberately NOT green (S1.1): they rendered as a distinct neutral
+   so a check that genuinely did not run cannot read as evidence it succeeded. */
+.vbadge.skip         { color: var(--warn); background: #241d13; border: 1px solid #4a4022; }
+.vbadge.cancelled    { color: var(--warn); background: #241d13; border: 1px solid #4a4022; }
+.vbadge.running      { color: var(--info); background: #122536; border: 1px solid #1d4058; }
+
+/* Table view */
+.verify-table-wrap { overflow-x: auto; }
+.vtable {
+  border-collapse: collapse; width: 100%;
+  font-size: 12.5px;
+}
+.vtable th {
+  text-align: left; font-family: var(--font-mono); font-size: 11px; letter-spacing: 1px;
+  color: var(--muted); text-transform: uppercase;
+  padding: 6px 10px; border-bottom: 1px solid #262c33;
+}
+.vtable td { padding: 8px 10px; border-bottom: 1px solid #171b20; vertical-align: top; }
+.vtable tr:hover td { background: rgba(52, 255, 109, .03); }
+.vtable .mono { font-family: var(--font-mono); font-size: 11px; color: #b7c6d6; word-break: break-all; }
+.vtable .vdesc { -webkit-line-clamp: 2; }
+.tdot {
+  display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 8px;
+  background: var(--off);
+}
+.tdot[data-column="failing"] { background: var(--err); box-shadow: 0 0 6px var(--err); }
+.tdot[data-column="stale"]   { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.tdot[data-column="healthy"] { background: var(--ok); box-shadow: 0 0 6px var(--ok); }

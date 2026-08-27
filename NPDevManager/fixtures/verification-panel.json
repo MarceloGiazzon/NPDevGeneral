@@ -1,0 +1,359 @@
+{
+  "schemaVersion": "npdev-verification-panel.v1",
+  "generatedAt": "2026-08-27T14:56:25.228851+00:00",
+  "subject": {
+    "kind": "npdev-repo",
+    "name": "NPDev_General",
+    "root": "D:\\WorkSpace\\NPDev\\NPDev_General",
+    "commit": "3fde3329f8ff64cbd7e4b097132f3c3d248202b1"
+  },
+  "items": [
+    {
+      "id": "aiKnowledge",
+      "name": "Ai Knowledge",
+      "description": "run-ai-knowledge-gate.ps1 -- static instrument checks + all in-repo check-*.py, including the script-inventory rule that fails if any checker is hosted by no gate.",
+      "category": "gate",
+      "tier": "T2",
+      "command": "scripts/quality/run-all-gates.ps1",
+      "runnable": true,
+      "maxStaleness": "1-move",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:16:42.230390+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "beta-release-evidence",
+      "name": "Beta Release Evidence",
+      "description": "The ~540s, ~10-producer release-ceremony evidence set (sample-matrix, stateful-additive-migrations, etc).",
+      "category": "gate",
+      "tier": "T3",
+      "command": "scripts/quality/run-beta-release-evidence-orchestration.ps1 / run-beta-release-gate.ps1 -GenerateReports",
+      "runnable": true,
+      "maxStaleness": "7-days",
+      "lastRun": {
+        "startedAt": "2026-08-26T04:07:33.566327+00:00",
+        "result": "failed",
+        "durationSeconds": null,
+        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "betaRelease",
+      "name": "Beta Release",
+      "description": "run-beta-release-gate.ps1 evaluate-only pass (fast: does the evidence that already exists say the release is ready).",
+      "category": "gate",
+      "tier": "T3",
+      "command": "scripts/quality/run-all-gates.ps1",
+      "runnable": true,
+      "maxStaleness": "7-days",
+      "lastRun": {
+        "startedAt": "2026-08-26T01:25:21.137844+00:00",
+        "result": "failed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "canary-build-boot-smoke",
+      "name": "Canary Build Boot Smoke",
+      "description": "Generate + build + boot npdev-canary (the ONE frozen T1 fixture, Sec.5) and run its REST smoke plan (health, one flow, one panel).",
+      "category": "gate",
+      "tier": "T1",
+      "command": "scripts/quality/run-fast-gate.ps1",
+      "runnable": true,
+      "maxStaleness": "1-wave",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:36:43.569505+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "check-adr-decision-implementation",
+      "name": "Check Adr Decision Implementation",
+      "description": "S4 Phase B: an ADR decision the owner accepted (opt-in, via a ```decision-check fenced block naming a file + required substring) still has live code behind it. Closes the gap ADR-0011 D4 exposed -- accepted in S2's own gate, recorded in the ADR, never implemented, found only by running the S3 codemod against real content. Starts with ADR-0011's D1-D4 only. 2026-08-23 (Wave 6 of the 2026-08-23 defect-remediation session): invokedBy corrected -- R4 Part C moved the underlying check from run-ai-knowledge-gate.ps1 to run-weekly-paperwork-checks.ps1, but this entry still named the old caller, so cadence_state.py could never see a fresh run recorded against reality; also wired the missing cadence_state.py record call into the check's real host.",
+      "category": "gate",
+      "tier": "T1",
+      "command": "scripts/quality/run-weekly-paperwork-checks.ps1",
+      "runnable": true,
+      "maxStaleness": "1-wave",
+      "lastRun": {
+        "startedAt": "2026-08-26T00:49:38.000453+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "check-dsl-coverage",
+      "name": "Check Dsl Coverage",
+      "description": "Every DSL feature detector has at least one corpus model exercising it.",
+      "category": "gate",
+      "tier": "T1",
+      "command": "scripts/quality/run-fast-gate.ps1",
+      "runnable": true,
+      "maxStaleness": "1-wave",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:36:43.814411+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "check-panel-provenance-impact",
+      "name": "Check Panel Provenance Impact",
+      "description": "A field/panel rename does not silently break a hand-written screen, discovered against whatever is currently built under the Build root.",
+      "category": "gate",
+      "tier": "T1",
+      "command": "scripts/quality/run-fast-gate.ps1",
+      "runnable": true,
+      "maxStaleness": "1-wave",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:36:44.014556+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "check-schema-mirror-consistency",
+      "name": "Check Schema Mirror Consistency",
+      "description": "The 4 model.schema.json copies stay semantically identical. Cheap enough to run on every edit.",
+      "category": "gate",
+      "tier": "T0",
+      "command": "scripts/quality/check-schema-mirror-consistency.py",
+      "runnable": true,
+      "maxStaleness": "every-run",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:35:46.164053+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "check-twin-pair-consistency",
+      "name": "Check Twin Pair Consistency",
+      "description": "S6 (drift A3): reads scripts/quality/twin-pair-registry.json's human-curated list of location pairs that must move together (e.g. the four-place chain for a new top-level model array field, both directions of pack-composition) and fails the moment any pair diverges. 2026-08-23 (Wave 6 of the 2026-08-23 defect-remediation session): this check ran (hosted by the knowledge gate, step [20/39]) on every gate pass, but nothing ever called cadence_state.py record for it, so this entry's maxStaleness could never be satisfied and it showed permanently OVERDUE no matter how often it actually ran. Wired the missing record call into run-ai-knowledge-gate.ps1 right where the check already executes.",
+      "category": "gate",
+      "tier": "T1",
+      "command": "scripts/quality/run-ai-knowledge-gate.ps1",
+      "runnable": true,
+      "maxStaleness": "1-wave",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:16:21.321937+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "dsl-conformance-max-generate",
+      "name": "Dsl Conformance Max Generate",
+      "description": "dsl-conformance-max still emits cleanly (NPDevSamples/scripts/generate-sample-app.ps1 -SampleId dsl-conformance-max -NoAssembleFinalApp -- emission only, no build/boot).",
+      "category": "gate",
+      "tier": "T1",
+      "command": "scripts/quality/run-fast-gate.ps1",
+      "runnable": true,
+      "maxStaleness": "1-wave",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:36:48.537537+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "cf4864e46774f83747072e6a65a25159006db27d",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "dsl-test-touched-area",
+      "name": "Dsl Test Touched Area",
+      "description": "gradlew :NPDevContract:dsl:test --tests <touched area>. Context-dependent -- only runs (and only counts as overdue) when a -DslTestFilter was ever given; never-run is not blocking on its own.",
+      "category": "gate",
+      "tier": "T0",
+      "command": "scripts/quality/run-fast-gate.ps1 -Tier T0 -DslTestFilter <pattern>",
+      "runnable": true,
+      "maxStaleness": "every-run",
+      "lastRun": null,
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "generator",
+      "name": "Generator",
+      "description": "run-generator-gate.ps1 -- the codegen engine, including the full 30-model corpus.",
+      "category": "gate",
+      "tier": "T2",
+      "command": "scripts/quality/run-all-gates.ps1",
+      "runnable": true,
+      "maxStaleness": "1-move",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:03:35.955699+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "kernel",
+      "name": "Kernel",
+      "description": "W3.2 (2026-08-25 remediation plan / QUAL-32): run-kernel-quality-gate.ps1 -- kernelQualityGate (:kernel:test + all 36+ :adapters:*:test) from NPDevKernel's own Gradle root, then the coverage ratchet against the fresh aggregate. Closes the gap the kernel note in scripts/policy/coverage-baseline.json used to describe: kernelQualityGate existed as a real Gradle task invoked by nothing, so the recorded floor (73.0968) had drifted 10 points from a full-suite measurement (62.69) before anything noticed.",
+      "category": "gate",
+      "tier": "T2",
+      "command": "scripts/quality/run-all-gates.ps1",
+      "runnable": true,
+      "maxStaleness": "1-move",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:11:55.666324+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "model-validate-touched",
+      "name": "Model Validate Touched",
+      "description": "npdev validate model against the specific model.json being edited. Context-dependent -- only runs (and only counts as overdue) when a -ModelPath was ever given; never-run is not blocking on its own.",
+      "category": "gate",
+      "tier": "T0",
+      "command": "scripts/quality/run-fast-gate.ps1 -Tier T0 -ModelPath <the model being edited>",
+      "runnable": true,
+      "maxStaleness": "every-run",
+      "lastRun": null,
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "rebuild-calibration",
+      "name": "Rebuild Calibration",
+      "description": "Move 14 A1: the full-rebuild wall-clock baseline (measured 573s on 2026-08-01) the entire fast-lane tiering plan justifies itself against. A build-time regression is exactly the slow drift this ledger exists to surface -- re-time it periodically rather than letting the one number the plan rests on go stale and unverified.",
+      "category": "gate",
+      "tier": "T3",
+      "command": null,
+      "runnable": false,
+      "maxStaleness": "30-days",
+      "lastRun": {
+        "startedAt": "2026-08-02T06:14:42.020510+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "904fae14dbc25b7277807dd0461c54ff32a7a129",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "runtimeHost",
+      "name": "Runtime Host",
+      "description": "run-runtimehost-gate.ps1 -- an assembled sample app + its test suite, including WmsOffice-class interaction surfaces.",
+      "category": "gate",
+      "tier": "T2",
+      "command": "scripts/quality/run-all-gates.ps1",
+      "runnable": true,
+      "maxStaleness": "1-move",
+      "lastRun": {
+        "startedAt": "2026-08-26T03:11:19.591087+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "scale-baseline",
+      "name": "Scale Baseline",
+      "description": "S1 O1 (2026-08-03): the regression baseline for ConceptQueryPredicateCompiler/JdbcBusinessConceptStore's SQL pushdown at 100k rows -- all three read paths sub-second with real WHERE/LIMIT/GROUP BY in the emitted SQL, none streamed the full table through the JVM. LC-P0 fixed the architecture; nobody had run it at volume before this baseline. A baseline nobody re-measures is the SCREEN_TAXONOMY staleness failure again -- see __OutsideRepo/s1/scale-baseline-2026-08-03.txt for the full numbers.",
+      "category": "gate",
+      "tier": "T3",
+      "command": null,
+      "runnable": false,
+      "maxStaleness": "30-days",
+      "lastRun": {
+        "startedAt": "2026-08-03T07:15:36.931208+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "45218e3c239aa35a380d54d332ae6cc523a5eae9",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "scale-proof-ladder",
+      "name": "Scale Proof Ladder",
+      "description": "ROADMAP.md card R9 / ledger SCALE-1: the 5-rung (26/50/100/260/520 concepts) nightly model-scale ladder -- synthesize/generate/ddl/build/boot/firstRequest/latency/memory per rung, recorded to scripts/policy/scale-proof-baseline.json. The nightly CI run is the durable schedule; this cadence entry is informational bookkeeping in the same spirit as scale-baseline below, since CI's own cadence_state.py record call does not persist across runner-ephemeral checkouts -- a human re-running it locally and recording is what keeps this id out of 'never-run'.",
+      "category": "gate",
+      "tier": "T3",
+      "command": ".github/workflows/nightly-scale-ladder.yml",
+      "runnable": true,
+      "maxStaleness": "7-days",
+      "lastRun": {
+        "startedAt": "2026-08-26T01:26:31.228065+00:00",
+        "result": "passed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    },
+    {
+      "id": "weeklyPaperwork",
+      "name": "Weekly Paperwork",
+      "description": "GATE-SPLIT (2026-08-25 remediation plan W4.5): the gate-level entry for run-weekly-paperwork-checks.ps1's 11 doc/process-hygiene checkers -- distinct from each individual checker's own cadence entry above (check-adr-decision-implementation, etc.), this tracks the AGGREGATE gate run itself so run-all-gates.ps1's own -Only weeklyPaperwork invocation satisfies check-cadence-coverage.py the same way every other gate in its $gates array must. Reuses T3 (not a new tier) since this repo's cadence system has exactly four; deferred for a DIFFERENT reason than betaRelease (slower-moving process hygiene, not release ceremony), hence its own -IncludePaperwork switch rather than sharing -IncludeReleaseGate.",
+      "category": "gate",
+      "tier": "T3",
+      "command": "scripts/quality/run-all-gates.ps1",
+      "runnable": true,
+      "maxStaleness": "7-days",
+      "lastRun": {
+        "startedAt": "2026-08-26T00:49:42.841315+00:00",
+        "result": "failed",
+        "durationSeconds": null,
+        "commit": "42c7ae8defe08b675878079773a52fca4580d0ba",
+        "reportPath": null,
+        "logPath": null
+      },
+      "typicalDurationSeconds": null
+    }
+  ]
+}
