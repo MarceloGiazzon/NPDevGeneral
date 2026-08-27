@@ -35,11 +35,33 @@ public final class CurrentSchemaReader {
     private static final Set<String> SYSTEM_SCHEMAS = SqlDialects.active().systemSchemas();
 
     public CurrentSchema read(DataSource dataSource) {
+        return read(dataSource, SYSTEM_SCHEMAS);
+    }
+
+    /**
+     * Same as {@link #read(DataSource)}, but takes the system-schema exclusion set explicitly
+     * instead of reading it off the process-wide {@link SqlDialects#active()} singleton.
+     *
+     * <p><b>Why this exists.</b> {@link #SYSTEM_SCHEMAS} is resolved ONCE, at class-load time, from
+     * whatever dialect happens to be ambient then -- correct for the one boot-time caller this
+     * reader was built for (one app, one engine, for the process's whole life), but wrong for a
+     * caller that introspects TWO different live engines in the same process (e.g. a data-mobility
+     * structure check comparing a Postgres source against a MySQL target): both reads would filter
+     * system schemas using whichever engine's set got frozen in first, silently mis-scoping
+     * introspection for the other one (e.g. failing to exclude MySQL's {@code mysql}/{@code
+     * performance_schema}/{@code sys} while scoped to Postgres's {@code pg_catalog} instead, or vice
+     * versa). This overload lets such a caller pass the CORRECT set for the engine actually being
+     * read (e.g. {@code SqlDialects.forName(engineKey).systemSchemas()}), independent of whatever
+     * the ambient dialect is. {@link #read(DataSource)} keeps delegating to this one with {@link
+     * #SYSTEM_SCHEMAS} so every existing caller (the boot-time path, {@code SchemaImpactFacade},
+     * this class's own tests) is unchanged.
+     */
+    public CurrentSchema read(DataSource dataSource, Set<String> systemSchemas) {
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
             String catalog = connection.getCatalog();
 
-            List<TableRef> tableRefs = readTableRefs(metadata, catalog);
+            List<TableRef> tableRefs = readTableRefs(metadata, catalog, systemSchemas);
             Map<String, CurrentTable> tables = new LinkedHashMap<>();
             for (TableRef ref : tableRefs) {
                 Map<String, CurrentColumn> columns = readColumns(metadata, catalog, ref);
@@ -56,12 +78,13 @@ public final class CurrentSchemaReader {
         }
     }
 
-    private static List<TableRef> readTableRefs(DatabaseMetaData metadata, String catalog) throws SQLException {
+    private static List<TableRef> readTableRefs(DatabaseMetaData metadata, String catalog, Set<String> systemSchemas)
+            throws SQLException {
         List<TableRef> refs = new ArrayList<>();
         try (ResultSet rs = metadata.getTables(catalog, null, null, new String[] {"TABLE"})) {
             while (rs.next()) {
                 String schema = rs.getString("TABLE_SCHEM");
-                if (schema != null && SYSTEM_SCHEMAS.contains(schema.toLowerCase(Locale.ROOT))) {
+                if (schema != null && systemSchemas.contains(schema.toLowerCase(Locale.ROOT))) {
                     continue;
                 }
                 refs.add(new TableRef(schema, rs.getString("TABLE_NAME")));
