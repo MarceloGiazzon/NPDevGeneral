@@ -67,6 +67,33 @@ detail: |
     model.schema.json adapter description) now state: a plugin runs in-process with the
     application's full privileges; trust it like your own code.
 
+  2026-08-28 (CI calibration, engine-support E8): the first push's engine-support run surfaced three
+  real-corpus collisions, all fixed by tightening the gates' PRECISION rather than relaxing their
+  coverage: (1) java/io/PrintStream (System.out/System.err console output) is now an explicit
+  exemption from the java/io/ prefix ban -- a PrintStream instance can only come from System.out/err
+  or by wrapping a banned stream class, whose own references are still caught; (2) the identifier
+  "Class" is no longer banned wholesale, because Class<?> in generic TYPE positions erases to
+  Object and compiles no java/lang/Class owner reference -- TRUE reflective loading is refused by a
+  dedicated member-select rule (any static access on the Class type: Class.forName, newInstance,
+  getDeclared*, fully-qualified java.lang.Class.* included); (3) java/lang/invoke/ is no longer a
+  PREFIX rule -- javac lowers ordinary string concatenation ('+') to invokedynamic through
+  java/lang/invoke/StringConcatFactory (and emits MethodHandles$Lookup/MethodType/CallSite as mere
+  CLASS REFS), so only the AUTHOR-CONTROLLABLE exact classes (MethodHandle, MethodHandles,
+  MethodHandles$Lookup, MethodType, VarHandle, CallSite, MethodHandleInfo, Mutable/VolatileCallSite,
+  LambdaMetafactory) are banned, matched on MEMBER-reference owners (what the plugin actually
+  invokes), never on class-ref-only appearances. Consequence for the shipped corpus: the lib-probe's
+  compileOnlyProbe operation (a compileOnly runtime-absence measurement done BY REFLECTION) could
+  not coexist with the admission gates -- a denylist cannot distinguish a benign measurement from a
+  hostile reflective load -- so the half was REMOVED from the probe (capability, model flow,
+  run-library-probe.py), with the reason recorded there and in the probe's manifest; E8's own point
+  (a user capability CALLS an external library at runtime) survives via sign(). A non-plugin
+  mechanism would be needed to restore the compileOnly runtime-absence measurement. LAMBDAS remain
+  refused (documented SEC-3 conservatism, via the LambdaMetafactory member owner). ALSO fixed in the
+  same push: npdev_cli.py emitted verification.html against final_app_out.parent/_ops while the
+  generator writes the runbook INSIDE the app root (final_app_out/_ops) -- a pre-existing PR #134
+  regression (engine-support red since 50315e0f) that the E15 and engine-probe jobs died on at
+  Resolve-Path; now App/_ops.
+
   ORIGINAL FINDING (2026-08-25, kept as the record; superseded by Model A above for the accident/
   casual-misuse threat model):
 

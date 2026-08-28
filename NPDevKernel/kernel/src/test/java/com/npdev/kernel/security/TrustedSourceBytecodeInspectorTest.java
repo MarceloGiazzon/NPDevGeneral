@@ -206,6 +206,44 @@ class TrustedSourceBytecodeInspectorTest {
         assertFalse(result.passed(), "lambda body in the same class file must be refused: " + result.violations());
     }
 
+    @Test
+    void acceptsConsolePrintln() throws Exception {
+        // System.out/System.err reference java/io/PrintStream, exempted from the java/io/ ban:
+        // console output is not filesystem IO (the shipped lib-probe logs a diagnostic this way).
+        Path compiled = compile(
+                "com/npdev/generated/plugin/clean/ConsoleLog.java",
+                """
+                package com.npdev.generated.plugin.clean;
+
+                public final class ConsoleLog {
+                    public void log(String message) {
+                        System.out.println("[plugin] " + message);
+                    }
+                }
+                """
+        );
+        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        assertTrue(result.passed(), "System.out.println must pass: " + result.violations());
+    }
+
+    @Test
+    void refusesReflectiveClassLoading() throws Exception {
+        Path compiled = compile(
+                "com/npdev/generated/plugin/evil/ReflectivePlugin.java",
+                """
+                package com.npdev.generated.plugin.evil;
+
+                public final class ReflectivePlugin {
+                    public Object load() throws Exception {
+                        return Class.forName("com.internal.Secrets").getConstructor().newInstance();
+                    }
+                }
+                """
+        );
+        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        assertFalse(result.passed(), "Class.forName must be refused: " + result.violations());
+    }
+
     private Path compile(String relativeSource, String source) throws Exception {
         Path sourceFile = tempRoot.resolve(relativeSource);
         Files.createDirectories(sourceFile.getParent());

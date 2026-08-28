@@ -136,6 +136,50 @@ class PluginJavaSourcePolicyTest {
     }
 
     @Test
+    void rejectsFullyQualifiedReflectiveClassAccess() {
+        assertPluginRejected("reflection-qualified", """
+                package com.npdev.plugin.evil;
+
+                public final class Evil {
+                    public Object run() throws Exception {
+                        return java.lang.Class.forName("com.internal.Secrets");
+                    }
+                }
+                """);
+    }
+
+    @Test
+    void acceptsClassTypePositionsAndConsolePrintln() {
+        // Mirrors the ADAPTED lib-probe capability (E8): Class<?> appears only in a generic TYPE
+        // position (erases to Object, no java/lang/Class owner reference -- the bytecode gate
+        // agrees), System.out.println goes through the exempted java/io/PrintStream, and Guava's
+        // Hashing is an ordinary external-library call. SEC-3/B30 must not refuse any of it.
+        assertPluginAccepted("class-type-and-println", """
+                package com.npdev.plugin.libsig;
+
+                import com.google.common.hash.Hashing;
+
+                import java.nio.charset.StandardCharsets;
+                import java.util.LinkedHashMap;
+                import java.util.Map;
+
+                public final class LibrarySignatureCapability {
+
+                    public Map<String, Object> sign(Map<String, Object> input, Class<?> unrelated) {
+                        String payload = input == null || input.get("payload") == null
+                                ? "" : String.valueOf(input.get("payload"));
+                        String digest = Hashing.sha256().hashString(payload, StandardCharsets.UTF_8).toString();
+                        System.out.println("[probe] sha256(" + payload + ") = " + digest);
+                        Map<String, Object> result = new LinkedHashMap<>();
+                        result.put("payload", payload);
+                        result.put("digest", digest);
+                        return result;
+                    }
+                }
+                """);
+    }
+
+    @Test
     void rejectsWildcardIoImport() {
         assertPluginRejected("wildcard-io", """
                 package com.npdev.plugin.evil;

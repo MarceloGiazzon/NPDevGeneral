@@ -30,18 +30,6 @@
         "mode": "returnValue",
         "expectedType": "java.util.Map"
       }
-    },
-    {
-      "operation": "compileOnlyProbe",
-      "method": "compileOnlyProbe",
-      "input": {
-        "mode": "firstArgument",
-        "expectedType": "java.util.Map"
-      },
-      "output": {
-        "mode": "returnValue",
-        "expectedType": "java.util.Map"
-      }
     }
   ],
   "trust": {

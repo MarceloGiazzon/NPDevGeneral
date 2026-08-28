@@ -13,19 +13,23 @@ every test asserted the EMITTED GRADLE TEXT:
 No procedure anywhere imported an external class. The chain **declare -> import -> compile -> call at
 runtime** had never run.
 
-THE TWO ASSERTIONS
-------------------
-1. **The returned VALUE is right.** A known input has a known SHA-256, computed by Guava's `Hashing`
-   rather than by the JDK's own `MessageDigest` -- the JDK would give the same answer while proving
-   nothing about the dependency. A correct digest proves the library was on the RUNTIME classpath and
-   executed. Compilation alone would pass even if the runtime classpath were wrong, which is exactly
-   what a `compileOnly`-instead-of-`implementation` mistake produces: a clean build and a
-   NoClassDefFoundError the first time the path runs.
+THE ASSERTION
+-------------
+The returned VALUE is right. A known input has a known SHA-256, computed by Guava's `Hashing`
+rather than by the JDK's own `MessageDigest` -- the JDK would give the same answer while proving
+nothing about the dependency. A correct digest proves the library was on the RUNTIME classpath and
+executed. Compilation alone would pass even if the runtime classpath were wrong, which is exactly
+what a `compileOnly`-instead-of-`implementation` mistake produces: a clean build and a
+NoClassDefFoundError the first time the path runs.
 
-2. **A `compileOnly` dependency is ABSENT at runtime -- and this is the interesting one.** The probe
-   declares commons-lang3 as compileOnly and asks, by reflection, whether it is loadable. It must not
-   be. Asserting an absence is the only way to catch a build that quietly promotes every dependency
-   to the runtime classpath, and that failure is invisible until something depends on the scoping.
+2026-08-28 (SEC-3 Model A, B30): the former SECOND assertion -- "a `compileOnly` dependency is
+ABSENT at runtime" -- measured that by REFLECTION from inside the capability (`Class.forName`),
+which is precisely the capability-escape the plugin admission gate now refuses
+(B30:plugin_bytecode_violation). A denylist cannot distinguish a benign measurement from a hostile
+load, so the reflective half was REMOVED from the probe (capability, model flow, and this script)
+rather than exempted. E8's own point -- a user capability CALLS an external library at runtime --
+is fully covered by the remaining assertion; restoring the compileOnly runtime-absence measurement
+would need a NON-plugin mechanism (a boot-time classpath scan by platform code).
 
 Deliberately h2-local and kept SEPARATE from the engine probes: mixing them means a red run could be
 the dialect or the dependency.
@@ -91,7 +95,7 @@ def main(argv: list[str] | None = None) -> int:
 
         base = app.base()
 
-        # 1. The library runs, and its answer is right.
+        # The library runs, and its answer is right.
         status, signed = _engine_proof.http(
             "POST", f"{base}/api/flows/SignWithLibrary/execute", {"payload": PAYLOAD})
         digest = _extract(signed, "digest")
@@ -102,24 +106,10 @@ def main(argv: list[str] | None = None) -> int:
             "detail": (f"status={status}; SHA-256 of {PAYLOAD!r} came back {digest!r}, expected "
                        f"{EXPECTED_DIGEST!r}. A correct digest proves the library was on the RUNTIME "
                        f"classpath and executed -- compilation alone would pass with a wrong runtime "
-                       f"scope. (Where Guava was loaded from is printed to the boot log, which this "
-                       f"job uploads: a diagnostic travelling with the PERSISTED record is a "
-                       f"diagnostic that can break persistence, which is how run 31272063422 went "
-                       f"red with the library working perfectly.)"),
-        })
-
-        # 2. The compileOnly dependency is NOT there. The interesting one: it fails silently in
-        # production if the build promotes every dependency to runtime.
-        status, probe_result = _engine_proof.http(
-            "POST", f"{base}/api/flows/ProbeCompileOnlyAtRuntime/execute", {"payload": PAYLOAD})
-        present = _extract(probe_result, "presentAtRuntime")
-        results.append({
-            "assertion": "compileOnly-absent-at-runtime",
-            "ok": status == 200 and present is False,
-            "detail": (f"status={status}; org.apache.commons.lang3.StringUtils presentAtRuntime="
-                       f"{present!r}, expected False. Declared compileOnly, so it must compile and "
-                       f"then be gone. Present would mean Gradle scoping is not doing what "
-                       f"config.json says -- invisible until something depends on it."),
+                       f"scope. (Guava's loaded-from location was dropped 2026-08-28 with the "
+                       f"compileOnlyProbe half: reporting it required reflection on a Class, which "
+                       f"SEC-3/B30 refuses at plugin admission. The digest itself is logged to the "
+                       f"boot log, uploaded by this job.)"),
         })
     except SystemExit as exc:
         failure = str(exc)

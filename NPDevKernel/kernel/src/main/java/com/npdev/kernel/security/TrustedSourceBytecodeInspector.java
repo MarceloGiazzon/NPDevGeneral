@@ -30,11 +30,14 @@ import java.util.Set;
  *       substring scan can never see {@code System.exit}.</li>
  *   <li>Owners ending in {@code /} (e.g. {@code java/io/}) are PREFIX matches against every
  *       referenced class name AND every raw Utf8 constant (so type descriptors like
- *       {@code Ljava/io/File;} are caught even without a direct reference).</li>
- *   <li>Owners without a trailing slash (e.g. {@code java/lang/Runtime}) are EXACT class matches
- *       with a boundary check, so {@code Runtime.getRuntime()} is refused but a class merely
- *       catching {@code RuntimeException} is not ({@code java/lang/Class} vs
- *       {@code java/lang/ClassLoader} likewise).</li>
+ *       {@code Ljava/io/File;} are caught even without a direct reference), with the exact-class
+ *       exemptions in {@link #FORBIDDEN_OWNER_PREFIX_EXEMPTIONS} applied ({@code java/io/PrintStream}
+ *       -- {@code System.out}/{@code System.err} console output, not filesystem IO).</li>
+ *   <li>Owners without a trailing slash (e.g. {@code java/lang/Runtime}) are EXACT class matches,
+ *       judged on MEMBER-reference owners only (what the plugin actually invokes or reads -- a
+ *       class-ref-only appearance is compiler data an author never wrote, e.g. the
+ *       {@code MethodHandles$Lookup} ref javac emits for any string concatenation). A plugin merely
+ *       catching {@code RuntimeException} is not refused; {@code Runtime.getRuntime()} is.</li>
  *   <li>{@code java/util/concurrent/} is NOT banned wholesale: benign primitives like
  *       {@code AtomicLong} are ordinary thread-safety helpers, not escape vectors (the shipped
  *       auditLog capability uses one). Only the concurrent classes that can detach or schedule
@@ -42,11 +45,13 @@ import java.util.Set;
  *   <li>{@code System.*} methods are matched on the reconstructed reference
  *       ({@code java/lang/System.exit}), so a plugin merely DEFINING a method named {@code exit}
  *       is not refused -- only real references to the {@code System} member are.</li>
- *   <li>{@code java/lang/invoke/} is a banned prefix, which has a visible consequence: ANY
- *       lambda (which javac lowers to an invokedynamic binding through
- *       {@code java/lang/invoke/LambdaMetafactory}) is refused. That is the denylist's intended
- *       conservatism -- method handles are a standard static-analysis escape (SEC-3 analysis) --
- *       and applies equally to the source gate.</li>
+ *   <li>{@code java/lang/invoke/} is NOT a banned prefix (ordinary string concatenation lowers to
+ *       invokedynamic through {@code java/lang/invoke/StringConcatFactory}); only the
+ *       author-controllable method-handle classes and {@code LambdaMetafactory} are banned exact
+ *       owners. The consequence that matters: ANY lambda (which javac lowers through
+ *       {@code java/lang/invoke/LambdaMetafactory}) is refused -- the denylist's intended
+ *       conservatism (method handles are a standard static-analysis escape; SEC-3 analysis) --
+ *       applied consistently in the source gate too.</li>
  * </ul>
  */
 public final class TrustedSourceBytecodeInspector {
@@ -59,10 +64,26 @@ public final class TrustedSourceBytecodeInspector {
             "java/nio/file/",
             "java/net/",
             "java/lang/reflect/",
-            "java/lang/invoke/",
+            // NOTE: java/lang/invoke/ is NOT banned wholesale. The compiler lowers ordinary
+            // string concatenation ('+') to invokedynamic through java/lang/invoke/StringConcatFactory
+            // -- a boot gate that refused that would refuse almost every real plugin. Only the
+            // AUTHOR-CONTROLLABLE method-handle classes and LambdaMetafactory are banned (the
+            // latter keeps the documented 'no lambdas' conservatism of SEC-3: any lambda lowers
+            // through it).
             "javax/script/",
             "sun/",
             "jdk/"
+    );
+
+    /**
+     * Exact classes exempt from an otherwise-banned prefix. {@code java/io/PrintStream} (reached
+     * only through {@code System.out}/{@code System.err} references) is console output, not
+     * filesystem IO -- the shipped lib-probe capability logs a diagnostic line to the app log this
+     * way. It stays safe because a PrintStream instance can only come from {@code System.out/err}
+     * or by wrapping a banned stream class (whose own references ARE caught).
+     */
+    public static final Map<String, Set<String>> FORBIDDEN_OWNER_PREFIX_EXEMPTIONS = Map.of(
+            "java/io/", Set.of("java/io/PrintStream")
     );
 
     /** Owners refused by exact-class match (boundary-checked). */
@@ -76,6 +97,20 @@ public final class TrustedSourceBytecodeInspector {
             "java/lang/Thread",
             "java/lang/ThreadLocal",
             "java/util/Timer",
+            // Author-controllable method-handle machinery (java/lang/invoke/StringConcatFactory,
+            // the compiler's string-concatenation implementation, is deliberately NOT banned, and
+            // java/lang/invoke/ is not a prefix rule). LambdaMetafactory being banned is the
+            // documented 'no lambdas' conservatism of SEC-3.
+            "java/lang/invoke/MethodHandle",
+            "java/lang/invoke/MethodHandles",
+            "java/lang/invoke/MethodHandles$Lookup",
+            "java/lang/invoke/MethodType",
+            "java/lang/invoke/VarHandle",
+            "java/lang/invoke/CallSite",
+            "java/lang/invoke/MethodHandleInfo",
+            "java/lang/invoke/MutableCallSite",
+            "java/lang/invoke/VolatileCallSite",
+            "java/lang/invoke/LambdaMetafactory",
             // java/util/concurrent/ is not banned wholesale (AtomicLong etc. are benign) -- only
             // the executor/scheduler/async machinery that lets a plugin detach work that outlives
             // the wall-clock timeout, or coordinate its own threads. TimeUnit is included because
@@ -128,7 +163,7 @@ public final class TrustedSourceBytecodeInspector {
                 continue; // non-Utf8 pool slots are tracked as null placeholders
             }
             for (String prefix : FORBIDDEN_OWNER_PREFIXES) {
-                if (constant.contains(prefix)) {
+                if (violatesForbiddenPrefix(constant, prefix)) {
                     violations.add("forbidden owner " + prefix);
                 }
             }
@@ -139,15 +174,30 @@ public final class TrustedSourceBytecodeInspector {
             }
         }
 
-        // Resolved class owners (class refs + method/field/interface-method refs).
-        for (String owner : pool.referencedOwners()) {
+        // Class-reference owners (type positions, compiler-generated CONSTANT_Class data): PREFIX
+        // rules only. The exact-owner list is deliberately NOT applied here -- javac emits
+        // java/lang/invoke/MethodHandles$Lookup / MethodType / CallSite / StringConcatFactory as
+        // PLAIN CLASS REFS for any string concatenation or lambda indy site, so an exact-owner
+        // match would refuse ordinary source the author never wrote. What a plugin INVOKES is what
+        // the exact rules judge (member owners, below).
+        for (String owner : pool.classOwners()) {
             for (String prefix : FORBIDDEN_OWNER_PREFIXES) {
-                if (owner.startsWith(prefix)) {
+                if (violatesForbiddenPrefix(owner, prefix)) {
+                    violations.add("forbidden owner " + prefix);
+                }
+            }
+        }
+
+        // Member-reference owners (method/field/interface-method targets -- what the plugin
+        // actually invokes or reads): PREFIX rules and the exact-class list both apply.
+        for (String owner : pool.memberOwners()) {
+            for (String prefix : FORBIDDEN_OWNER_PREFIXES) {
+                if (violatesForbiddenPrefix(owner, prefix)) {
                     violations.add("forbidden owner " + prefix);
                 }
             }
             for (String banned : FORBIDDEN_OWNERS) {
-                if (referencesExactOwner(owner, banned)) {
+                if (owner.equals(banned)) {
                     violations.add("forbidden owner " + banned);
                 }
             }
@@ -163,12 +213,20 @@ public final class TrustedSourceBytecodeInspector {
         return new BytecodeInspectionResult(displayName, violations.isEmpty(), List.copyOf(violations));
     }
 
-    private static boolean referencesExactOwner(String constant, String owner) {
-        if (!constant.startsWith(owner)) {
+    private static boolean violatesForbiddenPrefix(String value, String prefix) {
+        if (!value.contains(prefix)) {
             return false;
         }
-        return constant.length() == owner.length()
-                || !Character.isLetterOrDigit(constant.charAt(owner.length()));
+        Set<String> exemptions = FORBIDDEN_OWNER_PREFIX_EXEMPTIONS.get(prefix);
+        if (exemptions == null) {
+            return true;
+        }
+        for (String exempt : exemptions) {
+            if (value.contains(exempt)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static ConstantPool readConstantPool(InputStream source, String displayName) throws IOException {
@@ -248,13 +306,14 @@ public final class TrustedSourceBytecodeInspector {
                 }
             }
 
-            Set<String> referencedOwners = new LinkedHashSet<>();
+            Set<String> classOwners = new LinkedHashSet<>();
             for (int nameIndex : classNameIndexByClassRefIndex.values()) {
                 String owner = constantUtf8(utf8, nameIndex);
                 if (owner != null) {
-                    referencedOwners.add(owner);
+                    classOwners.add(owner);
                 }
             }
+            Set<String> memberOwners = new LinkedHashSet<>();
             Set<String> referencedMembers = new LinkedHashSet<>();
             for (int[] memberRef : memberRefs) {
                 Integer classEntryIndex = memberRef[0];
@@ -263,13 +322,13 @@ public final class TrustedSourceBytecodeInspector {
                 Integer nameIndex = nameAndTypeNameIndex.get(memberRef[1]);
                 String memberName = nameIndex == null ? null : constantUtf8(utf8, nameIndex);
                 if (owner != null) {
-                    referencedOwners.add(owner);
+                    memberOwners.add(owner);
                 }
                 if (owner != null && memberName != null) {
                     referencedMembers.add(owner + "." + memberName);
                 }
             }
-            return new ConstantPool(new ArrayList<>(utf8), List.copyOf(referencedOwners), List.copyOf(referencedMembers));
+            return new ConstantPool(new ArrayList<>(utf8), List.copyOf(classOwners), List.copyOf(memberOwners), List.copyOf(referencedMembers));
         }
     }
 
@@ -280,7 +339,7 @@ public final class TrustedSourceBytecodeInspector {
         return utf8.get(index);
     }
 
-    private record ConstantPool(List<String> utf8, List<String> referencedOwners, List<String> referencedMembers) {
+    private record ConstantPool(List<String> utf8, List<String> classOwners, List<String> memberOwners, List<String> referencedMembers) {
     }
 
     public record BytecodeInspectionResult(String classFile, boolean passed, List<String> violations) {
