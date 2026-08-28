@@ -7,7 +7,7 @@ dependencies {
     compileOnly 'org.springframework:spring-context:6.1.12'
     compileOnly 'org.springframework:spring-web:6.1.12'
     compileOnly 'org.springframework.boot:spring-boot-actuator:3.3.2'
-    compileOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    compileOnly 'jakarta.servlet:jakarta.servlet-api:6.1.0'
 
     // Fix: annotations referenced in code (e.g., @JsonInclude(Include.NON_EMPTY))
     compileOnly 'com.fasterxml.jackson.core:jackson-annotations:2.17.2'
@@ -16,7 +16,7 @@ dependencies {
     testImplementation 'org.springframework:spring-web:6.1.12'
     testImplementation 'org.springframework:spring-test:6.1.12'
     testImplementation 'org.springframework.boot:spring-boot-actuator:3.3.2'
-    testImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    testImplementation 'jakarta.servlet:jakarta.servlet-api:6.1.0'
     testImplementation 'com.h2database:h2:2.2.224'
 
     // Fix for tests too
