@@ -295,8 +295,10 @@ writer.writeRelative(
                 "src/main/resources/npdev/plugin-packages/index.json",
                 readPluginPackageIndex(pluginMountPlan)
         );
-        emitJavaSourceMounts(pluginMountPlan);
-        emitJavaControllerMounts(pluginMountPlan);
+        Set<String> pluginOwnedClassResources = new LinkedHashSet<>();
+        pluginOwnedClassResources.addAll(emitJavaSourceMounts(pluginMountPlan));
+        pluginOwnedClassResources.addAll(emitJavaControllerMounts(pluginMountPlan));
+        emitPluginBytecodeGateManifestIfNeeded(pluginOwnedClassResources);
     }
 
     private static String readModelSource(Path modelSourcePath) {
@@ -1159,20 +1161,22 @@ writer.writeRelative(
         return prettyJson(root);
     }
 
-    private void emitJavaSourceMounts(GeneratedPluginMountPlan pluginMountPlan) {
+    private Set<String> emitJavaSourceMounts(GeneratedPluginMountPlan pluginMountPlan) {
         List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups = pluginMountPlan.javaSourcePackageGroups();
         if (javaSourceGroups.isEmpty()) {
-            return;
+            return Set.of();
         }
-        emitJavaSourceFiles(javaSourceGroups);
+        Set<String> classResources = emitJavaSourceFiles(javaSourceGroups);
         writer.writeRelative(
                 "src/main/java/com/npdev/generated/runtime/config/GeneratedJavaSourceCapabilityProviders.java",
                 javaSourceProvidersSource(javaSourceGroups)
         );
+        return classResources;
     }
 
-    private void emitJavaSourceFiles(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {
+    private Set<String> emitJavaSourceFiles(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {
         Set<String> emitted = new LinkedHashSet<>();
+        Set<String> classResources = new LinkedHashSet<>();
         for (GeneratedPluginMountPlan.JavaSourcePackageGroup group : javaSourceGroups) {
             GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = group.descriptor();
             try (java.util.stream.Stream<Path> stream = Files.walk(descriptor.resolvedSourceRoot())) {
@@ -1186,12 +1190,18 @@ writer.writeRelative(
                     if (!emitted.add(destination.toLowerCase(Locale.ROOT))) {
                         throw new IllegalStateException("Duplicate artifact-local Java source destination: " + destination);
                     }
-                    writer.writeRelative(destination, Files.readString(source, StandardCharsets.UTF_8));
+                    String sourceText = Files.readString(source, StandardCharsets.UTF_8);
+                    // SEC-3/B30 generation-side admission: refuse an unsafe plugin at generation
+                    // time instead of baking it into an app that then fails the boot gate.
+                    PluginJavaSourcePolicy.validatePluginJavaSource(sourceText, destination);
+                    classResources.add(toClassResourcePath(destination));
+                    writer.writeRelative(destination, sourceText);
                 }
             } catch (IOException exception) {
                 throw new RuntimeException("Failed emitting artifact-local Java source for " + descriptor.capability(), exception);
             }
         }
+        return classResources;
     }
 
     /**
@@ -1214,20 +1224,22 @@ writer.writeRelative(
      * {@code PluginControllerSecurityConfig} (reads exactly the manifest shape written below), and
      * {@code run-r10-plugin-controller-proof.py} (the live proof this mechanism is verified by).
      */
-    private void emitJavaControllerMounts(GeneratedPluginMountPlan pluginMountPlan) {
+    private Set<String> emitJavaControllerMounts(GeneratedPluginMountPlan pluginMountPlan) {
         List<GeneratedPluginMountPlan.Mount> controllerMounts = pluginMountPlan.javaControllerMounts();
         if (controllerMounts.isEmpty()) {
-            return;
+            return Set.of();
         }
-        emitJavaControllerFiles(controllerMounts);
+        Set<String> classResources = emitJavaControllerFiles(controllerMounts);
         writer.writeRelative(
                 "src/main/resources/npdev/plugin-controllers/plugin-controller-security.json",
                 pluginControllerSecurityManifestSource(controllerMounts)
         );
+        return classResources;
     }
 
-    private void emitJavaControllerFiles(List<GeneratedPluginMountPlan.Mount> controllerMounts) {
+    private Set<String> emitJavaControllerFiles(List<GeneratedPluginMountPlan.Mount> controllerMounts) {
         Set<String> emitted = new LinkedHashSet<>();
+        Set<String> classResources = new LinkedHashSet<>();
         for (GeneratedPluginMountPlan.Mount mount : controllerMounts) {
             GeneratedPluginMountPlan.JavaControllerDescriptor descriptor = mount.javaController();
             try (java.util.stream.Stream<Path> stream = Files.walk(descriptor.resolvedSourceRoot())) {
@@ -1241,12 +1253,51 @@ writer.writeRelative(
                     if (!emitted.add(destination.toLowerCase(Locale.ROOT))) {
                         throw new IllegalStateException("Duplicate artifact-local plugin controller source destination: " + destination);
                     }
-                    writer.writeRelative(destination, Files.readString(source, StandardCharsets.UTF_8));
+                    String sourceText = Files.readString(source, StandardCharsets.UTF_8);
+                    // SEC-3/B30 generation-side admission: refuse an unsafe plugin controller at
+                    // generation time instead of baking it into an app that then fails the boot gate.
+                    PluginJavaSourcePolicy.validatePluginJavaSource(sourceText, destination);
+                    classResources.add(toClassResourcePath(destination));
+                    writer.writeRelative(destination, sourceText);
                 }
             } catch (IOException exception) {
                 throw new RuntimeException("Failed emitting artifact-local plugin controller source for " + descriptor.capability(), exception);
             }
         }
+        return classResources;
+    }
+
+    /**
+     * SEC-3/B30: every class file a mounted plugin contributes to the app, as classpath resource
+     * paths. Written into the app as {@code npdev/plugin-bytecode/plugin-owned-classes.txt}, which
+     * {@code PluginBytecodeBootGate} (NPDevRuntimeHost) reads at boot to refuse the app when any
+     * listed class's compiled bytecode references a forbidden capability -- the compiled-form twin
+     * of the source-level admission this emitter already runs (npdev-plugin-bytecode-gate
+     * twin-pair). A blank model (no mounted plugins) writes no manifest, which is the gate's
+     * no-op signal.
+     */
+    private void emitPluginBytecodeGateManifestIfNeeded(Set<String> pluginOwnedClassResources) {
+        if (pluginOwnedClassResources.isEmpty()) {
+            return;
+        }
+        String content = pluginOwnedClassResources.stream()
+                .sorted()
+                .collect(java.util.stream.Collectors.joining("\n")) + "\n";
+        writer.writeRelative(
+                "src/main/resources/npdev/plugin-bytecode/plugin-owned-classes.txt",
+                content
+        );
+    }
+
+    /** {@code src/main/java/com/foo/Bar.java} -> {@code com/foo/Bar.class} (classpath resource path). */
+    private static String toClassResourcePath(String javaSourceDestination) {
+        String relative = javaSourceDestination.startsWith("src/main/java/")
+                ? javaSourceDestination.substring("src/main/java/".length())
+                : javaSourceDestination;
+        if (!relative.endsWith(".java")) {
+            throw new IllegalStateException("Plugin Java source destination does not end in .java: " + javaSourceDestination);
+        }
+        return relative.substring(0, relative.length() - ".java".length()) + ".class";
     }
 
     /**

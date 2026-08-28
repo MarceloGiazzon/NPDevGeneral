@@ -353,6 +353,20 @@
       ]
     },
     {
+      "id": "npdev-plugin-bytecode-gate",
+      "citedBy": "SEC-3 (ledger/items/SEC-3.yml, Model A admission gates), B30 boundary",
+      "description": "The SEC-3/B30 plugin admission gate exists at BOTH ends of the pipeline over ONE shared constant-pool denylist (com.npdev.kernel.security.TrustedSourceBytecodeInspector, moved into NPDevKernel so both sides consume identical rule sets): the generator's plugin-source emission (PluginJavaSourcePolicy + RuntimeApiEmitter, writing the per-app class listing) and the app's boot-time refusal (PluginBytecodeBootGate, NPDevRuntimeHost, reading that listing). The tracked literal `npdev/plugin-bytecode/plugin-owned-classes.txt` is the resource path the generator writes the class listing to AND the constant PluginBytecodeBootGate reads at boot -- if the two ever drift (a renamed resource, a moved directory, a prefixed path), the boot gate silently no-ops (resource absent = 'no plugins' signal) while the generator keeps emitting listings: exactly the REG-104 'parses/compiles clean, never reaches the runtime on the skipped side' shape, with the added sting that a silent no-op here means UNSAFE PLUGIN CODE RUNS UNCHECKED. The kernel inspector's public rule-set constants (FORBIDDEN_OWNER_PREFIXES/FORBIDDEN_OWNERS/FORBIDDEN_SYSTEM_METHODS) are the second, derived source of truth -- PluginJavaSourcePolicyVisitor computes its source-form sets from them at class load, so the source gate and the bytecode gate cannot drift apart without a compiler error first.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev/plugin-bytecode/plugin-owned-classes.txt"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java",
+        "NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginBytecodeBootGate.java"
+      ]
+    },
+    {
       "id": "capability-execution-policy-mirror",
       "citedBy": "RUN-4 (R8d, ledger/items/RUN-4.yml)",
       "description": "CapabilityExecutionPolicy (kernel) and CompiledCapabilityExecutionPolicy (DSL module) are independent classes with the same field-for-field shape (retryCount/retryDelayMs/timeoutMs/circuitOpenAfterFailures/circuitOpenMs/bulkheadMaxConcurrent/idempotencyKeyField/failureClassification) -- the kernel cannot depend on the DSL's compiled-model types, so there is no single shared type to enforce this instead. R8d (2026-08) deliberately left both untouched (adapter-level deadlines only, per the card's own sequencing: adapter deadlines first, the kernel-wide default -- CapabilityExecutionPolicy.defaults()'s zeros -- a separate, later decision). Registered here as groundwork for whoever DOES touch the kernel default or either shape next: a field added to one side without the other is exactly REG-104's 'parses/compiles clean, never reaches the runtime on the skipped side' shape. Each class carries the 'npdev-capability-execution-policy-mirror' token in its javadoc so dropping one (e.g. a rewrite that deletes the class) is a gate failure rather than a silent divergence.",

@@ -162,6 +162,13 @@
       "userFacingText": "SQL Server has no way to express a bare 'take the last N rows' suffix -- asking for one throws rather than silently returning the wrong rows. In practice nothing in NPDev asks for it: every real call site wants 'at most N rows', which every engine can answer.",
       "workaround": "Ask for 'at most N rows' rather than a suffix-specific row cap -- that is what every real caller in NPDev already does.",
       "enforcingDiagnosticCodes": []
+    },
+    {
+      "id": "B30",
+      "kind": "HITTABLE",
+      "userFacingText": "A mounted plugin (plugin:java-source / plugin:java-controller) runs in-process with the application's full privileges. It is admission-checked at generation and at boot against a bytecode denylist (filesystem/network IO, process/system control, reflection, dynamic loading, threads, scripting, detached async work, JVM internals) and is refused if it references any of them -- but it is NOT sandboxed: memory and CPU are unbounded, and a hostile plugin is not contained.",
+      "workaround": "Treat a plugin like your own application code: only mount plugins you trust. A plugin that needs genuine containment requires the tracked process-isolation upgrade (SEC-3, Model B).",
+      "enforcingDiagnosticCodes": ["B30:plugin_bytecode_violation"]
     }
   ]
 }

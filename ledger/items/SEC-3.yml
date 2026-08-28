@@ -1,9 +1,8 @@
 id: SEC-3
 title: >-
-  TimeBoundedPluginExecutionEngine (renamed 2026-08-26 from SandboxedPluginExecutionEngine, item 3 of
-  SUPPORT_FEATURES_PLAN_2026-08-26, to stop the class name promising containment it does not have) has
-  no real containment for malicious plugin code -- filesystem, network, memory/CPU, System.exit, and
-  reflection are all unbounded; only a wall-clock timeout exists
+  Plugin memory/CPU is unbounded and a hostile plugin is not contained -- plugins are now
+  admission-checked (generation + boot bytecode gates, B30) but NOT sandboxed; in-process,
+  full-privilege execution with only a wall-clock timeout plus the static-analysis barrier
 type: GAP
 severity: HIGH
 status: OPEN
@@ -20,13 +19,63 @@ surface: runtimehost, plugin-execution, security
 files:
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/TimeBoundedPluginExecutionEngine.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/TimeBoundedPluginExecutionEngineTest.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/security/TrustedSourceBytecodeInspector.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/PluginJavaSourcePolicy.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginBytecodeBootGate.java
 detail: |
+  MODEL A SHIPPED 2026-08-27 (ledger remediation session) -- "plugins are trusted; prevent accidents
+  and casual misuse" is now REAL, with the boundary's honest residue recorded as B30:
+
+  Mechanism (one shared denylist, two enforcement ends):
+  - The constant-pool inspector moved out of the generator into NPDevKernel
+    (com.npdev.kernel.security.TrustedSourceBytecodeInspector) so the generator AND the running app
+    consume identical rule sets. Hardened from the original generator-only scanner for production-gate
+    duty: the pool is now RESOLVED (Class/Methodref/Fieldref entries spliced back into owner /
+    owner.name -- javac stores java/lang/System and exit as SEPARATE constants, so a raw-Utf8 scan
+    can never see System.exit, which the original endsWith("exit") heuristic papered over at the cost
+    of false positives on any constant ending in "exit"); exact owners are boundary-checked
+    (RuntimeException is not refused by the java/lang/Runtime rule); java/util/concurrent/ is no
+    longer banned wholesale -- only the executor/scheduler/async classes that can detach work that
+    outlives the timeout (AtomicLong, which the shipped auditLog capability uses, stays legal);
+    System.* methods match only the full owner.name reference. Known documented conservatism:
+    java/lang/invoke/ is a banned prefix, so ANY lambda (lowered through LambdaMetafactory) is
+    refused, and a plugin may not detach work at all (Thread + the curated concurrent set).
+  - GENERATION gate: PluginJavaSourcePolicy (source-AST twin; its rule sets are DERIVED at class
+    load from the kernel constants so the two can never drift) runs in RuntimeApiEmitter's
+    emitJavaSourceFiles / emitJavaControllerFiles choke points and refuses emission of plugin source
+    referencing the escapes, BEFORE anything is baked into an app.
+  - BOOT gate: PluginBytecodeBootGate (NPDevRuntimeHost, a Spring bean) reads the generator-written
+    per-app manifest npdev/plugin-bytecode/plugin-owned-classes.txt (npdev-plugin-bytecode-gate
+    twin-pair token), inspects every listed class file's COMPILED bytecode plus its $-siblings
+    (inner/anonymous classes are separate files a top-level listing cannot see), and refuses app
+    start with BoundaryBootException carrying B30:plugin_bytecode_violation: (exit code 4 via
+    FinalExecApplication; discoverable via `npdev why B30`). Registered B30: HITTABLE boundary,
+    ledger/boundaries/B30.yml + docs/ACCEPTED_BOUNDARIES.md + accepted-boundaries.json.
+  - The wall-clock timeout stays as defence-in-depth (unchanged).
+  - Live-fire tests: 8 kernel inspector tests (System.exit / filesystem / socket / ProcessBuilder /
+    detached-async refused; lambda refused; RuntimeException neighbour + AtomicLong accepted),
+    12 PluginJavaSourcePolicyTest cases (same vectors at source level; clean auditLog-like and
+    Spring-controller-like sources accepted), 5 PluginBytecodeBootGateTest cases (boot refusal for
+    System.exit / socket / inner-class escape with the B30 code; clean passes; absent manifest
+    no-ops).
+  - Honest residual, now the B30 boundary statement: static analysis catches DIRECT references only.
+    MEMORY/CPU remain unbounded -- a plugin can allocate freely or spin an uninterruptible loop
+    inside its wall-clock timeout, and future.get(timeout) still cannot kill a running thread. A
+    proxy class elsewhere on the app classpath that performs a forbidden capability on a plugin's
+    behalf is outside a constant-pool scan's view. The docs (NPDEV_USER_MANUAL / feature guide,
+    model.schema.json adapter description) now state: a plugin runs in-process with the
+    application's full privileges; trust it like your own code.
+
+  ORIGINAL FINDING (2026-08-25, kept as the record; superseded by Model A above for the accident/
+  casual-misuse threat model):
+
   Read the engine class directly (not inferred from the test file's own aspirational comments).
   Handler invocation runs in-process, on a thread from a plain Executors.newCachedThreadPool(), via
   reflection. The ONLY containment mechanism that exists at all is a bounded future.get(timeoutMs) --
   proven real by 6 tests already in TimeBoundedPluginExecutionEngineTest (happy path, error wrapping,
   timeout, interrupt safety, overload resolution, policy denial). Every other vector the class's
-  ORIGINAL name ("Sandboxed") implied it covered is wide open to any plugin handler running in the
+  ORIGINAL name ("Sandboxed") implied it covered was wide open to any plugin handler running in the
   same JVM:
     - Filesystem: no restriction: a plugin can read/write anything the app process can.
     - Network: no restriction: a plugin can make arbitrary outbound connections.
@@ -51,7 +100,16 @@ detail: |
   not) -- so it was deliberately NOT attempted inline here. maliciousPluginVectorsRemainContained
   stays @Disabled, with its reason updated to point at this item instead of the vague original text.
 
-  Done when: a real process-isolation (or equivalent) containment layer exists for at least the
-  System.exit and filesystem/network vectors, with its own live-fired regression tests (a plugin that
-  actually calls System.exit and does NOT take down the host process; a plugin that actually attempts
-  a forbidden file/socket operation and is actually blocked) -- not a design document.
+  2026-08-27 (Model A shipped, above): the static-analysis admission barrier converts the five
+  original vectors into REFUSED-AT-ADMISSION for direct references (filesystem, network,
+  System.exit, reflection, and detached work) -- a plugin that would have exercised them is refused
+  at generation or boot before any of it can run. What the barrier does NOT change is memory/CPU
+  inside a running (admitted) plugin, so the original done-when below remains the bar for Model B.
+
+  Done when: for the REMAINING gap (memory/CPU; hostile-plugin containment): a real process-
+  isolation (or equivalent) containment layer exists for at least the System.exit and filesystem/
+  network vectors, with its own live-fired regression tests (a plugin that actually calls
+  System.exit and does NOT take down the host process; a plugin that actually attempts a forbidden
+  file/socket operation and is actually blocked) -- not a design document. Model A has already
+  closed those vectors' DIRECT-REFERENCE form at admission; the "live-fired" phrasing of this bar
+  now targets a plugin running against a REAL agent, i.e. the Model B process isolation.

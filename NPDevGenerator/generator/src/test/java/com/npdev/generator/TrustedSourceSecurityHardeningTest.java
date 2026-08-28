@@ -3,10 +3,10 @@ package com.npdev.generator;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.generator.emitters.TrustedSourceBytecodeInspector;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
+import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;

@@ -640,8 +640,12 @@ table/form, and build workflows that don't complete in one HTTP call — they cr
 notify someone, and **wait** until that someone acts, potentially hours later.
 
 **Trust boundary:** a `plugin:java-source` handler runs in-process with the application's full
-privileges (only wall-clock time is bounded) — trust it like your own code. See SEC-3 for the
-tracked upgrade path to real containment (process isolation).
+privileges — trust it like your own code. Mounted plugin code is admission-checked (SEC-3/B30): a
+shared bytecode denylist refuses plugins that reference filesystem/network IO, process/system
+control, reflection, threads, scripting or detached async work, enforced at generation time and
+again at boot. Admission-checked is not sandboxed: memory and CPU are unbounded (only wall-clock
+time is bounded), and a hostile plugin is not contained. See SEC-3 for the tracked upgrade path to
+real containment (process isolation).
 
 This exact pattern is the `Claude` (Claude Support Desk) reference app, already proven
 green end-to-end. Three pieces, trimmed from its real `model.json`:

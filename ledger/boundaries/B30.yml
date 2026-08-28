@@ -1,0 +1,31 @@
+id: B30
+title: "Plugins are admission-checked, not sandboxed -- a mounted plugin runs in-process with the application's full privileges"
+codeLinked: true
+codeLinkedNote: >-
+  2026-08-27 (SEC-3 remediation, Model A). SHIPPED the two admission gates over the shared
+  constant-pool inspector `com.npdev.kernel.security.TrustedSourceBytecodeInspector` (moved into
+  NPDevKernel from the generator so both sides consume one denylist; pool-resolving, boundary-safe
+  exact-owner matching, curated java.util.concurrent.* set so benign primitives like the shipped
+  auditLog capability's AtomicLong stay usable): (1) GENERATION time -- `PluginJavaSourcePolicy`
+  (NPDevGenerator, source-AST twin of the bytecode policy, rule sets DERIVED from the kernel
+  constants) refuses emission of plugin:java-source/plugin:java-controller source referencing
+  forbidden capability escapes; (2) BOOT time -- `PluginBytecodeBootGate` (NPDevRuntimeHost), a
+  Spring bean that reads the generator-written per-app manifest
+  `npdev/plugin-bytecode/plugin-owned-classes.txt` (npdev-plugin-bytecode-gate twin-pair token),
+  inspects every listed class file's COMPILED bytecode plus its `$`-siblings (inner/anonymous
+  classes compile to separate files invisible to a top-level-only listing), and refuses app start
+  with `new BoundaryBootException(new BoundaryViolation("B30", "boot",
+  "B30:plugin_bytecode_violation: ...", Instant.now()))` on any DIRECT reference (filesystem/
+  network IO, Runtime/Process/ProcessBuilder, reflection, Class/ClassLoader/ServiceLoader, Thread/
+  ThreadLocal/Timer, executor/async detachment incl. TimeUnit, javax.script., sun./jdk. internals,
+  java.lang.System.exit/getenv/getProperty*). The boundary's honest residue, matching the
+  analysis: static analysis only -- MEMORY/CPU stay unbounded (a plugin can allocate freely or
+  spin an uninterruptible loop inside its wall-clock timeout; the timeout cannot kill a running
+  thread), and anything on the app classpath that PROXIES a forbidden capability on a plugin's
+  behalf is outside the inspector's view. A hostile, determined plugin is not contained -- only
+  admission-checked; the doc line next to plugin:java-* says exactly that. Verified live:
+  8 kernel inspector tests + 12 generator PluginJavaSourcePolicyTest cases + 5
+  PluginBytecodeBootGateTest boot-refusal tests (System.exit, filesystem, socket, process,
+  detached-async, lambda/inner-class escapes refused; Runtime-exception neighbours and AtomicLong
+  accepted). SEC-3 stays OPEN only for the process-isolation (Model B) track: memory/CPU.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B30"
