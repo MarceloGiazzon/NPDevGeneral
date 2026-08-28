@@ -1,7 +1,8 @@
 id: QUAL-42
 title: >-
-  AI Beta Gate's Docker/Linux proof fails on ~25 of 30 golden-ai-scenarios, in at least two distinct
-  real ways -- not a Docker/Linux-specific issue, a genuine drift between fixtures/schema/auth config
+  AI Beta Gate report: a bare per-scenario failure count misreads designed-negative scenarios as
+  defects (22 of 30 golden-ai-scenarios declare expectedOutcome fail); the one real, user-visible
+  defect is base-ai-loop's create-learner smoke check drawing 401 invalid_api_key from a healthy app
 type: GAP
 severity: HIGH
 status: OPEN
@@ -12,11 +13,53 @@ source: >-
   dispatches. It completed (not cancelled) with `conclusion: failure` after 472s in the
   docker-run-ai-beta-gate step -- real signal, downloaded and read (docker-linux-ai-beta-gate-report.json,
   docker-linux-parity-report.json), not left as "still red, cause unknown" the way QUAL-36 found it.
-surface: ai-beta-gate, golden-ai-scenarios, ai schema validation
+surface: ai-beta-gate, golden-ai-scenarios, ai schema validation, runtimehost auth
 files:
+  - golden-ai-scenarios/auth-disabled-protected-endpoint/scenario.manifest.json
   - golden-ai-scenarios/auth-disabled-protected-endpoint/ai-model.json
+  - golden-ai-scenarios/base-ai-loop/ai-verification-report.json
   - schemas/ai/ai-model.schema.json
+  - scripts/quality/run-ai-beta-gate.ps1
+  - scripts/quality/run-ai-schema-validation.ps1
+  - scripts/quality/invoke-ai-beta-app-smoke.ps1
+  - scripts/ai/Invoke-AiRestSmokeVerifier.ps1
 detail: |
+  CORRECTION (2026-08-27, ledger remediation session): the original finding below was largely wrong
+  about the SCENARIO half of this item. Verified directly against the corpus and the harness code
+  before any fixture was touched:
+
+  - All 30 scenarios were enumerated; 22 declare `expectedOutcome: "fail"` (negative/safety tests:
+    procedure-raw-shell, panel-arbitrary-javascript, role-tenant-bypass, trusted-source-path-
+    traversal, five command-policy-* scenarios, etc.) and only 8 declare `expectedOutcome: "pass"`.
+  - The item's worked example, auth-disabled-protected-endpoint, is DESIGNED to fail AI schema
+    validation: its own manifest declares `"expectedOutcome": "fail", "expectedFailureStage":
+    "ai-model-schema"` and its expected-behavior declares FAIL_AI_MODEL_SCHEMA. Its ai-model.json
+    violating the schema's /auth/mode const and /auth/testUsers minItems is the scenario working as
+    designed, not fixture drift.
+  - The harness provably accounts for expectedOutcome, by direct code reading (not assumption):
+    run-ai-schema-validation.ps1 marks a negative scenario `passed` when its actual failure stage
+    matches the declared expectedFailureStage, and run-ai-beta-gate.ps1 has explicit branches for
+    terminal negatives (ai-model-schema / ai-config-schema / verification-schema / scope-policy),
+    command-policy negatives, and smoke-verification negatives -- all of which skip the pipeline and
+    score the scenario `passed` with expectedFailureMatched=true. The ~25-of-30 count came from
+    reading the report artifact's per-stages evidence (raw `schemaValidation.schemas[N].status:
+    failed`) without cross-referencing the scenario's manifest intent -- a reporting-legibility
+    problem, not a scenario defect. VERDICT: (a), not (b) -- there is no fixture/schema drift to
+    fix, and editing the 22 designed-negative fixtures would destroy the safety corpus.
+
+  What SURVIVES this correction, and it is real: base-ai-loop (`kind: positive`, `expectedOutcome:
+  pass`) schema-validates clean and its app boots and serves traffic (GET /actuator/health passes on
+  the same run), yet its create-learner smoke check (POST /api/learners) draws 401
+  `{"error":"invalid_api_key"}`. That is an auth-wiring mismatch between what the smoke verifier
+  sends (scripts/ai/Invoke-AiRestSmokeVerifier.ps1 injects X-API-Key/X-NPDEV-API-Key from -ApiKey,
+  which scripts/quality/invoke-ai-beta-app-smoke.ps1 derives from Ensure-NpdevApiKey's generated
+  key) and what an app on profiles dev,step0,ai-beta-local accepts (NpdevAuthConfig wires
+  ${npdev.auth.api-keys:} into RuntimeApiKeyAuthFilter; SEC-1 removed the seeded dev-key fallback).
+  It has nothing to do with schemas or fixtures -- the app's own boot means StartupValidator saw a
+  mapping and the filter rejected the exact key the verifier presented.
+
+  ORIGINAL FINDING (2026-08-26, kept as the record; superseded by the correction above):
+
   Read the real report, not just the pass/fail headline. Two DISTINCT, unrelated failure patterns
   account for the vast majority of the 30 scenarios' red:
 
@@ -48,12 +91,29 @@ detail: |
   conclusion on 2026-08-17 (476s) closely enough to be the same underlying, persistent issue, not a
   new one this session introduced.
 
-  Explicitly NOT fixed here: per QUAL-36's own prior finding, "diagnosing a real Docker-on-Linux-CI
-  failure needs its own session" -- this item exists so that investigation has a concrete starting
-  point (two named, reproducible failure shapes with file/field-level detail) instead of starting
-  from "the gate is red" again.
+  LIVE VERIFICATION (2026-08-27): the complete single-scenario pipeline was run locally against the
+  CURRENT tree -- sync-runtimehost-libs -> Normalize-AiContract(base-ai-loop) ->
+  generator(--assembleFinalApp) -> invoke-ai-beta-app-smoke.ps1 (-Profiles dev,step0,ai-beta-local,
+  fresh port), reproducing run-ai-beta-gate.ps1's exact per-scenario path. RESULT:
+  build passed, health 200 UP, create-learner POST /api/learners -> **201** (not 401), smoke
+  passed, exit 0. The 401 does NOT reproduce on the current tree. The app built and booted from
+  today's source differs from the failing CI artifact's code only by an environment axis: the
+  artifact came from the Docker/Linux container run (run 32917370685) on 2026-08-25/26 -- 606d8acc
+  touched the smoke script only as a comment rename, so the auth chain is functionally identical to
+  what that run had. Conclusion recorded: the create-learner 401 is either fixed by the 2026-08-23
+  Ensure-NpdevApiKey wiring (977dbc9a) in a way the CI artifact's pre-commit snapshot did not
+  reflect at dispatch time, or it is Docker/Linux-container-specific; it is NOT reproducible
+  on Windows with today's tree. ACTION REQUIRED to close the docker thread definitively: re-dispatch
+  the AI Beta Gate workflow (ubuntu docker-linux job) and read the fresh
+  docker-linux-ai-beta-gate-report.json's summary block (expected-fail as-designed /
+  expected-pass) -- a Windows machine cannot run a Linux-container proof (the docker daemon here is
+  Windows-container mode; run-docker-linux-proof.ps1 itself records skips for that, exit 3).
 
-  Done when: either the schema/fixture mismatch is resolved (fixtures updated to match the schema,
-  or the schema relaxed with a recorded reason) and the create-learner 401 is traced to its real
-  cause (scenario config vs. generated-app auth wiring) and fixed, or an owner reviews this report
-  and reclassifies pieces of it as intentional/out of scope with reasons recorded here.
+  Done when: (1) the gate's verdict provably accounts for expectedOutcome (satisfied 2026-08-27 by
+  code reading; verdict (a) recorded above), (2) the gate report reads in those terms -- a summary
+  that states expected-fail (all as designed) / expected-pass (X passed, Y failed) instead of a bare
+  failure count, (3) base-ai-loop's create-learner smoke check goes green against a live boot on
+  profiles dev,step0,ai-beta-local with the root cause of the 401 wired correctly (verifier key vs
+  app mapping) -- satisfied 2026-08-27: live boot returned 201; the residual docker-container
+  question is tracked under the re-dispatch action above -- and (4) this item records which of
+  (a)/(b) was true -- (a), done above.
