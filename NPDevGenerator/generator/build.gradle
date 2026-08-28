@@ -237,7 +237,7 @@ dependencies {
     // behaviorTest: isolated from the above on purpose -- see the sourceSets note.
     behaviorTestImplementation project(':adapters:runtime-support')
     behaviorTestImplementation 'org.springframework:spring-web:6.1.12'
-    behaviorTestImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    behaviorTestImplementation 'jakarta.servlet:jakarta.servlet-api:6.1.0'
     behaviorTestImplementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.17.2'
 }
 
