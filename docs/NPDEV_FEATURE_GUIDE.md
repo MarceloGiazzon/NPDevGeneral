@@ -259,8 +259,11 @@ it out of your flows' logic and makes it substitutable in tests.
 generated app with its dependencies declared alongside it.
 
 **Trust boundary.** A `plugin:java-*` handler runs in-process with the application's full
-privileges (only wall-clock time is bounded) and must be trusted like your own code — see SEC-3
-for the tracked upgrade path to real containment (process isolation).
+privileges and must be trusted like your own code. Since SEC-3 it is admission-checked at
+generation and boot against a shared bytecode denylist (B30) — refused if it references
+filesystem/network IO, process/system control, reflection, threads, scripting or detached async
+work — but admission-checked is not sandboxed: memory and CPU are unbounded, and a hostile plugin
+is not contained. See SEC-3 for the tracked upgrade path to real containment (process isolation).
 
 ## 10. Properties and scoped settings — configuration that is not a rebuild
 

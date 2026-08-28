@@ -2570,7 +2570,7 @@
           "not": {
             "const": "plugin:query-provider"
           },
-          "description": "Capability adapter id, e.g. 'plugin:java-source' or 'plugin:java-controller'. 'plugin:query-provider' is a considered-but-unimplemented plugin kind (R10, __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10) explicitly out of scope for this DSL version -- rejected here so a future session does not have to rediscover the question from scratch."
+          "description": "Capability adapter id, e.g. 'plugin:java-source' or 'plugin:java-controller'. 'plugin:query-provider' is a considered-but-unimplemented plugin kind (R10, __OutsideRepo/strategy-2026-08-12/ROADMAP.md card R10) explicitly out of scope for this DSL version -- rejected here so a future session does not have to rediscover the question from scratch. Mounted plugin code runs in-process with the application's full privileges -- it is admission-checked at generation and at boot against a bytecode denylist (SEC-3/B30), not sandboxed: trust it like your own code."
         }
       },
       "additionalProperties": false
