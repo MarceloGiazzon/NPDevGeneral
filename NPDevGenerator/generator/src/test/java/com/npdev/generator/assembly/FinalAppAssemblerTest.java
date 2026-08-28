@@ -67,17 +67,26 @@ class FinalAppAssemblerTest {
         write(migrations.resolve("V5013__legacy_sample.sql"), "select 4;\n");
         write(snapshots.resolve("latest-storage-schema.json"), "{\"tables\":[]}\n");
 
-        FinalAppAssembler.AssemblyResult result = new FinalAppAssembler().assemble(
-                new FinalAppAssembler.Options(
-                        host,
-                        artifact,
-                        finalApp,
-                        migrations,
-                        "npdev-generated",
-                        "npdev-meta",
-                        true,
-                        17,
-                        null
+        // D1 (Cold Clone Audit 2026-08-28): this test's assertions below (line ~155) exercise the
+        // LEGACY absolute-path bake, which only happens when there is nothing staged to copy. Pin
+        // NPDEV_RUNTIMEHOST_LIBS_DIR at a directory that deliberately does not exist -- without this,
+        // the assembler falls back to whatever Build/runtimehost-libs happens to be on the machine
+        // running the test (present on a dev box that has run `npdev setup`, absent in CI), which
+        // flips stageRuntimeHostLibsIntoApp's outcome and makes this test pass locally, fail in CI.
+        Path absentStaging = workspace.resolve("no-such-dir").resolve("runtimehost-libs");
+        FinalAppAssembler.AssemblyResult result = withRuntimeHostLibsDir(absentStaging, () ->
+                new FinalAppAssembler().assemble(
+                        new FinalAppAssembler.Options(
+                                host,
+                                artifact,
+                                finalApp,
+                                migrations,
+                                "npdev-generated",
+                                "npdev-meta",
+                                true,
+                                17,
+                                null
+                        )
                 )
         );
 
