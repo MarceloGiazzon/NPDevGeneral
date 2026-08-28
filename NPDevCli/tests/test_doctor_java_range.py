@@ -41,10 +41,17 @@ class JavaVersionRangeCheckTest(unittest.TestCase):
         real_launcher = npdev_cli.java_launcher
         real_which = npdev_cli.shutil.which
         real_db = npdev_cli._database_checks
+        real_libs_dir = npdev_cli._default_runtimehost_libs_dir
         real_java_home = npdev_cli.os.environ.get("JAVA_HOME")
 
         npdev_cli.java_launcher = lambda: "/fake/bin/java"
         npdev_cli._database_checks = lambda app_path: []
+        # runtimehost-jars is a FAIL-severity check (not warn) when Build/runtimehost-libs isn't
+        # staged -- ambient machine state this test has nothing to do with (it exercises the java
+        # version RANGE check only). Left unmocked, this test passed on any dev box that had run
+        # `npdev setup` and failed on a clean CI runner that hadn't -- exactly the FinalAppAssembler
+        # env-dependency bug in the same audit's D1 fix, one file over (CI run 33206615150).
+        npdev_cli._default_runtimehost_libs_dir = lambda: Path(__file__).resolve().parent
         # java-home-agreement compares JAVA_HOME's binary against the PATH one; the fake java is
         # on neither, so unset JAVA_HOME here or this machine's real JDK 17 triggers a false FAIL
         # (the branch under test is the version RANGE, not the home-agreement check -- that has its
@@ -67,6 +74,7 @@ class JavaVersionRangeCheckTest(unittest.TestCase):
             npdev_cli.java_launcher = real_launcher
             npdev_cli.shutil.which = real_which
             npdev_cli._database_checks = real_db
+            npdev_cli._default_runtimehost_libs_dir = real_libs_dir
             if real_java_home is None:
                 npdev_cli.os.environ.pop("JAVA_HOME", None)
             else:

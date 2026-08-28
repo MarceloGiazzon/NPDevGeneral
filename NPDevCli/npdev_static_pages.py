@@ -51,6 +51,17 @@ def _load_template(name: str) -> str:
     return (_TEMPLATES_DIR / name).read_text(encoding="utf-8")
 
 
+def _read_text_no_translation(path: Path, errors: str | None = None) -> str:
+    """Read UTF-8 text without Python's universal-newline translation (LF<->CRLF stays whatever
+    is actually on disk) -- the same intent as ``read_text(newline="")``, but that keyword was
+    only added to ``Path.read_text`` in Python 3.13 (``write_text`` has had it since 3.10). CI runs
+    3.12, so a bare ``read_text(newline="")`` call raises TypeError there while passing on a 3.13+
+    dev machine. ``Path.open`` has accepted ``newline`` since Python 3.6.
+    """
+    with path.open("r", encoding="utf-8", errors=errors, newline="") as f:
+        return f.read()
+
+
 def _read_json_file(path: Path):
     if not path.is_file():
         raise FileNotFoundError(f"JSON file not found: {path}")
@@ -196,7 +207,7 @@ def _gather_code_sources(definition_dir: Path, app_folder: Path):
                 continue
             for src_file in _iter_files(src_root, {".java", ".kt", ".groovy"}):
                 key = f"{plugin.get('capability')} / {src_file.name}"
-                cap_sources[key] = src_file.read_text(encoding="utf-8", newline="")
+                cap_sources[key] = _read_text_no_translation(src_file)
 
     widget_sources: dict[str, str] = {}
     widgets_dir = definition_dir / "widgets"
@@ -204,14 +215,14 @@ def _gather_code_sources(definition_dir: Path, app_folder: Path):
         for src_file in _iter_files(widgets_dir, {".js", ".ts", ".css"}):
             if src_file.parent != widgets_dir:
                 continue
-            widget_sources[src_file.name] = src_file.read_text(encoding="utf-8", newline="")
+            widget_sources[src_file.name] = _read_text_no_translation(src_file)
 
     web_sources: dict[str, str] = {}
     web_dir = app_folder / "web"
     if web_dir.is_dir():
         for src_file in _iter_files(web_dir, {".html", ".htm", ".css", ".js"}):
             rel = src_file.relative_to(web_dir).as_posix()
-            web_sources[rel] = src_file.read_text(encoding="utf-8", newline="")
+            web_sources[rel] = _read_text_no_translation(src_file)
 
     return cap_sources, widget_sources, web_sources
 
@@ -220,7 +231,7 @@ def _gather_project_files(app_folder: Path) -> list[dict]:
     files = []
     for path in _iter_files(app_folder, _TEXT_EXTENSIONS, _EXCLUDED_DIR_NAMES):
         rel = path.relative_to(app_folder).as_posix()
-        files.append({"path": rel, "content": path.read_text(encoding="utf-8", errors="replace", newline="")})
+        files.append({"path": rel, "content": _read_text_no_translation(path, errors="replace")})
     return files
 
 
@@ -339,11 +350,11 @@ def emit_app_tree_v2_page(app_folder: Path, static_dir: Path, app_id: str = "") 
     if proc_dir.is_dir():
         for f in _iter_files(proc_dir, {".java"}):
             if f.parent == proc_dir:
-                trusted_proc_src[f.name] = f.read_text(encoding="utf-8", newline="")
+                trusted_proc_src[f.name] = _read_text_no_translation(f)
     if panel_dir.is_dir():
         for f in _iter_files(panel_dir, {".html"}):
             if f.parent == panel_dir:
-                trusted_panel_src[f.name] = f.read_text(encoding="utf-8", newline="")
+                trusted_panel_src[f.name] = _read_text_no_translation(f)
 
     pages = _load_optional_json(definition_dir, "pages.json")
     menu = _load_optional_json(definition_dir, "menu.json")
