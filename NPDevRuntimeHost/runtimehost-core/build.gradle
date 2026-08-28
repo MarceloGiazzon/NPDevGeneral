@@ -81,7 +81,7 @@ dependencyManagement {
     imports {
         // runtimehost-core-boot-version-pin (see header comment): must match
         // NPDevRuntimeHost/build.gradle.template's `org.springframework.boot` plugin version.
-        mavenBom 'org.springframework.boot:spring-boot-dependencies:3.5.16'
+        mavenBom 'org.springframework.boot:spring-boot-dependencies:4.1.1'
     }
 }
 
