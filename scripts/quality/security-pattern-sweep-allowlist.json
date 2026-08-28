@@ -10,8 +10,8 @@
     "that goes stale unnoticed. Newer entries therefore set \"rule\" to the sweep pattern name and carry",
     "their full reasoning inline in \"why\"."
   ],
-  "frozenCount": 504,
-  "frozenCountWhy": "THE CEILING, set 2026-08-23 at 503, raised to 504 the same day when T4.2's identifier-quoting fix to MissingTableCreationPass.java re-fingerprinted an already-cleared line (fingerprint e8c35c5b0e0e, same trust boundary as 8dafba89ea4e, see its own entry). The sweep's cleared list may SHRINK freely; it may not grow past this number without the number being raised in the same commit, so widening is always a visible, reviewed act. Adding an entry is the last resort -- the first question is whether the pattern can be made unnecessary. Mirrors scripts/policy/markdown-read-exemptions.json's ratchet, which took 37 couplings to 0.",
+  "frozenCount": 506,
+  "frozenCountWhy": "THE CEILING, set 2026-08-23 at 503, raised to 504 the same day when T4.2's identifier-quoting fix to MissingTableCreationPass.java re-fingerprinted an already-cleared line (fingerprint e8c35c5b0e0e, same trust boundary as 8dafba89ea4e, see its own entry); raised to 506 on 2026-08-28 for two new sql-string-building false positives in DockerDeploymentEmitter.java (fingerprints 641da5fef3c0, 606570bd57ab -- see their own entries) surfaced by 29af91e3's edits to that file's surrounding javadoc. The sweep's cleared list may SHRINK freely; it may not grow past this number without the number being raised in the same commit, so widening is always a visible, reviewed act. Adding an entry is the last resort -- the first question is whether the pattern can be made unnecessary. Mirrors scripts/policy/markdown-read-exemptions.json's ratchet, which took 37 couplings to 0.",
   "cleared": {
     "028894b4023d": {
       "rule": "read-without-tenant-predicate",
@@ -2532,6 +2532,16 @@
       "rule": "conditional-guard-no-else",
       "where": "NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache:459",
       "why": "Safe: there is no unguarded arm because there is no other arm. The checkCrudPermission call sits inside restore(), and the ENTIRE restore() method -- javadoc, signature, body and all -- is wrapped in the same {{#softDelete}} section. When softDelete is falsey the method is not emitted at all, so no generated code path reaches a restore without the check. This is the inverse of LNCH13-F1, where a guard was emitted in one arm of a conditional whose OTHER arm still emitted the operation. Both delete arms ({{#softDelete}} SOFT_DELETE and {{^softDelete}} DELETE) are likewise fully symmetric a few lines above. Triaged 2026-08-19, session 5 (roadmap/wave1 handoff item 1)."
+    },
+    "641da5fef3c0": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java:245",
+      "why": "False positive, not SQL. dockerComposeServer() returns a Java text block (.formatted(...)) that emits a docker-compose.yml file -- the pattern's heuristic (multi-line string block + .formatted call) fires on any templated multi-line text, not specifically on SQL. The snippet at this fingerprint is the method's opening comment describing the emitted compose profiles (proxy/objectstore/smtp); no query, no string concatenation, no user input anywhere in this method. Triaged 2026-08-28, Cold Clone Audit CI follow-up (first surfaced by run 33209710820 after 29af91e3 touched this file's surrounding javadoc)."
+    },
+    "606570bd57ab": {
+      "rule": "sql-string-building",
+      "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java:518",
+      "why": "False positive, not SQL -- the sibling of 641da5fef3c0 one method over. dockerComposeStandalone() returns the same kind of Java text block emitting docker-compose.yml for non-Postgres engines; its opening comment is what the pattern matched. Same reasoning applies verbatim. Triaged 2026-08-28, Cold Clone Audit CI follow-up (run 33209710820)."
     }
   }
 }
