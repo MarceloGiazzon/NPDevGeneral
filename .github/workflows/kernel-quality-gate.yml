@@ -71,7 +71,7 @@ jobs:
 
       - name: Upload kernel/adapters test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kernel-quality-gate-test-results
           path: Build/gradle/npdev-kernel/**/test-results/**/*.xml
