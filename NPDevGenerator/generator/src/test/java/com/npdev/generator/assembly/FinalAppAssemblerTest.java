@@ -460,11 +460,17 @@ class FinalAppAssemblerTest {
         write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
         write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
                 "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
-        // A fake staged dir: two jars plus the manifest verifyNpdevRuntimeHostLibs reads.
+        // A fake staged dir: two jars plus the manifest verifyNpdevRuntimeHostLibs reads. Includes
+        // sourceDiscoveredJars the way sync-runtimehost-libs.ps1's real manifest does -- an absolute
+        // build-machine path per jar, which is what PORT-1's out-of-tree-generation gate caught being
+        // copied into the app verbatim (CI, 2026-08-28: run 33198031485).
         write(stagedLibs.resolve("npdev-kernel-0.1.0.jar"), "kernel");
         write(stagedLibs.resolve("npdev-runtimehost-core-0.1.0.jar"), "runtimehost-core");
         write(stagedLibs.resolve("runtimehost-libs-manifest.json"),
-                "{\"requiredStagedJars\":[\"npdev-kernel-0.1.0.jar\",\"npdev-runtimehost-core-0.1.0.jar\"]}\n");
+                "{\"requiredStagedJars\":[\"npdev-kernel-0.1.0.jar\",\"npdev-runtimehost-core-0.1.0.jar\"],"
+                + "\"sourceDiscoveredJars\":[{\"name\":\"npdev-kernel-0.1.0.jar\","
+                + "\"source\":\"" + stagedLibs.toAbsolutePath().toString().replace("\\", "\\\\")
+                + "\\\\npdev-kernel-0.1.0.jar\"}]}\n");
 
         FinalAppAssembler.AssemblyResult result = withRuntimeHostLibsDir(stagedLibs, () -> {
             try {
@@ -489,6 +495,18 @@ class FinalAppAssemblerTest {
                 "D1 baked default must be app-relative, got:\n" + gradleProperties);
         assertFalse(gradleProperties.contains(stagedLibs.toString().replace('\\', '/')),
                 "the generating machine's absolute staging path must NOT be baked into a self-contained app");
+
+        // PORT-1: the app-owned manifest copy must not carry the generating machine's absolute
+        // build paths either -- verifyNpdevRuntimeHostLibs never reads sourceDiscoveredJars, so
+        // there is nothing to lose by stripping it, and every requiredStagedJars entry it DOES
+        // read must still be present.
+        String appOwnedManifest = Files.readString(appOwned.resolve("runtimehost-libs-manifest.json"));
+        assertFalse(appOwnedManifest.contains("sourceDiscoveredJars"),
+                "the app-owned manifest must not carry the staging manifest's absolute source paths:\n"
+                        + appOwnedManifest);
+        assertTrue(appOwnedManifest.contains("npdev-kernel-0.1.0.jar")
+                        && appOwnedManifest.contains("npdev-runtimehost-core-0.1.0.jar"),
+                "requiredStagedJars must survive the strip:\n" + appOwnedManifest);
     }
 
     /**
