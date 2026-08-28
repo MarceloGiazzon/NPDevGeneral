@@ -2000,8 +2000,11 @@ def _emit_static_pages(repo_root_path: Path, final_app_out: Path, config_path: P
         # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 4: the app's OWN read-only
         # verification panel -- same contract document the repo emits, produced by the app-side
         # emitter from the app's _ops (operations + browser routines + their last-known runs).
+        # The generator emits the operations runbook INSIDE the final app root (final_app_out/_ops);
+        # passing final_app_out.parent/_ops (fixed 2026-08-28: engine-support E15/probe jobs died
+        # at Resolve-Path on the nonexistent sibling path) left verification.html unemitted.
         ("verification.html", scripts_dir / "New-VerificationPanelPage.ps1",
-         ["-StaticDir", str(static_dir), "-OpsDir", str(final_app_out.parent / "_ops"),
+         ["-StaticDir", str(static_dir), "-OpsDir", str(final_app_out / "_ops"),
           "-AppId", app_id]),
     ]
     for label, script, script_args in pages:

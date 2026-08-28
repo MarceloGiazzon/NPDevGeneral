@@ -4,7 +4,7 @@
   "dslVersion": "1.0.0",
   "version": "1.0",
   "metadata": {
-    "purpose": "External-library probe (storage/FULL_SUPPORT_PLAN.md W4, exit criterion E8). build.dependencies[] is real -- AppDependenciesEmitter writes it, the npdev-dependencies.gradle sidecar applies it, and simple-contact-intake declares Guava, so CI does resolve a third-party dependency. But every test asserted EMITTED GRADLE TEXT. No procedure anywhere imported an external class, so the chain declare -> import -> compile -> CALL AT RUNTIME had never run end to end. This probe runs it, and asserts the RETURNED VALUE -- a known input has a known SHA-256, so a correct answer proves the library was on the RUNTIME classpath and executed. Compilation alone would pass even with a compileOnly-vs-implementation mistake, which is a real and common Gradle failure mode and silent until the code path runs."
+    "purpose": "External-library probe (storage/FULL_SUPPORT_PLAN.md W4, exit criterion E8). build.dependencies[] is real -- AppDependenciesEmitter writes it, the npdev-dependencies.gradle sidecar applies it, and simple-contact-intake declares Guava, so CI does resolve a third-party dependency. But every test asserted EMITTED GRADLE TEXT. No procedure anywhere imported an external class, so the chain declare -> import -> compile -> CALL AT RUNTIME had never run end to end. This probe runs it, and asserts the RETURNED VALUE -- a known input has a known SHA-256, so a correct answer proves the library was on the RUNTIME classpath and executed. Compilation alone would pass even with a compileOnly-vs-implementation mistake, which is a real and common Gradle failure mode and silent until the code path runs. 2026-08-28 (SEC-3 Model A, B30): the former compileOnlyProbe operation/flow were REMOVED -- they measured compileOnly runtime-absence by reflection (Class.forName), which the plugin admission gate now refuses (B30); E8's external-library-at-runtime assertion survives in the SignWithLibrary flow."
   },
   "concepts": [
     {
@@ -49,8 +49,7 @@
       "name": "librarySignature",
       "type": "LibrarySignatureCapability",
       "operations": [
-        "sign",
-        "compileOnlyProbe"
+        "sign"
       ]
     }
   ],
@@ -107,30 +106,6 @@
           "name": "return-signature",
           "type": "return",
           "value": "$signed"
-        }
-      ]
-    },
-    {
-      "name": "ProbeCompileOnlyAtRuntime",
-      "input": {
-        "concept": "LibProbeRecord",
-        "mode": "query"
-      },
-      "steps": [
-        {
-          "name": "touch-a-compileonly-class",
-          "type": "capabilityCall",
-          "capability": "librarySignature",
-          "operation": "compileOnlyProbe",
-          "args": [
-            "$input"
-          ],
-          "output": "$probe"
-        },
-        {
-          "name": "return-probe",
-          "type": "return",
-          "value": "$probe"
         }
       ]
     }

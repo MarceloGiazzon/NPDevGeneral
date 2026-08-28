@@ -31,32 +31,35 @@ import java.util.Map;
  * mistake produces: a clean build and a {@code NoClassDefFoundError} the first time the code path
  * runs, in production, months later.
  *
- * <p>{@link #compileOnlyProbe} is the other half, and the more interesting one. It touches a class
- * from a dependency declared {@code compileOnly}, catches the failure, and REPORTS IT AS ABSENT.
- * A green run there means Gradle scoping is behaving: present at compile time, gone at runtime.
- * Asserting an absence is the only way to catch a build that silently promotes every dependency to
- * the runtime classpath.
+ * <p><b>2026-08-28 (SEC-3 Model A, B30): the former {@code compileOnlyProbe} is GONE, and that is
+ * a consequence of the security model, not a weakening of E8.</b> The old second half touched a
+ * {@code compileOnly} class by REFLECTION ({@code Class.forName}) to assert it was absent at
+ * runtime. Reflection-based class loading is exactly the capability-escape the SEC-3 bytecode gate
+ * refuses at plugin admission (B30:plugin_bytecode_violation) -- a denylist cannot distinguish a
+ * benign measurement from a hostile load, so the probe's reflective half cannot mount a plugin
+ * anymore. E8's own point -- "a user capability calls an external library at runtime" -- survives
+ * in full below via {@link #sign} (Guava on the runtime classpath, real SHA-256 returned); only the
+ * compileOnly runtime-absence measurement is lost, and a non-plugin mechanism (a boot-time
+ * classpath scan by platform code, not plugin code) would be needed to restore it.
  */
 public final class LibrarySignatureCapability {
 
     /**
      * SHA-256 of the payload, computed by Guava rather than by {@code java.security.MessageDigest}.
      *
-     * <p><b>The returned map contains EXACTLY the concept's own fields, and that is not a style
-     * choice.</b> The first CI run of this probe (31272063422) returned {@code library} and
-     * {@code libraryLocation} alongside them as diagnostics; the flow persists this map, and the
-     * persistence adapter correctly refused:
+     * <p><b>The returned map contains EXACTLY the concept's own fields.</b> The first CI run of
+     * this probe (31272063422) returned {@code library} and {@code libraryLocation} alongside them
+     * as diagnostics; the flow persists this map, and the persistence adapter correctly refused:
      *
      * <pre>
      *   Unknown persistence field(s) for table lib_probe_records: [library, libraryLocation].
      *   Allowed runtime fields: [digest, id, payload, version, rowVersion, tenantId]
      * </pre>
      *
-     * <p>That refusal is the platform working. What it cost was a red run whose headline said the
-     * external library had not been called, when the boot log showed the capability finishing
-     * SUCCESS in 5ms with Guava's answer in hand -- the failure was two steps later. Diagnostics that
-     * travel with a persisted record are diagnostics that can break persistence, so they go to the
-     * log instead, where the CI job already uploads them.
+     * <p>That refusal is the platform working. Diagnostics travel with the LOG instead, via
+     * {@code System.out.println} -- the console stream is exempted from the SEC-3 {@code java/io/}
+     * ban (B30; {@code java/io/PrintStream} is console output, not filesystem IO), so the boot log
+     * the CI job uploads carries the digest evidence.
      */
     public Map<String, Object> sign(Map<String, Object> input) {
         String payload = input == null || input.get("payload") == null
@@ -66,44 +69,11 @@ public final class LibrarySignatureCapability {
         // same answer while proving nothing about the dependency, which is precisely the shape of
         // "a fix that silently does nothing" this whole plan warns about.
         String digest = Hashing.sha256().hashString(payload, StandardCharsets.UTF_8).toString();
-        System.out.println("[lib-probe] com.google.common.hash.Hashing loaded from "
-                + locationOf(Hashing.class));
+        System.out.println("[lib-probe] Guava sha256('" + payload + "') = " + digest);
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("payload", payload);
         result.put("digest", digest);
         return result;
-    }
-
-    /**
-     * Touch a class from a {@code compileOnly} dependency and report whether it is there.
-     *
-     * <p>Reflection, not a direct import, for a reason: a direct reference would be inlined and the
-     * class resolved at CLASS LOAD time, so a missing class would fail this whole capability rather
-     * than this one operation -- and the failure would look like a broken capability instead of the
-     * measurement it is.
-     */
-    public Map<String, Object> compileOnlyProbe(Map<String, Object> input) {
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("className", "org.apache.commons.lang3.StringUtils");
-        try {
-            Class<?> stringUtils = Class.forName("org.apache.commons.lang3.StringUtils");
-            result.put("presentAtRuntime", true);
-            result.put("location", locationOf(stringUtils));
-        } catch (ClassNotFoundException | NoClassDefFoundError expected) {
-            // THE EXPECTED OUTCOME. commons-lang3 is declared compileOnly, so it must be absent
-            // here; if it is present, Gradle scoping is not doing what the config says.
-            result.put("presentAtRuntime", false);
-            result.put("location", null);
-        }
-        return result;
-    }
-
-    private static String locationOf(Class<?> type) {
-        try {
-            return type.getProtectionDomain().getCodeSource().getLocation().toString();
-        } catch (RuntimeException unavailable) {
-            return "(unknown)";
-        }
     }
 }

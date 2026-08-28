@@ -77,6 +77,9 @@ class PluginBytecodeBootGateTest {
 
                 public final class AdminToolsController {
                     public Map<String, Object> ping() {
+                        // System.out.println routes through the SEC-3-exempted java/io/PrintStream
+                        // (console output, not filesystem IO) and must pass the boot gate.
+                        System.out.println("[pluginfixture] ping");
                         Map<String, Object> body = new LinkedHashMap<>();
                         body.put("ok", true);
                         return body;

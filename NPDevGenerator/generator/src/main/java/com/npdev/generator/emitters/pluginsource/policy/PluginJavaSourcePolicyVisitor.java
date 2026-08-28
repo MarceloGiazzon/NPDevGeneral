@@ -9,6 +9,7 @@ import com.sun.source.tree.NewClassTree;
 import com.sun.source.util.TreeScanner;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -53,7 +54,7 @@ public final class PluginJavaSourcePolicyVisitor extends TreeScanner<Void, Void>
             violations.add("forbidden import " + qualified);
         }
         for (String prefix : FORBIDDEN_IMPORT_PREFIXES) {
-            if (qualified.startsWith(prefix)) {
+            if (qualified.startsWith(prefix) && !isExemptImport(qualified, prefix)) {
                 violations.add("forbidden import " + qualified);
             }
         }
@@ -78,7 +79,19 @@ public final class PluginJavaSourcePolicyVisitor extends TreeScanner<Void, Void>
         if (isForbiddenSystemMethod(selected)) {
             violations.add("forbidden method call " + selected);
         }
-        if (FORBIDDEN_IDENTIFIERS.contains(node.getIdentifier().toString())) {
+        // STATIC access on the java.lang.Class type (Class.forName / Class.newInstance / any
+        // Class.* static reflection) is the canonical reflective-loading escape. Identifiers
+        // named "Class" in TYPE positions (Class<?> params, generic bounds) are NOT flagged --
+        // generics erase to Object and compile no java/lang/Class owner reference (the bytecode
+        // gate's exact-owner rule agrees), so the identifier-level ban would be a false positive.
+        if (selected.startsWith("java.lang.Class.")) {
+            violations.add("forbidden reflective access " + selected);
+        }
+        else if (node.getExpression() instanceof IdentifierTree qualifier
+                && qualifier.getName().toString().equals("Class")) {
+            violations.add("forbidden reflective access " + selected);
+        }
+        else if (FORBIDDEN_IDENTIFIERS.contains(node.getIdentifier().toString())) {
             violations.add("forbidden member " + node.getIdentifier());
         }
         return super.visitMemberSelect(node, unused);
@@ -113,7 +126,22 @@ public final class PluginJavaSourcePolicyVisitor extends TreeScanner<Void, Void>
 
     private static boolean isForbiddenQualifiedUse(String value) {
         for (String prefix : FORBIDDEN_IMPORT_PREFIXES) {
-            if (value.startsWith(prefix) || value.contains("." + prefix)) {
+            if ((value.startsWith(prefix) || value.contains("." + prefix)) && !isExemptImport(value, prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True when {@code qualified} names exactly an exempted class under a banned prefix
+     *  (java.io.PrintStream -- mirror of the kernel inspector's prefix exemption). */
+    private static boolean isExemptImport(String qualified, String prefix) {
+        Set<String> exemptions = FORBIDDEN_IMPORT_PREFIX_EXEMPTIONS.get(prefix);
+        if (exemptions == null) {
+            return false;
+        }
+        for (String exempt : exemptions) {
+            if (qualified.equals(exempt) || qualified.startsWith(exempt + ".")) {
                 return true;
             }
         }
@@ -124,6 +152,17 @@ public final class PluginJavaSourcePolicyVisitor extends TreeScanner<Void, Void>
     public static final Set<String> FORBIDDEN_IMPORT_PREFIXES = TrustedSourceBytecodeInspector.FORBIDDEN_OWNER_PREFIXES.stream()
             .map(prefix -> prefix.replace('/', '.'))
             .collect(Collectors.toUnmodifiableSet());
+
+    /** Exact classes exempt from a banned import prefix -- derived from the kernel inspector's
+     *  owner-prefix exemptions (java.io.PrintStream for console output). */
+    public static final Map<String, Set<String>> FORBIDDEN_IMPORT_PREFIX_EXEMPTIONS =
+            TrustedSourceBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS.entrySet().stream()
+                    .collect(Collectors.toUnmodifiableMap(
+                            entry -> entry.getKey().replace('/', '.'),
+                            entry -> entry.getValue().stream()
+                                    .map(owner -> owner.replace('/', '.'))
+                                    .collect(Collectors.toUnmodifiableSet())
+                    ));
 
     /** Single-type imports refused outright -- derived from the kernel inspector's exact owners. */
     public static final Set<String> FORBIDDEN_IMPORTS = TrustedSourceBytecodeInspector.FORBIDDEN_OWNERS.stream()
@@ -145,7 +184,10 @@ public final class PluginJavaSourcePolicyVisitor extends TreeScanner<Void, Void>
             "Runtime",
             "Process",
             "ProcessBuilder",
-            "Class",
+            // NOT "Class": Class<?> appears legitimately in generic TYPE positions, which erase to
+            // Object and compile no java/lang/Class owner reference (the bytecode gate agrees).
+            // TRUE reflective loading (Class.forName / any static Class.* access) is refused by
+            // the dedicated member-select rule instead.
             "ClassLoader",
             "ServiceLoader",
             "Thread",
