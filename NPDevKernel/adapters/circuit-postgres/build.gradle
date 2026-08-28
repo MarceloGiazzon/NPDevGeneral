@@ -5,5 +5,5 @@ dependencies {
     // REG-37's atomicity contract must be provable in GATE-KERNEL, which has no Docker. H2 speaks
     // SELECT ... FOR UPDATE, so JdbcCircuitBreakerStateStore's locking is exercised for real without
     // a container; PostgresCircuitBreakerStateStoreTest re-proves the same contract on the real engine.
-    testImplementation 'com.h2database:h2:2.2.224'
+    testImplementation 'com.h2database:h2:2.4.240'
 }

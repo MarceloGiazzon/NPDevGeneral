@@ -14,7 +14,7 @@ dependencies {
     // classpath even though this test passes null for it.
     testImplementation 'jakarta.persistence:jakarta.persistence-api:3.1.0'
     testImplementation 'org.springframework:spring-context:6.1.12'
-    testImplementation 'com.h2database:h2:2.2.224'
+    testImplementation 'com.h2database:h2:2.4.240'
     // GeneratedCrudRuntimeSupport touches org.springframework.http.HttpStatusCode while it loads;
     // spring-web is compileOnly over in runtime-support, so without this the class fails to
     // initialize with a NoClassDefFoundError at first use.
