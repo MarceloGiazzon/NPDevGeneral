@@ -726,6 +726,11 @@ foreach ($scenarioDir in $scenarioDirs) {
     }
 }
 
+$expectedFailCount = @($scenarioResults | Where-Object { $_.expectedOutcome -eq "fail" }).Count
+$expectedFailAsDesigned = @($scenarioResults | Where-Object { $_.expectedOutcome -eq "fail" -and $_.status -eq "passed" }).Count
+$expectedPassCount = @($scenarioResults | Where-Object { $_.expectedOutcome -eq "pass" }).Count
+$expectedPassPassed = @($scenarioResults | Where-Object { $_.expectedOutcome -eq "pass" -and $_.status -eq "passed" }).Count
+
 $report = [pscustomobject]@{
     schemaVersion = "npdev-ai-beta-gate-report.v1"
     runId = $RunId
@@ -735,6 +740,18 @@ $report = [pscustomobject]@{
     workspaceRoot = $workspaceRoot
     scenarioRoot = $scenarioRootPath
     scenarioCount = $scenarioResults.Count
+    summary = [pscustomobject]@{
+        # QUAL-42: a bare scenarioCount/failure count misreads designed-negative scenarios as
+        # defects (22 of 30 golden-ai-scenarios declare expectedOutcome: fail). Always read the
+        # outcome in expected terms: expectedFailAsDesigned is the SAFETY CORPUS doing its job,
+        # not a defect -- only expectedFailUnexpected and expectedPassFailed are real failures.
+        expectedFail = $expectedFailCount
+        expectedFailAsDesigned = $expectedFailAsDesigned
+        expectedFailUnexpected = ($expectedFailCount - $expectedFailAsDesigned)
+        expectedPass = $expectedPassCount
+        expectedPassPassed = $expectedPassPassed
+        expectedPassFailed = ($expectedPassCount - $expectedPassPassed)
+    }
     sourceOfTruth = "scripts/reports/out/ai-beta-gate-report.json"
     reproducibilityReport = $reproducibilityReportPath
     runtimeHostLibs = if ($null -ne $runtimeHostLibsSyncReport) {
@@ -790,6 +807,15 @@ $report = [pscustomobject]@{
 }
 
 $report | ConvertTo-Json -Depth 50 | Set-Content -LiteralPath $reportPathFull -Encoding UTF8
+
+# QUAL-42: report the outcome in expected terms -- designed failures are the safety corpus doing
+# its job, not defects. Only unexpected failures on negative scenarios and any failure on positive
+# scenarios are real signal.
+$summaryLine = ("Scenarios: " + $scenarioResults.Count + " total | " + $expectedFailCount + " expected-fail (" +
+    $expectedFailAsDesigned + " as designed, " + ($expectedFailCount - $expectedFailAsDesigned) + " unexpected) | " +
+    $expectedPassCount + " expected-pass (" + $expectedPassPassed + " passed, " +
+    ($expectedPassCount - $expectedPassPassed) + " failed)")
+Write-Host $summaryLine
 
 if ($overallStatus -eq "passed") {
     Write-Host ("AI beta gate passed. Report: " + $ReportPath)
