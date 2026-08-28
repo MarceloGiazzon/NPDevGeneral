@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build the harness image
         run: docker build -t npdev-firstrun scripts/quality/firstrun-harness
@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build the wrong-JDK harness image (JDK 21)
         run: docker build --build-arg JDK=21 -f scripts/quality/firstrun-harness/Dockerfile.wrongjava -t npdev-firstrun-wrongjava scripts/quality/firstrun-harness

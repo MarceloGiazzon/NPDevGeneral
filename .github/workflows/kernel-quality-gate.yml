@@ -46,7 +46,7 @@ jobs:
       NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
       GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
