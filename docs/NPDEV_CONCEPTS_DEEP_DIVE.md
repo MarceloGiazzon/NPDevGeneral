@@ -696,6 +696,6 @@ Procedure — server-side logic for a Panel button (or another Procedure) to cal
 ```
 
 Everything above is authored the same way: JSON inside `model.json`, validated strictly,
-regenerated with the same `Build-AppGenApp.ps1` → `_ops\Build-App.ps1` →
+regenerated with the same `Build-AppGenApp.ps1` → `_ops\Build-FinalApp.ps1` →
 `_ops\Start-App.ps1` sequence from the manual. Nothing here requires touching the NPDev
 engine itself.

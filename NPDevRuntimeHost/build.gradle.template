@@ -256,7 +256,7 @@ tasks.register('verifyNpdevRuntimeHostLibs') {
     doLast {
         def manifestFile = new File(npdevRuntimeHostLibsDir, 'runtimehost-libs-manifest.json')
         if (!manifestFile.isFile()) {
-            throw new GradleException("Missing NPDev RuntimeHost libs manifest in ${npdevRuntimeHostLibsDir}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")
+            throw new GradleException("Missing NPDev RuntimeHost libs manifest in ${npdevRuntimeHostLibsDir}. Run `npdev setup` from your NPDev clone once, or pass -PnpdevRuntimeHostLibsDir=<path> if the jars are staged elsewhere.")
         }
         def manifest = new JsonSlurper().parse(manifestFile)
         def requiredJars = (manifest.requiredStagedJars ?: []).collect { it.toString().trim() }.findAll { !it.isEmpty() }
@@ -265,7 +265,7 @@ tasks.register('verifyNpdevRuntimeHostLibs') {
         }
         def missing = requiredJars.findAll { !new File(npdevRuntimeHostLibsDir, it).isFile() }
         if (!missing.isEmpty()) {
-            throw new GradleException("Missing NPDev RuntimeHost jars in ${npdevRuntimeHostLibsDir}: ${missing}. Run scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars.")
+            throw new GradleException("Missing NPDev RuntimeHost jars in ${npdevRuntimeHostLibsDir}: ${missing}. Run `npdev setup` from your NPDev clone once, or pass -PnpdevRuntimeHostLibsDir=<path> if the jars are staged elsewhere.")
         }
     }
 }

@@ -28,11 +28,12 @@ copy .env.example .env                    # then fill in real secrets in .env (n
 docker compose up -d --build
 ```
 
-Why the jar is built outside Docker: this platform's generated apps depend on locally-staged
-NPDev jars (`runtimehost-libs`, synced via `sync-runtimehost-libs.ps1`), not a published Maven
-repository. A Docker-internal Gradle build would need that whole local jar cache copied into the
-build stage too — building outside (as the existing `_ops` scripts already do) and packaging the
-already-built jar is simpler and matches how every other NPDev build step works.
+Why the jar is built outside Docker: the original reason was that generated apps depended on
+locally-staged NPDev jars (`runtimehost-libs`) and a Docker-internal Gradle build would need that
+whole cache copied into the build stage. That is historical since D1 (2026-08-28): the generator
+now stages the platform jars inside the app (`libs/npdev-runtime/`), so a Docker-internal build
+would work — building outside is kept anyway because it is simpler, faster, and matches how every
+other NPDev build step works; Docker's job here is packaging and orchestration, not compilation.
 
 ## Retrieving the Super User (ControlPanel) key
 

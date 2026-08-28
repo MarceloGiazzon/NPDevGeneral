@@ -119,13 +119,13 @@ workflow:
 $ops = './Build\generated-finalapps\<yourapp>\_ops'
 
 # 2. Compile it (Gradle build -> runnable .jar)
-& "$ops\Build-App.ps1"
+& "$ops\Build-FinalApp.ps1"
 
 # 3. Start it (brings up the database if needed, then the app, waits until it's healthy)
 & "$ops\Start-App.ps1"
 
 # 4. Exercise it — either open the browser UI, call the REST API, or run the smoke test:
-& "$ops\Test-App.ps1"
+& "$ops\Smoke-Test.ps1"
 
 # 5. Stop it when you're done
 & "$ops\Stop-App.ps1"
@@ -140,10 +140,10 @@ about steps 2–5 changes between a one-concept toy app and a full showcase app 
 | Script | Where | What it does |
 | --- | --- | --- |
 | `scripts\appgen\Build-AppGenApp.ps1 -App <name\|path>` | NPDev_General | Reads your `definition\`, calls the generator, produces the app + the `_ops\` toolbox below. Run this again any time you edit your JSON. |
-| `_ops\Build-App.ps1` | generated app | Compiles the generated Java project into `FinalExec-0.1.0.jar`. |
+| `_ops\Build-FinalApp.ps1` | generated app | Compiles the generated Java project into `FinalExec-0.1.0.jar`. |
 | `_ops\Start-App.ps1` | generated app | Starts the database environment (if your app uses a physical H2/Postgres server) and then the app; waits until `/api/flows` answers. |
-| `_ops\Status-App.ps1` | generated app | Quick up/down probe. |
-| `_ops\Test-App.ps1` | generated app | Runs the data-driven smoke test described by `definition\smoke-plan.json` (if present) against the running app. |
+| `_ops\Status-Environment.ps1` | generated app | Quick up/down probe. |
+| `_ops\Smoke-Test.ps1` | generated app | Runs the data-driven smoke test described by `definition\smoke-plan.json` (if present) against the running app. |
 | `_ops\Stop-App.ps1` | generated app | Stops the app and, if applicable, its database server. |
 | `_ops\Start-Environment.ps1` / `Stop-Environment.ps1` | generated app | Starts/stops only the database server process (used automatically by Start/Stop-App). |
 | `scripts\runtimehost\sync-runtimehost-libs.ps1 -BuildLocalJars -RuntimeHostLibsDir ...` | NPDev_General | One-time (or after an engine change) compile of the shared runtime libraries every generated app links against. |
@@ -164,7 +164,7 @@ AppGen\apps\<YourAppName>\
 │   ├── model.json             REQUIRED. The actual app: concepts, flows, rules, panels...
 │   ├── db.definition.json    REQUIRED. Which database engine, and how the schema is managed.
 │   ├── manifest.json          optional. Free-form catalog metadata, not used by the generator.
-│   ├── smoke-plan.json        optional. A scripted "does it work" test (used by Test-App.ps1).
+│   ├── smoke-plan.json        optional. A scripted "does it work" test (used by Smoke-Test.ps1).
 │   ├── input\                 optional. Sample JSON payloads referenced by smoke-plan.json.
 │   │   └── create-user.json
 │   └── capabilities\<name>\   optional. Your own Java code for a custom capability.
@@ -263,7 +263,8 @@ Maven dependency (or a local jar) on its classpath that NPDev doesn't already sh
 
 - **`javaVersion`** -- `17` (default) or `21`. Only the generated app's own toolchain changes;
   the NPDev platform itself always stays on 17. An unsupported value fails generation immediately
-  with the reason (today's ceiling is Gradle 8.5, which resolves toolchains up to 21).
+  with the reason (the Gradle 9.5.1 wrapper resolves 17 to 26 as toolchains; anything the wrapper
+  cannot resolve is refused at generation rather than failing four minutes into the build).
 - **`dependencies[]`** -- a plain string is shorthand for a Maven coordinate at `implementation`
   scope. Use the object forms for a different scope (`implementation` / `runtimeOnly` /
   `compileOnly` / `testImplementation`), a local jar, or a BOM (`platform`).
@@ -433,7 +434,7 @@ level is about the API only — omit that block and you'd get Level 2 for free.
 ```powershell
 & '$repo\scripts\appgen\Build-AppGenApp.ps1' -App notes-app
 $ops = './Build\generated-finalapps\notes-app\_ops'
-& "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"
+& "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"
 ```
 
 **Prove it works** — call the flow over REST. `Start-App.ps1` prints this app's own randomly
@@ -510,7 +511,7 @@ This exact pattern already exists and is proven green as the reference app
 ```powershell
 & '$repo\scripts\appgen\Build-AppGenApp.ps1' -App simple-user-registry-inmemory
 $ops = './Build\generated-finalapps\simple-user-registry\_ops'
-& "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"
+& "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"
 ```
 
 **Prove it works** — open a browser at the app's `runtimeUrl` (its `config.json` sets the
@@ -616,10 +617,10 @@ across restarts.
 ```powershell
 & '$repo\scripts\appgen\Build-AppGenApp.ps1' -App invoice-bonds-demo
 $ops = './Build\generated-finalapps\invoicebonds\_ops'
-& "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"; & "$ops\Test-App.ps1"
+& "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"; & "$ops\Smoke-Test.ps1"
 ```
 
-`Test-App.ps1` reads `definition\smoke-plan.json`, which POSTs
+`Smoke-Test.ps1` reads `definition\smoke-plan.json`, which POSTs
 `definition\input\create-user.json` and `definition\input\create-product.json` to their flows
 and checks `/api/flows` answers — a fully scripted "does it still work" check you get for
 free once you've written a couple of sample payloads.
@@ -640,12 +641,12 @@ table/form, and build workflows that don't complete in one HTTP call — they cr
 notify someone, and **wait** until that someone acts, potentially hours later.
 
 **Trust boundary:** a `plugin:java-source` handler runs in-process with the application's full
-privileges — trust it like your own code. Mounted plugin code is admission-checked (SEC-3/B30): a
-shared bytecode denylist refuses plugins that reference filesystem/network IO, process/system
+privileges — trust it like your own code. Mounted plugin code is admission-checked (SEC-3/B30):
+a shared bytecode denylist refuses plugins that reference filesystem/network IO, process/system
 control, reflection, threads, scripting or detached async work, enforced at generation time and
-again at boot. Admission-checked is not sandboxed: memory and CPU are unbounded (only wall-clock
-time is bounded), and a hostile plugin is not contained. See SEC-3 for the tracked upgrade path to
-real containment (process isolation).
+again at boot. Admission-checked is not sandboxed: memory and CPU are unbounded (only
+wall-clock time is bounded), and a hostile plugin is not contained. See SEC-3 for the tracked
+upgrade path to real containment (process isolation).
 
 This exact pattern is the `Claude` (Claude Support Desk) reference app, already proven
 green end-to-end. Three pieces, trimmed from its real `model.json`:
@@ -728,7 +729,7 @@ notify" is modeled without polling or manual bookkeeping.
 ```powershell
 & '$repo\scripts\appgen\Build-AppGenApp.ps1' -App Claude
 $ops = './Build\generated-finalapps\claude-support-desk\_ops'
-& "$ops\Build-App.ps1"; & "$ops\Start-App.ps1"; & "$ops\Test-App.ps1"
+& "$ops\Build-FinalApp.ps1"; & "$ops\Start-App.ps1"; & "$ops\Smoke-Test.ps1"
 ```
 
 Open `http://localhost:8090/` for the generated business UI, or `/tickets/triage` for the

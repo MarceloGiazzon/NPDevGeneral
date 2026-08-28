@@ -49,13 +49,19 @@ class ExternallyProvisionedDatabaseTest {
     }
 
     @Test
-    @DisplayName("absent means false, so every existing definition keeps today's behaviour")
-    void absentMeansFalse(@TempDir Path temp) throws Exception {
+    @DisplayName("F3: absent is refused on a server engine, not silently treated as false")
+    void absentIsRefusedOnAServerEngine(@TempDir Path temp) throws Exception {
+        // Cold Clone Audit F3 (P0): this used to default to false ("NPDev owns it"), which is exactly
+        // what let Reset delete a server the definition's author never said NPDev could touch. An
+        // unresolvable input must be an error, never a wrong default (REG-131/REG-136).
         Path definition = writeDefinition(temp, "postgres-default", node -> node.put("engine", "Postgres"));
 
-        GeneratedDatabasePlan plan = new UserDatabaseDefinitionLoader().load(definition, null);
+        String message = assertThrows(IllegalArgumentException.class,
+                () -> new UserDatabaseDefinitionLoader().load(definition, null)).getMessage();
 
-        assertFalse(plan.externallyProvisioned());
+        assertTrue(message.contains("Postgres"), "name the engine: " + message);
+        assertTrue(message.contains("externallyProvisioned"), "name the field: " + message);
+        assertTrue(message.contains("F3"), "cite the item: " + message);
     }
 
     @Test
@@ -114,8 +120,10 @@ class ExternallyProvisionedDatabaseTest {
         assertFalse(a.schemaLifecycle().externallyManaged(),
                 "a DBA handing you an empty database on their server is still a schema NPDev owns");
 
-        Path npdevServerExternalSchema = writeDefinition(temp, "npdev-server-external-schema", node ->
-                node.put("engine", "Postgres"));
+        Path npdevServerExternalSchema = writeDefinition(temp, "npdev-server-external-schema", node -> {
+            node.put("engine", "Postgres");
+            node.put("externallyProvisioned", false);
+        });
         Path withOwnership = rewriteOwnership(npdevServerExternalSchema);
         GeneratedDatabasePlan b = new UserDatabaseDefinitionLoader().load(withOwnership, null);
         assertFalse(b.externallyProvisioned(),

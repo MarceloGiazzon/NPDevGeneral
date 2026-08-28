@@ -1,10 +1,10 @@
 {
-  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "$schema": "../../NPDevContract/schemas/config.schema.json",
   "configVersion": "1.0",
   "scenario": {
     "name": "canonical-clinic-demo",
     "description": "Frozen canonical demo scenario for NPDev projection, generation, and baseline documentation.",
-    "outputRoot": "..\\Output"
+    "outputRoot": "../Output"
   },
   "generator": {
     "failIfModelMissing": true,
@@ -15,17 +15,17 @@
     "emitUiAssets": true
   },
   "bootstrap": {
-    "root": "..\\..\\NPDevRuntimeHost",
+    "root": "../../NPDevRuntimeHost",
     "mergeStrategy": "clean-copy"
   },
   "artifact": {
-    "root": "..\\Output\\ArtifactNP",
+    "root": "../Output/ArtifactNP",
     "generatedFolderName": "npdev-generated",
     "libsFolderName": "libs",
     "metaFolderName": "npdev-meta"
   },
   "finalExec": {
-    "root": "..\\Output\\App",
+    "root": "../Output/App",
     "deleteBeforeMount": true
   },
   "database": {

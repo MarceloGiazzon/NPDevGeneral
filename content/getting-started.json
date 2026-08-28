@@ -3,7 +3,7 @@
   "preamble": [
     {
       "type": "prose",
-      "text": "# Getting Started\n\nThis is the actual first hour: validate a model, generate an app from it, run it, then change the\nmodel and regenerate to see the change land. Start from the repository root. On Linux and macOS,\nuse the portable `npdev` entrypoint; on Windows use `npdev.bat` with the same arguments (examples\nbelow use `./npdev` — swap in `npdev.bat` and backslash paths on Windows).\n\nRequires Java 17 and, for the run step, Docker.\n"
+      "text": "# Getting Started\n\nThis is the actual first hour: check the machine, create an app with `npdev init`, run it, then\nchange the model and watch the change land. Start from the repository root. On Linux and macOS,\nuse the portable `npdev` entrypoint; on Windows use `npdev.bat` with the same arguments (examples\nbelow use `./npdev` — swap in `npdev.bat` and backslash paths on Windows).\n\nRequires Java 17+ and Python 3 (the `npdev` CLI is Python itself), with Gradle and PowerShell\nfetched on demand — Docker is optional, only needed for the container run path described in\n`docs/DEPLOYMENT.md`. `./npdev doctor` checks everything below and tells you exactly what is\nmissing.\n"
     }
   ],
   "sections": [
@@ -22,26 +22,26 @@
         },
         {
           "type": "prose",
-          "text": "\n`validate model` runs full structural + semantic validation by default (it shells out to Gradle,\nso expect a few seconds) and exits non-zero with a diagnostic report if the model has a real\ndefect. Pass `--structural-only` for a fast JSON-Schema-only check that skips Gradle entirely --\nuseful as an inner-loop syntax check, but its success message says explicitly that semantic checks\ndid not run, so it can't be mistaken for the full check. `--semantic` still works too, as a\ndocumented no-op alias (it's already the default).\n"
+          "text": "\n`validate model` runs full structural + semantic validation by default (it shells out to\nGradle — a few seconds once Gradle is warm, several minutes the very first time, while the\ndistribution and the DSL's dependency graph download) and exits non-zero with a diagnostic\nreport if the model has a real defect. Pass `--structural-only` for a fast JSON-Schema-only\ncheck that skips Gradle entirely --\nuseful as an inner-loop syntax check, but its success message says explicitly that semantic checks\ndid not run, so it can't be mistaken for the full check. `--semantic` still works too, as a\ndocumented no-op alias (it's already the default).\n"
         }
       ]
     },
     {
       "level": 2,
-      "title": "2. Generate and run an app",
+      "title": "2. Create and run an app of your own",
       "blocks": [
         {
           "type": "prose",
-          "text": ""
+          "text": "\nThe README's quick path is the one that is executed nightly against a bare container, so it is\nthe path this page documents. Three commands once, then one command forever:\n"
         },
         {
           "type": "fence",
           "lang": "sh",
-          "text": "./npdev generate app \\\n  --model NPDevContract/dsl/resources/Models/canonical-demo/model.json \\\n  --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \\\n  --output /path/outside/this/repo/canonical-demo-app\ncd /path/outside/this/repo/canonical-demo-app\ncp .env.example .env    # set NPDEV_AUTH_APIKEYS at minimum\ndocker compose up"
+          "text": "./npdev doctor                       # is this machine ready? (Java 17+, Python 3, disk)\n./npdev setup                        # one-time: build NPDev's own jars locally\n./npdev init ../my-app               # a small, runnable app, OUTSIDE the clone\n./npdev dev --model ../my-app/model.json    # build it, run it, and watch it"
         },
         {
           "type": "prose",
-          "text": "\nThe output directory is a complete, buildable Spring Boot project with its own README describing\nthat specific app (namespace, version, where the admin UI/REST API/login route are). Point\n`--output` somewhere outside this repo -- generated apps are not meant to live inside\n`NPDev_General` (see `docs/BUILD_OUTPUT_LOCATION_POLICY.md`). Full deployment options\n(Postgres-first production path, env-var reference, the mail-catcher profile) are in\n`docs/DEPLOYMENT.md`.\n"
+          "text": "\n`npdev doctor` checks the machine and says exactly what is missing — run it first if anything\nbelow fails. `npdev setup` compiles NPDev's own jars once per clone (it tries a prebuilt\ndownload first; the first run can take several minutes either way). `npdev init ../my-app`\nscaffolds a complete app folder outside the clone — model, config, a real H2Local database,\nREADME, and git history — and refuses to scaffold inside the repo. `npdev dev` generates,\nbuilds, boots, and then watches the model; every save re-runs the whole sequence.\n\nNPDev keeps its build output in a `Build/` directory NEXT TO your clone, never inside it — set\n`NPDEV_BUILD_ROOT` to put it somewhere else (a clone in a read-only parent directory is the\nclassic case where this matters).\n\nOn first boot the app writes `SUPER_USER_KEY.txt` next to its own files — log in to\n`/control-panel.html` with that key. The H2Local database keeps your data across restarts, so\nstep 3 below actually demonstrates schema evolution instead of rebuilding an empty database.\n\nThe `generate app` + Docker path this page used to teach is still supported and documented —\nit is the deployment path, in `docs/DEPLOYMENT.md` (build the jar first; the Dockerfile\npackages an already-built jar, it does not build one).\n"
         }
       ]
     },
@@ -51,16 +51,7 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\nEdit the model you generated from -- add a field, add a concept, anything small -- then re-run\nstep 1 (validate; catch mistakes before regenerating) and step 2's `generate app` command again\nagainst the same `--output`. The generator diffs the new shape against what's already there\n(schema evolution, not drop-and-recreate) -- see `docs/DATABASES_AND_MIGRATIONS.md` for how\nrenames and destructive changes are handled.\n\nOnce you have done that by hand once, stop doing it by hand:\n"
-        },
-        {
-          "type": "fence",
-          "lang": "sh",
-          "text": "npdev dev"
-        },
-        {
-          "type": "prose",
-          "text": "\n`npdev dev` generates, builds, boots, and then watches your model -- every save re-runs the whole\nsequence and restarts the app. It validates first, so a typo prints an error and leaves the running\napp alone rather than taking it down.\n\n**Now build something of your own.** `canonical-demo` is a fixed fixture -- copying it, changing\nit, and giving it a database that actually keeps your data is the real next step:\n`docs/YOUR_FIRST_APP.md`.\n"
+          "text": "\nEdit `model.json` in the app you created — add a field, add a concept, anything small — and\nwatch `npdev dev` regenerate. The generator diffs the new shape against what's already there\n(schema evolution, not drop-and-recreate) — see `docs/DATABASES_AND_MIGRATIONS.md` for how\nrenames and destructive changes are handled.\n\n`npdev dev` validates first, so a typo prints an error naming the exact path and leaves the\nrunning app alone on the last good model — it does not take the app down.\n\n**Now build something of your own.** `docs/YOUR_FIRST_APP.md` walks a real first app end to\nend, including the two refusals every newcomer meets in week one (renames, and destructive\nchanges that need an acknowledgment).\n"
         }
       ]
     },
@@ -118,7 +109,7 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\nThe browser-based authoring UI (concepts, fields, flows, panels) as an alternative to hand-editing\nmodel JSON is already built into every app you generate -- open **`/npdev-ui-react/`** on your\nrunning app (e.g. `http://localhost:8080/npdev-ui-react/`). No separate install or server needed.\n\nThe editor's own source tree is no longer part of this repository -- what ships is the built\nbundle committed under `npdev-templates/static-react/`, which the generator copies into each\napp. See `BREAKING.md` for where the source moved.\n"
+          "text": "\nThe browser-based authoring UI (concepts, fields, flows, panels) as an alternative to hand-editing\nmodel JSON is already built into every app you generate -- open **`/model-authoring.html`** on\nyour running app (e.g. `http://localhost:8080/model-authoring.html`). No separate install or\nserver needed; it covers the starter templates and the common scaffolding and editing actions.\n\nThis page replaced the old React bundle at `/npdev-ui-react/`, which was removed on 2026-08-20\n(EDIT-12) -- a generated app returns 404 for that route. See `BREAKING.md` for the full history.\n"
         }
       ]
     },

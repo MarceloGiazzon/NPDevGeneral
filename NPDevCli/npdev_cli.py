@@ -1170,6 +1170,10 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
     Ships in the same commit as the deprecation, per the standing convention that a breaking change
     to the model DSL, generated code layout or internal APIs carries its `npdev migrate` codemod
     rather than landing the break first and the codemod later.
+
+    Also flags (never auto-writes) F3's unrelated hazard in the same files: a server-engine
+    definition with no `database.externallyProvisioned` declared at all, which
+    `UserDatabaseDefinitionLoader` now refuses to generate.
     """
     from dsl_v2_migration import migrate_db_definition  # lazy, matching run_migrate_dsl2
 
@@ -1186,21 +1190,30 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
         raise CliError("no db.definition.json found under: " + ", ".join(str(e) for e in args.input))
 
     changed = 0
+    flagged = 0
     for target in targets:
         doc = read_json(target)
         result = migrate_db_definition(doc)
-        if not result.changed:
+        # F3 (Cold Clone Audit): a file can carry an ambiguity with no accompanying edit (the
+        # externallyProvisioned check never sets result.changed -- it has nothing safe to write on
+        # the operator's behalf). `continue`ing here on `not result.changed` used to swallow that
+        # note entirely, the one time this command exists to surface it.
+        if not result.changed and not result.ambiguities:
             continue
-        changed += 1
-        verb = "CHANGED" if args.write else "WOULD CHANGE"
-        for change in result.changes:
-            print(f"  [{verb}] {target}: {change}")
+        if result.ambiguities:
+            flagged += 1
+        if result.changed:
+            changed += 1
+            verb = "CHANGED" if args.write else "WOULD CHANGE"
+            for change in result.changes:
+                print(f"  [{verb}] {target}: {change}")
         for note in result.ambiguities:
             print(f"  [NOTE]    {target}: {note}")
-        if args.write:
+        if result.changed and args.write:
             target.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
     print(f"{changed} of {len(targets)} definition(s) use the deprecated spelling.")
+    print(f"{flagged} of {len(targets)} definition(s) flagged for manual review (see [NOTE] above).")
     if changed and not args.write:
         print("Dry run -- pass --write to apply.")
     return 0
@@ -1955,23 +1968,21 @@ def _align_config_database(config_path: Path, engine: dict, database_name: str, 
 
 
 def _emit_static_pages(repo_root_path: Path, final_app_out: Path, config_path: Path) -> None:
-    """control-panel.html, app-tree.html, app-tree-v2.html, agent-prompter.html and
-    properties.html -- InfoPageEmitter's info.html links to all five unconditionally, but
-    GeneratorMain itself only emits info.html. AppGen's Build-NpdevApp.ps1/Build-ClaudeApp.ps1
-    always run the matching scripts/appgen/New-*Page.ps1 as a post-generation step (cheap: reads
-    model.json/config.json only, no live app/DB needed); `npdev generate app`/`npdev dev` never
-    did, so every app made through this path had five dead links on its own info.html. Mirrors
-    those builders' calls exactly, run from this repo checkout the same way they are.
-    """
-    shell = _find_powershell()
-    if shell is None:
-        print("npdev: skipping control-panel.html/app-tree.html/app-tree-v2.html/"
-              "agent-prompter.html/properties.html -- no PowerShell found (looked for `pwsh`, "
-              "then `powershell`). info.html's links to these pages will 404 until PowerShell 7 "
-              "(https://aka.ms/powershell) is installed and this app is regenerated.",
-              file=sys.stderr)
-        return
+    """control-panel.html, app-tree.html, app-tree-v2.html, agent-prompter.html,
+    properties.html and verification.html -- InfoPageEmitter's info.html links to all six
+    unconditionally, but GeneratorMain itself only emits info.html. AppGen's
+    Build-NpdevApp.ps1/Build-ClaudeApp.ps1 always run the matching scripts/appgen/New-*Page.ps1
+    (PowerShell) as a post-generation step; `npdev generate app`/`npdev dev` never did, so every
+    app made through this path had dead links on its own info.html.
 
+    C3b (Cold Clone Audit): this now calls `npdev_static_pages`, a pure-Python port of those six
+    PS1 scripts, directly -- not a PowerShell subprocess, and not conditional on PowerShell being
+    on PATH at all. C3a's finding was that a Linux/macOS machine with no PowerShell installed got
+    six 404s; the fix is not a better-worded warning about that (C3a already did that), it is not
+    needing PowerShell here in the first place. `repo_root_path` is unused now -- kept as a
+    parameter because both call sites already pass it and removing it is a needless signature
+    churn for a change that is otherwise pure implementation swap.
+    """
     static_dir = final_app_out / "src" / "main" / "resources" / "static"
     app_folder = config_path.parent
     app_id = final_app_out.name
@@ -1981,38 +1992,35 @@ def _emit_static_pages(repo_root_path: Path, final_app_out: Path, config_path: P
     except (OSError, json.JSONDecodeError):
         pass
 
-    scripts_dir = repo_root_path / "scripts" / "appgen"
+    from npdev_static_pages import (
+        emit_agent_prompter_page, emit_app_tree_page, emit_app_tree_v2_page,
+        emit_control_panel_page, emit_properties_admin_page, emit_verification_panel_page,
+    )
+
     # Port baked into control-panel.html only matters for its file:// fallback (same-origin '' is
     # used whenever the page is actually served) -- 8080 matches this command's own printed
     # "3. Open: http://localhost:8080" default dev step, not a live/resolved port.
+    #
+    # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 4: verification.html's OpsDir is
+    # final_app_out/_ops (fixed 2026-08-28: engine-support E15/probe jobs died at a nonexistent
+    # sibling path when this was final_app_out.parent/_ops).
     pages = [
-        ("control-panel.html", scripts_dir / "New-ControlPanelPage.ps1",
-         ["-StaticDir", str(static_dir), "-AppId", app_id, "-Port", "8080",
-          "-OutRoot", str(final_app_out)]),
-        ("app-tree.html", scripts_dir / "New-AppTreePage.ps1",
-         ["-AppFolder", str(app_folder), "-StaticDir", str(static_dir), "-AppId", app_id]),
-        ("app-tree-v2.html", scripts_dir / "New-AppTreePageV2.ps1",
-         ["-AppFolder", str(app_folder), "-StaticDir", str(static_dir), "-AppId", app_id]),
-        ("agent-prompter.html", scripts_dir / "New-AgentPrompterPage.ps1",
-         ["-StaticDir", str(static_dir), "-AppId", app_id]),
-        ("properties.html", scripts_dir / "New-PropertiesAdminPage.ps1",
-         ["-StaticDir", str(static_dir), "-AppId", app_id]),
-        # VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 4: the app's OWN read-only
-        # verification panel -- same contract document the repo emits, produced by the app-side
-        # emitter from the app's _ops (operations + browser routines + their last-known runs).
-        # The generator emits the operations runbook INSIDE the final app root (final_app_out/_ops);
-        # passing final_app_out.parent/_ops (fixed 2026-08-28: engine-support E15/probe jobs died
-        # at Resolve-Path on the nonexistent sibling path) left verification.html unemitted.
-        ("verification.html", scripts_dir / "New-VerificationPanelPage.ps1",
-         ["-StaticDir", str(static_dir), "-OpsDir", str(final_app_out / "_ops"),
-          "-AppId", app_id]),
+        ("control-panel.html",
+         lambda: emit_control_panel_page(static_dir, app_id, 8080, final_app_out)),
+        ("app-tree.html", lambda: emit_app_tree_page(app_folder, static_dir, app_id)),
+        ("app-tree-v2.html", lambda: emit_app_tree_v2_page(app_folder, static_dir, app_id)),
+        ("agent-prompter.html", lambda: emit_agent_prompter_page(static_dir, app_id)),
+        ("properties.html", lambda: emit_properties_admin_page(static_dir, app_id)),
+        ("verification.html",
+         lambda: emit_verification_panel_page(static_dir, final_app_out / "_ops", app_id)),
     ]
-    for label, script, script_args in pages:
-        command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script), *script_args]
-        completed = subprocess.run(command, capture_output=True, text=True, check=False)
-        if completed.returncode != 0:
-            detail = (completed.stderr or completed.stdout or "unknown error").strip()
-            raise CliError(f"failed to emit {label}: {detail}")
+
+    for label, emit in pages:
+        try:
+            emit()
+        except Exception as exc:  # noqa: BLE001 -- surfaced as one CliError, matching the old
+            # subprocess-failure path's single "failed to emit <label>: <detail>" shape.
+            raise CliError(f"failed to emit {label}: {exc}") from exc
         print(f"npdev: emitted {label}", file=sys.stderr)
 
 
@@ -2632,18 +2640,39 @@ _RUNTIMEHOST_LIBS_RELEASE_REPO = "MarceloGiazzon/NPDevGeneral"
 
 
 def _current_git_tag(root: Path) -> str | None:
-    """The tag exactly at HEAD, or None -- an untagged commit (any ordinary feature-branch
-    checkout) has nothing published to download, so this is the gate that sends `setup` to the
-    local-build path without ever attempting a network call."""
+    """The nearest reachable tag, or None -- an untagged shallow clone has nothing published to
+    download, so this is the gate that sends `setup` to the local-build path without ever
+    attempting a network call.
+
+    A3 (Cold Clone Audit 2026-08-28): this used to be `git describe --tags --exact-match HEAD`,
+    which returns nothing unless the checkout sits EXACTLY on a tag -- so the ordinary `git clone`
+    (a few commits past the latest tag on main) could never download the prebuilt
+    runtimehost-libs asset and always paid the ~10-minute local compile instead. Nearest reachable
+    tag (`--abbrev=0`) fixes that for the ordinary case; the caller must then decide whether the
+    tag's jars are safe to use against HEAD's source."""
     try:
         completed = subprocess.run(
-            ["git", "describe", "--tags", "--exact-match", "HEAD"],
+            ["git", "describe", "--tags", "--abbrev=0"],
             cwd=root, capture_output=True, text=True, timeout=10,
         )
     except (OSError, subprocess.SubprocessError):
         return None
     tag = completed.stdout.strip()
     return tag if completed.returncode == 0 and tag else None
+
+
+def _tag_jars_match_head(tag: str, root: Path) -> bool:
+    """Is `tag` an ancestor of HEAD? If not, the tag points at a divergent line (a fork, or a
+    rebase that orphaned it) and its jars must NOT be used even though they are publishable --
+    see the A3 gate at the setup call site."""
+    try:
+        completed = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", tag, "HEAD"],
+            cwd=root, capture_output=True, text=True, timeout=10,
+        )
+        return completed.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def _try_download_runtimehost_libs(tag: str, libs_dir: Path, out: "_SetupOutput",
@@ -2808,12 +2837,30 @@ def run_setup(args: argparse.Namespace) -> int:
     # with --build-local. Every failure mode inside _try_download_runtimehost_libs falls through
     # to the exact same local build below; §9 forbids a download-only setup.
     jars_source = "build"
+    downloaded_tag: str | None = None
     if getattr(args, "build_local", False):
         out.narrate("npdev setup: --build-local passed -- skipping the download, building locally.")
     else:
+        # A3 (Cold Clone Audit 2026-08-28): the nearest reachable tag is now where the lookup
+        # starts (an exact-match-only lookup meant a plain `git clone` of main -- a few commits
+        # past the tag -- never found the asset and always compiled). But the nearest tag may be
+        # older than HEAD's source, so gate it: only use the asset when the tag is an ancestor of
+        # HEAD (an ordinary clone of main is; a fork with its own history, or a rebase that
+        # orphaned the tag, is NOT -- its jars were built from a divergent line and must not be
+        # used even though they are publishable).  --build-local skips this whole decision.
         tag = _current_git_tag(root)
-        if tag and _try_download_runtimehost_libs(tag, libs_dir, out):
-            jars_source = "download"
+        if tag and _tag_jars_match_head(tag, root):
+            if _try_download_runtimehost_libs(tag, libs_dir, out):
+                # The jarsSource CONTRACT is "which path" ("download"/"build") -- the Manager's UI
+                # and the JSON consumers branch on the literal, so the tag goes in the human
+                # "Jars source:" line instead (the download narrate already names the zip, which
+                # carries the tag). A3: an operator reading later must be able to tell which
+                # release the jars came from.
+                downloaded_tag = tag
+                jars_source = "download"
+        elif tag and not _tag_jars_match_head(tag, root):
+            out.narrate(f"npdev setup: tag {tag} is not an ancestor of HEAD -- refusing its prebuilt "
+                        f"jars (built from a divergent line), building locally.")
 
     if jars_source == "download":
         pass  # _try_download_runtimehost_libs already staged the jars + manifest into libs_dir
@@ -2933,7 +2980,11 @@ def run_setup(args: argparse.Namespace) -> int:
     out.narrate(f"npdev setup: [3/3] done")
     # I5: the one new trailing line -- "which path was taken" must be visible in the human output
     # too (§7 DoD), so this is additive-only rather than reworking the block above it.
-    out.narrate(f"\nRuntimehost jars: {libs_dir}\nKnowledge index:  {knowledge_note}\nJars source:      {jars_source}")
+    if downloaded_tag:
+        jars_source_line = f"{jars_source} (tag {downloaded_tag})"
+    else:
+        jars_source_line = jars_source
+    out.narrate(f"\nRuntimehost jars: {libs_dir}\nKnowledge index:  {knowledge_note}\nJars source:      {jars_source_line}")
 
     if out.json_mode:
         result = {
@@ -4074,12 +4125,18 @@ def _finalexec_fat_jar_for(app_root: Path) -> Path | None:
 # made the five byte-identical across Postgres, MySQL and SQL Server (E15). A second implementation
 # in Python (or in the Manager's Rust) would be a new twin to drift, and this project has already
 # paid for that class of bug more than once.
+#
+# D2 (Cold Clone Audit): each entry now also names the POSIX twin OperationalRunbookEmitter emits
+# alongside the PowerShell script -- run_db_operation() prefers PowerShell when one is on PATH
+# (unchanged behaviour on the machines this always worked on) and falls back to the POSIX script
+# only when it is not, rather than refusing outright.
 _DB_OPERATIONS = {
-    "start": ("Start-Environment.ps1", "Start this app's database."),
-    "stop": ("Stop-Environment.ps1", "Stop it, leaving the data in place."),
-    "status": ("Status-Environment.ps1", "Say whether it is running."),
-    "connection": ("Print-DbConnectionInfo.ps1", "Print the connection details, for DBeaver or psql."),
-    "reset": ("Reset-Environment.ps1", "DELETE the data and start clean."),
+    "start": ("Start-Environment.ps1", "start-environment.sh", "Start this app's database."),
+    "stop": ("Stop-Environment.ps1", "stop-environment.sh", "Stop it, leaving the data in place."),
+    "status": ("Status-Environment.ps1", "status-environment.sh", "Say whether it is running."),
+    "connection": ("Print-DbConnectionInfo.ps1", "print-db-connection-info.sh",
+                   "Print the connection details, for DBeaver or psql."),
+    "reset": ("Reset-Environment.ps1", "reset-environment.sh", "DELETE the data and start clean."),
 }
 _DB_RESET_CONFIRMATION = "I_UNDERSTAND_DB_DATA_WILL_BE_DELETED"
 
@@ -4139,7 +4196,7 @@ def run_db_operation(args: argparse.Namespace) -> int:
     keeping `_ops` location and PowerShell discovery in one place.
     """
     operation = args.db_command
-    script_name, _ = _DB_OPERATIONS[operation]
+    script_name, posix_script_name, _ = _DB_OPERATIONS[operation]
 
     if operation == "reset" and args.confirm != _DB_RESET_CONFIRMATION:
         # Refused HERE as well as in the script. The script's own guard is the real one; this exists
@@ -4155,15 +4212,31 @@ def run_db_operation(args: argparse.Namespace) -> int:
             "`npdev run app` (or `npdev dev`) once, then try again.")
     ops_root, is_legacy = located
     script = ops_root / script_name
-    if not script.is_file():
-        raise CliError(f"{script} does not exist. Regenerate the app to refresh its _ops toolbox.")
+    posix_script = ops_root / posix_script_name
 
+    # D2 (Cold Clone Audit): PowerShell is preferred when available -- unchanged behaviour on every
+    # machine this already worked on -- and the POSIX twin is used only when it is not, rather than
+    # refusing outright. Neither script existing (a toolbox from before D2 landed, or before the
+    # generator even wrote *any* toolbox) still needs its own message: regenerate, not "install
+    # PowerShell", is the actionable fix there.
     shell = _find_powershell()
-    if shell is None:
+    if shell is not None and script.is_file():
+        command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
+        if operation == "reset":
+            command += ["-Confirm", _DB_RESET_CONFIRMATION]
+        script_used = script
+    elif posix_script.is_file():
+        command = [str(posix_script)]
+        if operation == "reset":
+            command += [_DB_RESET_CONFIRMATION]
+        script_used = posix_script
+    elif shell is None:
         raise CliError(
-            "no PowerShell found (looked for `pwsh`, then `powershell`). The generated database "
-            "toolbox is PowerShell, so these five operations need one. Install PowerShell 7 "
-            "(https://aka.ms/powershell), or run the scripts in " + str(ops_root) + " yourself.")
+            "no PowerShell found (looked for `pwsh`, then `powershell`), and no POSIX script at "
+            + str(posix_script) + " either. Install PowerShell 7 (https://aka.ms/powershell), or "
+            "regenerate this app to refresh its _ops toolbox.")
+    else:
+        raise CliError(f"{script} does not exist. Regenerate the app to refresh its _ops toolbox.")
 
     # WHICH app this toolbox actually describes, stated every time.
     #
@@ -4200,10 +4273,6 @@ def run_db_operation(args: argparse.Namespace) -> int:
         except (json.JSONDecodeError, OSError):
             target = {}
 
-    command = [shell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)]
-    if operation == "reset":
-        command += ["-Confirm", _DB_RESET_CONFIRMATION]
-
     completed = subprocess.run(command, capture_output=True, text=True, check=False)
     output = (completed.stdout or "") + (completed.stderr or "")
 
@@ -4217,7 +4286,7 @@ def run_db_operation(args: argparse.Namespace) -> int:
             # parsed into a shape this file invents: the script is the source of truth about what it
             # did, and re-describing its output here would be a second story to keep true.
             "output": output.strip(),
-            "script": str(script),
+            "script": str(script_used),
             "target": target,
         }, indent=2))
         return completed.returncode
@@ -4288,6 +4357,13 @@ def _git_present_check() -> dict:
     )
 
 
+# A2 (Cold Clone Audit 2026-08-28): the highest JVM the six Gradle 9.5.1 wrappers can RUN under --
+# the compatibility matrix's "JVM 27+ not yet supported" line (docs.gradle.org/9.5). Module-level
+# so tests can pin it: above it the wrapper dies with 'Could not determine java version' before any
+# NPDev code runs, which is why doctor FAILS there (a hard dead end) rather than warning.
+MAX_SUPPORTED_JDK = 26
+
+
 def run_doctor(args: argparse.Namespace) -> int:
     """I5: one screen, no scrolling -- exit non-zero listing only what MUST be fixed, warnings
     separate and never blocking. Every check here exists because this project already hit the
@@ -4303,6 +4379,7 @@ def run_doctor(args: argparse.Namespace) -> int:
     at all; they are recorded as status "pass" rather than invented failures, because today's human
     output prints nothing else in that case and MUST NOT gain new lines -- the Manager will see the
     real story once java-present's own fix is applied and doctor is re-run."""
+
     checks: list[dict] = []
 
     # Phase 0 I4b (the Manager's own M3 thesis): resolve JAVA_HOME first, PATH second -- the same
@@ -4367,6 +4444,22 @@ def run_doctor(args: argparse.Namespace) -> int:
             ))
         elif found_version_int == 17:
             checks.append(_check("java-version", "Java 17+", "pass", found=found_version, expected="17+"))
+        elif found_version_int > MAX_SUPPORTED_JDK:
+            # A2 (Cold Clone Audit 2026-08-28): doctor had a floor ("17+") and no top -- until the
+            # 2026-08-28 wrapper raise (Gradle 9.5.1, all six builds) a machine with JDK 24/25 died
+            # in the WRAPPER with "Could not determine java version from '24'" before any NPDev
+            # code ran, and doctor had just told them the machine was fine. 9.5.1 runs on JVM 17-26
+            # (docs.gradle.org compatibility matrix); above that, the wrapper dies first, so doctor
+            # must FLY the flag, not warn -- warnings never block, and this one is a hard dead end.
+            checks.append(_check(
+                "java-version", "Java 17+", "fail", found=found_version,
+                expected=f"17 to {MAX_SUPPORTED_JDK}",
+                detail=f"Java {found_version} found ({java_bin}) -- newer than the Gradle 9.5.1 "
+                       f"wrappers in this repo support (max {MAX_SUPPORTED_JDK}; the wrapper fails "
+                       f"with 'Could not determine java version' before any NPDev code runs).",
+                fix=f"Install Java 17 to {MAX_SUPPORTED_JDK} (e.g. Temurin 21 LTS from "
+                    "https://adoptium.net/temurin/releases/), or point JAVA_HOME at it.",
+            ))
         else:
             # >17: correct for platform work (which stays pinned at 17 regardless) and for a
             # generated app that requested build.javaVersion=21, but a generated app at the 17
@@ -4577,14 +4670,28 @@ def run_doctor(args: argparse.Namespace) -> int:
 
     pwsh_path = shutil.which("pwsh")
     if pwsh_path is None:
+        # A5 (Cold Clone Audit 2026-08-28): this used to say "optional, fine for the portable
+        # npdev path" -- but `npdev run app` and `npdev verify --tier T1+` shell out to a generated
+        # app's _ops/*.ps1 toolbox, so a Linux/macOS user told "optional" got a hard "no PowerShell
+        # found" at the moment they tried to run the app they just built. Authoring genuinely needs
+        # no PowerShell; those two do. Say both.
+        #
+        # D2 (Cold Clone Audit, same item): `npdev db *` is deliberately NOT listed here any more --
+        # OperationalRunbookEmitter now emits a POSIX `.sh` twin of every _ops/*.ps1 script, and
+        # run_db_operation() falls back to it when no PowerShell is found (see
+        # test_db_operation_posix_fallback.py). Keeping the old wording after that fallback shipped
+        # would be exactly the false-pessimism this line exists to avoid in the other direction.
         checks.append(_check(
-            "pwsh-present", "PowerShell 7", "warn", expected="optional",
-            detail="PowerShell 7 (pwsh) not found -- fine for the portable `npdev` path "
-                   "(`npdev setup` replaces it); still needed for this repo's own "
-                   "maintainer scripts under scripts/.",
+            "pwsh-present", "PowerShell 7", "warn", expected="required to run an app on this OS",
+            detail="PowerShell 7 (pwsh) not found. Authoring (validate/generate/init) needs no "
+                   "PowerShell, and `npdev db *` now falls back to a POSIX script when none is "
+                   "found -- but `npdev run app` and `npdev verify --tier T1+` still shell out to "
+                   "the generated app's _ops/*.ps1 toolbox and will fail without it.",
+            fix="Install PowerShell 7: https://aka.ms/powershell",
         ))
     else:
-        checks.append(_check("pwsh-present", "PowerShell 7", "pass", found=pwsh_path, expected="optional"))
+        checks.append(_check("pwsh-present", "PowerShell 7", "pass", found=pwsh_path,
+                             expected="required to run an app on this OS"))
 
     checks.extend(_database_checks(getattr(args, "app", None)))
     checks.append(_scrapforai_check())
@@ -11074,9 +11181,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     # M14: the five environment operations. Each RUNS the generated `_ops` script of the same name
-    # rather than reimplementing it -- see _DB_OPERATIONS.
-    for _op_name, (_script, _help) in _DB_OPERATIONS.items():
-        _op_parser = db_sub.add_parser(_op_name, help=_help + f"  (runs _ops/{_script})")
+    # rather than reimplementing it -- see _DB_OPERATIONS. D2: prefers _script (PowerShell), falls
+    # back to _posix_script when no PowerShell is on PATH.
+    for _op_name, (_script, _posix_script, _help) in _DB_OPERATIONS.items():
+        _op_parser = db_sub.add_parser(_op_name, help=_help + f"  (runs _ops/{_script} or {_posix_script})")
         _op_parser.add_argument(
             "--app", default=None, metavar="DIR",
             help="The app directory. Defaults to the current directory.",
@@ -11251,10 +11359,13 @@ def build_parser() -> argparse.ArgumentParser:
              "re-indexes the result before writing so a partial rewrite fails closed.",
     )
 
-    # STOR-16: the codemod the RecreateOnAppStart deprecation warning names.
+    # STOR-16: the codemod the RecreateOnAppStart deprecation warning names. F3 (Cold Clone Audit,
+    # P0) reuses the same file-walking command to flag a second, unrelated hazard in the same files:
+    # a server-engine definition with no database.externallyProvisioned declared at all.
     migrate_db_lifecycle = migrate_sub.add_parser(
         "db-lifecycle",
-        help="Rewrite the deprecated schemaLifecycle.strategy=RecreateOnAppStart to Ephemeral.",
+        help="Rewrite deprecated schemaLifecycle.strategy=RecreateOnAppStart to Ephemeral, and flag "
+             "a server-engine definition missing database.externallyProvisioned.",
     )
     migrate_db_lifecycle.add_argument(
         "--input", required=True, nargs="+",

@@ -803,6 +803,20 @@ try {
         $failures += "an entry-point document states a repo path as fact and that path does not exist: see scripts/quality/check-cited-paths.py output above -- fix the DOCUMENT (repoint it, or say plainly the file was deleted); scripts/policy/cited-path-exemptions.json is only for citations that are not claims about a file"
     }
 
+    # C1 (LNCH-22 audit, 2026-08-28): a doc teaching someone the `_ops` toolbox must only name
+    # scripts the runbook emitter actually writes. docs/NPDEV_USER_MANUAL.md /
+    # docs/NPDEV_CONCEPTS_DEEP_DIVE.md cited Build-App.ps1 / Test-App.ps1 / Status-App.ps1 — three
+    # names never emitted — so a reader's paste-block failed with "not recognized as the name of a
+    # cmdlet", which reads as a broken generation, not a stale doc. The emitted set is parsed from
+    # OperationalRunbookEmitter.java's own write() calls every run (a checker-owned list would be a
+    # third copy of the truth). (Banner numbering is hand-typed and -- per the R11 note above --
+    # the denominators on the older steps are historical; this step's /40 matches the live count.)
+    Write-Host '[40/40] Checking every _ops script name in content/*.yml is actually emitted...'
+    & $py "scripts/quality/check-ops-script-names.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a content/*.yml doc names an _ops script the runbook emitter never writes: see scripts/quality/check-ops-script-names.py output above -- fix the DOCUMENT to name an emitted script (OperationalRunbookEmitter's write() list is the ground truth)"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

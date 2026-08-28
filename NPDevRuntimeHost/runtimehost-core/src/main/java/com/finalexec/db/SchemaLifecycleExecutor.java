@@ -740,9 +740,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             throw new BoundaryBootException(new BoundaryViolation("B5", "boot",
                     "B5:schema_ahead_detected:This database was migrated PAST this build: it is already at fingerprint "
                     + aheadOfBuild.get().toFingerprint() + ", a later state than this build's own "
-                    + manifest.schemaFingerprint() + ". Downgrade is not supported -- deploy a build at "
-                    + "or past that fingerprint, or if this state is intentional, record an operator "
-                    + "mark to fast-forward past this check.",
+                    + manifest.schemaFingerprint() + ". Downgrade is not supported. Two ways forward, "
+                    + "both deliberate: (1) forward-fix this build's model.json to match the database "
+                    + "(the usual case -- you checked out an older model.json, e.g. `git checkout "
+                    + "HEAD~3 -- model.json`, and the database was never rolled back with it), or "
+                    + "(2) restore a database snapshot from before the later change, if you have one, "
+                    + "then boot this build again. NPDev will not reconstruct the older schema shape "
+                    + "for you -- if this ahead state is intentional, record an operator mark to "
+                    + "fast-forward past this check. Run `npdev why B5` for the full explanation.",
                     Instant.now()));
         }
 
@@ -1546,7 +1551,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // so the code is carried on the log line itself, not a thrown BoundaryBootException --
             // there is nothing to refuse here, only an action silently not taken.
             System.out.println("NPDev schema lifecycle: WARNING [B8:no_ownership_history] no ownership history "
-                    + "recorded -- skipping drop of unowned tables (no ownership evidence to act on).");
+                    + "recorded -- skipping drop of unowned tables (no ownership evidence to act on). "
+                    + "NPDev records that it owns a table before it will destroy one; a concept added and "
+                    + "removed again without ever booting this database has no such record. If you meant "
+                    + "one of the removed concepts' tables to be dropped: boot once WITH it back in the "
+                    + "model (so this database records ownership), then remove it and boot again.");
             return Set.of();
         }
         Set<String> stillDeclared = new LinkedHashSet<>();

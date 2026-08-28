@@ -290,6 +290,9 @@
     "scripts/quality/check-markdown-links.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-ops-script-names.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-panel-provenance-impact.py": {
       "invocation": "ci-gate"
     },
@@ -351,7 +354,7 @@
       "invocation": "orchestrated"
     },
     "scripts/quality/firstrun-harness/check-wrongjava.sh": {
-      "invocation": "manual-runbook",
+      "invocation": "ci-gate",
       "documentedIn": "scripts/quality/firstrun-harness/README.md"
     },
     "scripts/quality/firstrun-harness/extract_commands.py": {

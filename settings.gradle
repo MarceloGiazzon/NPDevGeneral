@@ -5,6 +5,19 @@ pluginManagement {
     }
 }
 
+// A1 (Cold Clone Audit 2026-08-28): the platform's own builds must resolve a 17 toolchain the
+// same way a generated app does -- a machine whose only JDK is 21+ used to pass `npdev doctor`
+// and then fail `npdev setup` with "No matching toolchains found". Same registration the
+// generated-app template ships (NPDevRuntimeHost/settings.gradle.template); with the 9.5.1
+// wrapper raise (A2) this plugin's 1.0.0 is the version proven on this Gradle line.
+// Per the template's own header: `plugins {}` may follow only buildscript{}/pluginManagement{}
+// (dependencyResolutionManagement is NOT on the allowed-to-precede list), and cannot be wrapped
+// in an `if` -- offline opt-out is Gradle's native
+// -Dorg.gradle.java.installations.auto-download=false, not a conditional registration.
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_PROJECT)
     repositories {

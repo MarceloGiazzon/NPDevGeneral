@@ -53,6 +53,10 @@ Leave `npdev dev` running. Add a field to `model.json`, save, and watch:
 14:09:47  ready in 45.2s   http://localhost:8080
 ```
 
+On Windows the app stops for the rebuild — Windows will not replace a jar a running process
+holds — so there is a short gap with no app on every save. On Linux and macOS the old app
+keeps serving until the new one is ready.
+
 The screens, the API and the database column are all there. **Get it wrong and it says so without
 taking your app down** — validation runs before anything is touched.
 

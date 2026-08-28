@@ -30,8 +30,11 @@ log format. Do not merge them with a project-aware session.
 
 Point the agent at the repo and these files **only** — resist adding context:
 
+- `docs/DSL_REFERENCE.md` — the model DSL reference. **Generated, not committed** — it is rendered
+  from `model.schema.json`, so a fresh clone has no such file. Step zero of the run is
+  `python scripts/docs/generate_dsl_reference.py` from the repository root; then treat the generated
+  `docs/DSL_REFERENCE.md` as a fixed document for the rest of the session.
 - `docs/TUTORIAL_FIRST_APP.md` — the guided first-app tutorial (REG-14's subject).
-- `docs/DSL_REFERENCE.md` — the model DSL reference (generated from schema, drift-checked).
 - `docs/GETTING_STARTED.md` — orientation.
 - The MCP toolbox (`NPDevMcp` server: `npdev_search_examples`, `npdev_search_fix`,
   `npdev_check_support`, the validate→fix→generate loop) — for REG-13's AI-authoring path.
@@ -75,9 +78,10 @@ that gap **is** a finding.
 
 ## After the run
 
-Feed the friction logs back as **new, dated findings** in `docs/LAUNCH_READINESS_GAPS.md` (and the
-register if they rise to real bugs) — do not silently fix them mid-session; the record of what a
-stranger hit is the value. Then REG-13/REG-14/REG-17 can move from "never done" to DONE with evidence.
+Feed the friction logs back as **new, dated ledger items** under `ledger/items/` (one per real
+finding; `ledger/items/*.yml` is the schema'd source of truth — the old markdown registers,
+`docs/LAUNCH_READINESS_GAPS.md` and `docs/NPDEV_OPEN_ITEMS_REGISTER.md`, were removed 2026-08-11 and
+git history keeps them). Do not silently fix them mid-session; the record of what a stranger hit is
+the value. Then REG-13/REG-14/REG-17 can move from "never done" to DONE with evidence.
 
-*Companion: `docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (the log format) ·
-`docs/NPDEV_OPEN_ITEMS_REGISTER.md` §2.5/§2.6/§3.2 (the items this closes).*
+*Companion: `docs/archive/programme-history/NON_AUTHOR_FRICTION_LOG_TEMPLATE.md` (the log format).*

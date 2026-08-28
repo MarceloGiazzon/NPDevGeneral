@@ -99,7 +99,7 @@
       "name": "PowerShell 7",
       "status": "pass",
       "found": "C:\\Program Files (x86)\\PowerShell\\7\\pwsh.EXE",
-      "expected": "optional",
+      "expected": "required to run an app on this OS",
       "detail": null,
       "fix": null,
       "fixCommand": null

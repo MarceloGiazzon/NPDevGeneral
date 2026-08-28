@@ -28,7 +28,8 @@ class DockerDeploymentEmitterBackupObservabilityTest {
         Files.writeString(path, """
                 {
                   "database": { "engine": "%s", "host": "%s", "port": %d, "username": "npdev",
-                                 "password": "secret", "createInternalTables": true, "createBusinessTables": true },
+                                 "password": "secret", "createInternalTables": true, "createBusinessTables": true,
+                                 "externallyProvisioned": false },
                   "schemaLifecycle": { "strategy": "KeepExistingIfCompatible", "scope": "NpdevOwnedTablesOnly" }
                 }
                 """.formatted(engine, host, port));

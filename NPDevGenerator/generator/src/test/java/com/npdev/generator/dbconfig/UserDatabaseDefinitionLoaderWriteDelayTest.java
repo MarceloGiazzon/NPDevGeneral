@@ -39,7 +39,8 @@ class UserDatabaseDefinitionLoaderWriteDelayTest {
                 {
                   "database": { "engine": "H2Server", "host": "localhost", "port": 9200,
                                  "username": "sa", "password": "",
-                                 "createInternalTables": true, "createBusinessTables": true },
+                                 "createInternalTables": true, "createBusinessTables": true,
+                                 "externallyProvisioned": false },
                   "schemaLifecycle": { "strategy": "KeepExistingIfCompatible", "allowDestructiveRecreate": false,
                                         "destructiveRecreateConfirmation": "", "scope": "NpdevOwnedTablesOnly" }
                 }

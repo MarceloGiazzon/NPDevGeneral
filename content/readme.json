@@ -41,7 +41,7 @@
         },
         {
           "type": "prose",
-          "text": "\nThe screens, the API and the database column are all there. **Get it wrong and it says so without\ntaking your app down** — validation runs before anything is touched.\n\n---\n"
+          "text": "\nOn Windows the app stops for the rebuild — Windows will not replace a jar a running process\nholds — so there is a short gap with no app on every save. On Linux and macOS the old app\nkeeps serving until the new one is ready.\n\nThe screens, the API and the database column are all there. **Get it wrong and it says so without\ntaking your app down** — validation runs before anything is touched.\n\n---\n"
         }
       ]
     },

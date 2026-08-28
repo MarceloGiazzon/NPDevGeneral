@@ -53,3 +53,34 @@ jobs:
           else
             docker run --rm npdev-firstrun
           fi
+
+  # A1 / D1 (Cold Clone Audit fix, 2026-08-28): check-wrongjava.sh + Dockerfile.wrongjava existed
+  # for months as `manual-runbook` invoked by NOTHING -- a test that has never run against the code
+  # it tests, which is exactly the class of instrument the audit keeps finding. It is cheap (a JDK
+  # install and one `npdev doctor`, no Gradle build at all), so it rides this workflow's existing
+  # nightly + tag-push triggers rather than its own schedule. It asserts the D1 contract: doctor
+  # must NOT block a >17-only machine (foojay auto-provisions the 17 toolchain) and must NAME the
+  # found version in its warning.
+  wrongjava:
+    name: doctor doors a newer-JDK machine (check-wrongjava)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the wrong-JDK harness image (JDK 21)
+        run: docker build --build-arg JDK=21 -f scripts/quality/firstrun-harness/Dockerfile.wrongjava -t npdev-firstrun-wrongjava scripts/quality/firstrun-harness
+
+      # check-wrongjava.sh's basename must appear in this workflow text -- run-script-inventory-check.ps1
+      # verifies ci-gate declarations by basename presence, so naming the image alone would leave the
+      # declaration (and this job) looking unwired even though the Dockerfile ENTRYPOINT runs it.
+      - name: Run the doctor-against-JDK21 check (check-wrongjava.sh)
+        run: |
+          REF="${{ github.event.inputs.repo_ref }}"
+          if [ -n "$REF" ]; then
+            docker run --rm -e REPO_REF="$REF" npdev-firstrun-wrongjava
+          elif [ "${{ github.ref_type }}" = "tag" ]; then
+            docker run --rm -e REPO_REF="${{ github.ref_name }}" npdev-firstrun-wrongjava
+          else
+            docker run --rm npdev-firstrun-wrongjava
+          fi

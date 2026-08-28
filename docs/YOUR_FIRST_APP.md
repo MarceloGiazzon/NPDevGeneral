@@ -153,19 +153,54 @@ Commit the change:
 cd ../my-library && git commit -am "add publishedYear to Book"
 ```
 
-## 6. Renaming — read this before you need it
+## 6. Rename a field — and meet your first refusal
 
-**NPDev cannot guess that a rename is a rename.** If you change `isbn` to `isbnCode`, NPDev sees
-one column dropped and another added — a destructive change — and will refuse.
+This one is worth triggering on purpose, once, so the first time it happens for real you
+already know what it means. Start the watch loop again if you stopped it:
 
-Tell it instead:
+```sh
+cd ../NPDevGeneral
+./npdev dev --model ../my-library/model.json
+```
+
+Now, without declaring anything, rename `isbn` to `isbnCode` in `model.json` and save. NPDev
+refuses:
+
+```
+DESTRUCTIVE_DROP_COLUMN  book.isbn  (2 row(s) hold a value today)
+possible rename(s) -- NPDev cannot tell a rename from a drop+add by shape alone, so it
+still refuses; this is the fix, not a guess:
+    column 'isbnCode' added on book (2 row(s) hold a value today). If this is a RENAME,
+    declare it and re-run:
+        "isbnCode": { ..., "renamedFrom": "isbn" }
+```
+
+**NPDev cannot guess that a rename is a rename.** "renamed `isbn`→`isbnCode`" and "dropped
+`isbn`, added `isbnCode`" are the same shape diff, and guessing wrong destroys a column of
+real data — so it never guesses. It refuses, and tells you exactly what to declare. Two ways
+to declare it — hand-edit `model.json`:
 
 ```json
 { "name": "isbnCode", "renamedFrom": "isbn", "type": "string" }
 ```
 
-Your data moves with the column. See `docs/DATABASES_AND_MIGRATIONS.md` for removals and other
-destructive changes.
+or let the tool make the same edit:
+
+```sh
+cd ../NPDevGeneral
+./npdev migrate rename --model ../my-library/model.json Book.isbn isbnCode --write
+```
+
+Save again and the watch loop picks it up: your data moves with the column, nothing is
+dropped. See `docs/DATABASES_AND_MIGRATIONS.md` for removals and other destructive changes
+this same refusal covers.
+
+
+**A related refusal you may meet later:** adding a *required* field whose default is an
+*expression* (not a literal) to a table that already has rows needs the same kind of explicit
+declaration — NPDev previews what the expression would backfill and asks you to acknowledge it
+before applying it, rather than guessing it is safe. See `docs/SCHEMA_EVOLUTION.md` for the
+preview/acknowledge flow.
 
 ## Where to go next
 
@@ -173,7 +208,7 @@ destructive changes.
   see `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` on bonds.
 - **Let an AI write the model for you** — `docs/AUTHORING_WITH_AI.md` (MCP setup and the
   chat-only fallback); `docs/ai/AUTHORING_FOR_AI.md` is the underlying contract either path follows.
-- **Edit in the browser** — the authoring editor lives at `/npdev-ui-react/` on your running app;
+- **Edit in the browser** — the authoring editor lives at `/model-authoring.html` on your running app;
   see `docs/GETTING_STARTED.md`.
 - **Go to production** — `docs/DEPLOYMENT.md` (Postgres, Docker, environment variables).
 - **What NPDev deliberately does not do** — `docs/ACCEPTED_BOUNDARIES.md`.
