@@ -65,37 +65,42 @@ def recordCheck = { Map args ->
 
 def validatorRoot = file('scripts/quality/json-schema-validator')
 def validatorScript = file('scripts/quality/json-schema-validator/validate-json-schema.mjs')
+// Gradle's exec (unlike a real shell) does not do Windows PATHEXT resolution -- 'npm' alone finds
+// nothing because the real executable is npm.cmd. node itself is a genuine .exe, so it needs no
+// such mapping.
+def npmExecutable = org.gradle.internal.os.OperatingSystem.current().isWindows() ? 'npm.cmd' : 'npm'
 
 def ensureNodeValidator = {
     if (!validatorScript.isFile()) {
         throw new GradleException("Missing JSON Schema validator wrapper: ${repoPath(validatorScript)}")
     }
     if (!file('scripts/quality/json-schema-validator/node_modules').isDirectory()) {
-        exec {
-            commandLine 'npm', '--prefix', validatorRoot.absolutePath, 'install', '--silent'
-        }
+        // Project.exec {} (the imperative convenience method) was removed in Gradle 9 -- the
+        // gradle-wrapper-9.7.1/A2 raise (Cold Clone Audit) surfaced this here, in the one root
+        // build.gradle task nothing else in the repo's own test suite exercises. providers.exec {}
+        // is the supported replacement since Gradle 7.5.
+        providers.exec {
+            commandLine npmExecutable, '--prefix', validatorRoot.absolutePath, 'install', '--silent'
+        }.result.get()
     }
 }
 
 def runNodeSchemaValidation = { File schema, File instance ->
     ensureNodeValidator()
-    def stdout = new ByteArrayOutputStream()
-    def stderr = new ByteArrayOutputStream()
-    def result = exec {
+    def execOutput = providers.exec {
         commandLine 'node', validatorScript.absolutePath, '--schema', schema.absolutePath, '--instance', instance.absolutePath
-        standardOutput = stdout
-        errorOutput = stderr
         ignoreExitValue = true
     }
+    def stdoutText = execOutput.standardOutput.asText.get()
     def parsed = null
-    if (stdout.size() > 0) {
-        parsed = new JsonSlurper().parseText(stdout.toString('UTF-8'))
+    if (stdoutText.length() > 0) {
+        parsed = new JsonSlurper().parseText(stdoutText)
     }
     return [
-            exitCode: result.exitValue,
+            exitCode: execOutput.result.get().exitValue,
             status: parsed?.status ?: 'failed',
             errors: parsed?.errors ?: [],
-            stderr: stderr.toString('UTF-8')
+            stderr: execOutput.standardError.asText.get()
     ]
 }
 
