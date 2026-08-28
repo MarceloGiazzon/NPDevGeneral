@@ -32,7 +32,7 @@
 // `runtimehost-core-boot-version-pin` in scripts/quality/twin-pair-registry.json.
 plugins {
     id 'java-library'
-    id 'io.spring.dependency-management' version '1.1.6'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 def resolveNpdevBuildRoot = {
