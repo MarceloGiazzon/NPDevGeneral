@@ -96,7 +96,7 @@ public final class UserDatabaseDefinitionLoader {
                 rawText(database, "password"),
                 bool(database, "createInternalTables", true),
                 bool(database, "createBusinessTables", true),
-                bool(database, "externallyProvisioned", false),
+                requireExternallyProvisioned(database, engine),
                 policy
         );
         validate(definition);
@@ -582,6 +582,36 @@ public final class UserDatabaseDefinitionLoader {
     private static String rawText(JsonNode node, String field) {
         JsonNode value = node == null ? null : node.get(field);
         return value == null || value.isNull() ? "" : value.asText("");
+    }
+
+    /**
+     * Cold Clone Audit F3 (P0): a server engine -- one someone could already be running independently
+     * of NPDev -- MUST declare {@code database.externallyProvisioned} explicitly. An absent key used
+     * to silently default to {@code false} ("NPDev owns this"), and Start/Stop/Reset all key off this
+     * flag -- Reset deletes on the false branch, so a definition that simply never mentioned the field
+     * got its server's data deleted on the first reset, without ever having said NPDev could. Per
+     * REG-131/REG-136 (an unresolvable input is an error, never a wrong default), this is that error.
+     *
+     * <p>Embedded engines ({@link DatabaseEngine#IN_MEMORY}, {@link DatabaseEngine#H2_LOCAL}) have no
+     * server for anyone else to have provisioned, so the field stays optional there and defaults to
+     * {@code false} exactly as before; {@link #validate} separately rejects it being {@code true} for
+     * those two engines.
+     */
+    private static boolean requireExternallyProvisioned(JsonNode database, DatabaseEngine engine) {
+        JsonNode value = database == null ? null : database.get("externallyProvisioned");
+        if (value != null && value.isBoolean()) {
+            return value.asBoolean();
+        }
+        if (engine == DatabaseEngine.IN_MEMORY || engine == DatabaseEngine.H2_LOCAL) {
+            return false;
+        }
+        throw new IllegalArgumentException(
+                "database.externallyProvisioned is required for " + engine.externalName() + " and must "
+                + "be true or false -- NPDev cannot guess whether this server is yours or one you "
+                + "already run. Declare true if NPDev did not create this database (Start/Stop/Reset "
+                + "will then refuse to touch it), or false if NPDev should manage its lifecycle. "
+                + "Existing definitions: `npdev migrate db-lifecycle --input <db.definition.json>` "
+                + "flags this file so you can decide. (F3, STOR-14)");
     }
 
     private static boolean bool(JsonNode node, String field, boolean fallback) {

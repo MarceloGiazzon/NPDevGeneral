@@ -745,37 +745,67 @@ def looks_like_db_definition(doc: dict) -> bool:
             and isinstance(doc.get("schemaLifecycle"), dict))
 
 
+# F3 (Cold Clone Audit, P0): the server engines for which `database.externallyProvisioned` is a
+# meaningful, now-mandatory declaration -- must match DatabaseEngine's externalName() spellings
+# case-insensitively, the same set UserDatabaseDefinitionLoader.requireExternallyProvisioned refuses
+# generation over. Embedded engines (InMemory, H2Local) have no server for anyone to have
+# provisioned, so they are deliberately excluded here too.
+_F3_SERVER_ENGINES = frozenset({"postgres", "mysql", "sqlserver", "h2server"})
+
+
 def migrate_db_definition(doc: dict) -> MigrationResult:
     """Rewrites `doc` IN PLACE. Returns what happened.
 
-    Only the strategy STRING changes. `allowDestructiveRecreate`, the confirmation and the scope are
-    deliberately left exactly as they are: every in-corpus user of the old spelling is InMemory and
-    already carries the `I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL` +
-    `NpdevOwnedLogicalStoresOnly` pair, which `SchemaLifecyclePolicy.ephemeralConfirmedFor` accepts
-    for that engine. Rewriting a confirmation string on someone's behalf would be forging their
-    signature on a sentence they never read.
+    Two independent checks, run unconditionally (neither is gated behind the other firing):
+
+    1. STOR-16: `schemaLifecycle.strategy: RecreateOnAppStart` -> `Ephemeral`. Only the strategy
+       STRING changes. `allowDestructiveRecreate`, the confirmation and the scope are deliberately
+       left exactly as they are: every in-corpus user of the old spelling is InMemory and already
+       carries the `I_UNDERSTAND_INMEMORY_DATA_IS_EPHEMERAL` + `NpdevOwnedLogicalStoresOnly` pair,
+       which `SchemaLifecyclePolicy.ephemeralConfirmedFor` accepts for that engine. Rewriting a
+       confirmation string on someone's behalf would be forging their signature on a sentence they
+       never read.
+
+    2. F3: a server-engine definition with no `database.externallyProvisioned` key at all is flagged
+       as an ambiguity, never auto-resolved. `UserDatabaseDefinitionLoader` (Java) now REFUSES to
+       generate such a definition -- silently defaulting the absent key to `false` is exactly the
+       "NPDev owns this" guess that let `Reset` delete a server the user had provisioned themselves.
+       Which way the answer goes is a fact only the definition's author knows, so this codemod
+       reports the file rather than guessing it either way (same discipline as #1's ambiguity,
+       immediately below: this tool does not forge a decision it cannot verify).
     """
     result = MigrationResult()
     if not looks_like_db_definition(doc):
         return result
     lifecycle = doc["schemaLifecycle"]
     strategy = lifecycle.get("strategy")
-    if not isinstance(strategy, str) or strategy.strip() != DEPRECATED_LIFECYCLE_STRATEGY:
-        return result
-    lifecycle["strategy"] = EPHEMERAL_LIFECYCLE_STRATEGY
-    result.changed = True
-    result.changes.append(
-        f"schemaLifecycle.strategy '{DEPRECATED_LIFECYCLE_STRATEGY}' -> "
-        f"'{EPHEMERAL_LIFECYCLE_STRATEGY}'")
-    engine = (doc.get("database") or {}).get("engine")
-    if engine and str(engine) != "InMemory":
-        # Not a refusal: the definition is valid either way, and `ephemeralConfirmedFor` will say so
-        # precisely at generation time. But a physical engine moving to Ephemeral is a real change in
-        # what happens to real rows, and the author should hear it from the tool that made the edit.
+    if isinstance(strategy, str) and strategy.strip() == DEPRECATED_LIFECYCLE_STRATEGY:
+        lifecycle["strategy"] = EPHEMERAL_LIFECYCLE_STRATEGY
+        result.changed = True
+        result.changes.append(
+            f"schemaLifecycle.strategy '{DEPRECATED_LIFECYCLE_STRATEGY}' -> "
+            f"'{EPHEMERAL_LIFECYCLE_STRATEGY}'")
+        engine = (doc.get("database") or {}).get("engine")
+        if engine and str(engine) != "InMemory":
+            # Not a refusal: the definition is valid either way, and `ephemeralConfirmedFor` will say
+            # so precisely at generation time. But a physical engine moving to Ephemeral is a real
+            # change in what happens to real rows, and the author should hear it from the tool that
+            # made the edit.
+            result.ambiguities.append(
+                f"engine is {engine}, not InMemory -- on a physical engine Ephemeral means this app "
+                f"DROPS its tables on every start. Confirm that is what you want, and set "
+                f"destructiveRecreateConfirmation to "
+                f"\"I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START\" with scope "
+                f"\"NpdevOwnedTablesOnly\".")
+
+    database = doc.get("database") or {}
+    engine = database.get("engine")
+    if (isinstance(engine, str) and engine.strip().lower() in _F3_SERVER_ENGINES
+            and "externallyProvisioned" not in database):
         result.ambiguities.append(
-            f"engine is {engine}, not InMemory -- on a physical engine Ephemeral means this app "
-            f"DROPS its tables on every start. Confirm that is what you want, and set "
-            f"destructiveRecreateConfirmation to "
-            f"\"I_UNDERSTAND_ALL_DATA_IS_DELETED_ON_EVERY_START\" with scope "
-            f"\"NpdevOwnedTablesOnly\".")
+            f"database.engine={engine} but database.externallyProvisioned is not set -- NPDev "
+            f"cannot guess whether this server is yours or one you already run, and generation now "
+            f"refuses this file until you say. Add \"externallyProvisioned\": true by hand if NPDev "
+            f"did NOT create this database (Start/Stop/Reset will then refuse to touch it), or "
+            f"false if NPDev should manage its lifecycle. (F3, STOR-14)")
     return result

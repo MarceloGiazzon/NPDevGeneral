@@ -432,6 +432,112 @@ class FinalAppAssemblerTest {
         }
     }
 
+    /**
+     * D1 (Cold Clone Audit 2026-08-28): a generated app carries its own platform jars at
+     * {@code libs/npdev-runtime/} when the staging dir existed at generation time, and its
+     * {@code gradle.properties} bakes the APP-RELATIVE default (not the generating machine's
+     * absolute path) -- so the app builds on a machine that has no NPDev clone at all. The
+     * {@code verifyNpdevRuntimeHostLibs} task of the assembled build reads
+     * {@code npdevRuntimeHostLibsDir}'s manifest, so the manifest must travel with the jars.
+     */
+    @Test
+    void stagesPlatformJarsIntoAppAndBakesRelativeDefaultWhenStagingDirExists() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-d1-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+        Path stagedLibs = workspace.resolve("staged").resolve("runtimehost-libs");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+        // A fake staged dir: two jars plus the manifest verifyNpdevRuntimeHostLibs reads.
+        write(stagedLibs.resolve("npdev-kernel-0.1.0.jar"), "kernel");
+        write(stagedLibs.resolve("npdev-runtimehost-core-0.1.0.jar"), "runtimehost-core");
+        write(stagedLibs.resolve("runtimehost-libs-manifest.json"),
+                "{\"requiredStagedJars\":[\"npdev-kernel-0.1.0.jar\",\"npdev-runtimehost-core-0.1.0.jar\"]}\n");
+
+        FinalAppAssembler.AssemblyResult result = withRuntimeHostLibsDir(stagedLibs, () -> {
+            try {
+                return new FinalAppAssembler().assemble(
+                        new FinalAppAssembler.Options(
+                                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null
+                        )
+                );
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        // The app now owns its jars + manifest; the relative default points Gradle at them.
+        Path appOwned = finalApp.resolve("libs").resolve("npdev-runtime");
+        assertTrue(Files.isRegularFile(appOwned.resolve("npdev-kernel-0.1.0.jar")));
+        assertTrue(Files.isRegularFile(appOwned.resolve("npdev-runtimehost-core-0.1.0.jar")));
+        assertTrue(Files.isRegularFile(appOwned.resolve("runtimehost-libs-manifest.json")),
+                "the manifest must travel with the jars -- verifyNpdevRuntimeHostLibs reads it from npdevRuntimeHostLibsDir");
+        String gradleProperties = Files.readString(finalApp.resolve("gradle.properties"));
+        assertTrue(gradleProperties.contains("npdevRuntimeHostLibsDir=libs/npdev-runtime"),
+                "D1 baked default must be app-relative, got:\n" + gradleProperties);
+        assertFalse(gradleProperties.contains(stagedLibs.toString().replace('\\', '/')),
+                "the generating machine's absolute staging path must NOT be baked into a self-contained app");
+    }
+
+    /**
+     * D1 companion: an app generated where the staging dir does NOT exist (setup never run) keeps
+     * the legacy absolute default -- no app-local copy, same pre-D1 behavior (the build tells you to
+     * run {@code npdev setup}).
+     */
+    @Test
+    void bakesAbsoluteDefaultWhenNoStagedJarsExist() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-d1-absent-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+        Path absentStaging = workspace.resolve("no-such-dir").resolve("runtimehost-libs");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+
+        withRuntimeHostLibsDir(absentStaging, () -> {
+            try {
+                new FinalAppAssembler().assemble(
+                        new FinalAppAssembler.Options(
+                                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null
+                        )
+                );
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        });
+
+        assertFalse(Files.exists(finalApp.resolve("libs/npdev-runtime")));
+        String gradleProperties = Files.readString(finalApp.resolve("gradle.properties"));
+        assertTrue(gradleProperties.contains("npdevRuntimeHostLibsDir="),
+                "a fallback default must still be baked");
+        assertTrue(gradleProperties.contains("runtimehost-libs"),
+                "without a self-contained copy the default stays the legacy absolute staging path");
+    }
+
+    /**
+     * Pin {@code NPDEV_RUNTIMEHOST_LIBS_DIR} for the duration of a run and restore it afterwards --
+     * the assembler's D1 copy and REG-128 bake both read that var, so the test must own its value
+     * rather than inherit an ambient one from the machine running Gradle. Routes through the
+     * assembler's {@link FinalAppAssembler#env} seam (no reflection over {@code System.getenv}'s
+     * JDK-vendor internals).
+     */
+    private static <T> T withRuntimeHostLibsDir(Path dir, java.util.concurrent.Callable<T> body) throws Exception {
+        java.util.function.Function<String, String> realEnv = FinalAppAssembler.env;
+        Path target = dir.toAbsolutePath();
+        try {
+            FinalAppAssembler.env = name -> name.equals("NPDEV_RUNTIMEHOST_LIBS_DIR") ? target.toString() : realEnv.apply(name);
+            return body.call();
+        } finally {
+            FinalAppAssembler.env = realEnv;
+        }
+    }
+
     private static void assertArrayEqualsBytes(byte[] expected, byte[] actual) {
         org.junit.jupiter.api.Assertions.assertArrayEquals(expected, actual);
     }

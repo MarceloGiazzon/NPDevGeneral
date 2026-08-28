@@ -102,6 +102,7 @@ class UserDatabaseDefinitionDeclaredConnectionTest {
             node.put("engine", "H2Server");
             node.put("host", "localhost");
             node.put("port", 9092);
+            node.put("externallyProvisioned", false);
             node.put("jdbcUrl", "jdbc:h2:tcp://prod-db.internal:9092/D:/company/customers");
         });
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,

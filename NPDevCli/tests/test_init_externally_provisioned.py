@@ -71,9 +71,13 @@ class InitExternallyProvisionedTest(unittest.TestCase):
                 "key -- if `--externally-provisioned` stops reaching it, Reset silently goes back "
                 "to deleting a data root the user does not own.")
 
-    def test_flag_omitted_leaves_the_key_absent_not_false(self):
-        """STOR-15's own distinction: `false` is a decision someone made, and only writing the key
-        when true keeps that true. A scaffold with no flag at all must not assert either way."""
+    def test_flag_omitted_is_written_as_an_explicit_false_for_a_server_engine(self):
+        """F3 (Cold Clone Audit, P0) supersedes STOR-15's original "written only when TRUE": the
+        generator now REFUSES a server-engine db.definition.json that omits the key at all, rather
+        than silently treating an absent key as false -- that silent default was exactly what let
+        Reset delete a server the user had provisioned themselves. `npdev init` is where the
+        true/false decision actually gets made, so it must make it durable in the file either way,
+        not just when the answer is true."""
         with TemporaryDirectory(prefix="npdev-init-extprov-") as tmp:
             target = Path(tmp) / "myapp"
             args = _init_args(target, engine="postgres", db_host="127.0.0.1", db_port=55432,
@@ -83,7 +87,24 @@ class InitExternallyProvisionedTest(unittest.TestCase):
 
             self.assertEqual(0, rc)
             written = json.loads((target / "db.definition.json").read_text(encoding="utf-8"))
-            self.assertNotIn("externallyProvisioned", written["database"])
+            self.assertIs(False, written["database"]["externallyProvisioned"])
+
+    def test_flag_stays_absent_for_an_embedded_engine(self):
+        """h2local has no server for anyone to have provisioned, so the key is meaningless there --
+        the Java loader defaults it to false for embedded engines regardless (see
+        UserDatabaseDefinitionLoader.requireExternallyProvisioned), and writing it would only invite
+        the false impression that it does something for this engine."""
+        with TemporaryDirectory(prefix="npdev-init-extprov-") as tmp:
+            target = Path(tmp) / "myapp"
+            args = _init_args(target, engine="h2local", externally_provisioned=False)
+
+            rc = npdev_cli.run_init(args)
+
+            self.assertEqual(0, rc)
+            db_def_path = target / "db.definition.json"
+            if db_def_path.exists():
+                written = json.loads(db_def_path.read_text(encoding="utf-8"))
+                self.assertNotIn("externallyProvisioned", written["database"])
 
     def test_flag_is_refused_for_an_embedded_engine_before_anything_is_written(self):
         """h2local's database is a file belonging to this app alone -- there is no server for anyone

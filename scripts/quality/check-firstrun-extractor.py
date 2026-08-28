@@ -223,6 +223,36 @@ if yfa_content_path.is_file():
             "LIVE: content/your-first-app.json no longer contains a `git commit -am` block -- the "
             "harness's step5-commit check selects that block by content and would find nothing.")
 
+# C1/B5 (Cold Clone Audit fix, 2026-08-28): Getting Started's first-hour fences are now the SAME
+# commands README's quickstart executes nightly in the first-run container (doctor -> setup -> init
+# -> dev -- that was the whole point of routing the doc's first hour through `npdev init`), so a
+# container execution of this doc's sections would be pure duplication. What the container cannot
+# tell you cheaply is that THIS doc's fences stopped being runnable -- renamed heading, a fence that
+# lost its `sh` lang, a command corrupted by an editorial pass. That is the doc-rot class this
+# file's LIVE anchors exist to catch in milliseconds; the same rename that once silently disarmed
+# the README quickstart extraction (## Quickstart -> ## See it run) would come through here first.
+getStarted_content_path = REPO_ROOT / "content" / "getting-started.json"
+if getStarted_content_path.is_file():
+    gs = json.loads(getStarted_content_path.read_text(encoding="utf-8"))
+
+    gs_s1 = ex.extract_section_commands(gs, r"^##\s+1\.\s+Validate a model")
+    if gs_s1 != ["./npdev --version",
+                 "./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json"]:
+        failures.append(
+            "LIVE: content/getting-started.json section 1 (Validate a model) no longer extracts to "
+            "the version + canonical-demo validate commands the first hour is built on. The Getting "
+            "Started doc's fences are load-bearing; edit content/getting-started.yml and re-render, "
+            "or update this pin deliberately.")
+
+    gs_s2 = ex.extract_section_commands(gs, r"^##\s+2\.\s+Create and run an app of your own")
+    if gs_s2 != ["./npdev doctor", "./npdev setup", "./npdev init ../my-app",
+                 "./npdev dev --model ../my-app/model.json"]:
+        failures.append(
+            "LIVE: content/getting-started.json section 2 (Create and run an app of your own) no "
+            "longer extracts to doctor -> setup -> init -> dev -- the exact commands README's "
+            "quickstart executes nightly. Keep the doc's first hour aligned with the tested path "
+            "(see the Cold Clone Audit B5 finding).")
+
 if failures:
     print(f"check-firstrun-extractor: {len(failures)} failure(s)\n")
     for failure in failures:

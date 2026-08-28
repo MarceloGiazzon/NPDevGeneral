@@ -138,7 +138,7 @@ finding out the hard way.
   ✗ NPDev jars           not staged                    [ Fix this ]
   ! AI knowledge index   not built
   ! Docker               not found -- optional
-  ! PowerShell 7         not found -- optional
+  ! PowerShell 7         not found -- required to run an app on this OS
   ! Browser exploration  not found -- optional
 ```
 
@@ -151,7 +151,7 @@ Each row carries a **mark**, not the word: the words below are the names used in
 |---|---|---|---|
 | **✓** | pass | Requirement met. | Nothing. |
 | **✗** | fail | You cannot build an app until this is resolved. | Follow the fix text on the row; the one **Fix this** button takes you to the Install screen. |
-| **!** | warn | Optional. Something is missing that only some paths need. | Usually nothing. PowerShell and git are never required. Docker is required only for the Postgres / MySQL / SqlServer engines — see "The one prerequisite" above. |
+| **!** | warn | Optional. Something is missing that only some paths need. | Usually nothing. git is never required. Docker is required only for the Postgres / MySQL / SqlServer engines — see "The one prerequisite" above. PowerShell is *not* optional in the same sense: it is needed to **run** an app (`npdev run app`, `npdev db`, `npdev verify`) though not to author one — install it when the run buttons are your next step. |
 
 ### Controls
 
@@ -383,7 +383,7 @@ What the Ready screen tests, and what makes each one fail.
 | `runtimehost-jars` | Setup has run | Not yet prepared | **Run setup** |
 | `ai-knowledge-index` | Setup has run | **warn** Not built | Run setup — only needed for AI authoring |
 | `docker-present` | Optional | **warn** Not found | Nothing — an alternative run path only |
-| `pwsh-present` | Optional | **warn** Not found | Nothing — never required |
+| `pwsh-present` | Needed to *run* an app | **warn** Not found | Install PowerShell 7 (https://aka.ms/powershell) when the run buttons are your next step — authoring (validate/generate/init) needs none |
 | `scrapforai-engine` | Optional | **warn** Not found | Nothing — browser explorations only |
 
 **Wrong-Java used to be the classic failure; the Manager mostly removes it now.** The private JDK

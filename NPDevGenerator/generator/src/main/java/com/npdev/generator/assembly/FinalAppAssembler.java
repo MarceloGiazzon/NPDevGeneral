@@ -15,6 +15,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -140,7 +141,11 @@ public final class FinalAppAssembler {
         writeAiBetaLocalProfile(normalized, generatedMount);
         writeSchemaRealizationManifest(normalized, schemaRealizationCount);
         writeAppReadme(normalized, generatedMount);
-        appendRuntimeHostLibsDirDefault(normalized);
+        // D1 (Cold Clone Audit 2026-08-28): stage the platform jars INTO the app before baking the
+        // gradle.properties default, so the default can be the app-relative libs/npdev-runtime when
+        // the copy succeeded -- that is what makes the app portable (see the method).
+        boolean selfContainedLibs = stageRuntimeHostLibsIntoApp(normalized);
+        appendRuntimeHostLibsDirDefault(normalized, selfContainedLibs);
         appendAppJavaVersionDefault(normalized);
         int webAssetsCopied = mountWebAssets(normalized);
         linkSealedPacks(normalized);
@@ -743,6 +748,97 @@ public final class FinalAppAssembler {
     }
 
     /**
+     * The staged NPDev platform jars ({@code runtimehost-libs}) this machine will build the app
+     * against -- resolved the SAME way {@code scripts/npdev-common.ps1}'s
+     * {@code Get-NPDevRuntimeHostLibsDir} does (env var override, else {@code <this repo's
+     * parent>/Build/runtimehost-libs}). Single home for the three consumers here
+     * ({@link #stageRuntimeHostLibsIntoApp}, {@link #appendRuntimeHostLibsDirDefault}, and the
+     * copy that both read), so they cannot drift apart -- the REG-128/REG-144 lesson applied one
+     * level tighter.
+     */
+    private static Path resolveRuntimeHostLibsDir(Options options) {
+        String resolved = env.apply("NPDEV_RUNTIMEHOST_LIBS_DIR");
+        if (resolved == null || resolved.isBlank()) {
+            String buildRoot = env.apply("NPDEV_BUILD_ROOT");
+            if (buildRoot != null && !buildRoot.isBlank()) {
+                resolved = Path.of(buildRoot).resolve("runtimehost-libs").toString();
+            } else {
+                Path repoRoot = options.runtimeHostRoot().toAbsolutePath().normalize().getParent();
+                resolved = (repoRoot == null ? Path.of(".") : repoRoot.resolveSibling("Build"))
+                        .resolve("runtimehost-libs").toString();
+            }
+        }
+        return Path.of(resolved).toAbsolutePath().normalize();
+    }
+
+    /**
+     * Package-private seam for the env reads this class makes, so tests can pin
+     * {@code NPDEV_RUNTIMEHOST_LIBS_DIR} without reflection over JDK internals. A plain static
+     * function field -- the same shape {@code scripts/quality/check-*.py} tests swap
+     * ({@code shutil.which}); production callers are unaffected (it is assigned once at class
+     * load to {@link System#getenv}).
+     */
+    static java.util.function.Function<String, String> env =
+            System::getenv;
+
+    /**
+     * D1 (Cold Clone Audit 2026-08-28): copy the staged NPDev platform jars into the app's OWN
+     * {@code libs/npdev-runtime/}, so the app carries what it needs to build -- the app then builds
+     * on a machine that has no NPDev clone, no {@code Build/runtimehost-libs}, nothing staged at
+     * all. Same assembly-time pattern {@link #linkSealedPacks} already uses (copy into the app,
+     * prefer the app-local copy at build time), applied to the runtime libs rather than only to
+     * sealed packs.
+     *
+     * <p>Only the jars AND their manifest are copied -- nothing else from the staging dir (no
+     * scripts, no README); the manifest is what {@code verifyNpdevRuntimeHostLibs} in the assembled
+     * app's build.gradle reads to know which jars are required, so it must travel with them.
+     *
+     * @return true when the app now carries its own copy (the staging dir existed and had jars),
+     *         false when there was nothing to copy (setup never run) -- the caller bakes the old
+     *         absolute-path default in that case, and the app keeps today's behavior (you must run
+     *         {@code npdev setup} first).
+     */
+    private static boolean stageRuntimeHostLibsIntoApp(Options options) throws IOException {
+        Path runtimeHostLibsDir = resolveRuntimeHostLibsDir(options);
+        if (!Files.isDirectory(runtimeHostLibsDir)) {
+            return false;
+        }
+        List<Path> jars;
+        try (var stream = Files.list(runtimeHostLibsDir)) {
+            jars = stream
+                    .filter(p -> p.getFileName().toString().endsWith(".jar"))
+                    .filter(Files::isRegularFile)
+                    .sorted(Comparator.comparing(p -> p.getFileName().toString()))
+                    .toList();
+        }
+        if (jars.isEmpty()) {
+            return false;
+        }
+        boolean manifestCopied = false;
+        Path appOwnedLibsDir = options.finalAppRoot().resolve("libs").resolve("npdev-runtime");
+        Files.createDirectories(appOwnedLibsDir);
+        for (Path jar : jars) {
+            Files.copy(jar, appOwnedLibsDir.resolve(jar.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+        }
+        Path manifest = runtimeHostLibsDir.resolve("runtimehost-libs-manifest.json");
+        if (Files.isRegularFile(manifest)) {
+            Files.copy(manifest, appOwnedLibsDir.resolve(manifest.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+            manifestCopied = true;
+        }
+        // 50 jars / ~6.9 MB per the audit's measurement; a warning (not a failure) if the manifest
+        // did not travel -- the build's verify task will fail loudly and name it if it matters.
+        if (!manifestCopied) {
+            System.out.println("npdev generate app: WARNING -- staged runtimehost-libs had no "
+                    + "runtimehost-libs-manifest.json; the app's self-contained copy will fail "
+                    + "verifyNpdevRuntimeHostLibs until the manifest is present.");
+        }
+        System.out.println("npdev generate app: staged " + jars.size() + " NPDev platform jar(s) "
+                + "into the app at libs/npdev-runtime/ -- this app now builds without the staging "
+                + "directory (" + runtimeHostLibsDir + ")");
+        return true;
+    }
+
+    /**
      * REG-128 / N2 (FIRST_IMPRESSION_PLAN.md I8): {@code resolveNpdevRuntimeLibsDir} in the
      * materialized {@code build.gradle} (see {@code NPDevRuntimeHost/build.gradle.template}) walks
      * UP from the assembled app's own directory looking for a sibling {@code .npdev-root} marker --
@@ -766,24 +862,25 @@ public final class FinalAppAssembler {
      * template check the env var BEFORE the gradle property. An explicit
      * {@code -PnpdevRuntimeHostLibsDir=...} passed to a later {@code gradlew} invocation still wins
      * whenever no env var is set.
+     *
+     * <p>D1 (Cold Clone Audit 2026-08-28): when {@code stageRuntimeHostLibsIntoApp} succeeded, the
+     * baked default is the APP-RELATIVE {@code libs/npdev-runtime} instead of the absolute staging
+     * path -- the app carries its jars, so it must not point at a directory that only exists on the
+     * machine that generated it. Gradle resolves a relative value against the app root, and an
+     * explicit env var / {@code -P} still wins over it (REG-137's precedence is untouched); the
+     * packaged-app proof tests pass {@code -P} at boot and are unaffected. When there was nothing to
+     * copy (setup never run on the generating machine), the legacy absolute default is baked and the
+     * app keeps today's "run npdev setup first" behavior.
      */
-    private static void appendRuntimeHostLibsDirDefault(Options options) throws IOException {
+    private static void appendRuntimeHostLibsDirDefault(Options options, boolean selfContainedLibs) throws IOException {
         Path repoRoot = options.runtimeHostRoot().toAbsolutePath().normalize().getParent();
         if (repoRoot == null) {
             return;
         }
-        String resolved = System.getenv("NPDEV_RUNTIMEHOST_LIBS_DIR");
-        if (resolved == null || resolved.isBlank()) {
-            String buildRoot = System.getenv("NPDEV_BUILD_ROOT");
-            Path buildRootPath = (buildRoot == null || buildRoot.isBlank())
-                    ? repoRoot.resolveSibling("Build")
-                    : Path.of(buildRoot);
-            resolved = buildRootPath.resolve("runtimehost-libs").toString();
-        }
-        // gradle.properties is parsed as a Java .properties file, where "\" is an escape
-        // character -- a raw Windows path would corrupt on read. Forward slashes are accepted by
-        // Gradle/the JVM on every OS this template ships for.
-        String propertyValue = resolved.replace('\\', '/');
+        // D1: prefer the app-relative home when the copy succeeded (the app owns its jars).
+        String propertyValue = selfContainedLibs
+                ? "libs/npdev-runtime"
+                : resolveRuntimeHostLibsDir(options).toString().replace('\\', '/');
 
         Path gradleProperties = options.finalAppRoot().resolve("gradle.properties");
         String appended = "\n# npdev generate app (REG-128): resolved default for this machine/session --\n"

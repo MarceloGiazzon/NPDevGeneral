@@ -14,13 +14,16 @@ import java.util.regex.Pattern;
  * running H2-over-TCP. Config is entirely environment-variable-driven (never baked into the image),
  * so the same image is promotable across environments.
  *
- * <p>The Dockerfile packages an ALREADY-BUILT bootJar rather than running Gradle inside the image:
- * this platform's generated apps depend on locally-staged NPDev platform jars
- * ({@code runtimehost-libs}, synced via {@code sync-runtimehost-libs.ps1}), not a published Maven
- * repository, so a Docker-internal Gradle build would need that whole local jar cache copied into
- * the build stage too. Building outside Docker (as the existing {@code _ops} scripts already do)
- * and packaging the result is simpler, faster, and matches how every other NPDev build step works
- * today -- Docker's job here is packaging and orchestration, not compilation.</p>
+ * <p>The Dockerfile packages an ALREADY-BUILT bootJar rather than running Gradle inside the image.
+ * The reason this design was originally chosen -- generated apps depend on locally-staged NPDev
+ * platform jars ({@code runtimehost-libs}, synced via {@code sync-runtimehost-libs.ps1}), not a
+ * published Maven repository, so a Docker-internal build would need that whole jar cache copied
+ * into the build stage -- is HISTORICAL since D1 (Cold Clone Audit 2026-08-28): the generator now
+ * stages the platform jars INSIDE the app at {@code libs/npdev-runtime/}, so a Docker-internal
+ * {@code ./gradlew bootJar} would work. Prebuilt-jar packaging is kept anyway: building outside
+ * Docker (as the existing {@code _ops} scripts already do) is simpler, faster, and matches how
+ * every other NPDev build step works -- Docker's job here is packaging and orchestration, not
+ * compilation.</p>
  *
  * <p>R9.2: every LONG-RUNNING service in every emitted compose file (both {@link #dockerComposeServer}
  * and {@link #dockerComposeStandalone}, including the opt-in {@code backup}/{@code observability}
@@ -323,17 +326,25 @@ public final class DockerDeploymentEmitter {
                       NPDEV_MAIL_SMTP_PASSWORD: ${NPDEV_MAIL_SMTP_PASSWORD:-}
                       NPDEV_MAIL_SMTP_FROM: ${NPDEV_MAIL_SMTP_FROM:-no-reply@example.com}
                       NPDEV_MAIL_SMTP_STARTTLS: ${NPDEV_MAIL_SMTP_STARTTLS:-false}
+                      # D3: writes SUPER_USER_KEY.txt to the bind-mounted ./secrets below (a host-visible
+                      # file) instead of the app-data named volume, which only docker compose exec can read.
+                      NPDEV_SUPERUSER_KEYFILEDIR: /app/secrets
                     ports:
                       - "${APP_PORT:-%d}:%d"
                     volumes:
                       - npdev-files:/app/data/files
-                      # The Super User key has no config-file/env-var equivalent -- SuperUserBootstrapper
-                      # generates one on first boot (if none is active yet) and writes it to
-                      # SUPER_USER_KEY.txt in the working directory (/app). Mounting a named volume
-                      # over /app persists it across container recreation; Docker seeds a fresh named
-                      # volume from the image's existing /app content on first use, so app.jar is not
-                      # lost. Retrieve it with: docker compose exec app cat SUPER_USER_KEY.txt
+                      # Mounting a named volume over /app persists app state (and anything an
+                      # older image version wrote straight to the working directory) across
+                      # container recreation; Docker seeds a fresh named volume from the image's
+                      # existing /app content on first use, so app.jar is not lost.
                       - app-data:/app
+                      # The Super User key has no config-file/env-var equivalent -- SuperUserBootstrapper
+                      # generates one on first boot (if none is active yet) and, per
+                      # NPDEV_SUPERUSER_KEYFILEDIR above, writes it to SUPER_USER_KEY.txt here -- a
+                      # host-visible bind mount, not the opaque app-data volume. Retrieve it with:
+                      # cat ./secrets/SUPER_USER_KEY.txt (this directory is also where an
+                      # agent-proxy.env you create by hand is read from).
+                      - ./secrets:/app/secrets
                     healthcheck:
                       test: ["CMD", "wget", "-qO-", "http://localhost:%d/actuator/health"]
                       interval: 10s
@@ -557,17 +568,25 @@ public final class DockerDeploymentEmitter {
                       NPDEV_MAIL_SMTP_PASSWORD: ${NPDEV_MAIL_SMTP_PASSWORD:-}
                       NPDEV_MAIL_SMTP_FROM: ${NPDEV_MAIL_SMTP_FROM:-no-reply@example.com}
                       NPDEV_MAIL_SMTP_STARTTLS: ${NPDEV_MAIL_SMTP_STARTTLS:-false}
+                      # D3: writes SUPER_USER_KEY.txt to the bind-mounted ./secrets below (a host-visible
+                      # file) instead of the app-data named volume, which only docker compose exec can read.
+                      NPDEV_SUPERUSER_KEYFILEDIR: /app/secrets
                     ports:
                       - "${APP_PORT:-%d}:%d"
                     volumes:
                       - npdev-files:/app/data/files
-                      # The Super User key has no config-file/env-var equivalent -- SuperUserBootstrapper
-                      # generates one on first boot (if none is active yet) and writes it to
-                      # SUPER_USER_KEY.txt in the working directory (/app). Mounting a named volume
-                      # over /app persists it across container recreation; Docker seeds a fresh named
-                      # volume from the image's existing /app content on first use, so app.jar is not
-                      # lost. Retrieve it with: docker compose exec app cat SUPER_USER_KEY.txt
+                      # Mounting a named volume over /app persists app state (and anything an
+                      # older image version wrote straight to the working directory) across
+                      # container recreation; Docker seeds a fresh named volume from the image's
+                      # existing /app content on first use, so app.jar is not lost.
                       - app-data:/app
+                      # The Super User key has no config-file/env-var equivalent -- SuperUserBootstrapper
+                      # generates one on first boot (if none is active yet) and, per
+                      # NPDEV_SUPERUSER_KEYFILEDIR above, writes it to SUPER_USER_KEY.txt here -- a
+                      # host-visible bind mount, not the opaque app-data volume. Retrieve it with:
+                      # cat ./secrets/SUPER_USER_KEY.txt (this directory is also where an
+                      # agent-proxy.env you create by hand is read from).
+                      - ./secrets:/app/secrets
                     healthcheck:
                       test: ["CMD", "wget", "-qO-", "http://localhost:%d/actuator/health"]
                       interval: 10s
@@ -661,9 +680,9 @@ public final class DockerDeploymentEmitter {
 
                 # The ControlPanel Super User key is NOT set here -- it has no config property at all.
                 # SuperUserBootstrapper generates one automatically on first boot (if none is active
-                # yet) and writes it to SUPER_USER_KEY.txt in the app container's working directory.
-                # After first `docker compose up`, retrieve it with:
-                #   docker compose exec app cat SUPER_USER_KEY.txt
+                # yet) and writes it to SUPER_USER_KEY.txt in the ./secrets bind mount (see
+                # docker-compose.yml). After first `docker compose up`, retrieve it with:
+                #   cat ./secrets/SUPER_USER_KEY.txt
 
                 # LNCH-11: SMTP config for the mail-smtp adapter -- OPTIONAL, only consumed if this
                 # app's model bound the "mail" capability to adapter mail-smtp. Defaults point at
@@ -731,9 +750,9 @@ public final class DockerDeploymentEmitter {
 
                 # The ControlPanel Super User key is NOT set here -- it has no config property at all.
                 # SuperUserBootstrapper generates one automatically on first boot (if none is active
-                # yet) and writes it to SUPER_USER_KEY.txt in the app container's working directory.
-                # After first `docker compose up`, retrieve it with:
-                #   docker compose exec app cat SUPER_USER_KEY.txt
+                # yet) and writes it to SUPER_USER_KEY.txt in the ./secrets bind mount (see
+                # docker-compose.yml). After first `docker compose up`, retrieve it with:
+                #   cat ./secrets/SUPER_USER_KEY.txt
 
                 # LNCH-14: object storage (MinIO) -- OPTIONAL. Leave NPDEV_FILESTORE_PROVIDER unset
                 # (defaults to inproc) unless you bring the `objectstore` compose profile up
@@ -1162,7 +1181,7 @@ public final class DockerDeploymentEmitter {
         StringBuilder out = new StringBuilder();
         out.append(line(svc, "actuator-proxy:"));
         out.append(line(prop, "# R9.10: holds the SUPER_USER_KEY needed to read /actuator/prometheus so Prometheus itself"));
-        out.append(line(prop, "# never has to. Retrieve the key first: docker compose exec app cat SUPER_USER_KEY.txt"));
+        out.append(line(prop, "# never has to. Retrieve the key first: cat ./secrets/SUPER_USER_KEY.txt"));
         out.append(line(prop, "image: " + ACTUATOR_PROXY_IMAGE));
         out.append(line(prop, "profiles: [\"observability\"]"));
         out.append(line(prop, "depends_on:"));

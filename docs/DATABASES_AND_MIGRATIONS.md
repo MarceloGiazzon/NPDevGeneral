@@ -148,6 +148,15 @@ Two honest notes:
   platform runs a full Postgres proof matrix under Testcontainers for exactly this reason.
 - **The deployment posture is single-instance.** One app process per database. Concurrency is *detected
   and refused*, not *locked* (see §11).
+- **H2Local — the engine recommended above — commits DDL implicitly, and so does MySQL.** Postgres and
+  SQL Server roll a failed schema change back in full; H2 and MySQL do not (`DDL_IN_TRANSACTION` is
+  absent from their capabilities — see `SqlDialects.active().supports(...)`, never assume a rollback).
+  Concretely: if a multi-step schema pass fails partway through on H2 or MySQL, every step that already
+  ran is **permanent** — "nothing was persisted" is false there, and the database is left in a state
+  neither the old model nor the new one describes. `npdev doctor` already surfaces this at the point of
+  a failed migration; it belongs here too, since this is the section that recommends the engine it is
+  true of. Inspect the schema (and the PARTIAL-CRASH row in `npdev_schema_history`) before re-running,
+  and see `PartialApplicationTruth.afterFailedMultiStep` for the exact message an operator sees.
 
 ## 5. The two families of tables (business vs. platform)
 

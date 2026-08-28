@@ -193,20 +193,30 @@ the test suite.**
 | Level | Scope | Catches | Cost |
 |---|---|---|---|
 | **1** *(run-readme.sh)* | bare Linux, follow README, assert the app answers | **W1 · W2 · W3 · incomplete prereqs · the change-a-field/your-first-app/init loops** | done |
-| **2** *(Dockerfile.wrongjava)* | a machine with a deliberately **wrong Java (21)** pre-installed | proves `npdev doctor` actually catches it | done |
+| **2** *(Dockerfile.wrongjava)* | a machine with a deliberately **newer Java (21)** pre-installed, platform pinned at 17 | `npdev doctor` is HONEST about it: **does not block** the machine (foojay auto-provisions the 17 toolchain, A1) **and names the found version** in its warning (D1) | done |
 | **3** | Windows container for the `.bat` path | Windows-specific drift | expensive, lower value initially |
 
 **Level 2 matters more than it looks:** without it, `npdev doctor` ships untested by construction —
-a checker that has never seen a red, on a machine that passes every check it makes.
+a checker that has never been exercised against a non-17 machine, on a machine that passes every
+check it makes.
 
 ```bash
 docker build --build-arg JDK=21 -f Dockerfile.wrongjava -t npdev-firstrun-wrongjava .
 docker run --rm npdev-firstrun-wrongjava
-# exit 0: doctor correctly failed and named Java 21. exit 1: it did not -- a real bug.
+# exit 0: doctor did not block the JDK-21 machine and named Java 21 in its warning. exit 1: a real bug.
 
 # against your uncommitted working tree, same pre-merge convention as Level 1:
 docker run --rm -e LOCAL_SRC=1 -v /d/WorkSpace/NPDev/NPDev_General:/work/src:ro npdev-firstrun-wrongjava
 ```
+
+> **Contract history (D1, 2026-08-28).** Level 2 used to assert the opposite: "exit 0: doctor
+> correctly FAILED and named Java 21". That was true while a >17-only machine could not build
+> anything — but the A1 foojay registration made it false: Gradle now auto-provisions the 17
+> toolchain, so a >17-only machine is genuinely workable, and a test demanding doctor fail it
+> would be forcing doctor to lie about a fine machine. The assertion flipped with the fix. A
+> machine whose JDK exceeds what the Gradle 9.5.1 wrapper supports (A2: max 26) IS a hard dead end,
+> and doctor fails there — that half of the audit's A1/A2 finding is covered by the doctor
+> ceiling branch itself, not this container.
 
 ---
 

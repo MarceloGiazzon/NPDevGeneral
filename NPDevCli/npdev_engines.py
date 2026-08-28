@@ -40,7 +40,9 @@ ENGINES: dict[str, dict] = {
         "server": False,
         "containerized": False,
         "status": "supported",
-        "summary": "File-backed H2 in the app's own process. No server to install. The default.",
+        "summary": "File-backed H2 in the app's own process. No server to install. The default. "
+                   "Commits DDL implicitly (E5): a failed schema change is not fully rolled back -- "
+                   "see `npdev capabilities`.",
     },
     "h2server": {
         "externalName": "H2Server",
@@ -49,7 +51,8 @@ ENGINES: dict[str, dict] = {
         "server": True,
         "containerized": False,
         "status": "supported",
-        "summary": "H2 in TCP server mode, so more than one process can share the database.",
+        "summary": "H2 in TCP server mode, so more than one process can share the database. Also "
+                   "commits DDL implicitly (E5) -- see `npdev capabilities`.",
     },
     "inmemory": {
         "externalName": "InMemory",
@@ -152,9 +155,16 @@ def db_definition_for(key: str, *, database_name: str, host: str | None = None,
     already ran, and `Reset` deleted their data root. A guard that cannot be switched on is
     indistinguishable from no guard, except that people trust it.
 
-    Written only when TRUE. `false` is the default the loader already assumes, and an explicit
-    `externallyProvisioned: false` in a scaffold reads like a decision someone made rather than a
-    field they never saw -- the same reason `host: localhost` is omitted for H2Local above.
+    F3 (Cold Clone Audit, P0): for a SERVER engine the key is now written EXPLICITLY either way --
+    `true` or `false` -- never omitted. STOR-15's original "written only when TRUE" left `false` as
+    the silent, unwritten default; `UserDatabaseDefinitionLoader` (STOR-14/F3) now REFUSES to
+    generate a server-engine app whose db.definition.json omits the key at all, rather than guessing
+    it means false, because that guess is exactly what let Reset delete a server the user provisioned
+    themselves. `npdev init` is the one place that decision is actually made (the user either passed
+    `--externally-provisioned` or deliberately did not), so it is the right place to make it durable
+    in the file instead of leaving a later `npdev generate app`/`npdev dev` to refuse a scaffold this
+    same tool just produced. Embedded engines are unaffected -- there is no server for anyone to have
+    provisioned, so the key stays omitted there, exactly as `host: localhost` is omitted above.
     """
     record = resolve(key)
     if externally_provisioned and not record["server"]:
@@ -173,9 +183,8 @@ def db_definition_for(key: str, *, database_name: str, host: str | None = None,
         "createInternalTables": True,
         "createBusinessTables": True,
     }
-    if externally_provisioned:
-        database["externallyProvisioned"] = True
     if record["server"]:
+        database["externallyProvisioned"] = bool(externally_provisioned)
         database["host"] = host or "localhost"
         database["port"] = int(port) if port else record["port"]
         database["username"] = username if username is not None else _default_user(record["key"])

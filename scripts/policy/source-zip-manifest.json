@@ -44,6 +44,10 @@
       "note": "The Python CLI (npdev_cli, npdev_monitor, npdev_explore, npdev_diagram, npdev_engines, migrations, ...). Top level only -- NPDevCli/tests/ is out."
     },
     {
+      "pattern": "^NPDevCli/static_page_templates/.*\\.tpl$",
+      "note": "C3b: npdev_static_pages.py's HTML/CSS/JS templates (control-panel, app-tree, app-tree-v2, agent-prompter, properties, verification) -- `npdev generate app`/`npdev dev` read these at runtime, so an archive without them fails with FileNotFoundError the moment it tries to emit a static page."
+    },
+    {
       "pattern": "^NPDevMcp/[^/]+\\.py$",
       "note": "MCP server for AI authoring."
     },

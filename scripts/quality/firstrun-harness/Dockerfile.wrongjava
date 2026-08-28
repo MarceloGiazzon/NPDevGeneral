@@ -1,18 +1,21 @@
-# NPDev doctor Level-2 harness -- a machine with the WRONG Java already installed.
+# NPDev doctor Level-2 harness -- a machine with a NEWER Java already installed.
 #
 # WHY THIS EXISTS
 # ----------------
-# `npdev doctor` written without a failing machine to run against is a checker that has never
-# seen a red -- untested by construction, since every one of its checks passes trivially on the
-# machine that wrote it. This builds a machine with Java 21 (not the required 17) pre-installed
-# and asserts `doctor` actually catches it, naming the version it found -- the single test that
-# proves doctor's FAILURE path, not just its happy path (see docs/YOUR_FIRST_APP.md's I5 counterpart
-# in PLAN.md: "the single most important test in the plan").
+# `npdev doctor` written without a checking machine to run against is a checker that has never
+# seen a shade of red -- untested by construction, since every one of its checks passes trivially
+# on the machine that wrote it. This builds a machine with Java 21 (not the platform's pinned 17)
+# pre-installed and asserts `doctor` is HONEST about it: after A1, a >17-only machine is genuinely
+# fine -- the foojay toolchain resolver (now registered in the platform's own builds) makes Gradle
+# auto-provision the 17 toolchain -- so the contract this pins is that doctor does NOT block the
+# machine AND names the found version in its warning (D1, Cold Clone Audit fix 2026-08-28). It
+# used to assert doctor FAILS on Java 21; when foojay made 21 workable, that assertion became the
+# test's own false claim -- doctor would have had to lie about a workable machine to pass it.
 #
 # Build:  docker build --build-arg JDK=21 -f Dockerfile.wrongjava -t npdev-firstrun-wrongjava .
 # Run:    docker run --rm npdev-firstrun-wrongjava
-#         exit 0 -- doctor correctly failed and named the wrong JDK version
-#         exit 1 -- doctor did NOT catch it (a real bug to fix, not a harness problem)
+#         exit 0 -- doctor did not block the newer-JDK machine and named the found version
+#         exit 1 -- doctor blocked it, or warned without naming the version (a real bug)
 #         exit 2 -- harness itself could not run (clone failed, ...)
 
 FROM ubuntu:24.04

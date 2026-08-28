@@ -349,6 +349,150 @@ function Test-NpdevServerReachable {
 }
 """;
 
+    /**
+     * D2 (Cold Clone Audit): the POSIX twin of {@link #EXTERNAL_NOTICE_HELPER}'s
+     * {@code Write-NpdevExternalNotice}/{@code Test-NpdevServerReachable}, plus the POSIX plan-reading
+     * primitives every environment script needs. {@code sh} has no JSON parser and
+     * {@code resolved-db-plan.json} carries nested objects ({@code profile.*}, {@code dbeaver.*}) a
+     * grep/sed one-liner cannot reach safely -- so these shell out to {@code python3}, which
+     * {@code npdev doctor} already hard-requires (the CLI itself is Python), rather than inventing a
+     * hand-rolled JSON parser or a new dependency ({@code jq}) nothing else in this project needs.
+     *
+     * <p>{@code npdev_plan_get} reads one dotted key path, printing the default (or empty) for an
+     * absent or {@code null} value -- booleans print as {@code true}/{@code false} so callers can
+     * {@code [ "$(npdev_plan_get ...)" = "true" ]}. {@code npdev_plan_exec_args} and
+     * {@code npdev_plan_exec_env} are the POSIX twins of {@code Expand-ProfileList}/the
+     * {@code containerEnv}/{@code execEnv} loops: they resolve a profile-driven string array or
+     * string map with the SAME {@code {database}}/{@code {username}}/{@code {password}}/
+     * {@code {host}}/{@code {port}} placeholder substitution {@code Expand-ProfileToken} performs,
+     * one resolved item per output line -- read into POSIX positional parameters via
+     * {@code while IFS= read -r ...; do set -- "$@" "$line"; done}, since plain {@code sh} has no
+     * arrays (the same constraint {@code run-final-app.sh} is already kept under).
+     */
+    private static final String PLAN_JSON_HELPER_SH = """
+
+npdev_plan_get() {
+  python3 -c '
+import json, sys
+path, key = sys.argv[1], sys.argv[2]
+default = sys.argv[3] if len(sys.argv) > 3 else ""
+with open(path, encoding="utf-8") as f:
+    cur = json.load(f)
+for part in key.split("."):
+    cur = cur.get(part) if isinstance(cur, dict) else None
+    if cur is None:
+        break
+if cur is None:
+    print(default)
+elif isinstance(cur, bool):
+    print("true" if cur else "false")
+else:
+    print(cur)
+' "$1" "$2" "${3:-}"
+}
+
+npdev_plan_exec_args() {
+  python3 -c '
+import json, sys
+path, key = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    plan = json.load(f)
+cur = plan
+for part in key.split("."):
+    cur = cur.get(part) if isinstance(cur, dict) else None
+    if cur is None:
+        break
+subs = {
+    "{database}": str(plan.get("resolvedDatabaseName") or ""),
+    "{username}": str(plan.get("username") or ""),
+    "{password}": str(plan.get("password") or ""),
+    "{host}": str(plan.get("host") or ""),
+    "{port}": str(plan.get("hostPort") or ""),
+}
+for item in (cur if isinstance(cur, list) else []):
+    s = str(item)
+    for k, v in subs.items():
+        s = s.replace(k, v)
+    print(s)
+' "$1" "$2"
+}
+
+npdev_plan_exec_env() {
+  python3 -c '
+import json, sys
+path, key = sys.argv[1], sys.argv[2]
+with open(path, encoding="utf-8") as f:
+    plan = json.load(f)
+cur = plan
+for part in key.split("."):
+    cur = cur.get(part) if isinstance(cur, dict) else None
+    if cur is None:
+        break
+subs = {
+    "{database}": str(plan.get("resolvedDatabaseName") or ""),
+    "{username}": str(plan.get("username") or ""),
+    "{password}": str(plan.get("password") or ""),
+    "{host}": str(plan.get("host") or ""),
+    "{port}": str(plan.get("hostPort") or ""),
+}
+for name, value in (cur if isinstance(cur, dict) else {}).items():
+    s = str(value)
+    for k, v in subs.items():
+        s = s.replace(k, v)
+    print(name + "=" + s)
+' "$1" "$2"
+}
+
+# POSIX twin of Write-NpdevExternalNotice.
+npdev_write_external_notice() {
+  plan_path="$1"; operation="$2"
+  engine=$(npdev_plan_get "$plan_path" engine)
+  host=$(npdev_plan_get "$plan_path" host)
+  host_port=$(npdev_plan_get "$plan_path" hostPort)
+  db_name=$(npdev_plan_get "$plan_path" resolvedDatabaseName)
+  echo ''
+  echo "This app's database is EXTERNALLY PROVISIONED -- it is yours, not NPDev's."
+  echo "  engine    : $engine at $host:$host_port"
+  echo "  database  : $db_name"
+  echo '  declared  : database.externallyProvisioned = true, in db.definition.json'
+  echo ''
+  echo "$operation is refused. NPDev did not provision this server, so managing its lifecycle"
+  echo 'is not its to do. Nothing was started, stopped, removed or deleted.'
+  echo ''
+}
+
+# POSIX twin of Test-NpdevServerReachable. Prefers a real TCP connect attempt (`nc`, then bash's
+# /dev/tcp under a bash shebang) and degrades to "unknown" -- never a false "yes" -- when neither is
+# available, printed once to stderr so the degradation is visible rather than silently wrong.
+npdev_server_reachable() {
+  probe_host="$1"; probe_port="$2"
+  if command -v nc >/dev/null 2>&1; then
+    nc -z -w 2 "$probe_host" "$probe_port" >/dev/null 2>&1
+    return $?
+  fi
+  if [ -n "${BASH_VERSION:-}" ]; then
+    (exec 3<>"/dev/tcp/$probe_host/$probe_port") 2>/dev/null
+    result=$?
+    exec 3>&- 2>/dev/null || true
+    return $result
+  fi
+  echo "Note: neither 'nc' nor bash's /dev/tcp is available -- cannot probe $probe_host:$probe_port." >&2
+  return 1
+}
+
+# POSIX twin of Resolve-NpdevAppRelative -- $1 = this app's ROOT (already absolute), $2 = the raw
+# plan value (may be relative, absolute, or empty). An absolute value is honoured as-is (a plan
+# written by an older generator keeps working); an empty one resolves to the app root itself.
+npdev_resolve_app_relative() {
+  ar_app_root="$1"; ar_raw="$2"
+  if [ -z "$ar_raw" ]; then echo "$ar_app_root"; return; fi
+  case "$ar_raw" in
+    /*) echo "$ar_raw" ;;
+    *) echo "$ar_app_root/$ar_raw" ;;
+  esac
+}
+""";
+
     public Path emit(CompiledModel model, JsonNode config, Path finalAppRoot, GeneratedDatabasePlan plan) throws Exception {
         if (finalAppRoot == null || plan == null) {
             return null;
@@ -395,10 +539,15 @@ function Test-NpdevServerReachable {
                 plan, serverPort, apiKey, hasUserConcept, springProfile);
         writeJson(opsRoot.resolve("resolved-db-plan.json"), resolvedPlan);
         write(opsRoot.resolve("Create-Environment.ps1"), createEnvironmentScript());
+        writeExecutable(opsRoot.resolve("create-environment.sh"), createEnvironmentScriptPosix());
         write(opsRoot.resolve("Start-Environment.ps1"), startEnvironmentScript());
+        writeExecutable(opsRoot.resolve("start-environment.sh"), startEnvironmentScriptPosix());
         write(opsRoot.resolve("Stop-Environment.ps1"), stopEnvironmentScript());
+        writeExecutable(opsRoot.resolve("stop-environment.sh"), stopEnvironmentScriptPosix());
         write(opsRoot.resolve("Status-Environment.ps1"), statusEnvironmentScript());
+        writeExecutable(opsRoot.resolve("status-environment.sh"), statusEnvironmentScriptPosix());
         write(opsRoot.resolve("Build-FinalApp.ps1"), buildFinalAppScript());
+        writeExecutable(opsRoot.resolve("build-final-app.sh"), buildFinalAppScriptPosix());
         write(opsRoot.resolve("Run-FinalApp.ps1"), runFinalAppScript(serverPort));
         writeExecutable(opsRoot.resolve("run-final-app.sh"), runFinalAppScriptPosix(serverPort));
         // R9.4: guarded background Start/Stop, promoted here from the AppGen PowerShell layer so
@@ -421,8 +570,11 @@ function Test-NpdevServerReachable {
         writeExecutable(opsRoot.resolve("install-service.sh"), installServiceScriptPosix(safeAppId));
         writeExecutable(opsRoot.resolve("uninstall-service.sh"), uninstallServiceScriptPosix(safeAppId));
         write(opsRoot.resolve("Smoke-Test.ps1"), smokeTestScript());
+        writeExecutable(opsRoot.resolve("smoke-test.sh"), smokeTestScriptPosix());
         write(opsRoot.resolve("Print-DbConnectionInfo.ps1"), printDbConnectionInfoScript());
+        writeExecutable(opsRoot.resolve("print-db-connection-info.sh"), printDbConnectionInfoScriptPosix());
         write(opsRoot.resolve("Reset-Environment.ps1"), resetEnvironmentScript());
+        writeExecutable(opsRoot.resolve("reset-environment.sh"), resetEnvironmentScriptPosix());
         write(opsRoot.resolve("README_RUNBOOK.md"), readme());
         writeSecretsEnvExample(normalizedFinalAppRoot);
         return opsRoot;
@@ -521,14 +673,17 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
         // and an older reader that concatenates it still produces something meaningful.
         out.put("finalAppPath", relativeToApp(finalAppRoot, finalAppRoot));
         out.put("opsRoot", relativeToApp(finalAppRoot, opsRoot));
-        // The ONE legitimate absolute, and it is a HINT, not an instruction: a machine-level jar
-        // cache shared by every app built here, which does not travel with a copied app. No script
-        // bakes it -- they call Get-NpdevRuntimeHostLibs, so $env:NPDEV_RUNTIMEHOST_LIBS overrides it
-        // without anyone editing a generated file. Empty when this app was not generated under a
-        // build root at all: a fabricated path that has never existed is not information, and
-        // recording one is how "<somewhere>/Build/runtimehost-libs" ends up in an app that was never
-        // near it.
-        out.put("runtimeHostLibsDir", runtimeHostLibs == null ? "" : slash(runtimeHostLibs));
+        // D1 (Cold Clone Audit 2026-08-28): since the generator stages the platform jars INSIDE the
+        // app at libs/npdev-runtime/ (FinalAppAssembler#stageRuntimeHostLibsIntoApp), this value is
+        // ordinarily the app's OWN copy and travels with it -- recorded relative (libs/npdev-runtime)
+        // so a relocated app's Build-FinalApp.ps1 passes the right -PnpdevRuntimeHostLibsDir and no
+        // script bakes a machine path. The legacy value -- an absolute machine-level jar cache that
+        // does NOT travel, shared by every app built here -- remains only for pre-D1 apps that carry
+        // no libs/npdev-runtime; it is recorded via relativeToApp too so a copy is never pointed at
+        // the generating machine's drive, and empty when the app was not generated under a build
+        // root at all (a fabricated path that has never existed is not information).
+        out.put("runtimeHostLibsDir",
+                runtimeHostLibs == null ? "" : relativeToApp(finalAppRoot, runtimeHostLibs));
         out.put("serverPort", serverPort);
         out.put("apiKey", apiKey);
         // R9.4: the Spring profile(s) Start-App.ps1/start-app.sh boot with by default (overridable
@@ -939,6 +1094,247 @@ throw "Unsupported engine '$($plan.engine)' in resolved-db-plan.json."
 """;
     }
 
+    /**
+     * D2 (Cold Clone Audit): the POSIX twin of {@link #createEnvironmentScript}. Branches on
+     * {@code profile.kind} identically to the PowerShell original -- Docker container create/start
+     * for {@code server}, an H2 TCP server process for {@code embedded-server}, a bare data
+     * directory for {@code H2Local}, nothing for {@code InMemory}.
+     *
+     * <p><b>One deliberate degradation, named honestly rather than silently attempted:</b> the
+     * PowerShell original's externally-provisioned branch goes on to COMPILE AND RUN a small JDBC
+     * probe program on the fly ({@code Find-NpdevDriverJar}/{@code Test-NpdevDatabaseExists}) to
+     * tell "database missing" apart from "wrong password" by SQLSTATE. Re-implementing a Java
+     * compile-and-run dance in POSIX {@code sh} is a different, much larger item than this one, and
+     * {@code npdev db test-connection} (a Python CLI command, not a PowerShell script) already does
+     * this exact job correctly and cross-platform -- so this script does the TCP reachability check
+     * only and points at that command for the deeper answer, the same "degrade honestly, never
+     * guess ready" discipline {@link #startAppScriptPosix} already established for its own gap.
+     */
+    private static String createEnvironmentScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp environment creator -- POSIX twin of Create-Environment.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+ENGINE=$(npdev_plan_get "$PLAN_PATH" engine)
+EXTERNALLY_PROVISIONED=$(npdev_plan_get "$PLAN_PATH" externallyProvisioned false)
+HOST=$(npdev_plan_get "$PLAN_PATH" host)
+HOST_PORT=$(npdev_plan_get "$PLAN_PATH" hostPort)
+CONTAINER_NAME=$(npdev_plan_get "$PLAN_PATH" containerName)
+DB_NAME=$(npdev_plan_get "$PLAN_PATH" resolvedDatabaseName)
+PROFILE_KIND=$(npdev_plan_get "$PLAN_PATH" profile.kind)
+GUI_LABEL=$(npdev_plan_get "$PLAN_PATH" profile.guiLabel)
+IMAGE=$(npdev_plan_get "$PLAN_PATH" profile.image)
+DATA_ROOT_RAW=$(npdev_plan_get "$PLAN_PATH" resolvedDataRoot)
+DATA_ROOT=$(npdev_resolve_app_relative "$APP_ROOT" "$DATA_ROOT_RAW")
+
+if [ "$EXTERNALLY_PROVISIONED" = "true" ]; then
+  npdev_write_external_notice "$PLAN_PATH" 'Creating the environment'
+  echo 'Checking what is actually there instead:'
+  echo ''
+  if ! npdev_server_reachable "$HOST" "$HOST_PORT"; then
+    echo "Nothing is listening on $HOST:$HOST_PORT. Start your $ENGINE server, then run this again."
+    exit 1
+  fi
+  echo "Reachable: something is serving on $HOST:$HOST_PORT."
+  echo ''
+  echo "Could not verify database '$DB_NAME' more deeply from this POSIX launcher -- that check"
+  echo "compiles and runs a small JDBC probe, which is PowerShell-only today. Run"
+  echo "\\`npdev db test-connection\\`, which tells a missing database apart from a wrong password."
+  exit 0
+fi
+
+if [ "$PROFILE_KIND" = "embedded" ] && [ "$ENGINE" = "InMemory" ]; then
+  echo 'No physical database to create for InMemory.'
+  exit 0
+fi
+
+mkdir -p "$DATA_ROOT"
+
+npdev_wait_engine_ready() {
+  wr_plan="$1"; wr_container="$2"
+  wr_timeout=$(npdev_plan_get "$wr_plan" profile.readyProbe.timeoutSeconds 30)
+  wr_expect_code=$(npdev_plan_get "$wr_plan" profile.readyProbe.expectExitCode 0)
+  wr_probe_lines=$(npdev_plan_exec_args "$wr_plan" profile.readyProbe.exec)
+  if [ -z "$wr_probe_lines" ]; then
+    echo "Engine '$(npdev_plan_get "$wr_plan" engine)' has no readiness probe in its profile. Refusing to report an environment ready when nothing checked it." >&2
+    exit 1
+  fi
+  wr_elapsed=0
+  while [ "$wr_elapsed" -lt "$wr_timeout" ]; do
+    set --
+    while IFS= read -r wr_probe_arg; do
+      [ -n "$wr_probe_arg" ] && set -- "$@" "$wr_probe_arg"
+    done <<EOF
+$wr_probe_lines
+EOF
+    docker exec "$wr_container" "$@" >/dev/null 2>&1
+    wr_actual_code=$?
+    if [ "$wr_actual_code" = "$wr_expect_code" ]; then return 0; fi
+    sleep 2
+    wr_elapsed=$((wr_elapsed + 2))
+  done
+  echo "Engine '$(npdev_plan_get "$wr_plan" engine)' container '$wr_container' did not become ready within ${wr_timeout}s." >&2
+  exit 1
+}
+
+npdev_ensure_engine_database() {
+  ed_plan="$1"; ed_container="$2"
+  ed_env_lines=$(npdev_plan_exec_env "$ed_plan" profile.ensureDatabase.execEnv)
+  ed_create_lines=$(npdev_plan_exec_args "$ed_plan" profile.ensureDatabase.createExec)
+  ed_db_name=$(npdev_plan_get "$ed_plan" resolvedDatabaseName)
+  if [ -z "$ed_create_lines" ]; then
+    echo "Engine has no ensureDatabase step in its profile." >&2
+    exit 1
+  fi
+  set --
+  if [ -n "$ed_env_lines" ]; then
+    while IFS= read -r ed_env_line; do
+      [ -n "$ed_env_line" ] && set -- "$@" -e "$ed_env_line"
+    done <<EOF
+$ed_env_lines
+EOF
+  fi
+  set -- "$@" "$ed_container"
+  while IFS= read -r ed_create_arg; do
+    [ -n "$ed_create_arg" ] && set -- "$@" "$ed_create_arg"
+  done <<EOF
+$ed_create_lines
+EOF
+  if docker exec "$@" >/dev/null 2>&1; then
+    echo "Database ready: $ed_db_name"
+    return 0
+  fi
+  # A create that fails because the database is already there is success. Ask, rather than parse an
+  # engine-specific error message -- every engine phrases that differently.
+  ed_list_lines=$(npdev_plan_exec_args "$ed_plan" profile.ensureDatabase.listExec)
+  if [ -n "$ed_list_lines" ]; then
+    set --
+    if [ -n "$ed_env_lines" ]; then
+      while IFS= read -r ed_env_line; do
+        [ -n "$ed_env_line" ] && set -- "$@" -e "$ed_env_line"
+      done <<EOF
+$ed_env_lines
+EOF
+    fi
+    set -- "$@" "$ed_container"
+    while IFS= read -r ed_list_arg; do
+      [ -n "$ed_list_arg" ] && set -- "$@" "$ed_list_arg"
+    done <<EOF
+$ed_list_lines
+EOF
+    if ed_existing=$(docker exec "$@" 2>/dev/null) && printf '%s\\n' "$ed_existing" | grep -qF "$ed_db_name"; then
+      echo "Verified database: $ed_db_name"
+      return 0
+    fi
+  fi
+  echo "Database '$ed_db_name' could not be created or verified in '$ed_container'." >&2
+  exit 1
+}
+
+if [ "$PROFILE_KIND" = "server" ]; then
+  if ! docker version >/dev/null 2>&1; then
+    echo "Docker is required to create a $GUI_LABEL environment." >&2
+    exit 1
+  fi
+  existing=$(docker ps -a --filter "name=^/${CONTAINER_NAME}\\$" --format '{{.Names}}' 2>/dev/null || true)
+  if [ "$existing" = "$CONTAINER_NAME" ]; then
+    docker start "$CONTAINER_NAME" >/dev/null
+  else
+    # A machine that ALREADY runs Postgres/MySQL/SQL Server is the likely case, not the exotic one.
+    # Detect the collision and name it, rather than letting `docker run -p` fail with a raw
+    # port-binding error -- same reasoning as Create-Environment.ps1's own check.
+    if npdev_server_reachable "$HOST" "$HOST_PORT"; then
+      echo ''
+      echo "Something is already listening on $HOST:$HOST_PORT."
+      echo ''
+      echo "If that is your own $GUI_LABEL, you do not need this button -- NPDev will"
+      echo "connect to it. Use \\"Test connection\\" to confirm, then Run."
+      echo ''
+      echo "If it is a container from another app, stop it first, or give this app a"
+      echo "different port in db.definition.json."
+      exit 1
+    fi
+    set -- run -d --name "$CONTAINER_NAME"
+    while IFS= read -r env_line; do
+      [ -n "$env_line" ] && set -- "$@" -e "$env_line"
+    done <<EOF
+$(npdev_plan_exec_env "$PLAN_PATH" profile.containerEnv)
+EOF
+    set -- "$@" -p "${HOST_PORT}:$(npdev_plan_get "$PLAN_PATH" containerPort)"
+    set -- "$@" "$IMAGE"
+    # AFTER the image, because these are the engine's own arguments, not docker's.
+    while IFS= read -r extra_arg; do
+      [ -n "$extra_arg" ] && set -- "$@" "$extra_arg"
+    done <<EOF
+$(npdev_plan_exec_args "$PLAN_PATH" profile.extraRunArgs)
+EOF
+    if ! docker "$@" >/dev/null; then
+      echo "Failed to start the $GUI_LABEL container '$CONTAINER_NAME'." >&2
+      exit 1
+    fi
+  fi
+  npdev_wait_engine_ready "$PLAN_PATH" "$CONTAINER_NAME"
+  npdev_ensure_engine_database "$PLAN_PATH" "$CONTAINER_NAME"
+  echo "$GUI_LABEL environment ready: $CONTAINER_NAME"
+  exit 0
+fi
+
+if [ "$ENGINE" = "H2Local" ]; then
+  echo "H2Local data root ready: $DATA_ROOT"
+  exit 0
+fi
+
+if [ "$PROFILE_KIND" = "embedded-server" ]; then
+  RUNTIMEHOST_LIBS="${NPDEV_RUNTIMEHOST_LIBS:-}"
+  if [ -z "$RUNTIMEHOST_LIBS" ]; then
+    RUNTIMEHOST_LIBS_RAW=$(npdev_plan_get "$PLAN_PATH" runtimeHostLibsDir)
+    if [ -n "$RUNTIMEHOST_LIBS_RAW" ]; then
+      RUNTIMEHOST_LIBS=$(npdev_resolve_app_relative "$APP_ROOT" "$RUNTIMEHOST_LIBS_RAW")
+    fi
+  fi
+  JAR=""
+  for root in "$RUNTIMEHOST_LIBS" "$APP_ROOT/build" "$DATA_ROOT"; do
+    [ -n "$root" ] && [ -d "$root" ] || continue
+    newest_mtime=-1
+    for candidate in $(find "$root" -name 'h2-*.jar' -type f 2>/dev/null); do
+      candidate_mtime=$(stat -c '%Y' "$candidate" 2>/dev/null || stat -f '%m' "$candidate" 2>/dev/null || echo 0)
+      if [ "$candidate_mtime" -ge "$newest_mtime" ]; then newest_mtime="$candidate_mtime"; JAR="$candidate"; fi
+    done
+    [ -n "$JAR" ] && break
+  done
+  if [ -z "$JAR" ]; then
+    echo "Could not find an H2 jar under: $RUNTIMEHOST_LIBS, $APP_ROOT/build, $DATA_ROOT. Build this app once, or restore its runtimehost-libs." >&2
+    exit 1
+  fi
+  PID_FILE="$SCRIPT_DIR/h2server.pid"
+  STDOUT_LOG="$SCRIPT_DIR/h2server.stdout.log"
+  STDERR_LOG="$SCRIPT_DIR/h2server.stderr.log"
+  if [ -f "$PID_FILE" ]; then
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+      echo "H2Server already running with PID $existing_pid"
+      exit 0
+    fi
+  fi
+  # PORT-1: -baseDir is the FINALAPP ROOT, matching Create-Environment.ps1 -- the client URL carries
+  # the app-relative path and H2Server resolves it server-side against this same anchor.
+  nohup java -cp "$JAR" org.h2.tools.Server -tcp -tcpPort "$HOST_PORT" -baseDir "$APP_ROOT" -ifNotExists >"$STDOUT_LOG" 2>"$STDERR_LOG" &
+  H2_PID=$!
+  echo "$H2_PID" > "$PID_FILE"
+  sleep 2
+  echo "H2Server started on port $HOST_PORT, PID $H2_PID"
+  exit 0
+fi
+
+echo "Unsupported engine '$ENGINE' in resolved-db-plan.json." >&2
+exit 1
+""";
+    }
+
     private static String startEnvironmentScript() {
         return """
 $ErrorActionPreference = 'Stop'
@@ -959,6 +1355,34 @@ if ($plan.externallyProvisioned) {
   exit 1
 }
 & (Join-Path $PSScriptRoot 'Create-Environment.ps1')
+""";
+    }
+
+    /** D2 (Cold Clone Audit): the POSIX twin of {@link #startEnvironmentScript}. */
+    private static String startEnvironmentScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp environment starter -- POSIX twin of Start-Environment.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+EXTERNALLY_PROVISIONED=$(npdev_plan_get "$PLAN_PATH" externallyProvisioned false)
+if [ "$EXTERNALLY_PROVISIONED" = "true" ]; then
+  npdev_write_external_notice "$PLAN_PATH" 'Starting the environment'
+  HOST=$(npdev_plan_get "$PLAN_PATH" host)
+  HOST_PORT=$(npdev_plan_get "$PLAN_PATH" hostPort)
+  ENGINE=$(npdev_plan_get "$PLAN_PATH" engine)
+  if npdev_server_reachable "$HOST" "$HOST_PORT"; then
+    echo "Something is already serving on $HOST:$HOST_PORT -- if that is your"
+    echo 'server, there is nothing to start. Run the app.'
+    exit 0
+  fi
+  echo "Nothing is listening on $HOST:$HOST_PORT. Start your $ENGINE"
+  echo 'server the way you normally do, then run the app.'
+  exit 1
+fi
+exec "$SCRIPT_DIR/create-environment.sh"
 """;
     }
 
@@ -990,6 +1414,44 @@ if ($plan.profile.kind -eq 'embedded-server') {
   exit 0
 }
 Write-Host "No background environment service to stop for $($plan.engine)."
+""";
+    }
+
+    /** D2 (Cold Clone Audit): the POSIX twin of {@link #stopEnvironmentScript}. */
+    private static String stopEnvironmentScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp environment stopper -- POSIX twin of Stop-Environment.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+EXTERNALLY_PROVISIONED=$(npdev_plan_get "$PLAN_PATH" externallyProvisioned false)
+if [ "$EXTERNALLY_PROVISIONED" = "true" ]; then
+  npdev_write_external_notice "$PLAN_PATH" 'Stopping the environment'
+  echo 'Stop it yourself if you mean to -- other things may be using it.'
+  exit 0
+fi
+PROFILE_KIND=$(npdev_plan_get "$PLAN_PATH" profile.kind)
+if [ "$PROFILE_KIND" = "server" ]; then
+  CONTAINER_NAME=$(npdev_plan_get "$PLAN_PATH" containerName)
+  GUI_LABEL=$(npdev_plan_get "$PLAN_PATH" profile.guiLabel)
+  running=$(docker ps --filter "name=^/${CONTAINER_NAME}\\$" --format '{{.Names}}' 2>/dev/null || true)
+  if [ "$running" = "$CONTAINER_NAME" ]; then docker stop "$CONTAINER_NAME" >/dev/null; fi
+  echo "$GUI_LABEL environment stopped: $CONTAINER_NAME"
+  exit 0
+fi
+if [ "$PROFILE_KIND" = "embedded-server" ]; then
+  PID_FILE="$SCRIPT_DIR/h2server.pid"
+  if [ -f "$PID_FILE" ]; then
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then kill "$existing_pid"; fi
+    rm -f "$PID_FILE"
+  fi
+  echo 'H2Server environment stopped.'
+  exit 0
+fi
+echo "No background environment service to stop for $(npdev_plan_get "$PLAN_PATH" engine)."
 """;
     }
 
@@ -1039,6 +1501,64 @@ Write-Host 'InMemory has no physical database service.'
 """;
     }
 
+    /** D2 (Cold Clone Audit): the POSIX twin of {@link #statusEnvironmentScript}. */
+    private static String statusEnvironmentScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp environment status -- POSIX twin of Status-Environment.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+DATA_ROOT=$(npdev_resolve_app_relative "$APP_ROOT" "$(npdev_plan_get "$PLAN_PATH" resolvedDataRoot)")
+ENGINE=$(npdev_plan_get "$PLAN_PATH" engine)
+echo "Engine: $ENGINE"
+echo "Physical database: $(npdev_plan_get "$PLAN_PATH" physicalDatabase)"
+echo "Resolved database: $(npdev_plan_get "$PLAN_PATH" resolvedDatabaseName)"
+echo "Data root: $DATA_ROOT"
+# STOR-14: an external server has NO CONTAINER TO INSPECT, so `docker ps` would report "not found"
+# about a database that is running perfectly well. Reachability is the question that has an answer
+# here, and it is the question the user actually asked.
+if [ "$(npdev_plan_get "$PLAN_PATH" externallyProvisioned false)" = "true" ]; then
+  echo "Provisioning: EXTERNAL -- this server is yours, not NPDev's."
+  HOST=$(npdev_plan_get "$PLAN_PATH" host)
+  HOST_PORT=$(npdev_plan_get "$PLAN_PATH" hostPort)
+  if npdev_server_reachable "$HOST" "$HOST_PORT"; then
+    echo "Reachable: yes -- something is serving on $HOST:$HOST_PORT."
+    echo "That it is YOUR database, with this app's credentials, is what"
+    echo "\\`npdev db test-connection\\` settles; a port probe cannot."
+    exit 0
+  fi
+  echo "Reachable: NO -- nothing is listening on $HOST:$HOST_PORT."
+  exit 1
+fi
+PROFILE_KIND=$(npdev_plan_get "$PLAN_PATH" profile.kind)
+if [ "$PROFILE_KIND" = "server" ]; then
+  CONTAINER_NAME=$(npdev_plan_get "$PLAN_PATH" containerName)
+  docker ps -a --filter "name=^/${CONTAINER_NAME}\\$"
+  exit 0
+fi
+if [ "$PROFILE_KIND" = "embedded-server" ]; then
+  PID_FILE="$SCRIPT_DIR/h2server.pid"
+  if [ -f "$PID_FILE" ]; then
+    existing_pid=$(cat "$PID_FILE" 2>/dev/null || true)
+    if [ -n "$existing_pid" ] && kill -0 "$existing_pid" 2>/dev/null; then
+      echo "H2Server running with PID $existing_pid"
+      exit 0
+    fi
+  fi
+  echo 'H2Server is not running.'
+  exit 1
+fi
+if [ "$ENGINE" = "H2Local" ]; then
+  if [ -d "$DATA_ROOT" ]; then echo "H2Local data root exists: True"; else echo "H2Local data root exists: False"; fi
+  exit 0
+fi
+echo 'InMemory has no physical database service.'
+""";
+    }
+
     /**
      * PORT-2: this script used to open with {@code Set-Location '<absolute app path>'} and pass an
      * absolute {@code -PnpdevRuntimeHostLibsDir}. Copy the app anywhere and it kept building the
@@ -1073,6 +1593,40 @@ if (-not [string]::IsNullOrWhiteSpace($libs)) { $gradleArgs += "-PnpdevRuntimeHo
 $gradleArgs += @('clean', 'build', '--stacktrace', '--console=plain')
 & '.\\gradlew.bat' @gradleArgs
 exit $LASTEXITCODE
+""";
+    }
+
+    /** D2 (Cold Clone Audit): the POSIX twin of {@link #buildFinalAppScript}. Runs {@code ./gradlew}
+     * (the wrapper's POSIX launcher, always shipped alongside {@code gradlew.bat}), same
+     * {@code -PnpdevRuntimeHostLibsDir} omit-vs-pass-through logic as the PowerShell original. */
+    private static String buildFinalAppScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp builder -- POSIX twin of Build-FinalApp.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+cd "$APP_ROOT"
+LIBS_RAW=$(npdev_plan_get "$PLAN_PATH" runtimeHostLibsDir)
+LIBS=""
+if [ -n "$LIBS_RAW" ]; then LIBS=$(npdev_resolve_app_relative "$APP_ROOT" "$LIBS_RAW"); fi
+# A cache recorded on the GENERATING machine is not a fact about THIS one. Passing it regardless is
+# how a recipient gets "Missing NPDev RuntimeHost libs manifest in D:/..." -- a drive they do not
+# have, named by a file they did not write. Dropped instead, so build.gradle's own chain runs. An
+# explicit $NPDEV_RUNTIMEHOST_LIBS is passed through even when it does not exist: that one is the
+# user's own statement, and swallowing a typo is worse than failing on it.
+if [ -n "$LIBS" ] && [ -z "${NPDEV_RUNTIMEHOST_LIBS:-}" ] && [ ! -d "$LIBS" ]; then
+  echo "The runtimehost-libs cache recorded when this app was generated is not on this machine:"
+  echo "  $LIBS"
+  echo 'Ignoring it. If the build cannot find its jars, set $NPDEV_RUNTIMEHOST_LIBS to yours.'
+  LIBS=""
+fi
+set -- --no-daemon
+if [ -n "$LIBS" ]; then set -- "$@" "-PnpdevRuntimeHostLibsDir=$LIBS"; fi
+set -- "$@" clean build --stacktrace --console=plain
+exec ./gradlew "$@"
 """;
     }
 
@@ -1878,6 +2432,109 @@ exit 0
 """;
     }
 
+    /**
+     * D2 (Cold Clone Audit): the POSIX twin of {@link #smokeTestScript}. Uses {@code curl} (already
+     * a hard dependency of {@code Test-NpdevServerReachable}'s spirit -- every POSIX-capable machine
+     * this toolbox targets has it) for the HTTP calls and {@code python3} for JSON construction and
+     * the report file, the same "shell out to the platform's own hard Python dependency" choice
+     * {@link #PLAN_JSON_HELPER_SH} makes.
+     */
+    private static String smokeTestScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp smoke test -- POSIX twin of Smoke-Test.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + API_KEY_PROVISIONER_SH + """
+ensure_npdev_api_key "$APP_ROOT"
+SERVER_PORT=$(npdev_plan_get "$PLAN_PATH" serverPort)
+BASE_URL="http://localhost:$SERVER_PORT"
+API_KEY="${NPDEV_AUTH_API_KEYS%%=*}"
+REPORT_PATH="$SCRIPT_DIR/smoke-test-report.json"
+HAS_USER_CONCEPT=$(npdev_plan_get "$PLAN_PATH" smoke.hasUserConcept false)
+APP_ID=$(npdev_plan_get "$PLAN_PATH" appId)
+ENGINE=$(npdev_plan_get "$PLAN_PATH" engine)
+
+WORK_DIR=$(mktemp -d 2>/dev/null || echo "/tmp/npdev-smoke-$$")
+mkdir -p "$WORK_DIR"
+trap 'rm -rf "$WORK_DIR"' EXIT
+
+STATUS=FAIL
+STORAGE_PASSED=false
+SAMPLE_PASSED=false
+SAMPLE_SKIPPED=""
+ERROR_MSG=""
+
+SUMMARY_CODE=$(curl -s -o "$WORK_DIR/summary.json" -w '%{http_code}' -H "X-Api-Key: $API_KEY" "$BASE_URL/api/admin/storage/summary" 2>/dev/null || echo 000)
+if [ "$SUMMARY_CODE" = "200" ]; then
+  STORAGE_PASSED=true
+  if [ "$HAS_USER_CONCEPT" = "true" ]; then
+    EMAIL="smoke-$(date +%s)-$$@example.test"
+    BODY=$(python3 -c 'import json, sys, uuid; print(json.dumps({"id": str(uuid.uuid4()), "name": "Smoke User", "email": sys.argv[1], "active": True}))' "$EMAIL")
+    CREATE_CODE=$(curl -s -o "$WORK_DIR/created.json" -w '%{http_code}' -X POST -H "X-Api-Key: $API_KEY" -H 'Content-Type: application/json' -d "$BODY" "$BASE_URL/api/users" 2>/dev/null || echo 000)
+    LIST_CODE=$(curl -s -o "$WORK_DIR/users.json" -w '%{http_code}' -H "X-Api-Key: $API_KEY" "$BASE_URL/api/users" 2>/dev/null || echo 000)
+    if [ "$CREATE_CODE" = "200" ] || [ "$CREATE_CODE" = "201" ]; then
+      if [ "$LIST_CODE" = "200" ] && python3 -c '
+import json, sys
+with open(sys.argv[2], encoding="utf-8") as f:
+    users = json.load(f)
+users = users if isinstance(users, list) else []
+sys.exit(0 if any(u.get("email") == sys.argv[1] for u in users) else 1)
+' "$EMAIL" "$WORK_DIR/users.json"; then
+        SAMPLE_PASSED=true
+      else
+        ERROR_MSG="Created user '$EMAIL' was not returned by GET /api/users."
+      fi
+    else
+      ERROR_MSG="POST /api/users returned HTTP $CREATE_CODE"
+    fi
+  else
+    SAMPLE_PASSED=true
+    SAMPLE_SKIPPED="No User concept exists in this app."
+  fi
+  if [ "$SAMPLE_PASSED" = "true" ]; then STATUS=PASS; fi
+else
+  ERROR_MSG="GET /api/admin/storage/summary returned HTTP $SUMMARY_CODE"
+fi
+
+python3 -c '
+import json, sys
+app_id, engine, base_url, storage_passed, sample_passed, status, error_msg, sample_skipped, \\
+    summary_path, created_path, report_path = sys.argv[1:12]
+report = {
+    "appId": app_id, "engine": engine, "baseUrl": base_url,
+    "storageSummaryPassed": storage_passed == "true",
+    "sampleCreateListPassed": sample_passed == "true",
+    "status": status,
+    "errors": [error_msg] if error_msg else [],
+}
+try:
+    with open(summary_path, encoding="utf-8") as f:
+        report["storageSummary"] = json.load(f)
+except Exception:
+    pass
+try:
+    with open(created_path, encoding="utf-8") as f:
+        report["createdUser"] = json.load(f)
+except Exception:
+    pass
+if sample_skipped:
+    report["sampleCreateListSkipped"] = sample_skipped
+with open(report_path, "w", encoding="utf-8") as f:
+    json.dump(report, f, indent=2)
+    f.write("\\n")
+' "$APP_ID" "$ENGINE" "$BASE_URL" "$STORAGE_PASSED" "$SAMPLE_PASSED" "$STATUS" "$ERROR_MSG" "$SAMPLE_SKIPPED" \\
+  "$WORK_DIR/summary.json" "$WORK_DIR/created.json" "$REPORT_PATH"
+
+echo "Smoke test report: $REPORT_PATH"
+echo "Status: $STATUS"
+if [ "$STATUS" != "PASS" ]; then exit 1; fi
+exit 0
+""";
+    }
+
     private static String printDbConnectionInfoScript() {
         return """
 $plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'resolved-db-plan.json') | ConvertFrom-Json
@@ -1952,6 +2609,88 @@ throw "Unsupported engine '$($plan.engine)' in resolved-db-plan.json."
 """;
     }
 
+    /** D2 (Cold Clone Audit): the POSIX twin of {@link #printDbConnectionInfoScript}. */
+    private static String printDbConnectionInfoScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp DBeaver connection info -- POSIX twin of Print-DbConnectionInfo.ps1.
+set -e
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+DATA_ROOT=$(npdev_resolve_app_relative "$APP_ROOT" "$(npdev_plan_get "$PLAN_PATH" resolvedDataRoot)")
+DB_NAME=$(npdev_plan_get "$PLAN_PATH" resolvedDatabaseName)
+ENGINE=$(npdev_plan_get "$PLAN_PATH" engine)
+GUI_LABEL=$(npdev_plan_get "$PLAN_PATH" profile.guiLabel)
+PASSWORD=$(npdev_plan_get "$PLAN_PATH" password)
+if [ -z "$DB_NAME" ]; then H2_FILE="$DATA_ROOT"; else H2_FILE="$DATA_ROOT/$DB_NAME"; fi
+
+# The quirks are printed HERE because this is the screen a user already has open when they need
+# them -- that MySQL's utf8mb4 is not optional, that SQL Server's 'sa' is not their app's username.
+npdev_show_engine_quirks() {
+  quirk_lines=$(npdev_plan_exec_args "$PLAN_PATH" profile.quirks)
+  [ -z "$quirk_lines" ] && return 0
+  echo ''
+  echo "Notes for $GUI_LABEL:"
+  echo "$quirk_lines" | while IFS= read -r quirk; do
+    [ -n "$quirk" ] && echo "  - $quirk"
+  done
+}
+
+if [ "$ENGINE" = "InMemory" ]; then
+  echo 'No physical database. Use /api/admin/storage/summary.'
+  exit 0
+fi
+if [ "$(npdev_plan_get "$PLAN_PATH" profile.kind)" = "server" ]; then
+  echo 'DBeaver connection'
+  echo ''
+  echo "Database type: $GUI_LABEL"
+  echo "Host: $(npdev_plan_get "$PLAN_PATH" dbeaver.host)"
+  echo "Port: $(npdev_plan_get "$PLAN_PATH" dbeaver.port)"
+  echo "Database: $(npdev_plan_get "$PLAN_PATH" dbeaver.database)"
+  echo "Username: $(npdev_plan_get "$PLAN_PATH" dbeaver.username)"
+  echo "Password: $PASSWORD"
+  echo "SSL: $(npdev_plan_get "$PLAN_PATH" dbeaver.ssl)"
+  echo "JDBC URL: $(npdev_plan_get "$PLAN_PATH" jdbcUrl)"
+  npdev_show_engine_quirks
+  exit 0
+fi
+if [ "$ENGINE" = "H2Local" ]; then
+  echo 'DBeaver connection'
+  echo ''
+  echo "Database type: $GUI_LABEL"
+  echo "JDBC URL: jdbc:h2:file:$H2_FILE;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
+  echo "Database file: $H2_FILE"
+  echo "Username: $(npdev_plan_get "$PLAN_PATH" username)"
+  echo "Password: $PASSWORD"
+  echo ''
+  echo "The app itself uses the app-relative form ($(npdev_plan_get "$PLAN_PATH" jdbcUrl)),"
+  echo 'resolved against its own directory. Same file, spelled for a tool that is not the app.'
+  npdev_show_engine_quirks
+  exit 0
+fi
+if [ "$ENGINE" = "H2Server" ]; then
+  echo 'DBeaver connection'
+  echo ''
+  echo "Database type: $GUI_LABEL"
+  echo "Host: $(npdev_plan_get "$PLAN_PATH" dbeaver.host)"
+  echo "Port: $(npdev_plan_get "$PLAN_PATH" dbeaver.port)"
+  echo "JDBC URL: $(npdev_plan_get "$PLAN_PATH" jdbcUrl)"
+  echo "Database file: $H2_FILE"
+  echo "Username: $(npdev_plan_get "$PLAN_PATH" username)"
+  echo "Password: $PASSWORD"
+  echo ''
+  echo 'The path in the URL is resolved by the H2 SERVER, against the baseDir'
+  echo "create-environment.sh starts it with -- this app's own directory."
+  npdev_show_engine_quirks
+  exit 0
+fi
+echo "Unsupported engine '$ENGINE' in resolved-db-plan.json." >&2
+exit 1
+""";
+    }
+
     private static String resetEnvironmentScript() {
         return """
 param([string]$Confirm)
@@ -1998,6 +2737,68 @@ Write-Host "Environment reset for $($plan.appId)."
     }
 
     /**
+     * D2 (Cold Clone Audit): the POSIX twin of {@link #resetEnvironmentScript} -- STOR-14's
+     * centrepiece, ported with the SAME ordering the PowerShell original's own comment insists on:
+     * the externally-provisioned refusal comes BEFORE the confirmation-token check and RETURNS,
+     * so neither destructive half below it (the {@code docker rm} nor the recursive data-root
+     * delete) is ever reached for a server this toolbox did not provision. The confirmation token is
+     * a positional argument ({@code ./reset-environment.sh I_UNDERSTAND_DB_DATA_WILL_BE_DELETED}),
+     * matching {@code start-app.sh}'s own positional-argument convention rather than the PowerShell
+     * {@code -Confirm} flag syntax, which POSIX {@code sh} has no equivalent of.
+     */
+    private static String resetEnvironmentScriptPosix() {
+        return """
+#!/bin/sh
+# NPDev generated FinalApp environment reset -- POSIX twin of Reset-Environment.ps1.
+# Usage: ./reset-environment.sh I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
+set -e
+CONFIRM="${1:-}"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+APP_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)
+PLAN_PATH="$SCRIPT_DIR/resolved-db-plan.json"
+""" + PLAN_JSON_HELPER_SH + """
+DATA_ROOT=$(npdev_resolve_app_relative "$APP_ROOT" "$(npdev_plan_get "$PLAN_PATH" resolvedDataRoot)")
+# STOR-14, THE CENTREPIECE -- and it comes BEFORE the confirmation check on purpose.
+#
+# Asking for the token first would not be a smaller version of this guard, it would be a worse one:
+# the user types it correctly, for the app they mean, and the answer is still no. Refusing first says
+# so without first teaching them the token that removes the only other safety here.
+#
+# It also comes before BOTH destructive halves, and it EXITS. The two halves below are `docker rm`
+# and a recursive delete of the data root -- and the second one is guarded by `physicalDatabase` and
+# existence, NEVER by whose database it is. Skipping only the Docker branch and continuing, which is
+# the obvious partial fix, leaves that recursive delete aimed at a path the user chose. That is the
+# difference between an incomplete feature and a destructive one.
+if [ "$(npdev_plan_get "$PLAN_PATH" externallyProvisioned false)" = "true" ]; then
+  npdev_write_external_notice "$PLAN_PATH" 'Resetting the environment'
+  echo 'In particular: your data root was NOT deleted, and no container was removed.'
+  echo "  data root left intact : $DATA_ROOT"
+  echo ''
+  echo 'To start this app from an empty database, drop and re-create the database on your own'
+  echo 'server with your own tools -- NPDev will not do it for you on a server it did not'
+  echo 'provision.'
+  # Non-zero: the destructive thing the caller asked for did NOT happen, and a wrapper that reads
+  # exit 0 as "reset done" would then act on a database that still has all its data in it.
+  exit 1
+fi
+if [ "$CONFIRM" != "I_UNDERSTAND_DB_DATA_WILL_BE_DELETED" ]; then
+  echo 'Reset refused. Re-run with: ./reset-environment.sh I_UNDERSTAND_DB_DATA_WILL_BE_DELETED' >&2
+  exit 1
+fi
+"$SCRIPT_DIR/stop-environment.sh"
+if [ "$(npdev_plan_get "$PLAN_PATH" profile.kind)" = "server" ]; then
+  CONTAINER_NAME=$(npdev_plan_get "$PLAN_PATH" containerName)
+  existing=$(docker ps -a --filter "name=^/${CONTAINER_NAME}\\$" --format '{{.Names}}' 2>/dev/null || true)
+  if [ "$existing" = "$CONTAINER_NAME" ]; then docker rm -f "$CONTAINER_NAME" >/dev/null; fi
+fi
+if [ "$(npdev_plan_get "$PLAN_PATH" physicalDatabase false)" = "true" ] && [ -n "$DATA_ROOT" ] && [ -d "$DATA_ROOT" ]; then
+  rm -rf "$DATA_ROOT"
+fi
+echo "Environment reset for $(npdev_plan_get "$PLAN_PATH" appId)."
+""";
+    }
+
+    /**
      * PORT-2: the runbook used to print SEVEN absolute paths -- the commands a user is literally
      * told to type. Copy the app and every one of them still pointed at the original, so following
      * the instructions in the copy operated the app you were not looking at. Relative now, anchored
@@ -2011,10 +2812,14 @@ Run every command below **from this `_ops` directory** -- it lives inside the ap
 the paths are relative to it and stay correct wherever you copy the app to.
 
 `pwsh` is the cross-platform PowerShell binary name (Windows, Linux and macOS all install it as
-`pwsh`, never `pwsh.exe` off Windows). Steps 1, 2, 4, 5, 6 and 7 are PowerShell-only today; steps 3,
-3a and 3b also have POSIX shell twins (`run-final-app.sh`, `start-app.sh`/`stop-app.sh`,
-`install-service.sh`/`uninstall-service.sh`) for a machine with no PowerShell at all -- 3b's two
-sides are not the same mechanism, see that section.
+`pwsh`, never `pwsh.exe` off Windows). Every step below also has a POSIX shell twin (lowercase,
+hyphenated file names) for a machine with no PowerShell at all -- 3b's two sides are not the same
+mechanism, see that section. D2 (Cold Clone Audit): the environment scripts' POSIX twins (steps 1,
+3a's stop-half, 6, 7) shell out to `python3` to read `resolved-db-plan.json` (`sh` has no JSON
+parser, and this app's whole toolbox is generated by a Python CLI already) -- one gap is named
+honestly rather than silently attempted: `create-environment.sh`'s externally-provisioned branch
+checks TCP reachability only, not the deeper JDBC verification `Create-Environment.ps1` does; run
+`npdev db test-connection` for that.
 
 ```sh
 cd <this app>/_ops
@@ -2026,10 +2831,18 @@ cd <this app>/_ops
 pwsh -NoProfile -ExecutionPolicy Bypass -File ./Create-Environment.ps1
 ```
 
+```sh
+./create-environment.sh
+```
+
 2. Build FinalApp
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File ./Build-FinalApp.ps1
+```
+
+```sh
+./build-final-app.sh
 ```
 
 3. Run FinalApp
@@ -2115,10 +2928,18 @@ sudo ./uninstall-service.sh
 pwsh -NoProfile -ExecutionPolicy Bypass -File ./Smoke-Test.ps1
 ```
 
+```sh
+./smoke-test.sh
+```
+
 5. Open DBeaver
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File ./Print-DbConnectionInfo.ps1
+```
+
+```sh
+./print-db-connection-info.sh
 ```
 
 6. Stop environment
@@ -2127,20 +2948,32 @@ pwsh -NoProfile -ExecutionPolicy Bypass -File ./Print-DbConnectionInfo.ps1
 pwsh -NoProfile -ExecutionPolicy Bypass -File ./Stop-Environment.ps1
 ```
 
+```sh
+./stop-environment.sh
+```
+
 7. Reset environment if needed
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File ./Reset-Environment.ps1 -Confirm I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
 ```
 
+```sh
+./reset-environment.sh I_UNDERSTAND_DB_DATA_WILL_BE_DELETED
+```
+
 ## Building somewhere the NPDev jar cache is not
 
-`Build-FinalApp.ps1` reuses the machine-level `runtimehost-libs` cache recorded when this app was
-generated. That directory is NOT part of the app and does not travel with a copy. Point it at your
-own without editing anything here:
+`Build-FinalApp.ps1`/`build-final-app.sh` reuse the machine-level `runtimehost-libs` cache recorded
+when this app was generated. That directory is NOT part of the app and does not travel with a copy.
+Point it at your own without editing anything here:
 
 ```powershell
 $env:NPDEV_RUNTIMEHOST_LIBS = '<your runtimehost-libs directory>'
+```
+
+```sh
+export NPDEV_RUNTIMEHOST_LIBS='<your runtimehost-libs directory>'
 ```
 """;
     }
@@ -2236,8 +3069,27 @@ $env:NPDEV_RUNTIMEHOST_LIBS = '<your runtimehost-libs directory>'
      * dressed up as a machine resource. Null is the honest answer, every consumer already filters on
      * {@code Test-Path}, and the generated build.gradle has its own resolution chain to fall through
      * to.
+     *
+     * <p>D1 (Cold Clone Audit 2026-08-28): when the app carries its OWN copy of the platform jars
+     * ({@code libs/npdev-runtime/} -- {@code FinalAppAssembler#stageRuntimeHostLibsIntoApp} staged
+     * them at generation, and the assembled {@code gradle.properties} bakes the same relative
+     * default), the plan records THAT app-relative path. It travels with the app, so a relocated
+     * copy's build finds its jars without the confusing "the runtimehost-libs cache recorded when
+     * this app was generated is not on this machine" warning, and without the walk that produced
+     * it. Pre-D1 apps (no {@code libs/npdev-runtime}) keep today's behavior -- the walk, and the
+     * honest warning when the recorded absolute path is absent.
+     *
+     * <p>PORT-2: the legacy value is machine-level and shared by every app built on that machine,
+     * so it does not travel with a copied app and could not be made app-relative without lying.
+     * What it must never be is BAKED into a script: {@code Get-NpdevRuntimeHostLibs} reads the
+     * {@code $env:NPDEV_RUNTIMEHOST_LIBS} override first, then this plan value -- a recipient is
+     * never forced to edit generated files.
      */
     private static Path resolveRuntimeHostLibs(Path finalAppRoot) {
+        Path appOwned = finalAppRoot.resolve("libs").resolve("npdev-runtime");
+        if (Files.isDirectory(appOwned)) {
+            return appOwned;
+        }
         Path current = finalAppRoot;
         while (current != null) {
             if (current.getFileName() != null && "Build".equalsIgnoreCase(current.getFileName().toString())) {

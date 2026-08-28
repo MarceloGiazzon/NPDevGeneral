@@ -462,6 +462,40 @@
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
       ]
+    },
+    {
+      "id": "ops-script-name-trio",
+      "citedBy": "C1 (Cold Clone Audit, 2026-08-28)",
+      "description": "The three ops-script names docs actually teach must stay in the runbook emitter's write() list on the docs side AND the emitter side -- a doc that cites a script the emitter never writes is how a reader gets 'not recognized as the name of a cmdlet' and blames their own generation. The audit found Build-App.ps1 / Test-App.ps1 / Status-App.ps1 documented while the emitter writes Build-FinalApp.ps1 / Smoke-Test.ps1 / Status-Environment.ps1; the docs now name the emitted trio, and check-ops-script-names.py enforces the FULL set inverse (every _ops/$ops name in content/*.yml must be emitted). This rule is the narrow 'the canonical trio stays spelled the same way in both halves' guard -- the check itself is hosted by run-ai-knowledge-gate.ps1.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "Build-FinalApp.ps1",
+        "Smoke-Test.ps1",
+        "Status-Environment.ps1"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java",
+        "content/npdev-user-manual.yml"
+      ]
+    },
+    {
+      "id": "superuser-engine-list-vs-dialect-registry",
+      "citedBy": "C5 (Cold Clone Audit, 2026-08-28)",
+      "description": "The SuperUserBootstrapper skip message names the engines that can host a Super User. It must name a superset/matching of the physical engines the dialect registry serves -- the literal 'H2Local/H2Server/Postgres' was stale since 2026-08-09 when MySQL and SqlServer reached the same bar (STOR-3), and a user on a supported engine reading an old list goes hunting for a workaround that is not needed. The bootstrapper now derives its list from SqlDialects.all() over a display-name map; this rule pins that every physical engine name used in the display map exists in the registry mirror, so a dialect added or dropped on one side cannot drift silently. Guarded on the full set by the derivation itself plus this presence pair.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "H2Local",
+        "H2Server",
+        "Postgres",
+        "MySQL",
+        "SqlServer"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/controlpanel/SuperUserBootstrapper.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DatabaseEngine.java"
+      ]
     }
   ]
 }
