@@ -822,7 +822,19 @@ public final class FinalAppAssembler {
         }
         Path manifest = runtimeHostLibsDir.resolve("runtimehost-libs-manifest.json");
         if (Files.isRegularFile(manifest)) {
-            Files.copy(manifest, appOwnedLibsDir.resolve(manifest.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+            // PORT-1 (Cold Clone Audit follow-up, 2026-08-28): sync-runtimehost-libs.ps1's manifest
+            // carries a "sourceDiscoveredJars" field with the ABSOLUTE build-machine path each jar
+            // was copied from -- meaningful provenance where the manifest normally lives (the
+            // staging cache, never shipped anywhere), but verifyNpdevRuntimeHostLibs in
+            // build.gradle.template reads ONLY requiredStagedJars (jar names, no paths). Copying the
+            // manifest verbatim into the app baked the generating machine's own path into a file
+            // meant to travel with the app -- exactly the portability leak D1 exists to close.
+            // Strip it before the copy; the app-owned manifest keeps every field the build actually
+            // reads.
+            var manifestNode = (com.fasterxml.jackson.databind.node.ObjectNode) OBJECT_MAPPER.readTree(manifest.toFile());
+            manifestNode.remove("sourceDiscoveredJars");
+            OBJECT_MAPPER.writerWithDefaultPrettyPrinter()
+                    .writeValue(appOwnedLibsDir.resolve(manifest.getFileName()).toFile(), manifestNode);
             manifestCopied = true;
         }
         // 50 jars / ~6.9 MB per the audit's measurement; a warning (not a failure) if the manifest
