@@ -32,7 +32,7 @@
 // `runtimehost-core-boot-version-pin` in scripts/quality/twin-pair-registry.json.
 plugins {
     id 'java-library'
-    id 'io.spring.dependency-management' version '1.1.6'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 def resolveNpdevBuildRoot = {
@@ -107,9 +107,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.flywaydb:flyway-core'
-    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'org.postgresql:postgresql:42.7.13'
     implementation 'com.networknt:json-schema-validator:1.5.6'
-    implementation platform('software.amazon.awssdk:bom:2.54.0')
+    implementation platform('software.amazon.awssdk:bom:2.54.4')
     implementation 'software.amazon.awssdk:s3'
 
     // Kernel/dsl/adapter classes referenced directly by these app-independent files
