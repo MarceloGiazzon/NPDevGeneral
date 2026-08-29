@@ -9,6 +9,18 @@
 # not `*.gradle.template` (its parser rejects the template's mustache-adjacent tokens), so a PR can
 # only ever update build.gradle -- a human must manually re-apply any RuntimeHost Spring Boot bump to
 # build.gradle.template so the version that actually ships matches.
+#
+# GROUPING (added 2026-08-29): each of the 8 entries below used to open up to 5 separate PRs (its
+# open-pull-requests-limit), one per bumped package -- 8 entries x 5 = up to 40 possible open PRs
+# at once, and a real run opened ~24-34. Every entry now groups its own minor/patch updates into a
+# single PR via `groups:` -- so the ceiling is 8 PRs (one per entry) instead of 40. Dependabot
+# cannot merge updates ACROSS entries into one PR (different ecosystems/directories are scanned
+# independently), so 8 -- one per real independent build root/ecosystem -- is the practical floor
+# here, not 1. MAJOR version bumps are deliberately excluded from grouping (update-types only lists
+# minor/patch) and still open their own PR each: the 2026-08-28 Cold Clone Audit CI cleanup closed
+# 9 major-bump PRs (com.networknt:json-schema-validator 1.x->3.x, Spring Boot 3.x->4.x) as genuine
+# API-incompatible changes needing a real migration, not something safe to silently bundle with
+# patch-level noise.
 version: 2
 updates:
   # ---------------------------------------------------------------------------------------------
@@ -24,6 +36,11 @@ updates:
     labels: ["dependencies", "gradle"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "gradle"
     directory: "/NPDevContract/dsl"
@@ -33,6 +50,11 @@ updates:
     labels: ["dependencies", "gradle"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "gradle"
     directory: "/NPDevGenerator"
@@ -42,6 +64,11 @@ updates:
     labels: ["dependencies", "gradle"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: "gradle"
     directory: "/NPDevKernel"
@@ -51,6 +78,11 @@ updates:
     labels: ["dependencies", "gradle"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # See the file-level comment above: this scans the DEAD 3.3.2 pin, not the 3.5.16 that ships.
   - package-ecosystem: "gradle"
@@ -61,6 +93,11 @@ updates:
     labels: ["dependencies", "gradle"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # BT-1's jar-shippable split -- a fully independent Gradle build (own settings.gradle/gradlew),
   # not a subproject reachable from any of the roots above.
@@ -72,6 +109,11 @@ updates:
     labels: ["dependencies", "gradle"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      gradle-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # ---------------------------------------------------------------------------------------------
   # npm (the JSON-schema validator used by the quality gates -- the authoring UI's own npm project
@@ -85,6 +127,11 @@ updates:
     labels: ["dependencies", "npm"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      npm-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
 
   # ---------------------------------------------------------------------------------------------
   # github-actions (the action/workflow `uses:` pins in .github/workflows/*.yml themselves)
@@ -97,3 +144,8 @@ updates:
     labels: ["dependencies", "github-actions"]
     commit-message:
       prefix: "chore(deps)"
+    groups:
+      github-actions-dependencies:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
