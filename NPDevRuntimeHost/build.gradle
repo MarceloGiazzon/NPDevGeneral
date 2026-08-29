@@ -103,7 +103,7 @@ dependencies {
     // boot with a different message and the driver fix alone would have looked wrong.
     // ---------------------------------------------------------------------------------------
     runtimeOnly 'com.mysql:mysql-connector-j:9.1.0'
-    runtimeOnly 'com.microsoft.sqlserver:mssql-jdbc:12.8.1.jre11'
+    runtimeOnly 'com.microsoft.sqlserver:mssql-jdbc:13.4.0.jre11'
     implementation 'org.flywaydb:flyway-mysql'
     implementation 'org.flywaydb:flyway-sqlserver'
 
