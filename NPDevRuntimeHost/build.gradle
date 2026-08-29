@@ -134,10 +134,10 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
-    testImplementation 'org.testcontainers:testcontainers:1.21.4'
-    testImplementation 'org.testcontainers:jdbc:1.21.4'
-    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
-    testImplementation 'org.testcontainers:postgresql:1.21.4'
+    testImplementation 'org.testcontainers:testcontainers:2.0.5'
+    testImplementation 'org.testcontainers:jdbc:2.0.5'
+    testImplementation 'org.testcontainers:junit-jupiter:2.0.5'
+    testImplementation 'org.testcontainers:postgresql:2.0.5'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
     testImplementation 'org.awaitility:awaitility:4.2.0'
     testImplementation 'com.icegreen:greenmail-junit5:2.1.0'
@@ -150,10 +150,10 @@ dependencies {
 
 configurations.configureEach {
     resolutionStrategy.force(
-            'org.testcontainers:testcontainers:1.21.4',
-            'org.testcontainers:jdbc:1.21.4',
-            'org.testcontainers:junit-jupiter:1.21.4',
-            'org.testcontainers:postgresql:1.21.4'
+            'org.testcontainers:testcontainers:2.0.5',
+            'org.testcontainers:jdbc:2.0.5',
+            'org.testcontainers:junit-jupiter:2.0.5',
+            'org.testcontainers:postgresql:2.0.5'
     )
 }
 
