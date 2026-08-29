@@ -81,3 +81,10 @@ guard:
     .github/workflows/*.yml | grep -c ':1$'
   asserts: the 5-control self-test passes; exactly 10 of 10 workflow files carry a top-level permissions block
   provenRed: true
+addendum: |
+  2026-08-29: dependabot.yml's `updates:` list (routine VERSION-update scanning) was set to `[]`
+  (owner decision -- solo project, no review workflow for the ~24-34 PRs/run it produced). This does
+  NOT reopen this gap: Dependabot SECURITY updates (the actual vulnerability-scanning half this item
+  closed) are a separate repo setting, untouched by this file, and remain active. The historical
+  `updates:` config is preserved in comments in the file itself. This item's guard is unaffected --
+  it never read dependabot.yml's structure.
