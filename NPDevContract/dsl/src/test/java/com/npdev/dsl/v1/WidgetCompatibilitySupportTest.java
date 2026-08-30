@@ -149,4 +149,43 @@ class WidgetCompatibilitySupportTest {
         assertTrue(uxWarnings.stream().anyMatch(d -> "discouraged_widget".equals(d.getCode()) && "referenceCode".equals(d.getField())));
         assertTrue(uxWarnings.stream().anyMatch(d -> "discouraged_widget".equals(d.getCode()) && "attachments".equals(d.getField())));
     }
+
+    /**
+     * Regression for a real bug found by hand-authoring a model, not by a unit test: a numeric
+     * field has no inline "min"/"max" property at all (model.schema.json's "field" definition
+     * doesn't declare one) -- the only real authoring path for bounds is a named domainType, whose
+     * "validation" object carries them, referenced from the field via "domainType". Before this
+     * test existed, {@code ConceptValidation.toFieldShape} only ever looked at the field's own
+     * (always-empty, for this path) schema, so "range" was misclassified DISCOURAGED even though a
+     * real bound was declared and reachable -- a false warning on exactly the intended usage.
+     */
+    @Test
+    void rangeWidgetIsFullyCompatibleWhenBoundsComeFromAReferencedDomainType() throws Exception {
+        ModelAst ast = parse("""
+                {
+                  "namespace": "widget.compat.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "domainTypes": [
+                    { "name": "Rating", "baseType": "int", "validation": { "type": "int", "min": 1, "max": 5 } }
+                  ],
+                  "concepts": [
+                    {
+                      "name": "Review",
+                      "ui": { "label": "Review" },
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "stars", "type": "int", "domainType": "Rating", "required": true, "ui": { "label": "Stars", "widget": "range" } }
+                      ]
+                    }
+                  ]
+                }
+                """);
+
+        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
+        assertTrue(validation.getErrors().isEmpty(), "Expected no errors, got: " + validation.getErrors());
+        assertTrue(validation.getDiagnostics().stream().noneMatch(d -> "discouraged_widget".equals(d.getCode())),
+                "Expected no discouraged-widget warning once bounds are resolved through the domainType, got: "
+                        + validation.getDiagnostics());
+    }
 }

@@ -92,6 +92,12 @@ final class UxMetadataValidation {
             Map<String, ConceptAst> entitiesByLower
     ) {
         List<ValidationDiagnostic> diagnostics = new ArrayList<>();
+        Map<String, DomainTypeAst> domainTypesByLower = new java.util.HashMap<>();
+        for (DomainTypeAst domainType : modelAst.getDomainTypes()) {
+            if (domainType != null && domainType.getName() != null) {
+                domainTypesByLower.put(normalize(domainType.getName()), domainType);
+            }
+        }
         for (ConceptAst entity : modelAst.getConcepts()) {
             PresentationMetadataAst conceptUi = entity.getUi();
             if (conceptUi == null || normalize(conceptUi.getLabel()).isBlank()) {
@@ -200,6 +206,7 @@ final class UxMetadataValidation {
                         entity,
                         field,
                         fieldUi,
+                        domainTypesByLower,
                         listColumnOwners,
                         layoutSlotOwners
                 );
@@ -257,6 +264,7 @@ final class UxMetadataValidation {
             ConceptAst entity,
             FieldAst field,
             PresentationMetadataAst fieldUi,
+            Map<String, DomainTypeAst> domainTypesByLower,
             Map<Integer, String> listColumnOwners,
             Map<String, String> layoutSlotOwners
     ) {
@@ -318,7 +326,7 @@ final class UxMetadataValidation {
         if (hasText(fieldUi.getWidget())) {
             String normalizedType = normalize(field.getType());
             FieldWidgetDefaults.Compatibility compatibility =
-                    FieldWidgetDefaults.classify(toFieldShape(field, normalizedType), fieldUi.getWidget());
+                    FieldWidgetDefaults.classify(toFieldShape(field, normalizedType, domainTypesByLower), fieldUi.getWidget());
             if (compatibility == FieldWidgetDefaults.Compatibility.DISCOURAGED) {
                 diagnostics.add(uxDiagnostic(
                         "discouraged_widget",

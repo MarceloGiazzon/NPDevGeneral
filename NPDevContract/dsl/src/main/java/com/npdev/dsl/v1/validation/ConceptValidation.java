@@ -283,7 +283,7 @@ final class ConceptValidation {
                     );
                 }
 
-                validateFieldWidgetCompatibility(e, f, normalizedType, errors);
+                validateFieldWidgetCompatibility(e, f, normalizedType, domainTypesByLower, errors);
                 validateFieldValueBehavior(e.getName(), f, fieldNames, errors);
                 validateFieldAccessRules(e.getName(), f, fieldNames, errors);
             }
@@ -631,6 +631,7 @@ final class ConceptValidation {
             ConceptAst entity,
             FieldAst field,
             String normalizedType,
+            Map<String, DomainTypeAst> domainTypesByLower,
             List<String> errors
     ) {
         PresentationMetadataAst ui = field.getUi();
@@ -639,7 +640,7 @@ final class ConceptValidation {
             return;
         }
         FieldWidgetDefaults.Compatibility compatibility =
-                FieldWidgetDefaults.classify(toFieldShape(field, normalizedType), widget);
+                FieldWidgetDefaults.classify(toFieldShape(field, normalizedType, domainTypesByLower), widget);
         if (compatibility == FieldWidgetDefaults.Compatibility.UNKNOWN_WIDGET) {
             errors.add("Entity " + entity.getName() + " field " + field.getName()
                     + ": unknown ui.widget \"" + widget.trim() + "\" (supported: "
@@ -650,7 +651,8 @@ final class ConceptValidation {
         }
     }
 
-    static FieldWidgetDefaults.FieldShape toFieldShape(FieldAst field, String normalizedType) {
+    static FieldWidgetDefaults.FieldShape toFieldShape(
+            FieldAst field, String normalizedType, Map<String, DomainTypeAst> domainTypesByLower) {
         boolean isReference = "reference".equals(normalizedType)
                 || (field.getReferenceTarget() != null && !field.getReferenceTarget().isBlank())
                 || field.getReferenceSemantics() != null;
@@ -667,10 +669,24 @@ final class ConceptValidation {
         PresentationMetadataAst ui = field.getUi();
         boolean hasImageFieldHint = ui != null && hasText(ui.getImageField());
         boolean hasCustomWidgetRef = ui != null && hasText(ui.getCustomWidgetRef());
+        // A numeric field's min/max are almost never declared inline (the field's own JSON schema
+        // has no "min"/"max" property at all -- model.schema.json's "field" definition doesn't list
+        // them) -- the real, and effectively only, authoring path is a named domainType ("min"/"max"
+        // live on ITS "validation" object) referenced from the field via field.domainType. Falling
+        // back to field.getSchema() first still covers a directly-nested schema (procedure
+        // params/variables reuse this same shape), so neither path is dead.
+        SchemaAst effectiveRangeSchema = field.getSchema();
+        if ((effectiveRangeSchema == null || effectiveRangeSchema.getMin() == null || effectiveRangeSchema.getMax() == null)
+                && hasText(field.getDomainType()) && domainTypesByLower != null) {
+            DomainTypeAst domainType = domainTypesByLower.get(normalize(field.getDomainType()));
+            if (domainType != null && domainType.getValidationSchema() != null) {
+                effectiveRangeSchema = domainType.getValidationSchema();
+            }
+        }
         boolean hasRangeBounds = Set.of("int", "integer", "long", "decimal").contains(normalizedType)
-                && field.getSchema() != null
-                && field.getSchema().getMin() != null
-                && field.getSchema().getMax() != null;
+                && effectiveRangeSchema != null
+                && effectiveRangeSchema.getMin() != null
+                && effectiveRangeSchema.getMax() != null;
         boolean isImageOnlyFile = "file".equals(normalizedType)
                 && field.getFile() != null
                 && !field.getFile().contentTypes().isEmpty()
