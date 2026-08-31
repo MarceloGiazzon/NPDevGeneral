@@ -4,14 +4,14 @@
   "metric": "LINE",
   "modules": {
     "NPDevContract/dsl": {
-      "coveragePercent": 85.0422,
-      "measuredOn": "2026-08-31T18:40:53Z",
+      "coveragePercent": 85.0328,
+      "measuredOn": "2026-08-31T22:43:56Z",
       "reportFormat": "jacoco-xml",
       "reportGlobs": [
         "**/gradle/npdev-*/dsl/reports/jacoco/test/jacocoTestReport.xml",
         "NPDevContract/dsl/build/reports/jacoco/test/jacocoTestReport.xml"
       ],
-      "note": "dsl has no settings.gradle of its own; it is built as a subproject of the root, NPDevGenerator, or NPDevKernel multi-project builds, so its jacoco report lands under whichever rootProject.name built it last (layout.buildDirectory is redirected to the external Build root -- see each build.gradle's resolveNpdevBuildRoot). 2026-08-25 (W3.2/QUAL-32 verification): two consecutive full `:dsl:test` runs against IDENTICAL source (no dsl edit between them) measured 85.0422% then 85.0328% -- an 18254/21467 vs a ~2-line-smaller covered count, confirmed NOT a partial report (CLASS counter: 347/369 covered, 6% fully-uncovered, far under QUAL-27's 50% partial-refusal threshold). Small run-to-run variance in a 21k+-line suite, same shape as NPDevRuntimeHost's and NPDevKernel/kernel's own prior re-pins in this file -- re-pinned to the lower, more recent real measurement per this file's own standing guidance (prefer the fresh honest number over chasing an unexplained few-line delta)."
+      "note": "dsl has no settings.gradle of its own; it is built as a subproject of the root, NPDevGenerator, or NPDevKernel multi-project builds, so its jacoco report lands under whichever rootProject.name built it last (layout.buildDirectory is redirected to the external Build root -- see each build.gradle's resolveNpdevBuildRoot). 2026-08-25 (W3.2/QUAL-32 verification): two consecutive full `:dsl:test` runs against IDENTICAL source (no dsl edit between them) measured 85.0422% then 85.0328% -- an 18254/21467 vs a ~2-line-smaller covered count, confirmed NOT a partial report (CLASS counter: 347/369 covered, 6% fully-uncovered, far under QUAL-27's 50% partial-refusal threshold). Small run-to-run variance in a 21k+-line suite, same shape as NPDevRuntimeHost's and NPDevKernel/kernel's own prior re-pins in this file -- re-pinned to the lower, more recent real measurement per this file's own standing guidance (prefer the fresh honest number over chasing an unexplained few-line delta). RECURRED 2026-08-31 (run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33446595651, unrelated to that push's own dsl-untouched diff -- QUAL-45/46 fixture and RuntimeHost-only changes): floor had auto-ratcheted back up to 85.0422% on some later green run in between, then hit the identical 85.0328% low measurement again. RECONFIRMED LIVE the same session, minutes later: a local `:NPDevContract:dsl:test` run against the SAME unmodified source measured 85.0422% again, and letting check-coverage-ratchet.py auto-ratchet the floor back up to that number (its normal behavior on any higher fresh measurement) would just reproduce this exact CI failure on the next unlucky run. Deliberately pinned to 85.0328% -- the LOWER of the two observed values, safely cleared by both -- rather than left to auto-ratchet, specifically to stop this oscillation from failing CI again before ledger/items/QUAL-48.yml's real fix (finding the actual nondeterministic line, e.g. a HashMap/HashSet iteration-order-dependent branch) lands."
     },
     "NPDevGenerator/generator": {
       "coveragePercent": 81.5222,
