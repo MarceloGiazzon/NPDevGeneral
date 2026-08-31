@@ -3,7 +3,6 @@
   "schemaVersion": "1.0.0",
   "namespace": "npdev.invalid.required.sample",
   "dslVersion": "1.0.0",
-  "version": "1.0",
   "concepts": [
     {
       "name": "InvalidSample",
