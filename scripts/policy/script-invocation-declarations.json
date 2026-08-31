@@ -142,6 +142,10 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
     },
+    "scripts/hooks/require-digest.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/hygiene/Test-GradleWrapperConsistency.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/WORKSPACE_CLEANUP_POLICY.md"
