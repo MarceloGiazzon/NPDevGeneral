@@ -84,20 +84,37 @@ function Stop-ProcessTree {
 # deliberately self-contained") rather than a shared import -- mirrors Build-NpdevApp.ps1's copy.
 function Ensure-NpdevApiKey {
     param([string]$AppRoot)
-    # QUAL-42 follow-up: for any scenario whose ai-model.json declares auth.testUsers, the generator
-    # (FinalAppAssembler) writes src/main/resources/application-ai-beta-local.yml with real per-test-
-    # user api-keys (format ai-<scenarioId>-<userId>) for the "ai-beta-local" profile. Spring Boot
-    # environment variables outrank profile-specific application-*.yml property sources, so
-    # unconditionally exporting NPDEV_AUTH_API_KEYS below would silently replace every one of those
-    # real, per-user keys with a single generated one -- which is exactly what was happening: every
-    # scenario check that authenticates as a specific test user (tenant-workflow-ops,
-    # tenant-service-desk, tenant-approval-portal, and the custom-panel/procedure scenarios) got
-    # invalid_api_key even though the app boots and serves traffic. Only step in when the app has NO
-    # generator-emitted key source at all (this is the only case SEC-1 actually left needing a
-    # fallback: scenarios like base-ai-loop with no auth.testUsers declared).
+    # QUAL-42/43/44 follow-up: for any scenario whose ai-model.json declares auth.testUsers, the
+    # generator (FinalAppAssembler) writes src/main/resources/application-ai-beta-local.yml with real
+    # per-test-user api-keys (format ai-<scenarioId>-<userId>) for the "ai-beta-local" profile. Spring
+    # Boot environment variables outrank profile-specific application-*.yml property sources, so
+    # unconditionally exporting NPDEV_AUTH_API_KEYS below would silently REPLACE (not add to) every
+    # one of those real, per-user keys with a single generated one -- which is exactly what was
+    # happening: every check that authenticates as a specific test user (tenant-workflow-ops,
+    # tenant-service-desk, tenant-approval-portal, the custom-panel/procedure scenarios) got
+    # invalid_api_key even though the app boots and serves traffic.
+    #
+    # An earlier version of this fix (QUAL-43, 2026-08-31) made this function a no-op whenever
+    # application-ai-beta-local.yml already existed, on the wrong assumption that a testUsers-
+    # declaring scenario's OWN checks always carry an explicit X-Api-Key header. Re-verified on live
+    # CI (run 33428237338) and proven false: custom-panel-unsupported ALSO declares auth.testUsers
+    # (so it also gets application-ai-beta-local.yml), but its own health/create-learner smoke check
+    # carries NO explicit header and depends on the generic fallback key
+    # (Invoke-AiRestSmokeVerifier.ps1 only injects -ApiKey when a check names no X-Api-Key/
+    # X-NPDEV-API-Key/Authorization header of its own) -- skipping entirely removed that fallback and
+    # broke a scenario that previously passed. The generator's encodedMappings format
+    # (`key=tenantId:actorId:role1|role2`, entries `;`-joined -- see FinalAppAssembler.encodeMappings
+    # and RuntimeApiKeyAuthFilter's mustache-templated parseMappings, which are byte-identical) is the
+    # SAME format this function's own fallback key already writes, so the correct fix is to MERGE the
+    # fallback key onto whatever real mapping the generator already emitted, not choose one or the
+    # other.
+    $existingMappings = $null
     $aiBetaLocalYml = Join-Path $AppRoot 'src/main/resources/application-ai-beta-local.yml'
     if (Test-Path -LiteralPath $aiBetaLocalYml) {
-        return
+        $yamlText = Get-Content -Raw -LiteralPath $aiBetaLocalYml
+        if ($yamlText -match '(?m)^\s*api-keys:\s*"((?:[^"\\]|\\.)*)"') {
+            $existingMappings = $Matches[1] -replace '\\"', '"' -replace '\\\\', '\'
+        }
     }
     $secretsDir = Join-Path $AppRoot 'secrets'
     $keyFile = Join-Path $secretsDir 'api-key.env'
@@ -122,7 +139,11 @@ function Ensure-NpdevApiKey {
         if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
             $parts = $line.Split('=', 2)
             $name = $parts[0].Trim()
-            if ($name) { Set-Item -Path ("env:" + $name) -Value $parts[1].Trim() }
+            $value = $parts[1].Trim()
+            if ($name -eq 'NPDEV_AUTH_API_KEYS' -and $existingMappings) {
+                $value = $existingMappings + ';' + $value
+            }
+            if ($name) { Set-Item -Path ("env:" + $name) -Value $value }
         }
     }
 }
