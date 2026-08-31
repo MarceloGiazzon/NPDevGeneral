@@ -1,0 +1,53 @@
+id: QUAL-44
+title: >-
+  run-sample-matrix-tests.ps1's own self-tests fail for real against actual NPDevSamples release
+  samples -- previously unreachable by any CI run because QUAL-36's gate-10 hard-fail always aborted
+  the sequence first; root cause not yet diagnosed
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-31
+source: >-
+  2026-08-31 (session resume, verifying QUAL-36's fix on a fresh NPDev Release Gate dispatch, run
+  https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33428245339). QUAL-36's fix worked as
+  designed -- docker-linux-proof (gate 10/27) now correctly reports skipped-not-applicable and the
+  27-gate sequence continued for the first time -- immediately surfacing this DIFFERENT, previously
+  invisible failure at gate 11/27 (sample-matrix-tests), which no recent real (non-cancelled,
+  non-hung) run of either AI Beta Gate's windows job or NPDev Release Gate had ever reached.
+surface: sample-matrix, NPDevSamples release corpus
+files:
+  - scripts/quality/run-sample-matrix-tests.ps1
+  - scripts/policy/sample-matrix-policy.json
+detail: |
+  NOT YET ROOT-CAUSED -- filed to capture the finding, not to claim a diagnosis. What is known from
+  the CI report (sample-matrix-tests-report.json, downloaded from run 33428245339):
+
+  6 of the test script's own assertions fail, all clustered around the "actual release samples"
+  half of its two-part check (the other half, "fixture-only sample input issues", is implied fine
+  since only the actual-* and fixture-input-contract-eligible assertions are in the failure list --
+  re-check this against the full failures list before assuming, this is read from a summary, not the
+  raw assertion pass/fail table):
+    - fixture-only-issue-exit / fixture-only-issue-status / fixture-input-contract-eligible
+    - actual-release-samples-exit / actual-release-samples-status / actual-input-contract-eligible
+
+  The "actual" run invokes the real sample matrix against NPDevSamples for real
+  (`Invoke-SampleMatrixForTest -SampleRoot "NPDevSamples" -PolicyPath
+  "scripts/policy/sample-matrix-policy.json" ... -SkipGenerationRuntimeVerification`) and asserts
+  `exitCode -eq 0` / `overallStatus -eq "passed"` -- both assertions failing means the REAL sample
+  matrix run itself is failing right now against actual release samples, not a test-harness bug.
+  Detailed evidence (scripts/reports/tmp/sample-matrix-tests/actual-release-samples-report.json and
+  its evidence dir) is written under scripts/reports/tmp/, which the workflow's upload-artifact step
+  does NOT capture (only scripts/reports/out/) -- the CI artifact download does not carry the actual
+  per-sample failure detail; a local repro (or widening the workflow's evidence upload path) is
+  needed to see WHICH sample(s) and WHY.
+
+  Not caused by this session's changes: nothing touched this session (invoke-ai-beta-app-smoke.ps1,
+  run-docker-linux-proof.ps1, ledger files, one Python checker) references sample-matrix, NPDevSamples,
+  or scripts/policy/sample-matrix-policy.json. This is pre-existing corpus/policy debt that has been
+  silently unreachable in CI for as long as QUAL-36's gate-10 bug has existed (2026-08-17 or earlier,
+  per QUAL-36's own AI Beta Gate history) -- QUAL-36's fix did not introduce it, it un-hid it.
+
+  Done when: the actual sample-matrix failure is reproduced (locally or via a CI artifact that
+  captures scripts/reports/tmp/sample-matrix-tests/), root-caused (which sample(s), which policy
+  check), and either fixed or explicitly triaged with a tracked reason if it turns out to be a
+  corpus/fixture issue rather than a product defect.

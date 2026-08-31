@@ -64,3 +64,39 @@ detail: |
   workflow-ops recommended -- 3 distinct check types: authenticated create, cross-tenant rejection,
   panel action) shows every check passing with its declared per-testUser key, not just health-ok --
   PENDING, tracked for the next verification pass.
+
+  2026-08-31 (verification pass, CORRECTION): the fix above was WRONG in its shape, caught by
+  actually verifying rather than trusting the local syntax check. Dispatched fresh AI Beta Gate
+  (run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33428237338) after committing and
+  pushing the no-op version. Result: summary.expectedPassPassed DROPPED from 2 to 1 --
+  tenant-workflow-ops and the other 5 STILL failed (the no-op didn't fix them, meaning the app boots
+  without EITHER the fallback key or a working real-key path), AND custom-panel-unsupported, which
+  had been PASSING, now failed too: its create-learner check got 401 `missing_api_key` (no header
+  sent at all, not invalid_api_key) -- proof the fallback key was gone and nothing replaced it.
+
+  Root cause of the original wrong assumption: custom-panel-unsupported ALSO declares
+  auth.testUsers (so it ALSO gets a generator-emitted application-ai-beta-local.yml -- verified by
+  checking its ai-model.json directly, something the original fix never did, only base-ai-loop's and
+  tenant-workflow-ops's were compared), but its own create-learner check carries NO explicit
+  X-Api-Key header and depends on Invoke-AiRestSmokeVerifier.ps1's generic -ApiKey fallback
+  injection. The "does this scenario have testUsers" question and "does THIS SPECIFIC check need the
+  generic fallback key" question are independent -- a scenario can have both real per-user keys AND
+  checks that rely on the generic one. A binary skip-vs-generate choice can never satisfy both.
+
+  REAL FIX: MERGE, not choose. Confirmed the generator's encodedMappings format
+  (`key=tenantId:actorId:role1|role2`, `;`-joined entries -- FinalAppAssembler.encodeMappings /
+  RuntimeApiKeyAuthFilter's parseMappings, both read directly) is byte-identical to
+  Ensure-NpdevApiKey's own fallback-key format, so the two are trivially concatenable. Extract the
+  existing api-keys value from application-ai-beta-local.yml (regex against the YAML, verified
+  against the actual mustache-templated output shape) when present, and prepend it to the fallback
+  key before exporting NPDEV_AUTH_API_KEYS -- so both the real per-user keys AND the generic fallback
+  are simultaneously valid. Verified LOCALLY before any further CI round-trip, against two
+  standalone fixtures built from the real generator output shape: (1) a fixture WITH testUsers ->
+  env var correctly carries both the two real testUser keys AND the new fallback key, `;`-joined;
+  (2) a fixture with NO application-ai-beta-local.yml (base-ai-loop's shape) -> unchanged, fallback
+  key only, matching original pre-QUAL-43 behavior.
+
+  STILL PENDING: a fresh CI dispatch of this corrected (merge) version has not yet run. Given the
+  no-op version's own CI round-trip caught a real defect the local syntax check missed, this fix
+  should NOT be treated as verified until it, too, is confirmed on a live boot -- local unit-level
+  verification of the merge logic is not the same claim as "the scenario's smoke check goes green."
