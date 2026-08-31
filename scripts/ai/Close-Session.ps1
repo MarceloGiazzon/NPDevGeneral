@@ -15,13 +15,19 @@
   an agent mid-task can supply (what was done, the exact next step, what is
   blocked).
 
-  Deliberately written OUTSIDE the repo. A handoff is working state, not
-  documentation -- the repo's process-document ban (scripts/policy/
-  doc-inventory-policy.json) is the standing rule, and this respects it.
+  Written INSIDE the repo, under ledger/, which is where this project keeps
+  durable machine truth as structured data with a schema. That is deliberate and
+  does not breach the process-document ban: the ban is on process MARKDOWN --
+  plans, checklists, status registers written as prose that go stale silently.
+  This is JSON against schemas/ai/session-handoff.schema.json, there is exactly
+  one authoritative copy, and it is overwritten rather than accumulated.
+
+  Being versioned is the point: the git history of current.json IS the record of
+  how the project was actually worked, recoverable on any machine and any clone.
 
   Two files are written:
-    <OutsideRepo>\session-state\current.json    the live handoff; read at start
-    <OutsideRepo>\session-state\history.jsonl   append-only, one line per close
+    ledger/session-state/current.json    the live handoff; read at session start
+    ledger/session-state/history.jsonl   append-only, one line per close
 
   The history exists so that after some months of use there is a real record to
   analyse: how long sessions ran, how often a stated next step matched what
@@ -67,7 +73,7 @@ foreach ($m in 'NPDevContract', 'NPDevGenerator', 'NPDevKernel') {
     if (-not (Test-Path (Join-Path $repo $m))) { throw "not the repo root (missing $m): $repo" }
 }
 
-$stateDir = Join-Path (Split-Path -Parent $repo) 'NPDev_General__OutsideRepo\session-state'
+$stateDir = Join-Path $repo 'ledger\session-state'
 if (-not (Test-Path $stateDir)) { New-Item -ItemType Directory -Path $stateDir -Force | Out-Null }
 
 $currentPath = Join-Path $stateDir 'current.json'

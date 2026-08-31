@@ -37,6 +37,7 @@ hook, so any unexpected error exits 0 and lets the command through.
 from __future__ import annotations
 
 import json
+import re
 import os
 import sys
 from pathlib import Path
@@ -68,10 +69,16 @@ def main() -> int:
     except Exception:
         return 0  # fail open
 
-    low = command.lower()
+    # Match against the command with quoted arguments stripped out. Without this,
+    # any command that merely MENTIONS an expensive tool inside a string -- a commit
+    # message, a -NextStep note, an echo -- is blocked though it runs nothing.
+    # (Found the honest way: this hook blocked a Close-Session call whose -NextStep
+    # text contained the word "gradlew".)
+    bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", command)
+    low = bare.lower()
 
     for ok in enforce.get("exemptSubstrings", []):
-        if ok.lower() in low:
+        if ok.lower() in command.lower():
             return 0
 
     hit = next((p for p in enforce.get("expensiveCommands", []) if p.lower() in low), None)

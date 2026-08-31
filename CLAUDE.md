@@ -166,17 +166,18 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `pwsh -NoProfile -File scripts/ai/Prepare-Session.ps1` — refreshes the symbol map and knowledge
   index and prints a one-screen orientation: the previous session's handoff (what was done, the
   exact next step), branch, dirty files, stale worktrees, open ledger items.
-- **`/prep` and `/close`** (`.claude/commands/`) are the shortcuts for the two scripts below —
-  prefer them over typing the full command. **If the user says "handoff", "continue", "where were
-  we", or "resume", run `/prep` (or `Prepare-Session.ps1`) FIRST** and answer from
-  `<OutsideRepo>\session-state\current.json` — never reconstruct the resume point by reading files
-  or git history, which is the expensive habit this replaces.
+- **`/prep`, `/close`, `/hist`** (`.claude/commands/`) are the shortcuts — prefer them over typing
+  the scripts. The `SessionStart` hook (`scripts/hooks/session-start-handoff.py`) already injects
+  the last handoff automatically, so **a bare "continue" means the `NEXT` line you were given at
+  startup.** If for any reason it is absent, run `/prep` — never reconstruct the resume point by
+  reading files or git history, which is the expensive habit this replaces.
 - **Session close — write the handoff BEFORE `/clear`:**
   `pwsh -NoProfile -File scripts/ai/Close-Session.ps1 -Summary "..." -NextStep "..." [-Plan ... -Blocked ... -Verified ...]`.
-  Writes `<OutsideRepo>\session-state\current.json` (read back by `Prepare-Session.ps1`) and appends
-  to `history.jsonl`. **A handoff is working state, so it lives outside the repo** — never add a
-  `CURRENT_IMPLEMENTATION.md` or similar to this tree; that is the banned process document.
-  Ending a session is only cheap if resuming is reliable, and this is what makes it reliable.
+  Writes `ledger/session-state/current.json` (schema `schemas/ai/session-handoff.schema.json`,
+  read back at startup) and appends to `history.jsonl`. **It is in-repo and versioned on purpose** —
+  it is structured data under `ledger/`, not a process document, and its git history is the record
+  of how the project was actually worked. Still never add a `CURRENT_IMPLEMENTATION.md`: prose
+  status files are what the ban targets. Ending a session is only cheap if resuming is reliable.
 - **Maintainer skills** (tracked under `.claude/skills/`): `rebuild-app` (three-cache refresh via
   `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**

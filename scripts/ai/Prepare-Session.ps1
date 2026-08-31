@@ -44,7 +44,7 @@ try {
     # The single most valuable thing to show first: where the previous session
     # stopped. Written by Close-Session.ps1, kept outside the repo because a
     # handoff is working state, not documentation.
-    $statePath = Join-Path (Split-Path -Parent $repo) 'NPDev_General__OutsideRepo\session-state\current.json'
+    $statePath = Join-Path $repo 'ledger\session-state\current.json'
     if (Test-Path $statePath) {
         try {
             $s = Get-Content $statePath -Raw | ConvertFrom-Json
