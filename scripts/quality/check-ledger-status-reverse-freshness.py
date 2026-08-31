@@ -208,6 +208,19 @@ ACCEPTED_R2: dict[str, str] = {
         "PACK-9/REG-170/REG-176 above: a legitimate 'reconcile this row' firing whose reconciliation "
         "is already done and the conclusion is 'still open, not fixed.'"
     ),
+    "SEC-3": (
+        "The commits R2 names are 589cd78d8f (Model A: admission-time static-analysis containment, "
+        "2026-08-27) and 69761543f5 (its CI-calibration follow-up, 2026-08-28), both genuinely "
+        "MODIFYING SEC-3.yml with real substance the item's own text already carries in full -- plus "
+        "606d8acc20, an unrelated 7-feature batch commit ('Implement SUPPORT_FEATURES_PLAN_2026-08-26') "
+        "that happened to touch SEC-3.yml alongside many other ledger items and unrelated production "
+        "source, not because it changed SEC-3's own scope. Model A closed the accident/casual-misuse "
+        "threat model; Model B (real process isolation for memory/CPU containment) is EXPLICITLY the "
+        "remaining, larger-scoped work the item's own done-when still requires, confirmed again by a "
+        "2026-08-31 scoping-only pass (no implementation) that left status OPEN on purpose. Same shape "
+        "as PACK-9/REG-170/REG-176/REG-180 above: a legitimate 'reconcile this row' firing whose "
+        "reconciliation is already done and the conclusion is 'still open, real work remains.'"
+    ),
 }
 
 # R2: same "checkers describe gaps for a living" exemption R1's PRODUCTION_ROOTS encodes, spelled as

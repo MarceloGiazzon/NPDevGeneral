@@ -1,0 +1,66 @@
+id: QUAL-43
+title: >-
+  AI Beta Gate smoke check silently discarded every generator-emitted per-testUser API key --
+  Ensure-NpdevApiKey's fallback env var outranks application-ai-beta-local.yml, so all 3 required
+  tenant scenarios plus 3 custom-panel/procedure scenarios failed smoke with invalid_api_key
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-08-31
+source: >-
+  2026-08-31 (session resume, re-dispatching QUAL-42's residual AI Beta Gate CI question). Fresh
+  dispatch of ai-beta-gate.yml (run 33421339702) against current main confirmed QUAL-42's own fix
+  (base-ai-loop passes on Docker/Linux CI, not just Windows-local) but surfaced 6 of 8 expectedPass
+  scenarios failing smoke, not previously individually diagnosed.
+surface: ai-beta-gate, golden-ai-scenarios, runtimehost auth, generator FinalAppAssembler
+files:
+  - scripts/quality/invoke-ai-beta-app-smoke.ps1
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
+detail: |
+  ROOT CAUSE (confirmed by code reading, not assumption): for any scenario whose ai-model.json
+  declares `auth.testUsers` (multi-tenant/RBAC scenarios: tenant-workflow-ops, tenant-service-desk,
+  tenant-approval-portal, custom-panel-procedure-mismatch, custom-procedure-admission-rejection,
+  custom-procedure-invalid), FinalAppAssembler writes
+  `src/main/resources/application-ai-beta-local.yml` into the generated app with REAL per-test-user
+  API keys (format `ai-<scenarioId>-<userId>`, e.g. `ai-tenant-workflow-ops-agent-a`), scoped to the
+  `ai-beta-local` Spring profile. Every scenario's golden ai-verification-report.json references
+  these exact literal keys in its checks' `X-Api-Key` headers.
+
+  Separately, `invoke-ai-beta-app-smoke.ps1`'s `Ensure-NpdevApiKey` (added for SEC-1: RuntimeHost no
+  longer seeds a known dev api-key, so `bootRun` fails closed without one supplied externally)
+  UNCONDITIONALLY generates one random fallback key and exports it as the `NPDEV_AUTH_API_KEYS`
+  environment variable before every scenario boots -- regardless of whether the app already has a
+  real key source. Spring Boot's property source precedence ranks environment variables ABOVE
+  profile-specific `application-{profile}.yml` files, so this env var silently REPLACED the entire
+  multi-user `npdev.auth.api-keys` mapping the generator had written, leaving only the one random
+  fallback key valid. Every check presenting one of the real per-testUser keys then got
+  `401 {"error":"invalid_api_key"}` -- correctly reported by run-ai-beta-gate.ps1's own
+  expected-outcome-aware summary (QUAL-42) as `expectedPassFailed`, not as a designed negative.
+
+  Confirms the pattern precisely: base-ai-loop and custom-panel-unsupported (both scenarios with NO
+  `auth.testUsers` declared, so no `application-ai-beta-local.yml` is ever generated for them) were
+  the only 2 of 8 expectedPass scenarios that passed smoke -- Ensure-NpdevApiKey's fallback key was
+  the ONLY key source for them, so nothing was clobbered.
+
+  FIX: Ensure-NpdevApiKey now checks for
+  `$AppRoot/src/main/resources/application-ai-beta-local.yml` before doing anything, and no-ops
+  (returns immediately, leaving the generator's real mapping untouched) when that file exists.
+  Behavior for scenarios with no generator-emitted key source (base-ai-loop and any future
+  no-auth-declared scenario) is unchanged -- Ensure-NpdevApiKey still generates and exports the
+  fallback key exactly as before, since that codepath is the one SEC-1 actually needed.
+
+  Not patched in `scripts/appgen/Build-NpdevApp.ps1` / `Build-ClaudeApp.ps1`'s own copies of
+  Ensure-NpdevApiKey: FinalAppAssembler's application-ai-beta-local.yml emission is conditional on a
+  scenario-only `metadata.scenarioId` / `metadata.auth.testUsers` present in the generated
+  model.json, which regular AppGen/Claude apps never carry -- those two copies cannot hit this bug
+  as written, so leaving them untouched avoids an unnecessary behavior change to callers this item
+  never exercised.
+
+  VERIFICATION STATUS: fix applied and PowerShell-parsed clean; not yet re-verified against a live
+  boot or a fresh AI Beta Gate CI dispatch (deferred to the next full-gate/CI pass per this session's
+  own "batch fixes before running gates" instruction, together with QUAL-36/40/41/SEC-3's fixes).
+
+  Done when: a live boot (local or CI) of one of the 6 previously-failing scenarios (tenant-
+  workflow-ops recommended -- 3 distinct check types: authenticated create, cross-tenant rejection,
+  panel action) shows every check passing with its declared per-testUser key, not just health-ok --
+  PENDING, tracked for the next verification pass.

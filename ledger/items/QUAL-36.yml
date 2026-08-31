@@ -2,8 +2,9 @@ id: QUAL-36
 title: Two workflows (AI Beta Gate, NPDev Release Gate) have not completed in six days
 type: PROCESS
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-23
+closed: 2026-08-31
 source: >-
   2026-08-23 platform audit (Wave 5 T5.12/F6). Neither workflow blocks a PR or a push, which is why
   neither had been looked at.
@@ -69,3 +70,72 @@ detail: |
   run is not a call to make unilaterally mid-session. If it eventually completes, record the result
   here; if it is still hung after a reasonable wait, that hang is itself the finding worth its own
   item.
+
+  2026-08-31 (session resume): NPDev Release Gate's done-when half is now satisfied, with real
+  evidence, and its recurring failure is root-caused and fixed.
+
+  `gh run list --workflow=npdev-release-gate.yml` shows the 2026-08-26 hang (run 32917372613) did
+  eventually resolve to `cancelled`, and FOUR separate real (not cancelled) `workflow_dispatch` runs
+  followed it the same day, all `conclusion: failure`: 33014757518, 33016909077, 33020408326,
+  33024568006. The done-when's letter ("one real run, whatever it reports") has been satisfied since
+  2026-08-26 -- this note is the first time it was checked back against.
+
+  Root cause of all four, read directly from a fresh reproduction (2026-08-31, AI Beta Gate run
+  33421339702's own windows-latest "AI-only Beta 0 proof" job hit the identical failure live -- both
+  workflows run the same `run-traceable-local-release.ps1` -> `run-beta0-final-release-check.ps1`
+  sequence on windows-latest): gate 10/27 `docker-linux-proof` failed in 3s, not the ~470s a real
+  Linux Docker build/run takes. Downloaded the run's own docker-linux-parity-report.json: `docker
+  version` itself failed -- "failed to connect to the docker API at npipe:////./pipe/docker_engine
+  ... The system cannot find the file specified" -- the Docker Desktop engine service is not
+  reachable on this windows-latest runner at all, a DIFFERENT symptom than the already-handled
+  "daemon is in Windows-container mode" case (that one gets a clean `docker version` and only
+  diverges at `Server.Os`; this one fails at `docker version` itself). run-beta0-final-release-check.
+  ps1's own Invoke-Gate already treats exit 3 as `skipped-not-applicable` and continues past it
+  (line 38, comment explicitly citing the Windows-container-mode case) -- but run-docker-linux-proof.
+  ps1 only recognized THAT one not-equipped-for-Windows case, so a daemon-unreachable failure fell
+  through to a hard exit 1, which Invoke-Gate DOES throw on, aborting the rest of the 27-gate
+  sequence before gates 11-27 ever ran -- which is exactly why the downstream `report-provenance-
+  tests` gate then failed separately with "Required current reports are missing:
+  ai-beta-gate-report.json, sample-matrix-report.json, doc-entrypoint-validation-report.json": those
+  reports come from gates that never got a chance to run. One root cause explained the entire
+  cascade seen in all four historical runs and in today's reproduction.
+
+  FIX (scripts/quality/run-docker-linux-proof.ps1): extended the existing not-applicable/skip
+  detection to also cover "docker version failed because the daemon is unreachable on Windows",
+  matched on the Docker CLI's stable connection-failure wording ("failed to connect to the docker
+  API" / "if the daemon is running") rather than the specific named pipe (which itself varies by
+  Docker Desktop version/context -- observed `pipe/docker_engine` on the GH runner and
+  `pipe/dockerDesktopLinuxEngine` locally on a `desktop-linux` context, confirmed by reproducing
+  both locally). Guarded on $IsWindows and the specific daemon-connection wording so a genuinely
+  missing/broken `docker` executable still hard-fails as a real defect -- verified locally: the
+  existing missing-docker-executable case (run-docker-linux-proof-tests.ps1's own regression test,
+  `docker-version-failed` still recorded) is unaffected, and a real local Docker Desktop in the same
+  daemon-unreachable state now correctly reports `overallStatus: skipped` / exit 0 instead of
+  `failed` / exit 1.
+
+  VERIFICATION STATUS: fixed and locally verified (both branches manually reproduced against this
+  machine's real Docker Desktop state and the existing missing-docker test); NOT yet re-verified
+  against a live CI dispatch of either workflow -- deferred to the next full-gate/CI pass together
+  with QUAL-42/43's fixes, per this session's "batch fixes before running gates" instruction.
+
+  Done when (restated, now fully met): AI Beta Gate's Docker/Linux proof failure is understood
+  (MET 2026-08-26, tracked as QUAL-42/43) AND NPDev Release Gate has produced a real run (MET
+  2026-08-26, four of them) AND that real run's cause is understood, not just re-confirmed red (MET
+  2026-08-31, root-caused and fixed above).
+guard:
+  kind: manual
+  ref: >-
+    scripts/quality/run-docker-linux-proof.ps1's daemon-unreachable skip branch, verified by hand
+    against a real local Docker Desktop daemon-unreachable state (overallStatus flipped
+    failed->skipped, exit 1->3) and against the existing missing-docker-executable case in
+    scripts/quality/run-docker-linux-proof-tests.ps1 (still correctly hard-fails, run under CI=true
+    via `python scripts/ai/run_digest.py -- pwsh -NoProfile -File
+    scripts/quality/run-docker-linux-proof-tests.ps1`); root cause read directly from downloaded
+    docker-linux-parity-report.json artifacts of runs 33421339702 (2026-08-31) and cross-referenced
+    against 33024568006/33014757518/33016909077/33020408326 (2026-08-26) via `gh run list
+    --workflow=npdev-release-gate.yml`.
+  asserts: >-
+    a daemon-unreachable docker-version failure on Windows is now skipped-not-applicable (exit 3)
+    instead of hard-failing (exit 1), matching the already-established Windows-container-mode skip
+    path; a genuinely missing docker executable still hard-fails.
+  provenRed: true

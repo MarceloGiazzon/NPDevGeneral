@@ -5,8 +5,9 @@ title: >-
   defect is base-ai-loop's create-learner smoke check drawing 401 invalid_api_key from a healthy app
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-26
+closed: 2026-08-31
 source: >-
   2026-08-25 remediation plan W4.4 (closing QUAL-36): dispatched a fresh AI Beta Gate run
   (workflow_dispatch, run 32917370685) to get real, current signal after 6 days of cancelled
@@ -112,8 +113,39 @@ detail: |
   Done when: (1) the gate's verdict provably accounts for expectedOutcome (satisfied 2026-08-27 by
   code reading; verdict (a) recorded above), (2) the gate report reads in those terms -- a summary
   that states expected-fail (all as designed) / expected-pass (X passed, Y failed) instead of a bare
-  failure count, (3) base-ai-loop's create-learner smoke check goes green against a live boot on
-  profiles dev,step0,ai-beta-local with the root cause of the 401 wired correctly (verifier key vs
-  app mapping) -- satisfied 2026-08-27: live boot returned 201; the residual docker-container
-  question is tracked under the re-dispatch action above -- and (4) this item records which of
-  (a)/(b) was true -- (a), done above.
+  failure count -- satisfied 2026-08-27, same session, commit ad1987ab: run-ai-beta-gate.ps1's
+  report.summary now carries expectedFail/expectedFailAsDesigned/expectedFailUnexpected/expectedPass/
+  expectedPassPassed/expectedPassFailed, and the printed summary line states counts in exactly these
+  terms -- this item's own detail above hadn't caught up to that commit until now, (3) base-ai-loop's
+  create-learner smoke check goes green against a live boot on profiles dev,step0,ai-beta-local with
+  the root cause of the 401 wired correctly (verifier key vs app mapping) -- satisfied 2026-08-27:
+  live boot returned 201; the residual docker-container question is tracked under the re-dispatch
+  action above -- and (4) this item records which of (a)/(b) was true -- (a), done above.
+
+  2026-08-31 (session resume): re-dispatched AI Beta Gate fresh against current main (head 2191f6e4)
+  to settle the residual docker-container question -- run
+  https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33421339702 (databaseId 33421339702).
+  RESULT, downloaded and read (docker-linux-ai-beta-gate-report.json, the docker-linux-proof job's
+  own artifact, real 12m38s execution not a fast-fail): base-ai-loop's create-learner check PASSES on
+  Docker/Linux CI (status: passed) -- the residual question is answered: the 401 fix from 977dbc9a
+  holds on Linux, it was never Docker/Linux-container-specific, matching the local Windows
+  verification from 2026-08-27. QUAL-42 is fully closed on its own original scope.
+
+  The same run surfaced a DIFFERENT, previously-undiagnosed defect in the other 6 of 8 expectedPass
+  scenarios (all 3 required tenant scenarios plus 3 custom-panel/procedure scenarios) -- a real bug,
+  not a QUAL-42 residual, root-caused and fixed as its own item: see ledger/items/QUAL-43.yml.
+  overallStatus on this run is still "failed" because of QUAL-43's defect, not because of anything
+  QUAL-42 was tracking.
+guard:
+  kind: manual
+  ref: >-
+    scripts/quality/run-ai-beta-gate.ps1's expected-outcome-aware summary (commit ad1987ab), and
+    the base-ai-loop scenario result inside the downloaded docker-linux-ai-beta-gate-report.json
+    artifact of CI run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33421339702
+    (databaseId 33421339702, 2026-08-31, real 12m38s Docker/Linux execution) -- fetched via
+    `gh run download 33421339702 -n docker-linux-proof-reports`.
+  asserts: >-
+    report.summary reads expectedFail/expectedFailAsDesigned/expectedPass/expectedPassPassed instead
+    of a bare failure count; base-ai-loop's create-learner check has status: passed on a live
+    Docker/Linux CI run, settling that the 977dbc9a auth-key fix was never Docker/Linux-specific.
+  provenRed: true

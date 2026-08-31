@@ -4,8 +4,14 @@ title: >-
   raise it -- the module copied verbatim into every generated FinalApp
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: WONTFIX
 opened: 2026-08-25
+closed: 2026-08-31
+decision: >-
+  Owner accepted 17.4451% RuntimeHost coverage as the working baseline rather than spending session
+  time on test-writing; the defect-history rationale (PORT-1..5, REG-177) stands as the reason a
+  future dedicated session should target boot-time/first-run paths specifically, not a reason to
+  rush it inline alongside four other items now.
 source: >-
   2026-08-25 remediation plan W3.5. Same shape of gap as QUAL-40 (kernel's analogous item), split out
   separately because RuntimeHost's own defect history singles it out: PORT-1..5, the close-the-gaps
@@ -39,3 +45,12 @@ detail: |
   boot-time/first-run paths gained coverage and why those were chosen, or an owner explicitly accepts
   the current floor as the working baseline for now and this item is closed as WONTFIX with that
   reasoning recorded.
+
+  2026-08-31: owner (Marcelo, this session) explicitly accepted 17.45% as the working baseline
+  rather than committing session time to test-writing -- given as a paired decision with QUAL-40
+  (same shape of gap). Severity MEDIUM (vs QUAL-40's LOW) and this item's own defect-history
+  rationale (PORT-1..5, REG-177 all landing in boot-time/first-run paths) are NOT being dismissed --
+  they are exactly why this should be a deliberate, sustained programme aimed at boot-time/first-run
+  paths specifically, not something to rush inline alongside four other items in one session, which
+  is the same false-green risk this item's own text already warned against. Reopen (or better, start
+  fresh with a scoped boot-time-coverage plan) whenever a session's actual focus is this module.

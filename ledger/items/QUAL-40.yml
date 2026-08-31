@@ -3,8 +3,13 @@ title: Kernel+adapters aggregate coverage floor (62.69%) is now measured by a re
   tracked plan to raise it
 type: GAP
 severity: LOW
-status: OPEN
+status: WONTFIX
 opened: 2026-08-25
+closed: 2026-08-31
+decision: >-
+  Owner accepted 62.6905% kernel+adapters aggregate coverage as the working floor rather than
+  spending session time on bulk test-writing, which this item's own text already warns is a
+  false-green risk; the measurement gate (QUAL-32) stays in place regardless.
 source: 2026-08-25 remediation plan W3.2 (QUAL-32's own point 2, split out once point 1 -- the
   missing CI job -- was closed for real).
 surface: kernel, adapters, coverage
@@ -22,3 +27,12 @@ detail: |
   Done when: either a real test-writing effort raises the aggregate floor with evidence (which
   modules, which paths, by how much), or an owner explicitly accepts 62.69% as the working floor for
   now and this item is closed as WONTFIX with that reasoning recorded.
+
+  2026-08-31: owner (Marcelo, this session) explicitly accepted 62.69% as the working floor rather
+  than committing session time to bulk test-writing -- consistent with this item's own warning that
+  "a ratchet moved by testing easy code is the same class of false green as everything else in this
+  plan," and with NPDev's pre-1.0 stability policy (README.md / BREAKING.md: deliberately unstable,
+  not chasing coverage vanity metrics). The measurement gate itself (kernelQualityGate, QUAL-32)
+  stays in place and keeps the floor from silently regressing further -- this closes the "no tracked
+  plan" gap by recording that no plan is being tracked, not by fabricating one. Reopen if a real,
+  sustained test-writing effort is undertaken later.
