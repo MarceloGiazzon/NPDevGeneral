@@ -11,14 +11,21 @@
       "expectedStatus": 200
     },
     {
-      "id": "create-user",
+      "id": "create-learner",
       "type": "http",
       "method": "POST",
-      "path": "/api/users",
-      "body": {
-        "email": "beta0@example.com"
+      "path": "/api/learners",
+      "headers": {
+        "Content-Type": "application/json"
       },
-      "expectedStatus": 201
+      "body": {
+        "name": "Beta Zero",
+        "status": "ready"
+      },
+      "expectedStatus": 201,
+      "expectedJsonContains": {
+        "name": "Beta Zero"
+      }
     }
   ]
 }
