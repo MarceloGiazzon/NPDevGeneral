@@ -169,7 +169,9 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
 - **`/prep`, `/close`, `/hist`** (`.claude/commands/`) are the shortcuts — prefer them over typing
   the scripts. The `SessionStart` hook (`scripts/hooks/session-start-handoff.py`) already injects
   the last handoff automatically, so **a bare "continue" means the `NEXT` line you were given at
-  startup.** If for any reason it is absent, run `/prep` — never reconstruct the resume point by
+  startup.** `NEXT` is also the **default action after a `/prep`** — state it and start it,
+  no permission round-trip, after checking it was not already finished late in the last
+  session. If for any reason it is absent, run `/prep` — never reconstruct the resume point by
   reading files or git history, which is the expensive habit this replaces.
 - **Session close — write the handoff BEFORE `/clear`:**
   `pwsh -NoProfile -File scripts/ai/Close-Session.ps1 -Summary "..." -NextStep "..." [-Plan ... -Blocked ... -Verified ...]`.

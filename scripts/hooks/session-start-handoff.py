@@ -87,7 +87,9 @@ def main() -> int:
     out.append("")
     out.append("Do NOT reconstruct this from git history or by reading files. If the user's "
                "first message is a bare 'continue' or similar, this is what they mean. "
-               "Confirm the NEXT line back to them in one sentence before starting.")
+               "NEXT is the default action after a prep: state it in one sentence and "
+               "start it (checking first that it is not already done) rather than asking "
+               "whether to proceed.")
 
     sys.stdout.write("\n".join(out) + "\n")
     return 0
