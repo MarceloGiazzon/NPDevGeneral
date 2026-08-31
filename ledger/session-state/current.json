@@ -1,0 +1,18 @@
+{
+  "closedAt": "2026-08-31T05:07:42.1073118Z",
+  "branch": "main",
+  "head": "0377223c",
+  "headSubject": "feat(data-mobility): add cross-engine structure compatibility check",
+  "summary": "Cut CLAUDE.md 38K->21.6K and memory index 17.8K->13.3K; added session_meter, run_digest, build_symbol_map, Prepare-Session, Close-Session. Landed the orphaned data-mobility commit.",
+  "nextStep": "Register Close-Session.ps1 in script-invocation-declarations.json, then commit and push the handoff tooling.",
+  "plan": "https://claude.ai/code/artifact/0bde8c46-fb12-4563-8f28-4e7799110660",
+  "blocked": "",
+  "verified": "aiKnowledge 40/40, script-inventory 212/212, slimness 3975 files",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M scripts/ai/Prepare-Session.ps1",
+    "?? scripts/ai/Close-Session.ps1"
+  ],
+  "unpushed": 0,
+  "landedCommits": []
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.dev/schemas/ai/session-handoff.schema.json",
+  "title": "NPDev session handoff",
+  "description": "Where a working session stopped, so the next one resumes without re-deriving it. Written by scripts/ai/Close-Session.ps1 to ledger/session-state/current.json (overwritten each close) and appended to history.jsonl (one object per line, never rewritten).",
+  "type": "object",
+  "required": ["closedAt", "branch", "head", "summary", "nextStep"],
+  "additionalProperties": false,
+  "properties": {
+    "closedAt": {
+      "type": "string",
+      "description": "ISO-8601 UTC instant the session was closed."
+    },
+    "branch": { "type": "string", "description": "Git branch at close." },
+    "head": { "type": "string", "description": "Short SHA of HEAD at close." },
+    "headSubject": { "type": "string", "description": "Subject line of HEAD's commit." },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "description": "What the session actually did. One or two sentences."
+    },
+    "nextStep": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The resume point. Must be actionable with no other context: 'Wire the PreToolUse hook into settings.json, then verify with a bare gradlew', not 'continue the roadmap'."
+    },
+    "plan": {
+      "type": "string",
+      "description": "Path or URL to the plan or roadmap being followed, if any."
+    },
+    "blocked": {
+      "type": "string",
+      "description": "Anything genuinely blocked, and on what. Not 'not done yet'."
+    },
+    "verified": {
+      "type": "string",
+      "description": "What verification actually ran -- gate names and results, or 'none'. Never imply verification that did not happen."
+    },
+    "dirtyCount": { "type": "integer", "minimum": 0 },
+    "dirtyFiles": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Up to 20 porcelain lines for uncommitted files at close."
+    },
+    "unpushed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Commits ahead of upstream at close."
+    },
+    "landedCommits": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "One-line log of commits made since the previous close -- what this session landed."
+    }
+  }
+}
