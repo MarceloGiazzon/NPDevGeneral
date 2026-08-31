@@ -255,7 +255,24 @@ $version = Invoke-LoggedCommand `
     -StdoutPath (Join-Path $logRoot "docker-version.stdout.log") `
     -StderrPath (Join-Path $logRoot "docker-version.stderr.log")
 $commands += $version
-if ([string]$version.status -ne "passed") {
+
+# QUAL-36 follow-up (2026-08-31, run 33421339702): a SECOND not-equipped-for-this-runner case,
+# same bucket as the Windows-container-mode skip below. `docker version` itself can fail on a
+# windows-latest GH runner because the daemon service isn't reachable at all --
+# "failed to connect to the docker API at npipe:////./pipe/docker_engine ... The system cannot find
+# the file specified" -- which is a DIFFERENT symptom than defaulting to Windows containers (that
+# case gets a clean `docker version` and only diverges at Server.Os), but the same underlying truth:
+# a Windows runner cannot prove Linux-container behavior, daemon reachable or not. Matched on the
+# Docker CLI's stable connection-failure wording, not the named pipe itself -- the pipe name varies
+# by Docker Desktop version/context (observed both `pipe/docker_engine` on a GH windows-latest
+# runner and `pipe/dockerDesktopLinuxEngine` locally on a `desktop-linux` context) -- so a genuinely
+# missing/broken `docker` executable (empty stderr, a .NET "file not found" exception with no
+# docker-daemon wording at all -- exercised by run-docker-linux-proof-tests.ps1's missing-docker
+# case) still hard-fails as a real defect.
+$stderrJoined = ($version.stderrTail -join "`n")
+$daemonUnreachableOnWindows = $IsWindows -and [string]$version.status -ne "passed" -and
+    ($stderrJoined -match "failed to connect to the docker API|if the daemon is running|[Cc]annot connect to the Docker daemon")
+if ([string]$version.status -ne "passed" -and -not $daemonUnreachableOnWindows) {
     Add-Failure -Code "docker-version-failed" -Message "Docker CLI/version probe failed." -Path $DockerExecutable -Details @{ exitCode = $version.exitCode; timedOut = $version.timedOut; stdoutPath = $version.stdoutPath; stderrPath = $version.stderrPath }
 }
 
@@ -286,10 +303,17 @@ if ([string]$version.status -eq "passed") {
     $dockerServerOs = (& $DockerExecutable version --format "{{.Server.Os}}" 2>$null | Out-String).Trim()
     $ErrorActionPreference = "Stop"
 }
-if ($failures.Count -eq 0 -and $dockerServerOs -and $dockerServerOs -ne "linux") {
-    $skipReason = ("Docker daemon is in '" + $dockerServerOs + "'-container mode; this proof builds a Linux image " +
+if ($failures.Count -eq 0 -and (($dockerServerOs -and $dockerServerOs -ne "linux") -or $daemonUnreachableOnWindows)) {
+    $skipReason = if ($daemonUnreachableOnWindows) {
+        ("Docker daemon is not reachable on this Windows host (" + $stderrJoined + "); this proof " +
+         "builds a Linux image (Dockerfile.ai-beta: FROM debian:12-slim) and needs a running Linux " +
+         "daemon. Its real home is a Linux daemon (ai-beta-gate.yml's ubuntu-latest job).")
+    }
+    else {
+        ("Docker daemon is in '" + $dockerServerOs + "'-container mode; this proof builds a Linux image " +
                    "(Dockerfile.ai-beta: FROM debian:12-slim) and cannot run here. Its real home is a Linux daemon " +
                    "(ai-beta-gate.yml's ubuntu-latest job).")
+    }
     Write-DockerProofMessage ("SKIPPED (not applicable): " + $skipReason)
     $skipReport = [pscustomobject]@{
         schemaVersion = "npdev-docker-linux-parity-report.v1"

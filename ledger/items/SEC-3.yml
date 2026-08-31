@@ -140,3 +140,50 @@ detail: |
   file/socket operation and is actually blocked) -- not a design document. Model A has already
   closed those vectors' DIRECT-REFERENCE form at admission; the "live-fired" phrasing of this bar
   now targets a plugin running against a REAL agent, i.e. the Model B process isolation.
+
+  2026-08-31 (owner-requested scoping pass, NOT an implementation attempt -- the done-when above is
+  explicit that a design document does not satisfy it; this is recorded so a future session that
+  actually commits to Model B starts from open questions instead of a blank page):
+
+  Model B is a bigger shape-change than "spawn a child JVM and run the plugin there." Today
+  TimeBoundedPluginExecutionEngine invokes the plugin class DIRECTLY in-process via reflection, with
+  direct in-JVM access to whatever the host wires it to (capability dispatch, persistence, the
+  auditLog primitive). Moving execution to a separate process means the plugin can no longer call
+  those directly -- every capability invocation becomes a cross-process round trip, which is new
+  surface, not a relocation of the existing one. Open questions a real attempt has to answer, in
+  roughly the order they gate each other:
+
+  1. IPC shape for the CALLBACK direction (child -> host, e.g. "read this record" / "invoke this
+     capability"), not just the outbound invoke (host -> child, "run this plugin with this input").
+     This is the crux: a plugin today can call arbitrary capabilities as ordinary Java calls; Model B
+     needs a serialization boundary for every one of those calls, plus a way to enforce the SAME
+     admission-time denylist (TrustedSourceBytecodeInspector) against what the child is allowed to
+     ask the host to do on its behalf, or the isolation is decorative.
+  2. Process lifecycle: cold JVM start per invocation (measured elsewhere in this platform at
+     several hundred ms) is likely too slow for the existing timeout budget
+     (npdev.runtime.plugin-timeout-ms, default 1000ms, already observed to occasionally miss under
+     load per Move 14 Phase D item D1 in invoke-ai-beta-app-smoke.ps1). A warm-pool-of-child-
+     processes design avoids the cold-start cost but adds its own state: pool sizing, idle recycling,
+     and what happens to in-flight pool members when the host itself is redeploying.
+  3. Per-OS resource limiting is genuinely two implementations, not one: Linux cgroups/namespaces vs
+     Windows Job Objects, both needing their own test matrix given this platform's dual-OS CI (H2/
+     SQLServer on Windows dev machines and Windows CI runners, Postgres/MySQL/Docker gated to Linux
+     CI per scripts/policy/local-test-profile.json). A design that only proves out on one OS is not
+     done.
+  4. Crash/violation handling: a killed-for-resource-violation or OOM child process must surface as
+     an ordinary CAPABILITY_FAILED to the caller (matching today's timeout-failure shape), not crash
+     the host app or leave the pool in a bad state. Needs its own test: a plugin that intentionally
+     exhausts memory/CPU is killed and the HOST keeps serving other requests without degradation.
+  5. Where the trust boundary actually sits after Model B: the plugin still runs as the SAME OS user
+     as the host (no container/VM boundary proposed here, matching the platform's existing single-
+     tenant-process deployment model) -- process isolation stops a runaway plugin from taking down
+     the host or exhausting host memory/CPU unboundedly, but does not by itself add a NEW privilege
+     boundary beyond what OS process separation already provides. Worth stating explicitly so Model
+     B is not oversold the way "Sandboxed" (the class's original name, SEC-3's own opening context)
+     already was once.
+
+  Recommended first step for whoever picks this up: prototype #1 (the callback IPC shape) alone,
+  against a single capability (e.g. auditLog, already the simplest real one in the shipped corpus),
+  before touching process spawning or resource limits at all -- it is the piece every other decision
+  depends on, and the one most likely to reveal that the "different-sized piece of work" framing
+  above is, if anything, still an underestimate.

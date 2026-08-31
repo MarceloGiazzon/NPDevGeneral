@@ -84,6 +84,21 @@ function Stop-ProcessTree {
 # deliberately self-contained") rather than a shared import -- mirrors Build-NpdevApp.ps1's copy.
 function Ensure-NpdevApiKey {
     param([string]$AppRoot)
+    # QUAL-42 follow-up: for any scenario whose ai-model.json declares auth.testUsers, the generator
+    # (FinalAppAssembler) writes src/main/resources/application-ai-beta-local.yml with real per-test-
+    # user api-keys (format ai-<scenarioId>-<userId>) for the "ai-beta-local" profile. Spring Boot
+    # environment variables outrank profile-specific application-*.yml property sources, so
+    # unconditionally exporting NPDEV_AUTH_API_KEYS below would silently replace every one of those
+    # real, per-user keys with a single generated one -- which is exactly what was happening: every
+    # scenario check that authenticates as a specific test user (tenant-workflow-ops,
+    # tenant-service-desk, tenant-approval-portal, and the custom-panel/procedure scenarios) got
+    # invalid_api_key even though the app boots and serves traffic. Only step in when the app has NO
+    # generator-emitted key source at all (this is the only case SEC-1 actually left needing a
+    # fallback: scenarios like base-ai-loop with no auth.testUsers declared).
+    $aiBetaLocalYml = Join-Path $AppRoot 'src/main/resources/application-ai-beta-local.yml'
+    if (Test-Path -LiteralPath $aiBetaLocalYml) {
+        return
+    }
     $secretsDir = Join-Path $AppRoot 'secrets'
     $keyFile = Join-Path $secretsDir 'api-key.env'
     $needsGeneration = -not (Test-Path -LiteralPath $keyFile)
