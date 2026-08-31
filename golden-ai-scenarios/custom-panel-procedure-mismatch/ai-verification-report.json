@@ -19,12 +19,11 @@
         "Content-Type": "application/json"
       },
       "body": {
-        "name": "Beta Zero",
         "status": "ready"
       },
       "expectedStatus": 201,
       "expectedJsonContains": {
-        "name": "Beta Zero"
+        "status": "ready"
       }
     }
   ]
