@@ -5,8 +5,9 @@ title: >-
   root-caused, and not yet confirmed whether 404 is itself correct or a defect
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-31
+closed: 2026-08-31
 source: >-
   2026-08-31 (session resume, verifying QUAL-43's corrected API-key merge fix on a fresh AI Beta Gate
   dispatch, run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33432791806). Same
@@ -40,3 +41,29 @@ detail: |
   its model (settling (a) vs (b) above), and either the routing defect is fixed or the scenario's
   own expectation is corrected with that reasoning recorded -- verified by a live CI or local boot
   showing the check passing (or correctly removed as inapplicable).
+
+  RESOLVED as (b): each scenario's ai-model.json defines only a `Learner` entity with a single
+  `status` field, exposed at `POST /api/learners` -- there never was a `/api/users` route or a `name`
+  field to route to; the golden ai-verification-report.json fixtures for all 3 scenarios were stale
+  on TWO counts, not one: the endpoint path (already corrected to /api/learners earlier this session,
+  producing the 404 -> 201-with-wrong-body progress this item originally logged) and, discovered on
+  the next live-CI dispatch (run 33438289211, Docker/Linux job), the response-body assertion
+  (`expectedJsonContains: {"name": "Beta Zero"}` checked a field that was never on the entity).
+  Confirmed by the actual REST smoke response bodies from that CI run:
+  `{"id":"...","status":"ready","version":0,"tenantId":"dev"}` for all 3 scenarios -- no "name" field
+  present because none was ever modeled. Fixed by changing each fixture's request body and
+  expectedJsonContains to check `status: "ready"` (the one real field) instead of `name`. No routing
+  defect exists; (a) is ruled out. Verified locally: `run-ai-beta-gate.ps1` now reports 8/8
+  expected-pass scenarios passing (was 5/8 before this fix).
+guard:
+  kind: manual
+  ref: >-
+    scripts/reports/out/ai-beta-gate-report.json, generated locally by
+    `pwsh -NoProfile -File scripts/quality/run-ai-beta-gate.ps1` after fixing all 3 scenarios'
+    ai-verification-report.json (endpoint + expectedJsonContains).
+  asserts: >-
+    All 8 of 8 expected-pass scenarios pass (was 5 of 8 before this fix, with
+    custom-panel-procedure-mismatch/custom-procedure-admission-rejection/custom-procedure-invalid
+    the 3 failing); 22 of 22 expected-fail scenarios still fail as designed. Digest verdict: "AI beta
+    gate passed."
+  provenRed: true

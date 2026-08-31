@@ -1,0 +1,50 @@
+id: QUAL-47
+title: >-
+  Traceable-local-release Gate 15/27 (sample-matrix) never CI-reachable before today -- now reached
+  because QUAL-44 fixed Gate 11 (sample-matrix-tests), and fails on 3 of 5 release-blocking samples:
+  2 missing db.definition.json, 1 with real RuntimeHost schema-lifecycle test failures
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-31
+source: >-
+  2026-08-31 (session resume, dispatching a fresh ai-beta-gate.yml run 33438289211 to confirm
+  QUAL-43/44/45/46 together). The "AI-only Beta 0 proof" job's run-traceable-local-release.ps1
+  chain reached Gate 15/27 (sample-matrix) for the first time -- every prior CI run on record
+  (including the two immediately before this one, 33432791806 and 33428237338) aborted at Gate 11/27
+  (sample-matrix-tests) before QUAL-44's fix landed, so Gate 15 never actually ran and its failures
+  were invisible.
+surface: NPDevSamples (simple-user-registry, medium-expense-approval, restaurant-saas-multitenant), scripts/quality/run-sample-matrix.ps1, NPDevRuntimeHost SchemaImpactFacade/SchemaLifecycleExecutor tests
+files: []
+detail: |
+  NOT YET ROOT-CAUSED beyond the surface symptom below -- this item exists to track the finding, not
+  to claim a fix. run-sample-matrix.ps1's release-evidence mode requires all 5 release-blocking
+  samples (canonical-demo, simple-user-registry, simple-contact-intake, medium-expense-approval,
+  restaurant-saas-multitenant) to pass generation+runtime verification. 2 of 5 passed
+  (canonical-demo, simple-contact-intake); 3 failed, each a DIFFERENT root cause:
+
+  1. simple-user-registry: `verify-sample.ps1` fails immediately with "Sample db.definition.json
+     not found: NPDevSamples\simple-user-registry\Input\db.definition.json". The sample's Input/
+     directory has no such file -- it has model.json instead (confirmed locally, not just from the
+     CI log). Not clear yet whether verify-sample.ps1 is looking for a retired input format this
+     sample migrated away from, or whether this sample was never wired for this verification path.
+
+  2. medium-expense-approval: identical "db.definition.json not found" failure, same open question.
+
+  3. restaurant-saas-multitenant: gets past generation and into `gradlew test`, which genuinely
+     fails -- 4 of 649 tests failed: SchemaImpactFacadeH2Test.staleIdentityPackCopySurfacesAsNeeds
+     AttentionEvenWithNoManifest(), SchemaImpactFacadeH2Test.freshIdentityPackCopyStaysNoChangesWith
+     NoManifest(), SchemaImpactFacadeH2Test.neverThrowsAndReturnsNoChangesWhenNoManifestOnClasspath()
+     (all AssertionFailedError), and SchemaLifecycleExecutorProofMatrixTest Row 17 ("Ephemeral app ->
+     tables recreated empty, no refusal, no token, neighbours untouched") -- an
+     org.h2.jdbc.JdbcSQLSyntaxErrorException wrapped in IllegalStateException. This is the only one
+     of the 3 that looks like a real product defect rather than a stale-fixture gap; needs the actual
+     failing assertions read, not just the tail summary this session captured.
+
+  Not caused by this session's changes: nothing this session touched (service-base.mustache's
+  entityFromRecord, the 3 golden-ai-scenario fixtures) relates to sample-matrix generation, schema
+  lifecycle, or these 3 sample apps -- this gate simply never ran to completion in CI before QUAL-44.
+
+  Done when: each of the 3 failures is root-caused individually (not read from a report, walked to
+  its actual cause) and either fixed or reclassified, and Gate 15/27 (sample-matrix) shows all 5
+  release-blocking samples passing on a live CI run of ai-beta-gate.yml's "AI-only Beta 0 proof" job.
