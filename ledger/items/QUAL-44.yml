@@ -2,10 +2,11 @@ id: QUAL-44
 title: >-
   run-sample-matrix-tests.ps1's own self-tests fail for real against actual NPDevSamples release
   samples -- previously unreachable by any CI run because QUAL-36's gate-10 hard-fail always aborted
-  the sequence first; root cause not yet diagnosed
+  the sequence first; two distinct pre-existing policy/fixture drift bugs, both root-caused and fixed
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
+closed: 2026-08-31
 opened: 2026-08-31
 source: >-
   2026-08-31 (session resume, verifying QUAL-36's fix on a fresh NPDev Release Gate dispatch, run
@@ -16,38 +17,67 @@ source: >-
   non-hung) run of either AI Beta Gate's windows job or NPDev Release Gate had ever reached.
 surface: sample-matrix, NPDevSamples release corpus
 files:
-  - scripts/quality/run-sample-matrix-tests.ps1
   - scripts/policy/sample-matrix-policy.json
+  - scripts/tests/fixtures/sample-matrix-invalid-required/Input/model.json
 detail: |
-  NOT YET ROOT-CAUSED -- filed to capture the finding, not to claim a diagnosis. What is known from
-  the CI report (sample-matrix-tests-report.json, downloaded from run 33428245339):
+  Reproduced locally (the CI artifact only carries scripts/reports/out/, not the
+  scripts/reports/tmp/sample-matrix-tests/ detail the failing assertions needed -- running
+  scripts/quality/run-sample-matrix-tests.ps1 directly on this machine hit the identical failure and
+  left the tmp evidence in place to actually diagnose from, unlike the CI round-trip).
 
-  6 of the test script's own assertions fail, all clustered around the "actual release samples"
-  half of its two-part check (the other half, "fixture-only sample input issues", is implied fine
-  since only the actual-* and fixture-input-contract-eligible assertions are in the failure list --
-  re-check this against the full failures list before assuming, this is read from a summary, not the
-  raw assertion pass/fail table):
-    - fixture-only-issue-exit / fixture-only-issue-status / fixture-input-contract-eligible
-    - actual-release-samples-exit / actual-release-samples-status / actual-input-contract-eligible
+  TWO distinct, unrelated pre-existing bugs, both surfaced by run-sample-matrix.ps1's
+  `-SkipGenerationRuntimeVerification` "actual release samples" pass (policyFailures, not the
+  per-sample blocking/non-blocking issue lists -- blockingIssueCount was 0 the whole time):
 
-  The "actual" run invokes the real sample matrix against NPDevSamples for real
-  (`Invoke-SampleMatrixForTest -SampleRoot "NPDevSamples" -PolicyPath
-  "scripts/policy/sample-matrix-policy.json" ... -SkipGenerationRuntimeVerification`) and asserts
-  `exitCode -eq 0` / `overallStatus -eq "passed"` -- both assertions failing means the REAL sample
-  matrix run itself is failing right now against actual release samples, not a test-harness bug.
-  Detailed evidence (scripts/reports/tmp/sample-matrix-tests/actual-release-samples-report.json and
-  its evidence dir) is written under scripts/reports/tmp/, which the workflow's upload-artifact step
-  does NOT capture (only scripts/reports/out/) -- the CI artifact download does not carry the actual
-  per-sample failure detail; a local repro (or widening the workflow's evidence upload path) is
-  needed to see WHICH sample(s) and WHY.
+  1. "Sample classification is not strict for temporal-pricing-r58: unclassified" --
+     scripts/policy/sample-matrix-policy.json's releaseBlockingSamples/fixtureOnlySamples lists (a
+     SEPARATE classification from scripts/quality/corpus-roles.json's corpusRole, verified by
+     reading run-sample-matrix.ps1's Get-SampleClassification directly) never got an entry for this
+     sample. `git log --follow` shows the sample was added once (b5b06961, "effective-dated values
+     -- concept.temporal + asOf resolution R5.8/RUN-22") and never touched again -- a plain
+     oversight, not a deliberate omission. corpus-roles.json already classifies it "repro-case";
+     every existing repro-case-classified NPDevSamples entry is likewise absent from BOTH
+     sample-matrix-policy.json lists (there was no precedent to follow inside NPDevSamples), but the
+     policy's OTHER "dsl-fixture"-classified samples (user-minimal, dsl-conformance-max) both map to
+     fixtureOnlySamples -- the closest and most defensible precedent, since a repro-case is by its
+     own corpus-roles.json definition "encodes a specific past bug... rehearses a specific runtime
+     behavior," not release-facing showcase material. FIX: added temporal-pricing-r58 to
+     fixtureOnlySamples.
 
-  Not caused by this session's changes: nothing touched this session (invoke-ai-beta-app-smoke.ps1,
-  run-docker-linux-proof.ps1, ledger files, one Python checker) references sample-matrix, NPDevSamples,
-  or scripts/policy/sample-matrix-policy.json. This is pre-existing corpus/policy debt that has been
-  silently unreachable in CI for as long as QUAL-36's gate-10 bug has existed (2026-08-17 or earlier,
-  per QUAL-36's own AI Beta Gate history) -- QUAL-36's fix did not introduce it, it un-hid it.
+  2. "Negative required-sample fixture unexpectedly passed official model schema validation." --
+     scripts/tests/fixtures/sample-matrix-invalid-required/Input/model.json is a fixture whose whole
+     PURPOSE is to fail schema validation (a meta-test proving the official validator actually
+     enforces required fields), but it currently validates clean: directly re-ran
+     jsonschema.Draft202012Validator against NPDevContract/schemas/model.schema.json and the
+     fixture, 0 errors. `git log --follow` shows this file has never been edited since its one
+     creation commit (9a19f5a2, "Harden AI-only beta release gate", 2026-05-05) -- the fixture never
+     drifted, the SCHEMA did: model.schema.json's required-field set loosened sometime after
+     2026-05-05 in a way that made this specific fixture's shape (namespace + dslVersion + version +
+     one concept with one {name,type} field) fully compliant. Confirmed via the same jsonschema
+     check that removing just the top-level "version" property (part of the schema's own permanent
+     `required: [dslVersion, version]`, the most structurally stable requirement available) restores
+     exactly one validation error. FIX: removed "version" from the fixture.
 
-  Done when: the actual sample-matrix failure is reproduced (locally or via a CI artifact that
-  captures scripts/reports/tmp/sample-matrix-tests/), root-caused (which sample(s), which policy
-  check), and either fixed or explicitly triaged with a tracked reason if it turns out to be a
-  corpus/fixture issue rather than a product defect.
+  Both fixes verified together locally: `pwsh -NoProfile -File
+  scripts/quality/run-sample-matrix-tests.ps1` now reports "Sample matrix tests passed" (was
+  6-assertions-failed before either fix).
+
+  Not caused by this session's other changes: neither pre-existing bug touches
+  invoke-ai-beta-app-smoke.ps1, run-docker-linux-proof.ps1, or the reverse-freshness checker edited
+  for QUAL-36/42/43. Both are pre-existing corpus/policy debt that has been silently unreachable in
+  CI for as long as QUAL-36's gate-10 bug existed (2026-08-17 or earlier) -- QUAL-36's fix did not
+  introduce either, it un-hid them.
+
+  Done when: the actual sample-matrix failure is reproduced (DONE, locally), root-caused (DONE, two
+  independent causes identified above), and either fixed or explicitly triaged (DONE, both fixed;
+  local verification green -- CI re-verification not yet dispatched separately, but the same
+  ai-beta-gate.yml dispatch verifying QUAL-43 will exercise gate 11 too since it now runs the app-
+  level generate/build path this checker also depends on).
+guard:
+  kind: script
+  ref: scripts/quality/run-sample-matrix-tests.ps1
+  asserts: >-
+    run locally after both fixes (temporal-pricing-r58 added to sample-matrix-policy.json's
+    fixtureOnlySamples; "version" removed from the negative fixture) -- reports "Sample matrix tests
+    passed", 0 of 6 previously-failing assertions still failing.
+  provenRed: true

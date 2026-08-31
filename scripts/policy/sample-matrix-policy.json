@@ -23,7 +23,8 @@
   ],
   "fixtureOnlySamples": [
     "user-minimal",
-    "dsl-conformance-max"
+    "dsl-conformance-max",
+    "temporal-pricing-r58"
   ],
   "aiBetaScenarioLinks": {
     "simple-user-registry": [
