@@ -69,12 +69,17 @@ def main() -> int:
     except Exception:
         return 0  # fail open
 
-    # Match against the command with quoted arguments stripped out. Without this,
-    # any command that merely MENTIONS an expensive tool inside a string -- a commit
-    # message, a -NextStep note, an echo -- is blocked though it runs nothing.
-    # (Found the honest way: this hook blocked a Close-Session call whose -NextStep
-    # text contained the word "gradlew".)
-    bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", command)
+    # Match only against text that could actually BE a command. Anything the shell
+    # treats as literal data -- quoted arguments, heredoc bodies -- is stripped
+    # first, because a command that merely MENTIONS an expensive tool runs nothing.
+    #
+    # Both cases were found the honest way, by this hook blocking real work: a
+    # Close-Session call whose -NextStep text said "gradlew", and a git commit
+    # whose heredoc message discussed run-ai-knowledge-gate. In a repo whose
+    # commit messages describe its own gates, that is not an edge case.
+    bare = re.sub(r"<<-?\s*'?([A-Za-z_][A-Za-z0-9_]*)'?\n.*?\n\1\b", " ", command,
+                  flags=re.S)          # heredoc bodies
+    bare = re.sub(r"'[^']*'|\"[^\"]*\"", " ", bare)   # quoted arguments
     low = bare.lower()
 
     for ok in enforce.get("exemptSubstrings", []):
