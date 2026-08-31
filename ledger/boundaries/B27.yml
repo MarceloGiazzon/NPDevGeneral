@@ -19,3 +19,4 @@ codeLinkedNote: >-
   both. Revisit trigger: a real app needs a join deeper than 3 hops badly enough to justify raising
   MAX_JOIN_HOPS again, or where/aggregates need the same join capability groupBy has.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B27 -- REG-105, docs/adr/ADR-0011-bounded-contexts.md (D1, D3), NPDevContract/dsl/.../query/GroupByJoinGrammar.java, NPDevContract/dsl/.../validation/PackValidation.java#validateAggregateQuery, NPDevRuntimeHost/.../db/JdbcBusinessConceptStore.java#aggregate, NPDevKernel/kernel/.../inproc/InMemoryConceptStore.java#aggregate, NPDevSamples/dsl-conformance-max (shipping.json)"
+classification: LIFTED

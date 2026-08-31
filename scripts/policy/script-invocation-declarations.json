@@ -26,6 +26,10 @@
     "scripts/ai/build_knowledge.py": {
       "invocation": "ci-gate"
     },
+    "scripts/ai/build_open_state.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/ai/build_rag_index.py": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/ai/AI_KNOWLEDGE_LOOP_AND_TOOLING_PLAN.md"

@@ -3,3 +3,4 @@ title: "No automatic rename inference -- a rename must be declared via renamedFr
 codeLinked: true
 codeLinkedNote: "ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B1"
+classification: HITTABLE

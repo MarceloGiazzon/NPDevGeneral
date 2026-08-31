@@ -13,3 +13,4 @@ codeLinkedNote: >-
   fix would propose dropping primary-key indexes -- which is the failure this boundary exists to
   prevent.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B3 -- DATABASES_AND_MIGRATIONS.md §15, SER-G8, REG-129, REG-145, NPDevRuntimeHost/.../db/schemastate/ConstraintSurplusClassifier.java, .../SchemaDiffEngine.java#findSurplusConstraints, .../SchemaImpactFacade.java, NPDevGenerator/.../dbconfig/SchemaRealizationEmitter.java#collectIndexes"
+classification: POSTURAL

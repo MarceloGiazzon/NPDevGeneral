@@ -8,3 +8,4 @@ codeLinkedNote: >-
   Verifying would defeat the command's purpose, which is why the row's own revisit trigger reads
   "Never -- verification is what the ordinary path already does".
 ref: "docs/ACCEPTED_BOUNDARIES.md#B6 -- DATABASES_AND_MIGRATIONS.md §15"
+classification: POSTURAL

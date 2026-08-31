@@ -20,3 +20,4 @@ codeLinkedNote: >-
   failure -- including a legitimate WAITING_EVENT -- as a generic terminal FAILED, and its finally
   block wiped progress/correlation/marker state even when returning early for a genuine wait.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B15 -- FlowStateCodec.java, ForEachStep.java, AwaitEventStep.java, ParallelAwaitForEachStep.java, ParallelLoopIterationScope.java, ResumeCoordinator.java (NPDevKernel/kernel/...), FlowValidation.java (NPDevContract/dsl/...), KernelRunnerAwaitInLoopRestartProofTest.java, KernelRunnerParallelAwaitInLoopRestartProofTest.java, ParallelAwaitForEachStepIsolationTest.java, docs/FLOWS.md, Move 9 A5, Move 16 Phase B, S6 Phase B, S8 Wave 3"
+classification: LIFTED

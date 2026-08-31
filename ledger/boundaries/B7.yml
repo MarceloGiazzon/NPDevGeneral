@@ -9,3 +9,4 @@ codeLinkedNote: >-
   (H2 has no transactional DDL), which is why the revisit trigger is "only if every supported engine
   gains transactional DDL".
 ref: "docs/ACCEPTED_BOUNDARIES.md#B7 -- DATABASES_AND_MIGRATIONS.md §13, §15"
+classification: POSTURAL

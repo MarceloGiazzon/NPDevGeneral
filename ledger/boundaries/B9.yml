@@ -11,3 +11,4 @@ codeLinkedNote: >-
   reachable manifestation. Code carried as a `B9:single_table_scope:` message prefix, same convention
   as the other five. Proven by SchemaDropSnapshotRestorerTest#applyRefusesWhenLiveTableIsMissing.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B9"
+classification: HITTABLE

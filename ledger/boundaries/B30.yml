@@ -29,3 +29,4 @@ codeLinkedNote: >-
   detached-async, lambda/inner-class escapes refused; Runtime-exception neighbours and AtomicLong
   accepted). SEC-3 stays OPEN only for the process-isolation (Model B) track: memory/CPU.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B30"
+classification: HITTABLE

@@ -12,3 +12,4 @@ codeLinkedNote: >-
   deployment still wants this guarantee -- which would need a different mechanism entirely, since
   there is no transactional resource to lock in that mode.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B18 -- F8 docs/archive/programme-history/DECISION_BRIEFS_2026-07.md, LNCH13-F4 docs/archive/programme-history/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md, docs/reference/ROW_LEVEL_AUTHORIZATION.md, Move 9 A2"
+classification: POSTURAL

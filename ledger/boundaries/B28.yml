@@ -21,3 +21,4 @@ codeLinkedNote: >-
   genuinely works. Completing the fix -- migrating every direct `CompiledModel` injection to
   `ModelHolder.get()` -- is real follow-up work (plan option (b)), not attempted this session.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
+classification: HITTABLE

@@ -20,3 +20,4 @@ codeLinkedNote: >-
   that builds the whole statement (existsProbe is the precedent) -- not a token, and not a plausible
   wrong answer, which is the failure mode every one of STOR-4/5/7/9/10/12 turned out to be.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B29 -- storage/OPEN_ITEMS_PLAN.md 6, storage/FULL_SUPPORT_PLAN.md W1.3"
+classification: POSTURAL

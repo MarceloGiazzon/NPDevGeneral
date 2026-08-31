@@ -3,3 +3,4 @@ title: "Conversion hooks are SQL-only -- no Java DataMigrationHook (declarative 
 codeLinked: true
 codeLinkedNote: "PackValidation now prefixes unresolvable join path errors with B13:unresolvable_join_path:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B13"
+classification: HITTABLE
