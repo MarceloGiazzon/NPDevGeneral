@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "npdev-output-digest-policy.v1",
+  "rule": "A command's full output goes to a log file; only its digest enters an AI session's context. Result first, drill down on failure only.",
+  "why": "Measured 2026-08-30 over 14 days: cost is (requests x average context), and the main thread averaged 412,348 tokens of context per request. A 13.5-minute gate run streamed whole into context raises the price of every subsequent call in that session, forever. The failing check names and their assertion lines are the whole signal; the other several thousand lines are noise that is paid for on every turn thereafter.",
+
+  "defaults": {
+    "successLines": 12,
+    "failureLines": 60,
+    "contextBefore": 2,
+    "contextAfter": 6,
+    "maxLineLength": 300
+  },
+
+  "families": [
+    {
+      "name": "gradle",
+      "detect": ["gradlew", "gradle "],
+      "verdict": [
+        "^BUILD (SUCCESSFUL|FAILED)",
+        "^\\d+ actionable task"
+      ],
+      "failure": [
+        "^FAILURE:",
+        "^> Task .* FAILED",
+        "^\\s*> .*(Exception|Error|error:)",
+        "tests? completed, \\d+ failed",
+        "^\\s+at [a-z]+\\.[a-zA-Z0-9_.$]+\\(.*\\.java:\\d+\\)",
+        "^e: ",
+        "error: "
+      ],
+      "noise": [
+        "^Download ",
+        "^> Transform ",
+        "^Note: ",
+        "^warning: \\[",
+        "^\\s*$",
+        "Daemon will be stopped",
+        "^Welcome to Gradle"
+      ]
+    },
+    {
+      "name": "npdev-gate",
+      "detect": ["run-all-gates", "run-ai-knowledge-gate", "run-generator-gate", "run-runtimehost-gate", "run-kernel-quality-gate", "run-fast-gate", "run-beta-release-gate", "run-weekly-paperwork-checks"],
+      "verdict": [
+        "^\\s*\\[\\d+/\\d+\\]",
+        "(GATE|gate).*(PASS|FAIL|GREEN|RED)",
+        "^(PASS|FAIL|OK|OVERDUE)\\b",
+        "^\\s*\\d+ failure"
+      ],
+      "failure": [
+        "^\\s*FAIL",
+        "^\\s*OVERDUE",
+        "failures \\+=",
+        "^\\s*- .*(failed|diverged|drifted|missing|unreachable)",
+        "AssertionError",
+        "^Traceback",
+        "^\\s*RED\\b"
+      ],
+      "noise": [
+        "^\\s*$",
+        "^\\s*\\.+$",
+        "^Checking ",
+        "^Scanning "
+      ]
+    },
+    {
+      "name": "pytest",
+      "detect": ["pytest", "unittest", "-m pytest"],
+      "verdict": [
+        "^=+ .*(passed|failed|error).* =+$",
+        "^(OK|FAILED)\\b",
+        "^Ran \\d+ tests?"
+      ],
+      "failure": [
+        "^(FAIL|ERROR):",
+        "^E\\s+",
+        "^\\s*assert ",
+        "^Traceback",
+        "^\\s+File \".*\", line \\d+"
+      ],
+      "noise": ["^\\s*$", "^\\.+$", "^platform ", "^rootdir:", "^cachedir:"]
+    },
+    {
+      "name": "generic",
+      "detect": [],
+      "verdict": [
+        "^(RESULT|SUMMARY|TOTAL|DONE|COMPLETE)\\b",
+        "\\b(SUCCESS|SUCCEEDED|COMPLETED)\\b"
+      ],
+      "failure": [
+        "\\b(ERROR|FAILED|FAILURE|FATAL|EXCEPTION)\\b",
+        "^Traceback",
+        "\\bwarning\\b.*\\bdeprecat"
+      ],
+      "noise": ["^\\s*$"]
+    }
+  ]
+}
