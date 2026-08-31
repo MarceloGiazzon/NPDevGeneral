@@ -5,8 +5,9 @@ title: >-
   tenant scenarios plus 3 custom-panel/procedure scenarios failed smoke with invalid_api_key
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-31
+closed: 2026-08-31
 source: >-
   2026-08-31 (session resume, re-dispatching QUAL-42's residual AI Beta Gate CI question). Fresh
   dispatch of ai-beta-gate.yml (run 33421339702) against current main confirmed QUAL-42's own fix
@@ -100,3 +101,33 @@ detail: |
   no-op version's own CI round-trip caught a real defect the local syntax check missed, this fix
   should NOT be treated as verified until it, too, is confirmed on a live boot -- local unit-level
   verification of the merge logic is not the same claim as "the scenario's smoke check goes green."
+
+  2026-08-31 (verification pass, CONFIRMED): dispatched fresh AI Beta Gate
+  (run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33432791806) after committing and
+  pushing the merge version. The API-key wiring problem this item actually claims to fix is
+  CONCLUSIVELY resolved: tenant-workflow-ops's scenario-authenticated-create-ticket (POST
+  /api/tickets) now returns 201 (was 401 invalid_api_key), and custom-panel-unsupported -- the
+  scenario the no-op version regressed -- is back to fully PASSING. No check across any of the 8
+  expectedPass scenarios returns 401/invalid_api_key or 401/missing_api_key any more. This item's own
+  claim (real per-testUser API keys are recognized) is proven true; QUAL-43 is DONE on that scope.
+
+  The 6 scenarios are STILL not fully green, but for reasons entirely outside this item's scope
+  (auth is no longer the failure): tenant-workflow-ops/tenant-service-desk/tenant-approval-portal now
+  fail on a missing $.tenantId in the create response plus a 403 (not 401) on an admin metadata
+  endpoint -- an authenticated request being correctly rejected for a DIFFERENT reason, not the
+  invalid-key problem this item tracked. custom-panel-procedure-mismatch/custom-procedure-admission-
+  rejection/custom-procedure-invalid now fail with 404 on their create-user check, not 401/403 at
+  all -- a routing/wiring question, unrelated to authentication. Both are real, tracked as their own
+  items rather than folded in here: ledger/items/QUAL-45.yml (tenantId/403) and
+  ledger/items/QUAL-46.yml (404).
+guard:
+  kind: manual
+  ref: >-
+    docker-linux-ai-beta-gate-report.json downloaded from CI run
+    https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33432791806 (databaseId
+    33432791806), via `gh run download 33432791806 -n docker-linux-proof-reports`.
+  asserts: >-
+    tenant-workflow-ops's scenario-authenticated-create-ticket (POST /api/tickets) returns 201 (was
+    401 invalid_api_key before this fix); custom-panel-unsupported (the no-op version's regression)
+    is passing again; no check in the report returns 401 invalid_api_key or missing_api_key.
+  provenRed: true

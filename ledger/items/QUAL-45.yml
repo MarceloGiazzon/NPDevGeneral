@@ -1,0 +1,57 @@
+id: QUAL-45
+title: >-
+  Tenant-scoped scenarios (tenant-workflow-ops/tenant-service-desk/tenant-approval-portal): the
+  authenticated create returns 201 but the response's tenantId is missing, and an admin runtime
+  metadata endpoint returns 403 for a test user whose role should be permitted -- not yet root-caused
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-08-31
+source: >-
+  2026-08-31 (session resume, verifying QUAL-43's corrected API-key merge fix on a fresh AI Beta Gate
+  dispatch, run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33432791806). QUAL-43's
+  fix worked -- the create-ticket/case/request call now returns 201, not 401 -- which is exactly what
+  let this scenario's SECOND and THIRD checks run for the first time and fail for a real, different
+  reason. Same "fix one layer, reveal the next" pattern as QUAL-36 -> QUAL-44.
+surface: runtimehost multi-tenancy, runtime admin metadata endpoint, role-based authorization
+files: []
+detail: |
+  NOT YET ROOT-CAUSED -- filed to capture the finding at the depth this session's evidence actually
+  supports, not to claim a diagnosis. Identical pattern across all 3 tenant scenarios (downloaded
+  docker-linux-ai-beta-gate-report.json, run 33432791806):
+
+  1. The scenario's own authenticated create check (tenant-workflow-ops: POST /api/tickets,
+     tenant-service-desk: POST /api/cases, tenant-approval-portal: POST /api/requests) returns the
+     CORRECT status code (201) but the response body is missing `$.tenantId` --
+     tenant-workflow-ops's actual response body:
+     `{"id":"...","status":"open","title":"Beta workflow request","version":0,"tenantId":null}`.
+     The scenario's ai-verification-report.json expects `tenantId: "tenant-a"` in the response. The
+     request is authenticated as a real per-testUser key (agent-a, tenant-a per the scenario's
+     ai-model.json auth.testUsers) -- QUAL-43 already proved the key itself is recognized and valid
+     -- so this is either (a) the created record genuinely not persisting/echoing the tenant context
+     from the authenticated principal's claims, or (b) the response serialization dropping a
+     populated tenantId field. NOT distinguished yet; would need reading the actual persisted record
+     (a direct DB read or a follow-up GET) to tell (a) from (b).
+
+  2. workflow-lifecycle-metadata (GET /api/admin/runtime/metadata/concepts/{Ticket,Case,Request})
+     returns 403 Forbidden, expected 200. This is a DIFFERENT class of failure than QUAL-43's 401s --
+     403 means the presented API key IS recognized and authenticated (RuntimeApiKeyAuthFilter's own
+     job), just lacking sufficient ROLE/permission for this specific admin-prefixed endpoint. The
+     testUsers declared for these scenarios carry roles like AGENT/MANAGER (per ai-model.json), which
+     may simply never have been granted access to /api/admin/* routes -- worth checking whether the
+     scenario's OWN expectation (200) is even correct for a non-admin test role, or whether the
+     scenario itself needs a testUser with an admin-equivalent role for this specific check. Not
+     determined which side (product code vs scenario fixture) is wrong.
+
+  Not caused by this session's changes: nothing this session touched (invoke-ai-beta-app-smoke.ps1's
+  API-key merge, run-docker-linux-proof.ps1's skip-detection, sample-matrix-policy.json) has anything
+  to do with tenant context propagation, response serialization, or role-based authorization --
+  these checks simply never ran before today (masked first by QUAL-36's gate-10 abort, then by
+  QUAL-43's 401s) so there is no way to know how long this has been broken.
+
+  Done when: for BOTH failure modes -- (1) is the missing tenantId a persistence bug, a
+  serialization bug, or an incorrect scenario expectation, fixed or the scenario corrected with that
+  reasoning recorded; (2) is the 403 an incorrect role grant, a missing role-to-endpoint mapping, or
+  an incorrect scenario expectation (testUser needs a different role), fixed or the scenario
+  corrected with that reasoning recorded -- and a live CI or local boot shows all 3 tenant scenarios'
+  full check suites passing, not just the create call.

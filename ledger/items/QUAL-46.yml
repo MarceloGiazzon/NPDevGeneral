@@ -1,0 +1,42 @@
+id: QUAL-46
+title: >-
+  Custom-procedure negative-design scenarios (custom-panel-procedure-mismatch/custom-procedure-
+  admission-rejection/custom-procedure-invalid) all get 404 on a basic create-user check -- not yet
+  root-caused, and not yet confirmed whether 404 is itself correct or a defect
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-08-31
+source: >-
+  2026-08-31 (session resume, verifying QUAL-43's corrected API-key merge fix on a fresh AI Beta Gate
+  dispatch, run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33432791806). Same
+  discovery moment as QUAL-45 -- QUAL-43's fix let these checks run for the first time and fail for a
+  reason unrelated to authentication.
+surface: golden-ai-scenarios (custom-panel-procedure-mismatch, custom-procedure-admission-rejection, custom-procedure-invalid), runtime routing
+files: []
+detail: |
+  NOT YET ROOT-CAUSED. All 3 scenarios show the IDENTICAL failure: `create-user POST /api/users ->
+  actual 404 expected 201`. Unlike QUAL-45's tenant scenarios (401 -> 201-with-wrong-body, i.e.
+  progress), these three show no partial success at all on this check -- the route itself appears
+  absent, not merely rejecting the request.
+
+  Open question this item does not yet answer: these 3 scenario NAMES strongly suggest
+  DELIBERATELY-broken input by design (a "procedure mismatch", an "admission rejection", an "invalid"
+  procedure) -- i.e. each scenario's MODEL likely contains one intentionally-malformed custom
+  procedure/panel to prove the platform's admission gates correctly refuse it. If so, a 404 on an
+  UNRELATED, supposedly-normal create-user endpoint in the SAME generated app could mean either:
+    (a) the deliberate defect in the custom procedure is incorrectly taking the whole app's routing
+        down with it (a real product bug -- one bad procedure should not break unrelated endpoints),
+        or
+    (b) create-user was never meant to exist in these particular scenarios' models at all, and the
+        scenario's own ai-verification-report.json check is stale/wrong to expect it.
+  NOT distinguished -- would need reading each scenario's ai-model.json/golden model directly to see
+  whether /api/users is even a modeled entity for these three, which this session did not get to.
+
+  Not caused by this session's changes: same reasoning as QUAL-45 -- nothing this session touched
+  relates to custom-procedure admission or routing; these checks simply never ran before today.
+
+  Done when: for each of the 3 scenarios, whether /api/users is expected to exist is determined from
+  its model (settling (a) vs (b) above), and either the routing defect is fixed or the scenario's
+  own expectation is corrected with that reasoning recorded -- verified by a live CI or local boot
+  showing the check passing (or correctly removed as inapplicable).
