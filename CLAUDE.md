@@ -160,8 +160,14 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `NPDEV_TEST_PROFILE_ENGINES=postgres`, or `-Force` on the two proof scripts, or edit the file.
 - **Session prep (cheap, run before a large session):**
   `pwsh -NoProfile -File scripts/ai/Prepare-Session.ps1` — refreshes the symbol map and knowledge
-  index and prints a one-screen orientation (branch, dirty files, open ledger items, last gate
-  result). Cuts the discovery calls a cold session would otherwise spend.
+  index and prints a one-screen orientation: the previous session's handoff (what was done, the
+  exact next step), branch, dirty files, stale worktrees, open ledger items.
+- **Session close — write the handoff BEFORE `/clear`:**
+  `pwsh -NoProfile -File scripts/ai/Close-Session.ps1 -Summary "..." -NextStep "..." [-Plan ... -Blocked ... -Verified ...]`.
+  Writes `<OutsideRepo>\session-state\current.json` (read back by `Prepare-Session.ps1`) and appends
+  to `history.jsonl`. **A handoff is working state, so it lives outside the repo** — never add a
+  `CURRENT_IMPLEMENTATION.md` or similar to this tree; that is the banned process document.
+  Ending a session is only cheap if resuming is reliable, and this is what makes it reliable.
 - **Maintainer skills** (tracked under `.claude/skills/`): `rebuild-app` (three-cache refresh via
   `scripts/appgen/Rebuild-And-Restage.ps1`) and `verify-in-browser` (ScrapForAI).
 - **After changing kernel/adapter Java, restage jars before regenerating an app:**
