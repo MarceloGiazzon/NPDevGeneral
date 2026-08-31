@@ -1031,6 +1031,16 @@ public class {{entityName}}ServiceBase {
     private {{entityTypeName}} entityFromRecord(ConceptRecord record) {
         Map<String, Object> data = new LinkedHashMap<>(record.data());
         data.putIfAbsent(ID_FIELD_NAME, record.id());
+        // QUAL-45: tenantId is a platform-reserved column (ReservedColumnNames), deliberately never
+        // written into record.data() -- confirmed at the write side by
+        // JdbcBusinessConceptStoreTenantIsolationTest's own javadoc ("DefaultConceptGateway.save ->
+        // store.save never puts a tenantId entry into record.data()"). This read-side rehydration
+        // had the identical gap: converting `data` alone into the entity left tenantId at Java's
+        // default (null), so every read that flows through this method -- including a create-flow's
+        // own findById-after-write, which is what the generated REST response for
+        // tenant-workflow-ops's create-ticket check returned -- silently dropped the tenant that
+        // DefaultConceptGateway.save had correctly resolved and persisted.
+        data.put("tenantId", record.tenantId());
         return OBJECT_MAPPER.convertValue(data, {{entityTypeName}}.class);
     }
 

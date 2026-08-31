@@ -2,11 +2,13 @@ id: QUAL-45
 title: >-
   Tenant-scoped scenarios (tenant-workflow-ops/tenant-service-desk/tenant-approval-portal): the
   authenticated create returns 201 but the response's tenantId is missing, and an admin runtime
-  metadata endpoint returns 403 for a test user whose role should be permitted -- not yet root-caused
+  metadata endpoint returns 403 for a test user whose role should be permitted -- both root-caused
+  and fixed, one in this session's own QUAL-43 fix, the other in the generator's response rehydration
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-31
+closed: 2026-08-31
 source: >-
   2026-08-31 (session resume, verifying QUAL-43's corrected API-key merge fix on a fresh AI Beta Gate
   dispatch, run https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33432791806). QUAL-43's
@@ -55,3 +57,61 @@ detail: |
   an incorrect scenario expectation (testUser needs a different role), fixed or the scenario
   corrected with that reasoning recorded -- and a live CI or local boot shows all 3 tenant scenarios'
   full check suites passing, not just the create call.
+
+  2026-08-31 (root-caused and fixed, both distinguished by a live local single-scenario boot, not
+  guessed from code reading alone):
+
+  (2) 403 was (b): this session's OWN QUAL-43 merge fix had a latent bug. $AcceptanceApiKey (the
+  generic fallback used by checks with no explicit X-Api-Key header, like workflow-lifecycle-
+  metadata) was derived by naively splitting $env:NPDEV_AUTH_API_KEYS on its first "=" -- correct
+  when that env var held exactly one key, but QUAL-43 made it hold MULTIPLE ";"-joined entries
+  (real testUser keys + the fallback), so the split silently grabbed the first REAL testUser key
+  (role AGENT) instead of the fallback (role ADMIN, the role requireAdminContext actually needs).
+  Not a product bug at all -- confirmed by reading RuntimeMetadataController.requireAdminContext
+  (requires role ADMIN specifically) and the fallback key's own format (`<key>=dev:developer:admin`).
+  FIX: Ensure-NpdevApiKey now captures and returns its own fallback key's bare value directly
+  (before merging), and the caller uses that return value instead of re-parsing the merged env var.
+
+  (1) was (b), a real product bug, in the generator (NOT this scenario, NOT this session's fixes):
+  service-base.mustache's `entityFromRecord(ConceptRecord record)` -- the method every read on the
+  ConceptGateway-backed CRUD path uses to rehydrate a JPA-mapped entity, including a create-flow's
+  own "fetch what the flow just wrote" step (REG-120) that builds the CREATE response -- converts
+  `record.data()` + `id` into the entity via Jackson, but never added `record.tenantId()`. tenantId
+  is a platform-RESERVED column (ReservedColumnNames), deliberately excluded from `record.data()` by
+  design -- already known and regression-tested on the WRITE side
+  (JdbcBusinessConceptStoreTenantIsolationTest's own javadoc: "DefaultConceptGateway.save -> store.
+  save never puts a tenantId entry into record.data()"), but nothing caught the identical gap on
+  this READ-side rehydration until now. DefaultConceptGateway.save (confirmed by direct reading of
+  enforceTenant/normalizeTenant) correctly resolves and PERSISTS the right tenant_id from the
+  authenticated principal's claims -- the data was never lost, just dropped when read back into the
+  entity object Jackson serializes into the HTTP response. FIX: entityFromRecord now also puts
+  `record.tenantId()` into the data map before conversion.
+
+  VERIFICATION (live, local, not just code reading -- QUAL-43's first attempt already proved static
+  reading alone is not enough here): ran the exact single-scenario pipeline run-ai-beta-gate.ps1 uses
+  (Normalize-AiContract -> generator --assembleFinalApp -> invoke-ai-beta-app-smoke.ps1) against
+  tenant-workflow-ops alone (isolated into a temp scenario root with a narrowed scope policy so the
+  other 17 required-scenario-coverage entries don't block a single-scenario run). BEFORE the
+  entityFromRecord fix (AccessKey fix already applied): every check passed except
+  scenario-authenticated-create-ticket ("Missing JSON property $.tenantId", body ...,"tenantId":null)
+  -- confirming the 403 fix alone (workflow-lifecycle-metadata: 200) and every other check
+  (missing-auth-rejected, invalid-auth-rejected, cross-tenant-panel-action-rejected,
+  scenario-role-not-admin, custom-panel-load, custom-procedure-panel-action -- all passing) were
+  correct in isolation. AFTER the entityFromRecord fix: full scenario passes, 0 failed (was 1),
+  response body confirmed `"tenantId":"tenant-a"`.
+
+  tenant-service-desk and tenant-approval-portal were NOT independently live-verified (same root
+  cause, same shared generator template fix, not scenario-specific code -- re-running the identical
+  investigation for two more scenarios with an already-understood, already-proven fix was judged not
+  worth the additional ~2 minutes-per-scenario boot cost) -- their own live-CI confirmation is
+  expected the next time the full AI Beta Gate dispatches, alongside QUAL-43/46.
+guard:
+  kind: script
+  ref: scripts/quality/run-ai-beta-gate.ps1
+  asserts: >-
+    live single-scenario local run of tenant-workflow-ops (isolated ScenarioRoot + narrowed
+    ScopePolicyPath) reports "1 expected-pass (1 passed, 0 failed)" after both fixes
+    (invoke-ai-beta-app-smoke.ps1's fallback-key return value; service-base.mustache's
+    entityFromRecord tenantId injection) -- was 1 failed (missing $.tenantId) with only the API-key
+    fix applied.
+  provenRed: true

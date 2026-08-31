@@ -134,18 +134,29 @@ function Ensure-NpdevApiKey {
         $key = ([Convert]::ToBase64String($bytes) -replace '[^a-zA-Z0-9]', '')
         Set-Content -LiteralPath $keyFile -Value ('NPDEV_AUTH_API_KEYS=' + $key + '=dev:developer:admin') -Encoding UTF8 -NoNewline
     }
+    $fallbackApiKey = $null
     foreach ($rawLine in (Get-Content -LiteralPath $keyFile)) {
         $line = $rawLine.Trim()
         if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
             $parts = $line.Split('=', 2)
             $name = $parts[0].Trim()
             $value = $parts[1].Trim()
-            if ($name -eq 'NPDEV_AUTH_API_KEYS' -and $existingMappings) {
-                $value = $existingMappings + ';' + $value
+            if ($name -eq 'NPDEV_AUTH_API_KEYS') {
+                # QUAL-45 follow-up: the bare key string (before this line's own first '=') is this
+                # function's own fallback key, captured HERE before merging -- callers that derive a
+                # generic acceptance key by re-parsing $env:NPDEV_AUTH_API_KEYS after this function
+                # returns would otherwise grab whichever entry happens to sort first once real
+                # per-testUser keys are merged in below, which is a real testUser's key (limited
+                # role), not the fallback (ADMIN role) the caller actually wants.
+                $fallbackApiKey = $value.Split('=', 2)[0]
+                if ($existingMappings) {
+                    $value = $existingMappings + ';' + $value
+                }
             }
             if ($name) { Set-Item -Path ("env:" + $name) -Value $value }
         }
     }
+    return $fallbackApiKey
 }
 
 function Resolve-GradleWrapper {
@@ -221,9 +232,9 @@ $bootStderr = Join-Path $appRootFull "ai-beta-boot.stderr.log"
 # a spurious CAPABILITY_FAILED unrelated to the scenario itself. Widened ONLY for this boot, ONLY
 # when acceptance scenarios were actually requested -- every other caller of this script (and every
 # generated app's own real default) is unaffected.
-Ensure-NpdevApiKey -AppRoot $appRootFull
-if ([string]::IsNullOrWhiteSpace($AcceptanceApiKey) -and -not [string]::IsNullOrWhiteSpace($env:NPDEV_AUTH_API_KEYS)) {
-    $AcceptanceApiKey = $env:NPDEV_AUTH_API_KEYS.Split('=', 2)[0]
+$fallbackApiKey = Ensure-NpdevApiKey -AppRoot $appRootFull
+if ([string]::IsNullOrWhiteSpace($AcceptanceApiKey) -and -not [string]::IsNullOrWhiteSpace($fallbackApiKey)) {
+    $AcceptanceApiKey = $fallbackApiKey
 }
 
 $bootPropertyArgs = "--spring.profiles.active=$Profiles --server.port=$Port"
