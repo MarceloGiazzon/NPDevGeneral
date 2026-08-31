@@ -1,0 +1,47 @@
+id: QUAL-48
+title: >-
+  NPDevContract/dsl coverage ratchet oscillates between 85.0422% and 85.0328% across separate full
+  `:dsl:test` runs against identical source -- root cause not found, floor manually re-pinned twice
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-08-31
+source: >-
+  2026-08-31 (session resume, verifying QUAL-45/46 on live CI). A push touching only golden-ai-
+  scenarios fixtures and a new RuntimeHost test (d70df781, 0bda5a1c -- neither commit touches
+  NPDevContract/dsl) failed "NPDev CI Validation" (run
+  https://github.com/MarceloGiazzon/NPDevGeneral/actions/runs/33446595651) on a dsl coverage-ratchet
+  regression: 85.0422% (recorded floor) -> 85.0328% (this run's fresh measurement). This exact pair
+  of numbers was already diagnosed once before, 2026-08-25 (W3.2/QUAL-32 verification,
+  coverage-baseline.json's own note on the NPDevContract/dsl entry): two consecutive
+  IDENTICAL-source `:dsl:test` runs measured 85.0422% then 85.0328%, confirmed not a partial report
+  (CLASS counter 347/369 covered, 6% fully-uncovered, far under QUAL-27's 50% partial-refusal
+  threshold) and re-pinned to the lower number as "small run-to-run variance". The floor then
+  auto-ratcheted back up to 85.0422% on some later green run (never captured as its own ledger
+  entry), and has now hit the identical low measurement again -- meaning this is not a one-off
+  fluke but a recurring ~0.0094 percentage-point oscillation specific to this module's own test
+  suite, most likely a small number of lines whose execution depends on iteration order of an
+  unordered collection (HashMap/HashSet) somewhere in dsl's own code or test fixtures, or a
+  timing/ordering-sensitive assertion that sometimes short-circuits before touching every branch.
+surface: NPDevContract/dsl, scripts/policy/coverage-baseline.json, scripts/quality/check-coverage-ratchet.py
+files: []
+detail: |
+  NOT ROOT-CAUSED -- re-pinned twice now (2026-08-25 and 2026-08-31) with the same "small run-to-run
+  variance" explanation, which describes the SYMPTOM, not the mechanism. The gap between 85.0422%
+  and 85.0328% is roughly 18254 vs an ~18242-18244 covered-line count out of 21467 total (per the
+  2026-08-25 note) -- a difference small enough (roughly 10-12 lines) that it is very plausibly ONE
+  specific test whose outcome (which branch it hits, or whether a lazily-initialized field gets
+  touched) depends on something nondeterministic: iteration order of a HashMap/HashSet somewhere in
+  the parser/compiler/validator path, JVM warm-up/JIT timing in a race-sensitive test, or parallel
+  test execution ordering within the dsl module's own Gradle test task.
+
+  Not caused by this session's changes: this session's two live-CI-triggering pushes (d70df781:
+  golden-ai-scenarios fixtures + ledger; 0bda5a1c: a new RuntimeHost test + coverage-baseline.json's
+  RuntimeHost entry) touch zero files under NPDevContract/dsl.
+
+  Done when: the actual nondeterministic line(s) are identified (not just re-measured) -- e.g. by
+  running `:NPDevContract:dsl:test` several times locally with the SAME seed/ordering settings CI
+  uses and diffing which specific lines flip between covered/uncovered across runs -- and either
+  made deterministic (fixing the underlying nondeterminism) or the floor is set to a value proven
+  stable across N consecutive real runs, so this stops requiring a manual re-pin every time it
+  recurs.
