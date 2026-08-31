@@ -2,7 +2,6 @@
   "schemaVersion": "npdev-output-digest-policy.v1",
   "rule": "A command's full output goes to a log file; only its digest enters an AI session's context. Result first, drill down on failure only.",
   "why": "Measured 2026-08-30 over 14 days: cost is (requests x average context), and the main thread averaged 412,348 tokens of context per request. A 13.5-minute gate run streamed whole into context raises the price of every subsequent call in that session, forever. The failing check names and their assertion lines are the whole signal; the other several thousand lines are noise that is paid for on every turn thereafter.",
-
   "defaults": {
     "successLines": 12,
     "failureLines": 60,
@@ -10,11 +9,13 @@
     "contextAfter": 6,
     "maxLineLength": 300
   },
-
   "families": [
     {
       "name": "gradle",
-      "detect": ["gradlew", "gradle "],
+      "detect": [
+        "gradlew",
+        "gradle "
+      ],
       "verdict": [
         "^BUILD (SUCCESSFUL|FAILED)",
         "^\\d+ actionable task"
@@ -40,7 +41,16 @@
     },
     {
       "name": "npdev-gate",
-      "detect": ["run-all-gates", "run-ai-knowledge-gate", "run-generator-gate", "run-runtimehost-gate", "run-kernel-quality-gate", "run-fast-gate", "run-beta-release-gate", "run-weekly-paperwork-checks"],
+      "detect": [
+        "run-all-gates",
+        "run-ai-knowledge-gate",
+        "run-generator-gate",
+        "run-runtimehost-gate",
+        "run-kernel-quality-gate",
+        "run-fast-gate",
+        "run-beta-release-gate",
+        "run-weekly-paperwork-checks"
+      ],
       "verdict": [
         "^\\s*\\[\\d+/\\d+\\]",
         "(GATE|gate).*(PASS|FAIL|GREEN|RED)",
@@ -65,7 +75,11 @@
     },
     {
       "name": "pytest",
-      "detect": ["pytest", "unittest", "-m pytest"],
+      "detect": [
+        "pytest",
+        "unittest",
+        "-m pytest"
+      ],
       "verdict": [
         "^=+ .*(passed|failed|error).* =+$",
         "^(OK|FAILED)\\b",
@@ -78,7 +92,13 @@
         "^Traceback",
         "^\\s+File \".*\", line \\d+"
       ],
-      "noise": ["^\\s*$", "^\\.+$", "^platform ", "^rootdir:", "^cachedir:"]
+      "noise": [
+        "^\\s*$",
+        "^\\.+$",
+        "^platform ",
+        "^rootdir:",
+        "^cachedir:"
+      ]
     },
     {
       "name": "generic",
@@ -92,7 +112,44 @@
         "^Traceback",
         "\\bwarning\\b.*\\bdeprecat"
       ],
-      "noise": ["^\\s*$"]
+      "noise": [
+        "^\\s*$"
+      ]
     }
-  ]
+  ],
+  "enforcement": {
+    "rule": "Commands matching expensiveCommands MUST be wrapped in scripts/ai/run_digest.py. Enforced mechanically by scripts/hooks/require-digest.py, wired as a PreToolUse hook, so it cannot be forgotten.",
+    "why": "The same rule written as prose in CLAUDE.md is billed on every request AND still fails, because it depends on an agent remembering it under load. A hook costs nothing and cannot forget.",
+    "expensiveCommands": [
+      "gradlew",
+      "run-all-gates",
+      "run-generator-gate",
+      "run-runtimehost-gate",
+      "run-kernel-quality-gate",
+      "run-ai-knowledge-gate",
+      "run-fast-gate",
+      "run-beta-release-gate",
+      "run-weekly-paperwork-checks",
+      "run-scale-proof",
+      "run-engine-toolbox-parity",
+      "Build-NpdevApp",
+      "Build-ClaudeApp",
+      "Build-AppGenApp",
+      "Rebuild-And-Restage",
+      "sync-runtimehost-libs",
+      "generate-sample-app",
+      "npm test",
+      "npm run build",
+      "pytest"
+    ],
+    "exemptSubstrings": [
+      "run_digest.py",
+      "--version",
+      "--help",
+      "-ListOnly",
+      "-DryRun",
+      "tasks --all"
+    ],
+    "message": "This command produces enough output to raise the price of every later call in this session. Re-run it through the digest runner:\n  python scripts/ai/run_digest.py -- <your command>\nThe full log still lands on disk; only the verdict enters context. To bypass deliberately, add -DryRun/-ListOnly or set NPDEV_DIGEST_BYPASS=1."
+  }
 }

@@ -25,6 +25,10 @@ you pull into context. Cost is `requests × average context`; both multiplicands
   and let completion re-invoke you, or one blocking wait with a real condition.
 - **Long or noisy commands go through the digest runner**, so the log lands on disk and only the
   verdict enters context: `python scripts/ai/run_digest.py -- <command>` (see Build/run/test).
+  **This is enforced, not advisory:** `scripts/hooks/require-digest.py` runs as a `PreToolUse` hook
+  and BLOCKS any command matching `enforcement.expensiveCommands` in
+  `scripts/policy/output-digest-policy.json` that is not wrapped. Add a command family to that JSON,
+  never to the hook. Deliberate bypass: `-DryRun`/`-ListOnly`, or `NPDEV_DIGEST_BYPASS=1`.
 - **Ask before spawning a subagent** unless the user requested one. Subagents were 42% of spend.
 
 The status line (`scripts/ai/session_meter.py`, wired via `.claude/settings.json`) shows the live
