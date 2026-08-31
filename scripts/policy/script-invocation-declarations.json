@@ -1,6 +1,10 @@
 {
   "$schemaVersion": "npdev-script-invocation-declarations.v1",
   "declarations": {
+    "scripts/ai/Close-Session.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/ai/Invoke-AiRestSmokeVerifier.ps1": {
       "invocation": "orchestrated"
     },

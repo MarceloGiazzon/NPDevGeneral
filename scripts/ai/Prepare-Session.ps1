@@ -40,6 +40,37 @@ try {
     Write-Host ''
     Write-Host '=== NPDev session prep ===' -ForegroundColor Cyan
 
+    # --- handoff from the last session -----------------------------------
+    # The single most valuable thing to show first: where the previous session
+    # stopped. Written by Close-Session.ps1, kept outside the repo because a
+    # handoff is working state, not documentation.
+    $statePath = Join-Path (Split-Path -Parent $repo) 'NPDev_General__OutsideRepo\session-state\current.json'
+    if (Test-Path $statePath) {
+        try {
+            $s = Get-Content $statePath -Raw | ConvertFrom-Json
+            # ConvertFrom-Json turns an ISO-8601 string back into a DateTime, which then
+            # renders in the local culture -- so re-parsing it fails under pt-BR. Accept
+            # whichever type came back rather than assuming a string.
+            $closed = if ($s.closedAt -is [datetime]) {
+                $s.closedAt
+            } else {
+                [datetime]::Parse([string]$s.closedAt, [cultureinfo]::InvariantCulture,
+                                  [System.Globalization.DateTimeStyles]::RoundtripKind)
+            }
+            $age = [math]::Round(((Get-Date).ToUniversalTime() - $closed.ToUniversalTime()).TotalHours, 1)
+            Write-Host ''
+            Write-Host ("--- last session closed {0}h ago, at {1} ---" -f $age, $s.head) -ForegroundColor Green
+            Write-Host ("did       {0}" -f $s.summary)
+            Write-Host ("NEXT      {0}" -f $s.nextStep) -ForegroundColor Green
+            if ($s.plan)     { Write-Host ("plan      {0}" -f $s.plan) }
+            if ($s.blocked)  { Write-Host ("BLOCKED   {0}" -f $s.blocked) -ForegroundColor Yellow }
+            if ($s.verified) { Write-Host ("verified  {0}" -f $s.verified) }
+            Write-Host ''
+        } catch {
+            Write-Host 'handoff  (unreadable, ignoring)' -ForegroundColor DarkGray
+        }
+    }
+
     # --- git -------------------------------------------------------------
     $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
     $head = (git log -1 --format='%h %s' 2>$null)
