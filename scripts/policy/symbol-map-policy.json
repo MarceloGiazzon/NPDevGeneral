@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "npdev-symbol-map-policy.v1",
+  "rule": "Files an AI session reads often enough that a symbol index beats re-reading them. The map lets a reader grep to a line number, then Read(offset, limit), instead of pulling a 100 KB file whole.",
+  "why": "Measured 2026-08-30 over 14 days: 2,443 file reads were repeats of a file already read in the same session. npdev_cli.py alone was read 371 times, 321 of those redundant; business-ui-app.mustache 164 times. 40% of all reads carried no offset/limit. Cost is (requests x average context), so a re-read is billed twice: once when it lands, and again on every later request in the session.",
+
+  "roots": [
+    {
+      "glob": "NPDevCli/**/*.py",
+      "note": "npdev CLI - the single most re-read file in the corpus"
+    },
+    {
+      "glob": "NPDevMcp/**/*.py",
+      "note": "MCP server for AI authoring"
+    },
+    {
+      "glob": "NPDevContract/dsl/src/main/java/**/*.java",
+      "note": "DSL AST, parser, compiler, validators"
+    },
+    {
+      "glob": "NPDevGenerator/generator/src/main/java/**/*.java",
+      "note": "emitters and assembly"
+    },
+    {
+      "glob": "NPDevKernel/kernel/src/main/java/**/*.java",
+      "note": "KernelRunner, flow engine, storage/sql"
+    },
+    {
+      "glob": "NPDevKernel/adapters/*/src/main/java/**/*.java",
+      "note": "adapters, incl. the 158 KB GeneratedCrudRuntimeSupport"
+    },
+    {
+      "glob": "NPDevRuntimeHost/src/main/java/**/*.java",
+      "note": "com.finalexec.* controllers, SchemaLifecycleExecutor"
+    },
+    {
+      "glob": "NPDevGenerator/generator/src/main/resources/npdev-templates/*.mustache",
+      "note": "business-ui-app.mustache and siblings - section names, not code symbols"
+    },
+    {
+      "glob": "scripts/**/*.py",
+      "note": "quality checkers and AI tooling"
+    },
+    {
+      "glob": "scripts/**/*.ps1",
+      "note": "gate runners and build scripts"
+    }
+  ],
+
+  "excludeGlobs": [
+    "**/build/**",
+    "**/__pycache__/**",
+    "**/.gradle/**",
+    "**/node_modules/**",
+    "**/src/test/**"
+  ],
+
+  "minFileBytes": 4000
+}
