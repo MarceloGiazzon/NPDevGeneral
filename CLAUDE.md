@@ -166,6 +166,11 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `pwsh -NoProfile -File scripts/ai/Prepare-Session.ps1` — refreshes the symbol map and knowledge
   index and prints a one-screen orientation: the previous session's handoff (what was done, the
   exact next step), branch, dirty files, stale worktrees, open ledger items.
+- **`/prep` and `/close`** (`.claude/commands/`) are the shortcuts for the two scripts below —
+  prefer them over typing the full command. **If the user says "handoff", "continue", "where were
+  we", or "resume", run `/prep` (or `Prepare-Session.ps1`) FIRST** and answer from
+  `<OutsideRepo>\session-state\current.json` — never reconstruct the resume point by reading files
+  or git history, which is the expensive habit this replaces.
 - **Session close — write the handoff BEFORE `/clear`:**
   `pwsh -NoProfile -File scripts/ai/Close-Session.ps1 -Summary "..." -NextStep "..." [-Plan ... -Blocked ... -Verified ...]`.
   Writes `<OutsideRepo>\session-state\current.json` (read back by `Prepare-Session.ps1`) and appends
