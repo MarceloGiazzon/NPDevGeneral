@@ -24,3 +24,4 @@ codeLinkedNote: >-
   own validity for every other tracked feature in the same file. The DSL unit test above is the real
   witness for this negative case.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B19 -- AW-P2 (7e1096e), docs/architecture/AGGREGATE_WORKBENCH_PLAN.md, Move 9 A3"
+classification: HITTABLE

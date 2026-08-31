@@ -3,3 +3,4 @@ title: "Super-user key is issued, not supplied"
 codeLinked: true
 codeLinkedNote: "SuperUserCredentialAuthFilter now returns a structured JSON error with boundaryId B17 and error code super_user_auth_failed."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B17"
+classification: HITTABLE

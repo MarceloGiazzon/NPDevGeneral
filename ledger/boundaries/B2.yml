@@ -13,3 +13,4 @@ codeLinkedNote: >-
   at the REST preview endpoint -- not this code, since that failure is not the "requires ack" case.
   Proven by SchemaLifecycleExecutorRequiredFieldBackfillTest#unacknowledgedExpressionDefaultWithRealExpressionTextStillRefusesUnchanged.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B2"
+classification: HITTABLE

@@ -9,3 +9,4 @@ codeLinkedNote: >-
   boundary: unclaimed destructive items stay fully token-gated, and rule 5 re-diffs to verify every
   claim. Revisit trigger: the owner revokes or conditions the ADR.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B14 -- docs/adr/ADR-0008-sanctioned-destruction-conversion-hooks.md"
+classification: POSTURAL

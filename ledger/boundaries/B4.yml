@@ -14,3 +14,4 @@ codeLinkedNote: >-
   matches (its grep is a substring check, unaffected by a leading prefix).
   Proven by SchemaLifecycleExecutorMigrationClaimTest (waits-then-times-out scenario).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B4"
+classification: HITTABLE

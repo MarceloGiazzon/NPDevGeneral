@@ -14,3 +14,4 @@ codeLinkedNote: >-
   Proven by SchemaLifecycleExecutorDatabaseMigratedPastBuildTest (asserts both boundaryId=="B5" and
   the code prefix).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B5"
+classification: HITTABLE

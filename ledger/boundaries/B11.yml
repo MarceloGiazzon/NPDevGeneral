@@ -15,3 +15,4 @@ codeLinkedNote: >-
   given that it is the one engine where a failed conversion hook can leave DDL applied and DML rolled
   back -- a product tradeoff, not an engineering question this entry can resolve.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B11 -- docs/archive/programme-history/IMPACT_REPORTS.md, ConversionHookRunner javadoc (the MIXES_DDL_PATTERN warning), PartialApplicationTruth#afterRollback, PartialApplicationTruthTest#implicitCommitEngineFailureMessageCarriesTheRemedy, ConversionHookRunnerH2Test#b11_1_*/#rule5_*, STOR-2"
+classification: POSTURAL

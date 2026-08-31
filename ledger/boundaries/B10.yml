@@ -20,3 +20,4 @@ codeLinkedNote: >-
   or update the javadoc/test to the now-intentional stricter behavior; a genuine product decision,
   not a mechanical fix).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B10"
+classification: HITTABLE

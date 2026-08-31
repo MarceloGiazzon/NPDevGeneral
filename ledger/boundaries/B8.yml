@@ -13,3 +13,4 @@ codeLinkedNote: >-
   tables`. Proven by SchemaLifecycleExecutorProofMatrixTest#b8_droppedConceptTablesSkipsAndWarnsWithCodeWhenNoOwnershipRecorded
   (captures stdout, asserts both the code and the empty result).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B8"
+classification: HITTABLE

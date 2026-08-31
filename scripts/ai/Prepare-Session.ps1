@@ -122,6 +122,9 @@ try {
 
         & python (Join-Path $repo 'scripts/ai/build_knowledge.py') 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { Write-Host '  knowledge     ok' } else { Write-Host '  knowledge     skipped' -ForegroundColor DarkGray }
+
+        & python (Join-Path $repo 'scripts/ai/build_open_state.py') 2>&1 | Out-Null
+        if ($LASTEXITCODE -eq 0) { Write-Host '  open state    ok' } else { Write-Host '  open state    FAILED' -ForegroundColor Red }
     }
 
     # --- where the indexes landed ----------------------------------------
@@ -129,6 +132,10 @@ try {
     Write-Host ''
     Write-Host 'grep these instead of reading files whole:' -ForegroundColor Cyan
     Write-Host ("  {0}\npdev-ai\symbol-map.txt" -f $buildRoot)
+    Write-Host ''
+    Write-Host ''
+    Write-Host 'every open item and boundary, in one file:' -ForegroundColor Cyan
+    Write-Host '  ledger/session-state/open-state.md'
     Write-Host ''
     Write-Host 'wrap long runs so only the verdict enters context:' -ForegroundColor Cyan
     Write-Host '  python scripts/ai/run_digest.py -- <command>'

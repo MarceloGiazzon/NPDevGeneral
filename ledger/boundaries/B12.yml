@@ -10,3 +10,4 @@ codeLinkedNote: >-
   makes it a compiler guarantee by construction instead. Revisit trigger: a single-transaction
   multi-hook mode, if operators ask for it.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B12 -- docs/archive/programme-history/IMPACT_REPORTS.md"
+classification: POSTURAL
