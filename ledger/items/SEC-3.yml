@@ -35,6 +35,12 @@ files:
   - NPDevRuntimeHost/src/test/java/com/finalexec/PluginExecutionPolicyEvaluatorCallbackTest.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcFrameCodecTest.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcRoundTripTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcessMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcess.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/AuditLogEchoPluginHandler.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/HostileCallbackPluginHandler.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/SystemExitPluginHandler.java
 detail: |
   2026-09-01 (Model B step 1, owner-authorized -- design doc's two headline decisions, IPC frame shape
   and the new callback allowlist, taken as confirmed by the owner's go-ahead to implement): landed the
@@ -274,3 +280,71 @@ detail: |
   Every decision in the doc is still a PROPOSAL needing a maintainer's confirmation before code is
   written against it -- most load-bearing: the IPC frame shape (S1) and the new callback allowlist
   (also S1), since a wrong call there is the one most expensive to unwind after §2-5 are built on it.
+
+  2026-09-01 (Model B step 2 -- design doc section 6, step 2: "real child process, no pool, no resource
+  limits"): swapped the step-1 prototype's piped streams for a REAL OS process boundary. Still does NOT
+  close this item -- no pool (step 3) and no per-OS resource limiting (step 4) yet, so memory/CPU stays
+  genuinely unbounded; what this step buys is that a plugin crashing or misbehaving now only takes down
+  its OWN throwaway process, proven live-fired rather than asserted.
+
+  What landed:
+  - PluginIpcChildProcessMain: the real child-process entry point (`public static void main`), spawned
+    by ProcessBuilder as a separate `java` process. Reads exactly one invoke frame over its own
+    System.in/System.out (the pipes ProcessBuilder gives every child for free) via the SAME
+    PluginIpcChildRuntime step 1 already built -- no protocol rework, exactly as step 1's javadoc
+    predicted. Resolves the plugin handler class by reflection (Class.forName + a public
+    (PluginIpcCallbackClient) constructor) since a Java lambda -- what the step-1 prototype used for its
+    handlerFactory -- cannot cross a process boundary. NOT yet wired to real plugin-JAR classloading
+    (RuntimePluginPackageRealizationService); that dynamic-loading question is explicitly step 3's
+    problem (the design doc's warm-pool section is where "which plugin class to load travels in the
+    invoke frame itself" actually lives) -- step 2's scope is proving the process/crash-handling
+    mechanics, which does not need it yet.
+  - PluginIpcChildProcess: host-side ProcessBuilder spawner + AutoCloseable process handle. Delegates
+    the wire protocol itself to PluginIpcHostSession unchanged (that class is deliberately
+    stream-agnostic per its own step-1 javadoc); this class's only job is OS-process-specific: spawning
+    with the right classpath/main class, and -- per design section 4's crash-handling sequence --
+    telling apart an ordinary closed channel from a child that actually died mid-invoke, remapping
+    PLUGIN_IPC_CHANNEL_CLOSED into a new PLUGIN_EXECUTION_PROCESS_KILLED (carrying the child's real exit
+    code) once `Process.isAlive() == false` confirms it. close() does the grace-period-then-
+    destroyForcibly() shutdown design section 2 specifies.
+  - Real bug found and fixed mid-implementation, not just theorized: a raw `-cp <classpath>` argument
+    hit Windows's CreateProcess error=206 ("the filename or extension is too long") against the
+    assembled sample app's real runtime classpath (dozens of adapter jars) -- confirmed via a narrow
+    --tests rerun surfacing the actual IOException (the full gate's own log only showed the summary).
+    Fixed by writing the classpath to a `java @argfile` instead of passing it as a raw argument
+    (PluginIpcChildProcess.writeClasspathArgFile), deleted only in close() once the process is confirmed
+    dead (deleting any earlier would race java's own launcher, which reads the argfile during its own
+    startup). This is a real constraint step 3's warm pool will also need to respect, not a one-off.
+  - Live-fired proof (PluginIpcChildProcessTest, real ProcessBuilder children, not piped streams):
+    (1) auditLogPluginCallsBackIntoItsOwnDeclaredCapabilityOverARealChildProcess -- the step-1 round
+    trip, now over a real process boundary, still round-trips end to end into a real in-memory store;
+    (2) aCallbackToACapabilityThePluginNeverDeclaredIsDeniedAcrossARealChildProcess -- the callback
+    allowlist enforced for real across a process boundary, PLUGIN_CALLBACK_NOT_DECLARED, store untouched
+    -- this is SEC-3's own done-when bar's "a plugin that actually attempts a forbidden operation and is
+    actually blocked", per the design doc's explicit reinterpretation (section 4): Model B does not add
+    a NEW filesystem/socket enforcement layer beyond OS process boundaries, so "blocked" here means the
+    callback allowlist, the actual security-critical piece; (3)
+    aPluginThatCallsSystemExitKillsOnlyItsOwnProcessAndTheHostSurvivesToRunMoreInvocations -- SEC-3's
+    other named done-when test: a real System.exit(1) inside the child process terminates only that
+    process (PLUGIN_EXECUTION_PROCESS_KILLED, exitValue=1), and the host (this very test JVM) proves it
+    was untouched by successfully running a second, fresh invocation against a brand-new child right
+    after. Caught and fixed one real test bug in the same pass: the third test's original assertion
+    expected 2 records in the store after the System.exit scenario, but that scenario's handler never
+    calls back at all (it crashes before reaching the callback), so only the SECOND (successful)
+    invocation should land a record -- fixed to assertEquals(1, ...), verified narrow-then-full.
+  - Verified: full run-runtimehost-gate.ps1 green (assembled sample app's own test suite, 665 tests, +
+    runtimehost-core's own test task, both BUILD SUCCESSFUL) after fixing the CreateProcess classpath
+    bug and the test-assertion bug above -- two red full-gate runs (3 failures, then 1 failure) before
+    this clean run, each root-caused via a narrow --tests rerun rather than re-running the ~8-minute
+    full gate to get a real stack trace (the full gate's own console summary only showed
+    "java.io.IOException at ...java:NN" with no message).
+
+  Next step per the design doc's own sequencing (section 6, step 3): the fixed-size warm pool of
+  fungible worker processes (design section 2) -- this is where the timeout-budget concern actually
+  gets resolved (cold-start-per-invoke, which step 2 deliberately accepted, is too slow against
+  npdev.runtime.plugin-timeout-ms's default 1000ms for a real production path) and where real
+  plugin-JAR classloading (via RuntimePluginPackageRealizationService) has to be wired in, since a
+  fungible worker needs to be told which plugin class to load per invoke rather than being launched
+  already bound to one handler the way step 2's one-process-per-invoke model could get away with. Step
+  4 (Linux cgroups v2 / Windows Job Objects) is what actually closes the memory/CPU half of this item's
+  title and done-when bar; step 2 alone does not bound memory/CPU, only crash/misbehavior blast radius.
