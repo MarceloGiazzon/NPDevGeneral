@@ -499,6 +499,19 @@
     "scripts/quality/run-docker-linux-proof.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/linux-plugin-proof/cgroup-delegate-init.sh": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/linux-plugin-proof/probe-cgroup-environment.sh": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/linux-plugin-proof/run-live-fire.sh": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-linux-plugin-resource-proof.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "ledger/items/SEC-3.yml"
+    },
     "scripts/quality/run-engine-app-proof.py": {
       "invocation": "ci-gate"
     },

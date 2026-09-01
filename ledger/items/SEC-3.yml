@@ -5,8 +5,9 @@ title: >-
   full-privilege execution with only a wall-clock timeout plus the static-analysis barrier
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-08-25
+closed: 2026-09-01
 source: >-
   2026-08-25 remediation plan W3.3 (QUAL-33), investigating the engine test's (then
   SandboxedPluginExecutionEngineTest, renamed TimeBoundedPluginExecutionEngineTest 2026-08-26) disabled
@@ -691,3 +692,90 @@ detail: |
   this one. Wiring live production capability dispatch through PluginIpcChildProcessPool (the
   non-goal stated above) is the honest follow-up if/when process isolation is meant to protect
   ACTUAL traffic, not just prove the mechanism against a real plugin class.
+
+  RESOLVED 2026-09-01 (Track A of the SEC-3/QUAL-49/QUAL-50 implementation plan) -- the Linux cgroup
+  fork closes SEC-3's own stated problem (memory/CPU unbounded, no real containment).
+
+  Live-fired the Linux path for the first time, inside a real Linux kernel (Docker Desktop's WSL2
+  backend, `--privileged --cgroupns=private`), not just implemented and reviewed on Windows. Step
+  A2's evidence (`scripts/quality/linux-plugin-proof/probe-cgroup-environment.sh`, run before and
+  after cgroup delegation) CONFIRMED the predicted defect for real:
+  `canCreateChildWithMemoryMax=false` even after delegation (the shipped code created the plugin
+  cgroup as a CHILD of the JVM's own cgroup, which cgroup v2's "no internal process" rule forbids
+  from ever exposing a `memory.max`), while `canCreateSiblingWithMemoryMax=true` proved a sibling
+  placement works. Fixed `PluginLinuxCgroupResourceLimiter` (`delegatingParent()` /
+  `delegatesRequiredControllers()`: walk up from the JVM's own cgroup to the nearest ancestor that
+  already delegates `memory`+`cpu`, create the plugin cgroup there instead) -- the only production
+  code change, matching the plan's own framing.
+
+  The FIRST live-fire run of the strengthened test (raised ceiling 128MB -> 256MB, plus a new
+  well-behaved-child test so a raw kill cannot be mistaken for a JVM-failed-to-boot false pass) still
+  failed: the runaway-memory test timed out at 30s with NO kill at all. Root-caused live, not
+  guessed: 2GiB of swap was available inside the container (`memory.swap.max` defaults to
+  unlimited), so the kernel reclaimed the memory hog's pages to swap instead of invoking the OOM
+  killer once `memory.max` was reached -- `memory.max` alone is not a hard ceiling without also
+  capping swap. Fixed by writing `memory.swap.max=0` alongside `memory.max` in the raw-cgroup path,
+  and applying the same fix (`MemorySwapMax=0` alongside `MemoryMax=`) to the `systemd-run` path for
+  architectural consistency, even though the container proof does not exercise that branch (no
+  systemd session in a minimal container). This second defect was NOT anticipated by the design doc,
+  the original implementation, or this plan's own reference draft -- found only by actually running
+  the proof and refusing to accept "it happened to complete" without checking the failure mode.
+
+  Re-run after both fixes: 3/3 tests pass (aWellBehavedChildSurvivesTheSameCeiling,
+  aChildThatExceedsItsMemoryCeilingIsKilledByTheCgroup now completing in ~4s instead of timing out
+  at 30s, aChildWithNoLimitsRequestedBehavesExactlyLikeStep2). Applied the Windows test the same
+  256MB-ceiling + well-behaved-child strengthening for the same reason (a 128MB ceiling can plausibly
+  kill a JVM at startup on either OS, which is not proof of containment) -- optional per the plan,
+  done anyway since it closes the identical gap for near-zero cost.
+
+  Kit built: Dockerfile.linux-plugin-proof (repo root); three scripts under
+  scripts/quality/linux-plugin-proof/ (cgroup-delegate-init.sh -- fixed a real bug in the plan's own
+  draft along the way: `[ -s cgroup.procs ]` is always false on this kernfs pseudo-file regardless of
+  content, since stat() reports its size as 0, so the drain loop never ran at all until rewritten to
+  check content instead of size; probe-cgroup-environment.sh; run-live-fire.sh, a plain script file
+  rather than a second nested `bash -lc` string, avoiding double shell-quoting); the runnable test
+  relocated+strengthened into runtimehost-core's own independently-buildable test source set
+  (PluginIpcChildProcessLinuxResourceLimitTest, plus MemoryHogPluginHandler/AuditLogEchoPluginHandler
+  fixture copies -- the template-tree originals are left in place deliberately, twin-pair rules
+  plugin-linux-proof-fixture-duplication-memoryhog/-auditlogecho registered so an edit to one
+  fixture's behaviorally-significant literals that forgets its twin now fails run-ai-knowledge-gate.ps1);
+  scripts/quality/run-linux-plugin-resource-proof.ps1, a repeatable runner modelled on
+  run-docker-linux-proof.ps1 (same skip-cleanly/skip-not-applicable/local-test-profile conventions;
+  its one hard rule: overallStatus is "failed", never "passed", when the after-delegation probe
+  could not create a sibling cgroup with a real memory.max, even if the JUnit run itself exited 0 --
+  live-verified end-to-end, exit 0, both probe JSONs and the JUnit XML captured as report artifacts).
+
+  Paperwork: script-invocation-declarations.json (4 new entries), twin-pair-registry.json (2 new
+  rules), output-digest-policy.json (new expensive-command pattern), one new
+  security-pattern-sweep-allowlist.json entry (58e05998cb73, delegatingParent()'s own probe-failure
+  catch, same shape as its three already-cleared siblings), docs/architecture/
+  PLUGIN_PROCESS_ISOLATION_DESIGN.md corrected (the design doc itself described "the child's own
+  control group" -- that phrasing is what the bug WAS) and given a verification note naming both
+  live-fire mechanisms. BREAKING.md: no entry -- no DSL, generated-layout, or public-API change.
+  script-inventory-policy.json needed no edit (the new files already match the existing
+  `scripts/quality/` wildcard classification rule); verification-cadence.json needed no edit (this
+  proof is deliberately not wired into run-all-gates.ps1, so it is outside that checker's coverage
+  requirement, confirmed by running it unchanged).
+
+  NOT done, and deliberately not blocking this item's closure: step A9 (an optional ubuntu-latest CI
+  job running this same proof natively, no Docker needed) was not added -- the plan itself marks it
+  optional, and the Docker proof already gives a repeatable, on-demand verification path. Wiring live
+  production capability dispatch through PluginIpcChildProcessPool -- the non-goal step 3 explicitly
+  scoped out, restated in this item's own "Next" note above -- is filed separately as SEC-4
+  (ledger/items/SEC-4.yml): a materially larger decision (does a generated app's real traffic
+  actually route through the isolated pool, or does it still run in-process) that this item's own
+  containment claim does not depend on. SEC-3's stated problem -- unbounded plugin memory/CPU with no
+  real containment -- is resolved and proven on both OSes; that is what this item closes.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcessLinuxResourceLimitTest.java#aChildThatExceedsItsMemoryCeilingIsKilledByTheCgroup
+  asserts: >-
+    Live-fired inside a real Linux kernel via
+    `pwsh -NoProfile -File scripts/quality/run-linux-plugin-resource-proof.ps1 -Force`: 3/3 tests
+    pass (aWellBehavedChildSurvivesTheSameCeiling, aChildThatExceedsItsMemoryCeilingIsKilledByTheCgroup,
+    aChildWithNoLimitsRequestedBehavesExactlyLikeStep2), report overallStatus "passed",
+    cgroupEnvironmentAfter.canCreateSiblingWithMemoryMax=true. Windows counterpart
+    (PluginIpcChildProcessWindowsResourceLimitTest, template tree) verified live via
+    run-runtimehost-gate.ps1. Verified live 2026-09-01.
+  provenRed: true

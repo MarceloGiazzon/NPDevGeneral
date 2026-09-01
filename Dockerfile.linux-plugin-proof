@@ -1,0 +1,49 @@
+# SEC-3 fork (a) -- Linux cgroup v2 proof image.
+#
+# GOES AT THE REPO ROOT as `Dockerfile.linux-plugin-proof` (sibling of the existing
+# Dockerfile.ai-beta, which this is deliberately modelled on but NOT merged into: that image exists
+# to run the whole AI beta gate and pre-bakes every Gradle distribution; this one only has to build
+# runtimehost-core and run one JUnit class, so it stays small and does not need the bake).
+#
+# Differences from Dockerfile.ai-beta that matter:
+#   - python3 IS installed (`./npdev setup --build-local` is the Python CLI; Debian slim has none).
+#   - procps IS installed, so the cgroup init script and any manual debugging have `ps`/`kill`.
+#   - No PowerShell: nothing inside this container runs a .ps1. The orchestration stays on the host.
+#   - No Gradle bake: this image is built once and reused; the Gradle cache lives in a named
+#     Docker volume (see run-linux-plugin-resource-proof.ps1), so distributions are downloaded at
+#     most once across every run on this machine.
+FROM debian:12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    TZ=UTC \
+    CI=true \
+    NPDEV_LINUX_PLUGIN_PROOF_CONTAINER=true
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        procps \
+        python3 \
+        unzip \
+        openjdk-17-jdk \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build output NEVER lands inside the mounted repo (CLAUDE.md: "Build output -> D:\WorkSpace\NPDev\Build.
+# NEVER write generated/build artifacts inside this repo"). Both of these are Docker VOLUMES at run
+# time, so they also survive between runs and keep the second run fast.
+ENV NPDEV_BUILD_ROOT=/npdev-build \
+    NPDEV_RUNTIMEHOST_LIBS_DIR=/npdev-build/runtimehost-libs \
+    GRADLE_USER_HOME=/npdev-cache/gradle \
+    NPDEV_GRADLE_USER_HOME=/npdev-cache/gradle \
+    NPDEV_LOCAL_CACHE_ROOT=/npdev-cache \
+    GRADLE_OPTS="-Dorg.gradle.daemon=false -Dorg.gradle.console=plain -Dorg.gradle.workers.max=2 -Dorg.gradle.vfs.watch=false"
+
+WORKDIR /workspace
+
+# No ENTRYPOINT on purpose: the caller always runs
+#   scripts/quality/linux-plugin-proof/cgroup-delegate-init.sh <command...>
+# from the MOUNTED repo, so the init script can be edited without rebuilding the image.
+CMD ["bash", "-lc", "echo 'npdev linux-plugin-proof image ready'"]

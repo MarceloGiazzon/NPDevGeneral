@@ -153,16 +153,37 @@ support elsewhere (`local-test-profile.json`: Postgres/MySQL/Docker gated to Lin
 the Windows-dev/CI default per `docs/maintainers/SUBSYSTEM_CONTRACTS.md`'s storage section) — the
 same shape applies here, not a new precedent.
 
-- **Linux:** cgroups v2, via the child's own control group. Launch the child under `systemd-run
-  --scope` (or write directly into `/sys/fs/cgroup/<name>/{memory.max,cpu.max}` for the child's PID if
-  systemd is unavailable in the target container) rather than hand-rolling a `clone()`/namespace
-  wrapper — reuses a stable, already-present OS mechanism instead of new unsafe JNI/JNA surface.
+- **Linux:** cgroups v2. Launch the child under `systemd-run --scope` where a usable systemd user
+  session exists (the primary mechanism); where it does not (e.g. a minimal container), fall back to
+  writing `memory.max`/`cpu.max` directly into a cgroup created as a **sibling** of the JVM's own
+  cgroup, under the nearest ancestor that actually delegates those controllers — never as a child of
+  the JVM's own cgroup, which cgroup v2's "no internal process" rule forbids from ever exposing a
+  `memory.max` to enable. (An earlier draft of this document, and the code that first implemented it,
+  both described "the child's own control group" — that phrasing is what shipped as a real bug,
+  caught live-firing this exact ceiling in a Docker/Linux proof; see the verification note below.)
+  Both mechanisms also cap swap (`MemorySwapMax=0` / `memory.swap.max=0`) alongside the memory
+  ceiling — `memory.max` alone is not a hard limit if swap is unconstrained: the kernel reclaims to
+  swap under pressure instead of invoking the OOM killer, so a runaway plugin thrashes instead of
+  dying. Reuses a stable, already-present OS mechanism instead of hand-rolling a `clone()`/namespace
+  wrapper or new unsafe JNI/JNA surface.
 - **Windows:** Job Objects (`CreateJobObject` + `SetInformationJobObject` with
   `JobObjectExtendedLimitInformation`, assigning the child process on creation via
   `AssignProcessToJobObject`) — the standard Windows mechanism for exactly this (a process group with
   a hard memory ceiling and CPU rate limit that the OS itself enforces, including all
-  grandchildren). Requires a small JNA (or JNI) binding; no such binding exists in this codebase yet
-  — this is genuinely new dependency surface, called out explicitly rather than glossed over.
+  grandchildren). A small, hand-declared JNA kernel32 binding backs this (five exports, four struct
+  shapes copied from `winnt.h`), deliberately not `jna-platform`'s own mappings — kept independently
+  verifiable against the real OS API.
+
+**Verification note (SEC-3, 2026-09-01):** both OS paths are now live-fired, not just implemented.
+Windows: `PluginIpcChildProcessWindowsResourceLimitTest`, run directly on this platform's own
+Windows dev/CI default. Linux: `PluginIpcChildProcessLinuxResourceLimitTest`, run inside a real
+Linux kernel via Docker (`scripts/quality/run-linux-plugin-resource-proof.ps1` —
+`--privileged --cgroupns=private`, plus `scripts/quality/linux-plugin-proof/cgroup-delegate-init.sh`
+performing the same "drain to a leaf, then delegate the controllers" dance systemd does at boot,
+since a container's own `/sys/fs/cgroup` starts as a non-delegating non-root cgroup). Both tests
+assert TWO things, not one: a well-behaved plugin **completes** under the configured ceiling, and a
+runaway plugin is **killed** by it — a raised-ceiling test that only checks "the child died" cannot
+distinguish real containment from the JVM merely failing to boot at too tight a limit.
 - **Limits:** memory ceiling and CPU rate are both config (`npdev.runtime.plugin-memory-limit-mb`,
   `npdev.runtime.plugin-cpu-rate-percent`), not hardcoded — different deployments will want different
   headroom, and there is no principled platform-wide default without real usage data.

@@ -1,0 +1,62 @@
+id: QUAL-51
+title: >-
+  Plugin child JVMs get no explicit -Xmx -- a tight OS-level memory ceiling (Windows Job Object,
+  and by the same reasoning any raw-cgroup Linux limit) can fail the child's own startup commit
+  before any plugin workload runs at all, on a host with enough physical RAM to inflate default
+  heap sizing
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-01
+source: >-
+  SEC-3 fork (a), Track A step A5 of the SEC-3/QUAL-49/QUAL-50 implementation plan (2026-09-01).
+  The plan's own optional recommendation ("apply the same 256MB ceiling raise and well-behaved-child
+  discriminator test to the Windows counterpart, for near-zero cost") surfaced this live: raising
+  PluginIpcChildProcessWindowsResourceLimitTest's ceiling from 128MB to 256MB made even the new
+  aWellBehavedChildSurvivesTheSameCeiling() test -- a trivial, near-zero-footprint plugin -- fail
+  deterministically and reproducibly (re-ran twice, identical failure both times) with:
+  `os::commit_memory(0x0000000704400000, 264241152, 0) failed; error='paging file too small'
+  (DOS error/errno=1455)`, i.e. Windows ERROR_COMMITMENT_LIMIT, on this dev machine (16.5GB physical
+  RAM). Reverted the Windows test back to 128MB (the previously-verified-working value) rather than
+  chase a JVM-tuning fix mid-plan; SEC-3 closes on the Linux proof (unaffected -- 256MB works fine
+  there) plus the Windows path already proven at 128MB previously. This item tracks the underlying
+  gap the revert left unresolved.
+surface: runtimehost-core, plugin-ipc, PluginIpcChildProcess
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcess.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessWindowsResourceLimitTest.java
+detail: |
+  NOT YET ROOT-CAUSED to a specific HotSpot subsystem, and NOT FIXED. What is established:
+
+  PluginIpcChildProcess.spawn() (line ~89-97) launches the child with `[javaBin, "@" + argFile,
+  PluginIpcChildProcessMain.class.getName()]` -- no `-Xmx`, no `-Xms`, no metaspace/code-cache
+  sizing, on EITHER OS. The child's own default heap sizing is therefore computed from the FULL
+  HOST's physical memory (HotSpot's default MaxHeapSize is typically ~1/4 of physical RAM), entirely
+  unaware that an OS-level ceiling (a Windows Job Object via AssignProcessToJobObject, or a Linux
+  raw-cgroup memory.max) will be applied moments later. `-XX:+UseContainerSupport` (on by default in
+  JDK 17) auto-detects a Linux cgroup's memory.max and scales default heap sizing accordingly -- but
+  it is Linux-only and does nothing for a Windows Job Object; more importantly, on the RAW-CGROUP
+  Linux path (attachAfterStart, applied AFTER Process.start()), even container-support auto-detection
+  would not see the eventual limit either, since the cgroup does not exist yet when the JVM boots and
+  computes its own sizing. The Linux proof (SEC-3, this same session) happened not to hit this at
+  256MB on this machine; that may be luck, not a guarantee across other RAM sizes or JVM builds.
+
+  The commit-failure size (264,241,152 bytes, ~252 MiB) is suspiciously close to but under the 256MB
+  ceiling that was configured -- consistent with (but not proven to be) either a single large HotSpot
+  startup commit (heap base reservation, CDS mapping affected by the "Sharing is only supported for
+  boot loader classes because bootstrap classpath has been appended" warning printed immediately
+  before the failure, since the child launches via `@argfile` with a non-default classpath) or the
+  CUMULATIVE committed total of ordinary JVM boot (native libs, thread stacks, JIT, metaspace, initial
+  heap regions) crossing the Job Object's ceiling. Not distinguished; would need a HotSpot NMT
+  (Native Memory Tracking) capture on a failing run to actually attribute the commit.
+
+  Done when: root-caused which subsystem's commit crosses the ceiling, and fixed -- most likely an
+  explicit, conservative `-Xmx`/`-Xms` (and possibly `-XX:MaxMetaspaceSize`/
+  `-XX:ReservedCodeCacheSize`) passed to the child JVM in PluginIpcChildProcess.spawn() whenever
+  `limits.memoryLimitMb()` is set, sized to leave real headroom below the OS ceiling for
+  non-heap JVM overhead -- verified by re-raising PluginIpcChildProcessWindowsResourceLimitTest back
+  to 256MB (or higher) with both aWellBehavedChildSurvivesTheSameCeiling() and
+  aChildThatExceedsItsMemoryCeilingIsKilledByTheJobObject() passing reliably across multiple runs, not
+  just once. Consider whether the SAME explicit sizing should apply unconditionally to the Linux raw-
+  cgroup path too, for the reason given above (container-support auto-detection cannot see a cgroup
+  that does not exist yet when the JVM boots).

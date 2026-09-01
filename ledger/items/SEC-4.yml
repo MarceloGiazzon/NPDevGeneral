@@ -1,0 +1,55 @@
+id: SEC-4
+title: >-
+  PluginIpcChildProcessPool has no live production wiring -- a generated app's real java-source
+  plugin capability calls do not route through the process-isolated pool, only test harnesses do
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-01
+source: >-
+  SEC-3's own closure (Track A of the SEC-3/QUAL-49/QUAL-50 implementation plan, 2026-09-01), carried
+  forward from its own "Next" note written at step 3 (real-plugin-classloading manifest,
+  RuntimeApiEmitter.emitJavaSourceRuntimeRefManifestIfNeeded). SEC-3 closed because its OWN stated
+  problem -- plugin memory/CPU unbounded, no real containment -- is now resolved and proven live on
+  both Windows and Linux. This item is the deliberately separate, larger question SEC-3 never
+  claimed to answer: does a real generated app's real traffic actually run through the isolated pool
+  at all?
+surface: runtimehost, plugin-execution, java-source plugin dispatch
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcessPool.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/JavaSourceRuntimeRefManifest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/JavaSourceRuntimeRefManifestLoader.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ArtifactLocalJavaSourceCapabilityHandler.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/ManifestDrivenJavaSourcePluginHandler.java
+detail: |
+  NOT YET SCOPED beyond what SEC-3's own closing note already established. The concrete gap, traced
+  while proving the manifest mechanism in SEC-3 step 3: PluginIpcChildProcessPool can run a real
+  java-source plugin class end-to-end (PluginIpcChildProcessPoolRealPluginTest proves this against
+  NPDevSamples/dsl-conformance-max's real AuditLogCapability#record), but only via a TEST-ONLY bridge
+  class, ManifestDrivenJavaSourcePluginHandler (NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/,
+  never shipped in any generated app). Production capability dispatch for java-source plugins today
+  still goes through ArtifactLocalJavaSourceCapabilityHandler, which runs the plugin IN-PROCESS
+  (already-resolved target instance + operation->method map, constructed once, never crossing a
+  process boundary) -- i.e. the exact unbounded-memory/CPU, no-process-isolation shape SEC-3 was
+  opened to close, still lives on the real production dispatch path. SEC-3's containment mechanism is
+  proven to work; it is simply not switched on for real traffic.
+
+  Two design questions this item needs to answer before any code changes, both explicitly left open
+  by SEC-3:
+  1. Should EVERY java-source plugin capability call route through the process-isolated pool
+     (real containment for real traffic, but adds IPC latency + pool-sizing operational concerns to
+     every call), or only plugin:java-controller/plugin:java-source mounts specifically (SEC-3's own
+     scope), while trusted built-in adapters (persistence, mail, etc., which share JVM state such as
+     ConceptStore and cannot cross a process boundary at all) stay in-process as today?
+  2. What replaces ManifestDrivenJavaSourcePluginHandler's test-only bridge shape for real
+     production code -- a shipped adapter class following the same "read the manifest, resolve
+     FQCN+method by capability, reflect into it" pattern, or a different mechanism entirely? The test
+     bridge deliberately does not reuse ArtifactLocalJavaSourceCapabilityHandler's own dispatch logic
+     (its constructor shape assumes an in-process target instance, which cannot exist on the far side
+     of a process boundary), so this is new production code, not a refactor of existing code.
+
+  Done when: both design questions above are answered and recorded (even if the answer is "defer
+  further, here is why"), and if implementation proceeds, java-source plugin capability calls from a
+  real generated app measurably route through PluginIpcChildProcessPool in at least one live-fired
+  end-to-end scenario (not just the existing manifest-driven test-only bridge) -- verified by
+  observing the actual child-process IPC round trip, not by inspecting call graphs.
