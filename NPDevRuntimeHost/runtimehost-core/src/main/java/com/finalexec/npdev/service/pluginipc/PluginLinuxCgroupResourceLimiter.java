@@ -20,12 +20,16 @@ import java.util.logging.Logger;
  *   a real no-op transient scope -- the only way to know {@code --user} has a usable systemd session
  *   (e.g. via {@code loginctl linger}) without guessing.</li>
  *   <li><b>Direct cgroup v2 filesystem writes</b> (fallback), for a target where systemd is unavailable
- *   (e.g. a minimal container): create a child cgroup under this process's own cgroup, write {@code
- *   memory.max}/{@code cpu.max}, then move the spawned child's PID into it after {@code
- *   ProcessBuilder.start()}. Genuinely best-effort -- it depends on cgroup delegation
- *   (writable {@code cgroup.subtree_control}) that an unprivileged process is not guaranteed to have; a
- *   failure here degrades to "spawned without the cgroup applied" rather than failing the invocation,
- *   logged loudly per design section 3's "never a silent downgrade."</li>
+ *   (e.g. a minimal container): create a cgroup as a SIBLING of this process's own cgroup, under the
+ *   nearest ancestor that actually delegates the {@code memory}/{@code cpu} controllers to its children
+ *   ({@link #delegatingParent()}), write {@code memory.max}/{@code cpu.max}, then move the spawned
+ *   child's PID into it after {@code ProcessBuilder.start()}. Deliberately NOT a child of this
+ *   process's own cgroup -- cgroup v2's "no internal process" rule means a cgroup holding this JVM can
+ *   never enable controllers for its children, so a child cgroup there would have no {@code memory.max}
+ *   to write at all (found live-firing this class's own Docker/Linux proof, SEC-3 fork (a), 2026-09-01).
+ *   Genuinely best-effort -- it depends on cgroup delegation that an unprivileged process is not
+ *   guaranteed to have; a failure here degrades to "spawned without the cgroup applied" rather than
+ *   failing the invocation, logged loudly per design section 3's "never a silent downgrade."</li>
  * </ol>
  *
  * <p>Neither mechanism proving out degrades the whole limiter to {@link PluginNoOpResourceLimiter}, handled by
@@ -36,6 +40,8 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
 
     private static final Logger LOG = Logger.getLogger(PluginLinuxCgroupResourceLimiter.class.getName());
     private static final Path CGROUP_ROOT = Path.of("/sys/fs/cgroup");
+    /** Controllers this limiter needs delegated to it before a ceiling can be applied at all. */
+    private static final List<String> REQUIRED_CONTROLLERS = List.of("memory", "cpu");
 
     private enum Mode { SYSTEMD_RUN, RAW_CGROUP, UNAVAILABLE }
 
@@ -78,15 +84,55 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
     }
 
     private static boolean probeRawCgroupWritable() {
+        if (!Files.isRegularFile(CGROUP_ROOT.resolve("cgroup.controllers"))) {
+            return false; // not cgroup v2's unified hierarchy
+        }
+        return delegatingParent() != null;
+    }
+
+    /**
+     * The nearest ancestor of this process's own cgroup (its parent first, then that parent's
+     * parent, ...) that is writable AND already delegates every controller in
+     * {@link #REQUIRED_CONTROLLERS} to its children. Returns {@code null} when no such directory
+     * exists, which is a truthful "this mechanism is not available here", not an error.
+     *
+     * <p>Never returns the process's OWN cgroup: cgroup v2's "no internal process" rule means a
+     * cgroup holding this JVM cannot have controllers enabled for its children, so a child created
+     * there would have no {@code memory.max} to write -- this was the SEC-3/Docker-proof defect
+     * (a container never has a systemd user session, so the raw-cgroup fallback is the only path
+     * exercised there, and the shipped child-of-own-cgroup placement cannot ever delegate).</p>
+     */
+    private static Path delegatingParent() {
+        Path candidate;
         try {
-            if (!Files.isDirectory(CGROUP_ROOT.resolve("cgroup.controllers"))
-                    && !Files.isRegularFile(CGROUP_ROOT.resolve("cgroup.controllers"))) {
-                return false; // not cgroup v2's unified hierarchy
+            candidate = ownCgroupDir().getParent();
+        } catch (IOException | RuntimeException unreadable) {
+            LOG.log(Level.FINE, "Could not read this process's own cgroup path", unreadable);
+            return null;
+        }
+        while (candidate != null && candidate.startsWith(CGROUP_ROOT)) {
+            if (Files.isWritable(candidate) && delegatesRequiredControllers(candidate)) {
+                return candidate;
             }
-            return Files.isWritable(ownCgroupDir());
-        } catch (IOException | RuntimeException probeFailure) {
-            LOG.log(Level.FINE, "Raw cgroup v2 writability probe failed -- this limiter will report "
-                    + "unavailable and the child process will run without an OS-level ceiling.", probeFailure);
+            if (candidate.equals(CGROUP_ROOT)) {
+                return null;
+            }
+            candidate = candidate.getParent();
+        }
+        return null;
+    }
+
+    private static boolean delegatesRequiredControllers(Path cgroupDir) {
+        Path subtreeControl = cgroupDir.resolve("cgroup.subtree_control");
+        try {
+            if (!Files.isReadable(subtreeControl)) {
+                return false;
+            }
+            List<String> enabled = List.of(
+                    Files.readString(subtreeControl, StandardCharsets.UTF_8).strip().split("\\s+"));
+            return enabled.containsAll(REQUIRED_CONTROLLERS);
+        } catch (IOException | RuntimeException unreadable) {
+            LOG.log(Level.FINE, "Could not read " + subtreeControl, unreadable);
             return false;
         }
     }
@@ -116,6 +162,11 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
         if (limits.memoryLimitMb() != null) {
             wrapped.add("-p");
             wrapped.add("MemoryMax=" + limits.memoryLimitMb() + "M");
+            // Same reasoning as the raw-cgroup fallback's memory.swap.max=0 (see attachAfterStart):
+            // MemoryMax= alone lets the kernel reclaim to swap instead of OOM-killing once the
+            // ceiling is reached, which is not deterministic containment on a host with swap enabled.
+            wrapped.add("-p");
+            wrapped.add("MemorySwapMax=0");
         }
         if (limits.cpuRatePercent() != null) {
             wrapped.add("-p");
@@ -131,23 +182,57 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
         if (mode != Mode.RAW_CGROUP || limits.isEmpty()) {
             return ResourceLimitAttachment.NONE;
         }
+        Path parent = delegatingParent();
+        if (parent == null) {
+            LOG.log(Level.WARNING,
+                    "No cgroup v2 ancestor delegates " + REQUIRED_CONTROLLERS + " to its children, so plugin child "
+                            + "process pid=" + process.pid() + " is running WITHOUT the configured memory/CPU ceiling. "
+                            + "On a container host this usually means the container was started without "
+                            + "--privileged --cgroupns=private, or without the cgroup delegation init step.");
+            return ResourceLimitAttachment.NONE;
+        }
+        Path pluginCgroup = parent.resolve("npdev-plugin-" + process.pid());
         try {
-            Path pluginCgroup = ownCgroupDir().resolve("npdev-plugin-" + process.pid());
             Files.createDirectory(pluginCgroup);
             if (limits.memoryLimitMb() != null) {
-                Files.writeString(pluginCgroup.resolve("memory.max"), Long.toString(limits.memoryLimitMb() * 1024L * 1024L));
+                Path memoryMax = pluginCgroup.resolve("memory.max");
+                if (!Files.exists(memoryMax)) {
+                    throw new IOException("memory.max does not exist in " + pluginCgroup
+                            + " -- the memory controller is not delegated after all");
+                }
+                Files.writeString(memoryMax, Long.toString(limits.memoryLimitMb() * 1024L * 1024L));
+                // Without this, memory.max alone is NOT a hard ceiling: once resident usage nears it,
+                // the kernel reclaims anonymous pages to swap (memory.swap.max defaults to
+                // unlimited) rather than invoking the OOM killer, so a runaway plugin just thrashes
+                // instead of dying -- found live-firing this exact ceiling in the SEC-3/Docker proof
+                // (2026-09-01): a 256MB-ceiling memory hog ran for the full 30s test timeout with
+                // zero kill, because 2GiB of host swap absorbed everything it touched. Best-effort:
+                // memory.swap.max may not exist if the kernel was built without swap accounting, in
+                // which case memory.max is still applied, just without this hardening.
+                Path swapMax = pluginCgroup.resolve("memory.swap.max");
+                if (Files.exists(swapMax)) {
+                    Files.writeString(swapMax, "0");
+                } else {
+                    LOG.log(Level.FINE, "memory.swap.max does not exist in " + pluginCgroup + " -- swap "
+                            + "accounting is unavailable, so the memory.max ceiling just applied may not "
+                            + "produce a deterministic OOM-kill if swap is enabled on this host.");
+                }
             }
             if (limits.cpuRatePercent() != null) {
                 long periodMicros = 100_000L;
                 long quotaMicros = periodMicros * limits.cpuRatePercent() / 100;
                 Files.writeString(pluginCgroup.resolve("cpu.max"), quotaMicros + " " + periodMicros);
             }
+            // LAST: moving the pid in is what arms the ceiling, so every limit file must already
+            // be written. A child moved in first could allocate past the ceiling in the gap.
             Files.writeString(pluginCgroup.resolve("cgroup.procs"), Long.toString(process.pid()));
             return () -> deleteQuietly(pluginCgroup);
         } catch (IOException | RuntimeException attachFailure) {
             LOG.log(Level.WARNING,
                     "Failed to apply a raw cgroup v2 resource limit to plugin child process pid=" + process.pid()
-                            + " -- it is running WITHOUT the configured memory/CPU ceiling.", attachFailure);
+                            + " at " + pluginCgroup + " -- it is running WITHOUT the configured memory/CPU ceiling.",
+                    attachFailure);
+            deleteQuietly(pluginCgroup);
             return ResourceLimitAttachment.NONE;
         }
     }

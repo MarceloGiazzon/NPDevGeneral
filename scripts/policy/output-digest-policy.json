@@ -132,6 +132,7 @@
       "run-weekly-paperwork-checks",
       "run-scale-proof",
       "run-engine-toolbox-parity",
+      "run-linux-plugin-resource-proof",
       "Build-NpdevApp",
       "Build-ClaudeApp",
       "Build-AppGenApp",

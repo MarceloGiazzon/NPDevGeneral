@@ -23,8 +23,8 @@
       "note": "Produced by :generator:test (run-generator-gate.ps1's generatorQualityGate). local-only tests unless -PincludePackagedProofs or CI=1 -- see NPDevGenerator/generator/build.gradle's packaged-proof exclusion. Custom classloaders used by TrustedSourceEmitterGeneratedActionTest et al. compile+load throwaway classes outside src/main/java, so they are invisible to this report by construction, not a defect in the report. 2026-08-25 (remediation plan W2.2/RUN-28, surfaced by W3.2's new gate-adjacent ratchet check): re-pinned 81.5284 -> 81.5111, traced before lowering rather than assumed -- BondJavaEmitterTest.java was rewritten at 23:53:17Z (2 minutes before this report) to stop asserting the now-deleted `uniqueValuesEqual`/`findAllUnboundedFromConceptStore` code path (RUN-28's fix deleted both from service-base.mustache's generated output, routing listBy* through the real ConceptStore pushdown instead), so the emitter's own dead-code-handling branches lost real test exercise along with the dead code itself. A small, explainable cost of a real fix, not an untracked regression -- the FIRST real signal this specific check has ever produced, since no gate ran check-coverage-ratchet.py fresh-off-a-generator-build until W3.2 wired it into run-generator-gate.ps1 itself."
     },
     "NPDevKernel/kernel": {
-      "coveragePercent": 62.722,
-      "measuredOn": "2026-08-27T17:39:25Z",
+      "coveragePercent": 62.9164,
+      "measuredOn": "2026-09-01T19:23:08Z",
       "aggregate": true,
       "minReportCount": 30,
       "reportFormat": "jacoco-xml",

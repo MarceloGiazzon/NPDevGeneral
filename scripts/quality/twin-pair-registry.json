@@ -510,6 +510,37 @@
         "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/controlpanel/SuperUserBootstrapper.java",
         "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DatabaseEngine.java"
       ]
+    },
+    {
+      "id": "plugin-linux-proof-fixture-duplication-memoryhog",
+      "citedBy": "SEC-3 fork (a), 2026-09-01",
+      "description": "MemoryHogPluginHandler is deliberately duplicated: NPDevRuntimeHost/src/test/... (the template tree, only compiles inside an assembled generated app) and NPDevRuntimeHost/runtimehost-core/src/test/... (an independently-buildable module, live-fired by scripts/quality/run-linux-plugin-resource-proof.ps1 without the ~13-minute assemble pipeline). Tracks the two literal constants that set the workload's actual behavior -- an edit to one copy's memory-hog size that is not mirrored to the other would leave the fast Docker proof and the slow template-tree suite silently exercising different workloads.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "CHUNK_BYTES = 50 * 1024 * 1024;",
+        "CHUNKS = 20;"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/MemoryHogPluginHandler.java",
+        "NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/MemoryHogPluginHandler.java"
+      ]
+    },
+    {
+      "id": "plugin-linux-proof-fixture-duplication-auditlogecho",
+      "citedBy": "SEC-3 fork (a), 2026-09-01",
+      "description": "AuditLogEchoPluginHandler's twin of the memory-hog rule above -- same duplication reason. Tracks the three literal strings that wire this handler to the auditLog capability; a divergence here (e.g. one copy's callback rewired to a different capability/operation) would mean the two test suites are no longer proving the same plugin-callback contract.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "return \"auditlog-inproc\";",
+        "return \"auditLog\";",
+        "callBack(\"auditLog\", \"append\", call.args());"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/AuditLogEchoPluginHandler.java",
+        "NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/AuditLogEchoPluginHandler.java"
+      ]
     }
   ]
 }
