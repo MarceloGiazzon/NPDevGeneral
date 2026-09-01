@@ -4,8 +4,9 @@ title: >-
   SEC-3 step 2/3's own same-session claim that "runtime-surface-evidence checks passed both times"
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-01
+closed: 2026-09-01
 source: >-
   2026-09-01, SEC-3 Model B step 4 (per-OS plugin resource limits) verification. A full
   run-runtimehost-gate.ps1 run failed at its last step ("Runtime surface evidence failed:
@@ -69,3 +70,52 @@ detail: |
   `run-runtime-surface-evidence.ps1` passes cleanly and `run-runtimehost-gate.ps1` can complete
   end-to-end again. Not attempted here: unrelated to SEC-3's plugin-process-isolation work, and the
   17+39 affected classes are a separate, unbounded-scope investigation of their own.
+
+  ROOT-CAUSED and RESOLVED 2026-09-01 (Track B of the SEC-3/QUAL-49/QUAL-50 implementation plan).
+  The "contradiction" was neither flakiness nor a wrong earlier claim -- it was an invocation
+  mismatch. `run-runtimehost-gate.ps1` (line 176) has always invoked this script WITH `-PendingOk`,
+  which downgrades 8 formally-retired convergence/footprint checks (GATE-OBS-1a, REG-5, 2026-07-21)
+  to advisory. This item's own isolation run invoked the script directly, WITHOUT that switch --
+  a genuinely different check. Run the way the gate actually runs it
+  (`-PendingOk`), only 2 of the 17+39+21-class drift this item catalogued were ever blocking:
+  `services-classified` / `service-inventory-fully-classified` reporting `unclassifiedServices=2`
+  for two classes -- `JavaSourceRuntimeRefManifest` and `JavaSourceRuntimeRefManifestLoader`. Both
+  were added by commit 866c4fb1 (the SEC-3 step-3 follow-up landed the same session as this item was
+  filed); replaying the classification check across history confirmed 0 unclassified at daccc569 and
+  03b123ce, 2 at 866c4fb1 -- a fresh regression from the most recent commit, not the old drift this
+  item's own detail catalogues (that drift is real but was already advisory-by-design under
+  `-PendingOk`, per GATE-OBS-1a; a genuine reconciliation of it stays out of scope, see below).
+
+  Fix: added `"JavaSourceRuntimeRef*"` to `supportedCoreServicePatterns` in
+  NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json (same precedent
+  SEC-3 step 4 already set for its own new `Plugin*`-named classes). Verified this pattern collides
+  with nothing in supportedCoreServiceComponents/nonDefaultServicePatterns/experimentalServicePatterns.
+  `run-runtime-surface-evidence.ps1 -PendingOk` now exits 0 (classification/footprint both
+  `overallStatus: warning`, not `failed`).
+
+  Also fixed the recurrence mechanism itself, not just this instance: `run-runtime-surface-evidence.ps1`
+  made the `-PendingOk` advisory behavior the DEFAULT (added `-IncludeRetiredConvergenceChecks` to
+  opt back into the old strict behavior for a deliberate audit; `-PendingOk` is kept as an
+  accepted-but-now-redundant no-op so every existing call site -- run-runtimehost-gate.ps1,
+  .github/workflows/npdev-ci-validation.yml -- keeps working unchanged). A bare hand-run of the
+  script (no flags) now also gets advisory treatment of the 8 retired checks instead of reading them
+  as real failures, which is exactly the mistake that produced this item.
+
+  Verified live: `run-runtime-surface-evidence.ps1` (bare, `-PendingOk`, and
+  `-IncludeRetiredConvergenceChecks`) all behave as expected (advisory/advisory/strict
+  respectively); full `run-all-gates.ps1 -Only runtimeHost` passed end-to-end in ~571s with
+  "Runtime surface evidence reports generated" and "ALL 1 GATES GREEN."
+
+  Not attempted, still out of scope: genuinely reconciling the pre-d0bf41b 17+39-class drift
+  (moving classes' actual packages, or the manifest's buckets, so the 8 retired checks pass for
+  real instead of staying advisory) -- a surface-governance owner's decision, not a bugfix. The full
+  arithmetic (17 controllers, 21 overlapping services, 25 misaligned services) is preserved outside
+  the repo per this repo's own process-document policy, not in a committed script.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-runtime-surface-evidence.ps1 -PendingOk
+  asserts: >-
+    Exits 0; classification and footprint reports both show overallStatus "warning" (not "failed").
+    Full run-all-gates.ps1 -Only runtimeHost completes end-to-end. Verified live 2026-09-01: exit 0,
+    ~571s, "Runtime surface evidence reports generated", "ALL 1 GATES GREEN."
+  provenRed: true

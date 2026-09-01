@@ -101,7 +101,8 @@
     "*CapabilityAdapter",
     "Plugin*",
     "RuntimePlugin*",
-    "Sandboxed*"
+    "Sandboxed*",
+    "JavaSourceRuntimeRef*"
   ],
   "nonDefaultServicePatterns": [
     "CapabilityReadinessClassifier",
