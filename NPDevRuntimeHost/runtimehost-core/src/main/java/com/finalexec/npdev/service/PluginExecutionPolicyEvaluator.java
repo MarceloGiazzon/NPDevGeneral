@@ -82,6 +82,82 @@ public final class PluginExecutionPolicyEvaluator {
         return PluginExecutionPolicyDecision.allow(runtimeEnvironment, contribution, call.operation());
     }
 
+    /**
+     * The Model B callback allowlist gate (SEC-3,
+     * docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 1): a running child process may ask
+     * the host to perform capability calls on its behalf over the IPC channel, but only capabilities its
+     * OWN manifest entry ({@code originalContribution.pluginId()}) declares it needs -- reusing this
+     * evaluator's existing allow/deny decision shape rather than inventing a second policy model.
+     * Deliberately NOT a reuse of {@code TrustedSourceBytecodeInspector}: that inspector scans compiled
+     * bytecode for direct forbidden references at admission time and has no visibility into what a
+     * running child asks the host to do over an IPC channel that doesn't exist at admission time.
+     */
+    public PluginExecutionPolicyDecision evaluateCallback(
+            RuntimePluginAdapterRegistry.RegisteredAdapterContribution originalContribution,
+            RuntimePluginAdapterRegistry registry,
+            String callbackCapability,
+            String callbackOperation
+    ) {
+        Objects.requireNonNull(originalContribution, "originalContribution");
+        Objects.requireNonNull(registry, "registry");
+
+        String runtimeEnvironment = activeEnvironment();
+        String normalizedCapability = normalize(callbackCapability);
+        String normalizedOperation = normalize(callbackOperation);
+
+        if (normalizedCapability.isBlank()) {
+            return new PluginExecutionPolicyDecision(
+                    false,
+                    "PLUGIN_CALLBACK_MISSING_CAPABILITY",
+                    "Plugin IPC callback did not name a capability",
+                    runtimeEnvironment,
+                    originalContribution.pluginId(),
+                    normalizedCapability,
+                    normalizedOperation,
+                    ""
+            );
+        }
+        if (deniedPluginIds.contains(normalize(originalContribution.pluginId()))) {
+            return new PluginExecutionPolicyDecision(
+                    false,
+                    "PLUGIN_POLICY_DENY_PLUGIN_ID",
+                    "Plugin '%s' is denied by runtime policy".formatted(originalContribution.pluginId()),
+                    runtimeEnvironment,
+                    originalContribution.pluginId(),
+                    normalizedCapability,
+                    normalizedOperation,
+                    ""
+            );
+        }
+
+        RuntimePluginAdapterRegistry.RegisteredAdapterContribution declared = registry.findDeclaredCallback(
+                originalContribution.pluginId(), normalizedCapability, normalizedOperation
+        );
+        if (declared == null) {
+            return new PluginExecutionPolicyDecision(
+                    false,
+                    "PLUGIN_CALLBACK_NOT_DECLARED",
+                    "Plugin '%s' is not declared to call back into capability '%s' operation '%s'"
+                            .formatted(originalContribution.pluginId(), callbackCapability, callbackOperation),
+                    runtimeEnvironment,
+                    originalContribution.pluginId(),
+                    normalizedCapability,
+                    normalizedOperation,
+                    ""
+            );
+        }
+        return new PluginExecutionPolicyDecision(
+                true,
+                "PLUGIN_CALLBACK_ALLOWED",
+                "Plugin callback allowed",
+                runtimeEnvironment,
+                originalContribution.pluginId(),
+                normalizedCapability,
+                normalizedOperation,
+                declared.adapterId()
+        );
+    }
+
     public Map<String, Object> policySummary() {
         return Map.of(
                 "runtimeEnvironment", runtimeEnvironment(),

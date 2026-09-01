@@ -13,11 +13,15 @@ public final class RuntimePluginAdapterRegistry {
     private final RuntimePluginManifest manifest;
     private final Map<String, RegisteredAdapterContribution> byCapabilityOperationAdapter;
     private final Map<String, RegisteredAdapterContribution> byCapabilityAdapter;
+    private final Map<String, RegisteredAdapterContribution> byPluginCapabilityOperation;
+    private final Map<String, RegisteredAdapterContribution> byPluginCapability;
 
     public RuntimePluginAdapterRegistry(RuntimePluginManifest manifest) {
         this.manifest = Objects.requireNonNull(manifest, "manifest");
         this.byCapabilityOperationAdapter = indexByCapabilityOperationAdapter(manifest);
         this.byCapabilityAdapter = indexByCapabilityAdapter(manifest);
+        this.byPluginCapabilityOperation = indexByPluginCapabilityOperation(manifest);
+        this.byPluginCapability = indexByPluginCapability(manifest);
     }
 
     public RegisteredAdapterContribution requireContribution(String capability, String adapterId) {
@@ -48,6 +52,33 @@ public final class RuntimePluginAdapterRegistry {
             return fallback;
         }
         throw unregisteredAdapter(capability, operation, adapterId);
+    }
+
+    /**
+     * Looks up whether {@code pluginId}'s manifest entry declares a binding for
+     * {@code capability}/{@code operation} -- the callback allowlist check
+     * {@code PluginExecutionPolicyEvaluator.evaluateCallback} needs: a plugin process may only call
+     * back into capabilities its OWN manifest entry declares it needs, not an arbitrary capability
+     * (SEC-3 / Model B, docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 1). Falls back to
+     * a capability-only match (ignoring operation) the same way {@link #requireContribution} does, so a
+     * plugin declared against one operation of a capability is not falsely denied a sibling operation
+     * of that same capability. Returns {@code null} (not a thrown exception) when nothing matches --
+     * callers decide what "not declared" means for their own error shape.
+     */
+    public RegisteredAdapterContribution findDeclaredCallback(String pluginId, String capability, String operation) {
+        String normalizedPluginId = normalize(pluginId);
+        String normalizedCapability = normalize(capability);
+        String normalizedOperation = normalize(operation);
+
+        if (!normalizedOperation.isBlank()) {
+            RegisteredAdapterContribution exact = byPluginCapabilityOperation.get(
+                    key(normalizedPluginId, normalizedCapability, normalizedOperation)
+            );
+            if (exact != null) {
+                return exact;
+            }
+        }
+        return byPluginCapability.get(key(normalizedPluginId, normalizedCapability));
     }
 
     public Summary toSummary() {
@@ -94,6 +125,39 @@ public final class RuntimePluginAdapterRegistry {
             for (RuntimePluginManifest.AdapterContribution contribution : plugin.adapters()) {
                 RegisteredAdapterContribution registered = RegisteredAdapterContribution.from(plugin, contribution);
                 index.putIfAbsent(key(registered.capability(), registered.adapterId()), registered);
+            }
+        }
+        return Map.copyOf(index);
+    }
+
+    private static Map<String, RegisteredAdapterContribution> indexByPluginCapabilityOperation(
+            RuntimePluginManifest manifest
+    ) {
+        Map<String, RegisteredAdapterContribution> index = new LinkedHashMap<>();
+        for (RuntimePluginManifest.PluginContribution plugin : manifest.plugins()) {
+            if (!plugin.enabled()) {
+                continue;
+            }
+            for (RuntimePluginManifest.AdapterContribution contribution : plugin.adapters()) {
+                RegisteredAdapterContribution registered = RegisteredAdapterContribution.from(plugin, contribution);
+                index.putIfAbsent(
+                        key(registered.pluginId(), registered.capability(), registered.operation()),
+                        registered
+                );
+            }
+        }
+        return Map.copyOf(index);
+    }
+
+    private static Map<String, RegisteredAdapterContribution> indexByPluginCapability(RuntimePluginManifest manifest) {
+        Map<String, RegisteredAdapterContribution> index = new LinkedHashMap<>();
+        for (RuntimePluginManifest.PluginContribution plugin : manifest.plugins()) {
+            if (!plugin.enabled()) {
+                continue;
+            }
+            for (RuntimePluginManifest.AdapterContribution contribution : plugin.adapters()) {
+                RegisteredAdapterContribution registered = RegisteredAdapterContribution.from(plugin, contribution);
+                index.putIfAbsent(key(registered.pluginId(), registered.capability()), registered);
             }
         }
         return Map.copyOf(index);

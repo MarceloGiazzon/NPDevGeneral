@@ -1,28 +1,24 @@
 {
-  "closedAt": "2026-08-31T20:41:34.3963973Z",
+  "closedAt": "2026-09-01T05:06:18.6809779Z",
   "branch": "main",
-  "head": "85074e32",
-  "headSubject": "chore(ledger): QUAL-43 API-key merge fix confirmed on live CI; file QUAL-45/46 for the two new failure layers it exposed",
-  "summary": "Closed out the 5 open ledger items (QUAL-36/40/41/42, SEC-3 scoped): QUAL-36's Docker daemon-unreachable-on-Windows misclassification and QUAL-42's base-ai-loop 401 both root-caused and fixed. Verifying each fix on live CI uncovered a chain of 5 more real, previously-CI-unreachable bugs, each fixed and verified (not just code-read): QUAL-43 (Ensure-NpdevApiKey clobbered then, after a wrong first fix caught by CI, needed to MERGE real per-testUser API keys with its own fallback key), QUAL-44 (sample-matrix-tests: a missing corpus-roles classification + a stale negative schema fixture), QUAL-45 ( derivation bug from QUAL-43's own merge, plus a real generator bug: entityFromRecord in service-base.mustache never rehydrated tenantId from ConceptRecord, dropping it from every CREATE response on the ConceptGateway read path), QUAL-46 (3 golden scenarios' verification fixtures checked a stale /api/users endpoint that never existed in their model). QUAL-40/41 closed WONTFIX per owner decision.",
-  "nextStep": "Check background task bmxz1ppg6 (run-generator-gate.ps1, dispatched ~20:37 UTC 2026-08-31, digest log under D:\\WorkSpace\\NPDev\\Build\\digest-logs) - it validates the service-base.mustache entityFromRecord fix doesn't break generator reference-output tests. If green: commit+push the 6 uncommitted files (NPDevGenerator/generator/.../service-base.mustache, golden-ai-scenarios/{custom-panel-procedure-mismatch,custom-procedure-admission-rejection,custom-procedure-invalid}/ai-verification-report.json, ledger/items/QUAL-45.yml, scripts/quality/invoke-ai-beta-app-smoke.ps1), then dispatch one more fresh 'gh workflow run ai-beta-gate.yml --ref main' to confirm QUAL-43/44/45/46 together on live CI - tenant-service-desk/tenant-approval-portal and the 3 custom-procedure scenarios share the same fixes but were never independently live-verified. If the generator gate is red, diagnose before pushing.",
+  "head": "505cfcc4",
+  "headSubject": "docs(SEC-3): full design for Model B plugin process isolation",
+  "summary": "Implemented SEC-3 Model B step 1: an in-process IPC protocol prototype (PluginIpcFrame/Codec, new callback allowlist in PluginExecutionPolicyEvaluator/RuntimePluginAdapterRegistry, host/child orchestration classes) proven via a real auditLog callback round-trip and a denied-callback test over piped streams; fixed one real gate finding (renamed JsonSafeValues to PluginIpcJsonSafeValues to match the runtime-surface classifier's Plugin* pattern) and confirmed run-runtimehost-gate.ps1 green; updated ledger/items/SEC-3.yml with full detail, left status OPEN.",
+  "nextStep": "SEC-3 step 2 per docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 6: wire a real ProcessBuilder child (one process per invoke, no pool yet) using the existing PluginIpcHostSession/PluginIpcChildRuntime/PluginIpcFrameCodec classes (NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/) against Process.getInputStream()/getOutputStream() instead of the piped streams PluginIpcRoundTripTest uses -- proves the crash-handling sequence (design doc section 4) end to end, including the two live-fired tests SEC-3's own done-when bar names (a plugin that calls System.exit and does not take down the host; a forbidden-operation attempt actually blocked). Before that: this session's changes are UNCOMMITTED -- commit them first (new pluginipc package, PluginExecutionPolicyEvaluator/RuntimePluginAdapterRegistry edits, 3 new test files, ledger/items/SEC-3.yml update).",
   "plan": "",
-  "blocked": "Nothing genuinely blocked - run-generator-gate.ps1 was still in progress at session close, result not yet known.",
-  "verified": "Local: tenant-workflow-ops single-scenario live boot fully green after QUAL-45's fixes (was 1 of 9 checks failing); sample-matrix-tests green after QUAL-44's fixes; check-done-item-guards.py and check-ledger-status-reverse-freshness.py both clean. Live CI: QUAL-36 fix confirmed on 2 runs (docker-linux-proof correctly reports skipped); QUAL-42 confirmed (base-ai-loop passes on Docker/Linux, not just Windows-local); QUAL-43's corrected merge fix confirmed (create-ticket 201, custom-panel-unsupported regression from the first wrong fix is gone). run-generator-gate.ps1 dispatched but result unknown at close.",
-  "dirtyCount": 6,
+  "blocked": "",
+  "verified": "Local: full run-runtimehost-gate.ps1 (assembled sample app's own gradle test task BUILD SUCCESSFUL, runtimehost-core's own gradle test task BUILD SUCCESSFUL, coverage-floor check and runtime-surface-evidence classification/footprint/allowlist all passed) -- exit=0 on the second run after fixing the JsonSafeValues naming issue found by the first run's failure. No CI run yet (nothing pushed).",
+  "dirtyCount": 8,
   "dirtyFiles": [
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/service-base.mustache",
-    " M golden-ai-scenarios/custom-panel-procedure-mismatch/ai-verification-report.json",
-    " M golden-ai-scenarios/custom-procedure-admission-rejection/ai-verification-report.json",
-    " M golden-ai-scenarios/custom-procedure-invalid/ai-verification-report.json",
-    " M ledger/items/QUAL-45.yml",
-    " M scripts/quality/invoke-ai-beta-app-smoke.ps1"
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/PluginExecutionPolicyEvaluator.java",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/RuntimePluginAdapterRegistry.java",
+    " M ledger/items/SEC-3.yml",
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl",
+    "?? NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/",
+    "?? NPDevRuntimeHost/src/test/java/com/finalexec/PluginExecutionPolicyEvaluatorCallbackTest.java",
+    "?? NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/"
   ],
   "unpushed": 0,
-  "landedCommits": [
-    "85074e32 chore(ledger): QUAL-43 API-key merge fix confirmed on live CI; file QUAL-45/46 for the two new failure layers it exposed",
-    "85d17b15 fix(quality): sample matrix classification gap and stale negative-schema fixture (QUAL-44)",
-    "cff35715 fix(ai-beta-gate): merge the fallback API key instead of choosing generator-real vs generated-fallback",
-    "46c09098 fix(ai-beta-gate): stop clobbering per-testUser API keys, and stop misreading a Windows daemon-unreachable Docker probe as a real failure",
-    "2191f6e4 chore(ai): session handoff - open-state digest and prep default action"
-  ]
+  "landedCommits": []
 }

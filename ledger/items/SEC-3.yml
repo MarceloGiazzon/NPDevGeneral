@@ -24,7 +24,68 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginBytecodeBootGate.java
   - docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcFrame.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcFrameCodec.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcJsonSafeValues.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcCallbackClient.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildRuntime.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcHostSession.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/PluginExecutionPolicyEvaluator.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/RuntimePluginAdapterRegistry.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/PluginExecutionPolicyEvaluatorCallbackTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcFrameCodecTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcRoundTripTest.java
 detail: |
+  2026-09-01 (Model B step 1, owner-authorized -- design doc's two headline decisions, IPC frame shape
+  and the new callback allowlist, taken as confirmed by the owner's go-ahead to implement): landed the
+  design doc's recommended first increment (section 6, step 1) -- "prototype the protocol and the
+  callback allowlist alone, in-process, no process spawning yet." NOT a Model B ship and does NOT close
+  this item: SEC-3's own done-when bar requires live-fired regression tests against a REAL isolated
+  child process, which this step deliberately defers (that's step 2 of the doc's sequencing).
+
+  What actually landed:
+  - PluginIpcFrame (kernel-shaped: InvokeFrame/CallbackFrame/ResponseFrame, ResponseFrame nesting a
+    ResponseError mirroring CapabilityError's code/message/kind/details) + PluginIpcFrameCodec
+    (length-prefixed JSON frames over any InputStream/OutputStream pair -- Jackson, already a hard
+    dependency, no new library) -- exactly the wire shape docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md
+    section 1 specifies.
+  - PluginIpcJsonSafeValues: runtime enforcement of the "JSON-safe subset" args/value/contextState must
+    be restricted to (primitives/String/Map<String,?>/List<?>/Jackson-roundtrippable records) -- the
+    doc flagged this as a real, visible contract change for plugin authors; this is the runtime half
+    (a generation-time PluginJavaSourcePolicy AST check is still open work, not attempted here).
+  - PluginExecutionPolicyEvaluator.evaluateCallback + RuntimePluginAdapterRegistry.findDeclaredCallback:
+    the NEW callback allowlist gate the doc calls "the actual security-critical piece" -- a plugin may
+    only call back into capabilities its OWN manifest entry declares, checked against the SAME
+    RegisteredAdapterContribution binding that authorized the original invoke, reusing
+    PluginExecutionPolicyDecision rather than a second policy model. Deliberately NOT a reuse of
+    TrustedSourceBytecodeInspector (that inspector has no visibility into a running child's IPC calls).
+  - PluginIpcHostSession / PluginIpcChildRuntime / PluginIpcCallbackClient: the host and child
+    orchestration primitives, parameterized on plain InputStream/OutputStream so step 2 (real child
+    process) only has to swap PipedInputStream/PipedOutputStream for Process.getInputStream()/
+    getOutputStream() -- no protocol rework.
+  - Live-fired proof (PluginIpcRoundTripTest, entirely in-process over piped streams standing in for a
+    child's stdin/stdout, host and child on separate threads): a real auditLog CapabilityAdapter
+    handler calls back into its own declared capability, the host validates + executes it for real
+    against an in-memory AuditLogStore, and the result round-trips end to end; a second test proves a
+    plugin whose declared job is auditLog attempting a callback into an undeclared capability
+    (persistence.dropAll) is DENIED (PLUGIN_CALLBACK_NOT_DECLARED) and never reaches the real store.
+    Plus PluginIpcFrameCodecTest (wire-format round trips) and PluginExecutionPolicyEvaluatorCallbackTest
+    (allowlist decision matrix: declared/undeclared/globally-denied/missing-capability).
+  - Verified: full run-runtimehost-gate.ps1 green (assembled sample app's own test suite +
+    runtimehost-core's own test task, both BUILD SUCCESSFUL) after one real fix mid-verification --
+    the gate's still-enforced (non-advisory) "services-classified" check flagged the new
+    JsonSafeValues class as unclassified against NPDevRuntimeHost's runtime-supported-controllers.json
+    service patterns (the other 5 new classes auto-matched the existing "Plugin*" pattern); renamed it
+    to PluginIpcJsonSafeValues to fit that established convention rather than editing the governance
+    manifest. The namespace/package-convergence findings the same gate run also showed for the new
+    `pluginipc` package are pre-existing-class advisory checks (GATE-OBS-1a, formally retired), not a
+    new failure this step introduced.
+
+  Next step per the design doc's own sequencing (section 6, step 2): a real ProcessBuilder child, one
+  per invoke, no pool yet, wiring the REAL stdin/stdout pipes this step's classes already accept --
+  that is what would start closing this item's actual done-when bar (System.exit / forbidden-operation
+  live-fire tests against a process the host does not die with).
+
   MODEL A SHIPPED 2026-08-27 (ledger remediation session) -- "plugins are trusted; prevent accidents
   and casual misuse" is now REAL, with the boundary's honest residue recorded as B30:
 
