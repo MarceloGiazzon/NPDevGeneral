@@ -10,8 +10,8 @@
     "that goes stale unnoticed. Newer entries therefore set \"rule\" to the sweep pattern name and carry",
     "their full reasoning inline in \"why\"."
   ],
-  "frozenCount": 506,
-  "frozenCountWhy": "THE CEILING, set 2026-08-23 at 503, raised to 504 the same day when T4.2's identifier-quoting fix to MissingTableCreationPass.java re-fingerprinted an already-cleared line (fingerprint e8c35c5b0e0e, same trust boundary as 8dafba89ea4e, see its own entry); raised to 506 on 2026-08-28 for two new sql-string-building false positives in DockerDeploymentEmitter.java (fingerprints 641da5fef3c0, 606570bd57ab -- see their own entries) surfaced by 29af91e3's edits to that file's surrounding javadoc. The sweep's cleared list may SHRINK freely; it may not grow past this number without the number being raised in the same commit, so widening is always a visible, reviewed act. Adding an entry is the last resort -- the first question is whether the pattern can be made unnecessary. Mirrors scripts/policy/markdown-read-exemptions.json's ratchet, which took 37 couplings to 0.",
+  "frozenCount": 511,
+  "frozenCountWhy": "THE CEILING, set 2026-08-23 at 503, raised to 504 the same day when T4.2's identifier-quoting fix to MissingTableCreationPass.java re-fingerprinted an already-cleared line (fingerprint e8c35c5b0e0e, same trust boundary as 8dafba89ea4e, see its own entry); raised to 506 on 2026-08-28 for two new sql-string-building false positives in DockerDeploymentEmitter.java (fingerprints 641da5fef3c0, 606570bd57ab -- see their own entries) surfaced by 29af91e3's edits to that file's surrounding javadoc; raised to 511 on 2026-09-01 (QUAL-50) for five hits introduced by SEC-3 Model B step 4's per-OS plugin resource limiters and reachable pre-existing code the sweep had not covered yet -- three swallowed-security-exception probe-failure catches in PluginLinuxCgroupResourceLimiter/PluginWindowsJobObjectResourceLimiter (fingerprints 2b8058ae3b67, 4d237fb40e0d, b572df62a211, each now also logged at FINE), one swallowed-security-exception clean-EOF return in PluginIpcFrameCodec (6e18909402a9), and one sql-string-building hit on two lines sharing one fingerprint in SchemaLifecycleExecutor's Flyway-history-table cleanup (1312626de607) -- see each entry for its own trust-boundary reasoning. The sweep's cleared list may SHRINK freely; it may not grow past this number without the number being raised in the same commit, so widening is always a visible, reviewed act. Adding an entry is the last resort -- the first question is whether the pattern can be made unnecessary. Mirrors scripts/policy/markdown-read-exemptions.json's ratchet, which took 37 couplings to 0.",
   "cleared": {
     "028894b4023d": {
       "rule": "read-without-tenant-predicate",
@@ -2542,6 +2542,31 @@
       "rule": "sql-string-building",
       "where": "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/DockerDeploymentEmitter.java:518",
       "why": "False positive, not SQL -- the sibling of 641da5fef3c0 one method over. dockerComposeStandalone() returns the same kind of Java text block emitting docker-compose.yml for non-Postgres engines; its opening comment is what the pattern matched. Same reasoning applies verbatim. Triaged 2026-08-28, Cold Clone Audit CI follow-up (run 33209710820)."
+    },
+    "2b8058ae3b67": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginLinuxCgroupResourceLimiter.java:70",
+      "why": "probeSystemdRunUser() catch on a live systemd-run --user --scope probe used only to pick between two best-effort resource-limiting mechanisms (SEC-3 Model B step 4) -- not an auth decision. A failure here (no lingering user session, systemd absent) is the expected, common case on most hosts and simply falls through to the raw-cgroup probe; the class's own isAvailable() reports the resulting mode truthfully rather than pretending success, and PluginProcessResourceLimiter.forCurrentOs() degrades callers to PluginNoOpResourceLimiter, not to an unguarded permit. Now logged at FINE (QUAL-50 C2, 2026-09-01) naming exactly this fallback; not WARNING because the condition is routine, not exceptional -- unlike attachAfterStart's own WARNING-level catch a few lines down, which fires only after a limit was believed available and then failed to apply."
+    },
+    "4d237fb40e0d": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginLinuxCgroupResourceLimiter.java:87",
+      "why": "probeRawCgroupWritable() catch, sibling of 2b8058ae3b67 one probe over -- same reasoning: non-auth-path best-effort capability probe, truthfully surfaced via isAvailable(), degrades to the no-op limiter rather than an unguarded permit. Now logged at FINE (QUAL-50 C2, 2026-09-01)."
+    },
+    "b572df62a211": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginWindowsJobObjectResourceLimiter.java:59",
+      "why": "Windows counterpart of 2b8058ae3b67/4d237fb40e0d -- CreateJobObjectW probe failure (e.g. the JNA kernel32 binding cannot load) is a non-auth-path capability check, truthfully surfaced via isAvailable(), degrading to PluginNoOpResourceLimiter rather than granting anything. Now logged at FINE (QUAL-50 C2, 2026-09-01)."
+    },
+    "6e18909402a9": {
+      "rule": "swallowed-security-exception",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcFrameCodec.java:61",
+      "why": "catch (EOFException) -> return null in readFrame() is the wire protocol's own documented clean-end-of-stream signal (see the method's javadoc), not a security answer -- EOF on a pipe just means the peer closed its side. The null is not swallowed: PluginIpcChildProcess.awaitDeathAndDescribe remaps it into a CapabilityResult carrying error code PLUGIN_EXECUTION_PROCESS_KILLED plus the child's actual exit code, so the caller sees a specific, actionable failure rather than a bare permit/deny. QUAL-50 C3, 2026-09-01."
+    },
+    "1312626de607": {
+      "rule": "sql-string-building",
+      "where": "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java:1860,1881",
+      "why": "flywayHistoryTableRef(connection)/flywayHistoryScriptColumnRef(connection) splice into the DELETE only the dialect's own quote character (connection.getMetaData().getIdentifierQuoteString()) around two hardcoded literal identifiers, \"flyway_schema_history\" and \"script\" -- Flyway's own fixed table/column names (see the surrounding javadoc explaining why the quoting exists: matching Flyway's own always-quoted identifier convention across H2/Postgres/SQL Server/MySQL). No caller, model-author, or HTTP-reachable input reaches either helper; the only parameter is the JDBC Connection used to read its dialect's quote string. Two hit lines share this one fingerprint. QUAL-50 C3, 2026-09-01."
     }
   }
 }

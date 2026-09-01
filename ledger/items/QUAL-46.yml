@@ -58,9 +58,13 @@ detail: |
 guard:
   kind: manual
   ref: >-
-    scripts/reports/out/ai-beta-gate-report.json, generated locally by
-    `pwsh -NoProfile -File scripts/quality/run-ai-beta-gate.ps1` after fixing all 3 scenarios'
-    ai-verification-report.json (endpoint + expectedJsonContains).
+    scripts/quality/run-ai-beta-gate.ps1, run after fixing the three scenarios' own fixtures
+    (golden-ai-scenarios/custom-panel-procedure-mismatch,
+    golden-ai-scenarios/custom-procedure-admission-rejection,
+    golden-ai-scenarios/custom-procedure-invalid -- each scenario's ai-verification-report.json,
+    endpoint corrected to /api/learners, expectedJsonContains checking status instead of name). The
+    script's own report is written to a gitignored, machine-local directory and is not itself a
+    repo-checkable artifact -- rerun the script to reproduce the verdict below.
   asserts: >-
     All 8 of 8 expected-pass scenarios pass (was 5 of 8 before this fix, with
     custom-panel-procedure-mismatch/custom-procedure-admission-rejection/custom-procedure-invalid
