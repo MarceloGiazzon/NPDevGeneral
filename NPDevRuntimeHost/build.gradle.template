@@ -121,6 +121,16 @@ def generatedRuntimeMountPresent = {
     generatedRuntimeRequiredFiles.every { file(it).isFile() }
 }
 
+// QUAL-47: generator-written, so already on disk by the time Gradle configures (same timing as
+// runtimeSurfaceManifest below) -- absent entirely for a bare template checkout, present with
+// physicalDatabase=false for every InMemory-engine sample, true only for a sample whose
+// db.definition.json declares a physical engine (H2Local/Postgres).
+def schemaRealizationManifestFile = file('npdev-generated/src/main/resources/npdev/db/schema-realization-manifest.json')
+def physicalDatabaseManifestPresent = {
+    schemaRealizationManifestFile.isFile() &&
+            new JsonSlurper().parse(schemaRealizationManifestFile).physicalDatabase == true
+}
+
 def relativeJavaSourcePath = { File root, File sourceFile ->
     sourceFile.canonicalPath
             .substring(root.path.length() + 1)
@@ -581,6 +591,23 @@ sourceSets {
                 // (ConceptQueryController -> RuntimeContextService; ActuatorAdminGuardFilter).
                 exclude 'com/finalexec/api/ConceptQueryControllerTest.java'
                 exclude 'com/finalexec/config/ActuatorAdminGuardFilterTest.java'
+            }
+            if (physicalDatabaseManifestPresent()) {
+                // QUAL-47: SchemaImpactFacadeH2Test's own javadoc documents its entire premise --
+                // every assertion assumes SchemaImpactFacade.forLiveDatabase() takes the
+                // manifest==null-or-non-physical branch (no real business-table diff, just the
+                // REG-39 identity-pack-drift check). That premise holds for the bare RuntimeHost
+                // template (no generated manifest at all -- run-runtimehost-gate.ps1 keeps
+                // exercising it for real there) and for every InMemory-engine sample (a manifest
+                // exists but physicalDatabase=false, same simplified branch) -- but breaks the
+                // moment a sample declares a PHYSICAL engine (H2Local/Postgres): forLiveDatabase
+                // then walks the real business-table diff against this class's tiny hand-built
+                // `widgets` fixture, correctly classifies the mismatch as DESTRUCTIVE, and the
+                // test's null/NO_CHANGES/NEEDS_ATTENTION-only assertions fail -- not because
+                // SchemaImpactFacade is wrong, but because the fixture models a database with no
+                // real schema, which no physical-engine sample can ever have. Confirmed against
+                // the assembled medium-expense-approval and restaurant-saas-multitenant samples.
+                exclude 'com/finalexec/db/SchemaImpactFacadeH2Test.java'
             }
         }
     }
