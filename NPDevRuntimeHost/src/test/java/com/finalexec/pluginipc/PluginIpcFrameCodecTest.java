@@ -24,7 +24,8 @@ class PluginIpcFrameCodecTest {
         PluginIpcFrame.InvokeFrame frame = new PluginIpcFrame.InvokeFrame(
                 "req-1", "auditLog", "AuditLogCapability", "auditlog-inproc", "append",
                 List.of(Map.of("action", "LOGIN", "outcome", "SUCCESS")),
-                "corr-1", null, Map.of("_npdevEntityName", "Session")
+                "corr-1", null, Map.of("_npdevEntityName", "Session"),
+                "com.example.AuditLogHandler"
         );
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         PluginIpcFrameCodec.writeInvoke(buffer, frame);
@@ -71,7 +72,7 @@ class PluginIpcFrameCodecTest {
     void readsMultipleFramesWrittenBackToBackOnOneStream() throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         PluginIpcFrameCodec.writeInvoke(buffer, new PluginIpcFrame.InvokeFrame(
-                "req-1", "auditLog", null, "auditlog-inproc", "append", List.of(), null, null, Map.of()
+                "req-1", "auditLog", null, "auditlog-inproc", "append", List.of(), null, null, Map.of(), null
         ));
         PluginIpcFrameCodec.writeResponse(buffer, PluginIpcFrame.ResponseFrame.success("req-1", "ok"));
 

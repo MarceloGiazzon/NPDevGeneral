@@ -41,6 +41,8 @@ files:
   - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/AuditLogEchoPluginHandler.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/HostileCallbackPluginHandler.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/SystemExitPluginHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcessPool.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessPoolTest.java
 detail: |
   2026-09-01 (Model B step 1, owner-authorized -- design doc's two headline decisions, IPC frame shape
   and the new callback allowlist, taken as confirmed by the owner's go-ahead to implement): landed the
@@ -348,3 +350,118 @@ detail: |
   already bound to one handler the way step 2's one-process-per-invoke model could get away with. Step
   4 (Linux cgroups v2 / Windows Job Objects) is what actually closes the memory/CPU half of this item's
   title and done-when bar; step 2 alone does not bound memory/CPU, only crash/misbehavior blast radius.
+
+  2026-09-01 (Model B step 3 -- design doc section 6, step 3 / section 2: "warm pool ... where the
+  timeout-budget concern actually gets resolved"; scoping confirmed with the owner before writing code,
+  see the real-plugin-classloading finding below): built the fixed-size warm pool of fungible worker
+  processes. Still does NOT close this item -- no per-OS resource limiting (step 4), and, a NEW finding
+  this step surfaced (not anticipated by the design doc, see below): the pool is NOT wired to this
+  platform's real generated plugins yet, only to real, compiled TEST handler classes referenced by FQCN,
+  same as steps 1-2. memory/CPU stays unbounded and no production plugin actually runs through Model B
+  yet; what this step buys is the POOL MECHANICS the design doc's own sequencing calls for, proven
+  end-to-end against the real process-boundary machinery steps 1-2 already built.
+
+  REAL FINDING, not a design-doc restatement (owner chose "investigate all 4 strategies now" over two
+  narrower options before any pool code was written): the design doc's section 2 asserts "which plugin
+  class to load and invoke travels in the invoke frame itself (plugin JAR path + fully-qualified class
+  name -- both already known to the host via RuntimePluginPackageRealizationService.RealizationSummaryItem)".
+  Traced all 4 RuntimePluginArtifactRealizationProvider implementations (RuntimeRef, JavaSource,
+  Filesystem, Classpath) to their actual realizeHandler() bodies: EVERY ONE of them bottoms out at
+  RuntimePluginRuntimeRefResolver.resolve(contribution), which does a Spring-bean lookup by
+  contribution.runtimeRef() name against RuntimePluginRealizationProviderCatalog -- a flat
+  runtimeRef -> RuntimePluginRealizationProvider map built from beans the GENERATOR emits at generation
+  time (RuntimeApiEmitter.javaSourceProvidersSource(), NPDevGenerator). Read the actual generated bean
+  shape: `return new ArtifactLocalJavaSourceCapabilityHandler(new <descriptor.mainClass()>(), Map.ofEntries(
+  <operation->method entries>))` -- an ANONYMOUS, COMPILED, generated class whose `new <mainClass>()` is
+  a bytecode instruction, not a queryable string anywhere at runtime. The RealizationSummaryItem's
+  artifactPath/artifactKind fields ARE real and DO carry a package/artifact location, but they are
+  PROVENANCE metadata about where a plugin's source PACKAGE came from (an NPR pack directory, etc.) --
+  they are never consulted for instantiation; instantiation always goes through the generated `new`
+  expression via the runtimeRef bean lookup. The one manifest that DOES list plugin class files
+  (npdev/plugin-bytecode/plugin-owned-classes.txt, read by PluginBytecodeBootGate for the B30 bytecode
+  scan) is a flat, UNKEYED list for scanning every plugin class regardless of which capability it
+  serves -- not an adapter-to-FQCN lookup table.
+
+  Consequence: there is genuinely no separate "plugin jar" to isolate at runtime in this platform's
+  actual architecture -- a plugin's Java source is emitted alongside the host's own code and compiled
+  into the SAME app classes/jar (which is actually GOOD news for Model B: step 2's technique of reusing
+  the host's own full classpath, System.getProperty("java.class.path"), already gives a child everything
+  it needs to load a real plugin class -- no separate jar-shipping problem exists). But there is no
+  existing DATA (as opposed to compiled code) mapping a given adapter/capability/operation contribution
+  to its FQCN + operation->method map, which a fungible pooled worker needs to receive over the wire per
+  invoke. Wiring the pool to real plugins requires a NEW manifest RuntimeApiEmitter would have to emit
+  (adapter-keyed FQCN + operation->method map, alongside the existing unkeyed plugin-owned-classes.txt),
+  which is a NPDevGenerator change with its own generator-determinism and twin-pair-consistency
+  implications (CLAUDE.md's rules on threading a new field through multiple places) -- genuinely
+  separate-sized work from the pool mechanics itself, tracked here as an open follow-up rather than
+  attempted in this pass, per the owner's explicit choice among three scoping options.
+
+  What landed (pool mechanics, proven against real, compiled TEST handler classes -- not real plugins):
+  - PluginIpcFrame.InvokeFrame gained a 10th field, handlerClassName (nullable -- null for a step-2
+    one-shot process whose handler is already bound at spawn time; non-null for a pooled worker). Purely
+    additive: PluginIpcHostSession.invoke(...) keeps its original 5-arg signature (delegates to a new
+    6-arg overload with handlerClassName=null), so step 1-2 callers/tests are UNCHANGED. Two existing
+    PluginIpcFrameCodecTest call sites needed a 10th constructor arg to keep compiling -- a real,
+    unavoidable consequence of extending a record used directly in tests, not a design change.
+  - PluginIpcChildRuntime.runUntilClosed(BiFunction<InvokeFrame, PluginIpcCallbackClient, CapabilityAdapter>):
+    loops reading invoke frames -- each handlerFactory call gets the CURRENT invoke frame so it can read
+    handlerClassName fresh per call -- until PluginIpcFrameCodec.readFrame returns null (clean EOF).
+    DELIBERATE DEVIATION from the design doc's literal wording ("sends a close frame to every live
+    worker"): rather than a 4th wire frame kind, closing the host's write side of the pipe IS the
+    shutdown signal, since a worker idle between invocations is already blocked in exactly the read this
+    responds to -- functionally identical outcome (graceful-then-forceful shutdown), less protocol
+    surface. runOnce (step 2) is untouched, both methods now share a new private processOneInvoke helper.
+  - PluginIpcChildProcessMain: dual-mode by argument count -- args[0] present = step-2 one-shot
+    (unchanged behavior); no args = step-3 pooled, resolving instantiateHandler's className from each
+    invoke frame instead of a fixed command-line arg. Added a null/blank handlerClassName guard with a
+    clear error (Class.forName(null) would otherwise throw a confusing bare NPE).
+  - PluginIpcChildProcess: startPooled()/startPooled(classpath) spawn with no handler-class arg (dual
+    with start()/start(handlerClassName) for one-shot); a new 5-arg invoke(..., handlerClassName)
+    overload (4-arg original delegates with null). close() now closes the process's stdin FIRST (the
+    graceful signal above) and waits up to 2s for a natural exit before falling back to destroy() then
+    destroyForcibly() -- a no-op safety net for the already-usually-dead one-shot case, the real
+    graceful-shutdown path for a pooled worker.
+  - PluginIpcChildProcessPool (new): fixed poolSize of PluginIpcChildProcess.startPooled() workers in a
+    BlockingQueue. invoke(...) checks out a worker (synchronously replacing it first if idle past
+    idleTimeout -- checked lazily ON CHECKOUT rather than by a background scheduler, a deliberate step-3
+    simplification: it bounds a stale worker's lifetime without a scheduled task's own failure modes),
+    runs one invocation, then either returns the worker or -- if it died (PLUGIN_EXECUTION_PROCESS_KILLED)
+    or just hit maxInvocationsPerWorker -- closes it and queues a replacement on a dedicated background
+    daemon thread. The background-replacement choice matches design section 4 literally ("a replacement
+    is started asynchronously -- not on the request's own thread -- pool refill must never add
+    invoke-path latency"); the idle-timeout-on-checkout replacement stays synchronous since the calling
+    request has no usable worker to proceed with either way. close() drains and closes all currently-idle
+    workers only -- NOT a full in-flight-request drain, matching design section 2's own stated scope
+    ("no more than TimeBoundedPluginExecutionEngine's own executorService.shutdownNow() already does").
+  - Live-fired proof (PluginIpcChildProcessPoolTest, 5 tests, all against real spawned processes):
+    (1) aFungibleWorkerServesDifferentPluginClassesAcrossSuccessiveInvocations -- poolSize=1 forces
+    literal worker reuse across TWO DIFFERENT plugin classes (AuditLogEchoPluginHandler then
+    HostileCallbackPluginHandler), proving fungibility, not just that pooling exists;
+    (2) aWorkerIsRecycledOnceItReachesItsInvocationCeiling -- poolSize=1, ceiling=2, 3 invocations; the
+    3rd's checkout blocks on BlockingQueue.take() until the background-spawned replacement lands, so
+    reaching a successful 3rd result IS the proof, no sleep/poll needed;
+    (3) aWorkerThatDiesMidInvokeIsReplacedWithoutDisturbingOtherConcurrentWorkers -- THE test design
+    section 4 explicitly demands rather than leaves as an inference ("needs its own dedicated test...
+    start N concurrent invokes on N different pool workers, kill one worker mid-flight... assert the
+    other N-1 complete normally"): poolSize=3, 3 concurrent invokes via a CountDownLatch-synchronized
+    start (one SystemExitPluginHandler, two AuditLogEchoPluginHandler), asserts the crash gets
+    PLUGIN_EXECUTION_PROCESS_KILLED while both others succeed, then proves the pool itself still works
+    afterward with a 4th invocation (the dead slot was actually refilled, not left empty);
+    (4) aWorkerThatHasSatIdleTooLongIsReplacedOnItsNextCheckout -- idleTimeout=50ms, a real
+    Thread.sleep(200) between two invocations, second still succeeds (via a transparently-replaced
+    worker);
+    (5) aClosedPoolRejectsFurtherInvocationsAndDrainsItsIdleWorkers.
+  - Verified: two rounds. First narrow --tests run against a freshly-regenerated assembled sample app
+    (regenerated deliberately -- the prior run's Output had already been cleaned up by the gate's own
+    cleanup step) caught two REAL bugs before spending a full ~8-10min gate cycle: a non-effectively-final
+    loop variable captured in a test lambda (invocationIndex fix), and the two PluginIpcFrameCodecTest
+    call sites broken by InvokeFrame's new 10th field (both real, both fixed, both re-verified narrow
+    before the full run). Full run-runtimehost-gate.ps1 then green (assembled sample app's own gradle
+    test task BUILD SUCCESSFUL, runtimehost-core's own gradle test task BUILD SUCCESSFUL, coverage-floor
+    + runtime-surface-evidence checks all passed).
+
+  Next: the real-plugin-classloading manifest gap above is the honest blocker before Model B protects
+  any ACTUAL shipped plugin (today only steps 1-3's own test handler classes have ever run through it).
+  Per the design doc's own sequencing, step 4 (Linux cgroups v2 / Windows Job Objects) is what closes
+  this item's memory/CPU done-when bar regardless -- worth scoping whether to tackle the generator
+  manifest gap or step 4 next, since neither strictly depends on the other.

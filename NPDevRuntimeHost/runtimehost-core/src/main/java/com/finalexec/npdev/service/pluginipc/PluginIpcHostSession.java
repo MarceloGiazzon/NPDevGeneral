@@ -48,12 +48,31 @@ public final class PluginIpcHostSession {
     /**
      * Sends {@code call} to the child as an invoke frame over {@code childIn} (the child's inbound pipe)
      * and blocks, answering callback frames read from {@code childOut} (the child's outbound pipe), until
-     * the child's terminal response frame for this invocation arrives.
+     * the child's terminal response frame for this invocation arrives. Equivalent to {@link
+     * #invoke(RuntimePluginAdapterRegistry.RegisteredAdapterContribution, CapabilityCall, Map, String,
+     * InputStream, OutputStream)} with a {@code null} handler class name -- the shape a one-shot child
+     * (SEC-3 step 2) expects, since its handler class was already bound at process-spawn time.
      */
     public CapabilityResult invoke(
             RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution,
             CapabilityCall call,
             Map<String, Object> contextState,
+            InputStream childOut,
+            OutputStream childIn
+    ) {
+        return invoke(contribution, call, contextState, null, childOut, childIn);
+    }
+
+    /**
+     * Same as {@link #invoke(RuntimePluginAdapterRegistry.RegisteredAdapterContribution, CapabilityCall,
+     * Map, InputStream, OutputStream)}, additionally naming {@code handlerClassName} in the invoke frame
+     * -- required for a pooled, fungible worker (SEC-3 step 3) that is not bound to any one plugin class.
+     */
+    public CapabilityResult invoke(
+            RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution,
+            CapabilityCall call,
+            Map<String, Object> contextState,
+            String handlerClassName,
             InputStream childOut,
             OutputStream childIn
     ) {
@@ -75,7 +94,8 @@ public final class PluginIpcHostSession {
                         call.args(),
                         call.correlationId(),
                         call.idempotencyKey(),
-                        contextState == null ? Map.of() : contextState
+                        contextState == null ? Map.of() : contextState,
+                        handlerClassName
                 ));
             }
             while (true) {
