@@ -48,6 +48,7 @@ public final class PluginIpcChildProcessPool implements AutoCloseable {
     private final int maxInvocationsPerWorker;
     private final Duration idleTimeout;
     private final String classpath;
+    private final PluginProcessResourceLimits resourceLimits;
     private final BlockingQueue<PooledWorker> idleWorkers = new LinkedBlockingQueue<>();
     private final ExecutorService replacementExecutor = Executors.newSingleThreadExecutor(PluginIpcChildProcessPool::newDaemonThread);
     private final AtomicBoolean closed = new AtomicBoolean(false);
@@ -59,6 +60,14 @@ public final class PluginIpcChildProcessPool implements AutoCloseable {
     public PluginIpcChildProcessPool(
             int poolSize, int maxInvocationsPerWorker, Duration idleTimeout, String classpath
     ) throws IOException {
+        this(poolSize, maxInvocationsPerWorker, idleTimeout, classpath, PluginProcessResourceLimits.NONE);
+    }
+
+    /** Same as the four-arg constructor, additionally applying an OS-level resource ceiling (SEC-3 step 4)
+     * to every worker this pool spawns, including replacements. */
+    public PluginIpcChildProcessPool(
+            int poolSize, int maxInvocationsPerWorker, Duration idleTimeout, String classpath, PluginProcessResourceLimits resourceLimits
+    ) throws IOException {
         if (poolSize < 1) {
             throw new IllegalArgumentException("poolSize must be >= 1, got " + poolSize);
         }
@@ -68,8 +77,9 @@ public final class PluginIpcChildProcessPool implements AutoCloseable {
         this.maxInvocationsPerWorker = maxInvocationsPerWorker;
         this.idleTimeout = Objects.requireNonNull(idleTimeout, "idleTimeout");
         this.classpath = Objects.requireNonNull(classpath, "classpath");
+        this.resourceLimits = Objects.requireNonNull(resourceLimits, "resourceLimits");
         for (int i = 0; i < poolSize; i++) {
-            idleWorkers.add(new PooledWorker(PluginIpcChildProcess.startPooled(classpath)));
+            idleWorkers.add(new PooledWorker(PluginIpcChildProcess.startPooled(classpath, resourceLimits)));
         }
     }
 
@@ -115,7 +125,7 @@ public final class PluginIpcChildProcessPool implements AutoCloseable {
         }
         worker.process.close();
         try {
-            return new PooledWorker(PluginIpcChildProcess.startPooled(classpath));
+            return new PooledWorker(PluginIpcChildProcess.startPooled(classpath, resourceLimits));
         } catch (IOException exception) {
             throw new UncheckedPluginIpcPoolException("Failed to replace an idle-timed-out plugin IPC pooled worker", exception);
         }
@@ -141,7 +151,7 @@ public final class PluginIpcChildProcessPool implements AutoCloseable {
         }
         replacementExecutor.submit(() -> {
             try {
-                idleWorkers.add(new PooledWorker(PluginIpcChildProcess.startPooled(classpath)));
+                idleWorkers.add(new PooledWorker(PluginIpcChildProcess.startPooled(classpath, resourceLimits)));
             } catch (IOException exception) {
                 LOG.log(Level.SEVERE, "Failed to spawn a replacement plugin IPC pooled worker", exception);
             }

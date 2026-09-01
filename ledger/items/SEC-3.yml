@@ -43,6 +43,18 @@ files:
   - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/SystemExitPluginHandler.java
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcessPool.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessPoolTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginProcessResourceLimits.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginProcessResourceLimiter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginWindowsJobObjectResourceLimiter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginLinuxCgroupResourceLimiter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginNoOpResourceLimiter.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginNoOpResourceLimiterTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/MemoryHogPluginHandler.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessWindowsResourceLimitTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessLinuxResourceLimitTest.java
+  - NPDevRuntimeHost/runtimehost-core/build.gradle
+  - NPDevRuntimeHost/build.gradle.template
+  - NPDevRuntimeHost/build.gradle
 detail: |
   2026-09-01 (Model B step 1, owner-authorized -- design doc's two headline decisions, IPC frame shape
   and the new callback allowlist, taken as confirmed by the owner's go-ahead to implement): landed the
@@ -465,3 +477,134 @@ detail: |
   Per the design doc's own sequencing, step 4 (Linux cgroups v2 / Windows Job Objects) is what closes
   this item's memory/CPU done-when bar regardless -- worth scoping whether to tackle the generator
   manifest gap or step 4 next, since neither strictly depends on the other.
+
+  2026-09-01 (Model B step 4 -- design doc section 3 / section 6 step 4: "per-OS resource limits...
+  each ships with its own test matrix -- a design that only proves out on one OS is not done"; owner
+  chose this over the real-plugin-classloading manifest gap): added real OS-level memory/CPU
+  containment for a plugin child process on both platforms this codebase's own CI matrix supports.
+  Still does NOT fully close this item -- the Linux path is implemented but NOT verified from this
+  session (Windows dev machine; see below), and the real-plugin-classloading gap from step 3 remains
+  separately open, so no ACTUAL shipped plugin runs through Model B's resource ceiling yet either.
+
+  What landed:
+  - PluginProcessResourceLimits (record: nullable memoryLimitMb/cpuRatePercent, static NONE) and
+    PluginProcessResourceLimiter (interface: isAvailable/wrapCommand/attachAfterStart, static
+    forCurrentOs() factory probing the real OS once and caching the result) -- the two attachment
+    points exist because the two real mechanisms attach at different points in a process's lifecycle:
+    Linux wraps the spawn COMMAND itself (the limit exists before the child's first instruction
+    runs); Windows assigns an already-started process to a Job Object (no "start already inside a
+    job" primitive on Windows short of a suspended-process trick this design doesn't need).
+  - PluginWindowsJobObjectResourceLimiter: CreateJobObject -> SetInformationJobObject
+    (JOBOBJECT_EXTENDED_LIMIT_INFORMATION for the memory ceiling + JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    a hand-declared JOBOBJECT_CPU_RATE_CONTROL_INFORMATION struct for the CPU rate hard cap) ->
+    AssignProcessToJobObject against the child's real PID (Process.pid()). Deliberately a
+    self-contained, hand-declared kernel32 binding (5 exports, 4 struct shapes copied from winnt.h)
+    rather than a dependency on jna-platform's own WinNT/Kernel32 mappings -- keeps this class
+    independently verifiable against the real OS API instead of trusting an unfamiliar library's
+    exact struct layout, and was in fact verified empirically (see below), not just reasoned about.
+    64-bit JVMs only (this platform's own toolchain pin) -- no stdcall/cdecl distinction to declare.
+    KILL_ON_JOB_CLOSE means an abrupt host death also reaps the child, a bonus beyond the ceiling
+    itself: the job handle is held for the child's lifetime and closed in
+    PluginIpcChildProcess#close().
+  - PluginLinuxCgroupResourceLimiter: primary path wraps the spawn command with
+    `systemd-run --user --scope -p MemoryMax=<n>M -p CPUQuota=<n>%`, probed once by actually launching
+    a real no-op transient scope (the only way to know a usable systemd user session exists without
+    guessing); falls back to direct cgroup v2 filesystem writes (create a child cgroup under this
+    process's own cgroup, write memory.max/cpu.max, move the spawned child's PID in after
+    ProcessBuilder.start()) when systemd is unavailable -- genuinely best-effort, since it depends on
+    cgroup delegation an unprivileged process is not guaranteed to have; degrades to
+    PluginNoOpResourceLimiter if neither mechanism proves out.
+  - PluginNoOpResourceLimiter: the degrade-to-timeout-only posture (design section 3: "logged loudly
+    as a posture warning ... never a silent downgrade") -- command/process pass through unchanged,
+    warns exactly once (java.util.logging WARNING) the first time a caller actually requests a real
+    limit this instance cannot enforce, never on construction alone (constructing/using this class
+    with no requested limits is today's actual status quo -- nothing is wired to request limits yet
+    -- so warning then would be noise, not signal).
+  - Wiring: PluginIpcChildProcess.spawn() calls wrapCommand before ProcessBuilder.start() and
+    attachAfterStart after; PluginProcessResourceLimits threads additively through the start/
+    startPooled overloads and the pool constructor (defaulting to NONE), the same additive-parameter
+    shape step 3 used for handlerClassName -- every step 1-3 caller/test keeps compiling and passing
+    unchanged.
+  - New dependency, called out by the design doc as genuinely new surface: net.java.dev.jna:jna
+    5.14.0 (base artifact only -- not jna-platform, since the Windows limiter hand-declares its own
+    kernel32 interface). Added to THREE build files, matching this template's own established
+    duplication convention (confirmed by reading it first, not assumed): runtimehost-core/build.gradle
+    (compiles the limiter's main code), NPDevRuntimeHost/build.gradle.template (the assembled
+    generated app's own classpath -- a plain jar dependency on runtimehost-core.jar does not pull its
+    transitive deps, the exact reason postgresql/json-schema-validator/awssdk/angus-mail are already
+    duplicated there), and NPDevRuntimeHost/build.gradle (the platform's own bare-checkout-pin file,
+    which independently re-declares the same set per its own header comment).
+  - REAL BUG found and fixed mid-implementation, not just theorized: PluginIpcHostSession.invoke
+    wraps any IOException from the wire protocol in an UncheckedIOException and lets it propagate --
+    fine for steps 1-3, where every crash scenario (SystemExit) happened AFTER the invoke frame's
+    WRITE succeeded (the child reads the frame, then crashes before responding), so only the
+    subsequent READ ever failed, and only by returning a clean PLUGIN_IPC_CHANNEL_CLOSED result
+    (readFrame returns null on EOF, it does not throw). Step 4's memory-ceiling test was the first
+    scenario where the child can be killed fast enough (or fail to even boot within a small memory
+    ceiling) that the very WRITE of the invoke frame fails with a real IOException ("O pipe está
+    sendo fechado" / broken pipe) -- caught live via a narrow --tests rerun surfacing
+    java.util.concurrent.ExecutionException -> UncheckedIOException -> IOException, not asserted from
+    reading the design doc. PluginIpcChildProcess.invoke() did not catch this, so it propagated
+    instead of being remapped to PLUGIN_EXECUTION_PROCESS_KILLED. Design section 4 literally names
+    both directions ("the host's pipe READ/WRITE to a worker fails"), so this was always this item's
+    own bar, not scope creep: fixed by wrapping the hostSession.invoke() call in
+    PluginIpcChildProcess.invoke() with a catch for UncheckedIOException that funnels into the SAME
+    awaitDeathAndDescribe remapping the CHANNEL_CLOSED-result path already used, unifying both crash
+    detection paths onto one mechanism.
+  - A SECOND real bug found via the platform's own "services-classified" gate check
+    (run-runtime-surface-evidence.ps1, part of run-runtimehost-gate.ps1): all three new
+    non-"PluginIpcXxx"-shaped classes (originally WindowsJobObjectResourceLimiter,
+    LinuxCgroupResourceLimiter, NoOpResourceLimiter) failed to auto-match
+    runtime-supported-controllers.json's supportedCoreServicePatterns (which includes "Plugin*" but
+    not a bare resource/limiter-shaped name) -- the EXACT same failure mode step 1's
+    PluginIpcJsonSafeValues hit and was fixed the same way: renamed to fit the established convention
+    (PluginWindowsJobObjectResourceLimiter, PluginLinuxCgroupResourceLimiter,
+    PluginNoOpResourceLimiter) rather than editing the governance manifest, per that step's own
+    precedent.
+  - Live-fired proof, Windows (PluginIpcChildProcessWindowsResourceLimitTest,
+    @EnabledOnOs(OS.WINDOWS), real spawned processes): (1)
+    aChildThatExceedsItsMemoryCeilingIsKilledByTheJobObject -- a new MemoryHogPluginHandler test
+    handler (mirrors SystemExitPluginHandler's shape) allocates and touches ~1GB in 50MB chunks then
+    spin-waits; with a 128MB memory ceiling (and a 50% CPU rate configured alongside it, to prove
+    combined-limit configuration does not itself break anything -- CPU-rate throttling is NOT
+    independently behaviorally verified by a live wall-clock measurement, only exercised without
+    error, since that would be slow/flaky) the Job Object kills the child, surfacing
+    PLUGIN_EXECUTION_PROCESS_KILLED with the store untouched -- bounded by a 30s Future.get so a
+    limiter regression fails the test instead of hanging the suite; (2)
+    aChildWithNoLimitsRequestedBehavesExactlyLikeStep2 -- regression guard, PluginProcessResourceLimits.NONE
+    behaves identically to pre-step-4 PluginIpcChildProcess.start. Also PluginNoOpResourceLimiterTest
+    (runtimehost-core's own test tree, package-private access, OS-independent): degrade behavior and
+    the warn-exactly-once-not-on-every-call behavior, using a real java.util.logging.Handler to
+    capture and count actual WARNING records rather than asserting structure alone.
+  - Linux counterpart (PluginIpcChildProcessLinuxResourceLimitTest, @EnabledOnOs(OS.LINUX), same two
+    test shapes via systemd-run --scope) is WRITTEN but honestly marked in its own class javadoc as
+    NOT verified from this session -- Windows dev machine, the annotation skips it here. This is
+    intentionally not glossed over: per this project's own "local verification is not portability"
+    discipline and the design doc's own bar ("a design that only proves out on one OS is not done"),
+    real confirmation needs a Linux CI run (or a maintainer's own WSL/container run) before this half
+    of step 4 can be called proven, not just written.
+  - Verified: runtimehost-core's own gradle test task green (module recompiled + full own test suite,
+    including PluginNoOpResourceLimiterTest, BUILD SUCCESSFUL) both before and after the crash-
+    handling fix and the Plugin* renames. The assembled sample app's own gradle test task -- narrow
+    --tests runs first (per this project's own verify-narrow-before-full-gate discipline): the new
+    Windows resource-limit tests alone, then the FULL com.finalexec.pluginipc.* package (steps 1-4
+    together, proving no regression from the crash-handling fix) -- both BUILD SUCCESSFUL. A full
+    run-runtimehost-gate.ps1 run then also showed BOTH real test suites BUILD SUCCESSFUL (the
+    assembled app's test task, 7m 25s including the new tests; runtimehost-core's own test task,
+    31s) -- but the gate run as a WHOLE still failed, at its LAST step, on
+    run-runtime-surface-evidence.ps1's classification/footprint checks. Isolated via `git stash
+    push -u` (removing every step-4 file back to committed HEAD daccc569) + rerunning that script
+    directly: it fails IDENTICALLY with ZERO step-4 changes applied, proving this is a pre-existing,
+    unrelated gate failure, not something step 4 introduced -- `git stash pop` restored the step-4
+    work afterward, confirmed via `git status`. Recorded as its own new item, QUAL-49 (OPEN, MEDIUM):
+    notably, this directly contradicts step 2 and step 3's OWN same-session ledger claims that
+    "runtime-surface-evidence checks... passed both times" at this same commit, which QUAL-49 flags
+    as needing its own root-cause (flaky/order-dependent check, vs. an inaccurate earlier claim) --
+    not investigated further here, out of scope for SEC-3's own plugin-process-isolation work.
+
+  Next: two independent items remain open -- (a) verify the Linux cgroup path for real (this
+  session's own honest gap: written, not proven, per the design doc's own "only proves out on one OS
+  is not done" bar) -- needs a real Linux run, CI or otherwise; (b) the real-plugin-classloading
+  manifest gap from step 3 (still nothing wires a fungible pooled worker, WITH or WITHOUT a resource
+  ceiling, to an actual generated plugin class). QUAL-49 (the pre-existing gate-health discrepancy
+  found during this step's verification) is tracked separately and does not block either.

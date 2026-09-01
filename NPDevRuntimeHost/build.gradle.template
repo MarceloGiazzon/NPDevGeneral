@@ -193,6 +193,12 @@ dependencies {
     implementation platform('software.amazon.awssdk:bom:2.28.11')
     implementation 'software.amazon.awssdk:s3'
 
+    // SEC-3 Model B step 4 (docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 3): Windows Job
+    // Object bindings for WindowsJobObjectResourceLimiter (runtimehost-core, staged via
+    // npdevRuntimeHostLibsDir like the other kernel adapters) -- same reason as the AWS SDK/Jakarta Mail
+    // above: jar-staging only copies this workspace's own project jars, not their third-party deps.
+    implementation 'net.java.dev.jna:jna:5.14.0'
+
     // LNCH-11: the mail-smtp adapter (staged via npdevRuntimeHostLibsDir like the other kernel
     // adapters) needs Jakarta Mail on the runtime classpath -- same reason as the AWS SDK above:
     // jar-staging only copies this workspace's own project jars, not their third-party deps.

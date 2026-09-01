@@ -1,0 +1,71 @@
+id: QUAL-49
+title: >-
+  run-runtime-surface-evidence.ps1 fails at HEAD (daccc569) with zero code changes -- contradicts
+  SEC-3 step 2/3's own same-session claim that "runtime-surface-evidence checks passed both times"
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-01
+source: >-
+  2026-09-01, SEC-3 Model B step 4 (per-OS plugin resource limits) verification. A full
+  run-runtimehost-gate.ps1 run failed at its last step ("Runtime surface evidence failed:
+  classification, footprint") after both real test suites (the assembled sample app's own gradle
+  test task, including all new step-4 tests, and runtimehost-core's own gradle test task) had
+  already passed BUILD SUCCESSFUL. Before assuming step 4's own new classes caused it, isolated the
+  cause: `git stash push -u` (removing every step-4 file, back to committed HEAD daccc569) and reran
+  `scripts/quality/run-runtime-surface-evidence.ps1` directly -- it failed IDENTICALLY
+  ("classification, footprint") with zero working-tree changes applied. `git stash pop` restored the
+  step-4 work afterward, verified via `git status`.
+surface: scripts/quality/run-runtime-surface-evidence.ps1, NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+files:
+  - scripts/quality/run-runtime-surface-evidence.ps1
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+  - scripts/reports/out/runtime-surface-classification-report.json
+  - scripts/reports/out/runtime-footprint-report.json
+detail: |
+  NOT ROOT-CAUSED. This item exists to record the discrepancy and the concrete failing checks, not to
+  explain the mechanism -- that is next-session work.
+
+  The discrepancy: SEC-3's own ledger entry for step 2 (2026-09-01, this session, commit 63bc3e57)
+  and step 3 (commit daccc569) both explicitly state "coverage-floor + runtime-surface-evidence
+  checks passed both times" as part of their full-gate verification. HEAD is still daccc569 --
+  no commit has landed between that claim and this one. Yet running the exact same script against
+  that exact same commit, with SEC-3 step 4's own new files stashed away entirely, reproduces the
+  failure. Either the step 2/3 claim was inaccurate (the check was not actually reached, or its
+  result was not actually inspected), or this check is nondeterministic/order-dependent (e.g.
+  sensitive to some prior build/report-file state on the machine that a clean `git stash` does not
+  reset, since generated files under scripts/reports/out/ and NPDevSamples/*/Output/ are gitignored
+  and were NOT touched by the stash). Both are worth ruling in/out before fixing anything.
+
+  The concrete failing checks (from scripts/reports/out/runtime-surface-classification-report.json
+  and runtime-footprint-report.json, captured during isolation):
+  - `service-buckets-are-exclusive`: 21 services (e.g. CanonicalSourceArtifactStore,
+    PublicationExecutorService, TenantRegistryService) match BOTH "supported-core" (via an exact-name
+    entry in runtime-supported-controllers.json's supportedCoreServiceComponents) and
+    "internal-but-needed" (via a nonDefaultServicePatterns pattern like `CanonicalSource*` or
+    `Tenant*Service`) simultaneously -- the manifest's own exact list and pattern list disagree with
+    each other for the same class names.
+  - `service-namespace-convergence-is-clean` / `service-namespaces-match-convergence-buckets`: 39
+    services declared in a `com.finalexec.npdev.service.internal` (or similarly `.internal`-suffixed)
+    Java package have an `expectedBucket` of `supported-core` (from the exact-name list) but a
+    `packageBucket` of `internal-but-needed` (from Get-PackageBucket's package-name check) --
+    i.e. these classes were organized into an `.internal` subpackage at some point without their
+    manifest classification being updated to match, or vice versa. 14 more report as
+    "unexpected-package" entirely.
+  - `controller-namespace-convergence-is-clean` / similar: the identical shape for 17 controllers
+    under `com.finalexec.api.internal` (BetaOnboardingController, FlowBuilderController,
+    PublicationExecutorController, etc.) -- named in `allowedControllers` (supported-core) but
+    packaged under `.internal`.
+  - `supported-controller-footprint-is-smaller-than-inventory` /
+    `supported-controller-footprint-stays-minority`: consequently, ALL 38 discovered controllers
+    classify as "supported" (supportedControllers=38; totalControllers=38) -- the footprint checks
+    that expect "supported" to be a proper minority of the total inventory now see 100%, since the
+    exact-name allowlist alone (ignoring the namespace mismatches above) matches everything.
+
+  Done when: root-caused (why did step 2/3's own claim differ from this reproduction? is the check
+  flaky/order-dependent, or was the earlier claim wrong?) and either the manifest
+  (runtime-supported-controllers.json) is reconciled with the actual package layout, or the actual
+  package layout is reconciled with the manifest -- whichever is the intended source of truth -- so
+  `run-runtime-surface-evidence.ps1` passes cleanly and `run-runtimehost-gate.ps1` can complete
+  end-to-end again. Not attempted here: unrelated to SEC-3's plugin-process-isolation work, and the
+  17+39 affected classes are a separate, unbounded-scope investigation of their own.
