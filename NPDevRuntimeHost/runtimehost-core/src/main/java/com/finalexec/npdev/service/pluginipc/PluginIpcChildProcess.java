@@ -9,14 +9,18 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Host-side handle to one real OS child process running {@link PluginIpcChildProcessMain} (SEC-3, step 2
- * -- docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 6). One process per invocation, no pool
- * yet (step 3) -- the cold-start cost this accepts is deliberate per the design doc's sequencing.
+ * Host-side handle to one real OS child process running {@link PluginIpcChildProcessMain} (SEC-3,
+ * docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 6). Two spawn shapes: {@link #start}, one
+ * process per invocation (step 2, cold-start cost deliberately accepted), and {@link #startPooled}, a
+ * fungible worker not bound to any plugin class, reused across invocations by {@link
+ * PluginIpcChildProcessPool} (step 3).
  *
  * <p>Delegates the actual wire protocol to {@link PluginIpcHostSession}, which stays stream-agnostic per
  * its own contract; this class's only job is the OS-process-specific pieces: spawning the child with the
@@ -36,7 +40,7 @@ public final class PluginIpcChildProcess implements AutoCloseable {
         this.classpathArgFile = classpathArgFile;
     }
 
-    /** Spawns a child process running {@code handlerClassName} on this JVM's own classpath. */
+    /** Spawns a one-shot child process running {@code handlerClassName} on this JVM's own classpath. */
     public static PluginIpcChildProcess start(String handlerClassName) throws IOException {
         return start(handlerClassName, System.getProperty("java.class.path"));
     }
@@ -49,12 +53,25 @@ public final class PluginIpcChildProcess implements AutoCloseable {
      */
     public static PluginIpcChildProcess start(String handlerClassName, String classpath) throws IOException {
         Objects.requireNonNull(handlerClassName, "handlerClassName");
+        return spawn(classpath, handlerClassName);
+    }
+
+    /** Spawns a fungible pooled worker (SEC-3 step 3) on this JVM's own classpath, bound to no plugin. */
+    public static PluginIpcChildProcess startPooled() throws IOException {
+        return startPooled(System.getProperty("java.class.path"));
+    }
+
+    public static PluginIpcChildProcess startPooled(String classpath) throws IOException {
+        return spawn(classpath);
+    }
+
+    private static PluginIpcChildProcess spawn(String classpath, String... childMainArgs) throws IOException {
         Objects.requireNonNull(classpath, "classpath");
         String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         Path argFile = writeClasspathArgFile(classpath);
-        ProcessBuilder builder = new ProcessBuilder(
-                javaBin, "@" + argFile, PluginIpcChildProcessMain.class.getName(), handlerClassName
-        );
+        List<String> command = new ArrayList<>(List.of(javaBin, "@" + argFile, PluginIpcChildProcessMain.class.getName()));
+        command.addAll(List.of(childMainArgs));
+        ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectError(ProcessBuilder.Redirect.INHERIT);
         return new PluginIpcChildProcess(builder.start(), argFile);
     }
@@ -70,6 +87,8 @@ public final class PluginIpcChildProcess implements AutoCloseable {
      * Sends the invoke frame and blocks on this process's real stdin/stdout pipes exactly like
      * {@link PluginIpcHostSession#invoke}, then -- per design section 4 -- remaps a closed-channel failure
      * into a process-kill-specific error when the child process is confirmed dead, carrying its exit code.
+     * Equivalent to {@link #invoke(PluginIpcHostSession, RuntimePluginAdapterRegistry.RegisteredAdapterContribution,
+     * CapabilityCall, Map, String)} with a {@code null} handler class name, for a one-shot process (step 2).
      */
     public CapabilityResult invoke(
             PluginIpcHostSession hostSession,
@@ -77,8 +96,19 @@ public final class PluginIpcChildProcess implements AutoCloseable {
             CapabilityCall call,
             Map<String, Object> contextState
     ) {
+        return invoke(hostSession, contribution, call, contextState, null);
+    }
+
+    /** Same as the four-arg {@link #invoke}, additionally naming the class a pooled worker (step 3) must load. */
+    public CapabilityResult invoke(
+            PluginIpcHostSession hostSession,
+            RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution,
+            CapabilityCall call,
+            Map<String, Object> contextState,
+            String handlerClassName
+    ) {
         CapabilityResult result = hostSession.invoke(
-                contribution, call, contextState, process.getInputStream(), process.getOutputStream()
+                contribution, call, contextState, handlerClassName, process.getInputStream(), process.getOutputStream()
         );
         if (result.ok() || !CHANNEL_CLOSED_CODE.equals(result.error().code())) {
             return result;
@@ -108,14 +138,30 @@ public final class PluginIpcChildProcess implements AutoCloseable {
         return process.isAlive();
     }
 
-    /** Grace period then force-kill, per design section 2's shutdown handling. */
+    /**
+     * Graceful signal, grace period, then force-kill -- design section 2's shutdown handling ("sends a
+     * close frame to every live worker... then {@code Process.destroyForcibly()} any still alive"), using
+     * the SAME EOF-on-closed-pipe signal {@link PluginIpcChildRuntime#runUntilClosed} already treats as
+     * shutdown rather than a fourth wire frame kind: closing this process's stdin is indistinguishable, on
+     * the child's side, from a real close frame arriving. Harmless no-op on an already-exited one-shot
+     * worker (step 2), which is the common case here -- it already exited on its own once its single
+     * response was sent.
+     */
     @Override
     public void close() {
         if (process.isAlive()) {
-            process.destroy();
+            try {
+                process.getOutputStream().close();
+            } catch (IOException exception) {
+                // A broken pipe here just means the child is already gone; the isAlive()/waitFor below
+                // still runs to confirm and fall back to a forceful kill if it somehow is not.
+            }
             try {
                 if (!process.waitFor(2, TimeUnit.SECONDS)) {
-                    process.destroyForcibly();
+                    process.destroy();
+                    if (!process.waitFor(1, TimeUnit.SECONDS)) {
+                        process.destroyForcibly();
+                    }
                 }
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();

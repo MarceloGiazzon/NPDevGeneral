@@ -20,7 +20,14 @@ public sealed interface PluginIpcFrame
 
     String requestId();
 
-    /** host -> child: run this plugin with this {@code CapabilityCall}. Once per invocation. */
+    /**
+     * host -> child: run this plugin with this {@code CapabilityCall}. Once per invocation.
+     *
+     * <p>{@code handlerClassName} is {@code null} for a one-shot child (SEC-3 step 2: the process was
+     * spawned already bound to one handler class via its command-line arg, so the frame does not need to
+     * repeat it) and non-null for a pooled, fungible worker (SEC-3 step 3, design section 2: a worker is
+     * not bound to any one plugin, so which class to instantiate travels in the invoke frame itself).</p>
+     */
     record InvokeFrame(
             String requestId,
             String capability,
@@ -30,7 +37,8 @@ public sealed interface PluginIpcFrame
             List<Object> args,
             String correlationId,
             String idempotencyKey,
-            Map<String, Object> contextState
+            Map<String, Object> contextState,
+            String handlerClassName
     ) implements PluginIpcFrame {
     }
 
