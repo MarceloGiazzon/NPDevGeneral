@@ -7,7 +7,8 @@ param(
     [string]$AllowlistReportPath = "",
     [string]$FootprintReportPath = "",
     [switch]$PassThru,
-    [switch]$PendingOk
+    [switch]$PendingOk,
+    [switch]$IncludeRetiredConvergenceChecks
 )
 
 Set-StrictMode -Version Latest
@@ -627,8 +628,16 @@ $allReports = @(
 # old convention in a different shape: it is only a "good" signal when the supported surface is a
 # strict minority, which is no longer a meaningful gate once the allowlist is the real enforcement.
 # Realigning these to the new governance model is a task for a surface-governance owner; until then
-# -PendingOk records them as advisory observations rather than failing the gate. The actual allowlist
+# they are advisory observations by default rather than failing the gate. The actual allowlist
 # enforcement is the build-time controller exclusion in build.gradle.template, which is unaffected.
+#
+# QUAL-49 (2026-09-01): advisory used to be opt-in via -PendingOk, and every call site that forgot
+# the switch -- including a plain hand-run of this script -- read these 8 retired checks as real
+# failures. Advisory is now the DEFAULT so that stops recurring; pass
+# -IncludeRetiredConvergenceChecks to get the old strict behavior back for a deliberate audit of the
+# pre-d0bf41b convention. -PendingOk is still accepted (now a no-op) so every existing call site --
+# run-runtimehost-gate.ps1, npdev-ci-validation.yml, and any manual invocation copied from either --
+# keeps working unchanged.
 $stalePendingCheckNames = @(
     "service-buckets-are-exclusive",
     "controller-namespaces-match-convergence-buckets",
@@ -639,7 +648,7 @@ $stalePendingCheckNames = @(
     "supported-service-footprint-is-smaller-than-inventory",
     "supported-controller-footprint-stays-minority"
 )
-if ($PendingOk) {
+if (-not $IncludeRetiredConvergenceChecks) {
     foreach ($entry in $allReports) {
         $failing = @($entry.report.checks | Where-Object { $_.status -eq "failed" })
         $blocking = @($failing | Where-Object { $_.name -notin $stalePendingCheckNames })
