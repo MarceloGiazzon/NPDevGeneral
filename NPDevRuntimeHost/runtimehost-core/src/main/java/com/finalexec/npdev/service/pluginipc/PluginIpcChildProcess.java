@@ -7,6 +7,7 @@ import com.npdev.kernel.CapabilityResult;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -34,10 +35,14 @@ public final class PluginIpcChildProcess implements AutoCloseable {
 
     private final Process process;
     private final Path classpathArgFile;
+    private final PluginProcessResourceLimiter.ResourceLimitAttachment resourceLimitAttachment;
 
-    private PluginIpcChildProcess(Process process, Path classpathArgFile) {
+    private PluginIpcChildProcess(
+            Process process, Path classpathArgFile, PluginProcessResourceLimiter.ResourceLimitAttachment resourceLimitAttachment
+    ) {
         this.process = process;
         this.classpathArgFile = classpathArgFile;
+        this.resourceLimitAttachment = resourceLimitAttachment;
     }
 
     /** Spawns a one-shot child process running {@code handlerClassName} on this JVM's own classpath. */
@@ -53,7 +58,14 @@ public final class PluginIpcChildProcess implements AutoCloseable {
      */
     public static PluginIpcChildProcess start(String handlerClassName, String classpath) throws IOException {
         Objects.requireNonNull(handlerClassName, "handlerClassName");
-        return spawn(classpath, handlerClassName);
+        return spawn(classpath, PluginProcessResourceLimits.NONE, handlerClassName);
+    }
+
+    /** Same as the two-arg {@link #start}, additionally applying an OS-level resource ceiling (SEC-3 step 4). */
+    public static PluginIpcChildProcess start(String handlerClassName, String classpath, PluginProcessResourceLimits limits)
+            throws IOException {
+        Objects.requireNonNull(handlerClassName, "handlerClassName");
+        return spawn(classpath, limits, handlerClassName);
     }
 
     /** Spawns a fungible pooled worker (SEC-3 step 3) on this JVM's own classpath, bound to no plugin. */
@@ -62,18 +74,29 @@ public final class PluginIpcChildProcess implements AutoCloseable {
     }
 
     public static PluginIpcChildProcess startPooled(String classpath) throws IOException {
-        return spawn(classpath);
+        return spawn(classpath, PluginProcessResourceLimits.NONE);
     }
 
-    private static PluginIpcChildProcess spawn(String classpath, String... childMainArgs) throws IOException {
+    /** Same as {@link #startPooled(String)}, additionally applying an OS-level resource ceiling (SEC-3 step 4). */
+    public static PluginIpcChildProcess startPooled(String classpath, PluginProcessResourceLimits limits) throws IOException {
+        return spawn(classpath, limits);
+    }
+
+    private static PluginIpcChildProcess spawn(String classpath, PluginProcessResourceLimits limits, String... childMainArgs)
+            throws IOException {
         Objects.requireNonNull(classpath, "classpath");
+        Objects.requireNonNull(limits, "limits");
         String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         Path argFile = writeClasspathArgFile(classpath);
         List<String> command = new ArrayList<>(List.of(javaBin, "@" + argFile, PluginIpcChildProcessMain.class.getName()));
         command.addAll(List.of(childMainArgs));
+        PluginProcessResourceLimiter limiter = PluginProcessResourceLimiter.forCurrentOs();
+        command = limiter.wrapCommand(command, limits);
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.redirectError(ProcessBuilder.Redirect.INHERIT);
-        return new PluginIpcChildProcess(builder.start(), argFile);
+        Process process = builder.start();
+        PluginProcessResourceLimiter.ResourceLimitAttachment attachment = limiter.attachAfterStart(process, limits);
+        return new PluginIpcChildProcess(process, argFile, attachment);
     }
 
     private static Path writeClasspathArgFile(String classpath) throws IOException {
@@ -107,9 +130,24 @@ public final class PluginIpcChildProcess implements AutoCloseable {
             Map<String, Object> contextState,
             String handlerClassName
     ) {
-        CapabilityResult result = hostSession.invoke(
-                contribution, call, contextState, handlerClassName, process.getInputStream(), process.getOutputStream()
-        );
+        CapabilityResult result;
+        try {
+            result = hostSession.invoke(
+                    contribution, call, contextState, handlerClassName, process.getInputStream(), process.getOutputStream()
+            );
+        } catch (UncheckedIOException pipeFailure) {
+            // Design section 4 names both directions ("the host's pipe read/write to a worker fails"): a
+            // process killed (e.g. by an OS resource-limit ceiling, SEC-3 step 4) fast enough can fail the
+            // very WRITE of the invoke frame, not just a subsequent read -- PluginIpcHostSession.invoke
+            // throws in that case rather than returning a CHANNEL_CLOSED result, so this must be caught
+            // here too, not only inspected as a returned error code below.
+            return awaitDeathAndDescribe(call, CapabilityResult.failure(
+                    CHANNEL_CLOSED_CODE,
+                    "Plugin IPC channel failed: " + pipeFailure.getMessage(),
+                    CapabilityErrorKind.PERMANENT,
+                    Map.of("capability", call.capability(), "operation", call.operation())
+            ));
+        }
         if (result.ok() || !CHANNEL_CLOSED_CODE.equals(result.error().code())) {
             return result;
         }
@@ -175,5 +213,9 @@ public final class PluginIpcChildProcess implements AutoCloseable {
         } catch (IOException exception) {
             // Best-effort cleanup of a one-shot temp file; leaving it behind is harmless.
         }
+        // Closed last, after the process is confirmed dead: on Windows this releases the Job Object handle
+        // (harmless once the process it bounded has already exited); on Linux this removes the raw-cgroup
+        // fallback's directory, if that path was used.
+        resourceLimitAttachment.close();
     }
 }
