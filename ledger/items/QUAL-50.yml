@@ -1,0 +1,64 @@
+id: QUAL-50
+title: >-
+  run-ai-knowledge-gate.ps1 fails at HEAD (03b123ce) with zero code changes -- two unrelated
+  pre-existing findings, neither caused by the real-plugin-classloading manifest work that
+  surfaced them
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-01
+source: >-
+  2026-09-01, SEC-3 real-plugin-classloading manifest work (the step-3 follow-up closing "the
+  pool is not wired to real generated plugins" finding). A full run-ai-knowledge-gate.ps1 run
+  failed with three reported problems after 39/39 numbered checks had otherwise printed OK. Before
+  assuming the current session's own changes caused any of them, isolated the cause the same way
+  QUAL-49 was isolated: `git stash push -u` (removing every uncommitted file from this session,
+  back to committed HEAD 03b123ce -- the commit made at the START of this session for the
+  already-written SEC-3 Model B step 4 work) and reran the two failing checkers directly -- both
+  failed IDENTICALLY with zero working-tree changes applied. `git stash pop` restored this
+  session's own work afterward, verified via `git status`.
+surface: scripts/quality/security-pattern-sweep.py, scripts/quality/check-done-item-guards.py
+files:
+  - scripts/quality/security-pattern-sweep.py
+  - scripts/quality/security-pattern-sweep-allowlist.json
+  - docs/SECURITY_PATTERN_SWEEP_2026-07.md
+  - scripts/quality/check-done-item-guards.py
+  - scripts/policy/done-item-guard-policy.json
+  - ledger/items/QUAL-46.yml
+detail: |
+  NOT ROOT-CAUSED beyond isolating each to HEAD 03b123ce. Two genuinely independent findings,
+  bundled into one item only because both surfaced in the same gate run:
+
+  Finding 1 -- 6 untriaged security-pattern-sweep hits, all pre-existing at 03b123ce (none in any
+  file this session touched -- confirmed by grepping the sweep's own output for this session's new
+  file names, zero matches):
+  - 2x `sql-string-building` in NPDevRuntimeHost/runtimehost-core/.../db/SchemaLifecycleExecutor.java
+    (lines 1860, 1881) -- a DELETE FROM statement spliced with flywayHistoryTableRef(connection)/
+    flywayHistoryScriptColumnRef(connection) rather than bound as a parameter. Pre-dates this
+    session entirely; unrelated to SEC-3.
+  - 4x `swallowed-security-exception`, all introduced by SEC-3 Model B step 4 (the PREVIOUS
+    session's commit 03b123ce, already pushed before this session began, not this session's own
+    changes): PluginIpcFrameCodec.java:61 (catch EOFException -> return null), and three in the new
+    per-OS resource limiters -- PluginLinuxCgroupResourceLimiter.java:70 and :85, and
+    PluginWindowsJobObjectResourceLimiter.java:59 (each catch(...)  -> return false, non-auth path,
+    not logged). Step 4's own ledger entry never ran run-ai-knowledge-gate.ps1 as part of its
+    verification (only run-runtimehost-gate.ps1), so these were never triaged into
+    scripts/quality/security-pattern-sweep-allowlist.json before landing.
+
+  Finding 2 -- check-done-item-guards.py --calibrate fails its own "real repo must be clean"
+  control: QUAL-46 (status DONE, guard.kind=manual) names guard.ref
+  `scripts/reports/out/ai-beta-gate-report.json, generated locally by
+  \`pwsh -NoProfile -File scripts/quality/run-ai-beta-gate.ps1\` after fixing all 3 scenarios'
+  ai-verification-report.json...` -- that report file does not exist on this machine, so the guard
+  is UNRESOLVABLE. Unrelated to SEC-3 or Finding 1; QUAL-46's own DONE claim may be stale, or the
+  report is a gitignored local artifact never regenerated on this machine/session lineage.
+
+  Done when: Finding 1 -- each of the 4 new swallowed-security-exception hits triaged into
+  docs/SECURITY_PATTERN_SWEEP_2026-07.md as (i) a genuine finding with a REG-nn row, or (ii) safe
+  with a reason recorded in security-pattern-sweep-allowlist.json; the 2 SchemaLifecycleExecutor.java
+  sql-string-building hits triaged the same way (pre-existing, likely also just needs allowlisting
+  with a reason, but not assumed here). Finding 2 -- either regenerate
+  scripts/reports/out/ai-beta-gate-report.json locally (run run-ai-beta-gate.ps1) so the guard
+  resolves, or re-open QUAL-46 if its DONE claim no longer holds. Not attempted here: out of scope
+  for the real-plugin-classloading manifest work that surfaced both; recorded per this project's own
+  "record the discrepancy, don't gloss over it" discipline (QUAL-49's own precedent).
