@@ -4,8 +4,9 @@ title: >-
   `:dsl:test` runs against identical source -- root cause not found, floor manually re-pinned twice
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-08-31
+closed: 2026-08-31
 source: >-
   2026-08-31 (session resume, verifying QUAL-45/46 on live CI). A push touching only golden-ai-
   scenarios fixtures and a new RuntimeHost test (d70df781, 0bda5a1c -- neither commit touches
@@ -24,7 +25,10 @@ source: >-
   unordered collection (HashMap/HashSet) somewhere in dsl's own code or test fixtures, or a
   timing/ordering-sensitive assertion that sometimes short-circuits before touching every branch.
 surface: NPDevContract/dsl, scripts/policy/coverage-baseline.json, scripts/quality/check-coverage-ratchet.py
-files: []
+files:
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/pack/PackSignatureTest.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackSigner.java
+  - scripts/policy/coverage-baseline.json
 detail: |
   NOT ROOT-CAUSED -- re-pinned twice now (2026-08-25 and 2026-08-31) with the same "small run-to-run
   variance" explanation, which describes the SYMPTOM, not the mechanism. The gap between 85.0422%
@@ -45,3 +49,46 @@ detail: |
   made deterministic (fixing the underlying nondeterminism) or the floor is set to a value proven
   stable across N consecutive real runs, so this stops requiring a manual re-pin every time it
   recurs.
+
+  ROOT-CAUSED AND FIXED. Ran `:dsl:clean :dsl:test --no-build-cache` from NPDevGenerator (the exact
+  task CI drives) twice, saved each run's jacocoTestReport.xml, and diffed every (package,
+  sourcefile, line) pair for a covered/uncovered flip. Exactly 2 lines flipped, out of 21467 total:
+  NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/pack/PackSigner.java:83-84, the
+  `catch (Exception e) { return false; }` inside `verify(String algorithm, String digest,
+  byte[] signatureBytes, PublicKey publicKey)`.
+
+  Mechanism: PackSignatureTest.tamperedSignatureBytesAreDetected generates a fresh, UNSEEDED Ed25519
+  keypair every run (`PackSigner.generateKeyPair("Ed25519")` -> `KeyPairGenerator` seeded from
+  `SecureRandom`, no fixed seed), signs a fixed digest, then flips a single byte
+  (`sigBytes[0] ^= 0xFF`) to prove a corrupted signature fails verification. Which run-specific
+  random signature byte gets flipped determines whether the JDK's EdDSA `Signature.verify(byte[])`
+  rejects the corrupted bytes by THROWING internally (hits PackSigner's catch block, lines 83-84
+  covered) or by returning `false` cleanly (catch block never entered, lines 83-84 uncovered) --
+  both outcomes make the test's own `assertFalse` pass, so the test itself never flakes; only the
+  coverage measurement of that catch block does. This is exactly the "~10-12 line, HashMap/timing-
+  adjacent" mechanism this item's `detail` speculated about, just crypto- rather than
+  collection-ordering-flavored.
+
+  Fix: added `PackSignatureTest#malformedSignatureLengthIsRejectedWithoutThrowing` -- calls the same
+  `verify(...)` overload with a 3-byte signature array (Ed25519 signatures must be exactly 64 bytes),
+  which the JDK's EdDSA verifier rejects by throwing regardless of which random keypair was
+  generated, so PackSigner's catch branch is now exercised on EVERY run. Verified: 2 more independent
+  `:dsl:clean :dsl:test --no-build-cache` runs after the fix produced byte-for-byte identical
+  jacocoTestReport.xml files (18256/21467 = 85.0422% both times -- the previously only-sometimes-hit
+  higher value, never the 85.0328%/18254 low one again). `check-coverage-ratchet.py` ratcheted
+  `coverage-baseline.json`'s NPDevContract/dsl floor from 85.0328 to 85.0422 off the fresh report.
+  `run-generator-gate.ps1` (the exact `:dsl:clean :dsl:test generatorQualityGate --no-daemon
+  --console=plain` CI shape) passed end-to-end afterward with no coverage-ratchet failure.
+guard:
+  kind: test
+  ref: >-
+    NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/pack/PackSignatureTest.java#malformedSignatureLengthIsRejectedWithoutThrowing
+  asserts: >-
+    A wrong-length (3-byte) Ed25519 signature array is rejected by PackSigner.verify() via its
+    catch-and-return-false branch (PackSigner.java:83-84), which the JDK's EdDSA verifier throws
+    into deterministically regardless of key material -- unlike the pre-existing
+    tamperedSignatureBytesAreDetected test, whose single-byte-flip only sometimes threw depending on
+    that run's randomly-generated keypair, which is what caused the coverage oscillation this item
+    tracks. Confirmed by diffing jacocoTestReport.xml across 2 pre-fix runs (85.0328%/85.0422%,
+    reproducing the oscillation) and 2 post-fix runs (85.0422% both times, byte-identical reports).
+  provenRed: true

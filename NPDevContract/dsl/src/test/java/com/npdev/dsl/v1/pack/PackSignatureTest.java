@@ -87,6 +87,22 @@ class PackSignatureTest {
     }
 
     @Test
+    void malformedSignatureLengthIsRejectedWithoutThrowing() throws Exception {
+        // QUAL-48: a single-byte flip (as above) sometimes lands on bytes the JDK's EdDSA verifier
+        // rejects by throwing (PackSigner's catch-and-return-false branch) and sometimes on bytes it
+        // rejects by returning false cleanly -- which one depends on that test's freshly-generated,
+        // unseeded random keypair, so it covers PackSigner's catch branch nondeterministically across
+        // runs. A signature array of the wrong length is deterministically rejected by throwing,
+        // regardless of key material, so this test exercises that branch on every run.
+        KeyPair keyPair = PackSigner.generateKeyPair("Ed25519");
+        String digest = "sha256:" + "a".repeat(64);
+        byte[] malformedSignature = new byte[] {1, 2, 3};
+
+        assertFalse(PackSigner.verify("Ed25519", digest, malformedSignature, keyPair.getPublic()),
+                "a malformed-length signature must not verify");
+    }
+
+    @Test
     void wrongPublicKeyIsDetected() throws Exception {
         KeyPair signerKeyPair = PackSigner.generateKeyPair("Ed25519");
         KeyPair otherKeyPair = PackSigner.generateKeyPair("Ed25519");
