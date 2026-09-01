@@ -1,24 +1,18 @@
 {
-  "closedAt": "2026-09-01T05:06:18.6809779Z",
+  "closedAt": "2026-09-01T05:43:57.2445567Z",
   "branch": "main",
-  "head": "505cfcc4",
-  "headSubject": "docs(SEC-3): full design for Model B plugin process isolation",
-  "summary": "Implemented SEC-3 Model B step 1: an in-process IPC protocol prototype (PluginIpcFrame/Codec, new callback allowlist in PluginExecutionPolicyEvaluator/RuntimePluginAdapterRegistry, host/child orchestration classes) proven via a real auditLog callback round-trip and a denied-callback test over piped streams; fixed one real gate finding (renamed JsonSafeValues to PluginIpcJsonSafeValues to match the runtime-surface classifier's Plugin* pattern) and confirmed run-runtimehost-gate.ps1 green; updated ledger/items/SEC-3.yml with full detail, left status OPEN.",
-  "nextStep": "SEC-3 step 2 per docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 6: wire a real ProcessBuilder child (one process per invoke, no pool yet) using the existing PluginIpcHostSession/PluginIpcChildRuntime/PluginIpcFrameCodec classes (NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/) against Process.getInputStream()/getOutputStream() instead of the piped streams PluginIpcRoundTripTest uses -- proves the crash-handling sequence (design doc section 4) end to end, including the two live-fired tests SEC-3's own done-when bar names (a plugin that calls System.exit and does not take down the host; a forbidden-operation attempt actually blocked). Before that: this session's changes are UNCOMMITTED -- commit them first (new pluginipc package, PluginExecutionPolicyEvaluator/RuntimePluginAdapterRegistry edits, 3 new test files, ledger/items/SEC-3.yml update).",
+  "head": "63bc3e57",
+  "headSubject": "feat(SEC-3): real ProcessBuilder child process for plugin IPC (Model B step 2)",
+  "summary": "Committed and pushed SEC-3 Model B step 1 (was left uncommitted last session). Implemented and shipped step 2 per docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 6: PluginIpcChildProcessMain (real child-process entry point) + PluginIpcChildProcess (host-side ProcessBuilder spawner with crash detection, remapping a closed channel to PLUGIN_EXECUTION_PROCESS_KILLED once the process is confirmed dead). Found and fixed two real bugs along the way: (1) a raw -cp <classpath> argument hits Windows CreateProcess error=206 (filename or extension too long) against the assembled sample app's real multi-jar classpath -- fixed with a java @argfile; (2) an off-by-one in the new PluginIpcChildProcessTest's System.exit-scenario assertion. Live-fires SEC-3's own two named done-when tests over a real OS process boundary (System.exit doesn't take down host; forbidden callback denied). Full run-runtimehost-gate.ps1 verified green after two red iterations, each root-caused via a narrow --tests rerun rather than re-running the full ~8min gate blind. ledger/items/SEC-3.yml updated with full step-2 detail, status left OPEN (memory/CPU still unbounded until step 4). Two commits pushed to main: 126e012e (step 1) and 63bc3e57 (step 2).",
+  "nextStep": "SEC-3 step 3 per docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 6: the fixed-size warm pool of fungible worker processes (design section 2) -- pool sizing (npdev.runtime.plugin-pool-size config), idle recycling (N invocations + wall-clock idle timer), host shutdown handling (@PreDestroy close-frame then destroyForcibly), and real plugin-JAR classloading via RuntimePluginPackageRealizationService (a fungible worker needs the plugin JAR path + class name to travel in the invoke frame itself, since step 2's one-process-per-invoke model got away with binding the handler class at process-spawn time via a command-line arg -- that shortcut goes away once workers are pooled and reused across different plugins). This is materially bigger than steps 1-2 (new pooling infrastructure, not just a stream-source swap) -- worth scoping/confirming approach before implementing. After that, step 4 (Linux cgroups v2 / Windows Job Objects) is what actually closes the item's memory/CPU done-when bar.",
   "plan": "",
   "blocked": "",
-  "verified": "Local: full run-runtimehost-gate.ps1 (assembled sample app's own gradle test task BUILD SUCCESSFUL, runtimehost-core's own gradle test task BUILD SUCCESSFUL, coverage-floor check and runtime-surface-evidence classification/footprint/allowlist all passed) -- exit=0 on the second run after fixing the JsonSafeValues naming issue found by the first run's failure. No CI run yet (nothing pushed).",
-  "dirtyCount": 8,
-  "dirtyFiles": [
-    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/PluginExecutionPolicyEvaluator.java",
-    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/RuntimePluginAdapterRegistry.java",
-    " M ledger/items/SEC-3.yml",
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl",
-    "?? NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/",
-    "?? NPDevRuntimeHost/src/test/java/com/finalexec/PluginExecutionPolicyEvaluatorCallbackTest.java",
-    "?? NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/"
-  ],
+  "verified": "Local: full run-runtimehost-gate.ps1 green (assembled sample app's own gradle test task BUILD SUCCESSFUL across 665 tests incl. the 3 new PluginIpcChildProcessTest cases, runtimehost-core's own gradle test task BUILD SUCCESSFUL, coverage-floor + runtime-surface-evidence checks all passed). No CI run confirmed yet -- both commits pushed but CI status not checked this session.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
-  "landedCommits": []
+  "landedCommits": [
+    "63bc3e57 feat(SEC-3): real ProcessBuilder child process for plugin IPC (Model B step 2)",
+    "126e012e feat(SEC-3): in-process IPC protocol prototype for plugin process isolation (Model B step 1)"
+  ]
 }
