@@ -56,7 +56,7 @@ class PluginIpcChildProcessWindowsResourceLimitTest {
         // break anything. The memory ceiling is what actually delivers the observable, deterministic kill
         // here -- CPU-rate throttling is not independently behaviorally verified by this test (a live
         // wall-clock throughput measurement would be slow and flaky), only exercised without error.
-        PluginProcessResourceLimits limits = new PluginProcessResourceLimits(128, 50);
+        PluginProcessResourceLimits limits = new PluginProcessResourceLimits(256, 50);
 
         try (PluginIpcChildProcess child = PluginIpcChildProcess.start(
                 MemoryHogPluginHandler.class.getName(), System.getProperty("java.class.path"), limits
@@ -66,6 +66,27 @@ class PluginIpcChildProcessWindowsResourceLimitTest {
             assertTrue(result != null && !result.ok(), () -> "expected the OS to kill the child, got: " + result);
             assertEquals("PLUGIN_EXECUTION_PROCESS_KILLED", result.error().code());
             assertTrue(auditLogStore.records.isEmpty(), "a killed plugin must never have reached the real store");
+        }
+    }
+
+    @Test
+    void aWellBehavedChildSurvivesTheSameCeiling() throws Exception {
+        // QUAL-51: a trivial, near-zero-footprint plugin running UNDER a live Job Object ceiling --
+        // never proven before this test existed. Proves the fix (explicit small -Xms in
+        // PluginIpcChildProcess.childHeapFlags) actually removes the startup commit spike, not just
+        // that a hog still gets killed (which the test above cannot distinguish from an early,
+        // startup-caused kill -- both read as PLUGIN_EXECUTION_PROCESS_KILLED).
+        InMemoryAuditLogStore auditLogStore = new InMemoryAuditLogStore();
+        PluginIpcHostSession hostSession = hostSession(auditLogStore);
+        PluginProcessResourceLimits limits = new PluginProcessResourceLimits(256, 50);
+
+        try (PluginIpcChildProcess child = PluginIpcChildProcess.start(
+                AuditLogEchoPluginHandler.class.getName(), System.getProperty("java.class.path"), limits
+        )) {
+            CapabilityResult result = child.invoke(hostSession, auditLogContribution(), appendCall(), Map.of());
+
+            assertTrue(result.ok(), () -> "expected success under a live ceiling, got: " + result);
+            assertEquals(1, auditLogStore.records.size());
         }
     }
 

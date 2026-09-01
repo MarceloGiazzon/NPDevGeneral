@@ -88,7 +88,9 @@ public final class PluginIpcChildProcess implements AutoCloseable {
         Objects.requireNonNull(limits, "limits");
         String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         Path argFile = writeClasspathArgFile(classpath);
-        List<String> command = new ArrayList<>(List.of(javaBin, "@" + argFile, PluginIpcChildProcessMain.class.getName()));
+        List<String> command = new ArrayList<>(List.of(javaBin, "@" + argFile));
+        command.addAll(childHeapFlags(limits));
+        command.add(PluginIpcChildProcessMain.class.getName());
         command.addAll(List.of(childMainArgs));
         PluginProcessResourceLimiter limiter = PluginProcessResourceLimiter.forCurrentOs();
         command = limiter.wrapCommand(command, limits);
@@ -97,6 +99,27 @@ public final class PluginIpcChildProcess implements AutoCloseable {
         Process process = builder.start();
         PluginProcessResourceLimiter.ResourceLimitAttachment attachment = limiter.attachAfterStart(process, limits);
         return new PluginIpcChildProcess(process, argFile, attachment);
+    }
+
+    /**
+     * QUAL-51: HotSpot's default ergonomic {@code InitialHeapSize} is derived from the HOST's full
+     * physical memory (roughly {@code physical/64}), entirely unaware that an OS-level ceiling (Job
+     * Object / cgroup) is about to be applied moments after this process starts. On a host with enough
+     * RAM, that default initial commit alone (observed: ~252MiB on a 16.5GB dev machine) can exceed a
+     * modest configured ceiling before the child's {@code main()} even runs, failing with a native
+     * commit error (Windows: {@code ERROR_COMMITMENT_LIMIT} / "paging file too small") that has nothing
+     * to do with the plugin's own behavior. An explicit, small {@code -Xms} -- scaled down for very low
+     * ceilings so it never itself exceeds one -- removes that startup spike. {@code -Xmx} is
+     * deliberately left at its default: it is a virtual RESERVATION, not a commit, so it does not itself
+     * threaten the ceiling, and leaving it alone means a genuinely runaway plugin still grows its real
+     * heap commit past the ceiling and gets caught by the OS limiter exactly as before.
+     */
+    private static List<String> childHeapFlags(PluginProcessResourceLimits limits) {
+        if (limits.memoryLimitMb() == null) {
+            return List.of();
+        }
+        int initialHeapMb = Math.max(8, Math.min(32, limits.memoryLimitMb() / 4));
+        return List.of("-Xms" + initialHeapMb + "m");
     }
 
     private static Path writeClasspathArgFile(String classpath) throws IOException {

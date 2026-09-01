@@ -6,8 +6,9 @@ title: >-
   heap sizing
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-01
+closed: 2026-09-01
 source: >-
   SEC-3 fork (a), Track A step A5 of the SEC-3/QUAL-49/QUAL-50 implementation plan (2026-09-01).
   The plan's own optional recommendation ("apply the same 256MB ceiling raise and well-behaved-child
@@ -60,3 +61,52 @@ detail: |
   just once. Consider whether the SAME explicit sizing should apply unconditionally to the Linux raw-
   cgroup path too, for the reason given above (container-support auto-detection cannot see a cgroup
   that does not exist yet when the JVM boots).
+
+  ROOT-CAUSED and FIXED 2026-09-01. Root cause: HotSpot's ergonomic InitialHeapSize default is
+  physical_memory / 64 (bounded, but not by the Job Object's ceiling, since the ceiling is applied
+  via AssignProcessToJobObject AFTER Process.start() -- the JVM has already computed and started
+  committing this size before it can know a ceiling is coming). On this 16.5GB dev machine that
+  default is ~252MiB, which -- independent of which ceiling value was configured, since the default
+  is driven by HOST ram, not the ceiling -- crosses any modest ceiling (128MB, 256MB, or otherwise)
+  during the JVM's own bootstrap COMMIT of that initial heap, before the plugin's main() runs. This
+  also means the defect was almost certainly already present at the previously-"working" 128MB
+  ceiling, just never exposed: the only existing test at a real (non-NONE) ceiling was the
+  memory-hog test, whose PASS condition ("the process got killed") cannot distinguish a legitimate
+  hog-driven kill from an accidental startup-commit kill -- both read as
+  PLUGIN_EXECUTION_PROCESS_KILLED. No well-behaved-child-under-a-live-ceiling test existed before
+  this fix to catch the difference.
+
+  Fix: PluginIpcChildProcess.childHeapFlags() (new private method, called from spawn()) passes an
+  explicit, small -Xms -- max(8, min(32, memoryLimitMb / 4)) MB -- to the child JVM whenever
+  limits.memoryLimitMb() is set, on BOTH OSes (the method is OS-agnostic, addressing this item's own
+  "consider... unconditionally... Linux too" note). -Xmx is deliberately left untouched (JVM
+  default): it is a virtual RESERVATION, not an initial commit, so it does not itself threaten the
+  ceiling, and leaving it alone preserves the memory-hog test's existing kill mechanism unchanged --
+  a hog's real page commits (MemoryHogPluginHandler forces real commits via Arrays.fill) still grow
+  heap usage past the ceiling and get denied by the OS exactly as before, now via genuine hog
+  behavior rather than an accidental early-startup race.
+
+  Verified: added aWellBehavedChildSurvivesTheSameCeiling() to
+  PluginIpcChildProcessWindowsResourceLimitTest (AuditLogEchoPluginHandler, trivial/benign, under a
+  live 256MB ceiling -- the scenario this item's own analysis showed was never actually tested
+  before), and re-raised aChildThatExceedsItsMemoryCeilingIsKilledByTheJobObject's ceiling from
+  128MB back to 256MB. Both pass reliably across 4 total runs on this machine: one full
+  run-runtimehost-gate.ps1 (assembles a real sample app, runs its full gradle test task plus
+  runtimehost-core:test, BUILD SUCCESSFUL) plus 3 additional standalone re-runs of just this test
+  class (gradlew test --tests PluginIpcChildProcessWindowsResourceLimitTest, BUILD SUCCESSFUL each
+  time, 39s/12s/11s). The hog test's own child process still produces an hs_err_pid*.log crash
+  artifact on its way to being killed (a native mmap failure inside G1 while the hog is actively
+  over-committing, confirmed via its "Command Line: -Xms32m ...MemoryHogPluginHandler" line) --
+  expected and unchanged from before this fix, just now demonstrably driven by the hog's own
+  behavior rather than by JVM startup.
+guard:
+  kind: script
+  ref: >-
+    pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1
+  asserts: >-
+    Assembled sample app's gradle `test` task (including
+    PluginIpcChildProcessWindowsResourceLimitTest at a 256MB ceiling) passes BUILD SUCCESSFUL.
+    Verified live 2026-09-01 on Windows: full gate run passed once; the targeted test class alone
+    (gradlew test --tests PluginIpcChildProcessWindowsResourceLimitTest) additionally re-run 3 more
+    times standalone against the same assembled app, BUILD SUCCESSFUL every time.
+  provenRed: true
