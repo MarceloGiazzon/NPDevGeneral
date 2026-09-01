@@ -5,8 +5,9 @@ title: >-
   2 missing db.definition.json, 1 with real RuntimeHost schema-lifecycle test failures
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-08-31
+closed: 2026-09-01
 source: >-
   2026-08-31 (session resume, dispatching a fresh ai-beta-gate.yml run 33438289211 to confirm
   QUAL-43/44/45/46 together). The "AI-only Beta 0 proof" job's run-traceable-local-release.ps1
@@ -15,7 +16,12 @@ source: >-
   (sample-matrix-tests) before QUAL-44's fix landed, so Gate 15 never actually ran and its failures
   were invisible.
 surface: NPDevSamples (simple-user-registry, medium-expense-approval, restaurant-saas-multitenant), scripts/quality/run-sample-matrix.ps1, NPDevRuntimeHost SchemaImpactFacade/SchemaLifecycleExecutor tests
-files: []
+files:
+  - NPDevSamples/simple-user-registry/Input/db.definition.json
+  - NPDevSamples/medium-expense-approval/Input/db.definition.json
+  - scripts/policy/sample-matrix-policy.json
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/build.gradle.template
 detail: |
   NOT YET ROOT-CAUSED beyond the surface symptom below -- this item exists to track the finding, not
   to claim a fix. run-sample-matrix.ps1's release-evidence mode requires all 5 release-blocking
@@ -48,3 +54,82 @@ detail: |
   Done when: each of the 3 failures is root-caused individually (not read from a report, walked to
   its actual cause) and either fixed or reclassified, and Gate 15/27 (sample-matrix) shows all 5
   release-blocking samples passing on a live CI run of ai-beta-gate.yml's "AI-only Beta 0 proof" job.
+
+  ROOT-CAUSED AND FIXED, all 3.
+
+  1+2 (simple-user-registry, medium-expense-approval missing db.definition.json): genuine authoring
+  gap, not a stale-format question -- 8 of 10 other samples that HAVE this file use it, it is
+  UNCONDITIONALLY required (Build-NpdevApp.ps1:359 throws with no fallback), and it was never in
+  sample-matrix-policy.json's own requiredInputFiles list, so no pre-flight check ever caught its
+  absence before the generation step's hard throw deep in Gate 15. Authored both files following the
+  H2Local/KeepExistingIfCompatible convention already used by every non-trivial release-blocking
+  sample (restaurant-saas-multitenant, durable-workflow-demo, superuser-admin-console), with
+  databaseName matching each sample's own config.json `database.database` field
+  (sample_user_registry / sample_expense_approval) for consistency. Added db.definition.json to
+  requiredInputFiles so this class of gap is caught pre-flight next time, not at generation.
+
+  3 (restaurant-saas-multitenant real test failures) turned out to be the SAME underlying mechanism
+  as 1+2, not a separate root cause: Gate 15 had literally never reached ANY H2Local/Postgres
+  (physical-engine) release-blocking sample before QUAL-44 unblocked Gate 11, so a latent
+  incompatibility between two RuntimeHost platform test classes and physical-database apps was never
+  exercised until this session. Reproduced independently (not from a report) by regenerating
+  medium-expense-approval + restaurant-saas-multitenant fresh (`gradlew test`, `--no-build-cache`)
+  after authoring their db.definition.json files -- both hit the IDENTICAL 4 failures restaurant-
+  saas-multitenant's original CI run showed, confirming it was never sample-specific:
+
+  - SchemaLifecycleExecutorProofMatrixTest Row 17: SchemaLifecycleExecutor.java's
+    clearSchemaRealizationHistoryForEphemeral/clearSchemaRealizationHistory (lines ~1846-1890) issued
+    an UNQUOTED `DELETE FROM flyway_schema_history WHERE script = ?`. Flyway always creates its own
+    history table AND columns quoted, in their exact declared (lowercase) case, on every engine --
+    it never case-folds. H2's own default folding is UPPER (the exact same gotcha
+    readActualColumns() already works around for business-table columns, via its own lower-then-
+    upper fallback), so the unquoted reference silently missed the real table
+    (`org.h2.jdbc.JdbcSQLSyntaxErrorException: Table "FLYWAY_SCHEMA_HISTORY" not found`), and after
+    quoting just the table name, the SAME issue on the unquoted `script` column
+    (`Column "SCRIPT" not found`). REAL PRODUCT BUG, not a test artifact -- fixed in
+    SchemaLifecycleExecutor.java by quoting both identifiers via
+    `Connection.getMetaData().getIdentifierQuoteString()` (portable: H2/Postgres/SQL Server use `"`,
+    MySQL uses backtick), added as a new `flywayHistoryTableRef`/`flywayHistoryScriptColumnRef`
+    helper pair. This path was NEVER exercised before because it requires BOTH non-empty
+    schemaRealizationScriptNames() (a real generated app, not the bare RuntimeHost template) AND an
+    already-booted database with real Flyway history -- exactly what an H2Local release-blocking
+    sample's `gradlew test` run is, for the first time, this session.
+
+  - SchemaImpactFacadeH2Test (3 tests): a PLATFORM-ONLY test whose every assertion is built on its
+    own documented premise -- "no generated npdev/db/schema-realization-manifest.json resource on
+    this classpath" (its own javadoc) -- which SchemaImpactFacade.forLiveDatabase() actually reads as
+    `manifest == null || !manifest.physicalDatabase()`. That premise silently held for every
+    InMemory-engine sample too (manifest exists but physicalDatabase=false, same simplified no-real-
+    diff code branch) and for the bare RuntimeHost template (no manifest at all) -- but breaks the
+    moment a sample declares a PHYSICAL engine: forLiveDatabase then walks the REAL business-table
+    diff against this test's tiny hand-built `widgets`-only fixture, correctly classifies the mismatch
+    as DESTRUCTIVE (not a bug in SchemaImpactFacade -- exactly right for a real mismatched schema),
+    and the test's null/NO_CHANGES/NEEDS_ATTENTION-only assertions fail. Not fixable by changing the
+    fixture (the whole point is testing the no-diff branch); fixed by excluding this file from a
+    generated app's `test` task ONLY when its generated schema-realization-manifest.json declares
+    physicalDatabase=true (build.gradle.template, new `physicalDatabaseManifestPresent()` closure
+    reading that generator-written JSON at configure time, same timing/pattern as the existing
+    `runtimeSurfaceManifest` JsonSlurper read) -- InMemory samples and the bare template keep running
+    and passing it for real, exactly as before.
+
+  Verified: all 3 originally-failing samples (simple-user-registry, medium-expense-approval,
+  restaurant-saas-multitenant) fresh-regenerated (Output deleted first, not reused) and passing their
+  full `gradlew test` suite individually; canonical-demo (InMemory) fresh-regenerated as a regression
+  check confirming SchemaImpactFacadeH2Test still RUNS AND PASSES for it (7/7 tasks executed, no
+  exclusion triggered). Full official (non-partial) `run-sample-matrix.ps1` run:
+  scripts/reports/out/qual47-final-sample-matrix-report.json --
+  overallStatus=passed, matrixCoveragePercent=100.0, requiredSamplesPassed=5/5.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-sample-matrix.ps1
+  asserts: >-
+    overallStatus=passed, matrixCoveragePercent=100.0, coverage.requiredSamplesPassed=5,
+    coverage.requiredSamplesFailed=0 in the produced report -- was requiredSamplesPassed=2
+    (canonical-demo, simple-contact-intake only) before the two authored db.definition.json files
+    (NPDevSamples/simple-user-registry/Input/db.definition.json,
+    NPDevSamples/medium-expense-approval/Input/db.definition.json), the SchemaLifecycleExecutor.java
+    Flyway-history quoting fix, and build.gradle.template's physicalDatabaseManifestPresent()-gated
+    SchemaImpactFacadeH2Test exclusion. Local run captured at
+    scripts/reports/out/qual47-final-sample-matrix-report.json (not committed -- regenerate via the
+    command above to reproduce).
+  provenRed: true

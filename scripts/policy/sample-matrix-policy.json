@@ -37,7 +37,8 @@
     "config.json",
     "manifest.json",
     "expected-behavior.md",
-    "expected-endpoints.md"
+    "expected-endpoints.md",
+    "db.definition.json"
   ],
   "allowedDatabaseProviders": [
     "docker-postgres",

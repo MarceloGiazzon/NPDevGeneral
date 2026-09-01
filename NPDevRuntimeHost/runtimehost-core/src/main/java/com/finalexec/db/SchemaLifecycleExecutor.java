@@ -1857,7 +1857,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             }
             for (String script : scripts) {
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "DELETE FROM flyway_schema_history WHERE script = ?"
+                        "DELETE FROM " + flywayHistoryTableRef(connection) + " WHERE "
+                                + flywayHistoryScriptColumnRef(connection) + " = ?"
                 )) {
                     statement.setString(1, script);
                     statement.executeUpdate();
@@ -1877,7 +1878,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         try (Connection connection = dataSource.getConnection()) {
             for (String script : scripts) {
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "DELETE FROM flyway_schema_history WHERE script = ?"
+                        "DELETE FROM " + flywayHistoryTableRef(connection) + " WHERE "
+                                + flywayHistoryScriptColumnRef(connection) + " = ?"
                 )) {
                     statement.setString(1, script);
                     statement.executeUpdate();
@@ -1887,6 +1889,30 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed preparing schema realization reapply after destructive recreation", exception);
         }
+    }
+
+    /**
+     * Flyway always creates its own history table -- AND every one of its columns, including
+     * {@code script} -- using identifiers QUOTED with the target database's native quote character,
+     * in their exact declared case; it never case-folds, regardless of what the engine would
+     * otherwise do to an unquoted reference. H2's own default folding is UPPER (see
+     * {@link #readActualColumns(DatabaseMetaData, String)}'s own lower-then-upper fallback for the
+     * identical gotcha on business-table columns), so an unquoted {@code flyway_schema_history} or
+     * {@code script} in raw SQL here silently resolves to {@code FLYWAY_SCHEMA_HISTORY}/{@code
+     * SCRIPT} and misses the real, lowercase-quoted table/column -- invisible until a real generated
+     * app (non-empty {@link #schemaRealizationScriptNames()}) actually reaches this code with a
+     * database that already has Flyway history (QUAL-47). Quoting with
+     * {@link DatabaseMetaData#getIdentifierQuoteString()} matches Flyway's own quoting on every
+     * supported engine (H2/Postgres/SQL Server use {@code "}, MySQL uses {@code `}).
+     */
+    private static String flywayHistoryTableRef(Connection connection) throws SQLException {
+        String quote = connection.getMetaData().getIdentifierQuoteString();
+        return quote + "flyway_schema_history" + quote;
+    }
+
+    private static String flywayHistoryScriptColumnRef(Connection connection) throws SQLException {
+        String quote = connection.getMetaData().getIdentifierQuoteString();
+        return quote + "script" + quote;
     }
 
     private List<String> schemaRealizationScriptNames() {
