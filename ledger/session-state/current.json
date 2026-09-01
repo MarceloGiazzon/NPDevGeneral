@@ -1,18 +1,24 @@
 {
-  "closedAt": "2026-09-01T07:15:01.1053988Z",
+  "closedAt": "2026-09-01T20:05:57.7481961Z",
   "branch": "main",
-  "head": "daccc569",
-  "headSubject": "feat(SEC-3): fungible worker pool for plugin IPC (Model B step 3)",
-  "summary": "Implemented and shipped SEC-3 Model B step 2 (real ProcessBuilder child process, replacing step 1's piped streams) and step 3 (fixed-size pool of fungible worker processes with invocation-ceiling/idle-timeout recycling and background-thread crash replacement), each fully verified via a green full run-runtimehost-gate.ps1 and pushed. Along the way, traced all 4 RuntimePluginArtifactRealizationProvider strategies and found they all resolve real plugin classes through a Spring-bean runtimeRef lookup with no queryable adapter-to-FQCN manifest -- meaning the pool is proven against real, compiled TEST handler classes only, not this platform's actual generated plugins yet; recorded as a tracked follow-up in ledger/items/SEC-3.yml rather than attempted inline. Fixed two real bugs found via narrow --tests reruns during step 2 (a Windows CreateProcess classpath-length limit, a test-assertion off-by-one) and two more during step 3 (a non-effectively-final lambda capture, an existing test broken by InvokeFrame's new field). SEC-3 remains OPEN -- memory/CPU is still unbounded until step 4, and no real shipped plugin runs through Model B yet.",
-  "nextStep": "Two independent forks remain, neither depending on the other -- ask the user which to tackle before starting, since guessing wrong on either wastes real work: (a) SEC-3 step 4 per docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 3 -- per-OS resource limits (Linux cgroups v2 via systemd-run --scope; Windows Job Objects via a new JNA/JNI binding, called out in the design doc as genuinely new dependency surface) -- this is the step that actually closes SEC-3's memory/CPU done-when bar; or (b) the real-plugin-classloading gap found this session -- add a new NPDevGenerator-side manifest (RuntimeApiEmitter, adapter/capability/operation -> FQCN + operation-method map, alongside the existing unkeyed plugin-owned-classes.txt) so PluginIpcChildProcessPool can run actual generated plugins instead of only the test handler classes steps 1-3 have used -- this is a NPDevGenerator change with its own generator-determinism and twin-pair-consistency implications per CLAUDE.md.",
-  "plan": "",
+  "head": "4ea4a824",
+  "headSubject": "feat(SEC-3): live-fire the Linux plugin cgroup ceiling in Docker, close SEC-3",
+  "summary": "Implemented the full SEC-3/QUAL-49/QUAL-50 plan across three tracks, all committed and pushed to origin/main (866c4fb1..4ea4a824). Track C (QUAL-50) triaged 5 security-sweep hits and fixed QUAL-46's guard. Track B (QUAL-49) root-caused the runtime-surface-evidence red to a -PendingOk invocation mismatch plus one real regression, and inverted the retired-checks default so it cannot recur. Track A (SEC-3) live-fired the Linux cgroup plugin ceiling in Docker for the first time, confirming and fixing the predicted child-cgroup-nesting defect, then catching two further unanticipated defects via the live-fire itself: swap absorption defeating the OOM kill (fixed, memory.swap.max=0) and a Windows Job Object startup-commit failure at 256MB on this machine (reverted that one test to its previously-verified 128MB rather than chase a JVM-tuning fix, filed as QUAL-51).",
+  "nextStep": "Two new follow-up items were filed and are the natural next work, neither blocking: (1) QUAL-51 (ledger/items/QUAL-51.yml) -- root-cause which HotSpot subsystem's commit crosses a tight OS memory ceiling on child JVM boot (PluginIpcChildProcess.spawn() passes no -Xmx/-Xms at all), fix by passing explicit conservative JVM memory flags when limits.memoryLimitMb() is set, then re-raise PluginIpcChildProcessWindowsResourceLimitTest back to 256MB with both its tests passing reliably across multiple runs. (2) SEC-4 (ledger/items/SEC-4.yml) -- a design decision, not a bugfix: whether/how to wire real generated-app java-source plugin capability calls through PluginIpcChildProcessPool for production traffic (today only test harnesses exercise it); read its own two open design questions before writing any code. Neither has a deadline; pick whichever the user prioritizes.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN-2026-09-01-SEC3-QUAL49-QUAL50\\plan.json (all 3 tracks, 23 steps, complete)",
   "blocked": "",
-  "verified": "Local: two full run-runtimehost-gate.ps1 runs green this session (assembled sample app's own gradle test task BUILD SUCCESSFUL both times across 665+ tests including all new PluginIpcChildProcessTest and PluginIpcChildProcessPoolTest cases, runtimehost-core's own gradle test task BUILD SUCCESSFUL, coverage-floor + runtime-surface-evidence checks passed both times). No CI run confirmed this session -- commits pushed but CI status not checked.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "Track C: run-all-gates.ps1 -Only aiKnowledge green (40/40 checks, 0 blocking findings). Track B: run-all-gates.ps1 -Only runtimeHost green. Track A: scripts/quality/run-linux-plugin-resource-proof.ps1 -Force passed live in Docker (3/3 JUnit tests, canCreateSiblingWithMemoryMax=true); full run-all-gates.ps1 (all four T2 gates: generator, runtimeHost, kernel, aiKnowledge) green as the final verification after the Windows-test revert. All three commits pushed to origin/main.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "daccc569 feat(SEC-3): fungible worker pool for plugin IPC (Model B step 3)",
-    "50c8025e chore: session handoff after SEC-3 Model B step 2"
+    "4ea4a824 feat(SEC-3): live-fire the Linux plugin cgroup ceiling in Docker, close SEC-3",
+    "8ac61eb4 fix(QUAL-49): root-cause runtime-surface-evidence red to invocation mismatch",
+    "297da306 fix(QUAL-50): triage security-sweep hits and fix QUAL-46's unresolvable guard",
+    "866c4fb1 feat(SEC-3): real-plugin-classloading manifest for PluginIpcChildProcessPool",
+    "03b123ce feat(SEC-3): per-OS plugin child-process resource limits (Model B step 4)"
   ]
 }
