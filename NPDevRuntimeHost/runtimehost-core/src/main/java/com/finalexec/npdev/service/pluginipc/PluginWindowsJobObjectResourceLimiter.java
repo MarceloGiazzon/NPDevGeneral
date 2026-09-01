@@ -57,6 +57,8 @@ final class PluginWindowsJobObjectResourceLimiter implements PluginProcessResour
             Kernel32.INSTANCE.CloseHandle(job);
             return true;
         } catch (UnsatisfiedLinkError | RuntimeException probeFailure) {
+            LOG.log(Level.FINE, "Windows Job Object probe failed -- this limiter will report unavailable "
+                    + "and child processes will run without an OS-level ceiling.", probeFailure);
             return false;
         }
     }

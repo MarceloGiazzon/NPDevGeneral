@@ -71,6 +71,8 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
             if (probeFailure instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
             }
+            LOG.log(Level.FINE, "systemd-run --user --scope probe failed -- falling back to raw cgroup v2 "
+                    + "(this is the normal path on a host without a lingering user session)", probeFailure);
             return false;
         }
     }
@@ -83,6 +85,8 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
             }
             return Files.isWritable(ownCgroupDir());
         } catch (IOException | RuntimeException probeFailure) {
+            LOG.log(Level.FINE, "Raw cgroup v2 writability probe failed -- this limiter will report "
+                    + "unavailable and the child process will run without an OS-level ceiling.", probeFailure);
             return false;
         }
     }

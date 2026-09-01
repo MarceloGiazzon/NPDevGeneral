@@ -5,8 +5,9 @@ title: >-
   surfaced them
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-01
+closed: 2026-09-01
 source: >-
   2026-09-01, SEC-3 real-plugin-classloading manifest work (the step-3 follow-up closing "the
   pool is not wired to real generated plugins" finding). A full run-ai-knowledge-gate.ps1 run
@@ -62,3 +63,62 @@ detail: |
   resolves, or re-open QUAL-46 if its DONE claim no longer holds. Not attempted here: out of scope
   for the real-plugin-classloading manifest work that surfaced both; recorded per this project's own
   "record the discrepancy, don't gloss over it" discipline (QUAL-49's own precedent).
+
+  RESOLVED 2026-09-01 (Track C of the SEC-3/QUAL-49/QUAL-50 implementation plan). Both findings
+  closed:
+
+  Finding 1 -- of the 5 distinct fingerprints (6 hit lines): 3 were fixed by adding logging, not by
+  allowlisting, because a bare `return false` contradicted PluginLinuxCgroupResourceLimiter's and
+  PluginProcessResourceLimiter's own javadoc promise of "logged loudly, never a silent downgrade" --
+  `LOG.log(Level.FINE, ...)` was added to each catch (PluginLinuxCgroupResourceLimiter.java:70 and
+  :85 [probeSystemdRunUser/probeRawCgroupWritable], PluginWindowsJobObjectResourceLimiter.java:59
+  [the Job Object probe]). FINE, not WARNING, because these are routine capability-probe failures
+  (e.g. no systemd session, no cgroup delegation) that fall through to the no-op limiter -- unlike
+  the sibling attachAfterStart() catch a few lines below PluginLinuxCgroupResourceLimiter.java:85,
+  which already logged at WARNING because IT fires only after a limit was believed available and
+  then failed to actually apply. The sweep's own "logged" detector only recognizes `.warn`/`.error`
+  method names (scripts/quality/security-pattern-sweep.py:264), so all 3 still report as hits after
+  logging -- allowlisted with that reasoning (fingerprints 2b8058ae3b67, 4d237fb40e0d,
+  b572df62a211). The 4th swallowed-security-exception hit (PluginIpcFrameCodec.java:61, catch
+  EOFException -> return null) was allowlisted as safe-as-written: EOF on a pipe is the wire
+  protocol's own documented clean-end-of-stream signal, and the null is not actually swallowed --
+  PluginIpcChildProcess.awaitDeathAndDescribe remaps it into a CapabilityResult carrying error code
+  PLUGIN_EXECUTION_PROCESS_KILLED plus the child's real exit code (fingerprint 6e18909402a9). The 2
+  SchemaLifecycleExecutor.java sql-string-building hits (lines 1860, 1881, one shared fingerprint
+  1312626de607) were also allowlisted as safe: traced both helpers
+  (flywayHistoryTableRef/flywayHistoryScriptColumnRef) and confirmed each splices in only the
+  dialect's own quote character from connection.getMetaData().getIdentifierQuoteString() around a
+  hardcoded literal identifier ("flyway_schema_history"/"script", Flyway's own fixed names) -- no
+  caller, model-author, or HTTP-reachable input reaches either helper. All 5 fingerprints recorded
+  in scripts/quality/security-pattern-sweep-allowlist.json (frozenCount raised 506 -> 511 in the
+  same commit, per its own ratchet discipline). `--fail-on-new` now exits 0.
+
+  Finding 2 -- QUAL-46's guard.ref rewritten to drop the gitignored `scripts/reports/out/...` token
+  entirely (it named a report file `git check-ignore -v` confirmed can never exist on a clean
+  checkout: .gitignore:88 ignores the whole scripts/reports/ directory) and instead anchor on
+  scripts/quality/run-ai-beta-gate.ps1 (a real, committed, checkable path) plus prose naming the
+  three scenario fixtures it was verified against. check-done-item-guards.py now reports the QUAL-46
+  guard as resolvable; "1 blocking finding(s)" became "0 blocking finding(s)".
+
+  A third thing was investigated and found to be a false alarm, not fixed: the implementation plan
+  also predicted QUAL-34, QUAL-47, QUAL-6 and REG-158 "very likely" already failed CI for the same
+  gitignored-report-path reason. Traced check-done-item-guards.py's resolve_script/resolve_manual
+  logic directly: none of those four items' actual guard.ref text contains a token the checker would
+  both recognize as repo-rooted AND resolve into scripts/reports/out/ (QUAL-34/QUAL-47/REG-158's
+  refs never mention the report paths at all -- only their `detail`/`asserts` prose does, which the
+  checker never reads; QUAL-6's ref uses a shell variable, `$OUT/...`, so the token the regex
+  extracts is `OUT/...`, which does not start with any REPO_TOP_LEVEL_DIRS prefix and is silently
+  skipped rather than checked). Confirmed empirically too: `gh run list --workflow=ai-knowledge-gate.yml
+  --limit 5` showed the 5 most recent runs all `success`, and a full local
+  `run-ai-knowledge-gate.ps1` (40 checks, ~531s) passed end-to-end after the Finding 1/2 fixes above
+  with "0 blocking finding(s)" and "AI knowledge gate PASSED." No further action taken on those four
+  items -- this is the plan's own third corrected premise (after QUAL-49's invocation mismatch and
+  SEC-3's cgroup-nesting hypothesis), recorded here rather than silently dropped.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-ai-knowledge-gate.ps1
+  asserts: >-
+    All 40 numbered checks print OK, check-done-item-guards.py reports "0 blocking finding(s)",
+    security-pattern-sweep.py --fail-on-new exits 0, and the script prints "AI knowledge gate
+    PASSED." Verified live 2026-09-01: 40/40 checks OK, 0 blocking findings, PASSED in ~531s.
+  provenRed: true
