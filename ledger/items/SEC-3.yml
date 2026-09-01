@@ -23,6 +23,7 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/PluginJavaSourcePolicy.java
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginBytecodeBootGate.java
+  - docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md
 detail: |
   MODEL A SHIPPED 2026-08-27 (ledger remediation session) -- "plugins are trusted; prevent accidents
   and casual misuse" is now REAL, with the boundary's honest residue recorded as B30:
@@ -187,3 +188,28 @@ detail: |
   before touching process spawning or resource limits at all -- it is the piece every other decision
   depends on, and the one most likely to reveal that the "different-sized piece of work" framing
   above is, if anything, still an underestimate.
+
+  2026-08-31/09-01 (owner-requested full design pass, NOT an implementation attempt -- same caveat as
+  the scoping pass above: a design document does not satisfy this item's own done-when bar, which
+  requires live-fired regression tests against a real isolated child process):
+  docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md answers all 5 open questions from the scoping
+  pass with concrete proposed decisions (not just options), grounded in the actual current interfaces
+  (TimeBoundedPluginExecutionEngine.execute/invokeHandler, CapabilityCall/CapabilityResult's exact
+  shapes, PluginExecutionPolicyEvaluator's decision model): length-prefixed JSON frames over the
+  child's stdin/stdout for both the outbound invoke and the child->host callback direction (with a
+  NEW runtime callback-allowlist gate, explicitly NOT a reuse of TrustedSourceBytecodeInspector's
+  static bytecode scan -- that inspector cannot see what a running child asks the host to do over an
+  IPC channel that doesn't exist yet); a fixed-size warm pool of fungible (not per-plugin) worker
+  processes to meet the existing timeout budget; Linux cgroups v2 (systemd-run --scope) vs Windows Job
+  Objects (new JNA/JNI binding, called out as genuinely new dependency surface) for per-OS resource
+  limits, with an explicit no-mechanism-available degrade-to-timeout-only posture; a crash-handling
+  sequence that reuses the EXISTING CapabilityResult.failure/CAPABILITY_FAILED shape rather than
+  inventing new caller-visible behavior; and an explicit, deliberately bounded trust-boundary
+  statement for after Model B ships (contained against resource exhaustion and accidental host
+  crashes, NOT against a deliberately hostile plugin AUTHOR -- same OS user, no container/VM
+  boundary). Also proposes a 5-step implementation sequence (protocol-in-process prototype -> real
+  child process, no pool -> warm pool -> per-OS limits -> docs update), matching the recommended-
+  first-step framing above but broken down further now that the protocol shape itself is decided.
+  Every decision in the doc is still a PROPOSAL needing a maintainer's confirmation before code is
+  written against it -- most load-bearing: the IPC frame shape (S1) and the new callback allowlist
+  (also S1), since a wrong call there is the one most expensive to unwind after §2-5 are built on it.
