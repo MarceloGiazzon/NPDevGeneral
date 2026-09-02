@@ -116,10 +116,10 @@
     },
     {
       "id": "B17",
-      "kind": "HITTABLE",
-      "userFacingText": "The super-user key you provided was rejected. Read the auto-generated key from SUPER_USER_KEY.txt in the app's working directory.",
-      "workaround": "Read the issued key from its file path (SUPER_USER_KEY.txt), never over HTTP -- it is issued, not supplied.",
-      "enforcingDiagnosticCodes": ["super_user_auth_failed"]
+      "kind": "LIFTED",
+      "userFacingText": "The bootstrap Super User credential is issued (default, SUPER_USER_KEY.txt), or supplied as a hash (npdev.superuser.bootstrap-key-hash, no plaintext secret needed) or a raw key above a length floor (npdev.superuser.bootstrap-key-raw). Either way it is a short-lived handoff: claim a named administrator (POST /api/admin/superuser/claim, or `npdev admin create`) and the bootstrap credential is revoked automatically. A key that was rejected because it was already claimed/revoked is told so specifically.",
+      "workaround": "Read the issued key from SUPER_USER_KEY.txt (default), or configure npdev.superuser.bootstrap-key-hash/.bootstrap-key-raw for a deployment-supplied bootstrap credential; either way, claim a named administrator promptly and the bootstrap key stops working.",
+      "enforcingDiagnosticCodes": ["super_user_auth_failed", "super_user_key_revoked", "B17:bootstrap_key_too_short"]
     },
     {
       "id": "B18",

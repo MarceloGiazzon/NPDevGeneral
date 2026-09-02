@@ -1,6 +1,46 @@
 id: B17
-title: "Super-user key is issued, not supplied"
+title: "~~Super-user key is issued, not supplied~~ LIFTED, with a gate (entropy floor / claim flow) -- SEC-8, 2026-09-02"
 codeLinked: true
-codeLinkedNote: "SuperUserCredentialAuthFilter now returns a structured JSON error with boundaryId B17 and error code super_user_auth_failed."
+codeLinkedNote: >-
+  Originally: SuperUserCredentialAuthFilter returned a structured JSON error with boundaryId B17 and
+  error code super_user_auth_failed for any rejected key -- a single, undifferentiated refusal.
+
+  LIFTED 2026-09-02 (SEC-8, BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.4, wave 1). The
+  distinction that makes this a lift rather than a weakening (the row's own recorded reasoning for
+  why "supplied" was refused in the first place: weak operator-chosen keys): the issued/supplied key
+  is now explicitly a BOOTSTRAP credential, not a permanent identity --
+  `first boot -> key issued/supplied -> operator claims a named admin -> bootstrap key revoked ->
+  normal auth`.
+
+  `SuperUserBootstrapper` now supports three ways the FIRST credential comes into being (first
+  property set wins): (1) unchanged default -- a random key is issued, printed, written to
+  SUPER_USER_KEY.txt; (2) `npdev.superuser.bootstrap-key-hash` -- a deployment supplies the SHA-256
+  hash of a key it generated itself (`npdev admin hash-key`, CLI-local, never sent anywhere), so no
+  plaintext secret sits in a compose file or env dump, and this app never sees/prints/stores the raw
+  key; (3) `npdev.superuser.bootstrap-key-raw` -- a deployment supplies the raw key directly, refused
+  at BOOT (not silently accepted) below a `MIN_RAW_KEY_LENGTH` (24 chars) floor -- a length-based
+  proxy for entropy, honestly named as such (no charset-diversity estimate), carrying
+  `B17:bootstrap_key_too_short:`. All three land one ACTIVE SUPERUSER credential, actor id
+  `"bootstrap"`.
+
+  `SuperUserClaimController#claim` (new, `POST /api/admin/superuser/claim`) is the claim step:
+  authenticated via the LIVE super-key path specifically (REG-22's
+  `SUPER_USER_AUTHENTICATED_ATTRIBUTE` marker, the same one `ActuatorAdminGuardFilter` gates on --
+  never a business JWT merely carrying a SUPERUSER role), issues a fresh SUPERUSER credential under
+  an operator-chosen `actorId`, then revokes EXACTLY the credential that authenticated the call
+  (`CredentialRegistryService#credentialIdForKey`, new -- identifies the live credential by its
+  presented key, not "every active SUPERUSER credential", so a normal claim never touches an
+  unrelated one). `npdev admin create` is the CLI front end, same SUPERUSER-auth discovery shape
+  `npdev db restore`/`monitor hotswap` already use.
+
+  `SuperUserCredentialAuthFilter` now distinguishes a REVOKED key (most commonly the bootstrap key,
+  right after a claim) from one never issued at all --
+  `CredentialRegistryService#lookupStatus` (new, looks up a hash regardless of ACTIVE/REVOKED status,
+  unlike `#resolve`) backs a new `super_user_key_revoked` error code, still carrying `boundaryId:
+  B17`, alongside the unchanged `super_user_auth_failed` for a genuinely unknown key.
+
+  `SUPER_USER_KEY.txt` is unchanged as the fallback path (mode 1, the default) -- fully backward
+  compatible; nothing about an existing deployment's boot behavior changes unless one of the two new
+  properties is set.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B17"
-classification: HITTABLE
+classification: LIFTED

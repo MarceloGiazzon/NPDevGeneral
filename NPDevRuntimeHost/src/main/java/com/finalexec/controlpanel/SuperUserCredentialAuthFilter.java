@@ -65,10 +65,23 @@ public class SuperUserCredentialAuthFilter extends OncePerRequestFilter {
         String key = normalize(request.getHeader(HEADER_NAME));
         Optional<ApiKeyCredentialResolver.Principal> resolved = credentialRegistryService.resolve(key);
         if (resolved.isEmpty() || !resolved.get().roles().contains(REQUIRED_ROLE)) {
+            // SEC-8 (B17): a key that resolves to a REVOKED credential (most commonly the bootstrap
+            // key, right after the claim flow revokes it) gets a message saying so, distinct from a
+            // key that was never issued at all -- credentialRegistryService.resolve() above only
+            // ever reports a hit for a CURRENTLY-ACTIVE credential, so this second, revoked-inclusive
+            // lookup is what tells the two apart.
+            boolean wasRevoked = credentialRegistryService.lookupStatus(key)
+                    .filter(status -> status == com.finalexec.npdev.service.CredentialRegistryService.Status.REVOKED)
+                    .isPresent();
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json");
-            response.getWriter().write("""
-                {"error":"super_user_auth_failed","boundaryId":"B17","message":"Super-user key was rejected. Read the key from SUPER_USER_KEY.txt in the app's working directory."}""");
+            if (wasRevoked) {
+                response.getWriter().write("""
+                    {"error":"super_user_key_revoked","boundaryId":"B17","message":"This Super-user key was revoked -- most likely because it was the bootstrap key and an administrator has already been claimed with it. Sign in with the administrator key claimed at that time, or, if none was claimed, start the app once with npdev.superuser.force-reissue=true to issue a fresh bootstrap key."}""");
+            } else {
+                response.getWriter().write("""
+                    {"error":"super_user_auth_failed","boundaryId":"B17","message":"Super-user key was rejected. Read the key from SUPER_USER_KEY.txt in the app's working directory."}""");
+            }
             return;
         }
         ApiKeyCredentialResolver.Principal principal = resolved.get();
