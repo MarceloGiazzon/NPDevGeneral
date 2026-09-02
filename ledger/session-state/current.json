@@ -1,22 +1,17 @@
 {
-  "closedAt": "2026-09-02T16:08:10.3179852Z",
+  "closedAt": "2026-09-02T16:09:37.4140488Z",
   "branch": "main",
-  "head": "88818d45",
-  "headSubject": "fix: close T2 gate failures surfaced while verifying wave 1",
-  "summary": "Implemented all 4 wave-1 packages of BOUNDARY_LIFT_PLAN_2026-09-02.md (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\BOUNDARY_LIFT_PLAN_2026-09-02.md): SEC-7 (B30-A, plugin:java-source resource limits on by default, measured 512MB/50% against a real mount), STOR-18 (B9, bulk FK-ordered preflighted snapshot restore + npdev db restore CLI), EDIT-17 (B19, band picker without a panel via a synthesized reference-lookup projection), SEC-8 (B17, Super User bootstrap key becomes a short-lived handoff via a claim flow + hash/raw-supplied bootstrap modes + npdev admin CLI). B9/B19/B17 reclassified HITTABLE->LIFTED. Along the way found and fixed a latent ForeignKeyDecl visibility bug, a redundant-null-check coverage regression, 4 malformed guard.ref ledger entries (3 mine + 1 pre-existing in QUAL-53), 2 untriaged security-pattern-sweep hits, and a DSL coverage-ratchet oscillation (opened QUAL-54 to track its unidentified root cause). 5 commits pushed to main (04ad77e2..88818d45); full run-all-gates.ps1 T2 suite passed clean as the closing verification.",
-  "nextStep": "Wave 2 (schema identity foundation) of BOUNDARY_LIFT_PLAN_2026-09-02.md: package 2.1, B8 (ownership recorded at creation, plus explicit adoption) -- see the plan file's section 4 for the enforcement point (SchemaLifecycleExecutor.java droppedConceptTables) and done-when criteria. Depends on nothing new; 2.2 (B1) and 2.3 (B5-A) depend on 2.1's shared diff surface. Before starting, investigate QUAL-54 (DSL coverage oscillation, scripts/policy/coverage-baseline.json) if it recurs -- QUAL-48's diff-two-jacoco-reports method is proven and ready to reuse.",
-  "plan": "",
+  "head": "104f1fb8",
+  "headSubject": "chore: session handoff after wave-1 boundary-lift close",
+  "summary": "Implemented and shipped all 4 wave-1 packages of BOUNDARY_LIFT_PLAN_2026-09-02.md: SEC-7 (B30-A, plugin:java-source resource limits on by default, measured live), STOR-18 (B9, bulk FK-ordered preflighted snapshot restore + npdev db restore), EDIT-17 (B19, band picker without a panel via a synthesized reference-lookup projection), SEC-8 (B17, Super User bootstrap key as a short-lived handoff via a claim flow + npdev admin). B9/B19/B17 reclassified HITTABLE->LIFTED. Closing run-all-gates.ps1 (T2) surfaced and required fixing a latent ForeignKeyDecl visibility bug, a coverage regression, 4 malformed guard.ref ledger entries (3 mine, 1 pre-existing QUAL-53), 2 untriaged security-pattern hits, and a DSL coverage-ratchet wobble (opened QUAL-54). 6 commits pushed to main (bc2c1a26..104f1fb8), working tree clean, nothing unpushed.",
+  "nextStep": "Wave 2 (schema identity foundation) of BOUNDARY_LIFT_PLAN_2026-09-02.md (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\BOUNDARY_LIFT_PLAN_2026-09-02.md): start package 2.1, B8 (ownership recorded at creation, plus explicit adoption) -- enforcement point is SchemaLifecycleExecutor.java's droppedConceptTables (see plan section 4 for exact done-when criteria). No dependency on unfinished work. Packages 2.2 (B1, rename scorer) and 2.3 (B5-A, schema snapshot) depend on 2.1's shared diff surface, so do 2.1 first. If QUAL-54's DSL coverage wobble (scripts/policy/coverage-baseline.json) recurs, reuse QUAL-48's proven diff-two-jacoco-reports method to root-cause it before it blocks another gate run.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\BOUNDARY_LIFT_PLAN_2026-09-02.md",
   "blocked": "",
-  "verified": "run-all-gates.ps1 (T2, all 4 gates: generator/runtimeHost/kernel/aiKnowledge) passed clean at commit 88818d45. Each of the 4 feature packages individually verified: SEC-7 via a live-fire measurement script against a real booted app; STOR-18 via DataSource-backed unit tests + T1 fast-gate; EDIT-17 via DSL validateModel + T1 fast-gate with the new corpus model generating/building/booting; SEC-8 via a live-fire claim-flow script against a real booted app (6/6 steps passed) plus MockMvc controller tests.",
+  "verified": "run-all-gates.ps1 (T2, all 4 gates: generator/runtimeHost/kernel/aiKnowledge) passed clean at commit 88818d45, the exact commit before the handoff-only commit 104f1fb8. Per-package: SEC-7 via a live-fire measurement script against a real booted app (6/6 assertions); STOR-18 via DataSource-backed JUnit tests + T1 fast-gate; EDIT-17 via DSL validateModel (0 errors) + T1 fast-gate with the new corpus model generating/building/booting; SEC-8 via a live-fire claim-flow script against a real booted app (6/6 steps) plus MockMvc controller tests.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "88818d45 fix: close T2 gate failures surfaced while verifying wave 1",
-    "3e8b8dcd feat(SEC-8): Super User bootstrap key becomes a short-lived handoff",
-    "81319a19 feat(EDIT-17): band picker without a panel, targeting its own concept",
-    "c7dffad9 feat(STOR-18): bulk pre-drop-snapshot restore, FK-ordered and preflighted",
-    "04ad77e2 feat(SEC-7): plugin:java-source resource limits on by default, measured",
-    "bc2c1a26 chore: session handoff after QUAL-53"
+    "104f1fb8 chore: session handoff after wave-1 boundary-lift close"
   ]
 }
