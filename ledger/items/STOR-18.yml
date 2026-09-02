@@ -101,13 +101,12 @@ detail: |
   hardest on exactly the engines (H2/MySQL) where it buys the least.
 guard:
   kind: test
-  ref: >-
-    NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaDropSnapshotRestorerTest.java
-    #missingLiveTablesReportsExactlyTheTablesThatDoNotExistLive and
-    #aConflictInOneTableDoesNotBlockRestoringAnotherTableInTheSameBatch (both new this session), plus
-    NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaDropSnapshotRestorePlanTest.java (9 pure
-    ordering/resolution cases, new this session)
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaDropSnapshotRestorePlanTest.java
   asserts: >-
+    (Guard.ref names one representative file for check-done-item-guards.py's single-path resolver;
+    the full coverage this item relies on also includes
+    SchemaDropSnapshotRestorerTest#missingLiveTablesReportsExactlyTheTablesThatDoNotExistLive and
+    #aConflictInOneTableDoesNotBlockRestoringAnotherTableInTheSameBatch, both new this session.)
     missingLiveTablesReportsExactlyTheTablesThatDoNotExistLive proves the preflight primitive the
     batch endpoint calls before writing anything names exactly the missing table(s) out of a
     multi-table set, checked in one pass. aConflictInOneTableDoesNotBlockRestoringAnotherTableInThe

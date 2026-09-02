@@ -98,17 +98,18 @@ detail: |
   files here.
 guard:
   kind: test
-  ref: >-
-    NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SuperUserBootstrapperTest.java (5
-    tests: default/hash/raw-above-floor/raw-below-floor-refuses/second-boot-skips),
-    NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/CredentialRegistryServiceTest.java (5
-    new tests for issueWithKnownHash/hash/credentialIdForKey/lookupStatus), and
-    NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SuperUserClaimControllerTest.java (4
-    tests: claim-issues-and-revokes / claim-leaves-an-unrelated-active-credential-untouched /
-    claim-without-the-live-super-key-marker-is-forbidden / claim-without-an-actorId-is-rejected),
-    plus the live-fire script described above (not committed -- scratchpad, reused
-    run-engine-app-proof.py's machinery per SEC-6/SEC-7 precedent)
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SuperUserClaimControllerTest.java#claimIssuesANamedCredentialAndRevokesExactlyTheOneThatAuthenticated
   asserts: >-
+    Guard.ref names one representative method (check-done-item-guards.py's resolver takes a single
+    path/#method) -- the same file's #claimLeavesAnUnrelatedActiveSuperuserCredentialUntouched,
+    #claimWithoutTheLiveSuperKeyMarkerIsForbidden, and #claimWithoutAnActorIdIsRejected are new this
+    session too, plus NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/
+    SuperUserBootstrapperTest.java (5 tests: default/hash/raw-above-floor/raw-below-floor-refuses/
+    second-boot-skips) and NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/
+    CredentialRegistryServiceTest.java (5 new tests for
+    issueWithKnownHash/hash/credentialIdForKey/lookupStatus), and the live-fire script described
+    above (not committed -- scratchpad, reused run-engine-app-proof.py's machinery per SEC-6/SEC-7
+    precedent).
     SuperUserBootstrapperTest proves all three bootstrap modes install the expected credential (or,
     for a too-short raw key, install NOTHING and throw BoundaryBootException carrying boundaryId B17
     and the bootstrap_key_too_short code), and that a second boot never re-issues once any active

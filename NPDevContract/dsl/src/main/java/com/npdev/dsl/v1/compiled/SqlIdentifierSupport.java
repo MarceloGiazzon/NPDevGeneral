@@ -160,6 +160,14 @@ public final class SqlIdentifierSupport {
         return "/api/concepts/" + aliasPreservingTableName(qualifiedConceptName, contexts);
     }
 
+    /** Same as {@link #conceptEndpointBase(String, List)}, from a {@link CompiledConcept} --
+     * {@code BusinessUiEmitter.endpointBase}'s own original call shape, so that caller keeps
+     * whatever null-handling {@link #aliasPreservingTableName(CompiledConcept, List)} already gives
+     * it rather than needing a second null check of its own. */
+    public static String conceptEndpointBase(CompiledConcept concept, List<CompiledContext> contexts) {
+        return "/api/concepts/" + aliasPreservingTableName(concept, contexts);
+    }
+
     public static String toSnakePlural(String value) {
         String base = toSnake(value);
         if (base.isBlank() || base.endsWith("s")) {
