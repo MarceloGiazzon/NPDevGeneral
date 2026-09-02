@@ -557,6 +557,9 @@ public final class ModelCompiler {
         }
         // Registry of each concept's Prompt picker, so a form's FK field can auto-wire to it.
         Map<String, AutoPanelExpander.PromptRef> promptsByConcept = new LinkedHashMap<>();
+        // B19: computed once, reused by the aggregate-workbench expansion loop below AND the final
+        // CompiledModel construction further down -- avoids recomputing it per AutoPanel.
+        List<com.npdev.dsl.v1.compiled.CompiledContext> compiledContexts = toCompiledContexts(modelAst.getContexts());
         for (CompiledAutoPanel autoPanel : autoPanels) {
             if (autoPanel.concept() == null || autoPanel.concept().isBlank()) {
                 continue;
@@ -580,8 +583,12 @@ public final class ModelCompiler {
                 // Aggregate-bound: the Transaction surface becomes the multi-level Aggregate Workbench.
                 CompiledAggregate aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
                 if (aggregate != null) {
+                    // B19: threaded through so a no-panel band picker's projection can resolve the
+                    // SAME bounded-context-aware physical table name endpointBase() uses for an FK
+                    // field's reference lookup.
                     panels.addAll(AutoPanelExpander.expandAggregateWorkbench(
-                            autoPanel, aggregate, fieldNamesByConcept, conceptsByNormalizedName, settings));
+                            autoPanel, aggregate, fieldNamesByConcept, conceptsByNormalizedName, settings,
+                            compiledContexts));
                 }
             }
         }
@@ -624,7 +631,7 @@ public final class ModelCompiler {
                 toCompiledRoles(modelAst.getRoles()),
                 toCompiledPropertyScopes(modelAst.getPropertyScopes()),
                 toCompiledProperties(modelAst.getProperties()),
-                toCompiledContexts(modelAst.getContexts()),
+                compiledContexts,
                 conversions,
                 toCompiledWebhooks(modelAst.getWebhooks()),
                 toCompiledSequences(modelAst.getSequences()),

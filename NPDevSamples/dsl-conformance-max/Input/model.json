@@ -742,6 +742,23 @@
       }
     },
     {
+      "name": "WidgetOrderNoPanelPickerWorkbench",
+      "aggregate": "WidgetOrderAggregate",
+      "route": "/widget-orders-no-panel-picker",
+      "metadata": {
+        "purpose": "BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1 (B19): dsl-conformance-max witness for a bandPickers entry with NO panel -- filter/multiSelect only, resolving a projection targeting the band's own collection concept (WidgetOrderLineNote) directly through the generic reference-lookup endpoint, instead of a hand-authored Selection panel."
+      },
+      "transaction": {
+        "bandPickers": {
+          "notes": {
+            "label": "Pick a reviewed note",
+            "columns": ["id", "text"],
+            "filter": "text == 'Reviewed'"
+          }
+        }
+      }
+    },
+    {
       "name": "WidgetCatalogEntryBrowser",
       "concept": "WidgetCatalogEntry",
       "route": "/widget-catalog-entries",

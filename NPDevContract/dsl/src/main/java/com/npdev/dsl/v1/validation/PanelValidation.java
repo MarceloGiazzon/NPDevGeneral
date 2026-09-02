@@ -324,13 +324,19 @@ final class PanelValidation {
      * Move 7 W1: typed replacement for {@code transaction.metadata.bandPickers} -- keys must name a
      * real declared band (a nested collection one level under a top-level collection). {@code panel}
      * is an opaque reference to an authored Selection surface with no closed universe to validate its
-     * VALUE against, but its PRESENCE is required (B19, docs/ACCEPTED_BOUNDARIES.md): without a
-     * panel, a {@code filter}/{@code multiSelect} declared on the picker has nothing to apply to and
-     * would be silently inert at runtime -- {@link WorkbenchBandPickerAst}'s own class javadoc floats
-     * a future "targets its own collection's concept directly" no-panel path, but that path was never
-     * built, so this refuses up front instead. The B19-prefixed message is the boundaryId link
-     * {@code ValidationDiagnosticNormalizer}'s {@code BOUNDARY_PREFIX_IDS} map strips before
-     * pattern-matching -- same convention {@code B1}/{@code B13} already use.
+     * VALUE against.
+     *
+     * <p>B19 (lifted, `BOUNDARY_LIFT_PLAN_2026-09-02.md` work package 1.1): {@code panel} is no
+     * longer unconditionally required. A band picker resolves ONE of two ways: (1) a named {@code
+     * panel}, unchanged; or (2) no panel, but {@code filter} and/or {@code multiSelect} declared --
+     * {@code AutoPanelExpander} synthesizes a projection targeting the band's own collection concept
+     * directly (the SAME reference-lookup endpoint an FK field's picker already uses), exactly the
+     * no-panel path {@link WorkbenchBandPickerAst}'s own class javadoc had floated but never built.
+     * What is STILL refused: a picker declaring NEITHER a panel NOR filter/multiSelect -- nothing for
+     * either mechanism to act on, {@code B19:band_picker_unresolvable_concept:}. The B19-prefixed
+     * message is the boundaryId link {@code ValidationDiagnosticNormalizer}'s {@code
+     * BOUNDARY_PREFIX_IDS} map strips before pattern-matching -- same convention {@code B1}/{@code
+     * B13} already use.
      */
     private static void validateBandPickers(
             String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate, List<String> errors) {
@@ -348,9 +354,15 @@ final class PanelValidation {
             if (!bandNames.contains(normalize(entry.getKey()))) {
                 errors.add(panelLabel + " transaction.bandPickers: unrecognized band '" + entry.getKey()
                         + "' -- must be a declared nested (band) collection name");
-            } else if (!hasText(entry.getValue().panel())) {
-                errors.add("B19:band_picker_requires_panel:" + panelLabel + " transaction.bandPickers."
-                        + entry.getKey() + ": panel is required");
+                continue;
+            }
+            WorkbenchBandPickerAst picker = entry.getValue();
+            boolean hasPanel = hasText(picker.panel());
+            boolean hasProjectionInputs = hasText(picker.filter()) || picker.multiSelect();
+            if (!hasPanel && !hasProjectionInputs) {
+                errors.add("B19:band_picker_unresolvable_concept:" + panelLabel + " transaction.bandPickers."
+                        + entry.getKey() + ": declare either panel, or filter/multiSelect (targets the "
+                        + "band's own collection concept directly) -- neither was given");
             }
         }
     }

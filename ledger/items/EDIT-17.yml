@@ -1,0 +1,114 @@
+id: EDIT-17
+title: >-
+  A band picker without a panel -- filter/multiSelect only -- now resolves a real projection against
+  the band's own collection concept, lifting B19's "panel is required" refusal by construction
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1 (B19), wave 1. B19's own docs/ACCEPTED_BOUNDARIES.md
+  row named the exact revisit trigger: "A no-panel fetch path targeting the band's own concept
+  directly becomes a real authoring need -- would be new work (a fetch mechanism, not a validation
+  relaxation)". `WorkbenchBandPickerAst`'s own class javadoc had already floated this same no-panel
+  path as a future direction without it ever being built.
+surface: NPDevContract/dsl (compiler, validation, schema), NPDevGenerator (BusinessUiEmitter,
+  workbench-page.html.mustache), NPDevSamples/dsl-conformance-max
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/SqlIdentifierSupport.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AutoPanelWorkbenchTypedSurfaceValidationTest.java
+  - NPDevContract/schemas/model.schema.json (+ 3 mirror copies)
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - ledger/boundaries/B19.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. A model declaring `transaction.bandPickers.<band>: { filter, multiSelect }` with NO `panel`
+     compiles, generates, and boots. `AutoPanelExpander.bandPickers()` synthesizes a picker entry
+     carrying `endpointBase` (via new `SqlIdentifierSupport.conceptEndpointBase`, shared with
+     `BusinessUiEmitter.endpointBase` -- refactored to delegate to the same helper rather than a
+     second computation of the `/api/concepts/` route) instead of `panel`, plus
+     `defaultFilterExpression` (a `{field, operator, value}` triple, parsed by a new
+     `parseBandPickerFilterExpression` mirroring -- cannot depend on, DSL cannot see the generator --
+     `BusinessUiEmitter.parsePickerFilterExpression`'s exact `field == 'literal'`/`!=` grammar,
+     validated against the band's own concept's real declared fields). `contexts` (bounded-context
+     physical-isolation awareness) threaded from `ModelCompiler.compile()` through
+     `expandAggregateWorkbench` for this, computed once and reused (also replacing a second call site
+     that previously recomputed it for `CompiledModel` construction).
+
+  2. `B19:band_picker_requires_panel:` no longer fires for the panel-absent/projection-present shape
+     -- it does not fire for ANY reachable shape anymore, since a recognized band name (the earlier
+     `unrecognized band` check, unchanged) now always resolves via panel OR projection. Replaced by a
+     narrower refusal, `B19:band_picker_unresolvable_concept:`, for the one shape still meaningless:
+     neither panel NOR filter/multiSelect declared.
+
+  3. `NPDevSamples/dsl-conformance-max` carries a no-panel band picker as positive corpus coverage:
+     new autoPanel `WidgetOrderNoPanelPickerWorkbench` (bound to the existing `WidgetOrderAggregate`,
+     route `/widget-orders-no-panel-picker`), declaring `transaction.bandPickers.notes: { filter:
+     "text == 'Reviewed'", columns: ["id","text"], label: "Pick a reviewed note" }` -- no panel.
+     Validated clean (`:NPDevContract:dsl:validateModel`, 0 errors) and confirmed generating/building/
+     booting clean as part of `run-fast-gate.ps1`'s canary-adjacent `dsl-conformance-max-generate`
+     stage (the same stage `check-dsl-coverage.py`'s "every tracked DSL feature is exercised" already
+     runs against).
+
+  4. Client-side emitter wiring: `workbench-page.html.mustache`'s `openBandPicker` now branches on
+     `picker.panel` (existing path, byte-for-byte behavior otherwise unchanged) vs `picker.endpointBase`
+     (new) -- the two paths' row shapes differ (a panel's rows arrive `{id, data:{...}}`-wrapped via
+     `/api/runtime/metadata/ui/panels/{name}`; the reference-lookup endpoint's rows arrive flat via
+     `/api/concepts/<table>?page=&size=&where=`, the SAME endpoint/query-param convention
+     `business-ui-app.mustache`'s FK-field picker dialog already uses), normalized into one shared
+     `renderRows` helper feeding the SAME pre-existing checkbox/multi-select/"Add" UI -- reuse, not a
+     second UI. A NEW `bandPickerWhereExpression` helper builds the `field:operator:value` string from
+     `defaultFilterExpression`, mirroring `business-ui-app.mustache`'s own `whereExpression()` (a
+     second, small, deliberately duplicated ~3-line function -- the two mustache templates are
+     independent client bundles with no shared JS module today, and sharing one function across them
+     was judged not worth a new build-time JS-include mechanism for this size of duplication).
+     NOT independently browser-verified against a running app this session (no generated sample app
+     with THIS exact model was booted and driven through a real browser click-through of the picker
+     dialog) -- covered instead by (a) the corpus model generating/building/booting clean end-to-end
+     through the real compiler+generator+RuntimeHost pipeline (proving the JSON/route/filter shapes
+     are consistent and reachable), and (b) the client JS mirrors an ALREADY-PROVEN-live code path
+     (business-ui-app.mustache's FK-field picker, B16) property-for-property. A follow-up session
+     should run `verify-in-browser` against a real app using `WidgetOrderNoPanelPickerWorkbench` (or
+     an equivalent) before calling this fully proven in a live browser.
+
+  Register updated across all seams: `ledger/boundaries/B19.yml` reclassified HITTABLE -> LIFTED
+  (by construction, history kept per the B15 shape); `NPDevContract/schemas/accepted-boundaries.json`'s
+  B19 entry rewritten (`kind: LIFTED`, `enforcingDiagnosticCodes` swapped from
+  `band_picker_requires_panel` to `band_picker_unresolvable_concept`); `docs/ACCEPTED_BOUNDARIES.md`'s
+  B19 row rewritten and moved into the LIFTED classification list; all 4 `model.schema.json` copies'
+  stale `workbenchBandPicker`/`bandPickers` descriptions (still saying "panel remains required...not
+  yet wired" and "intentionally unused...do not manufacture artificial usage") corrected to describe
+  the shipped state, verified still semantically identical across all 4 copies
+  (`check-schema-mirror-consistency.py`). `scripts/quality/twin-pair-registry.json` untouched -- no
+  new code<->code string pair spans two files here (the shared endpoint-base/filter-parsing logic is
+  a genuine code-reuse refactor within one call graph, not a duplicated literal needing a twin-pair
+  guard).
+guard:
+  kind: test
+  ref: >-
+    NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AutoPanelWorkbenchTypedSurfaceValidationTest.java
+    #bandPickersFilterOnlyWithNoPanelIsAccepted, #bandPickersMultiSelectOnlyWithNoPanelIsAccepted,
+    #bandPickersWithNeitherPanelNorProjectionInputsIsRejected,
+    #bandPickersUnresolvableConceptDiagnosticCarriesB19BoundaryId (all new/rewritten this session,
+    replacing the two tests that asserted the now-retired unconditional-panel-required behavior)
+  asserts: >-
+    A bandPickers entry with only filter, or only multiSelect, and no panel validates with ZERO
+    errors (the two cases that used to be hard refusals). A bandPickers entry with neither panel nor
+    filter/multiSelect still refuses, carrying boundaryId B19 and the new
+    band_picker_unresolvable_concept message. All four tests pass
+    (:NPDevContract:dsl:test --tests AutoPanelWorkbenchTypedSurfaceValidationTest, this session,
+    live). NPDevSamples/dsl-conformance-max's updated model.json (with the new no-panel
+    WidgetOrderNoPanelPickerWorkbench autoPanel) validates with 0 errors/0 warnings
+    (:NPDevContract:dsl:validateModel, this session, live). Full generate+build+boot verification of
+    ALL of this item's changes together (compiler, generator, template) is run-generator-gate.ps1 /
+    run-fast-gate.ps1, executed as this wave's closing gate rather than re-run per package.
+  provenRed: true
