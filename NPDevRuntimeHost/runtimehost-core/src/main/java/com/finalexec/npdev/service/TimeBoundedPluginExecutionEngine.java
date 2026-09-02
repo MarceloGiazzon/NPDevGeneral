@@ -55,6 +55,12 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
         Objects.requireNonNull(call, "call");
         Objects.requireNonNull(handler, "handler");
 
+        // SEC-6: a handler may declare its own timeout FLOOR (see PluginTimeoutHint) -- this can only
+        // raise the budget for THIS handler, never lower it and never affect any other handler's call.
+        long effectiveTimeoutMs = handler instanceof PluginTimeoutHint hint
+                ? Math.max(timeoutMs, hint.minimumTimeoutMs())
+                : timeoutMs;
+
         PluginExecutionPolicyDecision policyDecision = pluginExecutionPolicyEvaluator.evaluate(contribution, call);
         if (!policyDecision.allowed()) {
             SandboxedPluginExecutionResult executionResult = new SandboxedPluginExecutionResult(
@@ -78,7 +84,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                     realizationSummary.realizationStrategy(),
                     Map.of(),
                     call.correlationId(),
-                    timeoutMs,
+                    effectiveTimeoutMs,
                     0L
             );
             record(executionResult);
@@ -87,7 +93,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
         }
 
         long startedAt = System.nanoTime();
-        logStart(contribution, realizationSummary, call);
+        logStart(contribution, realizationSummary, call, effectiveTimeoutMs);
         // REG-4 (2026-07-21): a stray interrupt already pending on the CALLING thread -- e.g. left by
         // an unrelated prior task on the same worker thread under a parallel test/execution run --
         // makes future.get(timeout) throw InterruptedException IMMEDIATELY, before the timeout can
@@ -100,14 +106,15 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
         boolean callerWasInterrupted = Thread.interrupted();
         Future<CapabilityResult> future = executorService.submit(() -> invokeHandler(call, contextState, handler));
         try {
-            CapabilityResult result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            CapabilityResult result = future.get(effectiveTimeoutMs, TimeUnit.MILLISECONDS);
             SandboxedPluginExecutionResult executionResult = fromCapabilityResult(
                     contribution,
                     realizationSummary,
                     call,
                     result,
                     elapsedMs(startedAt),
-                    SandboxedPluginExecutionResult.Status.SUCCESS
+                    SandboxedPluginExecutionResult.Status.SUCCESS,
+                    effectiveTimeoutMs
             );
             record(executionResult);
             logFinish(executionResult);
@@ -118,7 +125,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                     SandboxedPluginExecutionResult.Status.TIMED_OUT,
                     null,
                     "PLUGIN_EXECUTION_TIMEOUT",
-                    "Sandboxed plugin execution timed out after %d ms".formatted(timeoutMs),
+                    "Sandboxed plugin execution timed out after %d ms".formatted(effectiveTimeoutMs),
                     CapabilityErrorKind.TIMEOUT,
                     contribution.pluginId(),
                     contribution.adapterId(),
@@ -135,7 +142,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                     realizationSummary.realizationStrategy(),
                     Map.of(),
                     call.correlationId(),
-                    timeoutMs,
+                    effectiveTimeoutMs,
                     elapsedMs(startedAt)
             );
             record(executionResult);
@@ -164,7 +171,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                     realizationSummary.realizationStrategy(),
                     Map.of(),
                     call.correlationId(),
-                    timeoutMs,
+                    effectiveTimeoutMs,
                     elapsedMs(startedAt)
             );
             record(executionResult);
@@ -193,7 +200,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                     realizationSummary.realizationStrategy(),
                     Map.of(),
                     call.correlationId(),
-                    timeoutMs,
+                    effectiveTimeoutMs,
                     elapsedMs(startedAt)
             );
             record(executionResult);
@@ -455,7 +462,8 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
             CapabilityCall call,
             CapabilityResult result,
             long durationMs,
-            SandboxedPluginExecutionResult.Status successStatus
+            SandboxedPluginExecutionResult.Status successStatus,
+            long effectiveTimeoutMs
     ) {
         if (result != null && result.ok()) {
             return new SandboxedPluginExecutionResult(
@@ -479,7 +487,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                     realizationSummary.realizationStrategy(),
                     SandboxedPluginExecutionResult.summarizeOutputEvidence(result.value()),
                     call.correlationId(),
-                    timeoutMs,
+                    effectiveTimeoutMs,
                     durationMs
             );
         }
@@ -507,7 +515,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                 realizationSummary.realizationStrategy(),
                 Map.of(),
                 call.correlationId(),
-                timeoutMs,
+                effectiveTimeoutMs,
                 durationMs
         );
     }
@@ -594,7 +602,8 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
     private void logStart(
             RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution,
             RuntimePluginPackageRealizationService.RealizationSummaryItem realizationSummary,
-            CapabilityCall call
+            CapabilityCall call,
+            long effectiveTimeoutMs
     ) {
         LOG.info(
                 "NPDEV-PLUGIN-SANDBOX :: phase=start pluginId=%s adapterId=%s capability=%s operation=%s runtimeRef=%s selectedPackageId=%s artifactKind=%s strategy=%s correlationId=%s timeoutMs=%d"
@@ -608,7 +617,7 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
                                 realizationSummary.artifactKind(),
                                 realizationSummary.realizationStrategy(),
                                 call.correlationId(),
-                                timeoutMs
+                                effectiveTimeoutMs
                         )
         );
     }

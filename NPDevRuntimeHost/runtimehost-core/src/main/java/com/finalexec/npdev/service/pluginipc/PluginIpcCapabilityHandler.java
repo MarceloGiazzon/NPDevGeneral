@@ -1,6 +1,7 @@
 package com.finalexec.npdev.service.pluginipc;
 
 import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
+import com.finalexec.npdev.service.PluginTimeoutHint;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
@@ -22,8 +23,16 @@ import java.util.Objects;
  * <p>One instance per {@code plugin:java-source} mount (constructed by the generated {@code
  * RuntimePluginRealizationProvider} bean, see {@code RuntimeApiEmitter.javaSourceProvidersSource}),
  * sharing the single app-wide {@link PluginIpcChildProcessPool}.</p>
+ *
+ * <p>SEC-6: also declares a {@link PluginTimeoutHint} floor, config-driven via {@code
+ * npdev.runtime.plugin-java-source-timeout-ms} (default 5000ms). Live-fire measurement against
+ * lib-probe's SignWithLibrary flow found a pooled worker's FIRST invocation costs 200-400ms (real
+ * classload + manifest resolution + IPC round trip) versus 1-2ms once warm -- a thin margin against
+ * the shared {@code npdev.runtime.plugin-timeout-ms} default of 1000ms sized for in-process handlers.
+ * {@link TimeBoundedPluginExecutionEngine} takes {@code max(sharedDefault, thisHint)}, so this floor
+ * only ever WIDENS this handler's own budget.</p>
  */
-public final class PluginIpcCapabilityHandler implements CapabilityAdapter {
+public final class PluginIpcCapabilityHandler implements CapabilityAdapter, PluginTimeoutHint {
 
     private final PluginIpcChildProcessPool pool;
     private final RuntimePluginAdapterRegistry registry;
@@ -31,6 +40,7 @@ public final class PluginIpcCapabilityHandler implements CapabilityAdapter {
     private final String runtimeRef;
     private final String capability;
     private final String adapterId;
+    private final long minimumTimeoutMs;
 
     public PluginIpcCapabilityHandler(
             PluginIpcChildProcessPool pool,
@@ -38,7 +48,8 @@ public final class PluginIpcCapabilityHandler implements CapabilityAdapter {
             PluginExecutionPolicyEvaluator policyEvaluator,
             String runtimeRef,
             String capability,
-            String adapterId
+            String adapterId,
+            long minimumTimeoutMs
     ) {
         this.pool = Objects.requireNonNull(pool, "pool");
         this.registry = Objects.requireNonNull(registry, "registry");
@@ -46,6 +57,12 @@ public final class PluginIpcCapabilityHandler implements CapabilityAdapter {
         this.runtimeRef = Objects.requireNonNull(runtimeRef, "runtimeRef");
         this.capability = Objects.requireNonNull(capability, "capability");
         this.adapterId = Objects.requireNonNull(adapterId, "adapterId");
+        this.minimumTimeoutMs = minimumTimeoutMs;
+    }
+
+    @Override
+    public long minimumTimeoutMs() {
+        return minimumTimeoutMs;
     }
 
     @Override

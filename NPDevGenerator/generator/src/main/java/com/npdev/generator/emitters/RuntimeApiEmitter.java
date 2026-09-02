@@ -1399,7 +1399,8 @@ writer.writeRelative(
             source.append("    public RuntimePluginRealizationProvider ").append(methodName).append("(\n");
             source.append("            PluginIpcChildProcessPool pluginIpcChildProcessPool,\n");
             source.append("            RuntimePluginAdapterRegistry runtimePluginAdapterRegistry,\n");
-            source.append("            PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator\n");
+            source.append("            PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator,\n");
+            source.append("            @org.springframework.beans.factory.annotation.Value(\"${npdev.runtime.plugin-java-source-timeout-ms:5000}\") long npdevJavaSourceTimeoutMs\n");
             source.append("    ) {\n");
             source.append("        return new RuntimePluginRealizationProvider() {\n");
             source.append("            @Override\n");
@@ -1412,7 +1413,8 @@ writer.writeRelative(
             source.append("                        pluginIpcChildProcessPool, runtimePluginAdapterRegistry, pluginExecutionPolicyEvaluator,\n");
             source.append("                        \"").append(javaEscape(descriptor.runtimeRef())).append("\",\n");
             source.append("                        \"").append(javaEscape(descriptor.capability())).append("\",\n");
-            source.append("                        \"").append(javaEscape(descriptor.adapterId())).append("\"\n");
+            source.append("                        \"").append(javaEscape(descriptor.adapterId())).append("\",\n");
+            source.append("                        npdevJavaSourceTimeoutMs\n");
             source.append("                );\n");
             source.append("            }\n");
             source.append("        };\n");

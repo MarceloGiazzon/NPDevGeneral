@@ -1,6 +1,7 @@
 package com.finalexec;
 
 import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
+import com.finalexec.npdev.service.PluginTimeoutHint;
 import com.finalexec.npdev.service.RuntimePluginExecutionSummaryStore;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.finalexec.npdev.service.RuntimePluginPackageRealizationService;
@@ -306,6 +307,77 @@ class TimeBoundedPluginExecutionEngineTest {
     void maliciousPluginVectorsRemainContained() {
     }
 
+    /**
+     * SEC-6: a handler declaring a {@link com.finalexec.npdev.service.PluginTimeoutHint} floor above
+     * the engine's configured default must actually get the LONGER budget -- otherwise the hint is
+     * decorative. The engine here is configured at 25ms (the same value {@link #timesOutSlowPluginExecution}
+     * uses to prove a timeout DOES fire); {@link SlowHandler} sleeps 200ms. Without honoring the hint
+     * this would time out identically to that test; with it, the 5000ms floor comfortably covers the
+     * 200ms sleep and the call succeeds.
+     */
+    @Test
+    void aHandlersTimeoutHintRaisesItsOwnBudgetAboveTheConfiguredDefault() {
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
+                25,
+                allowAllPolicy(),
+                new InMemorySummaryStore()
+        )) {
+            CapabilityCall call = new CapabilityCall(
+                    "notification",
+                    "NotificationCapability",
+                    "notification-inproc",
+                    "send",
+                    Map.of("message", "slow-but-hinted")
+            );
+
+            SandboxedPluginExecutionResult result = engine.execute(
+                    contribution("notification-inproc"),
+                    realizationSummary("notification-inproc-package", "notification-inproc"),
+                    call,
+                    Map.of(),
+                    new SlowHandlerWithTimeoutHint()
+            );
+
+            assertEquals(SandboxedPluginExecutionResult.Status.SUCCESS, result.status(),
+                    () -> "SEC-6: a 5000ms hint must override the engine's 25ms default for this handler, got: " + result);
+            assertEquals(5000L, result.timeoutMs(),
+                    "SEC-6: the reported timeoutMs must reflect the effective (hinted) budget, not the configured default");
+        }
+    }
+
+    /**
+     * SEC-6: the hint can only WIDEN the hinting handler's own budget -- a hint BELOW the configured
+     * default must never shrink it (that would let a handler weaken its own containment).
+     */
+    @Test
+    void aHandlersTimeoutHintBelowTheDefaultNeverShrinksTheBudget() {
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
+                250,
+                allowAllPolicy(),
+                new InMemorySummaryStore()
+        )) {
+            CapabilityCall call = new CapabilityCall(
+                    "notification",
+                    "NotificationCapability",
+                    "notification-inproc",
+                    "send",
+                    Map.of("message", "hinted-low")
+            );
+
+            SandboxedPluginExecutionResult result = engine.execute(
+                    contribution("notification-inproc"),
+                    realizationSummary("notification-inproc-package", "notification-inproc"),
+                    call,
+                    Map.of(),
+                    new SuccessHandlerWithLowTimeoutHint()
+            );
+
+            assertEquals(SandboxedPluginExecutionResult.Status.SUCCESS, result.status());
+            assertEquals(250L, result.timeoutMs(),
+                    "SEC-6: a 1ms hint must not shrink the engine's 250ms configured default");
+        }
+    }
+
     @Test
     void deniesExecutionBeforeInvokingHandlerWhenPolicyRejectsAdapter() {
         try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
@@ -413,6 +485,31 @@ class TimeBoundedPluginExecutionEngineTest {
         public Object send(Object payload) throws InterruptedException {
             Thread.sleep(200);
             return Map.of("status", "too-late");
+        }
+    }
+
+    /** SEC-6 fixture: same 200ms sleep as {@link SlowHandler}, but declares a 5000ms floor. */
+    static final class SlowHandlerWithTimeoutHint implements PluginTimeoutHint {
+        @Override
+        public long minimumTimeoutMs() {
+            return 5000L;
+        }
+
+        public Object send(Object payload) throws InterruptedException {
+            Thread.sleep(200);
+            return Map.of("status", "on-time");
+        }
+    }
+
+    /** SEC-6 fixture: declares a hint BELOW the engine's configured default, which must be ignored. */
+    static final class SuccessHandlerWithLowTimeoutHint implements PluginTimeoutHint {
+        @Override
+        public long minimumTimeoutMs() {
+            return 1L;
+        }
+
+        public Object send(Object payload) {
+            return Map.of("status", "queued");
         }
     }
 
