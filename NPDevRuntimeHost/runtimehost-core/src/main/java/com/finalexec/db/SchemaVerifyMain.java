@@ -6,6 +6,7 @@ import com.finalexec.db.schemastate.CurrentSchemaReader;
 import com.finalexec.db.schemastate.DesiredSchema;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffEngine;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 import com.npdev.kernel.storage.sql.SqlDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
 
@@ -16,6 +17,7 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.util.List;
 import java.util.logging.Logger;
 
 /**
@@ -109,6 +111,7 @@ public final class SchemaVerifyMain {
 
         ImpactReport report;
         ConstraintSurplusReport surplus;
+        List<RenameCandidateScorer.Candidate> renameCandidates;
         try {
             CurrentSchema current = new CurrentSchemaReader().read(dataSource);
             CurrentSchema scopedCurrent = ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest);
@@ -117,6 +120,8 @@ public final class SchemaVerifyMain {
             SchemaDiff diff = diffEngine.diff(desired, scopedCurrent);
             report = ImpactReport.generate(diff, dataSource);
             surplus = diffEngine.findSurplusConstraints(desired, scopedCurrent);
+            // Boundary lift plan 2026-09-02, package 2.2 (B1): ranked rename candidates, same source pair.
+            renameCandidates = RenameCandidateAnalysis.compute(report, desired, scopedCurrent);
         } catch (RuntimeException failure) {
             err.println("npdev db verify: could not read the live database schema: " + failure.getMessage());
             return EXIT_COULD_NOT_DETERMINE;
@@ -131,10 +136,11 @@ public final class SchemaVerifyMain {
         String toFingerprint = manifest.schemaFingerprint();
 
         if (json) {
-            out.println(ImpactReportJson.render(
-                    report, Instant.now().toString(), storedFingerprint, toFingerprint, null, surplus));
+            out.println(ImpactReportJson.render(report, Instant.now().toString(), storedFingerprint, toFingerprint,
+                    null, surplus, renameCandidates));
         } else {
-            out.println(ImpactReportText.render(report, storedFingerprint, toFingerprint, null, surplus));
+            out.println(ImpactReportText.render(report, storedFingerprint, toFingerprint, null, surplus,
+                    renameCandidates));
         }
 
         return exitCodeFor(report.verdict());

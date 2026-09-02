@@ -5,8 +5,8 @@
     {
       "id": "B1",
       "kind": "HITTABLE",
-      "userFacingText": "This concept appears to have been renamed. Add a 'renamedFrom' field pointing to the original name, or rename it back.",
-      "workaround": "Declare renamedFrom by hand, pointing at the original concept/field name.",
+      "userFacingText": "NPDev cannot tell a rename from a drop-plus-add by shape alone, so a rename still requires a declared 'renamedFrom' -- but the dead end is gone: `npdev migration diff --suggest-renames` ranks and scores every candidate with its evidence, and `npdev migrate rename --from-suggestions <file>` applies the ones you accept in one command.",
+      "workaround": "Run `npdev migration diff --suggest-renames --baseline <old model.json> --current <new model.json>` to see ranked candidates (table/column, score, every contributing signal). Accept ones you agree with by copying their {concept, droppedField, addedField} entry into a file and running `npdev migrate rename --from-suggestions <file> [--write]` -- or declare renamedFrom by hand, same as before.",
       "enforcingDiagnosticCodes": ["B1:rename_self_reference", "B1:rename_source_missing", "B1:rename_ambiguous"]
     },
     {

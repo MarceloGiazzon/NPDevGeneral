@@ -1,6 +1,6 @@
 id: B1
 title: "No automatic rename inference -- a rename must be declared via renamedFrom"
 codeLinked: true
-codeLinkedNote: "ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching."
+codeLinkedNote: "ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching. REG-197 (boundary lift plan 2026-09-02, package 2.2) added com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer, shared by ImpactReportText#appendPossibleRenames (RuntimeHost, live-database) and MigrationPlanEmitter#diffColumns (generator, model-vs-model) -- ranks and scores rename candidates, never applies one. The refusal itself is unchanged; the dead end around satisfying it is gone (npdev migration diff --suggest-renames, npdev migrate rename --from-suggestions)."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B1"
 classification: HITTABLE

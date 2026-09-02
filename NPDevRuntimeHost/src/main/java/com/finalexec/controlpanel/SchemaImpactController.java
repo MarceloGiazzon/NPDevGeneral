@@ -62,7 +62,7 @@ public class SchemaImpactController {
         // surfaced here too so it's visible without a boot (NEEDS_ATTENTION item if stale).
         SchemaImpactFacade.Result r = SchemaImpactFacade.forLiveDatabase(dataSource, compiledModel);
         String json = ImpactReportJson.render(r.report(), Instant.now().toString(),
-                r.fromFingerprint(), r.toFingerprint(), r.ackToken(), r.surplus());
+                r.fromFingerprint(), r.toFingerprint(), r.ackToken(), r.surplus(), r.renameCandidates());
         return ResponseEntity.ok().header("Content-Type", "application/json").body(json);
     }
 

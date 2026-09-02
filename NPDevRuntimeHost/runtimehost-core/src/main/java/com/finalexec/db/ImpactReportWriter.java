@@ -6,6 +6,7 @@ import com.finalexec.db.schemastate.CurrentSchemaReader;
 import com.finalexec.db.schemastate.DesiredSchema;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffEngine;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -58,11 +59,18 @@ final class ImpactReportWriter {
             ImpactReport report = ImpactReport.generate(diff, dataSource);
             // B3.2: the reverse (surplus) direction, from the SAME desired/current pair — no extra query.
             ConstraintSurplusReport surplus = diffEngine.findSurplusConstraints(desired, scopedCurrent);
+            // Boundary lift plan 2026-09-02, package 2.2 (B1): ranked rename candidates, from the SAME
+            // desired/current pair — this is the boot-refusal surface, so this is what makes done-when
+            // #4 (the refusal's suggestion regenerated from the shared scorer) actually reachable.
+            List<RenameCandidateScorer.Candidate> renameCandidates =
+                    RenameCandidateAnalysis.compute(report, desired, scopedCurrent);
 
             String generatedAt = Instant.now().toString();
             String toFingerprint = manifest.schemaFingerprint();
-            String json = ImpactReportJson.render(report, generatedAt, fromFingerprint, toFingerprint, ackToken, surplus);
-            String text = ImpactReportText.render(report, fromFingerprint, toFingerprint, ackToken, surplus);
+            String json = ImpactReportJson.render(report, generatedAt, fromFingerprint, toFingerprint, ackToken,
+                    surplus, renameCandidates);
+            String text = ImpactReportText.render(report, fromFingerprint, toFingerprint, ackToken, surplus,
+                    renameCandidates);
 
             System.out.println(text);
             persist(json, fromFingerprint, toFingerprint);

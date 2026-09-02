@@ -2,6 +2,7 @@ package com.npdev.generator.schemaevolution;
 
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 import com.npdev.dsl.v1.schemaevolution.RenameResolution;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import com.npdev.dsl.v1.schemaevolution.SqlTypeNormalization;
@@ -9,6 +10,7 @@ import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter.BusinessTableMetadata;
+import com.npdev.generator.dbconfig.SchemaRealizationEmitter.ForeignKeyDecl;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter.UniqueConstraintDecl;
 import com.npdev.generator.dbconfig.UserDatabaseDefinition;
 import com.npdev.generator.dbconfig.UserDatabaseDefinitionLoader;
@@ -129,10 +131,11 @@ public final class MigrationPlanEmitter {
 
         List<PlanItem> items = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
+        List<RenameCandidateScorer.Candidate> renameCandidates = new ArrayList<>();
         if (databasePlan.createBusinessTables()) {
             BusinessTableMetadata oldMeta = SchemaRealizationEmitter.computeBusinessTableMetadata(previousModelOrNull);
             BusinessTableMetadata newMeta = SchemaRealizationEmitter.computeBusinessTableMetadata(newModel);
-            items.addAll(diffBusinessTables(oldMeta, newMeta, warnings));
+            items.addAll(diffBusinessTables(oldMeta, newMeta, warnings, renameCandidates));
         }
         items.sort(Comparator.comparing(MigrationPlanEmitter::sortKey));
 
@@ -146,7 +149,7 @@ public final class MigrationPlanEmitter {
                 ? null
                 : DestructiveAckToken.compute(toFingerprint, destructiveStableStrings);
 
-        return new MigrationPlan(false, fromFingerprint, toFingerprint, items, ackToken, warnings);
+        return new MigrationPlan(false, fromFingerprint, toFingerprint, items, ackToken, warnings, renameCandidates);
     }
 
     /**
@@ -169,7 +172,7 @@ public final class MigrationPlanEmitter {
     }
 
     private static List<PlanItem> diffBusinessTables(BusinessTableMetadata oldMeta, BusinessTableMetadata newMeta,
-            List<String> warnings) {
+            List<String> warnings, List<RenameCandidateScorer.Candidate> renameCandidates) {
         List<PlanItem> items = new ArrayList<>();
 
         Set<String> oldTables = new LinkedHashSet<>(oldMeta.businessTables());
@@ -206,7 +209,7 @@ public final class MigrationPlanEmitter {
         }
 
         for (Map.Entry<String, String> pair : columnDiffPairs.entrySet()) {
-            items.addAll(diffColumns(pair.getKey(), pair.getValue(), oldMeta, newMeta, warnings));
+            items.addAll(diffColumns(pair.getKey(), pair.getValue(), oldMeta, newMeta, warnings, renameCandidates));
             items.addAll(diffUniqueConstraints(pair.getKey(), pair.getValue(), oldMeta, newMeta));
         }
 
@@ -215,7 +218,7 @@ public final class MigrationPlanEmitter {
 
     private static List<PlanItem> diffColumns(
             String newTable, String oldTable, BusinessTableMetadata oldMeta, BusinessTableMetadata newMeta,
-            List<String> warnings
+            List<String> warnings, List<RenameCandidateScorer.Candidate> renameCandidates
     ) {
         List<PlanItem> items = new ArrayList<>();
 
@@ -241,6 +244,21 @@ public final class MigrationPlanEmitter {
             }
         }
         RenameResolution.Result resolution = RenameResolution.resolve(missingColumns, extraColumns, declaredRenames);
+
+        // Boundary lift plan 2026-09-02, package 2.2 (B1): every column this diff would otherwise
+        // classify as a plain DROP_COLUMN/ADD_COLUMN pair on this table, scored as a possible rename.
+        // No live database here (this class's own class javadoc) -- unlike the runtime executor's
+        // equivalent (com.finalexec.db.RenameCandidateAnalysis), nothing is filtered by "rows affected"
+        // since there is no row count to know; every model-level drop is an eligible candidate.
+        List<RenameCandidateScorer.ColumnFacts> droppedFacts = resolution.remainingExtra().stream()
+                .map(column -> columnFacts(oldMeta, oldTable, column))
+                .toList();
+        List<RenameCandidateScorer.ColumnFacts> addedFacts = resolution.remainingMissing().stream()
+                .map(column -> columnFacts(newMeta, newTable, column))
+                .toList();
+        if (!droppedFacts.isEmpty() && !addedFacts.isEmpty()) {
+            renameCandidates.addAll(RenameCandidateScorer.score(newTable, droppedFacts, addedFacts));
+        }
 
         Map<String, String> oldTypes = oldMeta.businessTableColumnTypes().getOrDefault(oldTable, Map.of());
         Map<String, String> newTypes = newMeta.businessTableColumnTypes().getOrDefault(newTable, Map.of());
@@ -303,6 +321,25 @@ public final class MigrationPlanEmitter {
         }
 
         return items;
+    }
+
+    /** Adapts {@link BusinessTableMetadata} into {@link RenameCandidateScorer.ColumnFacts} for one
+     *  column -- the generator-side counterpart to {@code com.finalexec.db.RenameCandidateAnalysis}'s
+     *  {@code CurrentColumn}/{@code DesiredColumn} adapters. {@code businessTableColumns} is a
+     *  {@code List} in declaration order (see {@link SchemaRealizationEmitter#computeBusinessTableMetadata}),
+     *  so its index IS the ordinal position -- no separate ordering to derive. */
+    private static RenameCandidateScorer.ColumnFacts columnFacts(BusinessTableMetadata meta, String table, String column) {
+        String type = meta.businessTableColumnTypes().getOrDefault(table, Map.of()).get(column);
+        boolean nullable = !meta.businessTableRequiredColumns().getOrDefault(table, List.of()).contains(column);
+        String defaultLiteral = meta.businessTableColumnDefaultLiterals().getOrDefault(table, Map.of()).get(column);
+        boolean unique = meta.businessTableUniqueConstraints().getOrDefault(table, List.of()).stream()
+                .anyMatch(decl -> decl.columns().contains(column));
+        String fkTarget = meta.businessTableForeignKeys().getOrDefault(table, List.of()).stream()
+                .filter(decl -> decl.columns().contains(column))
+                .map(ForeignKeyDecl::referencedTable)
+                .findFirst().orElse(null);
+        int ordinal = meta.businessTableColumns().getOrDefault(table, List.of()).indexOf(column);
+        return new RenameCandidateScorer.ColumnFacts(column, type, nullable, defaultLiteral, unique, fkTarget, ordinal);
     }
 
     private static void addTypeChangeItemIfAny(

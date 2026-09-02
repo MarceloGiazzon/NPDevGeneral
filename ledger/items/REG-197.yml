@@ -1,0 +1,156 @@
+id: REG-197
+title: >-
+  Rename candidate scorer + suggest/accept CLI path -- removing B1's dead end without weakening
+  its invariant
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 2.2 (B1), wave 2, depends on 2.1's shared diff
+  surface. B1's own gap: a drop-plus-add pair that is really a rename could only be found by an
+  operator reading the boot log's all-or-nothing same-type heuristic, then hand-editing model.json --
+  no ranking, no evidence beyond type equality, no command that applied an accepted suggestion.
+surface: dsl/schemaevolution, runtimehost-core (db), generator/schemaevolution, cli
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/RenameCandidateScorer.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/schemaevolution/RenameCandidateScorerTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/RenameCandidateAnalysis.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportText.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportJson.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaImpactFacade.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportWriter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaVerifyMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaImpactController.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/MigrationPlan.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/MigrationPlanEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/ModelChangeClassifierMain.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/schemaevolution/MigrationPlanEmitterTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/schemaevolution/ModelChangeClassifierMainTest.java
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_migrate_rename.py
+  - NPDevCli/tests/test_migration_diff_suggest_renames.py
+  - NPDevContract/schemas/impact-report.schema.json
+  - NPDevContract/schemas/migration-plan.schema.json
+  - ledger/boundaries/B1.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+  - scripts/quality/twin-pair-registry.json
+detail: |
+  The previous session's design premise for this package was wrong and corrected before any code was
+  written: the plan text said to build the scorer beside RuntimeHost's SchemaDiffEngine, but `npdev
+  migration diff` shells out to a SEPARATE Gradle task (NPDevGenerator's ModelChangeClassifierMain /
+  MigrationPlanEmitter, a model-to-model diff with no live database) that has no dependency
+  relationship with RuntimeHost's SchemaDiffEngine at all -- verified via both build.gradle files
+  before starting. The right shared location, verified against the live pattern `RenameResolution`
+  already established (LNCH-1 Phase 6's "share, not duplicate" decision, cited in
+  MigrationPlanEmitter's own class javadoc): a new sibling class in
+  `com.npdev.dsl.v1.schemaevolution` (the DSL module, zero dependency on either the generator or
+  RuntimeHost), generic over column facts, with each side supplying its own adapter.
+
+  DONE-WHEN, verified in order:
+
+  1. `RenameCandidateScorer` (new, DSL module): pure function of two `ColumnFacts` lists -> ranked
+     `Candidate` list. Seven signals, weights summing to `MAX_SCORE = 100`: name similarity
+     (normalized Levenshtein, up to 25), type equality via the SAME shared `SqlTypeNormalization`
+     destructive-token hashing already uses (25), nullability (10), default literal (10), unique
+     membership (10), FK target (15), ordinal position proximity (5). Every signal's own points are
+     returned alongside the total (`SignalResult`), never just the sum -- so a human judges the
+     evidence, never a bare number. Covered by `RenameCandidateScorerTest` (6 cases: identical facts
+     under a different name, a one-character typo, unrelated columns, cross-engine type-spelling
+     equality, ranking/tiebreak order, every-pair-scored-and-table-carried-through).
+
+  2. RuntimeHost side: `RenameCandidateAnalysis.compute(report, desired, current)` (new,
+     `com.finalexec.db`) adapts `CurrentColumn`/`DesiredColumn`/table `uniques()`/`foreignKeys()` (full
+     column facts, still in scope at the point `SchemaDiffEngine.diff` runs) into `ColumnFacts`, using
+     the SAME eligibility filter the old heuristic used (DESTRUCTIVE_DROP_COLUMN + UNRESOLVED + live
+     rows, paired against UNRESOLVED ADD_COLUMN/ADD_REQUIRED_COLUMN on the same table). Threaded as a
+     new value alongside `ConstraintSurplusReport` (the exact precedent B3.2 already set) through
+     `SchemaImpactFacade.Result`, into new 6-arg overloads of `ImpactReportText.render`/
+     `ImpactReportJson.render` (old 4/5-arg overloads unchanged, default to `List.of()`). All three
+     computation call sites updated: `SchemaImpactFacade.forLiveDatabase` (REPORT_ONLY / ControlPanel),
+     `ImpactReportWriter.writeAndPrint` (**the boot refusal itself** -- `SchemaLifecycleExecutor.java:763`
+     embeds its return value in the refusal message, so this is what makes "the boot refusal's
+     suggestion regenerated from the shared scorer" actually reachable, not just theoretically wired),
+     `SchemaVerifyMain` (`npdev db verify`). `appendPossibleRenames` rewritten to render ranked
+     candidates (signal-by-signal) instead of the old same-table/same-type-only heuristic, filtered to
+     score >= `MAX_SCORE / 2` as a boot-log noise floor (never a correctness gate -- the CLI's
+     `--suggest-renames` shows every candidate unfiltered). `impact-report.schema.json` gained an
+     optional `renameCandidates` array, following `surplusConstraints`' own present-only-when-non-empty
+     convention exactly.
+
+  3. Generator side: `MigrationPlanEmitter.diffColumns` scores `resolution.remainingExtra()` (dropped)
+     against `resolution.remainingMissing()` (added) per table via a `BusinessTableMetadata` ->
+     `ColumnFacts` adapter (`columnFacts`, new private method) -- FK target from
+     `businessTableForeignKeys`, unique membership from `businessTableUniqueConstraints`, ordinal
+     position from `businessTableColumns`' own list order. No live database here, so (unlike the
+     RuntimeHost side) nothing is filtered by rows-affected -- every model-level drop is an eligible
+     candidate. `MigrationPlan` gained a `renameCandidates` field (7-arg canonical constructor; 5-arg
+     and 6-arg back-compat constructors preserved for existing callers/tests) and JSON serialization;
+     `migration-plan.schema.json` gained the matching optional array. Covered by three new
+     `MigrationPlanEmitterTest` cases: a stale-marker drop+add gets a real candidate (extending the
+     existing `staleRenamedFromMarkerEmitsAWarning` test), an unrelated near-miss name pair scores well
+     above the noise floor, and a drop on one table is never crossed with an add on a different table.
+
+  4. `ModelChangeClassifierMain` (the real Gradle-task entry point `npdev migration diff` invokes) adds
+     `enrichRenameCandidatesWithFieldNames`: reverse-maps a candidate's SQL table/column back to a real
+     DSL `Concept`/field name via the SAME `SqlIdentifierSupport.tableName`/`columnName` convention the
+     compiler used forward -- the ONE place with a `CompiledModel` in hand, so no second, hand-written
+     naming convention exists anywhere to drift from the real one (this class's own already-documented
+     "share, not duplicate" design principle, applied to this new field too). Left absent (never
+     guessed) when no field's derived SQL name matches. Covered by two new
+     `ModelChangeClassifierMainTest` cases (resolves against a real field; leaves an unmatched table
+     alone), against hand-built `CompiledModel` fixtures -- no JSON parsing needed for this test.
+
+  5. CLI (`NPDevCli/npdev_cli.py`): `npdev migration diff --suggest-renames` prints every ranked
+     candidate UNFILTERED (score, every signal, and -- when resolved -- a ready-to-paste `migrate
+     rename` command or `--from-suggestions` entry). `npdev migrate rename --from-suggestions <file>
+     [--write]` applies every `{concept, droppedField, addedField}` entry through the EXACT SAME
+     stamping logic the single-field form uses (`_stamp_field_rename`, extracted as a pure helper so
+     the two forms cannot drift), refusing (writing nothing) on any entry missing a resolved field or
+     combined with `--cascade`/the positional form. Covered by 6 new cases in
+     `test_migrate_rename.py` (apply-two-entries, dry-run, refuse-on-unresolved-entry-writes-nothing,
+     refuse-combined-with-cascade, refuse-combined-with-positional-form, empty-file-is-a-no-op) and 3
+     new cases in `test_migration_diff_suggest_renames.py` (none-found, a resolved candidate prints
+     every signal plus an accept hint, an unresolved candidate prints evidence but no hint). Full
+     `NPDevCli/tests` suite (710 tests via `unittest discover`) passes clean.
+
+  Register updated across all four seams (section 5 of the plan). Unlike B8/STOR-19, **B1's
+  `classification` stays HITTABLE** -- the plan is explicit that this package removes the FRICTION
+  around satisfying the refusal, not the refusal itself (the "renamed a->b" vs "dropped a, added b"
+  ambiguity is permanent, by design). `ledger/boundaries/B1.yml`'s `codeLinkedNote` extended (not
+  replaced) to name the new scorer/CLI path alongside the unchanged `ConceptValidation` code link.
+  `NPDevContract/schemas/accepted-boundaries.json`'s B1 entry rewritten (`userFacingText`/`workaround`
+  describe the ranked-and-one-command-away flow; `enforcingDiagnosticCodes` UNCHANGED -- nothing was
+  removed or added). `docs/ACCEPTED_BOUNDARIES.md`'s B1 row extended in place (kept the B1.1/B1.2
+  history, appended the package-2.2 capability). New `scripts/quality/twin-pair-registry.json` rule
+  `rename-candidate-scorer-two-surfaces` -- the plan's own Moves section explicitly names this a
+  twin-pair candidate ("one implementation, two surfaces, no drift"); tracks the literal string
+  `RenameCandidateScorer` across `ImpactReportText.java` and `MigrationPlanEmitter.java`, verified
+  green (33/33 rules) via `check-twin-pair-consistency.py`.
+
+  Explicitly NOT done, and recorded as a deliberate deferral rather than an oversight: the plan's
+  done-when #5 opt-in `--accept-above <score>` (auto-accepting candidates above a threshold, gated to
+  disposable dev databases only, refusing against any other target). This is a live-database-write
+  safety feature needing its own careful design (engine detection, refusal wording, blast radius of a
+  wrong auto-accept even in "dev") -- deliberately out of scope for this pass rather than rushed. The
+  core outcome the plan defines a lift by ("the dead end is gone... through a path NPDev itself
+  provides") is fully met without it: `--suggest-renames` + `--from-suggestions` already remove the
+  manual-detection-and-hand-edit dead end, with an explicit human accept required either way.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/schemaevolution/RenameCandidateScorerTest.java
+  asserts: >-
+    (Guard.ref names one representative file for check-done-item-guards.py's single-path resolver; the
+    full coverage this item relies on spans five files: RenameCandidateScorerTest (DSL, the pure
+    scorer), MigrationPlanEmitterTest's three new rename-candidate cases (generator),
+    ModelChangeClassifierMainTest's two new reverse-lookup cases (generator CLI-facing enrichment),
+    test_migrate_rename.py's six new --from-suggestions cases, and
+    test_migration_diff_suggest_renames.py's three --suggest-renames rendering cases (CLI).) Each
+    layer's tests were run and passed individually during implementation (DSL via gradlew
+    :NPDevContract:dsl:test, generator via gradlew :generator:test, CLI via `python -m unittest
+    discover -s NPDevCli/tests` -- 710/710 green). Full run-all-gates.ps1 (T2) requested as the
+    session's closing verification; see the session handoff for its actual result.
+  provenRed: true

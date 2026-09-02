@@ -4,6 +4,7 @@ import com.finalexec.db.schemastate.ConstraintSurplusReport;
 import com.finalexec.db.schemastate.SafetyClass;
 import com.finalexec.db.schemastate.SchemaDiffItem;
 import com.finalexec.db.schemastate.SurplusConstraint;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -123,44 +124,58 @@ class ImpactReportRenderersTest {
         assertTrue(json.contains("\"abstained\": \"cannot classify"), json);
     }
 
-    // ---- B1.1: possible-rename hint (never inferred, always still refuses) ----
+    // ---- B1 (boundary lift plan 2026-09-02, package 2.2): possible-rename hint, now ranked and
+    // scored by the shared com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer instead of the old
+    // same-table/same-type-only heuristic. ImpactReportText only ever RENDERS an already-scored
+    // List<RenameCandidateScorer.Candidate> (computed upstream by RenameCandidateAnalysis, which needs
+    // the full CurrentSchema/DesiredSchema pair this deterministic ImpactReport-only fixture class does
+    // not have -- see RenameCandidateAnalysisTest in runtimehost-core for that half). Never inferred,
+    // always still refuses -- unchanged invariant, only the evidence and the floor changed.
 
     @Test
-    void dropPlusCompatibleAddOnSameTableWithLiveDataSuggestsRenamedFrom() {
+    void aHighScoringCandidateIsRenderedWithEveryContributingSignal() {
         ImpactReport report = ImpactReport.ofProbedItems(List.of(
                 new ImpactReport.Item(SchemaDiffItem.of("DROP_COLUMN:orders:customer_name:VARCHAR(50)", "orders",
                         "customer_name", SafetyClass.DESTRUCTIVE_DROP_COLUMN, "VARCHAR(50)", null), 3L, ""),
                 new ImpactReport.Item(SchemaDiffItem.of("ADD_COLUMN:orders:client_name", "orders", "client_name",
                         SafetyClass.SAFE_ADDITIVE, null, "VARCHAR(50)"), 0L, "")));
+        List<RenameCandidateScorer.Candidate> renameCandidates = List.of(
+                new RenameCandidateScorer.Candidate("orders", "customer_name", "client_name", 90, List.of(
+                        new RenameCandidateScorer.SignalResult("type", 25, 25, "MATCH (VARCHAR(50))"),
+                        new RenameCandidateScorer.SignalResult("name similarity", 20, 25, "80% ('customer_name' vs 'client_name')"))));
 
-        String text = ImpactReportText.render(report, "a", "b", "TOKEN");
+        String text = ImpactReportText.render(report, "a", "b", "TOKEN", ConstraintSurplusReport.EMPTY, renameCandidates);
+
         assertTrue(text.contains("possible rename"), text);
-        assertTrue(text.contains("'customer_name' would be dropped and 'client_name' added"), text);
+        assertTrue(text.contains("'customer_name' -> 'client_name' on orders (score 90/"), text);
+        assertTrue(text.contains("MATCH (VARCHAR(50))"), "every contributing signal must be shown: " + text);
         assertTrue(text.contains("\"renamedFrom\": \"customer_name\""), text);
         assertTrue(text.contains("still refuses"), "must not claim to auto-resolve anything: " + text);
     }
 
     @Test
-    void dropWithNoLiveDataIsNotSuggestedAsARename() {
-        ImpactReport report = ImpactReport.ofProbedItems(List.of(
-                new ImpactReport.Item(SchemaDiffItem.of("DROP_COLUMN:orders:customer_name:VARCHAR(50)", "orders",
-                        "customer_name", SafetyClass.DESTRUCTIVE_DROP_COLUMN, "VARCHAR(50)", null), 0L, ""),
-                new ImpactReport.Item(SchemaDiffItem.of("ADD_COLUMN:orders:client_name", "orders", "client_name",
-                        SafetyClass.SAFE_ADDITIVE, null, "VARCHAR(50)"), 0L, "")));
+    void aCandidateBelowTheNoiseFloorIsNotRendered() {
+        ImpactReport report = ImpactReport.ofProbedItems(List.of(new ImpactReport.Item(
+                SchemaDiffItem.of("ADD_COLUMN:widgets:note", "widgets", "note", SafetyClass.SAFE_ADDITIVE, null,
+                        "VARCHAR(20)"), 0L, "")));
+        List<RenameCandidateScorer.Candidate> lowScoring = List.of(
+                new RenameCandidateScorer.Candidate("orders", "legacy_flag", "shipping_address_id",
+                        RenameCandidateScorer.MAX_SCORE / 2 - 1, List.of()));
 
-        String text = ImpactReportText.render(report, "a", "b", "TOKEN");
-        assertFalse(text.contains("possible rename"), "nothing at stake with zero live rows: " + text);
+        String text = ImpactReportText.render(report, "a", "b", "TOKEN", ConstraintSurplusReport.EMPTY, lowScoring);
+
+        assertFalse(text.contains("possible rename"),
+                "a candidate scoring below half of MAX_SCORE is boot-log noise, not evidence: " + text);
     }
 
     @Test
-    void dropWithIncompatibleTypeAddIsNotSuggestedAsARename() {
-        ImpactReport report = ImpactReport.ofProbedItems(List.of(
-                new ImpactReport.Item(SchemaDiffItem.of("DROP_COLUMN:orders:customer_name:VARCHAR(50)", "orders",
-                        "customer_name", SafetyClass.DESTRUCTIVE_DROP_COLUMN, "VARCHAR(50)", null), 3L, ""),
-                new ImpactReport.Item(SchemaDiffItem.of("ADD_COLUMN:orders:client_id", "orders", "client_id",
-                        SafetyClass.SAFE_ADDITIVE, null, "BIGINT"), 0L, "")));
+    void noRenameCandidatesRendersNoSection() {
+        ImpactReport report = ImpactReport.ofProbedItems(List.of(new ImpactReport.Item(
+                SchemaDiffItem.of("ADD_COLUMN:widgets:note", "widgets", "note", SafetyClass.SAFE_ADDITIVE, null,
+                        "VARCHAR(20)"), 0L, "")));
 
         String text = ImpactReportText.render(report, "a", "b", "TOKEN");
-        assertFalse(text.contains("possible rename"), "incompatible types must not be suggested: " + text);
+
+        assertFalse(text.contains("possible rename"), text);
     }
 }

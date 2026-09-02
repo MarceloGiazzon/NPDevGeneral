@@ -9,6 +9,7 @@ import com.finalexec.db.schemastate.SchemaDiffEngine;
 import com.finalexec.db.schemastate.SchemaDiffItem;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
@@ -22,9 +23,11 @@ public final class SchemaImpactFacade {
     /** The impact report plus the envelope a renderer needs. {@code ackToken} is non-null only when the
      *  verdict is DESTRUCTIVE (the token an operator must supply). {@code surplus} (B3.2) is the
      *  advisory, never-verdict-affecting FK/index surplus classification — {@link ConstraintSurplusReport#EMPTY}
-     *  whenever there is no physical database to classify against. */
+     *  whenever there is no physical database to classify against. {@code renameCandidates} (boundary
+     *  lift plan 2026-09-02, package 2.2 / B1) is the same kind of advisory value, empty whenever there
+     *  is no physical database. */
     public record Result(ImpactReport report, String fromFingerprint, String toFingerprint, String ackToken,
-            ConstraintSurplusReport surplus) {
+            ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates) {
     }
 
     private SchemaImpactFacade() {
@@ -47,7 +50,8 @@ public final class SchemaImpactFacade {
         if (manifest == null || !manifest.physicalDatabase()) {
             List<SchemaDiffItem> items = driftItem == null ? List.of() : List.of(driftItem);
             return new Result(ImpactReport.generate(new SchemaDiff(items), dataSource),
-                    null, manifest == null ? null : manifest.schemaFingerprint(), null, ConstraintSurplusReport.EMPTY);
+                    null, manifest == null ? null : manifest.schemaFingerprint(), null, ConstraintSurplusReport.EMPTY,
+                    List.of());
         }
         CurrentSchema current = new CurrentSchemaReader().read(dataSource);
         CurrentSchema scopedCurrent = ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest);
@@ -58,6 +62,10 @@ public final class SchemaImpactFacade {
         ImpactReport report = ImpactReport.generate(diff, dataSource);
         // B3.2: the reverse (surplus) direction, from the SAME desired/current pair — no extra query.
         ConstraintSurplusReport surplus = diffEngine.findSurplusConstraints(desired, scopedCurrent);
+        // Boundary lift plan 2026-09-02, package 2.2 (B1): ranked rename candidates, from the SAME
+        // desired/current pair — no extra query, same reasoning as surplus above.
+        List<RenameCandidateScorer.Candidate> renameCandidates =
+                RenameCandidateAnalysis.compute(report, desired, scopedCurrent);
         String from = SchemaLifecycleExecutor.readStoredFingerprintPublic(dataSource);
         String to = manifest.schemaFingerprint();
         String ackToken = null;
@@ -66,7 +74,7 @@ public final class SchemaImpactFacade {
             SchemaDeltaReport deltaReport = SchemaDeltaReport.generate(dataSource, manifest);
             ackToken = DestructiveAckToken.compute(to, deltaReport.stableStrings());
         }
-        return new Result(report, from, to, ackToken, surplus);
+        return new Result(report, from, to, ackToken, surplus, renameCandidates);
     }
 
     private static SchemaDiff withItem(SchemaDiff diff, SchemaDiffItem extra) {

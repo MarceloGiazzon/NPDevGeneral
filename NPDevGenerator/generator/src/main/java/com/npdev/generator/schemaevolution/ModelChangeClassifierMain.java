@@ -4,9 +4,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.ast.ModelAst;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.parser.JsonModelParser;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 import com.npdev.generator.dbconfig.DatabaseEngine;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
@@ -108,7 +112,7 @@ public final class ModelChangeClassifierMain {
         MigrationPlan plan = MigrationPlanEmitter.compute(current, baseline, databasePlan);
         ModelChangeClassifier.Classification classification = ModelChangeClassifier.classify(plan);
 
-        String json = toReportJson(plan, classification);
+        String json = toReportJson(plan, classification, current);
         if (outPath != null && !outPath.isBlank()) {
             Path out = Path.of(outPath).toAbsolutePath().normalize();
             if (out.getParent() != null) {
@@ -199,8 +203,8 @@ public final class ModelChangeClassifierMain {
                 List.of());
     }
 
-    private static String toReportJson(MigrationPlan plan, ModelChangeClassifier.Classification classification)
-            throws IOException {
+    private static String toReportJson(MigrationPlan plan, ModelChangeClassifier.Classification classification,
+            CompiledModel current) throws IOException {
         ObjectMapper mapper = new ObjectMapper();
         ObjectNode root = (ObjectNode) mapper.readTree(plan.toJson());
         root.put("classification", classification.level().name());
@@ -208,6 +212,75 @@ public final class ModelChangeClassifierMain {
         for (String reason : classification.reasons()) {
             reasons.add(reason);
         }
+        enrichRenameCandidatesWithFieldNames(root, current);
         return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n";
+    }
+
+    /**
+     * Boundary lift plan 2026-09-02, package 2.2 (B1). {@link RenameCandidateScorer} (and therefore
+     * {@link MigrationPlan#renameCandidates()}/{@code migration-plan.schema.json}) is deliberately
+     * SQL-level only -- the same shared type the live-database side ({@code com.finalexec.db}, which
+     * has no {@link CompiledModel}) uses. This CLI-facing report is the one place that DOES have the
+     * {@code current} {@link CompiledModel} in hand, so it adds `concept`/`droppedField`/`addedField`
+     * to each candidate ON TOP of the schema-conformant shape (never replacing the SQL-level fields) --
+     * a best-effort reverse lookup through the SAME {@link SqlIdentifierSupport} naming convention the
+     * compiler used forward, so `npdev migrate rename --from-suggestions` has a DSL {@code Concept}/
+     * field name to feed the existing rename-stamping path without a second, hand-written naming
+     * convention in the CLI that could silently drift from the real one (exactly what this class's own
+     * "share, not duplicate" design decision already argues against for the rest of this pipeline).
+     * Silently leaves a candidate's `concept`/`*Field` absent when no field's derived SQL name matches
+     * (a >63-char identifier hashed by {@link SqlIdentifierSupport#safeSqlIdentifier} is the one real
+     * case) -- {@code --suggest-renames} still shows the SQL-level evidence either way.
+     */
+    /** Package-private (not {@code private}) so {@code ModelChangeClassifierMainTest} can exercise
+     *  the reverse lookup directly, against hand-built {@link CompiledModel} fixtures, without routing
+     *  through {@link JsonModelParser} + a schema-valid model.json on disk. */
+    static void enrichRenameCandidatesWithFieldNames(ObjectNode root, CompiledModel current) {
+        com.fasterxml.jackson.databind.JsonNode renameCandidatesNode = root.get("renameCandidates");
+        if (!(renameCandidatesNode instanceof ArrayNode renameCandidates) || current == null) {
+            return;
+        }
+        for (com.fasterxml.jackson.databind.JsonNode node : renameCandidates) {
+            if (!(node instanceof ObjectNode candidate)) {
+                continue;
+            }
+            CompiledConcept concept = findConceptByTable(current, candidate.path("table").asText(null));
+            if (concept == null) {
+                continue;
+            }
+            candidate.put("concept", concept.getName());
+            String droppedField = findFieldByColumn(concept, candidate.path("droppedColumn").asText(null));
+            String addedField = findFieldByColumn(concept, candidate.path("addedColumn").asText(null));
+            if (droppedField != null) {
+                candidate.put("droppedField", droppedField);
+            }
+            if (addedField != null) {
+                candidate.put("addedField", addedField);
+            }
+        }
+    }
+
+    private static CompiledConcept findConceptByTable(CompiledModel model, String table) {
+        if (table == null) {
+            return null;
+        }
+        for (CompiledConcept concept : model.getConcepts()) {
+            if (table.equals(SqlIdentifierSupport.tableName(concept))) {
+                return concept;
+            }
+        }
+        return null;
+    }
+
+    private static String findFieldByColumn(CompiledConcept concept, String column) {
+        if (column == null) {
+            return null;
+        }
+        for (CompiledField field : concept.getFields()) {
+            if (column.equals(SqlIdentifierSupport.columnName(field))) {
+                return field.getName();
+            }
+        }
+        return null;
     }
 }

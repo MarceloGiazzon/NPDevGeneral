@@ -2,13 +2,21 @@ package com.npdev.generator.schemaevolution;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -53,6 +61,65 @@ class ModelChangeClassifierMainTest {
         JsonNode index = mapper.readTree(indexPath.toFile());
         assertTrue(index.path("catalogs").isArray(), "metadata/index.json missing catalogs array");
         assertEquals(11, index.path("catalogs").size(), "expected all 11 catalogs listed in metadata/index.json");
+    }
+
+    /**
+     * Boundary lift plan 2026-09-02, package 2.2 (B1): {@link ModelChangeClassifierMain}'s
+     * {@code enrichRenameCandidatesWithFieldNames} reverse-maps a {@link RenameCandidateScorer}
+     * candidate's SQL table/column back to the DSL {@code Concept}/field name, via the SAME
+     * {@code SqlIdentifierSupport} convention {@link MigrationPlanEmitter} used forward -- so
+     * {@code npdev migrate rename --from-suggestions} has something to feed the existing
+     * {@code run_migrate_rename} stamping path. Exercised directly against hand-built fixtures
+     * (no JSON parsing, no schema validation) so the test targets exactly this lookup.
+     */
+    @Test
+    void enrichRenameCandidatesResolvesConceptAndFieldNamesWhenTheSqlNamesMatchARealField() {
+        CompiledField id = new CompiledField("id", "uuid", "java.util.UUID", true, true, false);
+        CompiledField droppedField = new CompiledField("emailAddres", "string", "java.lang.String", false, false, false);
+        CompiledConcept widget = new CompiledConcept("Widget", "Widget", "", List.of(id, droppedField));
+        Map<String, CompiledConcept> byName = new LinkedHashMap<>();
+        byName.put("Widget", widget);
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", byName);
+
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode root = mapper.createObjectNode();
+        ArrayNode renameCandidates = root.putArray("renameCandidates");
+        ObjectNode candidate = renameCandidates.addObject();
+        candidate.put("table", "widgets");
+        candidate.put("droppedColumn", "email_addres");
+        candidate.put("addedColumn", "email_address"); // no field named emailAddress in the fixture
+        candidate.put("score", 90);
+        candidate.put("maxScore", 100);
+        candidate.putArray("signals");
+
+        ModelChangeClassifierMain.enrichRenameCandidatesWithFieldNames(root, model);
+
+        JsonNode result = root.get("renameCandidates").get(0);
+        assertEquals("Widget", result.get("concept").asText());
+        assertEquals("emailAddres", result.get("droppedField").asText());
+        assertTrue(result.path("addedField").isMissingNode(),
+                "no field named emailAddress exists in the fixture -- addedField must be left absent, never guessed");
+    }
+
+    @Test
+    void enrichRenameCandidatesLeavesAnUnmatchedTableCompletelyAlone() {
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of());
+
+        ObjectMapper mapper = new ObjectMapper();
+        ObjectNode root = mapper.createObjectNode();
+        ArrayNode renameCandidates = root.putArray("renameCandidates");
+        ObjectNode candidate = renameCandidates.addObject();
+        candidate.put("table", "does_not_exist");
+        candidate.put("droppedColumn", "a");
+        candidate.put("addedColumn", "b");
+        candidate.put("score", 10);
+        candidate.put("maxScore", 100);
+        candidate.putArray("signals");
+
+        ModelChangeClassifierMain.enrichRenameCandidatesWithFieldNames(root, model);
+
+        JsonNode result = root.get("renameCandidates").get(0);
+        assertTrue(result.path("concept").isMissingNode(), "a table matching no concept must not get a concept guess");
     }
 
     /** Any real, in-repo, schema-valid model -- content doesn't matter for this test since current

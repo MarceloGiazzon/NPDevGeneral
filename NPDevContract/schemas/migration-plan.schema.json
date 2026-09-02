@@ -42,9 +42,41 @@
       "type": "array",
       "description": "LNCH-1 remediation R6 (F7). Non-fatal advisory warnings surfaced during the diff -- currently a stale renamedFrom marker (a rename whose declared previous name does not exist in the previous model, which would silently degrade a rename into a destructive drop). Empty when there is nothing to warn about. Does not affect the exit code.",
       "items": { "type": "string" }
+    },
+    "renameCandidates": {
+      "type": "array",
+      "description": "Boundary lift plan 2026-09-02, package 2.2 (docs/ACCEPTED_BOUNDARIES.md B1): every DROP_COLUMN item paired against every ADD_COLUMN/ADD_COLUMN_BACKFILL item on the same table, ranked and scored by com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer -- the SAME shared scorer com.finalexec.db.ImpactReportText uses against a live database. Advisory only: never applies a rename, never affects destructiveAckToken or any item's classification. Empty when there is no eligible drop/add pair.",
+      "items": { "$ref": "#/$defs/renameCandidate" }
     }
   },
   "$defs": {
+    "renameCandidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["table", "droppedColumn", "addedColumn", "score", "maxScore", "signals"],
+      "properties": {
+        "table": { "type": "string" },
+        "droppedColumn": { "type": "string" },
+        "addedColumn": { "type": "string" },
+        "score": { "type": "integer", "description": "0..maxScore; higher means more contributing signals agreed." },
+        "maxScore": { "type": "integer" },
+        "signals": {
+          "type": "array",
+          "description": "Every contributing signal's own points, so a human judges the evidence rather than trusting the total alone.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["signal", "points", "maxPoints", "detail"],
+            "properties": {
+              "signal": { "type": "string" },
+              "points": { "type": "integer" },
+              "maxPoints": { "type": "integer" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
     "migrationPlanItem": {
       "type": "object",
       "additionalProperties": false,
