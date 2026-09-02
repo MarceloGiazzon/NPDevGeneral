@@ -747,7 +747,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "(2) restore a database snapshot from before the later change, if you have one, "
                     + "then boot this build again. NPDev will not reconstruct the older schema shape "
                     + "for you -- if this ahead state is intentional, record an operator mark to "
-                    + "fast-forward past this check. Run `npdev why B5` for the full explanation.",
+                    + "fast-forward past this check. Run `npdev why B5` for the full explanation.\n"
+                    + "Exactly what differs from this build's own schema (same `npdev db verify` "
+                    + "vocabulary; `npdev db schema-ahead --report` renders this without booting):\n"
+                    + SchemaAheadAnalysis.render(dataSource, manifest, aheadOfBuild.get().toFingerprint()),
                     Instant.now()));
         }
 
@@ -2054,6 +2057,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // UniqueConstraintPass themselves made in between, so the ownership set never lags a full
             // boot behind reality.
             upsertMetadata(connection, OWNED_TABLES_KEY, ownedTablesJson(connection, dataSource, manifest));
+            // B5-A (boundary-lift 2026-09-02, package 2.3): record a full desired-schema snapshot for
+            // THIS fingerprint, in the same connection block as the fingerprint write itself -- so a
+            // later boot that finds this fingerprint via npdev_schema_history (REG-8 Trigger C) can
+            // also always find its matching snapshot. See SchemaAheadAnalysis for the read side.
+            SchemaSnapshotStore.writeSnapshot(connection, manifest.schemaFingerprint(), DesiredSchemaFactory.fromManifest(manifest));
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed storing schema fingerprint", exception);
         }

@@ -1,0 +1,109 @@
+id: REG-198
+title: >-
+  Per-boot schema snapshot + precise schema-ahead diagnosis -- turning a B5 dead end into an
+  itemized diff
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 2.3 (B5-A), wave 2, last package -- depends on 2.1's
+  shared diff surface (STOR-19/B8), which was already done. B5's own recorded revisit trigger: "a
+  full schema-history snapshot (not just a fingerprint) is stored per boot." Before this package, a
+  B5 schema-ahead refusal said only THAT the database was migrated past this build, never what
+  specifically differs -- an operator had to guess between forward-fixing model.json and restoring a
+  snapshot with no evidence either way.
+surface: runtimehost-core (db, db/schemastate), cli, B5 registry (ledger/boundaries,
+  accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/schemastate/SchemaAheadResolution.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaSnapshotStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaAheadAnalysis.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaAheadMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/SchemaAheadAnalysisTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorSchemaAheadDiagnosisTest.java
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B5.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. Every successful boot stores a full desired-schema snapshot, keyed by build fingerprint, in the
+     database (not the filesystem). `SchemaSnapshotStore` (new, `com.finalexec.db`, package-private,
+     sibling to the existing `SchemaHistoryStore`) owns a new self-bootstrapped
+     `npdev_schema_snapshot(fingerprint PK, snapshot_json, recorded_at_utc)` table, using the SAME
+     `InternalDdlTypes`/`SqlDialects.active().guardedCreateTable` conventions every other internal
+     table in this package already uses. `SchemaLifecycleExecutor.afterMigrate` calls
+     `SchemaSnapshotStore.writeSnapshot` with the SAME open `Connection` it already holds when it
+     writes `FINGERPRINT_KEY`/`OWNED_TABLES_KEY` -- so a snapshot can never exist for a fingerprint
+     whose metadata write itself failed to commit. JSON is hand-rolled via Jackson's tree API
+     (`toJson`/`fromJson`), not `ObjectMapper.readValue(json, DesiredSchema.class)` -- the
+     `schemastate` records carry no Jackson creator annotations, and every other JSON reader in this
+     package already reads generic tree/Object shapes rather than trusting reflective record binding,
+     for the same reason. Round-trip fidelity covered by `SchemaAheadAnalysisTest` (two DesiredSchema
+     fixtures: one exercising every field including uniques/FKs/indexes/renames/literal-defaults, one
+     with no constraints at all).
+
+  2. On schema-ahead, the refusal names exactly what differs, per column/table, classified with the
+     EXISTING `SafetyClass` vocabulary -- no parallel ladder invented. `SchemaAheadAnalysis` reads the
+     ahead fingerprint's recorded snapshot, reshapes it as a `CurrentSchema` (every generated table's
+     PK is the platform `id` column by convention -- the diff engine only reads `primaryKeyColumns()`
+     to satisfy a declared index over the same columns, so this is a safe, deliberate default), and
+     reuses the UNCHANGED `SchemaDiffEngine.diff(ourDesired, aheadAsCurrent)` -- the same engine the
+     Impact Report and REG-197's rename suggester already share. Degrades to a plain explanatory line,
+     never throws, when no snapshot was ever recorded for the ahead fingerprint (a database that
+     reached it before this feature shipped, or via an operator mark-done fast-forward -- neither path
+     writes one).
+
+  3. Each difference carries a resolution, from a NEW three-value enum
+     (`schemastate.SchemaAheadResolution`) derived straight off the item's own `SafetyClass`
+     (`SchemaAheadAnalysis.resolutionFor`, fully unit-tested): a destructive item (drop column/table,
+     narrow type) means reconciling toward this build's shape would destroy data the newer build
+     added -> NEEDS_DESTRUCTIVE_DOWNGRADE. A missing FK/index (`SchemaDiffEngine`'s own javadoc already
+     treats these as advisory-only, "never a gate, never a drop") and a nullability relaxation are
+     genuinely safe to boot past -> PROCEED_IGNORING. Everything else -- a missing table/column, or a
+     type this build needs wider than the live one -- means this build cannot function without the
+     newer build's shape -> NEEDS_NEWER_BUILD. `MANUAL_REVIEW` items default to NEEDS_NEWER_BUILD (the
+     conservative choice: never claim safety the engine itself could not decide).
+
+  4. `npdev db schema-ahead --report` renders the same analysis from the CLI without booting the app.
+     `SchemaAheadMain` (new) mirrors `SchemaVerifyMain`'s exact shape (plain JDBC `UrlDataSource`, no
+     Spring/Flyway/ApplicationContext) so it works even while the app itself refuses to boot --
+     precisely when an operator needs it. Exit codes: 0 not-ahead, 1 ahead (report shown), 2 could not
+     determine. `run_db_schema_ahead` in `npdev_cli.py` shells to it exactly the way `run_db_verify`
+     shells to `SchemaVerifyMain` (same fat-jar BOOT-INF/lib extraction, same
+     `_ops/resolved-db-plan.json` -> `db.definition.json` -> `--url` resolution order).
+
+  5. The refusal still fires in every case -- nothing in this package reverses B5 or runs any DDL.
+     `--schema-ahead-mode=IGNORE` was explicitly out of scope per the plan's own "Explicitly not
+     doing" note (a partial silent-ignore would let a newer build's NOT NULL column reject every
+     insert an older build attempts). `SchemaLifecycleExecutor`'s `BoundaryBootException` message now
+     appends the itemized text after the existing forward-fix/restore-snapshot guidance; the
+     `B5:schema_ahead_detected:` diagnostic-code prefix itself is UNCHANGED.
+
+  Register updated across the three non-code seams (section 5 of the plan). The fourth,
+  `twin-pair-registry.json`, needed no new entry -- no diagnostic code changed, same reasoning
+  `SEC-7`'s own register update recorded for B30. `B5.classification` stays HITTABLE (unchanged): this
+  is a residue-narrowed-plus-diagnosis-added outcome, exactly like SEC-7's own B30 update, not a
+  LIFTED reclassification -- the boundary (downgrade is unsupported) is untouched.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorSchemaAheadDiagnosisTest.java
+  asserts: >-
+    Two integration scenarios against a real H2 in-memory database, driven through the REAL
+    `SchemaLifecycleExecutor.afterMigrate`/`beforeMigrate` boot path (not hand-seeded shortcuts):
+    (1) build N and build N+1 each boot for real (afterMigrate records each one's own fingerprint,
+    history row, and B5-A schema snapshot); rolling back to build N then refuses with the boot
+    message naming the exact dropped column ("users.nickname") and its resolution bucket ("this needs
+    the newer build"). (2) the ORIGINAL Trigger C setup (hand-seeded history rows, no real
+    afterMigrate call for the ahead fingerprint, matching
+    SchemaLifecycleExecutorDatabaseMigratedPastBuildTest's existing headline scenario) still refuses,
+    but degrades gracefully to the "no schema snapshot was recorded" explanatory line rather than
+    throwing. `SchemaAheadAnalysisTest` (runtimehost-core, pure/no-DB) covers every `SafetyClass` ->
+    `SchemaAheadResolution` bucket plus the snapshot JSON round-trip. Requested as this session's
+    closing verification: `run-runtimehost-gate.ps1` (assembled sample app + its full suite,
+    including both new test files) -- see the session handoff for its actual result.
+  provenRed: true
