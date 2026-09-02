@@ -60,6 +60,17 @@ public final class LibrarySignatureCapability {
      * {@code System.out.println} -- the console stream is exempted from the SEC-3 {@code java/io/}
      * ban (B30; {@code java/io/PrintStream} is console output, not filesystem IO), so the boot log
      * the CI job uploads carries the digest evidence.
+     *
+     * <p><b>{@code id} MUST be carried through too.</b> The generated CRUD create endpoint
+     * (POST /api/lib_probe_records, unlike a direct POST /api/flows/SignWithLibrary/execute) calls
+     * {@code GeneratedCrudRuntimeSupport.ensureGeneratedId} BEFORE invoking this flow, which writes a
+     * pre-allocated UUID into the flow's own {@code $input} under "id" -- then, after the flow's
+     * {@code persist-the-signature} step runs, verifies the write by looking up THAT SAME id
+     * (LibProbeRecordServiceBase#createFromSource: {@code persistence.findById(generatedId)}). Every
+     * earlier version of this map dropped "id", so {@code createConcept} persisted under a FRESH
+     * random id instead of the pre-allocated one, and that lookup always failed with
+     * "did not persist id ..." -- a real 500 on every CRUD create, silent on the direct flow-execute
+     * path because nothing there re-checks the persisted id.
      */
     public Map<String, Object> sign(Map<String, Object> input) {
         String payload = input == null || input.get("payload") == null
@@ -72,6 +83,9 @@ public final class LibrarySignatureCapability {
         System.out.println("[lib-probe] Guava sha256('" + payload + "') = " + digest);
 
         Map<String, Object> result = new LinkedHashMap<>();
+        if (input != null && input.get("id") != null) {
+            result.put("id", input.get("id"));
+        }
         result.put("payload", payload);
         result.put("digest", digest);
         return result;

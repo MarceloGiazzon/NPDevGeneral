@@ -1,0 +1,77 @@
+id: QUAL-52
+title: >-
+  lib-probe's SignWithLibrary create-flow 500'd on the real CRUD endpoint because the plugin dropped
+  the pre-allocated id its own create-flow wrapper checks for afterward
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  SEC-5's own residual note (ledger/items/SEC-5.yml): "The HTTP request itself still 500s at a LATER,
+  unrelated flow step -- persisting the result -- a pre-existing gap in this probe's own storage
+  wiring never exercised via real HTTP before ... not investigated further here." Picked up this
+  session at the user's explicit request ("Solve lib-probe case") as the other of the two follow-ups
+  offered after SEC-6 closed.
+surface: NPDevSamples probes, plugin:java-source, generated CRUD create-flow wrapper (REG-120)
+files:
+  - NPDevSamples/probes/lib-probe/Input/capabilities/librarySignature/src/main/java/com/npdev/probes/libsig/LibrarySignatureCapability.java
+  - scripts/quality/run-library-probe.py
+detail: |
+  REPRODUCED FIRST, THEN FIXED -- 2026-09-02. Built a throwaway reproduction (generate+build+boot a
+  real lib-probe jar, POST /api/lib_probe_records) that hit the exact same 500 SEC-5 saw, then read
+  the real server-side stack trace out of the app's own boot log rather than guessing:
+
+    java.lang.IllegalStateException: Create flow "SignWithLibrary" for LibProbeRecord did not persist
+    id 1b89f220-0acf-43fa-af3f-8d030d9ab41b
+      at com.npdev.generated.services.LibProbeRecordServiceBase.createFromSource(...)
+
+  ROOT CAUSE: two DIFFERENT entry points reach the same flow, and only one of them re-checks the
+  write. The generated CRUD create endpoint (LibProbeRecordServiceBase.createFromSource,
+  GeneratedCrudRuntimeSupport.ensureGeneratedId) pre-allocates a UUID and writes it into the flow's
+  own $input under "id" BEFORE running SignWithLibrary, then -- because REG-120 makes the flow's
+  createConcept step the row's one authoritative writer, so the wrapper cannot just write its own
+  copy to check -- verifies the flow actually wrote THAT id via persistence.findById(generatedId).
+  LibrarySignatureCapability#sign's returned map ("the returned map contains EXACTLY the concept's
+  own fields," per its own prior doc comment) copied "payload" and "digest" from its input but
+  silently DROPPED "id" -- so the flow's persist-the-signature step created a row under a FRESH random
+  id instead of the pre-allocated one, and findById(generatedId) always came back empty. The direct
+  POST /api/flows/SignWithLibrary/execute endpoint (what the CI-wired run-library-probe.py already
+  exercised, and what this session's own SEC-6 measurement harness happened to use) never re-checks
+  the persisted id at all, so this exact same silent-drop bug was invisible on that path -- it only
+  breaks the real generated REST create endpoint, which nothing had driven with real HTTP before
+  SEC-5 did, by accident, while live-firing something unrelated.
+
+  FIX: LibrarySignatureCapability#sign now copies "id" from its input into its result map (when
+  present) alongside "payload" and "digest", so persist-the-signature's createConcept step writes
+  under the SAME id the CRUD wrapper pre-allocated and later checks for.
+
+  LIVE-FIRE VERIFICATION: re-ran the identical reproduction after the fix -- POST
+  /api/lib_probe_records now returns 201 with the correct digest, the pre-allocated id, payload, and
+  tenantId (previously: 500 with no body detail, a bare Spring default error page).
+
+  REGRESSION GUARD ADDED: run-library-probe.py (already CI-wired, .github/workflows/engine-support.yml)
+  asserted ONLY the direct flow-execute endpoint before this session -- which is exactly why this bug
+  shipped unnoticed. Added a second assertion, crud-create-endpoint-persists-under-its-own-allocated-id,
+  that POSTs to /api/lib_probe_records (the real generated REST create endpoint, the production shape
+  a real client actually uses) and asserts status=201, the correct digest, AND a non-empty id came
+  back -- closing the exact blind spot that let this ship. Ran the full updated probe script end to
+  end (fresh generate+build+boot): both assertions pass, "ok": true.
+
+  Done when (met): the real 500 is reproduced against the real production entry point (not asserted
+  from prose), root-caused to an actual line of code via a real stack trace, fixed, re-verified live
+  against the same reproduction, and given a regression guard that exercises the SPECIFIC endpoint
+  that broke -- not just the diagnostic one that already passed and hid the bug.
+guard:
+  kind: script
+  ref: scripts/quality/run-library-probe.py
+  asserts: >-
+    Generates+builds+boots a real lib-probe FinalApp jar and asserts TWO things against real HTTP: (1)
+    POST /api/flows/SignWithLibrary/execute returns the correct Guava-computed SHA-256 (pre-existing,
+    unaffected by this fix); (2) POST /api/lib_probe_records -- the generated REST CRUD create
+    endpoint, added this session -- returns 201 with the correct digest and a non-empty id, proving
+    the create-flow's persisted row matches the id the CRUD wrapper pre-allocated and later verifies.
+    Ran live 2026-09-02 against the fixed LibrarySignatureCapability#sign: both assertions pass ("ok":
+    true). Wired into .github/workflows/engine-support.yml, so this guard runs on every push/PR, not
+    only on request.
+  provenRed: true
