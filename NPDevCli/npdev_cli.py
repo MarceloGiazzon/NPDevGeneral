@@ -4297,6 +4297,175 @@ def run_db_operation(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def _db_restore_admin_get(base_url: str, super_user_key: str, path: str, timeout: float):
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(
+        base_url + path, headers={"X-Super-User-Key": super_user_key})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "replace")
+        try:
+            return exc.code, json.loads(body)
+        except json.JSONDecodeError:
+            return exc.code, {"raw": body[:500]}
+    except urllib.error.URLError as exc:
+        raise CliError(f"GET {path} failed: {exc.reason}")
+
+
+def _db_restore_admin_post(base_url: str, super_user_key: str, path: str, body: dict, timeout: float):
+    import urllib.error
+    import urllib.request
+
+    data = json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(
+        base_url + path, data=data, method="POST",
+        headers={"Content-Type": "application/json", "X-Super-User-Key": super_user_key})
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", "replace")
+        try:
+            return exc.code, json.loads(raw_body)
+        except json.JSONDecodeError:
+            return exc.code, {"raw": raw_body[:500]}
+    except urllib.error.URLError as exc:
+        raise CliError(f"POST {path} failed: {exc.reason}")
+
+
+def run_db_restore(args: argparse.Namespace) -> int:
+    """STOR-18 (docs/ACCEPTED_BOUNDARIES.md B9, LIFTED-with-a-gate): CLI front end for
+    `SchemaAcknowledgmentController`'s snapshot-restore endpoints on a RUNNING app -- the batch
+    endpoint (`POST .../snapshots/{snapshot}/restore`) added this session for the bulk case, plus
+    the pre-existing list/tables/preview endpoints for `--list` and the default (no `--apply`)
+    dry-run. Same discovery + SUPERUSER-auth shape as `_run_monitor_hotswap` (`npdev_monitor.probe_app`,
+    then `_ops/SUPER_USER_KEY.txt`, then `X-Super-User-Key` -- never the business `X-Api-Key`, since
+    this endpoint requires SUPERUSER specifically): every expected outcome (app not running, no key
+    on disk, an unknown snapshot/table, a preflight failure, a conflict) is a structured `ok: false`
+    result printed via `_print_result`, never a traceback.
+
+    `--apply` is required to actually write, matching every other destructive npdev command's
+    default-refuses-then-explicit-opt-in convention (`monitor ops reset --confirm TOKEN`) and this
+    endpoint's own REST-level precedent (`/promote/preview` vs `/promote/apply`). Without it, restore
+    calls the SAME per-table preview endpoint the single-table ControlPanel screen already uses, once
+    per table in the batch, and writes nothing.
+    """
+    app_dir = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    result: dict = {
+        "schemaVersion": "npdev-db-restore.v1", "command": "db restore",
+        "ok": False, "code": None, "message": None, "appDir": str(app_dir),
+        "snapshot": args.snapshot, "applied": bool(args.apply),
+    }
+
+    def _refuse(code: str, message: str) -> int:
+        result["code"] = code
+        result["message"] = message
+        _print_result(result, args)
+        return 2
+
+    app_record = npdev_monitor.probe_app(app_dir, origin="explicit", health_timeout=min(args.timeout, 3.0))
+    if not app_record.get("isAppRoot"):
+        return _refuse("NOT_AN_APP", app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        return _refuse(
+            "APP_NOT_RUNNING",
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')} -- `db restore` calls a RUNNING app's admin API; "
+            "start it first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    if not args.snapshot and not args.list:
+        return _refuse("SNAPSHOT_REQUIRED", "--snapshot is required (use --list to discover one first)")
+
+    key_file = app_record.get("superUserKeyFile")
+    if not key_file:
+        return _refuse(
+            "SUPERUSER_KEY_NOT_FOUND",
+            "no SUPER_USER_KEY.txt found under this app's _ops directory -- either an app generated "
+            "before R1.7's SuperUserBootstrapper, or the key was already relocated/rotated elsewhere.")
+    try:
+        super_user_key = Path(key_file).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return _refuse("SUPERUSER_KEY_UNREADABLE", f"found {key_file} but could not read it: {exc}")
+    if not super_user_key:
+        return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
+
+    base_url = app_record.get("probeBaseUrl")
+    base_path = "/api/admin/schema-migration"
+
+    if args.list:
+        status, snapshots = _db_restore_admin_get(base_url, super_user_key, f"{base_path}/snapshots", args.timeout)
+        if status != 200:
+            return _refuse("LIST_FAILED", f"GET {base_path}/snapshots -> HTTP {status}: {snapshots}")
+        result["snapshots"] = snapshots
+        if args.snapshot in snapshots:
+            status, tables = _db_restore_admin_get(
+                base_url, super_user_key, f"{base_path}/snapshots/{args.snapshot}/tables", args.timeout)
+            if status == 200:
+                result["tablesInSnapshot"] = tables
+        result["ok"] = True
+        result["message"] = f"{len(snapshots)} snapshot(s) available"
+        _print_result(result, args)
+        return 0
+
+    status, tables_in_snapshot = _db_restore_admin_get(
+        base_url, super_user_key, f"{base_path}/snapshots/{args.snapshot}/tables", args.timeout)
+    if status != 200:
+        return _refuse(
+            "SNAPSHOT_NOT_FOUND",
+            f"GET {base_path}/snapshots/{args.snapshot}/tables -> HTTP {status}: {tables_in_snapshot} "
+            "-- run `npdev db restore --list` to see available snapshots.")
+    if not tables_in_snapshot:
+        return _refuse("SNAPSHOT_EMPTY", f"snapshot '{args.snapshot}' captured no tables")
+
+    if args.tables:
+        requested = [name.strip() for name in args.tables.split(",") if name.strip()]
+        unknown = [name for name in requested if name not in tables_in_snapshot]
+        if unknown:
+            return _refuse(
+                "UNKNOWN_TABLES",
+                f"requested table(s) not captured by snapshot '{args.snapshot}': {unknown} "
+                f"(captured: {tables_in_snapshot})")
+    else:
+        requested = list(tables_in_snapshot)
+
+    if not args.apply:
+        previews = []
+        for table in requested:
+            status, preview = _db_restore_admin_get(
+                base_url, super_user_key,
+                f"{base_path}/snapshots/{args.snapshot}/tables/{table}/preview", args.timeout)
+            previews.append({"table": table, "status": status, **(preview if status == 200 else {"error": preview})})
+        result["ok"] = all(p["status"] == 200 for p in previews)
+        result["tables"] = previews
+        result["message"] = (
+            f"DRY RUN (no writes) -- {len(previews)} table(s) previewed. Re-run with --apply to restore."
+        )
+        _print_result(result, args)
+        return 0 if result["ok"] else 2
+
+    status, response = _db_restore_admin_post(
+        base_url, super_user_key, f"{base_path}/snapshots/{args.snapshot}/restore",
+        {"tables": requested}, args.timeout)
+    result["httpStatus"] = status
+    result["tables"] = response.get("tables") if isinstance(response, dict) else None
+    result["orderedTables"] = response.get("orderedTables") if isinstance(response, dict) else None
+    if status == 200:
+        result["ok"] = True
+        result["message"] = f"restored {len(requested)} table(s), no conflicts"
+    elif status == 409:
+        result["ok"] = False
+        result["message"] = response.get("error") or "restore reported a conflict or preflight failure"
+    else:
+        result["ok"] = False
+        result["message"] = f"HTTP {status}: {response}"
+    _print_result(result, args)
+    return 0 if result["ok"] else 2
+
+
 def _scrapforai_check() -> dict:
     """MONITOR_PLAN F1: the browser-exploration engine, reported as a FACT rather than as the
     presence of a setting.
@@ -9662,6 +9831,33 @@ def _human_summary(result: dict) -> str:
                 lines.append(f"  served UI manifest patched: {', '.join(patch.get('fieldsChanged') or [])}")
             elif patch.get("reason"):
                 lines.append(f"  served UI manifest NOT patched: {patch['reason']}")
+    elif command == "db restore":
+        if result.get("snapshots") is not None:
+            lines.append(f"{len(result['snapshots'])} snapshot(s):")
+            for name in result["snapshots"]:
+                lines.append(f"  {name}")
+            if result.get("tablesInSnapshot") is not None:
+                lines.append(f"tables in {result.get('snapshot')}:")
+                for table in result["tablesInSnapshot"]:
+                    lines.append(f"  {table}")
+        else:
+            status = "OK" if result.get("ok") else f"REFUSED ({result.get('code')})"
+            lines.append(f"{status}: {result.get('message') or ''}")
+            for table in (result.get("tables") or []):
+                if "rowsInserted" in table:
+                    conflicts = table.get("conflictingIds") or []
+                    lines.append(
+                        f"  {table['table']:<24} inserted={table.get('rowsInserted')} "
+                        f"alreadyPresent={table.get('rowsAlreadyPresentIdentical')} "
+                        f"conflicts={len(conflicts)}" + (f" {conflicts}" if conflicts else ""))
+                elif "rowsToInsert" in table:
+                    conflicts = table.get("conflictingIds") or []
+                    lines.append(
+                        f"  {table['table']:<24} wouldInsert={table.get('rowsToInsert')} "
+                        f"alreadyPresent={table.get('rowsAlreadyPresentIdentical')} "
+                        f"conflicts={len(conflicts)}" + (f" {conflicts}" if conflicts else ""))
+                else:
+                    lines.append(f"  {table.get('table')}  status={table.get('status')}  {table.get('error') or ''}")
     elif "found" in result and "state" in result:
         lines.append(f"ScrapForAI engine: {result['state']}")
         lines.append(f"  via      : {result.get('via')}")
@@ -11178,6 +11374,59 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit the impact report as JSON (conforming to NPDevContract/schemas/impact-report."
              "schema.json -- the SAME shape the boot-time impact report and ControlPanel use) instead "
              "of the text table.",
+    )
+
+    # STOR-18 (docs/ACCEPTED_BOUNDARIES.md B9): bulk pre-drop-snapshot restore, against a RUNNING
+    # app's SchemaAcknowledgmentController batch endpoint (SUPERUSER-gated, same auth path
+    # `monitor hotswap` already uses -- X-Super-User-Key, never the business X-Api-Key).
+    db_restore = db_sub.add_parser(
+        "restore",
+        help="Restore rows a pre-drop schema snapshot captured, for one/several/all tables it "
+             "covers -- against a RUNNING app. Previews by default; --apply actually writes.",
+    )
+    db_restore.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory. Defaults to the current directory. The app must be RUNNING -- "
+             "restore goes through the live app's own ControlPanel API, the same one "
+             "SchemaDropSnapshotRestorer uses to read the app's runtime-data/schema-snapshot-"
+             "before-drop directory and its own DataSource.",
+    )
+    db_restore.add_argument(
+        "--snapshot", default=None, metavar="NAME",
+        help="A snapshot directory name from `GET .../schema-migration/snapshots` (most recent "
+             "first) -- run `npdev db restore --list` to discover one. Required unless --list is "
+             "given with no snapshot (in which case only the snapshot names themselves are listed).",
+    )
+    db_restore.add_argument(
+        "--list", action="store_true",
+        help="Ignore --tables/--all/--apply: print every snapshot this app holds, most recent "
+             "first (and, if --snapshot is also given, every table THAT snapshot captured).",
+    )
+    table_group = db_restore.add_mutually_exclusive_group()
+    table_group.add_argument(
+        "--tables", default=None, metavar="A,B,C",
+        help="Comma-separated table names to restore. Omit together with --all to mean 'every "
+             "table this snapshot captured'.",
+    )
+    table_group.add_argument(
+        "--all", action="store_true",
+        help="Restore every table the snapshot captured (the batch form this command exists for). "
+             "Same as omitting --tables.",
+    )
+    db_restore.add_argument(
+        "--apply", action="store_true",
+        help="Actually write. Without this flag, restore PREVIEWS every table in the same "
+             "parent-before-child order the real restore would use (rowsToInsert/"
+             "rowsAlreadyPresentIdentical/conflictingIds per table) and writes nothing -- the same "
+             "dry-run-by-default convention every other destructive npdev command follows.",
+    )
+    db_restore.add_argument(
+        "--timeout", type=float, default=60.0,
+        help="HTTP timeout in seconds for each call to the running app.",
+    )
+    db_restore.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-db-restore.v1 JSON object instead of the human-readable report.",
     )
 
     # M14: the five environment operations. Each RUNS the generated `_ops` script of the same name
@@ -12749,6 +12998,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_test_connection(args)
         if args.command == "db" and args.db_command == "verify":
             return run_db_verify(args)
+        if args.command == "db" and args.db_command == "restore":
+            return run_db_restore(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
         if args.command == "mcp" and args.mcp_command == "install":

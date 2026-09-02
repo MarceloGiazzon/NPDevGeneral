@@ -1,14 +1,38 @@
 id: B9
-title: "Snapshot restore is operator-driven, one (snapshot, table) pair at a time -- never restore all"
+title: "~~Snapshot restore is operator-driven, one (snapshot, table) pair at a time -- never restore all~~ LIFTED, with a preflight gate -- STOR-18, 2026-09-02"
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). SchemaDropSnapshotRestorer.apply already threw
   `BoundaryBootException(new BoundaryViolation("B9", "restore", ...))` before this session (Wave 2,
-  commit 50ddf3ea). This is the boundary's ONE runtime refusal (the named table must exist before it
-  can be restored into) -- there is no separate "you asked for more than one table" check to attach
-  a code to, because the API signature itself (one snapshot, one table, per call) never accepts more
-  than one; "single_table_scope" describes the whole endpoint's shape, and this refusal is its one
-  reachable manifestation. Code carried as a `B9:single_table_scope:` message prefix, same convention
-  as the other five. Proven by SchemaDropSnapshotRestorerTest#applyRefusesWhenLiveTableIsMissing.
+  commit 50ddf3ea). This was the boundary's ONE runtime refusal (the named table must exist before it
+  can be restored into) -- there was no separate "you asked for more than one table" check to attach
+  a code to, because the single-table API signature never accepted more than one; "single_table_scope"
+  described the whole endpoint's shape, and this refusal was its one reachable manifestation. Code
+  carried as a `B9:single_table_scope:` message prefix, same convention as the other five. Proven by
+  SchemaDropSnapshotRestorerTest#applyRefusesWhenLiveTableIsMissing.
+
+  LIFTED 2026-09-02 (STOR-18, BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.2, wave 1). The row's
+  own revisit trigger ("genuine demand for a 'restore every table in this snapshot' bulk mode, once
+  conflict-handling-at-scale has a real design") is what this closes: `POST
+  .../schema-migration/snapshots/{snapshot}/restore` (new, distinct from the unchanged per-table
+  `.../tables/{table}/restore`) accepts an explicit table list or `{"tables": ["all"]}`/an omitted
+  body, preflights EVERY named table's live existence before writing anything (`
+  SchemaDropSnapshotRestorer.missingLiveTables`, new -- reuses the SAME private `tableExistsLive`
+  check `apply()` already made per table, just run for the whole set up front so a batch never
+  half-completes on a missing table discovered mid-way), restores parent tables before the children
+  that FK-reference them (`SchemaDropSnapshotRestorePlan`, new, pure/no-DataSource, Kahn's-algorithm
+  topological sort over the manifest's `businessTableForeignKeys`), and delegates each table in that
+  order to the UNCHANGED single-table `apply()` -- one call per table, so a conflict in one table
+  does not stop the others; the response reports per-table inserted/alreadyPresent/conflictingIds and
+  an overall `anyConflicts`, HTTP 409 if the preflight failed (nothing written) or any table
+  conflicted (something was), 400 if a requested name was never captured by the snapshot at all.
+  `npdev db restore --snapshot <name> [--all | --tables a,b] [--apply]` (new `db` subcommand --
+  reused the ALREADY-EXISTING `npdev db` group, not a new one) previews by default (per-table `GET
+  .../preview`, writing nothing) and requires the explicit `--apply` flag to write, mirroring this
+  endpoint's own REST-level `/promote/preview` vs `/promote/apply` precedent and every other
+  destructive npdev command's default-refuses convention. Deliberately NOT a single cross-table
+  transaction (considered and rejected, see BOUNDARY_LIFT_PLAN_2026-09-02.md section 6): restore is
+  insert-only and never overwrites, so partial completion was already safe and reportable; a
+  transaction would fail hardest on exactly the engines (H2/MySQL) where it matters least.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B9"
-classification: HITTABLE
+classification: LIFTED

@@ -2237,8 +2237,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
 
     /** SER-G8: a foreign key the MODEL declares (derived from a bond at generation time). Matched
      *  against the live schema by column set + referenced table, never by name — constraint names are
-     *  engine-generated and differ between H2 and Postgres. */
-    record ForeignKeyDecl(List<String> columns, String referencedTable, List<String> referencedColumns) {
+     *  engine-generated and differ between H2 and Postgres.
+     *
+     *  <p>STOR-18: made {@code public} -- {@link SchemaManifest#businessTableForeignKeys()} is a
+     *  public accessor already returning {@code Map<String, List<ForeignKeyDecl>>}, so any caller
+     *  outside this package (e.g. {@code SchemaAcknowledgmentController}, in {@code
+     *  com.finalexec.controlpanel}) that tried to use the returned list's element type hit a
+     *  cannot-be-accessed-from-outside-package compile error -- this was a latent accessibility bug,
+     *  not new exposure. */
+    public record ForeignKeyDecl(List<String> columns, String referencedTable, List<String> referencedColumns) {
     }
 
     /** SER-G8: an index the MODEL declares (a unique index, a tenant index, or a bond-column index).
