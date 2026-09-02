@@ -1,20 +1,22 @@
 {
-  "closedAt": "2026-09-02T05:45:49.7790423Z",
+  "closedAt": "2026-09-02T16:08:10.3179852Z",
   "branch": "main",
-  "head": "a0e245b1",
-  "headSubject": "fix(QUAL-53): clone-port file lock, Windows PermissionError treated as real failure",
-  "summary": "Investigated and fixed the one lead from the last handoff: NPDevCli/tests/test_monitor_clone.py::test_concurrent_calls_never_collide's Windows PermissionError. Confirmed it reproduces reliably when run as part of the full test file (not in isolation), stress-tested the underlying create-vs-unlink race standalone (12 threads, 300 iterations each: 2719 FileExistsError vs 15 PermissionError, ~1 in 180), and traced it to _acquire_file_lock in NPDevCli/npdev_monitor.py only catching FileExistsError. Fixed by also catching PermissionError in the retry loop (QUAL-53, commit a0e245b1, pushed).",
-  "nextStep": "QUAL-53 is DONE and pushed. Ledger is clean again: only QUAL-40/QUAL-41 (WONTFIX-accepted) remain not-DONE, per open-state.md. No open item was left mid-work and nothing new surfaced this session. Start by checking ledger/session-state/open-state.md for the next priority, or ask the user what to work on.",
+  "head": "88818d45",
+  "headSubject": "fix: close T2 gate failures surfaced while verifying wave 1",
+  "summary": "Implemented all 4 wave-1 packages of BOUNDARY_LIFT_PLAN_2026-09-02.md (D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\BOUNDARY_LIFT_PLAN_2026-09-02.md): SEC-7 (B30-A, plugin:java-source resource limits on by default, measured 512MB/50% against a real mount), STOR-18 (B9, bulk FK-ordered preflighted snapshot restore + npdev db restore CLI), EDIT-17 (B19, band picker without a panel via a synthesized reference-lookup projection), SEC-8 (B17, Super User bootstrap key becomes a short-lived handoff via a claim flow + hash/raw-supplied bootstrap modes + npdev admin CLI). B9/B19/B17 reclassified HITTABLE->LIFTED. Along the way found and fixed a latent ForeignKeyDecl visibility bug, a redundant-null-check coverage regression, 4 malformed guard.ref ledger entries (3 mine + 1 pre-existing in QUAL-53), 2 untriaged security-pattern-sweep hits, and a DSL coverage-ratchet oscillation (opened QUAL-54 to track its unidentified root cause). 5 commits pushed to main (04ad77e2..88818d45); full run-all-gates.ps1 T2 suite passed clean as the closing verification.",
+  "nextStep": "Wave 2 (schema identity foundation) of BOUNDARY_LIFT_PLAN_2026-09-02.md: package 2.1, B8 (ownership recorded at creation, plus explicit adoption) -- see the plan file's section 4 for the enforcement point (SchemaLifecycleExecutor.java droppedConceptTables) and done-when criteria. Depends on nothing new; 2.2 (B1) and 2.3 (B5-A) depend on 2.1's shared diff surface. Before starting, investigate QUAL-54 (DSL coverage oscillation, scripts/policy/coverage-baseline.json) if it recurs -- QUAL-48's diff-two-jacoco-reports method is proven and ready to reuse.",
   "plan": "",
   "blocked": "",
-  "verified": "8/8 isolated runs of the target test pass post-fix; 5/5 full-file runs pass post-fix (pre-fix: reliably failed as part of the full file, every run observed); full NPDevCli suite (701 tests, via the exact coverage-run + unittest-discover invocation run-ai-knowledge-gate.ps1 uses) passes; full run-all-gates.ps1 -Only aiKnowledge passed clean both before and after the fix.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
-  ],
+  "verified": "run-all-gates.ps1 (T2, all 4 gates: generator/runtimeHost/kernel/aiKnowledge) passed clean at commit 88818d45. Each of the 4 feature packages individually verified: SEC-7 via a live-fire measurement script against a real booted app; STOR-18 via DataSource-backed unit tests + T1 fast-gate; EDIT-17 via DSL validateModel + T1 fast-gate with the new corpus model generating/building/booting; SEC-8 via a live-fire claim-flow script against a real booted app (6/6 steps passed) plus MockMvc controller tests.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "a0e245b1 fix(QUAL-53): clone-port file lock, Windows PermissionError treated as real failure"
+    "88818d45 fix: close T2 gate failures surfaced while verifying wave 1",
+    "3e8b8dcd feat(SEC-8): Super User bootstrap key becomes a short-lived handoff",
+    "81319a19 feat(EDIT-17): band picker without a panel, targeting its own concept",
+    "c7dffad9 feat(STOR-18): bulk pre-drop-snapshot restore, FK-ordered and preflighted",
+    "04ad77e2 feat(SEC-7): plugin:java-source resource limits on by default, measured",
+    "bc2c1a26 chore: session handoff after QUAL-53"
   ]
 }
