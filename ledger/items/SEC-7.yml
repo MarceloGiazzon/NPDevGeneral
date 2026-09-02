@@ -1,0 +1,106 @@
+id: SEC-7
+title: >-
+  plugin:java-source OS-level resource ceiling (SEC-3/4/5/6) shipped wired but OFF (0/0 = unbounded
+  defaults) -- turned ON by default with a measured value, and B30's register corrected to describe
+  the shipped state
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.3 (B30-A), wave 1. The plan's own premise
+  correction (section 1.1): the source document analysed for the plan called this "Very High
+  complexity -- start with a single-plugin PoC", not knowing SEC-3/4/5/6 had landed the day before
+  (2026-09-01) and left the OS-level limiter mechanism fully built, wired to production
+  plugin:java-source dispatch, and live-fire proven -- just never given a non-zero default, and
+  never reflected in B30's own registry rows (still describing the pre-SEC-5/6 "SEC-3 stays OPEN
+  only for the process-isolation (Model B) track: memory/CPU" state).
+surface: runtimehost, plugin-execution, B30 registry (ledger/boundaries, accepted-boundaries.json,
+  docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/src/main/resources/application.properties
+  - ledger/boundaries/B30.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. Non-zero defaults now ship in every generated app. NpdevPluginConfig.pluginIpcChildProcessPool
+     already read `npdev.runtime.plugin-ipc-pool.memory-limit-mb`/`.cpu-rate-percent` via `@Value`
+     with a `:0` fallback (unbounded) -- the gap was never missing wiring, only that no default
+     other than 0 was ever set anywhere. Set both in
+     NPDevRuntimeHost/src/main/resources/application.properties (the RuntimeHost template's OWN
+     application.properties, copied wholesale into every generated FinalApp per CLAUDE.md's module
+     map -- not a generator-emitted file, a template default): memory-limit-mb=512,
+     cpu-rate-percent=50.
+
+  2. MEASURED, not guessed (same discipline SEC-6 used for the timeout floor). Built a throwaway
+     harness (scratchpad, not committed -- reused run-engine-app-proof.py's generate/build/http/App
+     machinery, same one run-library-probe.py and SEC-6 reused) that generated+built+booted the real
+     lib-probe FinalApp jar with `--npdev.runtime.plugin-ipc-pool.memory-limit-mb=512
+     --npdev.runtime.plugin-ipc-pool.cpu-rate-percent=50` as explicit Spring Boot command-line
+     property overrides, fired 8 real HTTP POSTs to SignWithLibrary (plugin:java-source,
+     Guava-hashing, IPC-dispatched via PluginIpcChildProcessPool) plus one real CRUD create
+     (POST /api/lib_probe_records), and sampled the REAL plugin child JVMs' WorkingSetSize via
+     `Get-CimInstance Win32_Process -Filter "ParentProcessId=<mainPid>"` (Windows; children
+     identified by `PluginIpcChildProcessMain` on their command line) before and throughout the
+     calls -- not a synthetic in-process estimate.
+
+     REAL NUMBERS (pool size 2, Windows, this dev machine): idle child WorkingSet after boot =
+     73.5MB / 72.9MB (two pre-started workers). Across 8 real SignWithLibrary calls + 1 CRUD create,
+     peak observed = 91.1MB (one worker) / 89.0MB (the other) -- i.e. genuine Guava-dependency
+     hashing work through the real production dispatch path costs roughly +16-18MB over idle, and
+     every one of the 9 calls succeeded (8x status=200, 1x status=201) under the live 512MB ceiling.
+     512MB leaves ~5.6x headroom over the observed peak on this measurement -- left generous
+     (design doc section 3's own "no principled default without real usage data... callers must opt
+     in explicitly", now given one) rather than tightened toward the observed number, since
+     plugin:java-source workloads are user-authored and unbounded in shape; QUAL-51's own prior
+     proof (256MB reliably surviving a live ceiling for a trivial handler, 4 runs) plus this
+     session's 512MB/real-dependency-workload measurement together bound the choice from both ends.
+     cpu-rate-percent=50 is a bounded-not-tight choice by the same reasoning (half of aggregate host
+     CPU, not a per-core figure) -- no adversarial CPU-burn measurement was run this session (the
+     existing PluginIpcChildProcessWindowsResourceLimitTest / Linux equivalent already cover the
+     enforcement mechanism itself; this item's own measurement scope was memory, matching where
+     QUAL-51 had already found a real hazard).
+
+  3. Loud-degrade-at-boot was ALREADY satisfied by existing code, not new work: pool workers start
+     SYNCHRONOUSLY inside the `@Bean` constructor (PluginIpcChildProcessPool's constructor loop
+     calls PluginIpcChildProcess.startPooled for every worker before the bean returns), and
+     startPooled calls PluginProcessResourceLimiter.forCurrentOs().wrapCommand/attachAfterStart for
+     each one -- so PluginNoOpResourceLimiter.warnIfLimitsRequested's one-time WARNING (already
+     guarded by PluginNoOpResourceLimiterTest) fires during Spring context startup (app boot) the
+     moment non-zero limits are configured on a host with no real limiter, not only on first plugin
+     invocation. No code change was needed for this done-when item; re-traced to confirm rather than
+     assumed from the design doc's own comment.
+
+  4. Register corrected across the three non-code seams (the fourth, twin-pair-registry.json, has no
+     new code<->code string pair to register here -- B30's existing npdev-plugin-bytecode-gate rule
+     covers the admission-manifest path, unrelated to the resource-limit properties):
+     ledger/boundaries/B30.yml's codeLinkedNote rewritten to describe the shipped Model B state for
+     plugin:java-source and the now-narrower residue (plugin:java-controller unchanged + static-
+     analysis-only blind spots); NPDevContract/schemas/accepted-boundaries.json's B30 userFacingText/
+     workaround rewritten to match; docs/ACCEPTED_BOUNDARIES.md's B30 row rewritten (detail,
+     workaround, revisit trigger now pointing at the open plugin:java-controller decision, files
+     list extended). Classification stays HITTABLE (unchanged) -- this is a residue-narrowed-plus-
+     record-corrected outcome, not a LIFTED reclassification: plugin:java-controller keeps the full
+     original boundary, and plugin:java-source's own admission gate (Model A) is untouched.
+
+  Explicitly not attempted this session (out of this package's scope, per
+  BOUNDARY_LIFT_PLAN_2026-09-02.md section 3 wave 4): plugin:java-controller isolation (B30-B,
+  L-XL, design-first) and any adversarial CPU-rate-cap measurement.
+guard:
+  kind: script
+  ref: >-
+    pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1
+  asserts: >-
+    PluginNoOpResourceLimiterTest (the existing loud-degrade-at-boot guard, unchanged by this item)
+    and every existing plugin-ipc test (PluginIpcChildProcessPoolRealPluginTest,
+    PluginIpcCapabilityHandlerRealPluginTest, PluginIpcChildProcessWindowsResourceLimitTest) still
+    pass -- all three construct PluginIpcChildProcessPool/PluginIpcChildProcess directly with
+    explicit limits rather than through the Spring @Bean, so the new application.properties defaults
+    (512MB/50%) do not change their behavior; the assembled sample app boots successfully with the
+    new non-zero defaults active (this item's own measurement session, live-fire, is additional
+    evidence beyond what the gate's own generic sample-app boot exercises, since the sample app has
+    no plugin:java-source mount to actually spawn a worker under the new ceiling).
+  provenRed: false

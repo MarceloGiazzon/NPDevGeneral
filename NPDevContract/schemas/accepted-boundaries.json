@@ -60,10 +60,10 @@
     },
     {
       "id": "B9",
-      "kind": "HITTABLE",
-      "userFacingText": "Snapshot restore is scoped to one table at a time. Preview and restore each table individually.",
-      "workaround": "Call the preview endpoint first, resolve any reported conflicts by hand, then restore for that exact (snapshot, table) pair -- repeat per table.",
-      "enforcingDiagnosticCodes": ["B9:single_table_scope"]
+      "kind": "LIFTED",
+      "userFacingText": "Snapshot restore can target one table, an explicit list, or every table a snapshot captured in a single call -- preflighted (nothing is written if any named table is missing live) and restored parent-before-child by foreign key order. A conflicting row (present live with different content) is still reported per table and never overwritten.",
+      "workaround": "Use the batch restore endpoint / npdev db restore --all (or --tables a,b) for more than one table; the original single-table preview/restore endpoints are unchanged for a single (snapshot, table) call.",
+      "enforcingDiagnosticCodes": ["B9:single_table_scope", "B9:batch_preflight_failed"]
     },
     {
       "id": "B10",
@@ -130,10 +130,10 @@
     },
     {
       "id": "B19",
-      "kind": "HITTABLE",
-      "userFacingText": "A bandPickers entry is missing its required 'panel' -- filter/multiSelect have nothing to apply to without a panel to fetch rows from.",
-      "workaround": "Declare filter/multiSelect alongside a real panel on a bandPickers entry; for a genuinely dynamic band filter today, give the referenced Selection panel its own declared query where clause instead.",
-      "enforcingDiagnosticCodes": ["B19:band_picker_requires_panel"]
+      "kind": "LIFTED",
+      "userFacingText": "A bandPickers entry resolves either via a named panel, or -- with no panel -- via filter/multiSelect alone, which targets the band's own collection concept directly through the same reference-lookup endpoint an FK field's picker uses. Only a picker declaring neither is refused.",
+      "workaround": "Declare filter/multiSelect (with or without a panel) on a bandPickers entry; the no-panel form needs no hand-authored Selection panel at all.",
+      "enforcingDiagnosticCodes": ["B19:band_picker_unresolvable_concept"]
     },
     {
       "id": "B20",
@@ -166,8 +166,8 @@
     {
       "id": "B30",
       "kind": "HITTABLE",
-      "userFacingText": "A mounted plugin (plugin:java-source / plugin:java-controller) runs in-process with the application's full privileges. It is admission-checked at generation and at boot against a bytecode denylist (filesystem/network IO, process/system control, reflection, dynamic loading, threads, scripting, detached async work, JVM internals) and is refused if it references any of them -- but it is NOT sandboxed: memory and CPU are unbounded, and a hostile plugin is not contained.",
-      "workaround": "Treat a plugin like your own application code: only mount plugins you trust. A plugin that needs genuine containment requires the tracked process-isolation upgrade (SEC-3, Model B).",
+      "userFacingText": "A mounted plugin:java-source runs OS-process-isolated (a separate child JVM per worker, IPC dispatch) with an enforced OS-level ceiling (default 512MB memory / 50% CPU on Windows Job Objects or Linux cgroups) -- it is admission-checked at generation and boot against a bytecode denylist (filesystem/network IO, process/system control, reflection, dynamic loading, threads, scripting, detached async work, JVM internals) AND bounded at runtime. A mounted plugin:java-controller still runs in-process with the application's full privileges, admission-checked but NOT sandboxed -- memory and CPU are unbounded for that mount kind, and a hostile plugin:java-controller is not contained.",
+      "workaround": "For plugin:java-source, the OS-level ceiling is on by default; retune via npdev.runtime.plugin-ipc-pool.memory-limit-mb / .cpu-rate-percent if a real plugin's workload needs more headroom than the measured 512MB/50% default. Treat plugin:java-controller like your own application code: only mount plugins you trust there.",
       "enforcingDiagnosticCodes": ["B30:plugin_bytecode_violation"]
     }
   ]
