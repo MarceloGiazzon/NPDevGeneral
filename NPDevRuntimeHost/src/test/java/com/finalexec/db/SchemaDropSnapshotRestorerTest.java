@@ -167,6 +167,53 @@ class SchemaDropSnapshotRestorerTest {
     }
 
     @Test
+    @DisplayName("STOR-18: missingLiveTables reports exactly the tables that do not exist live, checking the WHOLE set in one pass")
+    void missingLiveTablesReportsExactlyTheTablesThatDoNotExistLive() throws SQLException {
+        String otherTable = TABLE + "_missing";
+        createLiveTable();
+        insertRow("Alpha", "Open");
+        snapshotNow();
+        // otherTable was never created live at all -- the batch endpoint's preflight (STOR-18) must
+        // name it as missing without needing a snapshot file for it.
+
+        List<String> missing = SchemaDropSnapshotRestorer.missingLiveTables(dataSource, List.of(TABLE, otherTable));
+
+        assertEquals(List.of(otherTable), missing);
+    }
+
+    @Test
+    @DisplayName("STOR-18: a conflict restoring one table does not affect restoring an independent second table in the same batch")
+    void aConflictInOneTableDoesNotBlockRestoringAnotherTableInTheSameBatch() throws SQLException {
+        String tableB = TABLE + "_b";
+        createLiveTable();
+        createLiveTable(tableB);
+        UUID conflicting = insertRow("Alpha", "Open");
+        insertRow(tableB, "Widget", "New");
+        Set<String> before = Set.copyOf(SchemaDropSnapshotRestorer.listSnapshots());
+        SchemaDropSnapshotWriter.snapshotBeforeDrop(dataSource, List.of(TABLE, tableB));
+        String snapshotName = SchemaDropSnapshotRestorer.listSnapshots().stream()
+                .filter(name -> !before.contains(name)).findFirst()
+                .orElseThrow(() -> new IllegalStateException("snapshotBeforeDrop did not produce a new snapshot directory"));
+        snapshotDir = java.nio.file.Paths.get("runtime-data", "schema-snapshot-before-drop", snapshotName);
+        // Something wrote to TABLE's row since the snapshot; tableB's row is untouched (already
+        // identical). Neither table was recreated -- this exercises the "already-live" branches of
+        // apply(), which is what a real batch call walks through per table.
+        updateRow(conflicting, "Alpha-Renamed", "Open");
+
+        // The controller loops apply() once per table in FK-plan order, accumulating every result
+        // regardless of an earlier table's outcome -- reproduced directly here at the service layer,
+        // the same two calls SchemaAcknowledgmentController#restoreSnapshotBatch makes.
+        SchemaDropSnapshotRestorer.RestoreResult resultA = SchemaDropSnapshotRestorer.apply(dataSource, snapshotName, TABLE);
+        SchemaDropSnapshotRestorer.RestoreResult resultB = SchemaDropSnapshotRestorer.apply(dataSource, snapshotName, tableB);
+
+        assertEquals(1, resultA.conflictingIds().size(), "the conflicting row must still be reported");
+        assertEquals(0, resultA.rowsInserted());
+        assertEquals(0, resultB.conflictingIds().size(), "tableB's independent row must be unaffected by TABLE's conflict");
+        assertEquals(1, resultB.rowsAlreadyPresentIdentical());
+        assertEquals("Alpha-Renamed", readName(conflicting), "the conflicting row is still never overwritten");
+    }
+
+    @Test
     @DisplayName("a path-traversal attempt in the snapshot or table name is rejected outright")
     void pathTraversalIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> SchemaDropSnapshotRestorer.preview(dataSource, "../../etc", TABLE));
@@ -174,8 +221,12 @@ class SchemaDropSnapshotRestorerTest {
     }
 
     private void createLiveTable() throws SQLException {
+        createLiveTable(TABLE);
+    }
+
+    private void createLiveTable(String table) throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
-            statement.execute("CREATE TABLE " + TABLE + " (id UUID PRIMARY KEY, name VARCHAR(50), status VARCHAR(20))");
+            statement.execute("CREATE TABLE " + table + " (id UUID PRIMARY KEY, name VARCHAR(50), status VARCHAR(20))");
         }
     }
 
@@ -193,10 +244,14 @@ class SchemaDropSnapshotRestorerTest {
     }
 
     private UUID insertRow(String name, String status) throws SQLException {
+        return insertRow(TABLE, name, status);
+    }
+
+    private UUID insertRow(String table, String name, String status) throws SQLException {
         UUID id = UUID.randomUUID();
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement statement = connection.prepareStatement(
-                        "INSERT INTO " + TABLE + " (id, name, status) VALUES (?, ?, ?)")) {
+                        "INSERT INTO " + table + " (id, name, status) VALUES (?, ?, ?)")) {
             statement.setObject(1, id);
             statement.setString(2, name);
             statement.setString(3, status);

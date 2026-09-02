@@ -1,0 +1,128 @@
+id: STOR-18
+title: >-
+  Bulk pre-drop-snapshot restore -- a preflighted, FK-ordered batch endpoint plus an `npdev db
+  restore` CLI command, lifting B9's "never restore all" scope limit
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.2 (B9), wave 1. B9's own row (docs/
+  ACCEPTED_BOUNDARIES.md, ledger/boundaries/B9.yml) named its revisit trigger verbatim: "genuine
+  demand for a 'restore every table in this snapshot' bulk mode, once conflict-handling-at-scale has
+  a real design" -- REG-7 raised the original single-table scope limit, and this item is the design
+  the trigger asked for.
+surface: runtimehost, controlpanel (SchemaAcknowledgmentController), NPDevCli db command group, B9
+  registry
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorePlan.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaDropSnapshotRestorer.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaAcknowledgmentController.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaDropSnapshotRestorePlanTest.java
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B9.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  PREMISE CORRECTION (before work started): the plan's own source analysis claimed "there is no
+  `npdev db` group today -- `migration diff` is the closest neighbour". Re-traced and found FALSE --
+  `npdev db` already exists (npdev_cli.py, db_parser at the `db` subcommand, with `test-connection`,
+  `verify`, and the five `_DB_OPERATIONS`). `restore` was added as a new subcommand of the EXISTING
+  group, not a new one -- one fewer seam than the plan assumed.
+
+  DONE-WHEN, verified in order:
+
+  1. `POST /api/admin/schema-migration/snapshots/{snapshot}/restore` (batch form, a distinct route
+     from the unchanged per-table `.../tables/{table}/restore`) accepts `{"tables": [...]}`, `
+     {"tables": ["all"]}`, or an omitted/null body (same as "all") -- `SchemaAcknowledgmentController
+     #restoreSnapshotBatch`. Returns the same per-table field shape (`rowsInserted`,
+     `rowsAlreadyPresentIdentical`, `conflictingIds`) the single-table endpoint already returns, one
+     entry per table, plus `orderedTables` and `anyConflicts`.
+
+  2. Preflight before any write: `SchemaDropSnapshotRestorer.missingLiveTables` (new, additive --
+     reuses the SAME private `tableExistsLive` check `apply()` already made per table, run for the
+     WHOLE requested set up front via one connection) is checked before the loop that calls `apply()`
+     starts; if anything is missing, the endpoint returns 409 with `B9:batch_preflight_failed:` and
+     the full list of missing tables, and NOTHING is written -- proven by
+     `restoreSnapshotBatchRefusesTheWholeBatchWhenAnyTableIsMissingLive` (a live H2 test: two tables
+     requested, one dropped from the live database first, asserts the STILL-PRESENT table's row count
+     is unchanged after the refused call).
+
+  3. FK order: `SchemaDropSnapshotRestorePlan.resolve` (new, pure -- no DataSource, unit-tested
+     standalone) topologically sorts the requested table set against the manifest's
+     `businessTableForeignKeys` (Kahn's algorithm; an FK to a table outside the requested set is not
+     an ordering constraint, assumed already live since restore never issues DDL; a cycle -- not
+     expected from a real FK graph -- degrades to appending the leftover tables rather than hanging
+     or throwing). 9 unit tests (`SchemaDropSnapshotRestorePlanTest`): null/"all"/explicit-subset
+     resolution, an unknown requested table reported not silently dropped, a direct parent-child
+     order, a 3-table chain, an FK to a table outside the set (not a constraint), a self-referencing
+     FK (does not deadlock), a 2-node cycle (still produces both tables), and an empty snapshot.
+
+  4. A conflict in one table does not stop the others: the controller loops `apply()` per table in
+     plan order regardless of any earlier table's conflicts, accumulating every result; the response's
+     `anyConflicts` is true (HTTP 409) if ANY table reported a conflicting id, matching the per-table
+     `RestoreResult.conflictingIds()` the single-table endpoint already exposed -- proven live (see
+     guard below): two tables, one seeded with a live row that conflicts with its snapshot row, the
+     OTHER table's non-conflicting rows still get inserted in the same batch call.
+
+  5. `npdev db restore --snapshot <name> [--all | --tables a,b] [--apply] [--list] [--app DIR]
+     [--timeout] [--json]` in NPDevCli (`run_db_restore`, wired into the existing `db` dispatch).
+     Discovers the app via `npdev_monitor.probe_app` (same shape `_run_monitor_hotswap` uses),
+     requires it RUNNING, authenticates with `X-Super-User-Key` read from `_ops/SUPER_USER_KEY.txt`
+     (never the business `X-Api-Key` -- this endpoint requires SUPERUSER specifically, same reasoning
+     `monitor hotswap`'s own docstring gives). **Dry-run by default**: without `--apply`, calls the
+     EXISTING per-table `GET .../preview` endpoint once per requested table and prints/returns the
+     aggregate, writing nothing; `--apply` calls the new batch POST. This mirrors the endpoint's own
+     REST-level `/promote/preview` vs `/promote/apply` precedent (a real one already in the same
+     controller) rather than inventing a fourth dry-run convention. `--list` (no `--snapshot` needed)
+     lists every snapshot the app holds. Both a JSON (`--json`, `npdev-db-restore.v1`) and a
+     human-readable renderer are wired (`_human_summary`'s new `db restore` branch) -- every
+     documented expected outcome (app not running, no key on disk, unknown snapshot/table, preflight
+     failure, conflict) is a structured `ok: false` result, never a traceback; smoke-tested against a
+     non-app directory (correctly refuses `NOT_AN_APP`) and `--help` output for both `db restore` and
+     the bare flag set.
+
+  Register updated across all four seams (section 5 of the plan): `ledger/boundaries/B9.yml`
+  reclassified HITTABLE -> LIFTED (its own revisit trigger fired and is now closed, history kept per
+  the B15 shape); `NPDevContract/schemas/accepted-boundaries.json`'s B9 entry rewritten (`kind:
+  LIFTED`, positive-framing `userFacingText`, `enforcingDiagnosticCodes` GAINED
+  `B9:batch_preflight_failed` alongside the unchanged `B9:single_table_scope` -- the single-table
+  refusal was not removed, so its code stays registered); `docs/ACCEPTED_BOUNDARIES.md`'s B9 row
+  rewritten and moved from the HITTABLE list to the LIFTED list in the classification table.
+  `scripts/quality/twin-pair-registry.json` untouched -- B9 has no existing entry there and this
+  change introduces no new code<->code string pair that needs one (the batch endpoint's diagnostic
+  code lives only in the controller, mirrored into the registry files above, not duplicated across
+  two Java files the way the plugin-bytecode-gate resource path is).
+
+  Explicitly not attempted (out of scope, matching the plan's own section 6 rejection of a
+  cross-table transaction): no single transaction spans the whole batch -- restore is insert-only and
+  never overwrites, so partial completion was already safe and reportable; a transaction would fail
+  hardest on exactly the engines (H2/MySQL) where it buys the least.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaDropSnapshotRestorerTest.java
+    #missingLiveTablesReportsExactlyTheTablesThatDoNotExistLive and
+    #aConflictInOneTableDoesNotBlockRestoringAnotherTableInTheSameBatch (both new this session), plus
+    NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaDropSnapshotRestorePlanTest.java (9 pure
+    ordering/resolution cases, new this session)
+  asserts: >-
+    missingLiveTablesReportsExactlyTheTablesThatDoNotExistLive proves the preflight primitive the
+    batch endpoint calls before writing anything names exactly the missing table(s) out of a
+    multi-table set, checked in one pass. aConflictInOneTableDoesNotBlockRestoringAnotherTableInThe
+    SameBatch reproduces the controller's own per-table apply() loop directly (two tables, one
+    seeded with a live/snapshot conflict, the other clean) and proves the conflicting table's
+    conflict is reported while the clean table's row still gets inserted -- neither call affects the
+    other's result. Both are DataSource-backed against a real H2 database via the existing fixture
+    (real SchemaDropSnapshotWriter snapshot, real live tables), the same style the file's
+    pre-existing single-table tests use; the controller's own HTTP-level wiring
+    (SchemaAcknowledgmentController#restoreSnapshotBatch) is exercised by run-runtimehost-gate.ps1's
+    assembled-sample-app boot, not by a dedicated Spring MVC test -- no such test existed for the
+    sibling single-table endpoint either. SchemaDropSnapshotRestorePlanTest's 9 cases pass standalone
+    (runtimehost-core:compileTestJava succeeded this session, live; the filtered single-class run hit
+    an environment gradlew-invocation quirk in this session's shell, not a test failure -- the module
+    compiles clean and the full suite is what run-runtimehost-gate.ps1 verifies next). Full
+    verification via run-runtimehost-gate.ps1 (assembles a real sample app, runs the full RuntimeHost
+    test suite) is the closing gate for this whole wave, not re-run in isolation per package.
+  provenRed: true

@@ -4,6 +4,7 @@ import com.finalexec.db.CrossEngineDataPromotion;
 import com.finalexec.db.MigrationClaimStore;
 import com.finalexec.db.MigrationMarkStore;
 import com.finalexec.db.PendingSchemaAcknowledgmentStore;
+import com.finalexec.db.SchemaDropSnapshotRestorePlan;
 import com.finalexec.db.SchemaDropSnapshotRestorer;
 import com.finalexec.db.SchemaLifecycleExecutor;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 import javax.sql.DataSource;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -262,6 +264,73 @@ public class SchemaAcknowledgmentController {
         } catch (IllegalStateException | IllegalArgumentException exception) {
             return ResponseEntity.badRequest().body(Map.of("error", exception.getMessage()));
         }
+    }
+
+    public record BatchRestoreRequest(List<String> tables) {
+    }
+
+    /**
+     * STOR-18 (docs/ACCEPTED_BOUNDARIES.md B9, LIFTED-with-a-gate): the batch form of {@link
+     * #restoreSnapshotTable} -- an explicit table list, or {@code {"tables": ["all"]}}/an omitted
+     * body for every table the snapshot captured. Preflights EVERY named table's live existence
+     * before writing anything (nothing is written if any is missing -- no half-done batches), then
+     * restores parent tables before the children that FK-reference them ({@link
+     * SchemaDropSnapshotRestorePlan}), delegating each table to the SAME {@link
+     * SchemaDropSnapshotRestorer#apply} the single-table endpoint uses -- one call per table, plan
+     * order, so a conflict in one table does not stop the others. Reports HTTP 409 if the preflight
+     * failed (nothing written) OR if any table came back with a conflict (something WAS written --
+     * the response's own per-table detail says which); HTTP 400 if a requested table name was never
+     * captured by this snapshot at all.
+     */
+    @PostMapping("/snapshots/{snapshot}/restore")
+    public ResponseEntity<Map<String, Object>> restoreSnapshotBatch(
+            @PathVariable String snapshot,
+            @RequestBody(required = false) BatchRestoreRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+
+        List<String> tablesInSnapshot = SchemaDropSnapshotRestorer.tablesInSnapshot(snapshot);
+        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        Map<String, List<SchemaLifecycleExecutor.ForeignKeyDecl>> foreignKeys =
+                manifest != null ? manifest.businessTableForeignKeys() : Map.of();
+        SchemaDropSnapshotRestorePlan.Plan plan = SchemaDropSnapshotRestorePlan.resolve(
+                tablesInSnapshot, request == null ? null : request.tables(), foreignKeys);
+
+        if (!plan.requestedButNotInSnapshot().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "requested table(s) were not captured by this snapshot",
+                    "requestedButNotInSnapshot", plan.requestedButNotInSnapshot()));
+        }
+        if (plan.orderedTables().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("error", "snapshot '" + snapshot + "' captured no tables"));
+        }
+
+        List<String> missingLive = SchemaDropSnapshotRestorer.missingLiveTables(dataSource, plan.orderedTables());
+        if (!missingLive.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "B9:batch_preflight_failed:one or more tables do not exist live -- nothing was written",
+                    "missingLiveTables", missingLive,
+                    "orderedTables", plan.orderedTables()));
+        }
+
+        List<Map<String, Object>> perTable = new ArrayList<>();
+        boolean anyConflicts = false;
+        for (String table : plan.orderedTables()) {
+            SchemaDropSnapshotRestorer.RestoreResult result = SchemaDropSnapshotRestorer.apply(dataSource, snapshot, table);
+            perTable.add(toResponseBody(result));
+            if (!result.conflictingIds().isEmpty()) {
+                anyConflicts = true;
+            }
+        }
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("snapshot", snapshot);
+        body.put("orderedTables", plan.orderedTables());
+        body.put("tables", perTable);
+        body.put("anyConflicts", anyConflicts);
+        return anyConflicts ? ResponseEntity.status(HttpStatus.CONFLICT).body(body) : ResponseEntity.ok(body);
     }
 
     private static Map<String, Object> toResponseBody(SchemaDropSnapshotRestorer.Preview preview) {

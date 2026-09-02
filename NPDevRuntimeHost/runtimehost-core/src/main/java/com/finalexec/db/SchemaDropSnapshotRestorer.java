@@ -158,6 +158,26 @@ public final class SchemaDropSnapshotRestorer {
         return new RestoreResult(snapshot, table, snapshotRows.size(), inserted, alreadyPresent, conflicts);
     }
 
+    /**
+     * STOR-18: which of {@code tables} do NOT exist live -- the SAME check {@link #apply} makes for
+     * one table, exposed standalone so a batch caller can preflight the WHOLE set before writing
+     * anything, rather than discovering the Nth table is missing only after N-1 tables already had
+     * rows inserted into them. Writes nothing; a single connection is reused across the whole check.
+     */
+    public static List<String> missingLiveTables(DataSource dataSource, List<String> tables) {
+        List<String> missing = new ArrayList<>();
+        try (Connection connection = dataSource.getConnection()) {
+            for (String table : tables) {
+                if (!tableExistsLive(connection, table)) {
+                    missing.add(table);
+                }
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed checking live table existence for a batch restore preflight", exception);
+        }
+        return missing;
+    }
+
     private static Path snapshotDir(String snapshot) {
         String safe = requireSafePathSegment(snapshot, "snapshot");
         return SNAPSHOT_BASE.resolve(safe);
