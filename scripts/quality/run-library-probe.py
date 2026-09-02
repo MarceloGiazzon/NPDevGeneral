@@ -111,6 +111,34 @@ def main(argv: list[str] | None = None) -> int:
                        f"SEC-3/B30 refuses at plugin admission. The digest itself is logged to the "
                        f"boot log, uploaded by this job.)"),
         })
+
+        # 2026-09-02: the CRUD create endpoint is a SEPARATE code path from flow-execute above --
+        # LibProbeRecordServiceBase.createFromSource pre-allocates an id, runs SignWithLibrary, then
+        # verifies the flow's own createConcept step persisted THAT id (persistence.findById), throwing
+        # a 500 if the flow's output dropped it. flow-execute never re-checks the persisted id, so this
+        # class of bug (a plugin capability silently dropping a field the flow needs to round-trip) is
+        # invisible to the assertion above -- exactly how a real 500 here shipped unnoticed until a
+        # session investigating something else drove this endpoint with real HTTP for the first time.
+        # Asserting the REST create endpoint, not just the diagnostic flow-execute one, is what closes
+        # that blind spot for good.
+        crud_payload = f"{PAYLOAD}-crud"
+        expected_crud_digest = hashlib.sha256(crud_payload.encode("utf-8")).hexdigest()
+        status, created = _engine_proof.http(
+            "POST", f"{base}/api/lib_probe_records", {"payload": crud_payload})
+        created_digest = _extract(created, "digest")
+        created_id = _extract(created, "id")
+        ok = status == 201 and created_digest == expected_crud_digest and bool(created_id)
+        results.append({
+            "assertion": "crud-create-endpoint-persists-under-its-own-allocated-id",
+            "ok": ok,
+            "detail": (f"status={status}; POST /api/lib_probe_records (the generated REST create "
+                       f"endpoint, not the diagnostic flow-execute one) returned digest={created_digest!r} "
+                       f"(expected {expected_crud_digest!r}) and id={created_id!r}. This endpoint "
+                       f"pre-allocates an id before running SignWithLibrary and then looks up that SAME "
+                       f"id afterward -- a capability that drops a field the flow needs to round-trip "
+                       f"(e.g. \"id\") makes this 500 instead of 201, which flow-execute alone would "
+                       f"never catch."),
+        })
     except SystemExit as exc:
         failure = str(exc)
         print(f"[lib-probe] ABORTED: {failure}", flush=True)
