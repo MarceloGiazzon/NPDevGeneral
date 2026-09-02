@@ -1,0 +1,92 @@
+id: SEC-6
+title: >-
+  plugin:java-source IPC dispatch had a thin cold-start margin against the shared
+  npdev.runtime.plugin-timeout-ms default -- measured live, then given its own configurable floor
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-01
+closed: 2026-09-01
+source: >-
+  SEC-5's own residual-risk note (ledger/items/SEC-5.yml): "the cold-first-invocation latency margin
+  against the platform's default 1000ms plugin timeout -- observed close to or over that default even
+  AFTER both bugs were fixed ... suggesting npdev.runtime.plugin-timeout-ms's 1000ms default may be
+  too tight for a java-source mount specifically now that it goes through IPC -- worth a follow-up
+  item if a real app hits this." Picked up this session as the user's chosen follow-up from a
+  two-option choice offered at session start (the other being the pre-existing lib-probe
+  SignWithLibrary persistence 500, left untouched).
+surface: runtimehost, plugin-execution, java-source plugin dispatch, NPDevGenerator RuntimeApiEmitter
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/PluginTimeoutHint.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/TimeBoundedPluginExecutionEngine.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcCapabilityHandler.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcCapabilityHandlerRealPluginTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/TimeBoundedPluginExecutionEngineTest.java
+detail: |
+  MEASURED FIRST, THEN FIXED -- 2026-09-01. SEC-5's own note was speculative ("close to or over 1000ms",
+  no real numbers). Built a throwaway live-fire harness (reusing run-engine-app-proof.py's
+  generate/build/boot machinery, same one run-library-probe.py reuses) that generated+built+booted a
+  real lib-probe FinalApp jar and sent 5 real HTTP POSTs to its SignWithLibrary flow (java-source, IPC-
+  dispatched via PluginIpcChildProcessPool), reading the ACTUAL server-side executionDurationMs back
+  from TimeBoundedPluginExecutionEngine's own plugin-executions.jsonl rather than trusting client-side
+  wall clock.
+
+  REAL NUMBERS (pool size 2, so exactly 2 cold workers): call 0 (worker A, truly cold) = 393ms; call 1
+  (worker B, truly cold) = 223ms; calls 2-4 (both workers now warm) = 1-2ms each. Every in-process
+  handler on the same requests (persistence-postgres save, part of the same flow) measured 1-10ms
+  throughout -- confirming the shared 1000ms default was sized correctly for THAT population and is
+  comparatively tight for IPC's cold-start population specifically, exactly SEC-5's hypothesis, now
+  with real numbers: ~2.5x margin on a clean idle dev machine for a trivial single-method plugin, not
+  yet broken but thin against a heavier plugin, a slower/busier host, antivirus-scanned child-process
+  I/O, or concurrent cold starts across multiple never-yet-used workers at once.
+
+  REJECTED FIX: raising the shared npdev.runtime.plugin-timeout-ms default. That default is ALSO the
+  only backstop TimeBoundedPluginExecutionEngine has against a hostile IN-PROCESS plugin ignoring
+  Thread.interrupt() (B30's threat model) -- widening it for everyone gives such a plugin more time to
+  do damage before being flagged, to fix a cost that only IPC-dispatched handlers actually pay.
+
+  FIX: new PluginTimeoutHint interface (com.finalexec.npdev.service) a handler may implement to
+  declare its own timeout FLOOR. TimeBoundedPluginExecutionEngine.execute() now computes
+  effectiveTimeoutMs = handler instanceof PluginTimeoutHint hint ? max(configuredTimeoutMs,
+  hint.minimumTimeoutMs()) : configuredTimeoutMs -- threaded through every branch that previously read
+  the plain timeoutMs field (future.get bound, TIMED_OUT/INTERRUPTED/EXCEPTION/SUCCESS result
+  construction, logStart/logFinish). The max() means a hint can only WIDEN that one handler's own
+  budget, never shrink it and never affect any other handler's call. PluginIpcCapabilityHandler now
+  implements PluginTimeoutHint, backed by a new constructor parameter populated from
+  RuntimeApiEmitter.javaSourceProvidersSource()'s generated bean method via
+  `@Value("${npdev.runtime.plugin-java-source-timeout-ms:5000}")` -- the same
+  Spring-@Value-on-a-@Bean-method-parameter pattern NpdevPluginConfig.java already uses for the shared
+  default. No DSL/model schema change -- purely internal wiring, no npdev migrate codemod needed (same
+  basis SEC-5 used for its own generator change).
+
+  LIVE-FIRE RE-VERIFICATION (2026-09-01, after the fix): restaged runtimehost-core/kernel jars
+  (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars), regenerated+rebuilt+rebooted the
+  same real lib-probe jar, re-ran the same 5-call harness. Every plugin:java-source
+  plugin-executions.jsonl entry now reports timeoutMs=5000 (cold-start entries measured 232-248ms this
+  run, comfortably inside the new floor); every persistence-postgres entry on the SAME requests still
+  reports timeoutMs=1000, unchanged -- confirming the fix is scoped to exactly the one handler kind
+  that needed it and does not touch the shared default any other capability call still relies on.
+
+  Done when (met): the real cold-start cost is measured (not asserted) against the real production
+  dispatch path, and if it warrants a fix, the fix widens ONLY the java-source/IPC population's budget
+  without weakening the shared default's containment value for every other handler -- verified live
+  end-to-end, not by call-graph inspection.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/TimeBoundedPluginExecutionEngineTest.java#aHandlersTimeoutHintRaisesItsOwnBudgetAboveTheConfiguredDefault
+  asserts: >-
+    A handler implementing PluginTimeoutHint with a floor ABOVE the engine's configured default
+    actually gets the longer effective budget (a 200ms-sleeping handler survives a 25ms-configured
+    engine when it declares a 5000ms floor, and the reported timeoutMs reflects 5000, not 25). A
+    sibling test in the same file, aHandlersTimeoutHintBelowTheDefaultNeverShrinksTheBudget (not
+    independently guard-resolvable -- one ref per guard block), covers the complementary case: a hint
+    BELOW the configured default never shrinks it (a handler declaring a 1ms floor against a
+    250ms-configured engine still reports timeoutMs=250). Verified passing 2026-09-01 as part of
+    run-runtimehost-gate.ps1's full suite against the assembled dsl-conformance-max sample app (which
+    also re-runs PluginIpcCapabilityHandlerRealPluginTest against the updated 7-arg constructor). The
+    live-fire narrative above (real cold-start numbers, real timeoutMs=5000/1000 split in a real
+    booted app's own execution log) is the production-shape evidence this guard's unit tests do not by
+    themselves reach.
+  provenRed: true

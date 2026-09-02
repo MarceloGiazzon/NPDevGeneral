@@ -43,7 +43,7 @@ class PluginIpcCapabilityHandlerRealPluginTest {
 
         try (PluginIpcChildProcessPool pool = new PluginIpcChildProcessPool(1, 5, Duration.ofMinutes(10))) {
             PluginIpcCapabilityHandler handler = new PluginIpcCapabilityHandler(
-                    pool, registry, policyEvaluator, entry.runtimeRef(), entry.capability(), entry.adapterId()
+                    pool, registry, policyEvaluator, entry.runtimeRef(), entry.capability(), entry.adapterId(), 5000L
             );
 
             assertEquals(entry.capability(), handler.capability());
@@ -73,7 +73,7 @@ class PluginIpcCapabilityHandlerRealPluginTest {
             // capability/operation/adapterId -- simulates a wiring bug (a generated bean built for the
             // wrong mount), which must fail closed rather than silently invoke a different plugin.
             PluginIpcCapabilityHandler handler = new PluginIpcCapabilityHandler(
-                    pool, registry, policyEvaluator, "someOtherRuntimeRef", entry.capability(), entry.adapterId()
+                    pool, registry, policyEvaluator, "someOtherRuntimeRef", entry.capability(), entry.adapterId(), 5000L
             );
 
             CapabilityCall call = new CapabilityCall(
