@@ -1,5 +1,5 @@
 id: B30
-title: "Plugins are admission-checked, not sandboxed -- a mounted plugin runs in-process with the application's full privileges"
+title: "Plugins are admission-checked, not sandboxed -- plugin:java-source runs OS-process-isolated with a memory/CPU ceiling; plugin:java-controller still runs in-process with the application's full privileges"
 codeLinked: true
 codeLinkedNote: >-
   2026-08-27 (SEC-3 remediation, Model A). SHIPPED the two admission gates over the shared
@@ -18,15 +18,45 @@ codeLinkedNote: >-
   "B30:plugin_bytecode_violation: ...", Instant.now()))` on any DIRECT reference (filesystem/
   network IO, Runtime/Process/ProcessBuilder, reflection, Class/ClassLoader/ServiceLoader, Thread/
   ThreadLocal/Timer, executor/async detachment incl. TimeUnit, javax.script., sun./jdk. internals,
-  java.lang.System.exit/getenv/getProperty*). The boundary's honest residue, matching the
-  analysis: static analysis only -- MEMORY/CPU stay unbounded (a plugin can allocate freely or
-  spin an uninterruptible loop inside its wall-clock timeout; the timeout cannot kill a running
-  thread), and anything on the app classpath that PROXIES a forbidden capability on a plugin's
-  behalf is outside the inspector's view. A hostile, determined plugin is not contained -- only
-  admission-checked; the doc line next to plugin:java-* says exactly that. Verified live:
-  8 kernel inspector tests + 12 generator PluginJavaSourcePolicyTest cases + 5
-  PluginBytecodeBootGateTest boot-refusal tests (System.exit, filesystem, socket, process,
-  detached-async, lambda/inner-class escapes refused; Runtime-exception neighbours and AtomicLong
-  accepted). SEC-3 stays OPEN only for the process-isolation (Model B) track: memory/CPU.
+  java.lang.System.exit/getenv/getProperty*). Verified live: 8 kernel inspector tests + 12
+  generator PluginJavaSourcePolicyTest cases + 5 PluginBytecodeBootGateTest boot-refusal tests
+  (System.exit, filesystem, socket, process, detached-async, lambda/inner-class escapes refused;
+  Runtime-exception neighbours and AtomicLong accepted).
+
+  2026-09-01 (SEC-5, SEC-6) + 2026-09-02 (SEC-7): Model B SHIPPED for `plugin:java-source`
+  specifically, superseding this row's original "SEC-3 stays OPEN only for the process-isolation
+  (Model B) track: memory/CPU" close. Every `plugin:java-source` invocation now dispatches through
+  `PluginIpcChildProcessPool` (`NPDevRuntimeHost/.../npdev/service/pluginipc/`) -- a real, separate
+  OS process per worker (JVM child, IPC over stdin/stdout, `@argfile`-passed classpath), wired into
+  production dispatch (`PluginIpcCapabilityHandler`, SEC-5) with its own measured timeout floor
+  (`PluginTimeoutHint`, SEC-6: 5000ms vs the shared handler default of 1000ms, against a real
+  measured 223-393ms cold start / 1-2ms warm). `PluginProcessResourceLimiter.forCurrentOs()`
+  attaches a REAL OS-level ceiling per worker -- `PluginWindowsJobObjectResourceLimiter`
+  (`CreateJobObjectW`+`SetInformationJobObject`+`AssignProcessToJobObject`, hard memory + CPU-rate
+  caps, `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) on Windows, `PluginLinuxCgroupResourceLimiter`
+  (`systemd-run --scope`, `MemoryMax=`) on Linux -- degrading to `PluginNoOpResourceLimiter` (logs a
+  loud WARNING the moment a non-zero limit is requested but unenforceable, firing at BOOT since pool
+  workers start synchronously in the `@Bean` constructor, not only on first plugin invocation) when
+  neither is available. SEC-7 turned the ceiling ON by default (previously wired but shipped at 0/0
+  = unbounded): `npdev.runtime.plugin-ipc-pool.memory-limit-mb=512` /
+  `.cpu-rate-percent=50` in the RuntimeHost template's `application.properties` (copied into every
+  generated app), chosen from a real measurement against the lib-probe app's Guava-hashing
+  SignWithLibrary flow through the real HTTP dispatch path (8 calls + a CRUD create, real
+  `WorkingSetSize` sampled via `Win32_Process`): peaked at ~91MB per child worker under a live
+  512MB Job Object ceiling, all calls succeeded -- 5.6x headroom, left generous rather than tightened
+  to the observed peak (see `ledger/items/SEC-7.yml`). QUAL-51 (2026-09-01) had already root-caused
+  and fixed the adjacent startup-commit hazard (HotSpot's ergonomic `InitialHeapSize` -- physical/64
+  -- committing past a modest ceiling before the JVM's own `main()` runs, independent of workload)
+  with an explicit scaled-down `-Xms` whenever a memory ceiling is configured.
+
+  The boundary's residue is now narrower, not gone: `plugin:java-controller` is UNCHANGED (still
+  in-process, memory/CPU unbounded -- Model B was scoped to `plugin:java-source` only; see B30-B in
+  `BOUNDARY_LIFT_PLAN_2026-09-02.md` wave 4 for the open design question), and static analysis at
+  both ends is still the ONLY admission gate -- a proxy class elsewhere on the app classpath that
+  performs a forbidden capability on the plugin's behalf, or a plugin that busy-loops inside its own
+  process without exceeding the memory/CPU ceiling, is still outside what either the bytecode
+  inspector or the OS ceiling catches. A hostile, determined `plugin:java-source` is now BOUNDED
+  (cannot exhaust host memory/CPU, cannot survive the wall-clock timeout by ignoring interrupt) but
+  still not fully contained; a hostile `plugin:java-controller` is unchanged from Model A.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B30"
 classification: HITTABLE
