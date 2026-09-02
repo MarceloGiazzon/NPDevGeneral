@@ -13,5 +13,23 @@ codeLinkedNote: >-
   "message" field).
   Proven by SchemaLifecycleExecutorDatabaseMigratedPastBuildTest (asserts both boundaryId=="B5" and
   the code prefix).
+
+  B5-A (REG-198, boundary-lift 2026-09-02 package 2.3): the row's own revisit trigger ("a full
+  schema-history snapshot is stored per boot") fired. `SchemaSnapshotStore` now writes a full
+  desired-schema snapshot per fingerprint (`npdev_schema_snapshot`) inside `afterMigrate`'s existing
+  fingerprint-write connection block; `SchemaAheadAnalysis` diffs this build's own desired schema
+  against the ahead fingerprint's snapshot via the EXISTING `SchemaDiffEngine`/`SafetyClass`
+  vocabulary (no parallel classification ladder), bucketing each item as proceed-ignoring /
+  needs-the-newer-build / needs-a-destructive-downgrade. Appended to both the boot refusal message
+  and the 503 JSON body; `SchemaAheadMain` (`npdev db schema-ahead --report`) renders the same
+  analysis with no app boot required, mirroring `SchemaVerifyMain`'s own no-boot shape. No diagnostic
+  code changed (`B5:schema_ahead_detected:` is unchanged, only followed by more detail) -- no new
+  twin-pair-registry entry needed, same reasoning SEC-7 recorded for B30's own register update. The
+  refusal itself is unchanged: it still fires in every case (downgrade stays unsupported); a database
+  that reached the ahead fingerprint before this shipped, or via mark-done (neither writes a
+  snapshot), degrades to a plain explanation instead of an itemized one.
+  Proven by SchemaLifecycleExecutorSchemaAheadDiagnosisTest (both the real-snapshot itemized case and
+  the no-snapshot-recorded graceful fallback) and SchemaAheadAnalysisTest (the resolution mapping for
+  every SafetyClass bucket, plus a snapshot JSON round-trip).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B5"
 classification: HITTABLE

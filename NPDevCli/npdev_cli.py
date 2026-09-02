@@ -4192,6 +4192,114 @@ def run_db_verify(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def run_db_schema_ahead(args: argparse.Namespace) -> int:
+    """`npdev db schema-ahead --report` -- B5-A, boundary-lift 2026-09-02 package 2.3, done-when #4.
+    Renders the SAME itemized diagnosis a B5 schema-ahead boot refusal now embeds
+    (`SchemaAheadAnalysis`), with NO app boot required -- shells to `com.finalexec.db.SchemaAheadMain`
+    the same way `db verify` shells to `SchemaVerifyMain` (see that function's own docstring for why:
+    the diff engine lives in runtimehost-core, free of Spring, so this reuses the compiled class rather
+    than forking the diff into Python).
+
+    Exit codes, passed straight through from SchemaAheadMain: 0 = not ahead, 1 = ahead (report shown),
+    2 = could not determine.
+    """
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    manifest_resources_root = app_root / "npdev-generated" / "src" / "main" / "resources"
+    manifest_file = manifest_resources_root / "npdev" / "db" / "schema-realization-manifest.json"
+
+    def fail(message: str) -> int:
+        print(f"npdev db schema-ahead: {message}", file=sys.stderr)
+        return 2
+
+    if not manifest_file.is_file():
+        return fail(f"no schema-realization-manifest.json found under {app_root} (looked for "
+                    f"{manifest_file}). Generate/build this app at least once first.")
+
+    if args.url:
+        url = args.url
+        user = args.db_user
+        password = args.db_password or ""
+    else:
+        # Same resolution order as run_db_verify: prefer _ops/resolved-db-plan.json (emitted for every
+        # generated app, already fully-resolved), fall back to db.definition.json.
+        plan_path = app_root / "_ops" / "resolved-db-plan.json"
+        db_def_path = app_root / "db.definition.json"
+        if plan_path.is_file():
+            plan = read_json(plan_path)
+            if not plan.get("physicalDatabase", False):
+                print("npdev db schema-ahead: this app has no physical database (InMemory storage) -- nothing to check.")
+                return 0
+            try:
+                engine_key = npdev_engines.resolve(plan.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {plan_path})")
+            url = plan.get("jdbcUrl") or None
+            if url is None:
+                return fail(f"{plan_path} has no jdbcUrl recorded -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else (plan.get("username") or None)
+            password = args.db_password if args.db_password is not None else (plan.get("password") or "")
+        elif db_def_path.is_file():
+            database = read_json(db_def_path).get("database", {})
+            try:
+                engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {db_def_path})")
+            if engine_key == "inmemory":
+                print("npdev db schema-ahead: this app has no physical database (InMemory storage) -- nothing to check.")
+                return 0
+            url = _jdbc_url_for_verify(engine_key, app_root, database)
+            if url is None:
+                return fail(f"do not know how to build a JDBC URL for engine '{engine_key}' -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else database.get("username")
+            password = args.db_password if args.db_password is not None else (database.get("password") or "")
+        else:
+            return fail(f"neither {plan_path} nor {db_def_path} was found, and no --url was given. "
+                        f"Pass --url (with --db-user/--db-password as needed), or run this from "
+                        f"the app's own directory.")
+
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        return fail("runtimehost jars are not staged -- run `npdev setup`")
+    java_bin = java_launcher()
+    if java_bin is None:
+        return fail("no java found (see `npdev doctor`'s java checks)")
+
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        return fail(f"no built jar found under {app_root / 'build' / 'libs'}. Build this app at "
+                    f"least once first (e.g. `_ops/Build-FinalApp.ps1`).")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-db-schema-ahead-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([
+            str(manifest_resources_root), str(Path(libs) / "*"), str(extracted_libs / "*"),
+        ])
+
+        command = [java_bin, "-cp", classpath, "com.finalexec.db.SchemaAheadMain", "--url", url]
+        if user:
+            command += ["--user", user]
+        if password:
+            command += ["--password", password]
+
+        try:
+            # cwd=app_root: same H2Local app-relative URL reasoning as run_db_verify.
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return fail(f"could not run SchemaAheadMain ({exc})")
+
+    if completed.stdout:
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
 # spring-jcl's LogAdapter writes this to STDOUT (not stderr) on first use whenever a
 # commons-logging jar is also on the classpath -- which it is, because `db verify` runs against the
 # app's own fat-jar libraries. It is not ours, it is not actionable by the reader, and on stdout it
@@ -11727,6 +11835,32 @@ def build_parser() -> argparse.ArgumentParser:
              "of the text table.",
     )
 
+    # B5-A (boundary-lift 2026-09-02, package 2.3, docs/ACCEPTED_BOUNDARIES.md B5): renders the SAME
+    # itemized diagnosis a B5 schema-ahead boot refusal now embeds, with no app boot required -- the
+    # revisit trigger B5's own row recorded ("a full schema-history snapshot is stored per boot").
+    db_schema_ahead = db_sub.add_parser(
+        "schema-ahead",
+        help="Check whether the live database was migrated past this build (B5), and if so, show "
+             "exactly what differs -- with no app boot required.",
+    )
+    db_schema_ahead.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory (holds npdev-generated/, a built jar under build/libs/, and -- unless "
+             "--url is given -- _ops/resolved-db-plan.json or db.definition.json for the connection). "
+             "Defaults to the current directory.",
+    )
+    db_schema_ahead.add_argument(
+        "--url", default=None,
+        help="An explicit JDBC URL, overriding the app's own resolved connection.",
+    )
+    db_schema_ahead.add_argument("--db-user", default=None, help="Overrides the resolved username.")
+    db_schema_ahead.add_argument("--db-password", default=None, help="Overrides the resolved password.")
+    db_schema_ahead.add_argument(
+        "--report", action="store_true",
+        help="No-op flag kept for symmetry with the boot refusal's own wording ('npdev db schema-ahead "
+             "--report') -- this command always reports; there is no other mode.",
+    )
+
     # STOR-18 (docs/ACCEPTED_BOUNDARIES.md B9): bulk pre-drop-snapshot restore, against a RUNNING
     # app's SchemaAcknowledgmentController batch endpoint (SUPERUSER-gated, same auth path
     # `monitor hotswap` already uses -- X-Super-User-Key, never the business X-Api-Key).
@@ -13449,6 +13583,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_test_connection(args)
         if args.command == "db" and args.db_command == "verify":
             return run_db_verify(args)
+        if args.command == "db" and args.db_command == "schema-ahead":
+            return run_db_schema_ahead(args)
         if args.command == "db" and args.db_command == "restore":
             return run_db_restore(args)
         if args.command == "db" and args.db_command == "adopt-ownership":
