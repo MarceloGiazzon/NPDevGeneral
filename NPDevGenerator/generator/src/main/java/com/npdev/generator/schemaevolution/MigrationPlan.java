@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -28,6 +29,12 @@ import java.util.Objects;
  * {@code freshInstall == false}, {@link #fromFingerprint()} equals {@link #toFingerprint()}, and
  * {@link #items()} is (also) empty. Both states produce an empty item list and no ack token, but
  * only the first means "there was no previous model to diff against."
+ *
+ * @param renameCandidates boundary lift plan 2026-09-02, package 2.2 (docs/ACCEPTED_BOUNDARIES.md B1):
+ *                          ranked, scored candidates for a dropped column being a rename of an added
+ *                          column, from {@link com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer}
+ *                          -- the same shared scorer {@code com.finalexec.db.ImpactReportText} uses
+ *                          against the LIVE database. Advisory only; never applied here either.
  */
 public record MigrationPlan(
         boolean freshInstall,
@@ -35,7 +42,8 @@ public record MigrationPlan(
         String toFingerprint,
         List<PlanItem> items,
         String destructiveAckToken,
-        List<String> warnings
+        List<String> warnings,
+        List<RenameCandidateScorer.Candidate> renameCandidates
 ) {
 
     private static final String MIGRATION_PLAN_VERSION = "1";
@@ -44,13 +52,21 @@ public record MigrationPlan(
     public MigrationPlan {
         items = items == null ? List.of() : List.copyOf(items);
         warnings = warnings == null ? List.of() : List.copyOf(warnings);
+        renameCandidates = renameCandidates == null ? List.of() : List.copyOf(renameCandidates);
     }
 
-    /** Back-compat 5-arg constructor (no warnings) for the many existing call sites/tests that
-     * predate LNCH-1 remediation R6's stale-marker warnings. */
+    /** Back-compat 6-arg constructor (no rename candidates) for call sites/tests that predate
+     * boundary lift plan 2026-09-02 package 2.2. */
+    public MigrationPlan(boolean freshInstall, String fromFingerprint, String toFingerprint,
+            List<PlanItem> items, String destructiveAckToken, List<String> warnings) {
+        this(freshInstall, fromFingerprint, toFingerprint, items, destructiveAckToken, warnings, List.of());
+    }
+
+    /** Back-compat 5-arg constructor (no warnings, no rename candidates) for the many existing call
+     * sites/tests that predate LNCH-1 remediation R6's stale-marker warnings. */
     public MigrationPlan(boolean freshInstall, String fromFingerprint, String toFingerprint,
             List<PlanItem> items, String destructiveAckToken) {
-        this(freshInstall, fromFingerprint, toFingerprint, items, destructiveAckToken, List.of());
+        this(freshInstall, fromFingerprint, toFingerprint, items, destructiveAckToken, List.of(), List.of());
     }
 
     /** Every destructive item's stable string, in list order -- the exact input
@@ -99,6 +115,24 @@ public record MigrationPlan(
             itemNode.put("sqlPreview", item.sqlPreview());
             itemNode.put("description", item.description());
             itemNode.put("stableString", item.stableString());
+        }
+
+        ArrayNode renameCandidatesNode = root.putArray("renameCandidates");
+        for (RenameCandidateScorer.Candidate candidate : renameCandidates) {
+            ObjectNode candidateNode = renameCandidatesNode.addObject();
+            candidateNode.put("table", candidate.table());
+            candidateNode.put("droppedColumn", candidate.droppedColumn());
+            candidateNode.put("addedColumn", candidate.addedColumn());
+            candidateNode.put("score", candidate.score());
+            candidateNode.put("maxScore", RenameCandidateScorer.MAX_SCORE);
+            ArrayNode signalsNode = candidateNode.putArray("signals");
+            for (RenameCandidateScorer.SignalResult signal : candidate.signals()) {
+                ObjectNode signalNode = signalsNode.addObject();
+                signalNode.put("signal", signal.signal());
+                signalNode.put("points", signal.points());
+                signalNode.put("maxPoints", signal.maxPoints());
+                signalNode.put("detail", signal.detail());
+            }
         }
 
         try {

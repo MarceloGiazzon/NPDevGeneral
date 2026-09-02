@@ -1035,6 +1035,26 @@ def migrate_legacy_model(args: argparse.Namespace) -> None:
     print(str(target))
 
 
+def _stamp_field_rename(field: dict, old_field: str, new_field: str) -> str:
+    """Mutates `field` in place (name + renamedFrom) and returns the summary text. Mirrors
+    editorUtils.ts's `applyFieldUpdate` exactly: preserves the ORIGINAL pre-rename name across a chain
+    of renames (a field already carrying `renamedFrom` keeps that value, not the immediately prior
+    name), and clears `renamedFrom` if the field is renamed back to that original name -- a name that
+    nets out unchanged is not a rename. Shared by the single-field and --from-suggestions forms of
+    `migrate rename` (boundary lift plan 2026-09-02, package 2.2) so the stamping logic itself can
+    never drift between the two.
+    """
+    original_name = field.get("renamedFrom") or old_field
+    if new_field == original_name:
+        field.pop("renamedFrom", None)
+        summary = f"'{old_field}' -> '{new_field}' (back to its original name -- renamedFrom cleared)"
+    else:
+        field["renamedFrom"] = original_name
+        summary = f"'{old_field}' -> '{new_field}' (renamedFrom: '{original_name}')"
+    field["name"] = new_field
+    return summary
+
+
 def run_migrate_rename(args: argparse.Namespace) -> int:
     """B1.2 (docs/ACCEPTED_BOUNDARIES.md B1): declare a field rename for authors editing model.json
     directly rather than through NPDevEditor's Field Details panel. NPDevEditor already stamps
@@ -1043,11 +1063,19 @@ def run_migrate_rename(args: argparse.Namespace) -> int:
     either way, never a diff the engine has to guess at (docs/ACCEPTED_BOUNDARIES.md B1: a diff alone
     cannot tell 'renamed a->b' from 'dropped a, added b', and guessing wrong destroys data).
 
-    Mirrors editorUtils.ts's `applyFieldUpdate` exactly: preserves the ORIGINAL pre-rename name across
-    a chain of renames (a field already carrying `renamedFrom` keeps that value, not the immediately
-    prior name), and clears `renamedFrom` if the field is renamed back to that original name -- a name
-    that nets out unchanged is not a rename. Dry-run by default; --write applies and schema-validates.
+    Two forms: a single <Concept>.<oldField> <newField> pair (below), or --from-suggestions <file>
+    (boundary lift plan 2026-09-02, package 2.2) applying every accepted candidate from `npdev
+    migration diff --suggest-renames`'s ranked, scored output in one pass -- see
+    `_run_migrate_rename_from_suggestions`. Dry-run by default either way; --write applies and
+    schema-validates.
     """
+    from_suggestions = getattr(args, "from_suggestions", None)
+    if from_suggestions:
+        return _run_migrate_rename_from_suggestions(args, from_suggestions)
+
+    if not args.field or not args.new_name:
+        raise CliError("give <Concept>.<oldField> <newField>, or --from-suggestions <file>")
+
     model_path = Path(args.model).expanduser().resolve()
     model = read_json(model_path)
 
@@ -1074,16 +1102,8 @@ def run_migrate_rename(args: argparse.Namespace) -> int:
     if collision is not None:
         raise CliError(f"concept '{concept_name}' already has a field named '{new_field}' -- pick a different name")
 
-    original_name = field.get("renamedFrom") or old_field
-    if new_field == original_name:
-        field.pop("renamedFrom", None)
-        summary = f"'{old_field}' -> '{new_field}' (back to its original name -- renamedFrom cleared)"
-    else:
-        field["renamedFrom"] = original_name
-        summary = f"'{old_field}' -> '{new_field}' (renamedFrom: '{original_name}')"
-    field["name"] = new_field
-
     verb = "CHANGED" if args.write else "WOULD CHANGE"
+    summary = _stamp_field_rename(field, old_field, new_field)
     print(f"  [{verb}] {concept_name}.{summary}")
 
     # XREF-3: without --cascade this is the historical behaviour, kept exactly -- stamp the rename
@@ -1133,6 +1153,93 @@ def run_migrate_rename(args: argparse.Namespace) -> int:
                 + str(len(introduced)) + " unresolved reference(s) -- "
                 + "; ".join(f"{e.get('path')} -> {e.get('toName')}" for e in introduced[:5]))
 
+    model_path.write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8")
+    print(str(model_path))
+    return 0
+
+
+def _run_migrate_rename_from_suggestions(args: argparse.Namespace, suggestions_file: str) -> int:
+    """Boundary lift plan 2026-09-02, package 2.2 (B1): apply every accepted rename candidate from
+    `npdev migration diff --suggest-renames`'s renameCandidates array -- filtered down by the operator
+    to the ones they accept -- through the SAME field-rename stamping `migrate rename <Concept>.<old>
+    <new>` uses (`_stamp_field_rename`), one at a time, in a single dry-run/--write pass.
+
+    The suggestions file is a JSON array of objects each carrying `concept`/`droppedField`/
+    `addedField` -- exactly the three keys `ModelChangeClassifierMain.enrichRenameCandidatesWithFieldNames`
+    (Java, generator side) adds to a renameCandidates entry when it can reverse-map the SQL table/column
+    back to a real DSL field; the easiest way to build this file is to copy the accepted entries
+    straight out of `migration diff`'s --out report (extra keys like `score`/`signals` are ignored).
+
+    Does NOT support --cascade: a batch of independently-sourced renames raises cross-entry-ordering
+    questions --cascade's single-field design does not answer (does entry 2's cascade see entry 1's
+    rename or not?). Run `migrate rename <Concept>.<old> <new> --cascade` per field afterward if
+    references need rewriting too.
+    """
+    if getattr(args, "field", None) or getattr(args, "new_name", None):
+        raise CliError("--from-suggestions cannot be combined with the positional <Concept>.<oldField> <newField> form")
+    if getattr(args, "cascade", False):
+        raise CliError(
+            "--from-suggestions does not support --cascade -- apply each field's cascade separately "
+            "with `migrate rename <Concept>.<old> <new> --cascade` if references need rewriting too")
+
+    suggestions_path = Path(suggestions_file).expanduser().resolve()
+    entries = read_json(suggestions_path)
+    if not isinstance(entries, list):
+        raise CliError(
+            f"--from-suggestions expects a JSON array of {{concept, droppedField, addedField}} objects: "
+            f"{suggestions_path}")
+
+    model_path = Path(args.model).expanduser().resolve()
+    model = read_json(model_path)
+    concepts = model.get("concepts", [])
+    verb = "CHANGED" if args.write else "WOULD CHANGE"
+    applied = 0
+
+    for index, entry in enumerate(entries):
+        concept_name = entry.get("concept")
+        old_field = entry.get("droppedField")
+        new_field = entry.get("addedField")
+        if not concept_name or not old_field or not new_field:
+            raise CliError(
+                f"--from-suggestions entry {index} is missing concept/droppedField/addedField -- only "
+                f"candidates the generator resolved to a real DSL field can be applied this way: {entry}")
+
+        concept = next((c for c in concepts if c.get("name") == concept_name), None)
+        if concept is None:
+            available = ", ".join(sorted(c.get("name", "") for c in concepts)) or "(none)"
+            raise CliError(f"--from-suggestions entry {index}: no concept named '{concept_name}' in "
+                            f"{model_path}. Available: {available}")
+        fields = concept.get("fields", [])
+        field = next((f for f in fields if f.get("name") == old_field), None)
+        if field is None:
+            available = ", ".join(sorted(f.get("name", "") for f in fields)) or "(none)"
+            raise CliError(f"--from-suggestions entry {index}: concept '{concept_name}' has no field "
+                            f"named '{old_field}'. Available: {available}")
+        if old_field == new_field:
+            raise CliError(f"--from-suggestions entry {index}: old and new field names are identical "
+                            f"('{new_field}') -- nothing to rename")
+        collision = next((f for f in fields if f.get("name") == new_field), None)
+        if collision is not None:
+            raise CliError(f"--from-suggestions entry {index}: concept '{concept_name}' already has a "
+                            f"field named '{new_field}' -- pick a different name")
+
+        summary = _stamp_field_rename(field, old_field, new_field)
+        print(f"  [{verb}] {concept_name}.{summary}")
+        applied += 1
+
+    if applied == 0:
+        print("  (no accepted suggestions in the file -- nothing to do)")
+        return 0
+
+    print("  NOTE: references to these fields elsewhere in the model were NOT updated. Run `migrate "
+          "rename <Concept>.<old> <new> --cascade` per field if that's needed.")
+
+    if not args.write:
+        print("Dry run -- pass --write to apply.")
+        return 0
+
+    candidate = write_temp_model(model, model_path)
+    validate_json_schema(repo_root() / "NPDevContract" / "schemas" / "model.schema.json", candidate)
     model_path.write_text(json.dumps(model, indent=2) + "\n", encoding="utf-8")
     print(str(model_path))
     return 0
@@ -6806,7 +6913,42 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     print(f"migration diff classification: {report.get('classification')}")
     for reason in report.get("classificationReasons", []):
         print(f"  - {reason}")
+    if getattr(args, "suggest_renames", False):
+        _print_rename_candidates(report.get("renameCandidates", []))
     print(f"migration diff decision report: {decision_report}")
+
+
+def _print_rename_candidates(candidates: list) -> None:
+    """Boundary lift plan 2026-09-02, package 2.2 (B1): the human-readable rendering of
+    RenameCandidateScorer's ranked output for `migration diff --suggest-renames` -- unfiltered (every
+    candidate the scorer produced, unlike the boot-refusal text's noise floor), so an operator building
+    a --from-suggestions file can see everything, including borderline scores, before deciding.
+    """
+    if not candidates:
+        print("possible renames: none found")
+        return
+    print(f"possible renames ({len(candidates)} candidate(s) -- advisory only, nothing is applied):")
+    for candidate in candidates:
+        score = candidate.get("score")
+        max_score = candidate.get("maxScore")
+        table = candidate.get("table")
+        dropped_column = candidate.get("droppedColumn")
+        added_column = candidate.get("addedColumn")
+        print(f"  '{dropped_column}' -> '{added_column}' on {table} (score {score}/{max_score}):")
+        for signal in candidate.get("signals", []):
+            print(f"      {signal.get('signal')}: {signal.get('points')}/{signal.get('maxPoints')}"
+                  f" -- {signal.get('detail')}")
+        concept = candidate.get("concept")
+        dropped_field = candidate.get("droppedField")
+        added_field = candidate.get("addedField")
+        if concept and dropped_field and added_field:
+            print(f"      accept: npdev migrate rename --model <model.json> "
+                  f"{concept}.{dropped_field} {added_field}")
+            print(f"      or add {{\"concept\": \"{concept}\", \"droppedField\": \"{dropped_field}\", "
+                  f"\"addedField\": \"{added_field}\"}} to a --from-suggestions file")
+        else:
+            print("      (could not resolve this pair to a DSL field -- declare renamedFrom by hand if "
+                  "this is a rename)")
 
 
 def _pack_diff_report(old_pack: Path, new_pack: Path, out: Path | None) -> dict:
@@ -11877,10 +12019,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_rename.add_argument("--model", required=True, help="path to the model.json to edit")
     migrate_rename.add_argument(
-        "field", metavar="<Concept>.<oldField>",
-        help="the field to rename, e.g. Order.customerName",
+        "field", metavar="<Concept>.<oldField>", nargs="?", default=None,
+        help="the field to rename, e.g. Order.customerName. Omit when using --from-suggestions.",
     )
-    migrate_rename.add_argument("new_name", metavar="<newField>", help="the new field name")
+    migrate_rename.add_argument(
+        "new_name", metavar="<newField>", nargs="?", default=None,
+        help="the new field name. Omit when using --from-suggestions.",
+    )
     migrate_rename.add_argument(
         "--write", action="store_true",
         help="apply the edit in place (and schema-validate); without this flag, reports what would "
@@ -11893,7 +12038,17 @@ def build_parser() -> argparse.ArgumentParser:
              "structural path the reference index reports, never by string replacement. Refuses "
              "and changes nothing if any reference cannot be followed (an undecidable expression, "
              "a hash-pinned trusted-source asset, a pack- or context-contributed member), and "
-             "re-indexes the result before writing so a partial rewrite fails closed.",
+             "re-indexes the result before writing so a partial rewrite fails closed. Not supported "
+             "together with --from-suggestions.",
+    )
+    migrate_rename.add_argument(
+        "--from-suggestions", dest="from_suggestions", default=None, metavar="<file>",
+        help="Boundary lift plan 2026-09-02 (B1): a JSON array of accepted rename candidates -- "
+             "{concept, droppedField, addedField} objects, e.g. copied from `npdev migration diff "
+             "--suggest-renames`'s --out report's renameCandidates array. Applies every entry through "
+             "the same stamping logic as the single-rename form, in one dry-run/--write pass. "
+             "Mutually exclusive with the positional <Concept>.<oldField> <newField> form and with "
+             "--cascade.",
     )
 
     # STOR-16: the codemod the RecreateOnAppStart deprecation warning names. F3 (Cold Clone Audit,
@@ -12266,6 +12421,14 @@ def build_parser() -> argparse.ArgumentParser:
     migration_diff.add_argument("--current", required=True)
     migration_diff.add_argument("--output")
     migration_diff.add_argument("--decision-report", dest="decision_report")
+    migration_diff.add_argument(
+        "--suggest-renames", dest="suggest_renames", action="store_true",
+        help="Boundary lift plan 2026-09-02 (B1): also print every ranked, scored rename candidate "
+             "(RenameCandidateScorer) the diff found, unfiltered, with every contributing signal -- "
+             "the full picture `npdev db verify`'s boot-refusal text only shows above a noise floor. "
+             "The --decision-report JSON always carries this data (renameCandidates); this flag only "
+             "controls whether it is ALSO rendered to stdout.",
+    )
 
     # AI_AUTHORING_CONTRACT-2026-07-31.md Part 9 (E2/E4/E5): the Custodian's diff gate.
     author = subparsers.add_parser(

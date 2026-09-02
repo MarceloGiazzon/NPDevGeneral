@@ -289,7 +289,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     int reportOnlyExitCode(DataSource dataSource) {
         SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(dataSource, compiledModel);
         System.out.println(ImpactReportText.render(result.report(), result.fromFingerprint(),
-                result.toFingerprint(), result.ackToken(), result.surplus()));
+                result.toFingerprint(), result.ackToken(), result.surplus(), result.renameCandidates()));
         return codeFor(result.report().verdict());
     }
 

@@ -541,6 +541,20 @@
         "NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/AuditLogEchoPluginHandler.java",
         "NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/AuditLogEchoPluginHandler.java"
       ]
+    },
+    {
+      "id": "rename-candidate-scorer-two-surfaces",
+      "citedBy": "REG-197 (boundary lift plan 2026-09-02, package 2.2, docs/ACCEPTED_BOUNDARIES.md B1)",
+      "description": "The plan's own Moves section names this a twin-pair candidate: 'The boot refusal's suggestion text (appendPossibleRenames) is regenerated from the SAME scorer -- one implementation, two surfaces, no drift.' com.finalexec.db.ImpactReportText (RuntimeHost, live-database boot refusal / REPORT_ONLY / ControlPanel / db verify) and com.npdev.generator.schemaevolution.MigrationPlanEmitter (generator, model-vs-model `npdev migration diff --suggest-renames`, no live database) must both score rename candidates through com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer -- if either reverts to a hand-rolled heuristic, the two surfaces silently diverge on which drop+add pairs a human is told to consider a rename, exactly the class of bug this registry exists to catch.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "RenameCandidateScorer"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportText.java",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/MigrationPlanEmitter.java"
+      ]
     }
   ]
 }

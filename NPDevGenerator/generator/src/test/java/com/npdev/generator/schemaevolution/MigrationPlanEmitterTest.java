@@ -5,6 +5,7 @@ import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 import com.npdev.dsl.v1.schemaevolution.SchemaDeltaItem;
 import com.npdev.generator.dbconfig.DatabaseEngine;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
@@ -178,6 +179,49 @@ class MigrationPlanEmitterTest {
         assertEquals(1, plan.warnings().size(), "a renamedFrom naming a column absent from the previous model must warn: " + plan.warnings());
         assertTrue(plan.warnings().get(0).contains("renamedFrom 'name'"), plan.warnings().get(0));
         assertTrue(plan.warnings().get(0).contains("stale marker"), plan.warnings().get(0));
+        // Boundary lift plan 2026-09-02, package 2.2 (B1): the SAME drop+add this stale marker
+        // degrades to is exactly what the rename scorer exists to soften -- it should still be
+        // ranked as a plausible candidate (same table, same type), never silently dropped.
+        assertEquals(1, plan.renameCandidates().size());
+        RenameCandidateScorer.Candidate candidate = plan.renameCandidates().get(0);
+        assertEquals("widgets", candidate.table());
+        assertEquals("surname", candidate.droppedColumn());
+        assertEquals("full_name", candidate.addedColumn());
+        assertFalse(candidate.signals().isEmpty(), "every contributing signal must be shown, not just the total");
+    }
+
+    @Test
+    void unrelatedDropAndAddOnSameTableAreScoredAsRankedRenameCandidates() {
+        CompiledModel oldModel = model(concept("Widget", "",
+                id(), field("emailAddres", "string", false, false)));
+        CompiledModel newModel = model(concept("Widget", "",
+                id(), field("emailAddress", "string", false, false)));
+
+        MigrationPlan plan = MigrationPlanEmitter.compute(newModel, oldModel, plan("t-rename-candidate"));
+
+        assertEquals(2, plan.items().size(), "no renamedFrom declared -- diffed as a plain drop + add");
+        assertEquals(1, plan.renameCandidates().size());
+        RenameCandidateScorer.Candidate candidate = plan.renameCandidates().get(0);
+        assertEquals("widgets", candidate.table());
+        assertEquals("email_addres", candidate.droppedColumn());
+        assertEquals("email_address", candidate.addedColumn());
+        assertTrue(candidate.score() > RenameCandidateScorer.MAX_SCORE / 2,
+                "near-identical names with identical facts should score well above the noise floor: " + candidate.score());
+    }
+
+    @Test
+    void columnsOnDifferentTablesAreNeverCrossedIntoARenameCandidate() {
+        CompiledModel oldModel = model(
+                concept("Widget", "", id(), field("legacyFlag", "boolean", false, false)),
+                concept("Gadget", "", id()));
+        CompiledModel newModel = model(
+                concept("Widget", "", id()),
+                concept("Gadget", "", id(), field("legacyFlag", "boolean", false, false)));
+
+        MigrationPlan plan = MigrationPlanEmitter.compute(newModel, oldModel, plan("t-cross-table"));
+
+        assertTrue(plan.renameCandidates().isEmpty(),
+                "a drop on one table and an add on a DIFFERENT table must never be scored as a rename candidate");
     }
 
     @Test

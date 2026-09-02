@@ -3,6 +3,7 @@ package com.finalexec.db;
 import com.finalexec.db.schemastate.ConstraintSurplusReport;
 import com.finalexec.db.schemastate.SchemaDiffItem;
 import com.finalexec.db.schemastate.SurplusConstraint;
+import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 
 import java.util.List;
 
@@ -24,13 +25,22 @@ public final class ImpactReportJson {
      * @param ackToken    emitted only when the verdict is DESTRUCTIVE; ignored otherwise
      */
     public static String render(ImpactReport report, String generatedAt, String fromFp, String toFp, String ackToken) {
-        return render(report, generatedAt, fromFp, toFp, ackToken, ConstraintSurplusReport.EMPTY);
+        return render(report, generatedAt, fromFp, toFp, ackToken, ConstraintSurplusReport.EMPTY, List.of());
     }
 
     /** @param surplus B3.2: the advisory FK/index surplus classification. Emitted as {@code
      *                 surplusConstraints} only when non-empty; never affects {@code verdict}. */
     public static String render(ImpactReport report, String generatedAt, String fromFp, String toFp, String ackToken,
             ConstraintSurplusReport surplus) {
+        return render(report, generatedAt, fromFp, toFp, ackToken, surplus, List.of());
+    }
+
+    /** @param renameCandidates boundary lift plan 2026-09-02 package 2.2 (B1): ranked, scored rename
+     *                          candidates from {@link RenameCandidateScorer}. Emitted as {@code
+     *                          renameCandidates} only when non-empty; never applies anything, never
+     *                          affects {@code verdict}. */
+    public static String render(ImpactReport report, String generatedAt, String fromFp, String toFp, String ackToken,
+            ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates) {
         StringBuilder out = new StringBuilder();
         out.append("{\n");
         out.append("  \"generatedAt\": ").append(str(generatedAt)).append(",\n");
@@ -61,10 +71,51 @@ public final class ImpactReportJson {
             out.append("    }");
         }
         out.append(report.items().isEmpty() ? "]" : "\n  ]");
-        out.append(surplus == null || surplus.isEmpty() ? "\n" : ",\n");
+        boolean hasRenameCandidates = renameCandidates != null && !renameCandidates.isEmpty();
+        boolean hasSurplus = surplus != null && !surplus.isEmpty();
+        out.append(hasRenameCandidates || hasSurplus ? ",\n" : "\n");
+        appendRenameCandidates(out, renameCandidates);
+        if (hasRenameCandidates && hasSurplus) {
+            out.append(",\n");
+        }
         appendSurplusConstraints(out, surplus);
         out.append("}\n");
         return out.toString();
+    }
+
+    /** Boundary lift plan 2026-09-02, package 2.2 (B1): emitted as {@code renameCandidates} only when
+     *  non-empty, mirroring {@code surplusConstraints}' own presence rule -- an ordinary converged
+     *  app's JSON stays byte-identical to before this shipped. */
+    private static void appendRenameCandidates(StringBuilder out, List<RenameCandidateScorer.Candidate> renameCandidates) {
+        if (renameCandidates == null || renameCandidates.isEmpty()) {
+            return;
+        }
+        out.append("  \"renameCandidates\": [");
+        for (int i = 0; i < renameCandidates.size(); i++) {
+            RenameCandidateScorer.Candidate candidate = renameCandidates.get(i);
+            out.append(i == 0 ? "\n" : ",\n");
+            out.append("    {\n");
+            out.append("      \"table\": ").append(str(candidate.table())).append(",\n");
+            out.append("      \"droppedColumn\": ").append(str(candidate.droppedColumn())).append(",\n");
+            out.append("      \"addedColumn\": ").append(str(candidate.addedColumn())).append(",\n");
+            out.append("      \"score\": ").append(candidate.score()).append(",\n");
+            out.append("      \"maxScore\": ").append(RenameCandidateScorer.MAX_SCORE).append(",\n");
+            out.append("      \"signals\": [");
+            List<RenameCandidateScorer.SignalResult> signals = candidate.signals();
+            for (int s = 0; s < signals.size(); s++) {
+                RenameCandidateScorer.SignalResult signal = signals.get(s);
+                out.append(s == 0 ? "\n" : ",\n");
+                out.append("        {\n");
+                out.append("          \"signal\": ").append(str(signal.signal())).append(",\n");
+                out.append("          \"points\": ").append(signal.points()).append(",\n");
+                out.append("          \"maxPoints\": ").append(signal.maxPoints()).append(",\n");
+                out.append("          \"detail\": ").append(str(signal.detail())).append('\n');
+                out.append("        }");
+            }
+            out.append(signals.isEmpty() ? "]\n" : "\n      ]\n");
+            out.append("    }");
+        }
+        out.append("\n  ]\n");
     }
 
     /** B3.2: {@code surplusConstraints}, conforming to {@code impact-report.schema.json}'s own

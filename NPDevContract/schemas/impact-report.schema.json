@@ -71,6 +71,37 @@
         }
       }
     },
+    "renameCandidates": {
+      "type": "array",
+      "description": "Boundary lift plan 2026-09-02, package 2.2 (docs/ACCEPTED_BOUNDARIES.md B1): ranked, scored candidates for a DESTRUCTIVE_DROP_COLUMN (with live rows) being a rename of a pending ADD_COLUMN/ADD_REQUIRED_COLUMN on the same table, from com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer. Advisory only -- never applies a rename, never affects verdict. Present only when non-empty.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["table", "droppedColumn", "addedColumn", "score", "maxScore", "signals"],
+        "properties": {
+          "table": { "type": "string" },
+          "droppedColumn": { "type": "string" },
+          "addedColumn": { "type": "string" },
+          "score": { "type": "integer", "description": "0..maxScore; higher means more contributing signals agreed." },
+          "maxScore": { "type": "integer" },
+          "signals": {
+            "type": "array",
+            "description": "Every contributing signal's own points, so a human judges the evidence rather than trusting the total alone.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["signal", "points", "maxPoints", "detail"],
+              "properties": {
+                "signal": { "type": "string" },
+                "points": { "type": "integer" },
+                "maxPoints": { "type": "integer" },
+                "detail": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
     "surplusConstraints": {
       "type": "object",
       "description": "S8 Wave 2 / B3.2 (docs/ACCEPTED_BOUNDARIES.md B3): advisory-only, structurally-classified FK/index findings the model does not declare. NEVER a drop proposal and never affects verdict. Present only when there is something to report (a FOREIGN finding or an abstention).",
