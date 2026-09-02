@@ -136,6 +136,38 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
     }
 
     @Test
+    void ownershipIsRecordedForALiveTableEvenWhenTheBackfillPassRefusesAfterward() throws SQLException {
+        // B8 (Wave 2 package 2.1, boundary-lift 2026-09-02): before this package, ownership was
+        // recorded ONLY at the very end of afterMigrate, after BackfillPass/UniqueConstraintPass ran.
+        // A refusal in either of them -- this fixture is the SAME no-default refusal
+        // requiredColumnWithNoDefaultRefusesAndLeavesTheColumnUnadded proves -- meant a table this
+        // boot's flyway.migrate() already created was left with NO ownership record at all.
+        // recordOwnershipForLiveManifestTables now runs FIRST in afterMigrate, so the refusal below
+        // must not prevent "widgets" from being recorded as owned.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), version BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, version) VALUES (1, 'alpha', 1)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifest(
+                Map.of("widgets", List.of("id", "name", "status", "version")),
+                Map.of("widgets", List.of("status")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "status", "VARCHAR(50)", "version", "BIGINT")),
+                Map.of("widgets", List.of("status")),
+                Map.of(),
+                Map.of());
+
+        assertThrows(IllegalStateException.class, () -> executor.afterMigrate(dataSource, manifest));
+
+        java.util.Set<String> owned = SchemaLifecycleExecutor.readOwnedBusinessTables(dataSource);
+        assertTrue(owned != null && owned.contains("widgets"),
+                "ownership must be recorded BEFORE the backfill refusal, not only after it -- otherwise "
+                + "a table this boot genuinely created is left without a record (the B8 bug), even "
+                + "though the boot itself still correctly refuses");
+    }
+
+    @Test
     void requiredColumnWithOnlyAnExpressionDefaultRefusesWithADistinctMessage() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), version BIGINT)");

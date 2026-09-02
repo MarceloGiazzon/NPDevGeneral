@@ -70,15 +70,21 @@ class SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest {
 
         SchemaLifecycleExecutor.SchemaManifest manifest = manifest();
 
-        // Fail on the SECOND matching DDL/DML call (0-based index 1): the ADD COLUMN succeeds, the
+        // Fail on the THIRD matching DDL/DML call (0-based index 2): the ADD COLUMN succeeds, the
         // backfill UPDATE throws (simulating a crash before the row values are set / NOT NULL applied).
-        FaultInjectingDataSource faultyDataSource = new FaultInjectingDataSource(realDataSource, 1);
+        // B8 (Wave 2 package 2.1, boundary-lift 2026-09-02): index 0 used to BE the ADD COLUMN, but
+        // afterMigrate now calls recordOwnershipForLiveManifestTables FIRST, which attempts an
+        // "UPDATE npdev_schema_metadata SET ... WHERE metadata_key = 'ownedBusinessTables'" (matches
+        // the same UPDATE/ALTER TABLE pattern this fault injector counts) before BackfillPass ever
+        // runs -- shifting the ADD COLUMN to index 1 and the backfill UPDATE to index 2.
+        FaultInjectingDataSource faultyDataSource = new FaultInjectingDataSource(realDataSource, 2);
         SchemaLifecycleExecutor firstAttemptExecutor = new SchemaLifecycleExecutor();
 
         // R2 (F1): the required-field backfill now runs in afterMigrate (the single enforcement call
         // site), so the crash is injected there. The 4-arg form is used with an explicit mismatch so
-        // the fault-count sequence (ALTER TABLE ADD COLUMN = index 0, backfill UPDATE = index 1 -> fault)
-        // is exactly as before, with no readFingerprint SELECT in between.
+        // the fault-count sequence (ownership metadata upsert = index 0, ALTER TABLE ADD COLUMN =
+        // index 1, backfill UPDATE = index 2 -> fault) is deterministic, with no readFingerprint
+        // SELECT in between.
         assertThrows(IllegalStateException.class,
                 () -> firstAttemptExecutor.afterMigrate(faultyDataSource, manifest, "sha256:old", true));
 

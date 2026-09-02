@@ -53,9 +53,9 @@
     },
     {
       "id": "B8",
-      "kind": "HITTABLE",
-      "userFacingText": "This table was not dropped because no ownership history exists. Boot once with the current build to register ownership.",
-      "workaround": "Boot once with the concept present (recording ownership), then remove it.",
+      "kind": "LIFTED",
+      "userFacingText": "NPDev records ownership of a business table the moment its own migration creates it, before any later same-boot pass (backfill, unique-constraint tightening) can still refuse -- so a table it created can no longer end up without a record. A table that predates this (a genuinely legacy database, or one that skipped the old 'boot once with the concept present' workaround) can be adopted explicitly: GET .../ownership/preview lists which live tables would be adopted, POST .../ownership/adopt records ownership ONLY for a live table whose shape matches the model with zero difference -- never inferred, never for a table that merely shares a name. This table was not dropped because no ownership history exists is still possible, but now only for a table that genuinely was never created by this build and was never adopted.",
+      "workaround": "npdev db adopt-ownership [--apply] against a running app (preview by default, --apply to record), or boot once with the concept present the old way -- both still work.",
       "enforcingDiagnosticCodes": ["B8:no_ownership_history"]
     },
     {
