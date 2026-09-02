@@ -1,13 +1,13 @@
 {
-  "closedAt": "2026-09-01T20:05:57.7481961Z",
+  "closedAt": "2026-09-02T05:45:49.7790423Z",
   "branch": "main",
-  "head": "4ea4a824",
-  "headSubject": "feat(SEC-3): live-fire the Linux plugin cgroup ceiling in Docker, close SEC-3",
-  "summary": "Implemented the full SEC-3/QUAL-49/QUAL-50 plan across three tracks, all committed and pushed to origin/main (866c4fb1..4ea4a824). Track C (QUAL-50) triaged 5 security-sweep hits and fixed QUAL-46's guard. Track B (QUAL-49) root-caused the runtime-surface-evidence red to a -PendingOk invocation mismatch plus one real regression, and inverted the retired-checks default so it cannot recur. Track A (SEC-3) live-fired the Linux cgroup plugin ceiling in Docker for the first time, confirming and fixing the predicted child-cgroup-nesting defect, then catching two further unanticipated defects via the live-fire itself: swap absorption defeating the OOM kill (fixed, memory.swap.max=0) and a Windows Job Object startup-commit failure at 256MB on this machine (reverted that one test to its previously-verified 128MB rather than chase a JVM-tuning fix, filed as QUAL-51).",
-  "nextStep": "Two new follow-up items were filed and are the natural next work, neither blocking: (1) QUAL-51 (ledger/items/QUAL-51.yml) -- root-cause which HotSpot subsystem's commit crosses a tight OS memory ceiling on child JVM boot (PluginIpcChildProcess.spawn() passes no -Xmx/-Xms at all), fix by passing explicit conservative JVM memory flags when limits.memoryLimitMb() is set, then re-raise PluginIpcChildProcessWindowsResourceLimitTest back to 256MB with both its tests passing reliably across multiple runs. (2) SEC-4 (ledger/items/SEC-4.yml) -- a design decision, not a bugfix: whether/how to wire real generated-app java-source plugin capability calls through PluginIpcChildProcessPool for production traffic (today only test harnesses exercise it); read its own two open design questions before writing any code. Neither has a deadline; pick whichever the user prioritizes.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN-2026-09-01-SEC3-QUAL49-QUAL50\\plan.json (all 3 tracks, 23 steps, complete)",
+  "head": "a0e245b1",
+  "headSubject": "fix(QUAL-53): clone-port file lock, Windows PermissionError treated as real failure",
+  "summary": "Investigated and fixed the one lead from the last handoff: NPDevCli/tests/test_monitor_clone.py::test_concurrent_calls_never_collide's Windows PermissionError. Confirmed it reproduces reliably when run as part of the full test file (not in isolation), stress-tested the underlying create-vs-unlink race standalone (12 threads, 300 iterations each: 2719 FileExistsError vs 15 PermissionError, ~1 in 180), and traced it to _acquire_file_lock in NPDevCli/npdev_monitor.py only catching FileExistsError. Fixed by also catching PermissionError in the retry loop (QUAL-53, commit a0e245b1, pushed).",
+  "nextStep": "QUAL-53 is DONE and pushed. Ledger is clean again: only QUAL-40/QUAL-41 (WONTFIX-accepted) remain not-DONE, per open-state.md. No open item was left mid-work and nothing new surfaced this session. Start by checking ledger/session-state/open-state.md for the next priority, or ask the user what to work on.",
+  "plan": "",
   "blocked": "",
-  "verified": "Track C: run-all-gates.ps1 -Only aiKnowledge green (40/40 checks, 0 blocking findings). Track B: run-all-gates.ps1 -Only runtimeHost green. Track A: scripts/quality/run-linux-plugin-resource-proof.ps1 -Force passed live in Docker (3/3 JUnit tests, canCreateSiblingWithMemoryMax=true); full run-all-gates.ps1 (all four T2 gates: generator, runtimeHost, kernel, aiKnowledge) green as the final verification after the Windows-test revert. All three commits pushed to origin/main.",
+  "verified": "8/8 isolated runs of the target test pass post-fix; 5/5 full-file runs pass post-fix (pre-fix: reliably failed as part of the full file, every run observed); full NPDevCli suite (701 tests, via the exact coverage-run + unittest-discover invocation run-ai-knowledge-gate.ps1 uses) passes; full run-all-gates.ps1 -Only aiKnowledge passed clean both before and after the fix.",
   "dirtyCount": 2,
   "dirtyFiles": [
     " M ledger/session-state/current.json",
@@ -15,10 +15,6 @@
   ],
   "unpushed": 0,
   "landedCommits": [
-    "4ea4a824 feat(SEC-3): live-fire the Linux plugin cgroup ceiling in Docker, close SEC-3",
-    "8ac61eb4 fix(QUAL-49): root-cause runtime-surface-evidence red to invocation mismatch",
-    "297da306 fix(QUAL-50): triage security-sweep hits and fix QUAL-46's unresolvable guard",
-    "866c4fb1 feat(SEC-3): real-plugin-classloading manifest for PluginIpcChildProcessPool",
-    "03b123ce feat(SEC-3): per-OS plugin child-process resource limits (Model B step 4)"
+    "a0e245b1 fix(QUAL-53): clone-port file lock, Windows PermissionError treated as real failure"
   ]
 }
