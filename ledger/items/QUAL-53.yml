@@ -1,0 +1,62 @@
+id: QUAL-53
+title: >-
+  npdev_monitor's clone-port file lock let a stray Windows PermissionError escape as a real
+  failure instead of being retried like the FileExistsError it functionally is
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  Previous session's handoff (ledger/session-state/current.json, closed at 28a385e1) flagged
+  NPDevCli/tests/test_monitor_clone.py::test_concurrent_calls_never_collide as failing
+  reproducibly (2/2 runs) with a Windows PermissionError under concurrent port reservation,
+  "unrelated to anything touched this session," not filed as a ledger item, left for whoever
+  picked up next. Picked up this session per its own suggested next step.
+surface: NPDevCli/npdev_monitor.py (_acquire_file_lock, the clone-port-reservation registry lock)
+files:
+  - NPDevCli/npdev_monitor.py
+detail: |
+  REPRODUCED FIRST, THEN FIXED -- 2026-09-02. `test_concurrent_calls_never_collide` alone always
+  passed (8/8 isolated runs); run as part of the full file (`python -m unittest
+  tests.test_monitor_clone`, the same invocation `run-ai-knowledge-gate.ps1` step 18/35 uses via
+  `unittest discover`) it failed reliably, with:
+
+    AssertionError: Lists differ: [PermissionError(13, 'Permission denied')] != []
+
+  ROOT CAUSE: `_acquire_file_lock` implements its mutex as `os.open(path, O_CREAT|O_EXCL|O_WRONLY)`,
+  retrying only on `FileExistsError`. On Windows, a create racing a concurrent unlink of the SAME
+  filename (one thread releasing the lock via `lock_path.unlink()` at the exact instant another
+  thread's retry loop calls `os.open` again) intermittently raises `PermissionError` (WinError 5,
+  "Access is denied") instead of `FileExistsError` -- confirmed empirically with a standalone
+  12-thread stress test hammering create+unlink of one filename 300x per thread: 2719
+  `FileExistsError` vs 15 `PermissionError` (~1 in 180 races). `PermissionError` was not caught, so
+  it propagated out of the worker thread as a real error instead of being retried -- the module's
+  own docstring already names the race this lock exists to prevent, it just didn't know Windows can
+  report it under this second exception type.
+
+  FIX: `_acquire_file_lock`'s retry `except` now catches `(FileExistsError, PermissionError)`
+  together -- both mean "cannot create the lock file right now," never "this process actually lacks
+  permission" -- so a `PermissionError` is retried exactly like `FileExistsError` instead of
+  escaping.
+
+  LIVE-FIRE VERIFICATION: post-fix, `test_concurrent_calls_never_collide` passed 8/8 in isolation
+  and 5/5 as part of the full file (previously: reliably FAILED as part of the full file, every
+  time observed). Full `NPDevCli/tests` suite (701 tests via the exact
+  `coverage run ... -m unittest discover -s NPDevCli/tests` invocation the CI gate uses): all pass.
+  Full `run-all-gates.ps1 -Only aiKnowledge` (which hosts that suite as one of its steps): PASSED
+  clean, both before filing this item (confirming this bug's own probabilistic nature -- it does
+  not fail every gate run) and after the fix.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_monitor_clone.py::ClonePortReservation::test_concurrent_calls_never_collide
+  asserts: >-
+    Twelve real threads call reserve_clone_port concurrently against a real file-locked registry and
+    assert zero errors and twelve distinct ports. Pre-fix this failed reliably (every observed run)
+    when executed as part of the full test file / `unittest discover` (the shape CI actually runs,
+    via run-ai-knowledge-gate.ps1 step 18/35), because that context reliably hit the
+    create-races-unlink timing window on Windows. Post-fix: 5/5 full-file runs and the full 701-test
+    NPDevCli suite all pass. Pre-existing test, no new test needed -- the fix is a two-word except
+    clause, and this test already demonstrated the failure with the exact concurrency shape needed
+    to hit it.
+  provenRed: true

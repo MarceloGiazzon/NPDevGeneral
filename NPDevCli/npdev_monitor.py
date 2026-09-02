@@ -1426,7 +1426,13 @@ def _acquire_file_lock(lock_path: Path, timeout: float = 15.0) -> None:
     """Exclusive mutex via atomic file creation (`O_CREAT|O_EXCL`) -- no `msvcrt`/`fcntl` split and
     no third-party dependency, which matters here for the same R9 reason the rest of this module
     avoids one (the Manager ships a private Python with nothing beyond stdlib). Stale after 30s so a
-    process that crashed mid-reservation cannot wedge every later clone forever."""
+    process that crashed mid-reservation cannot wedge every later clone forever.
+
+    On Windows, a create racing a concurrent unlink of the SAME filename (another holder releasing
+    the lock at the exact instant this one retries) intermittently raises `PermissionError`
+    (WinError 5) instead of `FileExistsError` -- confirmed by a 12-thread create/unlink stress test
+    (~1 in 180 attempts). It means the same thing ("cannot create it right now"), never that this
+    process lacks permission, so it is retried exactly like `FileExistsError` rather than escaping."""
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.time() + timeout
     while True:
@@ -1435,7 +1441,7 @@ def _acquire_file_lock(lock_path: Path, timeout: float = 15.0) -> None:
             os.write(fd, str(os.getpid()).encode("ascii", "ignore"))
             os.close(fd)
             return
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
             try:
                 if time.time() - lock_path.stat().st_mtime > _CLONE_LOCK_STALE_SECONDS:
                     lock_path.unlink(missing_ok=True)
