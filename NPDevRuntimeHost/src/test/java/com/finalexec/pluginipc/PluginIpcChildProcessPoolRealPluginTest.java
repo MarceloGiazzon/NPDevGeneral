@@ -6,6 +6,7 @@ import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifest;
 import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifestLoader;
+import com.finalexec.npdev.service.pluginipc.ManifestDrivenJavaSourcePluginHandler;
 import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessPool;
 import com.finalexec.npdev.service.pluginipc.PluginIpcHostSession;
 import com.npdev.kernel.CapabilityCall;

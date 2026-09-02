@@ -4,8 +4,9 @@ title: >-
   plugin capability calls do not route through the process-isolated pool, only test harnesses do
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-01
+closed: 2026-09-01
 source: >-
   SEC-3's own closure (Track A of the SEC-3/QUAL-49/QUAL-50 implementation plan, 2026-09-01), carried
   forward from its own "Next" note written at step 3 (real-plugin-classloading manifest,
@@ -53,3 +54,92 @@ detail: |
   real generated app measurably route through PluginIpcChildProcessPool in at least one live-fired
   end-to-end scenario (not just the existing manifest-driven test-only bridge) -- verified by
   observing the actual child-process IPC round trip, not by inspecting call graphs.
+
+  DESIGN QUESTIONS ANSWERED 2026-09-01, after tracing the full production path end to end (not just
+  SEC-3's own closing note): CapabilityAdapterResolver.resolve() -> RuntimePluginPackageRealizationService
+  .realize() -> JavaSourceArtifactRealizationProvider -> RuntimePluginRuntimeRefResolver -> a GENERATED
+  per-app Spring bean (RuntimeApiEmitter.javaSourceProvidersSource(), NPDevGenerator's RuntimeApiEmitter.java
+  line ~1396) whose realize() method literally does `new ArtifactLocalJavaSourceCapabilityHandler(new
+  <MainClass>(), Map.ofEntries(...))` -- the user's plugin class is `new`'d directly in the host's own
+  JVM, per call. That handler is wrapped by SandboxedCapabilityAdapter, which routes EVERY invoke
+  through TimeBoundedPluginExecutionEngine -- a single shared in-process `newCachedThreadPool`, bounded
+  only by `future.get(timeoutMs)` plus a best-effort `future.cancel(true)` (a plain Thread.interrupt()
+  a non-cooperative plugin can simply ignore: a tight CPU loop or a blocking, non-interruptible native
+  call keeps running, unbounded, in the host's own process). This confirms SEC-3's original problem
+  statement is still fully live on production traffic, and that the SAME soft-timeout-only path is used
+  for every RegisteredAdapterContribution resolved this way, not only java-source ones.
+
+  Q1 (scope): route EVERY capability call through the isolated pool, or only plugin:java-source /
+  plugin:java-controller mounts? ANSWER, CORRECTED after tracing emitJavaControllerMounts (RuntimeApiEmitter,
+  line ~1228): plugin:java-controller is NOT the same kind of thing as plugin:java-source and cannot be
+  scoped in alongside it by this item's own mechanism. A java-controller mount's .java source is copied
+  VERBATIM into the generated app's src/main/java and compiled as an ordinary Spring @RestController /
+  @Controller bean -- Spring's own DispatcherServlet invokes its @RequestMapping methods directly, with
+  no CapabilityCall/CapabilityAdapterResolver interception point anywhere in that path. Routing it
+  through PluginIpcChildProcessPool would mean intercepting Spring MVC's HTTP dispatch itself (capture
+  the HttpServletRequest, marshal it across a process boundary, marshal the response back) -- a
+  different and substantially larger design problem than "wire an existing capability call through the
+  existing pool," out of scope for this item and for SEC-5. CORRECTED SCOPE: plugin:java-source mounts
+  only. These are the only CAPABILITY-DISPATCHED mount kind that runs arbitrary, platform-unreviewed
+  code (user-authored or generated from a user's own model) -- exactly SEC-3's own threat model. Built-in
+  adapters (persistence-inproc, mail, audit, etc.) are the platform's own trusted, reviewed code; several
+  of the `*-inproc` variants specifically share mutable in-process JVM state (e.g. an in-memory
+  ConceptStore other in-process code also touches) and CANNOT cross a process boundary at all without a
+  much larger, unrelated redesign. There is no security or stability rationale to isolate them, and doing
+  so would add IPC latency and pool-sizing operational burden to every capability call in every generated
+  app for zero containment benefit on calls that were never the threat.
+
+  Q2 (production bridge shape): ANSWER: productionize ManifestDrivenJavaSourcePluginHandler's existing
+  shape rather than invent a different mechanism. Its logic (read java-source-runtime-refs.json on the
+  child's own classpath, resolve FQCN+method by capability, reflect into it) is already exactly what a
+  fungible pooled worker needs on the CHILD side, and JavaSourceRuntimeRefManifest /
+  JavaSourceRuntimeRefManifestLoader / the manifest emitter (RuntimeApiEmitter
+  .emitJavaSourceRuntimeRefManifestIfNeeded) are ALREADY shipped in every generated app (SEC-3 step 3) --
+  only the bridge CLASS itself is test-only today (NPDevRuntimeHost/src/test/java, never shipped). The
+  HOST side needs new code, not a refactor of ArtifactLocalJavaSourceCapabilityHandler (its constructor
+  takes an already-resolved in-process target instance, which cannot cross a process boundary): a new
+  handler that SandboxedCapabilityAdapter can invoke exactly like today's, but whose invoke() calls
+  PluginIpcChildProcessPool.invoke(...) (an IPC round trip) instead of local reflection.
+
+  Concrete plan for implementation, not yet started: (1) promote ManifestDrivenJavaSourcePluginHandler
+  (or an equivalent) out of test sources into runtimehost-core/src/main, shipped in every generated app,
+  registered as the fixed handlerClassName the pool hands to every pooled worker for java-source/
+  java-controller mounts. (2) new production class (host side), e.g. PluginIpcCapabilityHandler,
+  implementing CapabilityAdapter so it slots into TimeBoundedPluginExecutionEngine.invokeHandler()'s
+  existing first branch unchanged -- holds a PluginIpcChildProcessPool reference + the mount's
+  runtimeRef/capability/adapterId, its invoke() delegates to pool.invoke(...). (3) wire
+  PluginIpcChildProcessPool as a real Spring-managed singleton bean (NpdevPluginConfig.java today has
+  no such bean -- confirmed live, `new PluginIpcChildProcessPool` appears only in test sources), config-
+  driven pool size / maxInvocationsPerWorker / idleTimeout / PluginProcessResourceLimits. (4) change
+  RuntimeApiEmitter.javaSourceProvidersSource() so a plugin:java-source/plugin:java-controller mount's
+  generated bean returns a PluginIpcCapabilityHandler bound to the pool + runtimeRef, instead of `new
+  ArtifactLocalJavaSourceCapabilityHandler(new <MainClass>(), ...)` -- no DSL/model schema change, so
+  likely no npdev migrate codemod needed (internal wiring only), but confirm against BREAKING.md's own
+  definition of what requires one before landing. (5) live-fire verification: generate+boot a real
+  sample app with a plugin:java-source mount (NPDevSamples/dsl-conformance-max already has one, proven
+  reachable via PluginIpcChildProcessPoolRealPluginTest's own AuditLogCapability#record target) and
+  drive a real HTTP/REST call into that capability, confirming the child-process IPC round trip is what
+  actually served it (not a call-graph inspection).
+
+  DEFERRED, not implemented this session: the concrete plan above is real, substantial, multi-file
+  production work (a new shipped class, generator codegen changes, Spring bean wiring, live-fire
+  verification) that changes runtime behavior (added IPC latency, new pool-sizing operational surface)
+  for every future generated app with a java-source/java-controller mount -- a scope/priority call
+  flagged to the user rather than taken unilaterally. Both design questions are answered and recorded
+  per this item's own "done when" bar; status reflects that as the completed portion, with
+  implementation tracked separately as SEC-5 (filed the same session).
+guard:
+  kind: manual
+  ref: >-
+    NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+    (javaSourceProvidersSource(), ~line 1396) and
+    NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/TimeBoundedPluginExecutionEngine.java,
+    the two files this item's design answers were traced against.
+  asserts: >-
+    A DONE claim here means "both design questions answered and recorded," not "implemented" -- ledger/items/SEC-5.yml
+    tracks implementation separately. Both cited files exist; RuntimeApiEmitter.javaSourceProvidersSource()
+    still emits `new ArtifactLocalJavaSourceCapabilityHandler(new <MainClass>(), ...)` in-process (the
+    traced production path Q1/Q2's answers rest on) and TimeBoundedPluginExecutionEngine still dispatches
+    via a shared in-process executorService bounded only by future.get(timeoutMs) + cancel(true), no
+    OS-level isolation, until SEC-5 lands.
+  provenRed: false

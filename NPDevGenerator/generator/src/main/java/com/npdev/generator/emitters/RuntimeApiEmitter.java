@@ -1364,17 +1364,28 @@ writer.writeRelative(
         return prettyJson(root);
     }
 
+    /**
+     * SEC-5: emits a real OS-process-isolated {@link com.finalexec.npdev.service.pluginipc
+     * .PluginIpcCapabilityHandler} bound to the app-wide {@code PluginIpcChildProcessPool} bean,
+     * instead of the in-process {@code ArtifactLocalJavaSourceCapabilityHandler(new <MainClass>(),
+     * ...)} dispatch this method emitted before SEC-5. The plugin's FQCN + operation-&gt;method map is
+     * no longer compiled into this class at all -- the pool's child worker resolves both itself, at
+     * invoke time, from the already-shipped {@code java-source-runtime-refs.json} manifest (see {@code
+     * emitJavaSourceRuntimeRefManifestIfNeeded}), so this generated bean only needs to name the
+     * runtimeRef/capability/adapterId the pool and registry already key on.
+     */
     private static String javaSourceProvidersSource(List<GeneratedPluginMountPlan.JavaSourcePackageGroup> javaSourceGroups) {
         StringBuilder source = new StringBuilder();
         source.append("""
                 package com.npdev.generated.runtime.config;
 
-                import com.finalexec.npdev.service.ArtifactLocalJavaSourceCapabilityHandler;
+                import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
+                import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
                 import com.finalexec.npdev.service.RuntimePluginRealizationProvider;
+                import com.finalexec.npdev.service.pluginipc.PluginIpcCapabilityHandler;
+                import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessPool;
                 import org.springframework.context.annotation.Bean;
                 import org.springframework.context.annotation.Configuration;
-
-                import java.util.Map;
 
                 @Configuration
                 public class GeneratedJavaSourceCapabilityProviders {
@@ -1385,7 +1396,11 @@ writer.writeRelative(
             GeneratedPluginMountPlan.JavaSourceDescriptor descriptor = group.descriptor();
             String methodName = uniqueMethodName(methodNames, javaIdentifierPart(descriptor.runtimeRef()) + "Provider");
             source.append("    @Bean\n");
-            source.append("    public RuntimePluginRealizationProvider ").append(methodName).append("() {\n");
+            source.append("    public RuntimePluginRealizationProvider ").append(methodName).append("(\n");
+            source.append("            PluginIpcChildProcessPool pluginIpcChildProcessPool,\n");
+            source.append("            RuntimePluginAdapterRegistry runtimePluginAdapterRegistry,\n");
+            source.append("            PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator\n");
+            source.append("    ) {\n");
             source.append("        return new RuntimePluginRealizationProvider() {\n");
             source.append("            @Override\n");
             source.append("            public String runtimeRef() {\n");
@@ -1393,24 +1408,11 @@ writer.writeRelative(
             source.append("            }\n\n");
             source.append("            @Override\n");
             source.append("            public Object realize() {\n");
-            source.append("                return new ArtifactLocalJavaSourceCapabilityHandler(\n");
-            source.append("                        new ").append(descriptor.mainClass()).append("(),\n");
-            source.append("                        Map.ofEntries(");
-            List<Map.Entry<String, String>> entries = descriptor.methodByOperation().entrySet().stream()
-                    .sorted(Map.Entry.comparingByKey(String.CASE_INSENSITIVE_ORDER))
-                    .toList();
-            for (int index = 0; index < entries.size(); index++) {
-                Map.Entry<String, String> entry = entries.get(index);
-                if (index > 0) {
-                    source.append(", ");
-                }
-                source.append("Map.entry(\"")
-                        .append(javaEscape(entry.getKey()))
-                        .append("\", \"")
-                        .append(javaEscape(entry.getValue()))
-                        .append("\")");
-            }
-            source.append(")\n");
+            source.append("                return new PluginIpcCapabilityHandler(\n");
+            source.append("                        pluginIpcChildProcessPool, runtimePluginAdapterRegistry, pluginExecutionPolicyEvaluator,\n");
+            source.append("                        \"").append(javaEscape(descriptor.runtimeRef())).append("\",\n");
+            source.append("                        \"").append(javaEscape(descriptor.capability())).append("\",\n");
+            source.append("                        \"").append(javaEscape(descriptor.adapterId())).append("\"\n");
             source.append("                );\n");
             source.append("            }\n");
             source.append("        };\n");

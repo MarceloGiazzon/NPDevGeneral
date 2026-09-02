@@ -10,6 +10,10 @@ import com.finalexec.npdev.service.GenericMountedCapabilityHandler;
 import com.finalexec.npdev.service.JavaSourceArtifactRealizationProvider;
 import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.PluginManifestSchemaValidator;
+import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifest;
+import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifestLoader;
+import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessPool;
+import com.finalexec.npdev.service.pluginipc.PluginProcessResourceLimits;
 import com.finalexec.npdev.service.PluginPackageSchemaValidator;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.finalexec.npdev.service.RuntimePluginArtifactRealizationProvider;
@@ -231,6 +235,41 @@ public class NpdevPluginConfig {
             RuntimePluginRuntimeRefResolver runtimePluginRuntimeRefResolver
     ) {
         return new JavaSourceArtifactRealizationProvider(runtimePluginRuntimeRefResolver);
+    }
+
+    /**
+     * SEC-5: the app-wide pool of OS-process-isolated workers {@code PluginIpcCapabilityHandler} routes
+     * every {@code plugin:java-source} invoke through. Returns {@code null} (no bean instance, per
+     * Spring's own {@code @Bean}-returning-null contract) when {@code java-source-runtime-refs.json} is
+     * absent/empty -- the SAME graceful-absence signal {@link JavaSourceRuntimeRefManifestLoader}
+     * already uses -- so an app with no {@code plugin:java-source} mount at all never spawns a single
+     * idle child JVM. Nothing autowires this bean unless a generated {@code
+     * GeneratedJavaSourceCapabilityProviders} bean exists to ask for it, which only happens under the
+     * same condition.
+     */
+    @Bean(destroyMethod = "close")
+    public PluginIpcChildProcessPool pluginIpcChildProcessPool(
+            ObjectMapper objectMapper,
+            @Value("${npdev.runtime.plugin-ipc-pool.size:2}") int poolSize,
+            @Value("${npdev.runtime.plugin-ipc-pool.max-invocations-per-worker:200}") int maxInvocationsPerWorker,
+            @Value("${npdev.runtime.plugin-ipc-pool.idle-timeout-ms:600000}") long idleTimeoutMs,
+            @Value("${npdev.runtime.plugin-ipc-pool.memory-limit-mb:0}") int memoryLimitMb,
+            @Value("${npdev.runtime.plugin-ipc-pool.cpu-rate-percent:0}") int cpuRatePercent
+    ) throws java.io.IOException {
+        JavaSourceRuntimeRefManifest manifest = new JavaSourceRuntimeRefManifestLoader(objectMapper).load();
+        if (manifest.byRuntimeRef().isEmpty()) {
+            return null;
+        }
+        PluginProcessResourceLimits limits = (memoryLimitMb > 0 || cpuRatePercent > 0)
+                ? new PluginProcessResourceLimits(memoryLimitMb > 0 ? memoryLimitMb : null, cpuRatePercent > 0 ? cpuRatePercent : null)
+                : PluginProcessResourceLimits.NONE;
+        return new PluginIpcChildProcessPool(
+                poolSize,
+                maxInvocationsPerWorker,
+                Duration.ofMillis(idleTimeoutMs),
+                System.getProperty("java.class.path"),
+                limits
+        );
     }
 
     @Bean

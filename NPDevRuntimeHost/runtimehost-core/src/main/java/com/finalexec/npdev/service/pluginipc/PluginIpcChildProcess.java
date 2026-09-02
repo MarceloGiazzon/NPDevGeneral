@@ -12,9 +12,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.jar.JarFile;
 
 /**
  * Host-side handle to one real OS child process running {@link PluginIpcChildProcessMain} (SEC-3,
@@ -82,15 +84,40 @@ public final class PluginIpcChildProcess implements AutoCloseable {
         return spawn(classpath, limits);
     }
 
+    private static final String SPRING_BOOT_PROPERTIES_LAUNCHER = "org.springframework.boot.loader.launch.PropertiesLauncher";
+
     private static PluginIpcChildProcess spawn(String classpath, PluginProcessResourceLimits limits, String... childMainArgs)
             throws IOException {
         Objects.requireNonNull(classpath, "classpath");
         Objects.requireNonNull(limits, "limits");
         String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
-        Path argFile = writeClasspathArgFile(classpath);
-        List<String> command = new ArrayList<>(List.of(javaBin, "@" + argFile));
+        Path argFile = null;
+        List<String> command = new ArrayList<>();
+        command.add(javaBin);
         command.addAll(childHeapFlags(limits));
-        command.add(PluginIpcChildProcessMain.class.getName());
+        if (isExecutableSpringBootArchive(classpath)) {
+            // SEC-5: a REAL deployed app is always launched `java -jar FinalExec.jar` (Start-App.ps1's
+            // own invocation) -- under that launch, `java.class.path` is just the fat jar's OWN single
+            // path, not a real multi-entry classpath. A plain `-cp <thatJar> PluginIpcChildProcessMain`
+            // then fails with ClassNotFoundException: the class lives under BOOT-INF/classes/ inside the
+            // jar, which only Spring Boot's own nested-jar-aware loader knows how to resolve -- a bare
+            // URLClassLoader (what a plain `-cp` launch uses) treats the jar as flat and never finds it.
+            // PropertiesLauncher (bundled in every Spring Boot fat jar) is Spring Boot's own documented
+            // mechanism for launching an ALTERNATE main class through that same loader via
+            // `-Dloader.main=<class>` -- confirmed live (SEC-5 live-fire, 2026-09-01): the two-line
+            // ClassNotFoundException in app.stderr.log for BOTH pool workers, from a real `java -jar`
+            // boot of NPDevSamples/dsl-conformance-max, is what this branch exists to fix. Never hit by
+            // any test in this repo before that live-fire, since every test JVM is launched by Gradle
+            // with a real multi-entry classpath, not a packaged fat jar.
+            command.add("-cp");
+            command.add(classpath);
+            command.add("-Dloader.main=" + PluginIpcChildProcessMain.class.getName());
+            command.add(SPRING_BOOT_PROPERTIES_LAUNCHER);
+        } else {
+            argFile = writeClasspathArgFile(classpath);
+            command.add("@" + argFile);
+            command.add(PluginIpcChildProcessMain.class.getName());
+        }
         command.addAll(List.of(childMainArgs));
         PluginProcessResourceLimiter limiter = PluginProcessResourceLimiter.forCurrentOs();
         command = limiter.wrapCommand(command, limits);
@@ -99,6 +126,29 @@ public final class PluginIpcChildProcess implements AutoCloseable {
         Process process = builder.start();
         PluginProcessResourceLimiter.ResourceLimitAttachment attachment = limiter.attachAfterStart(process, limits);
         return new PluginIpcChildProcess(process, argFile, attachment);
+    }
+
+    /**
+     * True when {@code classpath} is a single jar file that bundles Spring Boot's own loader classes --
+     * i.e. this JVM was itself launched {@code java -jar <thatJar>} as a Spring Boot executable archive,
+     * the shape every real deployed app uses (Start-App.ps1's own invocation). Checked by looking for
+     * the loader class directly inside the jar, not by trusting the manifest's {@code Main-Class} (a
+     * cheap, self-contained proof that the {@code -Dloader.main} mechanism below will actually work
+     * against this specific jar, not just that it LOOKS like a Boot jar).
+     */
+    private static boolean isExecutableSpringBootArchive(String classpath) {
+        if (classpath.contains(File.pathSeparator) || !classpath.toLowerCase(Locale.ROOT).endsWith(".jar")) {
+            return false;
+        }
+        Path jarPath = Path.of(classpath);
+        if (!Files.isRegularFile(jarPath)) {
+            return false;
+        }
+        try (JarFile jarFile = new JarFile(jarPath.toFile())) {
+            return jarFile.getEntry("org/springframework/boot/loader/launch/PropertiesLauncher.class") != null;
+        } catch (IOException exception) {
+            return false;
+        }
     }
 
     /**
@@ -230,11 +280,14 @@ public final class PluginIpcChildProcess implements AutoCloseable {
             }
         }
         // Only deleted once the process is confirmed dead: java's launcher reads the argfile during its own
-        // startup, so deleting it any earlier would race a still-starting child.
-        try {
-            Files.deleteIfExists(classpathArgFile);
-        } catch (IOException exception) {
-            // Best-effort cleanup of a one-shot temp file; leaving it behind is harmless.
+        // startup, so deleting it any earlier would race a still-starting child. Null when this worker was
+        // launched via PropertiesLauncher (SEC-5): no argfile is written in that branch.
+        if (classpathArgFile != null) {
+            try {
+                Files.deleteIfExists(classpathArgFile);
+            } catch (IOException exception) {
+                // Best-effort cleanup of a one-shot temp file; leaving it behind is harmless.
+            }
         }
         // Closed last, after the process is confirmed dead: on Windows this releases the Job Object handle
         // (harmless once the process it bounded has already exited); on Linux this removes the raw-cgroup

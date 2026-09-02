@@ -1,9 +1,6 @@
-package com.finalexec.pluginipc;
+package com.finalexec.npdev.service.pluginipc;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifest;
-import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifestLoader;
-import com.finalexec.npdev.service.pluginipc.PluginIpcCallbackClient;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
@@ -14,26 +11,29 @@ import java.lang.reflect.Method;
 import java.util.Map;
 
 /**
- * Test-only bridge, NOT shipped in any generated app: {@link com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessMain}
- * only knows how to reflectively instantiate a {@link CapabilityAdapter} with a public
- * {@code (PluginIpcCallbackClient)} constructor (the same shape every hand-written test handler in
- * this package uses), but a REAL generated {@code plugin:java-source} class is a raw POJO with no
- * such constructor -- production code adapts it via {@code ArtifactLocalJavaSourceCapabilityHandler},
- * constructed in-process with an already-resolved target instance + operation-&gt;method map, neither
- * of which can cross a process boundary as a single {@code handlerClassName} string.
+ * SEC-5: shipped in every generated app (runtimehost-core), the fixed {@code handlerClassName} every
+ * {@link PluginIpcChildProcessPool} worker uses for a {@code plugin:java-source} invoke.
+ * {@link PluginIpcChildProcessMain} only knows how to reflectively instantiate a {@link
+ * CapabilityAdapter} with a public {@code (PluginIpcCallbackClient)} constructor -- the same shape
+ * every hand-written test handler in this package uses -- but a real generated {@code
+ * plugin:java-source} class is a raw POJO with no such constructor, so this class bridges the two: at
+ * {@link #invoke} time it reads {@code npdev/plugin-runtime/java-source-runtime-refs.json} (on the
+ * child process's own classpath, since a pooled worker runs on the host's own full classpath) to
+ * resolve the real plugin's FQCN + method for the call's capability, then reflects into it -- mirroring
+ * {@code ArtifactLocalJavaSourceCapabilityHandler}'s own dispatch, not reusing it directly, since that
+ * class's constructor shape (an already-resolved in-process target instance) cannot cross a process
+ * boundary as a single {@code handlerClassName} string.
  *
- * <p>This class closes that gap for the purpose of {@link PluginIpcChildProcessPoolRealPluginTest}
- * only: it IS the fixed {@code handlerClassName} the pool is given, and at {@link #invoke} time reads
- * the SAME {@code npdev/plugin-runtime/java-source-runtime-refs.json} manifest (on the child
- * process's classpath, since a pooled worker already runs on the host's own full classpath) to
- * resolve the real plugin's FQCN + method for the call's capability, then reflects into it --
- * mirroring {@code ArtifactLocalJavaSourceCapabilityHandler}'s own dispatch, not reusing it directly,
- * since that class's constructor shape does not fit here.</p>
+ * <p>Originally a test-only bridge (SEC-3, proven by {@code PluginIpcChildProcessPoolRealPluginTest}
+ * against a real plugin); promoted to main sources here so {@link PluginIpcCapabilityHandler} has a
+ * real, shipped class name to hand the pool for production traffic.</p>
  */
 public final class ManifestDrivenJavaSourcePluginHandler implements CapabilityAdapter {
 
     public ManifestDrivenJavaSourcePluginHandler(PluginIpcCallbackClient callbackClient) {
-        // Unused: every plugin.plugin:java-source fixture this test drives makes no host callback.
+        // Unused: every plugin:java-source fixture proven against this handler makes no host callback.
+        // A real java-source plugin that DOES call back into the host still reaches PluginIpcHostSession
+        // via the same wire protocol PluginIpcChildProcessMain already wires this constructor into.
     }
 
     @Override

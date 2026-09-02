@@ -1,0 +1,150 @@
+id: SEC-5
+title: >-
+  PluginIpcChildProcessPool now serves real production capability dispatch for plugin:java-source
+  mounts -- SEC-4's design decision, implemented and live-fire verified
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-01
+closed: 2026-09-01
+source: >-
+  SEC-4's own design-question resolution (2026-09-01, ledger/items/SEC-4.yml): both open design
+  questions SEC-4 was filed to answer are resolved and recorded there (scope to plugin:java-source
+  mounts only -- plugin:java-controller was considered and ruled OUT: a java-controller mount is a raw
+  Spring @RestController wired directly by DispatcherServlet, with no CapabilityCall interception point
+  at all, so it cannot be routed through this pool by this mechanism; productionize
+  ManifestDrivenJavaSourcePluginHandler's shape rather than invent something new). SEC-4 closed DONE on
+  that basis, with implementation carried forward here as separate, explicitly scoped work -- the user
+  then chose to proceed with it the same session ("Go for SEC-4" -> design answered -> "Implement SEC-5
+  now").
+surface: runtimehost, plugin-execution, java-source plugin dispatch, NPDevGenerator RuntimeApiEmitter
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcessPool.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcess.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcessMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcCapabilityHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/ManifestDrivenJavaSourcePluginHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/ArtifactLocalJavaSourceCapabilityHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevPluginConfig.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessPoolRealPluginTest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+detail: |
+  IMPLEMENTED and LIVE-FIRE VERIFIED 2026-09-01. Before this: a plugin:java-source mount's generated
+  Spring bean (RuntimeApiEmitter.javaSourceProvidersSource()) did `new
+  ArtifactLocalJavaSourceCapabilityHandler(new <MainClass>(), ...)` -- the plugin class ran directly in
+  the host's own JVM, wrapped only by TimeBoundedPluginExecutionEngine's shared in-process thread pool
+  and a soft, ignorable-by-a-hostile-plugin `Thread.interrupt()` timeout. `new PluginIpcChildProcessPool`
+  appeared only in test sources.
+
+  Implementation (matching SEC-4's recorded plan):
+  1. Promoted ManifestDrivenJavaSourcePluginHandler out of test sources
+     (NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/) into
+     runtimehost-core/src/main/java/.../pluginipc/ -- shipped in every generated app, the fixed
+     handlerClassName every pooled worker uses for a java-source invoke. Its logic (read
+     java-source-runtime-refs.json off the child's own classpath, resolve FQCN+method by capability,
+     reflect into it) needed no changes.
+  2. New production class PluginIpcCapabilityHandler (host side), implementing CapabilityAdapter so it
+     slots into TimeBoundedPluginExecutionEngine.invokeHandler()'s existing first branch unchanged --
+     holds a PluginIpcChildProcessPool reference plus the mount's runtimeRef/capability/adapterId;
+     invoke() resolves the RegisteredAdapterContribution from the registry (with a runtimeRef
+     cross-check, mirroring RuntimePluginRuntimeRefResolver's own resolved-handler validation) and
+     delegates to pool.invoke(...) -- a real IPC round trip -- instead of local reflection. A plugin
+     callback (host->child->host) is explicitly rejected with a clear error, matching the pre-existing
+     boundary: ArtifactLocalJavaSourceCapabilityHandler's bare no-arg plugin constructor never gave a
+     java-source plugin any way to call back into the host either, so this preserves behavior rather
+     than silently adding a new capability.
+  3. New PluginIpcChildProcessPool @Bean in NpdevPluginConfig.java, config-driven (`npdev.runtime.plugin
+     -ipc-pool.{size,max-invocations-per-worker,idle-timeout-ms,memory-limit-mb,cpu-rate-percent}`,
+     defaults 2/200/600000/off/off). Returns null (no bean registered, Spring's own supported
+     @Bean-returning-null contract) when java-source-runtime-refs.json is absent/empty -- verified live:
+     an app with a java-source mount spawns exactly 2 idle child JVMs at boot; the same check for an app
+     with none was not independently re-verified this session (structural argument only: no generated
+     provider bean exists to request the pool at all when javaSourceGroups is empty, so nothing forces
+     its eager creation either way).
+  4. RuntimeApiEmitter.javaSourceProvidersSource() now emits a bean binding PluginIpcCapabilityHandler
+     to the pool + runtimeRef/capability/adapterId, instead of `new
+     ArtifactLocalJavaSourceCapabilityHandler(new <MainClass>(), ...)`. No DSL/model schema change --
+     purely internal wiring, no `npdev migrate` codemod needed.
+
+  TWO REAL BUGS FOUND AND FIXED VIA LIVE-FIRE, NEITHER CAUGHT BY ANY EXISTING TEST (every prior test --
+  PluginIpcChildProcessPoolRealPluginTest included -- runs in a Gradle-launched JVM with a real
+  multi-entry classpath, never inside a packaged Spring Boot fat jar, which is how every real deployed
+  app actually runs per Start-App.ps1's own `java -jar` invocation):
+
+  BUG 1 -- fat-jar classpath. PluginIpcChildProcess.spawn() built the child's `-cp` from
+  `System.getProperty("java.class.path")`, which inside a Spring Boot executable jar (`java -jar
+  FinalExec.jar`) is just that ONE jar's own path, not a real classpath -- a plain `-cp <thatJar>
+  PluginIpcChildProcessMain` cannot resolve a class nested under BOOT-INF/classes/ the way Spring Boot's
+  own loader does. Observed live: both pooled workers crashed on every real app boot with
+  `ClassNotFoundException: ...PluginIpcChildProcessMain`, silently -- the pool's own constructor never
+  throws for this (Process.start() succeeds; the crash happens moments later inside the child), so the
+  app booted "successfully" with a pool full of already-dead workers and zero visible error until a real
+  capability call was attempted. Fixed: PluginIpcChildProcess.isExecutableSpringBootArchive() detects a
+  single-jar classpath bundling org/springframework/boot/loader/launch/PropertiesLauncher.class, and in
+  that case spawns via `-cp <jar> -Dloader.main=PluginIpcChildProcessMain
+  org.springframework.boot.loader.launch.PropertiesLauncher` -- Spring Boot's own documented mechanism
+  for launching an alternate main class through its nested-jar-aware classloader. Verified live: both
+  workers alive and idle immediately after a real `java -jar` boot, confirmed via the OS process list
+  (exact expected command line) and an empty app.stderr.log.
+
+  BUG 2 -- plugin console output corrupts the wire protocol. A pooled worker's stdout IS the IPC
+  response channel (PluginIpcChildRuntime writes frames straight to it) -- but the platform's own SEC-3
+  bytecode admission gate deliberately EXEMPTS console output (java/io/PrintStream) from a plugin's
+  restrictions, and a real shipped probe (NPDevSamples/probes/lib-probe's LibrarySignatureCapability
+  #sign) does exactly that: a documented `System.out.println` of its own diagnostic. Once that plugin's
+  code actually ran inside a pooled worker (never true before this session -- BUG 1 blocked it, and no
+  test exercises a plugin that prints), its println spliced arbitrary text into the middle of the
+  binary/JSON frame stream, and the host's frame parser then blocked forever reading bytes that no
+  longer formed a valid frame -- observed live as the capability call hanging past BOTH the platform's
+  default 1000ms timeout and a deliberately raised 8000ms one, with no error, no crash, nothing in any
+  log until the host gave up. Fixed: PluginIpcChildProcessMain.main() now captures a private PrintStream
+  directly over the real OS pipe (`new PrintStream(new FileOutputStream(FileDescriptor.out), true)`)
+  BEFORE anything else (including reflectively instantiating a plugin) can touch System.out, reassigns
+  System.out itself to System.err (inherited to the host's own stderr, so a plugin's console output
+  stays visible for debugging), and hands the captured direct-pipe stream to PluginIpcChildRuntime
+  instead. System.in is deliberately NOT similarly protected -- no shipped plugin reads it, and the wire
+  protocol already owns both directions of it exclusively; noted as a residual risk in-code for a future
+  plugin that does.
+
+  LIVE-FIRE VERIFICATION (2026-09-01, both fixes applied): built and booted a real `java -jar
+  FinalExec-0.1.0.jar` for NPDevSamples/probes/lib-probe (chosen over dsl-conformance-max's own
+  java-source fixture, RecordAuditLogEntry, which turned out to have `startEndpoint: false` and no
+  wired panel/REST trigger anywhere in that model -- lib-probe's SignWithLibrary is a `mode: create`
+  flow, which IS the concept's real create action). Confirmed 2 idle child JVMs alive at boot via the OS
+  process list. Sent a real `POST /api/lib_probe_records {"payload":"sec5-live-fire-probe"}` over HTTP.
+  The child process's own diagnostic line reached the host's stderr with the CORRECT answer for the
+  exact payload sent: `[lib-probe] Guava sha256('sec5-live-fire-probe') =
+  5268ddccaf24fe03f922490e0c8dc84eb32bf74933aa7f243b402207054e470c` -- real Guava code, executed inside
+  the real child process, its result correctly round-tripped back to the host over the real IPC wire
+  protocol. (The HTTP request itself still 500s at a LATER, unrelated flow step -- persisting the
+  result -- a pre-existing gap in this probe's own storage wiring never exercised via real HTTP before,
+  out of SEC-5's own scope; not investigated further here.)
+
+  NOT verified live this session, flagged as residual risk for whoever next touches this path:
+  (a) pool-exhaustion behavior under concurrent requests exceeding poolSize; (b) the
+  cold-first-invocation latency margin against the platform's default 1000ms plugin timeout --
+  observed close to or over that default even AFTER both bugs were fixed (a warm/idle worker's first
+  real invocation still pays JIT/classloading cold-start plus genuine IPC round-trip cost that the
+  in-process path never had), suggesting `npdev.runtime.plugin-timeout-ms`'s 1000ms default may be too
+  tight for a java-source mount specifically now that it goes through IPC -- worth a follow-up item if
+  a real app hits this; (c) the null-pool-bean path (no java-source mount at all) was reasoned about
+  structurally but not independently booted and process-list-checked this session.
+
+  Done when (met): java-source plugin capability calls from a real generated app, reached via a real
+  HTTP/REST request, measurably route through PluginIpcChildProcessPool, verified by observing the
+  actual child-process IPC round trip (the plugin's own diagnostic output, carrying the correct
+  computed value for the exact request sent) rather than a call-graph inspection.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcChildProcessPoolRealPluginTest.java
+    #aPooledWorkerClassloadsAndInvokesTheRealGeneratedAuditLogPlugin
+  asserts: >-
+    A pooled worker classloads and invokes the real generated auditLog plugin
+    (NPDevSamples/dsl-conformance-max's AuditLogCapability#record) through PluginIpcChildProcessPool,
+    now using the promoted (main-sources) ManifestDrivenJavaSourcePluginHandler. Verified passing
+    2026-09-01 as part of run-runtimehost-gate.ps1 -SampleId dsl-conformance-max (full gradle `test`
+    task, BUILD SUCCESSFUL) -- this test alone does not exercise the two live-fire-only bugs (fat-jar
+    classpath, stdout corruption) since it runs in a Gradle-launched JVM, not a packaged jar; that
+    evidence is the live-fire narrative above, not a repeatable automated guard.
+  provenRed: true
