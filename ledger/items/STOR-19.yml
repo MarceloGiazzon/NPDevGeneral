@@ -1,0 +1,156 @@
+id: STOR-19
+title: >-
+  Ownership recorded at table-creation time, plus explicit legacy-table adoption -- lifting B8's
+  "boot once with the concept present" workaround
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 2.1 (B8), wave 2. B8's own gap: dropping a concept
+  needed one prior successful boot with the concept still present, so ownership could be recorded --
+  otherwise the drop is silently skipped (WARNING [B8:no_ownership_history]), forever, with no
+  operator-driven way to prove NPDev genuinely created the table.
+surface: runtimehost-core (SchemaLifecycleExecutor, OwnershipAdoption), controlpanel
+  (SchemaAcknowledgmentController), NPDevCli db command group, B8 registry
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/OwnershipAdoption.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaAcknowledgmentController.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/OwnershipAdoptionTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRequiredFieldBackfillTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SchemaAcknowledgmentControllerTest.java
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B8.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+  - scripts/policy/coverage-baseline.json
+detail: |
+  Two separate ways an ownership record could be missing for a table NPDev genuinely created, both
+  traced to real code before any fix was attempted:
+
+  (a) A table THIS boot's own `flyway.migrate()` just created, if a LATER same-boot pass
+      (`BackfillPass`/`UniqueConstraintPass`) then refused. Before this package, ownership was written
+      exactly ONCE, at the very end of `afterMigrate`, after both of those passes -- so a refusal in
+      either left a brand-new table with no ownership record at all, permanently (the next boot would
+      only catch up if it later succeeded all the way through with the concept still declared).
+
+  (b) A genuinely legacy table that predates ownership recording ever running -- the ONLY documented
+      recovery was "boot once with the concept present, then remove it", which does not help a
+      database that skipped that intervening boot (or one an operator does not want to boot twice
+      just to satisfy a bookkeeping mechanism).
+
+  DONE-WHEN, verified in order:
+
+  1. `SchemaLifecycleExecutor.recordOwnershipForLiveManifestTables` (new) now runs at the TOP of
+     `afterMigrate`, before `BackfillPass.applyRequiredFieldBackfills`/`UniqueConstraintPass
+     .applyUniqueConstraints` -- so a table this boot created is owned regardless of whether a later
+     pass in the SAME boot then refuses. The fingerprint write stays exactly where it was (after both
+     passes) for its own, unrelated reason (a refusal must leave it stale so the next boot
+     re-attempts) -- that invariant was never about ownership, the old code just wrote both at the
+     same instant and so conflated them. The pre-existing end-of-`afterMigrate` ownership write is
+     UNCHANGED and still runs too (a cheap, idempotent refresh -- catches anything the later passes
+     themselves changed).
+
+     Proven by a new regression test, `SchemaLifecycleExecutorRequiredFieldBackfillTest
+     #ownershipIsRecordedForALiveTableEvenWhenTheBackfillPassRefusesAfterward`: seeds a live table,
+     drives a manifest that makes `BackfillPass` refuse (the SAME fixture
+     `requiredColumnWithNoDefaultRefusesAndLeavesTheColumnUnadded` already proves refuses), and asserts
+     `SchemaLifecycleExecutor.readOwnedBusinessTables` contains the table DESPITE the refusal -- which
+     it would not have, before this package.
+
+  2. `OwnershipAdoption` (new class, `com.finalexec.db`) + `SchemaAcknowledgmentController`'s new
+     `GET /api/admin/schema-migration/ownership/preview` and `POST .../ownership/adopt`: an explicit,
+     operator-driven adoption step for case (b). A candidate table is adopted ONLY when its LIVE shape
+     matches the manifest with ZERO diff -- the SAME `SchemaDiffEngine`/`DesiredSchemaFactory`/
+     `CurrentSchemaReader` trio `classify()` uses for the boot-time destructive-recreation decision,
+     run UNSCOPED (against the table's true live shape, not scoped to already-owned tables the way
+     `classify()`'s own diff is -- scoping there exists to keep a hand-made table OUT of the
+     destructive path; here it would defeat the point, since the whole question is whether an
+     as-yet-unowned live table happens to match). `apply()` re-verifies the SAME exact-match condition
+     `preview()` reported rather than trusting a possibly-stale earlier call. Never inferred, never for
+     a same-named table with a different shape.
+
+  3. `SchemaLifecycleExecutor.adoptOwnedBusinessTables` (new, package-private) only ever UNIONS
+     verified-matching tables into the recorded set -- same discipline `ownedTablesJson`'s own
+     union/intersect already follows, never a wholesale replace.
+
+     Proven by `OwnershipAdoptionTest` (new file, real H2): a table synthesized straight FROM the
+     manifest via `MissingTableCreationPass` (the same production path forcePhysicalSchema/Ephemeral
+     apps use to realize a schema with no real V1__ migration, so it matches by construction) is
+     adopted by both `preview()` and `apply()`; a hand-created table with a DIFFERENT shape (missing a
+     declared column) is reported under `notAdoptable` with named mismatch reasons, `apply()` never
+     adopts it, and -- the B8 guarantee this whole mechanism exists to protect --
+     `droppedConceptTables` still reports it un-droppable even AFTER an adoption preview/apply ran
+     against it and correctly rejected it; an already-owned table is excluded from both candidate
+     buckets entirely; a manifest-declared table that was never created live is not reported under
+     either bucket.
+
+  4. `npdev db adopt-ownership [--apply] [--app DIR] [--timeout] [--json]` (new `db` subcommand,
+     reusing the group STOR-18 added). Same discovery + SUPERUSER-auth shape as `db restore`/
+     `admin create` (`npdev_monitor.probe_app`, then `_ops/SUPER_USER_KEY.txt`, then
+     `X-Super-User-Key`). Previews by default (`GET .../ownership/preview`); `--apply` calls
+     `POST .../ownership/adopt`, which re-verifies server-side rather than trusting the CLI's own
+     earlier preview call either. Every expected outcome is a structured `ok: false` result, never a
+     traceback (verified via `--help` and against a non-app directory).
+
+  `B8:no_ownership_history` is UNCHANGED (same code, same wording) and still fires, now reachable only
+  in the genuine case -- a table that really was never created by this build and was never adopted.
+
+  Register updated across all four seams (section 5 of the plan): `ledger/boundaries/B8.yml`
+  reclassified HITTABLE -> LIFTED (history kept per the B15 shape, both gaps and their fixes recorded);
+  `NPDevContract/schemas/accepted-boundaries.json`'s B8 entry rewritten (`kind: LIFTED`, positive-
+  framing `userFacingText`, `enforcingDiagnosticCodes` UNCHANGED -- `B8:no_ownership_history` was never
+  removed, only narrowed); `docs/ACCEPTED_BOUNDARIES.md`'s B8 row rewritten and moved from the
+  HITTABLE list to the LIFTED list in the classification table (13 -> 12 HITTABLE, 7 -> 8 LIFTED
+  boundary numbers). `scripts/quality/twin-pair-registry.json` untouched -- B8 has no existing entry
+  there and this change introduces no new code<->code string pair needing one.
+
+  Coverage-ratchet fix along the way (not a separate finding, just how this package closed cleanly):
+  the controller's first draft hand-built `Map<String,Object>` response bodies for the two new
+  endpoints (following every OTHER endpoint's convention in that file) -- this dropped RuntimeHost
+  line coverage from 18.1928% to 18.151%, since none of that hand-rolled serialization glue was
+  exercised (no test in the whole class touches ANY endpoint -- confirmed while investigating: this
+  controller has never had dedicated MockMvc coverage, only incidental exercise via the assembled-app
+  boot smoke test, same as STOR-18 documented for its own sibling endpoint). Fixed two ways: (1) the
+  two new endpoints return `OwnershipAdoption.Preview`/`Result` directly -- Jackson serializes a record
+  with the exact same field names the hand-built maps produced, so the JSON contract is byte-identical
+  and the CLI needed no change, it just deletes ~30 lines of glue code and an unused
+  `Candidate.matchesExactly()` accessor nothing called; (2) added
+  `SchemaAcknowledgmentControllerTest` (new file) -- the first MockMvc test this controller has ever
+  had, covering the SUPERUSER-forbidden and no-manifest-on-classpath paths for both new endpoints,
+  which incidentally covers `requireSuperUser`/`requireDataSource`/`requireManifest` for the first
+  time too. Net result: 18.3301%, the ratchet floor auto-bumped up by
+  `scripts/quality/check-coverage-ratchet.py` (checked into this commit, an intentional side effect,
+  not a manual edit).
+
+  Also fixed along the way: `SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest`'s fault-
+  injection index. That test counts SQL statements matching `^(ALTER TABLE|UPDATE)` to inject a fault
+  exactly between the ADD COLUMN and the backfill UPDATE; `recordOwnershipForLiveManifestTables`'s
+  ownership upsert issues an `UPDATE npdev_schema_metadata SET ... WHERE metadata_key = ?` attempt
+  BEFORE those two, which matches the same pattern and shifted their indices by one -- caught live by
+  a genuinely red `run-runtimehost-gate.ps1` run (711 tests, 1 failed) before this package closed, not
+  discovered by inspection. Fixed by bumping `failOnCallIndex` from 1 to 2 and updating the test's own
+  comments to name the new three-call sequence.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/OwnershipAdoptionTest.java
+  asserts: >-
+    (Guard.ref names one representative file for check-done-item-guards.py's single-path resolver; the
+    full coverage this item relies on also includes
+    SchemaLifecycleExecutorRequiredFieldBackfillTest#ownershipIsRecordedForALiveTableEvenWhenTheBackfillPassRefusesAfterward
+    and SchemaAcknowledgmentControllerTest, both new this session.)
+    OwnershipAdoptionTest's four cases (DataSource-backed against a real H2 database) prove: a table
+    synthesized exactly from the manifest is adopted by both preview and apply; a hand-created table
+    with a genuinely different shape is never adopted, is reported with named mismatch reasons, and --
+    the B8 invariant itself -- remains un-droppable via droppedConceptTables even after an adoption
+    attempt ran against it and correctly rejected it; an already-owned table is excluded from both
+    candidate buckets; a declared-but-never-created table is reported in neither. The backfill-refusal
+    regression test proves ownership survives a same-boot BackfillPass refusal, which it did not
+    before this package (the exact B8 gap this package closes). Full verification via
+    run-runtimehost-gate.ps1 (assembles simple-contact-intake, runs the full RuntimeHost suite, checks
+    the coverage ratchet) passed clean after two real, live-caught fixes (the crash-recovery test's
+    fault-injection index; the coverage-ratchet regression) -- not run in isolation per package.
+  provenRed: true

@@ -1997,6 +1997,19 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     void afterMigrate(DataSource dataSource, SchemaManifest manifest, String storedAtBootStart, boolean fingerprintChanged) {
+        // B8 (Wave 2 package 2.1, boundary-lift 2026-09-02): record ownership of every manifest-
+        // declared, now-live business table IMMEDIATELY -- before BackfillPass/UniqueConstraintPass
+        // below run, either of which can still refuse and fail this boot. A table this boot's
+        // flyway.migrate() (already run by the time afterMigrate is called) just created is owned
+        // regardless of whether a LATER pass in the same boot then refuses; the fingerprint write
+        // further down stays gated behind those passes on purpose (a refusal must leave it stale so
+        // the next boot re-attempts), but that reasoning is specific to the fingerprint and does not
+        // apply to ownership. Recording it only at the end (the old behaviour) meant a mid-boot
+        // refusal right after a fresh CREATE TABLE left that brand-new table with no ownership
+        // record at all -- a table without a record, which is exactly the bug B8 exists to prevent
+        // (a record without a table, the reverse case, is harmless and self-corrects -- see
+        // ownedTablesJson's live-table intersection).
+        recordOwnershipForLiveManifestTables(dataSource, manifest);
         // LNCH-1 remediation R2 (F1): required-field backfill/refusal enforcement lives HERE, at the
         // single call site every boot path crosses, gated on a fingerprint mismatch. Before R2 it was
         // scattered across five beforeMigrate branches (safe-additive/rename-resolved only) and was
@@ -2035,6 +2048,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // fingerprint. A later build that no longer declares one of them can then prove the
             // orphaned table is a dropped CONCEPT (NPDev created it) rather than a table someone
             // created by hand in the same schema -- which is what makes acting on it safe.
+            // B8 2.1: recordOwnershipForLiveManifestTables above already wrote this once, earlier in
+            // this same boot -- this second write is a cheap, idempotent refresh (harmless: same
+            // union/intersect computation) that also catches any live-table change BackfillPass/
+            // UniqueConstraintPass themselves made in between, so the ownership set never lags a full
+            // boot behind reality.
             upsertMetadata(connection, OWNED_TABLES_KEY, ownedTablesJson(connection, dataSource, manifest));
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed storing schema fingerprint", exception);
@@ -2058,6 +2076,86 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // block the boot.
         if (storedAtBootStart == null || storedAtBootStart.isBlank()) {
             SchemaHistoryStore.writeAppliedHistoryRow(dataSource, null, manifest.schemaFingerprint(), null);
+        }
+    }
+
+    /**
+     * B8 2.1: writes the ownership record for every manifest-declared, now-live business table BEFORE
+     * {@link BackfillPass}/{@link UniqueConstraintPass} run in {@link #afterMigrate}, so a refusal in
+     * either of them cannot leave a table this boot's {@code flyway.migrate()} just created without an
+     * ownership record. Package-private for direct unit-testing, following {@link #afterMigrate}/
+     * {@link #classify}'s own precedent. Ensures {@link #METADATA_TABLE} exists itself (idempotent --
+     * safe to call before {@link #afterMigrate}'s own guarded CREATE, and safe for that one to repeat).
+     */
+    static void recordOwnershipForLiveManifestTables(DataSource dataSource, SchemaManifest manifest) {
+        try (Connection connection = dataSource.getConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    SqlDialects.active().guardedCreateTable(METADATA_TABLE,
+                            "CREATE TABLE " + METADATA_TABLE
+                            + " (metadata_key " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                            + "metadata_value " + InternalDdlTypes.text() + " NOT NULL, "
+                            + "updated_at_ms BIGINT NOT NULL)")
+            )) {
+                statement.executeUpdate();
+            }
+            upsertMetadata(connection, OWNED_TABLES_KEY, ownedTablesJson(connection, dataSource, manifest));
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Failed recording business-table ownership", exception);
+        }
+    }
+
+    /**
+     * B8 2.1: explicit, operator-driven adoption of ownership for a LEGACY table -- {@link
+     * com.finalexec.db.OwnershipAdoption} is the only caller, and only after verifying (via the schema
+     * diff engine, outside this class) that the table's live shape matches the manifest with zero
+     * difference. This method does not re-verify that itself; it only ever UNIONS {@code tablesToAdopt}
+     * into the recorded set, never removes, matching the same discipline {@link #ownedTablesJson}'s
+     * union/intersect already follows. A no-op for an empty/null set.
+     */
+    static void adoptOwnedBusinessTables(DataSource dataSource, Set<String> tablesToAdopt) {
+        if (tablesToAdopt == null || tablesToAdopt.isEmpty()) {
+            return;
+        }
+        try (Connection connection = dataSource.getConnection()) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    SqlDialects.active().guardedCreateTable(METADATA_TABLE,
+                            "CREATE TABLE " + METADATA_TABLE
+                            + " (metadata_key " + InternalDdlTypes.keyText() + " PRIMARY KEY, "
+                            + "metadata_value " + InternalDdlTypes.text() + " NOT NULL, "
+                            + "updated_at_ms BIGINT NOT NULL)")
+            )) {
+                statement.executeUpdate();
+            }
+            Set<String> merged = new LinkedHashSet<>();
+            Set<String> previouslyOwned = readOwnedBusinessTables(dataSource);
+            if (previouslyOwned != null) {
+                merged.addAll(previouslyOwned);
+            }
+            for (String table : tablesToAdopt) {
+                if (table != null && !table.isBlank()) {
+                    merged.add(table.toLowerCase(Locale.ROOT));
+                }
+            }
+            List<String> sorted = new ArrayList<>(merged);
+            Collections.sort(sorted);
+            upsertMetadata(connection, OWNED_TABLES_KEY, OBJECT_MAPPER.writeValueAsString(sorted));
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed recording adopted business-table ownership", exception);
+        }
+    }
+
+    /**
+     * B8 2.1: the live business-table names, straight from the database's own metadata -- used by
+     * {@link com.finalexec.db.OwnershipAdoption} to tell "declared but never created" apart from "live
+     * but not yet owned" (only the latter is ever an adoption candidate). Fails open to an empty set
+     * (matches every other read-only introspection helper in this class); a connection failure here
+     * means the adoption preview reports nothing adoptable, never a false positive.
+     */
+    static Set<String> readLiveTableNames(DataSource dataSource) {
+        try (Connection connection = dataSource.getConnection()) {
+            return readActualTableNames(connection.getMetaData());
+        } catch (SQLException exception) {
+            return Set.of();
         }
     }
 

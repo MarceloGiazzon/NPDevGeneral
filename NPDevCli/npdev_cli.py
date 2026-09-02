@@ -4466,6 +4466,89 @@ def run_db_restore(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 2
 
 
+def run_db_adopt_ownership(args: argparse.Namespace) -> int:
+    """B8 (Wave 2 package 2.1, docs/ACCEPTED_BOUNDARIES.md): CLI front end for
+    `SchemaAcknowledgmentController`'s ownership preview/adopt endpoints on a RUNNING app. Same
+    discovery + SUPERUSER-auth shape as `run_db_restore`/`run_admin_create` (npdev_monitor.probe_app,
+    then _ops/SUPER_USER_KEY.txt, then X-Super-User-Key): every expected outcome is a structured
+    `ok: false` result, never a traceback.
+
+    Previews by default (GET .../ownership/preview); --apply calls POST .../ownership/adopt, which
+    re-verifies the same exact-match condition server-side before recording anything -- this command
+    never trusts its own earlier preview call either, matching OwnershipAdoption.apply's own re-check.
+    """
+    app_dir = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    result: dict = {
+        "schemaVersion": "npdev-db-adopt-ownership.v1", "command": "db adopt-ownership",
+        "ok": False, "code": None, "message": None, "appDir": str(app_dir), "applied": bool(args.apply),
+    }
+
+    def _refuse(code: str, message: str) -> int:
+        result["code"] = code
+        result["message"] = message
+        _print_result(result, args)
+        return 2
+
+    app_record = npdev_monitor.probe_app(app_dir, origin="explicit", health_timeout=min(args.timeout, 3.0))
+    if not app_record.get("isAppRoot"):
+        return _refuse("NOT_AN_APP", app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        return _refuse(
+            "APP_NOT_RUNNING",
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')} -- `db adopt-ownership` calls a RUNNING app's admin "
+            "API; start it first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    key_file = app_record.get("superUserKeyFile")
+    if not key_file:
+        return _refuse(
+            "SUPERUSER_KEY_NOT_FOUND",
+            "no SUPER_USER_KEY.txt found under this app's _ops directory -- either an app generated "
+            "before R1.7's SuperUserBootstrapper, or the key was already relocated/rotated elsewhere.")
+    try:
+        super_user_key = Path(key_file).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return _refuse("SUPERUSER_KEY_UNREADABLE", f"found {key_file} but could not read it: {exc}")
+    if not super_user_key:
+        return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
+
+    base_url = app_record.get("probeBaseUrl")
+    base_path = "/api/admin/schema-migration"
+
+    if not args.apply:
+        status, preview = _db_restore_admin_get(
+            base_url, super_user_key, f"{base_path}/ownership/preview", args.timeout)
+        if status != 200:
+            return _refuse("PREVIEW_FAILED", f"GET {base_path}/ownership/preview -> HTTP {status}: {preview}")
+        adoptable = preview.get("adoptable") or []
+        not_adoptable = preview.get("notAdoptable") or []
+        result["ok"] = True
+        result["alreadyOwned"] = preview.get("alreadyOwned")
+        result["adoptable"] = adoptable
+        result["notAdoptable"] = not_adoptable
+        result["message"] = (
+            f"DRY RUN (no writes) -- {len(adoptable)} table(s) would be adopted, {len(not_adoptable)} "
+            "do not match the model exactly. Re-run with --apply to record ownership."
+        )
+        _print_result(result, args)
+        return 0
+
+    status, response = _db_restore_admin_post(
+        base_url, super_user_key, f"{base_path}/ownership/adopt", {}, args.timeout)
+    result["httpStatus"] = status
+    if status == 200:
+        adopted = response.get("adopted") if isinstance(response, dict) else None
+        result["ok"] = True
+        result["adopted"] = adopted
+        result["rejected"] = response.get("rejected") if isinstance(response, dict) else None
+        result["message"] = f"adopted {len(adopted or [])} table(s)"
+    else:
+        result["ok"] = False
+        result["message"] = f"HTTP {status}: {response}"
+    _print_result(result, args)
+    return 0 if result["ok"] else 2
+
+
 def run_admin_hash_key(args: argparse.Namespace) -> int:
     """SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): the SAME SHA-256-hex CredentialRegistryService.hash()
     computes server-side (NPDevRuntimeHost/runtimehost-core/.../CredentialRegistryService.java) --
@@ -9961,6 +10044,23 @@ def _human_summary(result: dict) -> str:
                         f"conflicts={len(conflicts)}" + (f" {conflicts}" if conflicts else ""))
                 else:
                     lines.append(f"  {table.get('table')}  status={table.get('status')}  {table.get('error') or ''}")
+    elif command == "db adopt-ownership":
+        status = "OK" if result.get("ok") else f"REFUSED ({result.get('code')})"
+        lines.append(f"{status}: {result.get('message') or ''}")
+        if result.get("adopted") is not None or result.get("rejected") is not None:
+            for table in (result.get("adopted") or []):
+                lines.append(f"  adopted        {table}")
+            for candidate in (result.get("rejected") or []):
+                reasons = ", ".join(candidate.get("mismatchReasons") or [])
+                lines.append(f"  rejected       {candidate.get('table')}  ({reasons})")
+        else:
+            for table in (result.get("adoptable") or []):
+                lines.append(f"  would adopt    {table.get('table')}")
+            for candidate in (result.get("notAdoptable") or []):
+                reasons = ", ".join(candidate.get("mismatchReasons") or [])
+                lines.append(f"  would NOT adopt {candidate.get('table')}  ({reasons})")
+            for table in (result.get("alreadyOwned") or []):
+                lines.append(f"  already owned  {table}")
     elif command == "admin create":
         status = "OK" if result.get("ok") else f"REFUSED ({result.get('code')})"
         lines.append(f"{status}: {result.get('message') or ''}")
@@ -11536,6 +11636,36 @@ def build_parser() -> argparse.ArgumentParser:
     db_restore.add_argument(
         "--json", action="store_true",
         help="Emit an npdev-db-restore.v1 JSON object instead of the human-readable report.",
+    )
+
+    # B8 (Wave 2 package 2.1, docs/ACCEPTED_BOUNDARIES.md): explicit ownership adoption for a legacy
+    # app's tables, against a RUNNING app's SchemaAcknowledgmentController ownership endpoints
+    # (SUPERUSER-gated, same auth path `db restore`/`admin create` already use).
+    db_adopt = db_sub.add_parser(
+        "adopt-ownership",
+        help="Record NPDev ownership for a live table that matches this app's model exactly, so a "
+             "later concept removal can prove NPDev created the table and drop it. Previews by "
+             "default; --apply actually writes. Never adopts a table whose live shape differs.",
+    )
+    db_adopt.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory. Defaults to the current directory. The app must be RUNNING -- "
+             "adoption goes through the live app's own ControlPanel API and its own DataSource.",
+    )
+    db_adopt.add_argument(
+        "--apply", action="store_true",
+        help="Actually record ownership. Without this flag, adopt-ownership PREVIEWS every "
+             "manifest-declared, not-yet-owned, live table (adoptable vs. notAdoptable, with named "
+             "mismatch reasons) and writes nothing -- the same dry-run-by-default convention every "
+             "other destructive npdev command follows.",
+    )
+    db_adopt.add_argument(
+        "--timeout", type=float, default=60.0,
+        help="HTTP timeout in seconds for each call to the running app.",
+    )
+    db_adopt.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-db-adopt-ownership.v1 JSON object instead of the human-readable report.",
     )
 
     # M14: the five environment operations. Each RUNS the generated `_ops` script of the same name
@@ -13158,6 +13288,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_verify(args)
         if args.command == "db" and args.db_command == "restore":
             return run_db_restore(args)
+        if args.command == "db" and args.db_command == "adopt-ownership":
+            return run_db_adopt_ownership(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
         if args.command == "admin" and args.admin_command == "hash-key":

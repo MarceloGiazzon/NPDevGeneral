@@ -3,6 +3,7 @@ package com.finalexec.controlpanel;
 import com.finalexec.db.CrossEngineDataPromotion;
 import com.finalexec.db.MigrationClaimStore;
 import com.finalexec.db.MigrationMarkStore;
+import com.finalexec.db.OwnershipAdoption;
 import com.finalexec.db.PendingSchemaAcknowledgmentStore;
 import com.finalexec.db.SchemaDropSnapshotRestorePlan;
 import com.finalexec.db.SchemaDropSnapshotRestorer;
@@ -396,6 +397,36 @@ public class SchemaAcknowledgmentController {
             Map<String, Object> body = toResponseBody(result);
             return result.allMatched() ? ResponseEntity.ok(body) : ResponseEntity.status(HttpStatus.CONFLICT).body(body);
         }
+    }
+
+    // ---- B8 (Wave 2 package 2.1, docs/ACCEPTED_BOUNDARIES.md): legacy-table ownership adoption ----
+
+    /**
+     * Dry-run: classifies every manifest-declared, currently-live table not yet recorded as
+     * NPDev-owned into {@code adoptable} (live shape matches the manifest with zero diff) or
+     * {@code notAdoptable} (live shape differs -- named per-item reasons, never silently adopted).
+     * Writes nothing.
+     */
+    @GetMapping("/ownership/preview")
+    public OwnershipAdoption.Preview ownershipPreview(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        SchemaLifecycleExecutor.SchemaManifest manifest = requireManifest();
+        return OwnershipAdoption.preview(dataSource, manifest);
+    }
+
+    /**
+     * Re-verifies the SAME exact-match condition {@link #ownershipPreview} reported (the live schema
+     * could have changed between the two calls -- this never trusts a stale preview) and records
+     * ownership ONLY for the tables that still match exactly. A table whose shape does not match is
+     * returned under {@code rejected}, never adopted.
+     */
+    @PostMapping("/ownership/adopt")
+    public OwnershipAdoption.Result ownershipAdopt(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        SchemaLifecycleExecutor.SchemaManifest manifest = requireManifest();
+        return OwnershipAdoption.apply(dataSource, manifest);
     }
 
     private SchemaLifecycleExecutor.SchemaManifest requireManifest() {

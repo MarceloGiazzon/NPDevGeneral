@@ -1,5 +1,5 @@
 id: B8
-title: "Dropping a concept needs one boot of ownership history first"
+title: "~~Dropping a concept needs one boot of ownership history first~~ LIFTED, by construction -- STOR-19, 2026-09-02"
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). Unlike B4/B5/B9/B10, this is NOT a thrown refusal -- boot
@@ -12,5 +12,36 @@ codeLinkedNote: >-
   `WARNING [B8:no_ownership_history] no ownership history recorded -- skipping drop of unowned
   tables`. Proven by SchemaLifecycleExecutorProofMatrixTest#b8_droppedConceptTablesSkipsAndWarnsWithCodeWhenNoOwnershipRecorded
   (captures stdout, asserts both the code and the empty result).
+
+  LIFTED 2026-09-02 (STOR-19, BOUNDARY_LIFT_PLAN_2026-09-02.md work package 2.1, wave 2). Two gaps
+  produced a missing ownership record: (a) a table this build's OWN migration just created, if a
+  LATER same-boot pass (BackfillPass/UniqueConstraintPass) then refused -- ownership used to be
+  written only once, at the very end of `afterMigrate`, after both of those; (b) a genuinely legacy
+  database whose tables predate ownership recording ever running, with no way to declare "yes, NPDev
+  made these" other than the old "boot once with the concept present" workaround. Both are closed:
+
+  (a) `SchemaLifecycleExecutor.recordOwnershipForLiveManifestTables` (new) now runs at the TOP of
+  `afterMigrate`, before `BackfillPass`/`UniqueConstraintPass` -- a table this boot's
+  `flyway.migrate()` already created is owned regardless of whether a later pass in the same boot then
+  refuses. The fingerprint write stays gated behind those passes, unchanged (a refusal must still
+  leave it stale so the next boot re-attempts) -- that reasoning is specific to the fingerprint and
+  never applied to ownership; the old code just conflated the two by writing both at the same instant.
+  The end-of-`afterMigrate` write is UNCHANGED and still runs too (a cheap, idempotent refresh).
+
+  (b) `OwnershipAdoption` (new class) + `SchemaAcknowledgmentController`'s new
+  `GET/POST .../ownership/preview` and `.../ownership/adopt` endpoints: an operator-driven, explicit
+  adoption step. A candidate table is adopted ONLY when its LIVE shape matches the manifest with ZERO
+  diff (the same `SchemaDiffEngine` `classify()` uses, run unscoped against the table's true live
+  shape) -- never inferred, never for a table that merely shares a name. `npdev db adopt-ownership
+  [--apply]` (new `db` subcommand, reusing the existing group) previews by default. `apply` re-
+  verifies the exact-match condition server-side rather than trusting an earlier preview.
+
+  `B8:no_ownership_history` still fires (unchanged code, unchanged wording) but is now reachable only
+  in the genuine case -- a table that really was never created by this build and was never adopted.
+  Proven by `OwnershipAdoptionTest` (a hand-created table with a different shape is never adopted and
+  never swept into the destructive path even after adoption runs against it) and a new regression test
+  in `SchemaLifecycleExecutorRequiredFieldBackfillTest`
+  (`ownershipIsRecordedForALiveTableEvenWhenTheBackfillPassRefusesAfterward`) proving ownership survives
+  a same-boot BackfillPass refusal, which it did not before this package.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B8"
-classification: HITTABLE
+classification: LIFTED
