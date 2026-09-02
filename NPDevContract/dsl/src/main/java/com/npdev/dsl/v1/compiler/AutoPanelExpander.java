@@ -108,6 +108,17 @@ final class AutoPanelExpander {
     static List<CompiledPanel> expandAggregateWorkbench(
             CompiledAutoPanel autoPanel, CompiledAggregate aggregate, Map<String, List<String>> fieldsByConcept,
             Map<String, ConceptAst> conceptsByName, CompiledSettings settings) {
+        return expandAggregateWorkbench(autoPanel, aggregate, fieldsByConcept, conceptsByName, settings, List.of());
+    }
+
+    /** Same as the six-arg overload, additionally threading {@code contexts} through to the
+     * band-picker projection (B19) so a no-panel picker's {@code endpointBase} resolves the SAME
+     * bounded-context-aware physical table name {@code BusinessUiEmitter.endpointBase} uses for an
+     * FK field's reference lookup. */
+    static List<CompiledPanel> expandAggregateWorkbench(
+            CompiledAutoPanel autoPanel, CompiledAggregate aggregate, Map<String, List<String>> fieldsByConcept,
+            Map<String, ConceptAst> conceptsByName, CompiledSettings settings,
+            List<com.npdev.dsl.v1.compiled.CompiledContext> contexts) {
         String base = hasText(autoPanel.name()) ? autoPanel.name() : aggregate.name();
         String baseRoute = hasText(autoPanel.route())
                 ? autoPanel.route()
@@ -131,7 +142,16 @@ final class AutoPanelExpander {
         workbench.put("header", header);
         // Per-band pickers (C6 "Seleciona …"): declared under transaction.metadata.bandPickers keyed by band
         // collection name; each attaches a source Selection panel the client offers as a modal row picker.
-        Map<String, Map<String, Object>> bandPickers = bandPickers(autoPanel.transaction(), settings);
+        // B19: a band collection name -> its OWN concept name, so a no-panel picker (filter/multiSelect
+        // only) can resolve a projection targeting that concept directly.
+        Map<String, String> conceptByBandName = new LinkedHashMap<>();
+        for (CompiledAggregateCollection topLevel : aggregate.collections()) {
+            for (CompiledAggregateCollection band : topLevel.collections()) {
+                conceptByBandName.put(band.name(), band.concept());
+            }
+        }
+        Map<String, Map<String, Object>> bandPickers = bandPickers(
+                autoPanel.transaction(), settings, conceptByBandName, conceptsByName, contexts);
         // Conditional surface by toggle (Move 5, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): declared
         // under transaction.metadata.visibleWhen keyed by collection/band name, same untyped mechanism as
         // bandPickers above. PRESENTATION-ONLY -- see visibleWhenByCollection()'s own doc comment.
@@ -618,11 +638,21 @@ final class AutoPanelExpander {
     /**
      * Read per-band row pickers from {@code transaction.metadata.bandPickers}: an object keyed by band
      * collection name, each value {@code {panel, label, columns?}} naming a source Selection panel the client
-     * offers as a modal picker (C6 "Seleciona Ruas"). Entries lacking a panel are skipped.
+     * offers as a modal picker (C6 "Seleciona Ruas"). Entries lacking a panel are skipped, EXCEPT when
+     * they declare {@code filter}/{@code multiSelect} -- B19: those resolve a projection targeting the
+     * band's own collection concept directly (the SAME generic reference-lookup endpoint an FK field's
+     * picker already uses), no hand-authored Selection panel required.
      */
     @SuppressWarnings("unchecked")
     private static Map<String, Map<String, Object>> bandPickers(
             CompiledAutoPanelSurface transaction, CompiledSettings settings) {
+        return bandPickers(transaction, settings, Map.of(), Map.of(), List.of());
+    }
+
+    private static Map<String, Map<String, Object>> bandPickers(
+            CompiledAutoPanelSurface transaction, CompiledSettings settings,
+            Map<String, String> conceptByBandName, Map<String, ConceptAst> conceptsByName,
+            List<com.npdev.dsl.v1.compiled.CompiledContext> contexts) {
         Map<String, Map<String, Object>> pickers = new LinkedHashMap<>();
         if (transaction == null) {
             return pickers;
@@ -634,23 +664,37 @@ final class AutoPanelExpander {
         if (!transaction.bandPickers().isEmpty()) {
             for (Map.Entry<String, CompiledWorkbenchBandPicker> entry : transaction.bandPickers().entrySet()) {
                 CompiledWorkbenchBandPicker typedPicker = entry.getValue();
-                if (!hasText(typedPicker.panel())) {
+                boolean hasPanel = hasText(typedPicker.panel());
+                boolean hasProjectionInputs = hasText(typedPicker.filter()) || typedPicker.multiSelect();
+                if (!hasPanel && !hasProjectionInputs) {
+                    // Declares neither a panel nor anything a no-panel projection could target --
+                    // nothing to build a picker from. PanelValidation refuses this shape
+                    // (B19:band_picker_unresolvable_concept:) before compilation ever reaches here;
+                    // this is defence-in-depth, not the primary gate.
                     continue;
                 }
                 Map<String, Object> picker = new LinkedHashMap<>();
-                picker.put("panel", typedPicker.panel().trim());
+                if (hasPanel) {
+                    picker.put("panel", typedPicker.panel().trim());
+                } else {
+                    // B19: no panel declared -- synthesize a band picker PROJECTION bound to the
+                    // band's own collection concept instead of a hand-authored Selection panel.
+                    String bandConcept = conceptByBandName.get(entry.getKey());
+                    picker.put("endpointBase",
+                            com.npdev.dsl.v1.compiled.SqlIdentifierSupport.conceptEndpointBase(bandConcept, contexts));
+                }
                 picker.put("label", hasText(typedPicker.label())
                         ? typedPicker.label().trim() : settings.resolveString("action.select"));
                 if (!typedPicker.columns().isEmpty()) {
                     picker.put("columns", new ArrayList<>(typedPicker.columns()));
                 }
-                // B16/B19 (Move 9 A3): the SAME two properties a plain FK field's picker declares
-                // (schema/AST/compiled layer accepts a panel-less entry too -- PanelValidation still
-                // requires panel today, so that shape never reaches here; a no-panel fetch path
-                // targeting the band's own concept directly is a real, precisely-named residual, not
-                // yet wired). With a panel given, filter/multiSelect ride along as declared metadata.
+                // B16/B19 (Move 9 A3): the SAME two properties a plain FK field's picker declares.
                 if (hasText(typedPicker.filter())) {
                     picker.put("filter", typedPicker.filter().trim());
+                    String bandConcept = conceptByBandName.get(entry.getKey());
+                    ConceptAst concept = bandConcept == null ? null : conceptsByName.get(normalize(bandConcept));
+                    parseBandPickerFilterExpression(typedPicker.filter(), concept)
+                            .ifPresent(expression -> picker.put("defaultFilterExpression", expression));
                 }
                 if (typedPicker.multiSelect()) {
                     picker.put("multiSelect", true);
@@ -1001,6 +1045,57 @@ final class AutoPanelExpander {
 
     private static String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    /**
+     * B19: the SAME {@code field == 'literal'} / {@code field != 'literal'} grammar
+     * {@code BusinessUiEmitter.parsePickerFilterExpression} parses for an FK field's {@code
+     * picker.filter} -- mirrored here (not called into, since the DSL module cannot depend on the
+     * generator) so a no-panel band picker's filter reaches the client as the SAME {@code
+     * {field, operator, value}} triple shape {@code defaultFilterExpression} already uses, rather
+     * than a raw string the client would need its own second parser for. Silently returns empty for
+     * an unparseable expression or a field the band's own concept does not declare -- matching the
+     * FK-field path's own precedent (a bad filter drops the filter, it does not fail compilation).
+     */
+    private static java.util.Optional<Map<String, Object>> parseBandPickerFilterExpression(
+            String expression, ConceptAst concept) {
+        if (expression == null || expression.isBlank() || concept == null) {
+            return java.util.Optional.empty();
+        }
+        String trimmed = expression.trim();
+        int notEqualsIndex = trimmed.indexOf("!=");
+        int equalsIndex = trimmed.indexOf("==");
+        String field;
+        String operator;
+        String value;
+        if (notEqualsIndex >= 0 && (equalsIndex < 0 || notEqualsIndex < equalsIndex)) {
+            field = trimmed.substring(0, notEqualsIndex).trim();
+            operator = "ne";
+            value = trimmed.substring(notEqualsIndex + 2).trim();
+        } else if (equalsIndex >= 0) {
+            field = trimmed.substring(0, equalsIndex).trim();
+            operator = "eq";
+            value = trimmed.substring(equalsIndex + 2).trim();
+        } else {
+            return java.util.Optional.empty();
+        }
+        if (field.startsWith("$row.")) {
+            field = field.substring("$row.".length());
+        }
+        if (value.length() >= 2 && value.startsWith("'") && value.endsWith("'")) {
+            value = value.substring(1, value.length() - 1);
+        }
+        String fieldName = field;
+        boolean fieldExists = !fieldName.isEmpty() && concept.getFields().stream()
+                .anyMatch(f -> normalize(f.getName()).equals(normalize(fieldName)));
+        if (!fieldExists) {
+            return java.util.Optional.empty();
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("field", field);
+        out.put("operator", operator);
+        out.put("value", value);
+        return java.util.Optional.of(out);
     }
 
     private static boolean hasText(String value) {

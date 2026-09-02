@@ -126,7 +126,17 @@ public final class SqlIdentifierSupport {
      * detect and declare an automatic rename on regeneration.
      */
     public static String aliasPreservingTableName(CompiledConcept entity, List<CompiledContext> contexts) {
-        if (entity == null) {
+        return entity == null ? "" : aliasPreservingTableName(entity.getName(), contexts);
+    }
+
+    /**
+     * Same derivation as {@link #aliasPreservingTableName(CompiledConcept, List)}, from a bare
+     * qualified concept NAME rather than a {@link CompiledConcept} -- for a caller that only has the
+     * name in hand (B19, {@code AutoPanelExpander}'s no-panel band picker projection, resolved at
+     * DSL-compile time before any generator-side {@code CompiledConcept} lookup exists).
+     */
+    public static String aliasPreservingTableName(String qualifiedConceptName, List<CompiledContext> contexts) {
+        if (qualifiedConceptName == null || qualifiedConceptName.isBlank()) {
             return "";
         }
         Map<String, Boolean> contextPhysicallyIsolateByName = new HashMap<>();
@@ -135,8 +145,19 @@ public final class SqlIdentifierSupport {
                 contextPhysicallyIsolateByName.put(context.name(), context.physicallyIsolate());
             }
         }
-        String source = contextAwareIdentifierSource(entity.getName(), contextPhysicallyIsolateByName);
+        String source = contextAwareIdentifierSource(qualifiedConceptName, contextPhysicallyIsolateByName);
         return tableName(source, null);
+    }
+
+    /**
+     * B19: the SAME {@code "/api/concepts/" + aliasPreservingTableName(...)} route
+     * {@code BusinessUiEmitter.endpointBase} builds for an FK field's reference lookup -- shared here
+     * so a second computation of this literal never drifts from the generator's own. Used by a
+     * no-panel band picker projection, which targets its own collection's concept directly through
+     * the SAME generic reference-lookup endpoint an FK field's picker already uses.
+     */
+    public static String conceptEndpointBase(String qualifiedConceptName, List<CompiledContext> contexts) {
+        return "/api/concepts/" + aliasPreservingTableName(qualifiedConceptName, contexts);
     }
 
     public static String toSnakePlural(String value) {

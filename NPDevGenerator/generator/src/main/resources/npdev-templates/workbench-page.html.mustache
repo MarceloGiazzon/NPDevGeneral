@@ -1012,8 +1012,16 @@
   // (invisible, backdrop-covered) grid behind it, and focus returns to whatever opened the picker
   // (the band's own picker-trigger button, STRINGS['action.select']) on close. Checked against this file's other keyboard
   // surface: input.cell's Escape is unused (no cell-edit-cancel exists to collide with).
+  // B19: field:operator:value, the SAME encoding business-ui-app.mustache's own whereExpression()
+  // builds for an FK field's reference.defaultFilterExpression -- ConceptQueryFilterSupport/
+  // parseWhereClauses (server) already parses this format, unchanged by this addition.
+  function bandPickerWhereExpression(defaultFilterExpression) {
+    if (!defaultFilterExpression || !defaultFilterExpression.field || !defaultFilterExpression.operator) { return ""; }
+    return defaultFilterExpression.field + ":" + defaultFilterExpression.operator + ":" + String(defaultFilterExpression.value == null ? "" : defaultFilterExpression.value);
+  }
+
   function openBandPicker(secCollection, rowId, bd) {
-    var picker = bd.picker; if (!picker || !picker.panel) return;
+    var picker = bd.picker; if (!picker || (!picker.panel && !picker.endpointBase)) return;
     var cols = picker.columns && picker.columns.length ? picker.columns : bd.columns;
     var chosen = {};
     var opener = document.activeElement;
@@ -1067,33 +1075,56 @@
     card.addEventListener("keydown", trapKeydown);
     document.body.append(overlay);
     (focusableIn(card)[0] || card).focus();
-    fetch("/api/runtime/metadata/ui/panels/" + encodeURIComponent(picker.panel), { headers: authHeaders() })
-      .then(function (r) { return r.json(); })
-      .then(function (p) {
-        if (p.metadata && p.metadata.returnMapping && Object.keys(p.metadata.returnMapping).length) {
-          returnMapping = p.metadata.returnMapping;
-        }
-        var rows = null; var data = p.data || {};
-        Object.keys(data).forEach(function (kk) { if (Array.isArray(data[kk]) && rows === null) rows = data[kk]; });
-        rows = rows || [];
-        body.innerHTML = "";
-        if (!rows.length) { body.append(el('<p class="sub">No records available.</p>')); return; }
-        var tbl = el("<table></table>");
-        tbl.append(el("<tr><th></th>" + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
-        rows.forEach(function (r) {
-          var d = r.data || {};
-          var tr = el('<tr class="master"></tr>');
-          var ck = el('<td><input type="checkbox"></td>');
-          var box = ck.querySelector("input");
-          box.onchange = function () { if (box.checked) { chosen[r.id] = d; tr.classList.add("sel"); } else { delete chosen[r.id]; tr.classList.remove("sel"); } };
-          tr.append(ck);
-          cols.forEach(function (c) { tr.append(el("<td>" + (d[c] == null ? "" : String(d[c])) + "</td>")); });
-          tr.onclick = function (e) { if (e.target !== box) { box.checked = !box.checked; box.onchange(); } };
-          tbl.append(tr);
-        });
-        body.append(tbl);
-      })
-      .catch(function (e) { body.innerHTML = '<p class="sub">Failed to load: ' + e + '</p>'; });
+    // Renders once rows are loaded, regardless of which fetch path produced them -- id/data below
+    // are already normalized to the SAME shape (a bare row id, a flat field-value map) by whichever
+    // .then() branch below calls this.
+    function renderRows(rows) {
+      body.innerHTML = "";
+      if (!rows.length) { body.append(el('<p class="sub">No records available.</p>')); return; }
+      var tbl = el("<table></table>");
+      tbl.append(el("<tr><th></th>" + cols.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "</tr>"));
+      rows.forEach(function (row) {
+        var id = row.id, d = row.data;
+        var tr = el('<tr class="master"></tr>');
+        var ck = el('<td><input type="checkbox"></td>');
+        var box = ck.querySelector("input");
+        box.onchange = function () { if (box.checked) { chosen[id] = d; tr.classList.add("sel"); } else { delete chosen[id]; tr.classList.remove("sel"); } };
+        tr.append(ck);
+        cols.forEach(function (c) { tr.append(el("<td>" + (d[c] == null ? "" : String(d[c])) + "</td>")); });
+        tr.onclick = function (e) { if (e.target !== box) { box.checked = !box.checked; box.onchange(); } };
+        tbl.append(tr);
+      });
+      body.append(tbl);
+    }
+    if (picker.panel) {
+      fetch("/api/runtime/metadata/ui/panels/" + encodeURIComponent(picker.panel), { headers: authHeaders() })
+        .then(function (r) { return r.json(); })
+        .then(function (p) {
+          if (p.metadata && p.metadata.returnMapping && Object.keys(p.metadata.returnMapping).length) {
+            returnMapping = p.metadata.returnMapping;
+          }
+          var rows = null; var data = p.data || {};
+          Object.keys(data).forEach(function (kk) { if (Array.isArray(data[kk]) && rows === null) rows = data[kk]; });
+          renderRows((rows || []).map(function (r) { return { id: r.id, data: r.data || {} }; }));
+        })
+        .catch(function (e) { body.innerHTML = '<p class="sub">Failed to load: ' + e + '</p>'; });
+    } else {
+      // B19: no panel -- the band's own collection concept, fetched through the SAME generic
+      // reference-lookup endpoint an FK field's picker dialog already uses (GET .../api/concepts/<table>,
+      // server-enforced `where` filter via ConceptQueryFilterSupport). Rows come back FLAT (no `.data`
+      // wrapper), unlike the panel path above -- normalized to the same { id, data } shape renderRows expects.
+      var params = new URLSearchParams();
+      params.set("page", "0"); params.set("size", "100");
+      var where = bandPickerWhereExpression(picker.defaultFilterExpression);
+      if (where) { params.set("where", where); }
+      fetch(picker.endpointBase + "?" + params.toString(), { headers: authHeaders() })
+        .then(function (r) { return r.json(); })
+        .then(function (p) {
+          var rows = Array.isArray(p.content) ? p.content : [];
+          renderRows(rows.map(function (r) { return { id: r.id, data: r }; }));
+        })
+        .catch(function (e) { body.innerHTML = '<p class="sub">Failed to load: ' + e + '</p>'; });
+    }
   }
 
   // List mode: with no ?id, show the root records (from the Selection panel), filter client-side on

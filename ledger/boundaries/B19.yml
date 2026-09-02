@@ -1,5 +1,5 @@
 id: B19
-title: "bandPickers accepts the same filter/multiSelect shape a plain FK field's picker does -- but a band picker still requires a named panel, so filter/multiSelect declared without one has nothing to apply to"
+title: "~~A band picker requires a named panel -- filter/multiSelect declared without one had nothing to apply to~~ LIFTED, by construction -- EDIT-17, 2026-09-02"
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.5). Re-traced from the real code, not the prior classification:
@@ -11,17 +11,35 @@ codeLinkedNote: >-
   required"); }` before this session touched it). So a no-panel band picker was never silently
   inert -- it was always a hard validation refusal; the boundary's only real gap was that the
   refusal carried no boundaryId, so nothing could programmatically distinguish it as B19 rather than
-  an ordinary validation bug. Fixed: the error message is now prefixed `B19:band_picker_requires_panel:`,
-  following the exact `B1:`/`B13:` convention (ValidationDiagnosticNormalizer.BOUNDARY_PREFIX_IDS
-  strips the prefix before downstream pattern-matching, same as those two). Proven by
-  AutoPanelWorkbenchTypedSurfaceValidationTest#bandPickersMissingPanelDiagnosticCarriesB19BoundaryId,
-  which asserts exactly one ValidationDiagnostic with getBoundaryId()=="B19" for a bandPickers entry
-  declaring multiSelect with no panel.
+  an ordinary validation bug. Fixed then: the error message was prefixed
+  `B19:band_picker_requires_panel:`, following the exact `B1:`/`B13:` convention.
 
-  Not added to NPDevSamples/dsl-conformance-max: that corpus is scanned for POSITIVE feature
-  coverage by check-dsl-coverage.py (bandPicker.filter is already covered there, WITH a panel) --
-  it has no mechanism for an intentionally-invalid fixture, and adding one would break that sample's
-  own validity for every other tracked feature in the same file. The DSL unit test above is the real
-  witness for this negative case.
-ref: "docs/ACCEPTED_BOUNDARIES.md#B19 -- AW-P2 (7e1096e), docs/architecture/AGGREGATE_WORKBENCH_PLAN.md, Move 9 A3"
-classification: HITTABLE
+  LIFTED 2026-09-02 (EDIT-17, BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1, wave 1) --
+  BY CONSTRUCTION: the refusal shape that used to fire for "filter/multiSelect, no panel" no longer
+  fires at all for that shape, because `AutoPanelExpander.bandPickers()` (NPDevContract/dsl/.../
+  compiler/) now synthesizes a PROJECTION for it instead of skipping the entry -- the SAME generic
+  reference-lookup endpoint (`/api/concepts/<table>`) an FK field's picker dialog already uses,
+  server-filtered via the SAME `where=field:operator:value` `ConceptQueryFilterSupport` mechanism
+  B16 already proved end-to-end. `SqlIdentifierSupport.conceptEndpointBase` (new, shared) computes
+  the bounded-context-aware table route from the band's own collection concept name;
+  `parseBandPickerFilterExpression` (new, mirrors -- cannot depend on --
+  `BusinessUiEmitter.parsePickerFilterExpression`'s exact `field == 'literal'`/`!=` grammar) turns
+  the raw filter string into the same `{field, operator, value}` triple `defaultFilterExpression`
+  already uses, validated against the band's own concept's real fields (an unparseable/unknown-field
+  filter silently drops, matching the FK-field path's own precedent -- never a compile error).
+  `workbench-page.html.mustache`'s `openBandPicker` branches on `picker.panel` (existing path,
+  unchanged) vs `picker.endpointBase` (new) -- the fetch/row-shape differs (a panel's rows arrive
+  `{id, data:{...}}`-wrapped; the reference-lookup endpoint's arrive flat), normalized to one shared
+  `renderRows` before the existing checkbox/multi-add UI, which is otherwise UNTOUCHED.
+
+  `PanelValidation.validateBandPickers` now refuses ONLY the shape with NEITHER panel NOR
+  filter/multiSelect declared (nothing for either mechanism to act on) --
+  `B19:band_picker_unresolvable_concept:`, the new code replacing the retired
+  `band_picker_requires_panel` (which no longer fires for ANY reachable shape, since every band
+  picker with a recognized band name now resolves one way or the other). Proven by
+  AutoPanelWorkbenchTypedSurfaceValidationTest's four bandPickers cases (filter-only accepted,
+  multiSelect-only accepted, neither-declared refused, refusal carries boundaryId B19) plus a real
+  corpus witness -- NPDevSamples/dsl-conformance-max's new WidgetOrderNoPanelPickerWorkbench autoPanel
+  (a no-panel `notes` band picker filtering `text == 'Reviewed'`), generating/building/booting clean.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B19 -- AW-P2 (7e1096e), docs/architecture/AGGREGATE_WORKBENCH_PLAN.md, Move 9 A3, EDIT-17"
+classification: LIFTED

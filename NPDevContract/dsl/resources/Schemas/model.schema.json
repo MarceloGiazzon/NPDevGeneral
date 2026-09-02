@@ -1047,7 +1047,7 @@
           "additionalProperties": {
             "$ref": "#/$defs/workbenchBandPicker"
           },
-          "description": "Move 7 W1: typed replacement for transaction.metadata.bandPickers. Keyed by band collection name. Move 8 item G2: intentionally unused today (1 fixture, 0 apps) -- typed-and-dormant is an acceptable resting state pending a real use case; do not manufacture artificial usage to close this out."
+          "description": "Move 7 W1: typed replacement for transaction.metadata.bandPickers. Keyed by band collection name. B19 lifted 2026-09-02 (BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1): a panel-less entry (filter/multiSelect only) is a real, shipped no-panel projection now -- see NPDevSamples/dsl-conformance-max's WidgetOrderNoPanelPickerWorkbench witness."
         },
         "dataSource": {
           "$ref": "#/$defs/autoPanelDataSource"
@@ -1144,7 +1144,7 @@
     "workbenchBandPicker": {
       "type": "object",
       "additionalProperties": false,
-      "description": "B16/B19 (Move 9 A3): filter/multiSelect are the same two properties a plain FK field's picker declares -- one shape for both surfaces. panel remains required (enforced by PanelValidation, not relaxed in this pass): a panel-less no-panel fetch path targeting the band's own concept directly is a real, precisely-named residual, not yet wired.",
+      "description": "B16/B19 (Move 9 A3; B19 lifted 2026-09-02, BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1): filter/multiSelect are the same two properties a plain FK field's picker declares -- one shape for both surfaces. panel is optional: a band picker resolves via a named panel OR, with no panel, via filter/multiSelect alone, in which case AutoPanelExpander synthesizes a projection targeting the band's own collection concept directly (the same reference-lookup endpoint an FK field's picker uses). PanelValidation refuses only a picker declaring neither (B19:band_picker_unresolvable_concept:).",
       "properties": {
         "panel": {
           "type": "string",

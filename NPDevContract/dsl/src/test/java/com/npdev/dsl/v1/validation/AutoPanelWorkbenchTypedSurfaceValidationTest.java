@@ -106,33 +106,53 @@ class AutoPanelWorkbenchTypedSurfaceValidationTest {
     }
 
     /**
-     * B19 (docs/ACCEPTED_BOUNDARIES.md, 2026-08-25 remediation plan W2.5): a band picker declaring
-     * only {@code filter} with no {@code panel} used to be silently inert -- nothing to apply the
-     * filter to. This is now a hard validation refusal, regardless of filter/multiSelect: {@code
-     * panel} is unconditionally required on a declared band picker.
+     * B19 (LIFTED, BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1): a band picker declaring only
+     * {@code filter} (or only {@code multiSelect}) with no {@code panel} used to be a hard refusal
+     * unconditionally requiring panel. It now resolves cleanly -- {@code AutoPanelExpander}
+     * synthesizes a projection targeting the band's own collection concept directly, the same
+     * generic reference-lookup endpoint an FK field's picker already uses.
      */
     @Test
-    void bandPickersMissingPanelIsRejected() throws Exception {
+    void bandPickersFilterOnlyWithNoPanelIsAccepted() throws Exception {
         List<String> errors = validate(modelWithTransaction(
-                "{ \"bandPickers\": { \"posicoes\": { \"filter\": \"$root.ativo == 'true'\" } } }"));
-        assertTrue(errors.stream().anyMatch(e -> e.contains("transaction.bandPickers.posicoes")
-                        && e.contains("panel is required")),
-                "expected a panel-required error, got: " + errors);
+                "{ \"bandPickers\": { \"posicoes\": { \"filter\": \"itemId != null\" } } }"));
+        assertTrue(errors.isEmpty(), "a no-panel filter-only band picker must validate cleanly now: " + errors);
     }
 
-    /** B19: the panel-required refusal carries boundaryId B19 on the normalized diagnostic, the
+    @Test
+    void bandPickersMultiSelectOnlyWithNoPanelIsAccepted() throws Exception {
+        List<String> errors = validate(modelWithTransaction(
+                "{ \"bandPickers\": { \"posicoes\": { \"multiSelect\": true } } }"));
+        assertTrue(errors.isEmpty(), "a no-panel multiSelect-only band picker must validate cleanly now: " + errors);
+    }
+
+    /**
+     * B19: the ONE shape still refused after the lift -- a band picker declaring NEITHER a panel NOR
+     * anything a no-panel projection could target (filter/multiSelect). Nothing for either mechanism
+     * to act on, so this stays a named refusal rather than silently emitting a dead picker.
+     */
+    @Test
+    void bandPickersWithNeitherPanelNorProjectionInputsIsRejected() throws Exception {
+        List<String> errors = validate(modelWithTransaction(
+                "{ \"bandPickers\": { \"posicoes\": { \"label\": \"Pick one\" } } }"));
+        assertTrue(errors.stream().anyMatch(e -> e.contains("transaction.bandPickers.posicoes")
+                        && e.contains("declare either panel, or filter/multiSelect")),
+                "expected an unresolvable-concept error, got: " + errors);
+    }
+
+    /** B19: the unresolvable-concept refusal carries boundaryId B19 on the normalized diagnostic, the
      * same {@code B<n>:<code>:} prefix mechanism B1/B13 already use, so a caller can programmatically
      * distinguish this designed refusal from an ordinary validation bug. */
     @Test
-    void bandPickersMissingPanelDiagnosticCarriesB19BoundaryId() throws Exception {
+    void bandPickersUnresolvableConceptDiagnosticCarriesB19BoundaryId() throws Exception {
         ModelAst ast = new JsonModelParser().parse(MAPPER.readTree(modelWithTransaction(
-                "{ \"bandPickers\": { \"posicoes\": { \"multiSelect\": true } } }")));
+                "{ \"bandPickers\": { \"posicoes\": { \"label\": \"Pick one\" } } }")));
         List<ValidationDiagnostic> diagnostics = new SemanticValidator().validateWithWarnings(ast).getDiagnostics();
         List<ValidationDiagnostic> b19 = diagnostics.stream()
                 .filter(d -> "B19".equals(d.getBoundaryId()))
                 .toList();
         assertEquals(1, b19.size(), "expected exactly one B19-linked diagnostic, got: " + diagnostics);
-        assertTrue(b19.get(0).getMessage().contains("panel is required"),
+        assertTrue(b19.get(0).getMessage().contains("declare either panel, or filter/multiSelect"),
                 "boundaryId must survive prefix-stripping without eating the rest of the message: "
                         + b19.get(0).getMessage());
     }

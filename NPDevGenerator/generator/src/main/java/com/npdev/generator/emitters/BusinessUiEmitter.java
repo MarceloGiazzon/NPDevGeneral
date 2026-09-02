@@ -539,7 +539,9 @@ public final class BusinessUiEmitter extends AbstractEmitter {
 
     private static String endpointBase(CompiledConcept concept, List<CompiledContext> contexts) {
         // PK-2: stays alias-preserving on purpose -- see the "route" field comment above.
-        return "/api/concepts/" + SqlIdentifierSupport.aliasPreservingTableName(concept, contexts);
+        // B19: delegates to SqlIdentifierSupport.conceptEndpointBase, the SAME helper
+        // AutoPanelExpander's no-panel band picker projection uses -- one definition of this route.
+        return concept == null ? "" : SqlIdentifierSupport.conceptEndpointBase(concept.getName(), contexts);
     }
 
     private static String displayName(CompiledConcept concept) {
