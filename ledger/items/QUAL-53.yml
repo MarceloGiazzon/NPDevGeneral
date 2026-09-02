@@ -49,7 +49,7 @@ detail: |
   not fail every gate run) and after the fix.
 guard:
   kind: test
-  ref: NPDevCli/tests/test_monitor_clone.py::ClonePortReservation::test_concurrent_calls_never_collide
+  ref: NPDevCli/tests/test_monitor_clone.py#test_concurrent_calls_never_collide
   asserts: >-
     Twelve real threads call reserve_clone_port concurrently against a real file-locked registry and
     assert zero errors and twelve distinct ports. Pre-fix this failed reliably (every observed run)

@@ -94,13 +94,13 @@ detail: |
   guard).
 guard:
   kind: test
-  ref: >-
-    NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AutoPanelWorkbenchTypedSurfaceValidationTest.java
-    #bandPickersFilterOnlyWithNoPanelIsAccepted, #bandPickersMultiSelectOnlyWithNoPanelIsAccepted,
-    #bandPickersWithNeitherPanelNorProjectionInputsIsRejected,
-    #bandPickersUnresolvableConceptDiagnosticCarriesB19BoundaryId (all new/rewritten this session,
-    replacing the two tests that asserted the now-retired unconditional-panel-required behavior)
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AutoPanelWorkbenchTypedSurfaceValidationTest.java#bandPickersUnresolvableConceptDiagnosticCarriesB19BoundaryId
   asserts: >-
+    Guard.ref names one representative method (check-done-item-guards.py's resolver takes a single
+    path/#method); the same file's #bandPickersFilterOnlyWithNoPanelIsAccepted,
+    #bandPickersMultiSelectOnlyWithNoPanelIsAccepted, and
+    #bandPickersWithNeitherPanelNorProjectionInputsIsRejected are new/rewritten this session too,
+    replacing the two tests that asserted the now-retired unconditional-panel-required behavior.
     A bandPickers entry with only filter, or only multiSelect, and no panel validates with ZERO
     errors (the two cases that used to be hard refusals). A bandPickers entry with neither panel nor
     filter/multiSelect still refuses, carrying boundaryId B19 and the new

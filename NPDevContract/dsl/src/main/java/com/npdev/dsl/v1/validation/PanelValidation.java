@@ -362,7 +362,9 @@ final class PanelValidation {
             if (!hasPanel && !hasProjectionInputs) {
                 errors.add("B19:band_picker_unresolvable_concept:" + panelLabel + " transaction.bandPickers."
                         + entry.getKey() + ": declare either panel, or filter/multiSelect (targets the "
-                        + "band's own collection concept directly) -- neither was given");
+                        + "band's own collection concept directly) -- neither was given"
+                        + " -- suggestedFix: add a panel naming a Selection surface, or filter/multiSelect "
+                        + "to target the band's own collection concept directly");
             }
         }
     }
