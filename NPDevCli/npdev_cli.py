@@ -4466,6 +4466,109 @@ def run_db_restore(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 2
 
 
+def run_admin_hash_key(args: argparse.Namespace) -> int:
+    """SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): the SAME SHA-256-hex CredentialRegistryService.hash()
+    computes server-side (NPDevRuntimeHost/runtimehost-core/.../CredentialRegistryService.java) --
+    reads the raw key from --key or, preferably, one line of stdin (never echoed into shell history
+    or a process listing), and prints the hash a deployment sets as
+    npdev.superuser.bootstrap-key-hash. Never sends the key anywhere; purely local hashlib."""
+    import hashlib
+
+    raw = args.key
+    if raw is None:
+        raw = sys.stdin.readline().rstrip("\n").rstrip("\r")
+    if not raw:
+        raise CliError("no key given -- pass --key or pipe one line to stdin")
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    result = {
+        "schemaVersion": "npdev-cli-result.v1", "command": "admin hash-key",
+        "ok": True, "hash": digest,
+    }
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(digest)
+    return 0
+
+
+def run_admin_create(args: argparse.Namespace) -> int:
+    """SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): CLI front end for SuperUserClaimController's
+    POST /api/admin/superuser/claim -- turns the bootstrap Super User credential (issued, hash-
+    supplied, or raw-supplied at boot; SuperUserBootstrapper) into a named administrator and revokes
+    the bootstrap credential in the same call. Same discovery + SUPERUSER-auth shape as
+    `_run_monitor_hotswap`/`run_db_restore` (npdev_monitor.probe_app, then _ops/SUPER_USER_KEY.txt,
+    then X-Super-User-Key) -- every expected outcome (app not running, no key on disk, the bootstrap
+    credential already claimed) is a structured ok:false result, never a traceback. The NEW key is
+    printed exactly once, same warning discipline SuperUserBootstrapper's own banner uses."""
+    app_dir = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    result: dict = {
+        "schemaVersion": "npdev-admin-create.v1", "command": "admin create",
+        "ok": False, "code": None, "message": None, "appDir": str(app_dir), "actorId": args.actor_id,
+    }
+
+    def _refuse(code: str, message: str) -> int:
+        result["code"] = code
+        result["message"] = message
+        _print_result(result, args)
+        return 2
+
+    app_record = npdev_monitor.probe_app(app_dir, origin="explicit", health_timeout=min(args.timeout, 3.0))
+    if not app_record.get("isAppRoot"):
+        return _refuse("NOT_AN_APP", app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        return _refuse(
+            "APP_NOT_RUNNING",
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')} -- `admin create` calls a RUNNING app's admin API; "
+            "start it first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    key_file = app_record.get("superUserKeyFile")
+    if not key_file:
+        return _refuse(
+            "SUPERUSER_KEY_NOT_FOUND",
+            "no SUPER_USER_KEY.txt found under this app's _ops directory. If the bootstrap "
+            "credential was supplied via npdev.superuser.bootstrap-key-hash/.bootstrap-key-raw "
+            "instead, there is no file to read -- present that raw key yourself as X-Super-User-Key "
+            "against POST /api/admin/superuser/claim.")
+    import urllib.error
+    import urllib.request
+
+    try:
+        super_user_key = Path(key_file).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return _refuse("SUPERUSER_KEY_UNREADABLE", f"found {key_file} but could not read it: {exc}")
+    if not super_user_key:
+        return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
+
+    base_url = app_record.get("probeBaseUrl")
+    body = json.dumps({"actorId": args.actor_id}).encode("utf-8")
+    request = urllib.request.Request(
+        base_url + "/api/admin/superuser/claim", data=body, method="POST",
+        headers={"Content-Type": "application/json", "X-Super-User-Key": super_user_key})
+    try:
+        with urllib.request.urlopen(request, timeout=args.timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            payload = {}
+        return _refuse(payload.get("error") or f"HTTP_{exc.code}",
+                        payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}")
+    except urllib.error.URLError as exc:
+        return _refuse("UNREACHABLE", f"could not reach {base_url}: {exc.reason}")
+
+    result["ok"] = True
+    result["apiKey"] = payload.get("apiKey")
+    result["bootstrapCredentialRevoked"] = payload.get("bootstrapCredentialRevoked")
+    result["message"] = (f"administrator '{args.actor_id}' claimed"
+                          + (" -- bootstrap key revoked" if payload.get("bootstrapCredentialRevoked")
+                             else " -- WARNING: no bootstrap credential was found to revoke"))
+    _print_result(result, args)
+    return 0
+
+
 def _scrapforai_check() -> dict:
     """MONITOR_PLAN F1: the browser-exploration engine, reported as a FACT rather than as the
     presence of a setting.
@@ -9858,6 +9961,12 @@ def _human_summary(result: dict) -> str:
                         f"conflicts={len(conflicts)}" + (f" {conflicts}" if conflicts else ""))
                 else:
                     lines.append(f"  {table.get('table')}  status={table.get('status')}  {table.get('error') or ''}")
+    elif command == "admin create":
+        status = "OK" if result.get("ok") else f"REFUSED ({result.get('code')})"
+        lines.append(f"{status}: {result.get('message') or ''}")
+        if result.get("ok"):
+            lines.append(f"  new key: {result.get('apiKey')}")
+            lines.append("  (shown once -- store it now)")
     elif "found" in result and "state" in result:
         lines.append(f"ScrapForAI engine: {result['state']}")
         lines.append(f"  via      : {result.get('via')}")
@@ -11449,6 +11558,55 @@ def build_parser() -> argparse.ArgumentParser:
                      f"token exists so it cannot happen by accident, from a terminal or a button.",
             )
 
+    # SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): the bootstrap Super User key is meant to be a
+    # short-lived handoff, not a permanent identity -- these two commands are the operator side of
+    # that: hash-key for a deployment supplying its OWN bootstrap key (no plaintext secret in a
+    # compose file), create for claiming a named administrator against a RUNNING app and revoking
+    # the bootstrap key that authenticated the call.
+    admin_parser = subparsers.add_parser(
+        "admin", help="Super User bootstrap: hash a key for npdev.superuser.bootstrap-key-hash, "
+                      "or claim a named administrator against a running app."
+    )
+    admin_sub = admin_parser.add_subparsers(dest="admin_command")
+    admin_hash_key = admin_sub.add_parser(
+        "hash-key",
+        help="Print the SAME SHA-256 hex hash npdev.superuser.bootstrap-key-hash expects -- the raw "
+             "key itself never has to appear in a compose file or env dump.",
+    )
+    admin_hash_key.add_argument(
+        "--key", default=None,
+        help="The raw key to hash. Omit to read one line from stdin instead (recommended -- keeps "
+             "the raw key out of shell history and the process list).",
+    )
+    admin_hash_key.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-cli-result.v1 object instead of printing the bare hash.",
+    )
+    admin_create = admin_sub.add_parser(
+        "create",
+        help="Claim a named administrator against a RUNNING app: POST /api/admin/superuser/claim "
+             "with the bootstrap Super User key, which is then revoked. Prints the new key ONCE.",
+    )
+    admin_create.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory. Defaults to the current directory. The app must be RUNNING and "
+             "still hold an unclaimed bootstrap Super User credential.",
+    )
+    admin_create.add_argument(
+        "--actor-id", required=True, metavar="NAME",
+        help="A name for the new administrator (e.g. an operator's own name or handle) -- becomes "
+             "the new credential's actorId, distinct from the bootstrap credential's fixed "
+             "'bootstrap' actorId.",
+    )
+    admin_create.add_argument(
+        "--timeout", type=float, default=30.0,
+        help="HTTP timeout in seconds for the claim call.",
+    )
+    admin_create.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-admin-create.v1 JSON object instead of the human-readable report.",
+    )
+
     setup_parser = subparsers.add_parser(
         "setup", help="Build the runtimehost jars a generated app needs to compile, and the AI "
                       "knowledge index -- no pwsh required (I4)."
@@ -13002,6 +13160,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_restore(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
+        if args.command == "admin" and args.admin_command == "hash-key":
+            return run_admin_hash_key(args)
+        if args.command == "admin" and args.admin_command == "create":
+            return run_admin_create(args)
         if args.command == "mcp" and args.mcp_command == "install":
             return run_mcp_install(args)
         if args.command == "generate" and args.generate_command == "app":

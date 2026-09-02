@@ -110,6 +110,64 @@ class CredentialRegistryServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.issue("acme", null, Set.of("ADMIN")));
     }
 
+    /** SEC-8 (B17): a deployment-supplied bootstrap key -- the caller already has the raw key and
+     * hands this service only its hash; the raw key never passes through issueWithKnownHash at all. */
+    @Test
+    void issueWithKnownHashResolvesForTheMatchingRawKeyOnly() {
+        String rawKey = "operator-generated-key-abcdef123456";
+        String hash = CredentialRegistryService.hash(rawKey);
+
+        service.issueWithKnownHash("acme", "bootstrap", Set.of("SUPERUSER"), hash);
+
+        Optional<ApiKeyCredentialResolver.Principal> resolved = service.resolve(rawKey);
+        assertTrue(resolved.isPresent());
+        assertEquals("bootstrap", resolved.get().actorId());
+        assertTrue(service.resolve("some-other-key").isEmpty());
+    }
+
+    @Test
+    void hashIsStableAndMatchesTheDocumentedAlgorithm() {
+        // SHA-256("abc") -- a well-known test vector, pins the exact algorithm/encoding.
+        assertEquals("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                CredentialRegistryService.hash("abc"));
+    }
+
+    @Test
+    void credentialIdForKeyFindsExactlyTheCredentialThatKeyAuthenticates() {
+        Map<String, Object> issuedA = service.issue("acme", "alice", Set.of("SUPERUSER"));
+        Map<String, Object> issuedB = service.issue("acme", "bob", Set.of("SUPERUSER"));
+
+        Optional<String> foundA = service.credentialIdForKey((String) issuedA.get("apiKey"));
+        assertTrue(foundA.isPresent());
+        assertEquals(issuedA.get("credentialId"), foundA.get());
+        assertNotEquals(issuedB.get("credentialId"), foundA.get());
+
+        assertTrue(service.credentialIdForKey("never-issued").isEmpty());
+    }
+
+    @Test
+    void credentialIdForKeyDoesNotFindARevokedCredential() {
+        Map<String, Object> issued = service.issue("acme", "alice", Set.of("SUPERUSER"));
+        service.revoke((String) issued.get("credentialId"));
+
+        assertTrue(service.credentialIdForKey((String) issued.get("apiKey")).isEmpty());
+    }
+
+    /** SEC-8 (B17): the whole point of lookupStatus -- unlike resolve(), it must still find a
+     * REVOKED row, so the auth filter can tell "revoked" apart from "never issued". */
+    @Test
+    void lookupStatusDistinguishesRevokedFromNeverIssued() {
+        Map<String, Object> issued = service.issue("acme", "alice", Set.of("SUPERUSER"));
+        String rawKey = (String) issued.get("apiKey");
+
+        assertEquals(Optional.of(CredentialRegistryService.Status.ACTIVE), service.lookupStatus(rawKey));
+
+        service.revoke((String) issued.get("credentialId"));
+        assertEquals(Optional.of(CredentialRegistryService.Status.REVOKED), service.lookupStatus(rawKey));
+
+        assertTrue(service.lookupStatus("never-issued-at-all").isEmpty());
+    }
+
     private record FixedProvider(DataSource dataSource) implements ObjectProvider<DataSource> {
         @Override public DataSource getObject(Object... args) { return dataSource; }
         @Override public DataSource getObject() { return dataSource; }

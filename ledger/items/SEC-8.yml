@@ -1,0 +1,129 @@
+id: SEC-8
+title: >-
+  Super User bootstrap credential is now a short-lived handoff, not a permanent identity -- a claim
+  flow, an optional operator-supplied bootstrap key (hash or entropy-floored raw), and a
+  distinguishable revoked-key error, lifting B17
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.4 (B17), wave 1. B17's own row named the exact
+  distinction that makes this a lift rather than a weakening: "the issued key should be a bootstrap
+  credential, not a permanent identity -- first boot -> key issued -> operator claims admin identity
+  -> key revoked -> normal auth."
+surface: runtimehost-core (SuperUserBootstrapper, CredentialRegistryService), controlpanel
+  (SuperUserClaimController new, SuperUserCredentialAuthFilter), NPDevCli admin command group, B17
+  registry
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/controlpanel/SuperUserBootstrapper.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/CredentialRegistryService.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SuperUserClaimController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SuperUserCredentialAuthFilter.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SuperUserBootstrapperTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/CredentialRegistryServiceTest.java
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B17.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. A fresh generated app can be brought to a named administrator without opening
+     SUPER_USER_KEY.txt in the NORMAL case (an automated/hash-supplied deployment): `bootstrap-key-
+     hash` mode installs the bootstrap credential from an operator-generated key's hash with this app
+     never seeing/printing/storing the raw key; `POST /api/admin/superuser/claim` (`npdev admin
+     create --actor-id <name>`) then claims a named administrator using whatever bootstrap key the
+     operator already holds. In the DEFAULT (unchanged) issued mode, the file is still the intended
+     path -- done-when #1 targets the automated-deployment case specifically, which is what
+     bootstrap-key-hash exists for.
+
+  2. Once claimed, the bootstrap key is revoked automatically -- `SuperUserClaimController#claim`
+     issues the new credential FIRST, then revokes exactly the credential that authenticated the call
+     (`CredentialRegistryService#credentialIdForKey`, new -- identifies the live credential by its
+     presented key, so a normal claim never touches an unrelated active SUPERUSER credential). A
+     later attempt with the revoked bootstrap key gets `super_user_key_revoked` (new error code,
+     still `boundaryId: B17`), distinct from `super_user_auth_failed` for a genuinely unknown key --
+     `CredentialRegistryService#lookupStatus` (new) looks up a hash's status regardless of
+     ACTIVE/REVOKED, unlike `#resolve`, which only ever reports ACTIVE.
+
+  3. `npdev.superuser.bootstrap-key-hash` (env `NPDEV_SUPERUSER_KEY_HASH` via Spring's standard
+     relaxed binding, no new plumbing needed) lets a deployment supply its OWN bootstrap credential as
+     a hash -- no plaintext secret in a compose file or env dump. `npdev admin hash-key` computes the
+     SAME SHA-256-hex `CredentialRegistryService.hash()` already uses server-side (verified identical
+     against Python's own hashlib for the same input this session), reading the raw key from `--key`
+     or, preferably, one stdin line (never in shell history or a process listing).
+
+  4. Supplying a RAW key remains possible only via the separately-named
+     `npdev.superuser.bootstrap-key-raw`, refused at BOOT (not silently accepted) below
+     `SuperUserBootstrapper.MIN_RAW_KEY_LENGTH` (24 characters) -- an honestly-named LENGTH floor (no
+     charset-diversity estimate, documented as a proxy for entropy, not a real information-theoretic
+     one), carrying `B17:bootstrap_key_too_short:` via `BoundaryBootException`. Below the floor,
+     nothing is installed (verified: `credentialRegistryService.list()` empty after a refused boot).
+
+  5. `SUPER_USER_KEY.txt` is unchanged as the default/fallback path -- neither new property set means
+     byte-for-byte the same `issue()` + banner + file-write behavior as before this item, verified
+     both by a dedicated unit test and by the live-fire run below (which used exactly this default
+     path).
+
+  LIVE-FIRE VERIFICATION (this session, real generate+build+boot, reusing run-engine-app-proof.py's
+  machinery like SEC-6/SEC-7): booted a real lib-probe app, read its REAL SUPER_USER_KEY.txt (default
+  issued mode), and drove the full flow over real HTTP against the real running app:
+    1. bootstrap key read from disk -- OK
+    2. bootstrap key authenticates a SUPERUSER-gated endpoint pre-claim -- OK (200)
+    3. POST /api/admin/superuser/claim with actorId "alice" -- OK (200, apiKey present,
+       bootstrapCredentialRevoked=true)
+    4. the NEW claimed key authenticates the same endpoint -- OK (200)
+    5. the OLD bootstrap key now returns super_user_key_revoked, not the generic error -- OK (401,
+       error=super_user_key_revoked)
+    6. a key that was NEVER issued still gets the generic super_user_auth_failed, unchanged -- OK
+       (401, error=super_user_auth_failed)
+  All 6 steps passed. This is real end-to-end proof of done-when #1 (default path)/#2/#5, not just
+  unit-test coverage -- the hash-supplied/raw-supplied modes and the entropy floor are covered by
+  dedicated unit tests (SuperUserBootstrapperTest, new) rather than a second full boot cycle, since
+  they are simpler config-branching logic reached by the SAME `issueBootstrapCredential()` method the
+  live-fire run already exercised for the default branch.
+
+  No schema/migration change: `npdev_api_credential` already had no uniqueness constraint on
+  `actor_id`, only a PK on `credential_id` -- multiple credentials (bootstrap, then a named admin)
+  were already representable.
+
+  Register updated across all three seams: `ledger/boundaries/B17.yml` reclassified HITTABLE ->
+  LIFTED (with a gate, history kept per the B15 shape); `NPDevContract/schemas/accepted-
+  boundaries.json`'s B17 entry rewritten (`kind: LIFTED`, `enforcingDiagnosticCodes` gained
+  `super_user_key_revoked` and `B17:bootstrap_key_too_short`, `super_user_auth_failed` unchanged);
+  `docs/ACCEPTED_BOUNDARIES.md`'s B17 row rewritten and moved into the LIFTED classification list.
+  `scripts/quality/twin-pair-registry.json` untouched -- no new code<->code string pair spans two
+  files here.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SuperUserBootstrapperTest.java (5
+    tests: default/hash/raw-above-floor/raw-below-floor-refuses/second-boot-skips),
+    NPDevRuntimeHost/src/test/java/com/finalexec/npdev/service/CredentialRegistryServiceTest.java (5
+    new tests for issueWithKnownHash/hash/credentialIdForKey/lookupStatus), and
+    NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SuperUserClaimControllerTest.java (4
+    tests: claim-issues-and-revokes / claim-leaves-an-unrelated-active-credential-untouched /
+    claim-without-the-live-super-key-marker-is-forbidden / claim-without-an-actorId-is-rejected),
+    plus the live-fire script described above (not committed -- scratchpad, reused
+    run-engine-app-proof.py's machinery per SEC-6/SEC-7 precedent)
+  asserts: >-
+    SuperUserBootstrapperTest proves all three bootstrap modes install the expected credential (or,
+    for a too-short raw key, install NOTHING and throw BoundaryBootException carrying boundaryId B17
+    and the bootstrap_key_too_short code), and that a second boot never re-issues once any active
+    SUPERUSER credential exists. CredentialRegistryServiceTest proves issueWithKnownHash resolves for
+    the matching raw key only, hash() matches a well-known SHA-256 test vector, credentialIdForKey
+    finds exactly the credential a given key authenticates (not a different one, not a revoked one),
+    and lookupStatus is the one method that still finds a REVOKED row. SuperUserClaimControllerTest
+    (standalone MockMvc, mirroring SchemaImpactControllerTest's pattern) proves the claim endpoint
+    revokes EXACTLY the credential that authenticated it (an unrelated active SUPERUSER credential
+    survives untouched), is forbidden without the live super-key marker (REG-22, a business JWT
+    carrying SUPERUSER cannot claim), and rejects a missing actorId. First run of
+    run-runtimehost-gate.ps1 (before SuperUserClaimControllerTest existed) had every test PASS but
+    failed the RuntimeHost coverage ratchet -- the new SuperUserClaimController had zero
+    JaCoCo-visible coverage (the live-fire script exercises it over real HTTP against a separately
+    booted process, which JaCoCo's offline instrumentation cannot see). Adding
+    SuperUserClaimControllerTest closed that gap: re-run PASSED clean (exit 0, 504s, "NPDevRuntimeHost
+    gate passed via assembled app sample simple-contact-intake"), coverage ratchet included.
+  provenRed: true

@@ -51,10 +51,42 @@ public class CredentialRegistryService implements ApiKeyCredentialResolver {
 
     /** Returns the raw key. This is the only place it is ever observable -- callers must save it now. */
     public Map<String, Object> issue(String tenantId, String actorId, Set<String> roles) {
+        String rawKey = generateRawKey();
+        String credentialId = insert(tenantId, actorId, roles, hash(rawKey));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("credentialId", credentialId);
+        body.put("apiKey", rawKey);
+        body.put("tenantId", requireNonBlank(tenantId, "tenantId"));
+        body.put("actorId", requireNonBlank(actorId, "actorId"));
+        body.put("roles", normalizeRoles(roles));
+        body.put("warning", "This key is shown once and is not retrievable again. Store it now.");
+        return body;
+    }
+
+    /**
+     * SEC-8 (B17): issues a credential using a CALLER-SUPPLIED key hash rather than generating a
+     * random key -- for an operator-supplied bootstrap credential (a hash configured via {@code
+     * npdev.superuser.bootstrap-key-hash}, or a raw key configured via {@code
+     * .bootstrap-key-raw} and hashed immediately without ever being persisted). Returns no {@code
+     * apiKey} field -- there is nothing to show; the operator already holds the raw key.
+     */
+    public Map<String, Object> issueWithKnownHash(String tenantId, String actorId, Set<String> roles, String keyHash) {
+        String hashValue = requireNonBlank(keyHash, "keyHash");
+        String credentialId = insert(tenantId, actorId, roles, hashValue);
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("credentialId", credentialId);
+        body.put("tenantId", requireNonBlank(tenantId, "tenantId"));
+        body.put("actorId", requireNonBlank(actorId, "actorId"));
+        body.put("roles", normalizeRoles(roles));
+        return body;
+    }
+
+    private String insert(String tenantId, String actorId, Set<String> roles, String keyHash) {
         String tenant = requireNonBlank(tenantId, "tenantId");
         String actor = requireNonBlank(actorId, "actorId");
         Set<String> normalizedRoles = normalizeRoles(roles);
-        String rawKey = generateRawKey();
         String credentialId = UUID.randomUUID().toString();
 
         DataSource dataSource = requireDataSource();
@@ -63,7 +95,7 @@ public class CredentialRegistryService implements ApiKeyCredentialResolver {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, credentialId);
-            statement.setString(2, hash(rawKey));
+            statement.setString(2, keyHash);
             statement.setString(3, tenant);
             statement.setString(4, actor);
             statement.setString(5, String.join(",", normalizedRoles));
@@ -73,15 +105,61 @@ public class CredentialRegistryService implements ApiKeyCredentialResolver {
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed issuing credential: " + exception.getMessage(), exception);
         }
+        return credentialId;
+    }
 
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("credentialId", credentialId);
-        body.put("apiKey", rawKey);
-        body.put("tenantId", tenant);
-        body.put("actorId", actor);
-        body.put("roles", normalizedRoles);
-        body.put("warning", "This key is shown once and is not retrievable again. Store it now.");
-        return body;
+    /** SEC-8 (B17): the ACTIVE credential id whose hash matches {@code apiKey}, if any -- so a
+     * caller already holding a live key (e.g. the claim flow, authenticated via the bootstrap key
+     * itself) can identify and revoke EXACTLY that credential rather than every active one. */
+    public java.util.Optional<String> credentialIdForKey(String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        DataSource dataSource = dataSourceProvider.getIfAvailable();
+        if (dataSource == null) {
+            return java.util.Optional.empty();
+        }
+        String sql = "SELECT credential_id FROM " + NpdevApiCredentialTable.NAME
+                + " WHERE key_hash = ? AND status = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, hash(apiKey));
+            statement.setString(2, Status.ACTIVE.name());
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next()
+                        ? java.util.Optional.of(resultSet.getString("credential_id"))
+                        : java.util.Optional.empty();
+            }
+        } catch (SQLException exception) {
+            return java.util.Optional.empty();
+        }
+    }
+
+    /** SEC-8 (B17): {@code apiKey}'s stored status REGARDLESS of whether it is still ACTIVE --
+     * unlike {@link #resolve}, which only ever reports a hit for a currently-usable credential. Lets
+     * a caller (the super-user auth filter) distinguish "this key was issued, then revoked" from
+     * "this key was never issued at all", so a claimed bootstrap key's later reuse gets a message
+     * saying so instead of the generic rejection. */
+    public java.util.Optional<Status> lookupStatus(String apiKey) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return java.util.Optional.empty();
+        }
+        DataSource dataSource = dataSourceProvider.getIfAvailable();
+        if (dataSource == null) {
+            return java.util.Optional.empty();
+        }
+        String sql = "SELECT status FROM " + NpdevApiCredentialTable.NAME + " WHERE key_hash = ?";
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, hash(apiKey));
+            try (ResultSet resultSet = statement.executeQuery()) {
+                return resultSet.next()
+                        ? java.util.Optional.of(Status.valueOf(resultSet.getString("status")))
+                        : java.util.Optional.empty();
+            }
+        } catch (SQLException exception) {
+            return java.util.Optional.empty();
+        }
     }
 
     public List<Map<String, Object>> list() {
@@ -168,7 +246,10 @@ public class CredentialRegistryService implements ApiKeyCredentialResolver {
         return "npk_" + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private static String hash(String value) {
+    /** SEC-8 (B17): public so a caller with a raw key in hand (e.g. {@code SuperUserBootstrapper}'s
+     * supplied-raw-key mode, `npdev admin hash-key`'s server-side twin) can compute the SAME hash
+     * this service stores and matches against, rather than reimplementing SHA-256-hex a second way. */
+    public static String hash(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashed = digest.digest(value.getBytes(StandardCharsets.UTF_8));
