@@ -4423,6 +4423,125 @@ def run_db_reverse_migrate(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def run_db_promote(args: argparse.Namespace) -> int:
+    """`npdev db promote` -- B10, boundary-lift 2026-09-02 package 3.3. The one-command arc on top of
+    the already-shipped data-only promotion: realize the target schema, preview, apply, verify.
+    Shells to `com.finalexec.db.PromoteMain` the same way `db reverse-migrate` shells to
+    `ReverseMigrateMain` -- source resolution (--app/--url/--db-user/--db-password) follows the
+    IDENTICAL order those commands already establish, so this needs no new resolution logic.
+
+    Exit codes, passed straight through from PromoteMain: 0 = dry-run preview printed, or a real run
+    ended PROMOTION VERIFIED. 1 = a real run completed but something needs attention (itemized on
+    stdout). 2 = could not determine (bad arguments, no manifest, could not connect, or schema
+    realization itself failed).
+    """
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    manifest_resources_root = app_root / "npdev-generated" / "src" / "main" / "resources"
+    manifest_file = manifest_resources_root / "npdev" / "db" / "schema-realization-manifest.json"
+
+    def fail(message: str) -> int:
+        print(f"npdev db promote: {message}", file=sys.stderr)
+        return 2
+
+    if not manifest_file.is_file():
+        return fail(f"no schema-realization-manifest.json found under {app_root} (looked for "
+                    f"{manifest_file}). Generate/build this app at least once first.")
+
+    if args.url:
+        url = args.url
+        user = args.db_user
+        password = args.db_password or ""
+    else:
+        # Same resolution order as run_db_schema_ahead/run_db_reverse_migrate/run_db_verify: prefer
+        # _ops/resolved-db-plan.json (emitted for every generated app, already fully-resolved), fall
+        # back to db.definition.json.
+        plan_path = app_root / "_ops" / "resolved-db-plan.json"
+        db_def_path = app_root / "db.definition.json"
+        if plan_path.is_file():
+            plan = read_json(plan_path)
+            if not plan.get("physicalDatabase", False):
+                print("npdev db promote: this app has no physical database (InMemory storage) -- nothing to promote.")
+                return 0
+            try:
+                engine_key = npdev_engines.resolve(plan.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {plan_path})")
+            url = plan.get("jdbcUrl") or None
+            if url is None:
+                return fail(f"{plan_path} has no jdbcUrl recorded -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else (plan.get("username") or None)
+            password = args.db_password if args.db_password is not None else (plan.get("password") or "")
+        elif db_def_path.is_file():
+            database = read_json(db_def_path).get("database", {})
+            try:
+                engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {db_def_path})")
+            if engine_key == "inmemory":
+                print("npdev db promote: this app has no physical database (InMemory storage) -- nothing to promote.")
+                return 0
+            url = _jdbc_url_for_verify(engine_key, app_root, database)
+            if url is None:
+                return fail(f"do not know how to build a JDBC URL for engine '{engine_key}' -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else database.get("username")
+            password = args.db_password if args.db_password is not None else (database.get("password") or "")
+        else:
+            return fail(f"neither {plan_path} nor {db_def_path} was found, and no --url was given. "
+                        f"Pass --url (with --db-user/--db-password as needed), or run this from "
+                        f"the app's own directory.")
+
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        return fail("runtimehost jars are not staged -- run `npdev setup`")
+    java_bin = java_launcher()
+    if java_bin is None:
+        return fail("no java found (see `npdev doctor`'s java checks)")
+
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        return fail(f"no built jar found under {app_root / 'build' / 'libs'}. Build this app at "
+                    f"least once first (e.g. `_ops/Build-FinalApp.ps1`).")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-db-promote-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([
+            str(manifest_resources_root), str(Path(libs) / "*"), str(extracted_libs / "*"),
+        ])
+
+        command = [java_bin, "-cp", classpath, "com.finalexec.db.PromoteMain", "--url", url]
+        if user:
+            command += ["--user", user]
+        if password:
+            command += ["--password", password]
+        command += ["--to", args.to]
+        if args.to_user:
+            command += ["--to-user", args.to_user]
+        if args.to_password:
+            command += ["--to-password", args.to_password]
+        if args.dry_run:
+            command += ["--dry-run"]
+
+        try:
+            # cwd=app_root: same H2Local app-relative SOURCE URL reasoning as run_db_verify/
+            # run_db_reverse_migrate. The TARGET url is always absolute (a different database
+            # entirely), so this cwd choice never affects it.
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=300)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return fail(f"could not run PromoteMain ({exc})")
+
+    if completed.stdout:
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
 # spring-jcl's LogAdapter writes this to STDOUT (not stderr) on first use whenever a
 # commons-logging jar is also on the classpath -- which it is, because `db verify` runs against the
 # app's own fat-jar libraries. It is not ours, it is not actionable by the reader, and on stdout it
@@ -12016,6 +12135,42 @@ def build_parser() -> argparse.ArgumentParser:
              "the CURRENT live database; a stale or mismatched token refuses.",
     )
 
+    # B10 (boundary-lift 2026-09-02, package 3.3, docs/ACCEPTED_BOUNDARIES.md B10): the one-command
+    # arc on top of the already-shipped data-only promotion (Move 9 A4) -- realize the target schema
+    # (reusing package 3.2's MIGRATE_ONLY mechanism, in-process, no subprocess/port needed), preview,
+    # apply, then verify deeper than row counts (per-column null counts, an order-independent content
+    # hash, and FK/index/shape parity read from the manifest). Never translates SQL between engines --
+    # PromoteMain shells to the SAME classpath:db/schema-realization Flyway migrations this app's own
+    # boot already runs, just pointed at a different connection.
+    db_promote = db_sub.add_parser(
+        "promote",
+        help="One-command H2->Postgres (or any engine pair) data promotion (B10): realize the target "
+             "schema, preview, apply, and verify -- deeper than row counts.",
+    )
+    db_promote.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The SOURCE app directory (holds npdev-generated/, a built jar under build/libs/, and -- "
+             "unless --url is given -- _ops/resolved-db-plan.json or db.definition.json for the "
+             "connection). Defaults to the current directory.",
+    )
+    db_promote.add_argument(
+        "--url", default=None,
+        help="An explicit JDBC URL for the SOURCE, overriding the app's own resolved connection.",
+    )
+    db_promote.add_argument("--db-user", default=None, help="Overrides the resolved SOURCE username.")
+    db_promote.add_argument("--db-password", default=None, help="Overrides the resolved SOURCE password.")
+    db_promote.add_argument(
+        "--to", required=True, metavar="JDBC_URL",
+        help="The TARGET's JDBC URL (e.g. jdbc:postgresql://host:5432/dbname). Required.",
+    )
+    db_promote.add_argument("--to-user", default=None, help="TARGET username.")
+    db_promote.add_argument("--to-password", default=None, help="TARGET password.")
+    db_promote.add_argument(
+        "--dry-run", action="store_true",
+        help="Preview only -- writes NOTHING to the target (no schema realization, no data copy), "
+             "even if the target has no schema yet.",
+    )
+
     # STOR-18 (docs/ACCEPTED_BOUNDARIES.md B9): bulk pre-drop-snapshot restore, against a RUNNING
     # app's SchemaAcknowledgmentController batch endpoint (SUPERUSER-gated, same auth path
     # `monitor hotswap` already uses -- X-Super-User-Key, never the business X-Api-Key).
@@ -13742,6 +13897,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_schema_ahead(args)
         if args.command == "db" and args.db_command == "reverse-migrate":
             return run_db_reverse_migrate(args)
+        if args.command == "db" and args.db_command == "promote":
+            return run_db_promote(args)
         if args.command == "db" and args.db_command == "restore":
             return run_db_restore(args)
         if args.command == "db" and args.db_command == "adopt-ownership":

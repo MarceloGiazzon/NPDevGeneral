@@ -2601,6 +2601,32 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             return "Ephemeral".equals(strategy) || "RecreateOnAppStart".equals(strategy);
         }
 
+        /**
+         * 3.3 (B10 one-command H2-&gt;Postgres promotion, package 3.3): a copy of this manifest with
+         * only {@code engine} replaced. {@link #pinDialectFromManifest} trusts {@code manifest.engine()}
+         * unconditionally to pin {@link com.npdev.kernel.storage.sql.SqlDialects#active()} before any
+         * DDL runs -- correct for a normal boot (the manifest's declared engine IS the app's own
+         * configured database), and WRONG for {@code PromoteMain} realizing schema on a genuinely
+         * different target engine, where it would pin the SOURCE app's home engine against the
+         * TARGET connection. Rather than weaken {@code pinDialectFromManifest}'s trust for every
+         * caller (a normal boot has no reason to doubt its own manifest, and REG-106 already
+         * documents why that pinning must stay unconditional and early), {@code PromoteMain} instead
+         * hands {@link #migrate(Flyway, SchemaManifest)} a manifest that HONESTLY says which engine
+         * it is about to run DDL against -- derived from {@code SqlDialects.forConnection} on the
+         * target, the same "trust the socket, not a config file" reasoning
+         * {@link MigrationMutex#acquire} and every {@code *Main} class already apply. Every other
+         * field is unchanged: table/column declarations do not vary by engine.
+         */
+        SchemaManifest withEngine(String newEngine) {
+            return new SchemaManifest(newEngine, storageMode, physicalDatabase, schemaFingerprint,
+                    internalTables, businessTables, businessTableColumns, businessTableAdditiveColumns,
+                    businessTableColumnTypes, businessTableRenamedColumns, businessTableRenames,
+                    allowDestructiveRecreate, strategy, scope, destructiveRecreateConfirmation,
+                    destructiveAcknowledgment, businessTableRequiredColumns, businessTableColumnDefaultLiterals,
+                    businessTableExpressionDefaultColumns, businessTableUniqueConstraints, planItemStableStrings,
+                    ownership, businessTableForeignKeys, businessTableIndexes, businessTableColumnDefaultExpressions);
+        }
+
         boolean destructiveAllowed() {
             return "DropAndRecreateOnStructureChange".equals(strategy)
                     && allowDestructiveRecreate
