@@ -311,6 +311,11 @@ FEATURE_DETECTORS = {
     # per-op-tracked-separately discipline as copy/split/lookup above.
     "conversions.op.merge": lambda m: _has_conversion_op(m, "merge"),
     "conversions.op.convert": lambda m: _has_conversion_op(m, "convert"),
+    # Wave 4 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 4.2, B13 vocabulary expansion): coalesce/case,
+    # both plain ANSI SQL (COALESCE(...) / CASE WHEN...END) -- same per-op-tracked-separately
+    # discipline as every op above.
+    "conversions.op.coalesce": lambda m: _has_conversion_op(m, "coalesce"),
+    "conversions.op.case": lambda m: _has_conversion_op(m, "case"),
     # PACK-9: an app's root provides.roleBindings map -- the app-visible half of the role('logicalName')
     # compile-time binding token (PackRoleBindingRewriter, NPDevContract/dsl parser package). The
     # token itself lives inside a pack.json a composing app imports, not in model.json, so it is

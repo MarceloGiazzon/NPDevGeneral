@@ -1,0 +1,7 @@
+{
+  "id": "s9-case-region-label",
+  "claims": ["ADD_REQUIRED_COLUMN:s9_orders:region_label"],
+  "description": "Wave 4 (B13 vocabulary expansion): generator-produced convert.sql for a declared case conversion (op=case, concept=Order), captured verbatim from ConversionHookEmitterDeclaredConversionsTest and adapted only to a test-unique table name.",
+  "verifySql": "SELECT COUNT(*) FROM s9_orders WHERE region_label IS NULL",
+  "verifyExpect": 0
+}

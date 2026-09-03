@@ -190,6 +190,18 @@ public final class CompiledModelCanonicalJson {
             if (conversion.with() != null) {
                 node.put("with", conversion.with());
             }
+            if (!conversion.when().isEmpty()) {
+                ArrayNode when = node.putArray("when");
+                for (CompiledConversion.CompiledConversionCaseWhen clause : conversion.when()) {
+                    ObjectNode clauseNode = JsonNodeFactory.instance.objectNode();
+                    clauseNode.put("equals", safe(clause.equals()));
+                    clauseNode.put("then", clause.then());
+                    when.add(clauseNode);
+                }
+            }
+            if (conversion.elseValue() != null) {
+                node.put("elseValue", conversion.elseValue());
+            }
             conversions.add(node);
         }
         return conversions;

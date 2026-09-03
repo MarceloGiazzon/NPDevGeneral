@@ -3354,11 +3354,13 @@
             "split",
             "lookup",
             "merge",
-            "convert"
+            "convert",
+            "coalesce",
+            "case"
           ]
         },
         "from": {
-          "description": "A plain field name for copy/split/convert; an array of 2+ field names for merge (S8 W1.2).",
+          "description": "A plain field name for copy/split/convert/case; an array of 2+ field names for merge/coalesce (S8 W1.2, Wave 4).",
           "oneOf": [
             {
               "type": "string",
@@ -3394,6 +3396,18 @@
         },
         "with": {
           "description": "S8 W1.2: merge's separator, concatenated between each pair of 'from' fields. Optional; defaults to \"\" (no separator) when omitted.",
+          "type": "string"
+        },
+        "when": {
+          "description": "Wave 4 (B13 vocabulary expansion): case's 1+ literal equals/then branches, evaluated in declared order, first match wins.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/conversionCaseWhen"
+          }
+        },
+        "else": {
+          "description": "Wave 4 (B13 vocabulary expansion): case's default literal when no 'when' clause matches. Optional; a row matching nothing and declaring no 'else' is left NULL.",
           "type": "string"
         }
       },
@@ -3482,6 +3496,47 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "coalesce"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "op": {
+                "const": "case"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "from",
+              "to",
+              "when"
+            ],
+            "properties": {
+              "from": {
+                "type": "string"
+              }
+            }
+          }
         }
       ],
       "additionalProperties": false
@@ -3526,6 +3581,24 @@
         "equals": {
           "type": "string",
           "minLength": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "conversionCaseWhen": {
+      "description": "Wave 4 (B13 vocabulary expansion): one branch of a case conversion. equals/then are literal values, never field references.",
+      "type": "object",
+      "required": [
+        "equals",
+        "then"
+      ],
+      "properties": {
+        "equals": {
+          "type": "string",
+          "minLength": 1
+        },
+        "then": {
+          "type": "string"
         }
       },
       "additionalProperties": false

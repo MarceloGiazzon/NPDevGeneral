@@ -714,6 +714,29 @@ public final class JsonModelParser {
             // drop a legitimate " " or "" separator, so read it raw instead.
             JsonNode withNode = conversionNode.get("with");
             String with = (withNode != null && !withNode.isNull()) ? withNode.asText() : null;
+            // Wave 4 (B13 vocabulary expansion): "when" is case's list of literal equals/then
+            // branches; "else" is a literal too (JSON key "else", read raw like "with" above since
+            // an explicit "" is a legitimate replacement value, not an absent one).
+            List<com.npdev.dsl.v1.ast.ConversionCaseWhenAst> when = new ArrayList<>();
+            JsonNode whenNode = conversionNode.get("when");
+            if (whenNode != null && !whenNode.isNull()) {
+                if (!whenNode.isArray()) {
+                    throw new IOException("conversions[" + id + "].when must be an array");
+                }
+                for (JsonNode whenElement : whenNode) {
+                    // "then" is a literal replacement value -- read raw like "with"/"else", since an
+                    // explicit "" is legitimate and readText()'s isBlank() collapse would wrongly turn
+                    // it into a missing value.
+                    JsonNode thenNode = whenElement.get("then");
+                    String thenValue = (thenNode != null && !thenNode.isNull()) ? thenNode.asText() : null;
+                    when.add(new com.npdev.dsl.v1.ast.ConversionCaseWhenAst(
+                            requiredText(whenElement, "equals"),
+                            thenValue
+                    ));
+                }
+            }
+            JsonNode elseNode = conversionNode.get("else");
+            String elseValue = (elseNode != null && !elseNode.isNull()) ? elseNode.asText() : null;
             out.add(new com.npdev.dsl.v1.ast.ConversionAst(
                     id,
                     requiredText(conversionNode, "concept"),
@@ -724,7 +747,9 @@ public final class JsonModelParser {
                     match,
                     readText(conversionNode, "set"),
                     mergeFrom,
-                    with
+                    with,
+                    when,
+                    elseValue
             ));
         }
         return out;

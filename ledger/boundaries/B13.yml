@@ -1,6 +1,6 @@
 id: B13
-title: "Conversion hooks are SQL-only -- no Java DataMigrationHook (declarative conversions[] vocabulary covers copy/split/lookup/merge/convert)"
+title: "Conversion hooks are SQL-only -- no Java DataMigrationHook (declarative conversions[] vocabulary covers copy/split/lookup/merge/convert/coalesce/case)"
 codeLinked: true
-codeLinkedNote: "PackValidation now prefixes unresolvable join path errors with B13:unresolvable_join_path:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching."
+codeLinkedNote: "PackValidation now prefixes unresolvable join path errors with B13:unresolvable_join_path:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching. Wave 4 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 4.2, REG-203) widened the vocabulary to seven ops -- coalesce (COALESCE(...), reuses merge's mergeFrom/to shape) and case (CASE WHEN...END, literal value mapping) -- both plain ANSI SQL needing no dialect-specific emission; classification and this code link are unchanged."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B13"
 classification: HITTABLE

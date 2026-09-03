@@ -1,0 +1,126 @@
+id: REG-203
+title: >-
+  Expand the B13 declarative conversion vocabulary with coalesce/case -- two genuinely new
+  primitives, not concat/cast duplicates
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 4.2 (B13), wave 4. The plan's own text named six
+  candidate primitives to add two-per-wave -- concat, coalesce, case, cast, regex, normalize -- but
+  by the time this package started, `merge` (S8 W1.2) already compiles to a portable `CONCAT(...)`
+  and `convert` already compiles to a `CAST(...)`, so `concat`/`cast` as separately-named ops would
+  have been pure duplication of existing semantics, not vocabulary growth. This package builds the
+  two genuinely NEW primitives from that list instead: coalesce and case, both plain ANSI SQL
+  (`COALESCE(...)` / `CASE WHEN...THEN...ELSE...END`) needing no dialect-specific emission.
+surface: dsl/compiler (ast+compiled+parser+canonical-json), generator/dbconfig, corpus, boundary register
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConversionAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConversionCaseWhenAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConversion.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/ConversionHookEmitterDeclaredConversionsTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerDeclaredConversionsTest.java
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/s9-coalesce-contact-email/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/s9-coalesce-contact-email/convert.sql
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/s9-case-region-label/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/s9-case-region-label/convert.sql
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/s9-case-no-else/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/s9-case-no-else/convert.sql
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - scripts/quality/dsl_coverage/features.py
+  - ledger/boundaries/B13.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  Two new conversion ops, each reusing an existing sibling shape (the same discipline S8 W1.2 set
+  for merge/convert) rather than inventing new JSON structure where an existing one already fits:
+
+  **coalesce** reuses `merge`'s `mergeFrom` (2+ source fields, the array-shaped JSON `"from"`) + `to`
+  shape, but compiles to `COALESCE(col1, col2, ...)` (first non-null source wins) instead of
+  concatenating every source. Unlike merge, no "every source non-null" WHERE guard is emitted --
+  COALESCE's whole point is tolerating NULLs among its arguments. A row where every source is NULL
+  still yields NULL from COALESCE, and the closing `ALTER COLUMN ... SET NOT NULL` then fails the
+  boot loudly on it -- same X0 discipline (a value the op cannot populate is a loud boot failure,
+  never a silent partial conversion) every existing op already follows.
+
+  **case** maps a source field's literal values to literal replacements: `from`/`to` (copy/convert's
+  own shape) plus a new `when` array (1+ `{equals, then}` literal pairs, evaluated in declared order,
+  first match wins -- new `ConversionCaseWhenAst`/`CompiledConversion.CompiledConversionCaseWhen`
+  nested records) and an optional `else`/`elseValue` default (JSON key `else`; the Java accessor is
+  `elseValue()` since `else` is a reserved word). Compiles to a portable `CASE WHEN col = 'x' THEN
+  'y' ... ELSE 'z' END`. A row matching no `when` clause on a conversion declaring no `else` is left
+  NULL by the bare `CASE ... END` (no ELSE clause emitted at all, proven by a dedicated generator
+  unit test), and the closing SET NOT NULL fails the boot loudly on it -- same X0 discipline.
+
+  Both ops are plain ANSI SQL (no `LIMIT`/`OFFSET`, no `ON CONFLICT`, no dialect-specific type
+  syntax beyond what `portableSqlType`/`SqlDialect` already resolve for every other op), so
+  `ConversionHookEmitter` needed no new dialect branching and stays inside STOR-1's single
+  dialect-bound-SQL package.
+
+  Threaded through every seam the existing five ops already use (`with`'s own precedent for a
+  literal, non-field-reference conversion property): `JsonModelParser` (raw `when[]`/`else`/`then`
+  reads, same "" != absent reasoning `with` already established) -> `ModelCompiler.compileConversions`
+  (validation: coalesce needs 2+ mergeFrom fields "or that's just copy", same message shape merge's
+  own check uses; case needs 1+ `when` clauses) -> `CompiledConversion` -> `ConversionHookEmitter`
+  (SQL emission) -> `CompiledModelCanonicalJson`/`CompiledModelCanonicalJsonReader` (round-trip).
+  `ModelResolver` needed no change (conversions[] already passes through it generically; this widens
+  fields inside an existing array item, not a new top-level array, so the REG-108 four-seam rule for
+  a brand-new top-level array does not apply here).
+
+  Corpus coverage (`check-dsl-coverage.py`): `NPDevSamples/dsl-conformance-max` gained
+  `0006-coalesce-customer-contact-email` and `0007-case-order-region-label` (two new fields each on
+  `ConversionDemoCustomer`/`ConversionDemoOrder`), and `scripts/quality/dsl_coverage/features.py`
+  gained `conversions.op.coalesce`/`conversions.op.case`, same per-op-tracked-separately discipline
+  every existing op already has -- a regression to only five ops now zero-coverage-fails the build.
+
+  Register updated across the bookkeeping seams (plan section 5): `ledger/boundaries/B13.yml` title
+  + `codeLinkedNote` widened to seven ops; `NPDevContract/schemas/accepted-boundaries.json`'s B13
+  `workaround` widened; `docs/ACCEPTED_BOUNDARIES.md`'s B13 row widened (5 ops -> 7 ops) with a new
+  paragraph explaining both ops' design AND explicitly recording why `concat`/`cast` were skipped
+  (already covered by merge/convert). B13's `classification` is UNCHANGED (HITTABLE) -- this widens
+  the vocabulary, it does not lift the boundary (Java hooks are still out of scope).
+
+  Test coverage, both layers every existing op already has: `ConversionHookEmitterDeclaredConversionsTest`
+  gained SQL-shape assertions for both ops (happy path + unresolvable-field + insufficient-arity
+  compile-error cases + a dedicated "no else omits the ELSE clause" shape test), and
+  `ConversionHookRunnerDeclaredConversionsTest` gained real-H2 data-layer proof (three new fixture
+  pairs under `s9-*`): coalesce picking a non-null fallback source + idempotent rerun, coalesce with
+  every source NULL failing the boot loudly, case mapping both a matched value and an unmatched
+  value (via `else`) + idempotent rerun, and case with no `else` on an unmatched value failing the
+  boot loudly.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/ConversionHookEmitterDeclaredConversionsTest.java
+  asserts: >-
+    (Guard.ref names one representative file for check-done-item-guards.py's single-path resolver;
+    the full coverage spans two more files: ConversionHookRunnerDeclaredConversionsTest's four new
+    real-H2 data-layer cases (NPDevRuntimeHost), and check-dsl-coverage.py's two new
+    conversions.op.coalesce/conversions.op.case tracked features against the corpus witness.)
+    Narrow verification during implementation: `:NPDevContract:dsl:test` full suite green;
+    `:generator:test --tests "*ConversionHookEmitter*"` green (18/18, including all new cases);
+    `check-dsl-coverage.py` and `check-schema-mirror-consistency.py` both clean.
+    `security-pattern-sweep.py` flagged both new UPDATE statements (sql-string-building,
+    generation-time only -- table/column names come from SqlIdentifierSupport, matching every
+    sibling op's already-cleared shape) -- triaged and added to
+    `scripts/quality/security-pattern-sweep-allowlist.json` (fingerprints 4f637c589082,
+    7dfcb0fed696; ceiling raised 522->524 in the same commit); `check-allowlist-citations.py` clean.
+    Closing verification, all green: full `run-generator-gate.ps1` (T2, includes the deterministic-
+    generation double-build + dsl-reference-output-floor check, 2066s), full
+    `run-runtimehost-gate.ps1` (T2, assembled `simple-contact-intake` sample's own `:test` task ran
+    the new `ConversionHookRunnerDeclaredConversionsTest` cases against the real generated app + its
+    coverage ratchet, 521s), full `run-ai-knowledge-gate.ps1` (T2, 40/40 checkers -- caught this
+    item's own first draft using an invalid `type: FEATURE`, since fixed to `GAP`), and full
+    `run-kernel-quality-gate.ps1` (T2, unaffected by this diff but run for complete T2 closure, 188s).
+    All four run 2026-09-03, package closed same day as REG-204 (4.4).
+  provenRed: true

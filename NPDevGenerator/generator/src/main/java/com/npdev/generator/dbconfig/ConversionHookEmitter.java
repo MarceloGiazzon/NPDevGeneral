@@ -304,6 +304,53 @@ public final class ConversionHookEmitter {
                 claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + toCol);
                 verifyNullChecks.add(toCol);
             }
+            // Wave 4 (B13 vocabulary expansion, package 4.2): coalesce reuses merge's mergeFrom/to
+            // shape but picks the first NON-NULL source (portable COALESCE(...), ANSI SQL, no dialect
+            // branching needed) instead of concatenating every source. Unlike merge, no "every source
+            // non-null" WHERE guard is needed -- COALESCE's whole point is tolerating NULLs among its
+            // arguments; a row where ALL sources are NULL still yields NULL, and the closing SET NOT
+            // NULL then fails the boot loudly on it, the same X0 discipline every other op here uses.
+            case "coalesce" -> {
+                CompiledField toField = requireField(concept, conversion.to());
+                String toCol = SqlIdentifierSupport.columnName(toField);
+                List<String> coalesceCols = new ArrayList<>();
+                for (String coalesceField : conversion.mergeFrom()) {
+                    coalesceCols.add(SqlIdentifierSupport.columnName(requireField(concept, coalesceField)));
+                }
+                statements.add(guardedAddColumn(table, toCol,
+                        "ALTER TABLE " + table + " ADD COLUMN " + toCol + " " + portableSqlType(toField)));
+                statements.add("UPDATE " + table + " SET " + toCol + " = COALESCE(" + String.join(", ", coalesceCols)
+                        + ") WHERE " + toCol + " IS NULL");
+                statements.add("ALTER TABLE " + table + " ALTER COLUMN " + toCol + " SET NOT NULL");
+                claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + toCol);
+                verifyNullChecks.add(toCol);
+            }
+            // Wave 4 (B13 vocabulary expansion, package 4.2): case maps from's literal values to
+            // literal replacements via a portable CASE WHEN ... THEN ... ELSE ... END (ANSI SQL, no
+            // dialect branching needed) -- branches evaluated in declared order, first match wins. A
+            // row matching no WHEN and declaring no elseValue is left NULL by the bare CASE (no ELSE
+            // clause emitted), and the closing SET NOT NULL then fails the boot loudly on it.
+            case "case" -> {
+                CompiledField toField = requireField(concept, conversion.to());
+                String toCol = SqlIdentifierSupport.columnName(toField);
+                String fromCol = SqlIdentifierSupport.columnName(requireField(concept, conversion.from()));
+                StringBuilder caseExpr = new StringBuilder("CASE");
+                for (CompiledConversion.CompiledConversionCaseWhen whenClause : conversion.when()) {
+                    caseExpr.append(" WHEN ").append(fromCol).append(" = ").append(sqlStringLiteral(whenClause.equals()))
+                            .append(" THEN ").append(sqlStringLiteral(whenClause.then()));
+                }
+                if (conversion.elseValue() != null) {
+                    caseExpr.append(" ELSE ").append(sqlStringLiteral(conversion.elseValue()));
+                }
+                caseExpr.append(" END");
+                statements.add(guardedAddColumn(table, toCol,
+                        "ALTER TABLE " + table + " ADD COLUMN " + toCol + " " + portableSqlType(toField)));
+                statements.add("UPDATE " + table + " SET " + toCol + " = " + caseExpr
+                        + " WHERE " + toCol + " IS NULL");
+                statements.add("ALTER TABLE " + table + " ALTER COLUMN " + toCol + " SET NOT NULL");
+                claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + toCol);
+                verifyNullChecks.add(toCol);
+            }
             default -> throw new IllegalStateException("conversion '" + conversion.id()
                     + "' declares unrecognized op '" + conversion.op() + "'");
         }
@@ -404,6 +451,13 @@ public final class ConversionHookEmitter {
     private String portableSqlType(CompiledField field) {
         SqlDialect dialect = engine != null && engine.jdbc() ? engine.dialect() : H2Dialect.INSTANCE;
         return dialect.portableColumnType(SqlTypeSupport.sqlType(field));
+    }
+
+    /** Wave 4 (B13 vocabulary expansion): a case conversion's WHEN/THEN/ELSE operands are author
+     *  literals, not column references -- single-quoted with '' escaping, same convention merge's
+     *  own separator literal already uses inline. */
+    private static String sqlStringLiteral(String value) {
+        return "'" + value.replace("'", "''") + "'";
     }
 
     private static String splitExpression(String fromCol, String take) {
