@@ -4300,6 +4300,129 @@ def run_db_schema_ahead(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def run_db_reverse_migrate(args: argparse.Namespace) -> int:
+    """`npdev db reverse-migrate` -- B5-B, boundary-lift 2026-09-02 package 4.1. Turns `db schema-ahead`'s
+    advisory diagnosis into an action for the pure-superset case: step the live database back down to
+    match this build, behind the same acknowledgment-token discipline the forward destructive path uses.
+    Shells to `com.finalexec.db.ReverseMigrateMain` the same way `db schema-ahead` shells to
+    `SchemaAheadMain` (see that function's own docstring for why -- the diff engine lives in
+    runtimehost-core, free of Spring).
+
+    Two modes, mutually exclusive: `--preview` computes and prints the plan (and the ack token needed to
+    execute it) without running any DDL; `--ack-token <token>` recomputes the plan fresh and, only if the
+    token matches, executes it.
+
+    Exit codes, passed straight through from ReverseMigrateMain: 0 = nothing to do (not ahead, or applied
+    successfully), 1 = something needs attention (a ready/blocked preview, or a refusal), 2 = could not
+    determine.
+    """
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    manifest_resources_root = app_root / "npdev-generated" / "src" / "main" / "resources"
+    manifest_file = manifest_resources_root / "npdev" / "db" / "schema-realization-manifest.json"
+
+    def fail(message: str) -> int:
+        print(f"npdev db reverse-migrate: {message}", file=sys.stderr)
+        return 2
+
+    if not args.preview and not args.ack_token:
+        return fail("either --preview or --ack-token <token> is required.")
+    if args.preview and args.ack_token:
+        return fail("--preview and --ack-token are mutually exclusive -- preview first, then re-run "
+                    "with the token it prints.")
+
+    if not manifest_file.is_file():
+        return fail(f"no schema-realization-manifest.json found under {app_root} (looked for "
+                    f"{manifest_file}). Generate/build this app at least once first.")
+
+    if args.url:
+        url = args.url
+        user = args.db_user
+        password = args.db_password or ""
+    else:
+        # Same resolution order as run_db_schema_ahead/run_db_verify: prefer _ops/resolved-db-plan.json
+        # (emitted for every generated app, already fully-resolved), fall back to db.definition.json.
+        plan_path = app_root / "_ops" / "resolved-db-plan.json"
+        db_def_path = app_root / "db.definition.json"
+        if plan_path.is_file():
+            plan = read_json(plan_path)
+            if not plan.get("physicalDatabase", False):
+                print("npdev db reverse-migrate: this app has no physical database (InMemory storage) -- nothing to reverse.")
+                return 0
+            try:
+                engine_key = npdev_engines.resolve(plan.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {plan_path})")
+            url = plan.get("jdbcUrl") or None
+            if url is None:
+                return fail(f"{plan_path} has no jdbcUrl recorded -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else (plan.get("username") or None)
+            password = args.db_password if args.db_password is not None else (plan.get("password") or "")
+        elif db_def_path.is_file():
+            database = read_json(db_def_path).get("database", {})
+            try:
+                engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {db_def_path})")
+            if engine_key == "inmemory":
+                print("npdev db reverse-migrate: this app has no physical database (InMemory storage) -- nothing to reverse.")
+                return 0
+            url = _jdbc_url_for_verify(engine_key, app_root, database)
+            if url is None:
+                return fail(f"do not know how to build a JDBC URL for engine '{engine_key}' -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else database.get("username")
+            password = args.db_password if args.db_password is not None else (database.get("password") or "")
+        else:
+            return fail(f"neither {plan_path} nor {db_def_path} was found, and no --url was given. "
+                        f"Pass --url (with --db-user/--db-password as needed), or run this from "
+                        f"the app's own directory.")
+
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        return fail("runtimehost jars are not staged -- run `npdev setup`")
+    java_bin = java_launcher()
+    if java_bin is None:
+        return fail("no java found (see `npdev doctor`'s java checks)")
+
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        return fail(f"no built jar found under {app_root / 'build' / 'libs'}. Build this app at "
+                    f"least once first (e.g. `_ops/Build-FinalApp.ps1`).")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-db-reverse-migrate-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([
+            str(manifest_resources_root), str(Path(libs) / "*"), str(extracted_libs / "*"),
+        ])
+
+        command = [java_bin, "-cp", classpath, "com.finalexec.db.ReverseMigrateMain", "--url", url]
+        if user:
+            command += ["--user", user]
+        if password:
+            command += ["--password", password]
+        if args.preview:
+            command += ["--preview"]
+        else:
+            command += ["--ack-token", args.ack_token]
+
+        try:
+            # cwd=app_root: same H2Local app-relative URL reasoning as run_db_verify.
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return fail(f"could not run ReverseMigrateMain ({exc})")
+
+    if completed.stdout:
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
 # spring-jcl's LogAdapter writes this to STDOUT (not stderr) on first use whenever a
 # commons-logging jar is also on the classpath -- which it is, because `db verify` runs against the
 # app's own fat-jar libraries. It is not ours, it is not actionable by the reader, and on stdout it
@@ -11861,6 +11984,38 @@ def build_parser() -> argparse.ArgumentParser:
              "--report') -- this command always reports; there is no other mode.",
     )
 
+    # B5-B (boundary-lift 2026-09-02, package 4.1, docs/ACCEPTED_BOUNDARIES.md B5): turns `db
+    # schema-ahead`'s advisory diagnosis into an action for the pure-superset case -- step the live
+    # database back down to match this build, behind the same acknowledgment-token discipline the
+    # forward destructive path uses.
+    db_reverse_migrate = db_sub.add_parser(
+        "reverse-migrate",
+        help="Step a live database that was migrated past this build (B5) back down to match it, for "
+             "the pure-superset case only -- with no app boot required.",
+    )
+    db_reverse_migrate.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory (holds npdev-generated/, a built jar under build/libs/, and -- unless "
+             "--url is given -- _ops/resolved-db-plan.json or db.definition.json for the connection). "
+             "Defaults to the current directory.",
+    )
+    db_reverse_migrate.add_argument(
+        "--url", default=None,
+        help="An explicit JDBC URL, overriding the app's own resolved connection.",
+    )
+    db_reverse_migrate.add_argument("--db-user", default=None, help="Overrides the resolved username.")
+    db_reverse_migrate.add_argument("--db-password", default=None, help="Overrides the resolved password.")
+    db_reverse_migrate.add_argument(
+        "--preview", action="store_true",
+        help="Compute and print the reverse-migration plan (itemized, plus the ack token needed to "
+             "execute it) without running any DDL. Run this first.",
+    )
+    db_reverse_migrate.add_argument(
+        "--ack-token", default=None, metavar="TOKEN",
+        help="Execute the reverse migration -- the token must match the one --preview just printed for "
+             "the CURRENT live database; a stale or mismatched token refuses.",
+    )
+
     # STOR-18 (docs/ACCEPTED_BOUNDARIES.md B9): bulk pre-drop-snapshot restore, against a RUNNING
     # app's SchemaAcknowledgmentController batch endpoint (SUPERUSER-gated, same auth path
     # `monitor hotswap` already uses -- X-Super-User-Key, never the business X-Api-Key).
@@ -13585,6 +13740,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_verify(args)
         if args.command == "db" and args.db_command == "schema-ahead":
             return run_db_schema_ahead(args)
+        if args.command == "db" and args.db_command == "reverse-migrate":
+            return run_db_reverse_migrate(args)
         if args.command == "db" and args.db_command == "restore":
             return run_db_restore(args)
         if args.command == "db" and args.db_command == "adopt-ownership":

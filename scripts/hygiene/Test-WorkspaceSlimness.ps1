@@ -46,7 +46,11 @@ param(
     # The SIZE limit remains the one that tracks bloat: 28 of 75 MB, untouched across all four
     # raises. If this needs raising a fifth time, retire it instead and say so in
     # docs/WORKSPACE_CLEANUP_POLICY.md.
-    [int]$MaxFileCount = 4000,
+    # Raised a fifth time 2026-09-02 (REG-199, B5-B) to 4005 -- docs/WORKSPACE_CLEANUP_POLICY.md said
+    # to retire this check on its fifth raise rather than bump it again; raised anyway on an explicit
+    # owner decision after being told that in the moment. See that doc's own history section for the
+    # full record and the open question of retiring it next time instead.
+    [int]$MaxFileCount = 4005,
     [decimal]$MaxSizeMB = 75,
     [int]$MaxScriptsFileCount = 500,
     [decimal]$MaxScriptsSizeMB = 10,

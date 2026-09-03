@@ -144,12 +144,12 @@ final class SchemaHistoryStore {
      * (LNCH-1 remediation F2).
      */
     private static String itemsJson(SchemaDeltaReport report) {
-        try {
-            return OBJECT_MAPPER.writeValueAsString(report == null ? List.of() : report.displayStrings());
-        } catch (Exception exception) {
-            return "[]";
-        }
+        return itemsJson(report == null ? List.of() : report.displayStrings());
     }
+
+    // itemsJson(List<String>) -- the overload this delegates to -- already exists below, added for
+    // recordStepPass's own write-before-execute rows (LNCH-1 remediation R4/F5); reused as-is here
+    // rather than duplicated.
 
     /**
      * The single, shared INSERT used by every history-row writer below. A broken write is caught
@@ -169,6 +169,37 @@ final class SchemaHistoryStore {
             String ackTokenUsed,
             String outcome
     ) {
+        return insertHistoryRowCore(dataSource, fromFingerprint, toFingerprint, classification,
+                itemsJson(report), ackTokenUsed, outcome);
+    }
+
+    /** B5-B (boundary-lift 2026-09-02, package 4.1): same INSERT, for a caller (ReverseMigrationPlanner)
+     *  that diffs via the newer {@code SchemaDiffEngine}/{@code SchemaDiffItem} vocabulary (SER Phase 2)
+     *  rather than the older {@link SchemaDeltaReport}/{@code SchemaDeltaItem} ladder
+     *  {@link SchemaDeltaReport#generate} itself only builds from a live introspection in the forward
+     *  direction -- so it has a pre-built display-string list to record, never a {@link SchemaDeltaReport}. */
+    private static String insertHistoryRowWithItems(
+            DataSource dataSource,
+            String fromFingerprint,
+            String toFingerprint,
+            SchemaLifecycleExecutor.SchemaChangeClassification classification,
+            List<String> displayStrings,
+            String ackTokenUsed,
+            String outcome
+    ) {
+        return insertHistoryRowCore(dataSource, fromFingerprint, toFingerprint, classification,
+                itemsJson(displayStrings), ackTokenUsed, outcome);
+    }
+
+    private static String insertHistoryRowCore(
+            DataSource dataSource,
+            String fromFingerprint,
+            String toFingerprint,
+            SchemaLifecycleExecutor.SchemaChangeClassification classification,
+            String itemsJsonValue,
+            String ackTokenUsed,
+            String outcome
+    ) {
         String id = UUID.randomUUID().toString();
         try (Connection connection = dataSource.getConnection()) {
             ensureHistoryTable(connection);
@@ -181,7 +212,7 @@ final class SchemaHistoryStore {
                 statement.setString(3, fromFingerprint);
                 statement.setString(4, toFingerprint);
                 statement.setString(5, classification == null ? null : classification.name());
-                statement.setString(6, itemsJson(report));
+                statement.setString(6, itemsJsonValue);
                 if (ackTokenUsed == null || ackTokenUsed.isBlank()) {
                     statement.setNull(7, Types.VARCHAR);
                 } else {
@@ -241,6 +272,22 @@ final class SchemaHistoryStore {
         return insertHistoryRow(dataSource, fromFingerprint, toFingerprint, classification, report, ackTokenUsed, "PARTIAL-CRASH");
     }
 
+    /** B5-B (boundary-lift 2026-09-02, package 4.1): the reverse-migration counterpart of
+     *  {@link #insertPendingHistoryRow} -- same write-before-execute PENDING contract, for a caller
+     *  with a pre-built display-string list instead of a {@link SchemaDeltaReport} (see
+     *  {@link #insertHistoryRowWithItems}'s javadoc). {@link #markHistoryRowApplied} is reused
+     *  unchanged to flip this row to APPLIED -- it only needs the row id, not how it was built. */
+    static String insertPendingHistoryRowWithItems(
+            DataSource dataSource,
+            String fromFingerprint,
+            String toFingerprint,
+            SchemaLifecycleExecutor.SchemaChangeClassification classification,
+            List<String> displayStrings,
+            String ackTokenUsed
+    ) {
+        return insertHistoryRowWithItems(dataSource, fromFingerprint, toFingerprint, classification, displayStrings, ackTokenUsed, "PARTIAL-CRASH");
+    }
+
     /** Destructive-path "update-after" (§2.4): flips a PARTIAL-CRASH row to APPLIED once every
      * item in the pass has executed successfully. A {@code null} id (the pending insert itself
      * failed) is a safe no-op -- there is no row to update. */
@@ -267,8 +314,11 @@ final class SchemaHistoryStore {
         void run() throws SQLException;
     }
 
-    /** {@code items_json} for a plain list of human-readable step-item strings (the per-pass
-     * write-before-execute rows, LNCH-1 remediation R4 / F5), rather than a {@link SchemaDeltaReport}. */
+    /** {@code items_json} for a plain list of human-readable step-item strings, rather than a
+     * {@link SchemaDeltaReport} -- originally for the per-pass write-before-execute rows
+     * ({@link #recordStepPass}, LNCH-1 remediation R4/F5), now shared by
+     * {@link #insertHistoryRowWithItems} (B5-B, boundary-lift 2026-09-02 package 4.1) for the same
+     * reason: a caller with a pre-built display-string list instead of a {@link SchemaDeltaReport}. */
     private static String itemsJson(List<String> itemDetails) {
         try {
             return OBJECT_MAPPER.writeValueAsString(itemDetails == null ? List.of() : itemDetails);

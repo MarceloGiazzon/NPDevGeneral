@@ -1,0 +1,130 @@
+id: REG-199
+title: >-
+  Reverse migration execution -- turning B5-A's schema-ahead diagnosis into an action for the
+  pure-superset case
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-02
+closed: 2026-09-02
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 4.1 (B5-B), wave 4 -- depends on 2.3's diagnosis
+  (REG-198), which shipped last session. Before this package, a B5 schema-ahead refusal always
+  refused, even when the live database was a pure additive superset of this build's own schema (a
+  newer build's boot added a column and a table, nothing more) -- the only recovery path was
+  deploying a newer build or a manual mark-done. User selected this package explicitly among the
+  remaining Wave 3/4 options as the natural continuation of last session's work.
+surface: runtimehost-core (db), cli, B5 registry (ledger/boundaries, accepted-boundaries.json,
+  docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ReverseMigrationPlanner.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ReverseMigrateMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/DestructiveRecreationPass.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaHistoryStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/ReverseMigrationPlannerTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorReverseMigrationTest.java
+  - NPDevCli/npdev_cli.py
+  - scripts/quality/security-pattern-sweep-allowlist.json
+  - ledger/boundaries/B5.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. An operator can step a live database that was migrated past this build back down to match it,
+     for the pure-superset case, with a preview, a token, and a verified post-state. `ReverseMigrationPlanner`
+     (new, `com.finalexec.db`, package-private) computes a FRESH live diff -- never the stored
+     snapshot `SchemaAheadAnalysis` reads (that one is documented advisory-only, "never runs DDL", and
+     can go stale) -- via the SAME plumbing `SchemaImpactFacade` already uses for the Impact Report:
+     `CurrentSchemaReader` + `ShadowParityProbe.scopeToOwnedBusinessTables` + `DesiredSchemaFactory` +
+     `SchemaDiffEngine`, then reuses `SchemaAheadAnalysis.resolutionFor` (2.3's own bucketing,
+     unchanged) on the fresh result.
+
+  2. `classify()` (the pure, DB-free classification step, unit-tested directly) refuses the WHOLE
+     plan outright -- never a silent partial reversal -- in two cases: any item bucketed
+     `NEEDS_NEWER_BUILD` (this build wants something the live schema lacks; a rename can look
+     identical to an unrelated drop-plus-add from this angle, so guessing would risk data a rename
+     would have preserved), and any `DESTRUCTIVE_NARROW_TYPE` item. The second refusal matches the
+     plan document's own done-when verbatim ("type narrowing stay[s] out of scope and stay[s]
+     refused") -- caught and fixed during this session's own closing verification, since a first draft
+     let narrow-type items execute via `DestructiveRecreationPass.executeNarrowTypeDropAndRecreate`
+     before the master plan's explicit scope line was re-checked against it.
+
+  3. The acknowledgment token reuses the EXACT SAME function the forward destructive path calls --
+     `DestructiveAckToken.compute(manifest.schemaFingerprint(), <destructive items' itemKey()s>)` --
+     no new stable-string machinery, since `SchemaDiffItem.itemKey()` for a destructive item is
+     already `SchemaDeltaItem.stableString()` verbatim (`SchemaDiffEngine`'s own construction).
+     `execute()` recomputes the plan fresh every time (never trusts a caller-supplied one) and refuses
+     on any token mismatch against that fresh recomputation.
+
+  4. Execution reuses the forward destructive path's DDL primitives and safety net directly:
+     `SchemaDropSnapshotWriter.snapshotBeforeDrop` (unchanged), a write-before-execute
+     `SchemaHistoryStore` row (PARTIAL-CRASH -> APPLIED, same crash-safety discipline as
+     `executeSurgicalDestruction`), and `DestructiveRecreationPass`'s `executeDropColumn`/
+     `executeDropTableCascade` (widened from `private` to package-private for this reuse, same
+     precedent `executeNarrowTypeDropAndRecreate` already set). No DDL string duplicated anywhere.
+
+  5. Clearing the B5-ahead gate needed no new "unblock the boot" plumbing:
+     `SchemaHistoryStore.databaseMigratedPastThisBuild` reads only `npdev_schema_history`'s
+     most-recent `APPLIED`/`MANUALLY_MARKED_DONE` row, never the live schema or the stored-fingerprint
+     column directly -- so `execute()` only inserts one more history row
+     (`from = <ahead fingerprint>, to = manifest.schemaFingerprint(), outcome = APPLIED`) and the very
+     next normal boot's own untouched `beforeMigrate`/`afterMigrate` naturally re-diffs the now-reverted
+     live schema, finds it already matches, and converges the stored fingerprint/snapshot through the
+     SAME single-writer path 2.3 already established -- proven by the integration test's final step,
+     which runs the REAL `SchemaLifecycleExecutor.beforeMigrate` after a real reversal and asserts a
+     clean boot with nothing destructive left to do.
+
+  6. `npdev db reverse-migrate` (new, `ReverseMigrateMain`, mirroring `SchemaAheadMain`'s exact
+     no-Spring shape) gives an operator `--preview` (itemized plan + computed token, no DDL) and
+     `--ack-token <token>` (execute) modes with no app boot required -- precisely when this matters
+     most, the same reasoning `db schema-ahead` already established. `run_db_reverse_migrate` in
+     `npdev_cli.py` shells to it exactly the way `run_db_schema_ahead` shells to `SchemaAheadMain`.
+
+  A `SchemaHistoryStore` writer overload (`insertHistoryRowWithItems`/`insertPendingHistoryRowWithItems`)
+  was needed for a caller with a pre-built display-string list rather than a `SchemaDeltaReport` --
+  caught and fixed a real duplicate-method compile error during closing verification (an identically-
+  shaped `itemsJson(List<String>)` helper already existed for `recordStepPass`'s own rows; reused it
+  rather than leaving two).
+
+  Two new false-positive `sql-string-building` hits in the security-pattern-sweep (fingerprints
+  03a72057e3c7, 0d88dda87e0c) were triaged and allowlisted -- both are plain prose inside `classify()`'s
+  `Blocked` reason strings that happen to contain the word "drop" near string concatenation, never SQL.
+  frozenCount raised 517 -> 519.
+
+  Also caught and fixed during closing verification: the integration test's own Trigger C timestamp
+  seeding copied the sibling `SchemaAheadDiagnosisTest`'s `+1 hour` offset verbatim, which works there
+  only because that test never writes another real-time-stamped row afterward. This test's own
+  `execute()` call does (a real, later write once the reverse migration applies), so an hour-in-the-
+  future seed made that later real write permanently unable to catch up and the ahead-gate never
+  cleared. Fixed by anchoring the seeded row 1ms past build N's own recorded timestamp instead of a
+  fresh `System.currentTimeMillis()` call -- deterministic given real time only moves forward, with no
+  dependency on how much wall-clock time the intervening DB work actually takes.
+
+  Register updated across all three non-code seams (ledger/boundaries/B5.yml,
+  NPDevContract/schemas/accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md). B5 stays HITTABLE:
+  narrowed further (the pure-superset case is now actionable), not lifted -- ambiguous/mixed diffs and
+  type-narrowing diffs still refuse unconditionally, matching the plan's own summary table ("Lifted for
+  SAFE/DETERMINISTIC only").
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorReverseMigrationTest.java
+  asserts: >-
+    Two integration scenarios against a real H2 in-memory database, driven through the REAL
+    SchemaLifecycleExecutor boot path where it matters (build N's fresh-install afterMigrate, and the
+    final re-boot at build N after reversal): (1) a pure-superset ahead diff (a newer build added a
+    column and a table via real DDL) -- plan() finds exactly the 2 destructive items, execute() refuses
+    a wrong token without touching DDL (columns/table still present), execute() with the correct token
+    actually drops the column and the table, the B5-ahead gate clears, and the REAL beforeMigrate then
+    boots clean with nothing destructive left to do. (2) a rename-shaped diff (this build wants a
+    column the live schema doesn't have, alongside an extra one) -- refuses as ambiguous, no DDL runs.
+    ReverseMigrationPlannerTest (runtimehost-core, pure/no-DB) covers classify()'s bucket mapping
+    directly: pure-superset -> Ready with the correct token, a NEEDS_NEWER_BUILD item -> Blocked, a
+    DESTRUCTIVE_NARROW_TYPE item -> Blocked (out of scope), all-PROCEED_IGNORING / empty -> NothingToDo.
+    Closing verification: pwsh -NoProfile -File scripts/quality/run-all-gates.ps1 (T2) -- rerun to
+    green twice after fixing three real issues found during closing verification (a duplicate-method
+    compile error in SchemaHistoryStore, two security-pattern-sweep false positives, and the test's own
+    Trigger C timestamp race). ALL 4 T2 GATES GREEN on the final committed code (generator, runtimeHost
+    -- including both new test files, 717 total tests all passing -- kernel, aiKnowledge with 519/519
+    triaged security-pattern hits and 33/33 twin-pair rules).
+  provenRed: true

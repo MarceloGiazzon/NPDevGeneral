@@ -33,8 +33,8 @@
     {
       "id": "B5",
       "kind": "HITTABLE",
-      "userFacingText": "This database was migrated by a newer build. Deploy a build at or after that version -- downgrade is not supported. The refusal names exactly what differs, classified as safe to ignore / needing the newer build / needing a destructive downgrade.",
-      "workaround": "Roll forward, or use mark-done deliberately after verifying by hand (or with `npdev db verify`). Run `npdev db schema-ahead --report` for the same itemized diagnosis without booting the app.",
+      "userFacingText": "This database was migrated by a newer build. Deploy a build at or after that version, or -- for a pure-superset ahead diff (nothing this build wants is missing) -- reverse it back down. Any ambiguous or type-narrowing diff still refuses unconditionally. The refusal names exactly what differs, classified as safe to ignore / needing the newer build / needing a destructive downgrade.",
+      "workaround": "Roll forward, or use mark-done deliberately after verifying by hand (or with `npdev db verify`). Run `npdev db schema-ahead --report` for the itemized diagnosis without booting the app, or `npdev db reverse-migrate --preview` / `--ack-token <token>` to step a pure-superset ahead database back down.",
       "enforcingDiagnosticCodes": ["B5:schema_ahead_detected"]
     },
     {
