@@ -2,6 +2,7 @@ package com.finalexec.db;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.schemaevolution.RenameResolution;
+import com.npdev.kernel.concepts.ExpressionBackfillRiskClassifier;
 
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
@@ -29,6 +30,67 @@ import javax.sql.DataSource;
 final class BackfillPass {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    /**
+     * BOUNDARY_LIFT_PLAN_2026-09-02 package 3.1 (B2): which {@link ExpressionBackfillRiskClassifier.Tier}
+     * an expression-default candidate must be at or below to auto-apply without an operator
+     * acknowledgment. Overridable with {@code -Dnpdev.schema.backfill.auto-apply=none|safe|safe-and-reviewable}
+     * -- {@code HIGH_RISK} never auto-applies under any mode; that ladder rung deliberately does not
+     * exist (see the plan's rejection of a blanket {@code --force}/{@code auto-acknowledge-backfills}
+     * escape hatch).
+     */
+    private static final String AUTO_APPLY_MODE_PROPERTY = "npdev.schema.backfill.auto-apply";
+    private static final String AUTO_APPLY_MAX_ROWS_PROPERTY = "npdev.schema.backfill.auto-apply-max-rows";
+    private static final long DEFAULT_AUTO_APPLY_MAX_ROWS = 10_000L;
+
+    private enum AutoApplyMode {
+        NONE("none"), SAFE("safe"), SAFE_AND_REVIEWABLE("safe-and-reviewable");
+
+        private final String propertyValue;
+
+        AutoApplyMode(String propertyValue) {
+            this.propertyValue = propertyValue;
+        }
+
+        boolean eligible(ExpressionBackfillRiskClassifier.Tier tier) {
+            return switch (this) {
+                case NONE -> false;
+                case SAFE -> tier == ExpressionBackfillRiskClassifier.Tier.SAFE;
+                case SAFE_AND_REVIEWABLE -> tier == ExpressionBackfillRiskClassifier.Tier.SAFE
+                        || tier == ExpressionBackfillRiskClassifier.Tier.REVIEWABLE;
+            };
+        }
+    }
+
+    private static AutoApplyMode resolveAutoApplyMode() {
+        String configured = System.getProperty(AUTO_APPLY_MODE_PROPERTY);
+        if (configured == null || configured.isBlank()) {
+            return AutoApplyMode.SAFE;
+        }
+        for (AutoApplyMode mode : AutoApplyMode.values()) {
+            if (mode.propertyValue.equalsIgnoreCase(configured.trim())) {
+                return mode;
+            }
+        }
+        // A typo in an operator-set property must not silently widen or narrow what auto-applies.
+        System.out.println("NPDev schema lifecycle: ignoring unrecognized " + AUTO_APPLY_MODE_PROPERTY
+                + "='" + configured + "' (expected none|safe|safe-and-reviewable); using the default 'safe'.");
+        return AutoApplyMode.SAFE;
+    }
+
+    private static long resolveAutoApplyMaxRows() {
+        String configured = System.getProperty(AUTO_APPLY_MAX_ROWS_PROPERTY);
+        if (configured == null || configured.isBlank()) {
+            return DEFAULT_AUTO_APPLY_MAX_ROWS;
+        }
+        try {
+            return Math.max(0L, Long.parseLong(configured.trim()));
+        } catch (NumberFormatException ignored) {
+            System.out.println("NPDev schema lifecycle: ignoring unparseable " + AUTO_APPLY_MAX_ROWS_PROPERTY
+                    + "='" + configured + "'; using the default " + DEFAULT_AUTO_APPLY_MAX_ROWS + ".");
+            return DEFAULT_AUTO_APPLY_MAX_ROWS;
+        }
+    }
 
     private BackfillPass() {
     }
@@ -156,6 +218,60 @@ final class BackfillPass {
                     + "'<prefix>-' || CAST(id AS VARCHAR(36)) WHERE <column> IS NULL, then ALTER TABLE <table> "
                     + "ALTER COLUMN <column> SET NOT NULL -- or make the field optional. See "
                     + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
+        }
+        // BOUNDARY_LIFT_PLAN_2026-09-02 package 3.1 (B2): a SAFE-classified candidate (constant,
+        // single-column copy, or a pure same-row arithmetic/comparison/logical expression -- never a
+        // function call) whose Pass-1 evaluation already shows zero failing rows and a row count under
+        // the configured threshold applies automatically -- no operator ever proves what the platform
+        // can already prove itself. REVIEWABLE and HIGH_RISK candidates (and any SAFE one over the row
+        // threshold, or with a failing row) fall through unchanged to the acknowledgment path below.
+        if (!expressionCandidates.isEmpty()) {
+            AutoApplyMode mode = resolveAutoApplyMode();
+            long maxRows = resolveAutoApplyMaxRows();
+            System.out.println("NPDev schema lifecycle: expression-default backfill auto-apply mode is '"
+                    + mode.propertyValue + "' (auto-apply-max-rows=" + maxRows + "; override with -D"
+                    + AUTO_APPLY_MODE_PROPERTY + "=none|safe|safe-and-reviewable and -D"
+                    + AUTO_APPLY_MAX_ROWS_PROPERTY + "=<n>).");
+
+            List<ExpressionBackfillPreview.Item> autoApply = new ArrayList<>();
+            for (ExpressionBackfillPreview.Item candidate : expressionCandidates) {
+                ExpressionBackfillRiskClassifier.Tier tier =
+                        ExpressionBackfillRiskClassifier.classify(candidate.expression());
+                if (mode.eligible(tier) && !candidate.hasFailures() && candidate.rowsAffected() <= maxRows) {
+                    autoApply.add(candidate);
+                }
+            }
+
+            if (!autoApply.isEmpty()) {
+                List<String> autoApplied = new ArrayList<>();
+                try {
+                    SchemaHistoryStore.recordStepPass(dataSource, manifest, "EXPRESSION_BACKFILL_AUTO_SAFE",
+                            autoApply.stream()
+                                    .map(candidate -> "BACKFILL " + candidate.table() + "." + candidate.column()
+                                            + " EXPRESSION " + candidate.expression())
+                                    .toList(),
+                            () -> {
+                                try (Connection connection = dataSource.getConnection()) {
+                                    for (ExpressionBackfillPreview.Item candidate : autoApply) {
+                                        applyExpressionBackfill(connection, manifest, candidate);
+                                        autoApplied.add(candidate.table() + "." + candidate.column()
+                                                + " (" + candidate.rowsAffected() + " row(s))");
+                                    }
+                                }
+                            });
+                } catch (SQLException exception) {
+                    throw new IllegalStateException("Failed auto-applying SAFE expression-default backfill(s) ("
+                            + autoApplied.size() + "/" + autoApply.size() + " applied before failure: "
+                            + autoApplied + ")", exception);
+                }
+                System.out.println("NPDev schema lifecycle: AUTO-APPLIED " + autoApply.size()
+                        + " SAFE expression-default backfill(s), no acknowledgment required (B2 package 3.1): "
+                        + autoApplied);
+                // Mutate the list in place (never reassign the reference) -- expressionCandidates is
+                // captured by the acknowledgment-path lambda below, which requires it stay effectively
+                // final.
+                expressionCandidates.removeAll(autoApply);
+            }
         }
         // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): an expression default only ever backfills with an
         // explicit ControlPanel acknowledgment (the SAME PendingSchemaAcknowledgmentStore/ackToken

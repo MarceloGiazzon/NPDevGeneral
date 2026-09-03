@@ -172,4 +172,34 @@ class ComputedExpressionTest {
         java.util.Set<String> conflictsFields = ComputedExpression.referencedFields("conflicts(a, b, c)");
         assertEquals(java.util.Set.of("a", "b", "c"), conflictsFields);
     }
+
+    @Test
+    void functionCallsIsEmptyForPureArithmeticAndFieldExpressions() {
+        assertEquals(java.util.Set.of(), ComputedExpression.functionCalls("quantity * unitPrice"));
+        assertEquals(java.util.Set.of(), ComputedExpression.functionCalls("a + b == c"));
+        assertEquals(java.util.Set.of(), ComputedExpression.functionCalls("field"));
+    }
+
+    @Test
+    void functionCallsFindsADirectCall() {
+        assertEquals(java.util.Set.of("conflicts"), ComputedExpression.functionCalls("conflicts(a, b, c)"));
+    }
+
+    @Test
+    void functionCallsFindsReceiverSugarAndRecursesIntoLambdaBodyAndNestedCalls() {
+        // "items.all(...)" desugars to a call named "all"; the lambda body's own nested call
+        // ("matches") must also be found -- collectFunctionCalls (unlike collectFields) does not
+        // skip the lambda body, since a call name inside it is still a real function call.
+        assertEquals(java.util.Set.of("all", "matches"),
+                ComputedExpression.functionCalls("items.all(x => x.tag.matches(a))"));
+    }
+
+    @Test
+    void functionCallsKeepsScopePrefixedNameAsDeclared() {
+        // DIRECT_FUNCTION_NAMES parses "scope.exists" as one call name rather than
+        // receiver.method(...) sugar -- ExpressionBackfillRiskClassifier (B2) depends on seeing
+        // this exact prefixed name to flag a cross-record expression HIGH_RISK.
+        assertEquals(java.util.Set.of("scope.exists"),
+                ComputedExpression.functionCalls("scope.exists(x => x.status == 'A')"));
+    }
 }

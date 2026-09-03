@@ -6,6 +6,7 @@ import com.finalexec.db.ExpressionBackfillPreview;
 import com.finalexec.db.ImpactReportJson;
 import com.finalexec.db.SchemaImpactFacade;
 import com.finalexec.db.SchemaLifecycleExecutor;
+import com.finalexec.db.ExpressionBackfillPreviewJson;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
@@ -94,16 +95,11 @@ public class SchemaImpactController {
             return body;
         }
         List<ExpressionBackfillPreview.Item> items = ExpressionBackfillPreview.preview(dataSource, manifest);
-        List<Map<String, Object>> encoded = items.stream().map(item -> {
-            Map<String, Object> encodedItem = new LinkedHashMap<>();
-            encodedItem.put("table", item.table());
-            encodedItem.put("column", item.column());
-            encodedItem.put("expression", item.expression());
-            encodedItem.put("rowsAffected", item.rowsAffected());
-            encodedItem.put("distinctValues", item.distinctValues());
-            encodedItem.put("failedRowIds", item.failedRowIds());
-            return encodedItem;
-        }).toList();
+        // BOUNDARY_LIFT_PLAN_2026-09-02 package 3.1 (B2), done-when #5: the shape an operator sees --
+        // column, nullability change, expression, rows affected, null results, ordered steps -- plus
+        // the risk tier and whether this candidate is eligible to auto-apply on the next boot, so a
+        // REVIEWABLE/HIGH_RISK item's continued need for an acknowledgment is never a surprise.
+        List<Map<String, Object>> encoded = ExpressionBackfillPreviewJson.encode(items);
         body.put("items", encoded);
         body.put("ackToken", items.isEmpty() ? null : ExpressionBackfillPreview.expectedToken(manifest.schemaFingerprint(), items));
         body.put("toFingerprint", manifest.schemaFingerprint());

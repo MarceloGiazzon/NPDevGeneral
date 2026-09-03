@@ -14,8 +14,8 @@
     },
     {
       "path": "NPDevRuntimeHost/.../db/SchemaLifecycleExecutor.java",
-      "approxSizeKB": 138,
-      "note": null
+      "approxSizeKB": 176,
+      "note": "Was 138 KB; grown to ~176 KB by REG-198/REG-200/REG-201 (per-boot schema snapshot, migrate-only mode + progress-aware waiting, H2->Postgres promotion) -- policy entry refreshed 2026-09-03, was never updated as those items landed (run-ai-knowledge-gate.ps1 was not run at the close of that session)."
     },
     {
       "path": "NPDevKernel/kernel/.../KernelRunner.java",

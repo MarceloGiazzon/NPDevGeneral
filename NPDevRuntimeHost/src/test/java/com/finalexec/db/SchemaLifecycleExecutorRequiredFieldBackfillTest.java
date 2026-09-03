@@ -38,16 +38,36 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
     private final SchemaLifecycleExecutor executor = new SchemaLifecycleExecutor();
     private DataSource dataSource;
 
+    // BOUNDARY_LIFT_PLAN_2026-09-02 package 3.1 (B2): a couple of tests below override these to
+    // exercise a non-default auto-apply mode/threshold -- snapshot and restore so no test leaks its
+    // override into another test in this same JVM.
+    private static final String AUTO_APPLY_MODE_PROPERTY = "npdev.schema.backfill.auto-apply";
+    private static final String AUTO_APPLY_MAX_ROWS_PROPERTY = "npdev.schema.backfill.auto-apply-max-rows";
+    private String previousAutoApplyMode;
+    private String previousAutoApplyMaxRows;
+
     @BeforeEach
     void setUp() {
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         dataSource = new SingleConnectionUrlDataSource(url);
+        previousAutoApplyMode = System.getProperty(AUTO_APPLY_MODE_PROPERTY);
+        previousAutoApplyMaxRows = System.getProperty(AUTO_APPLY_MAX_ROWS_PROPERTY);
     }
 
     @AfterEach
     void tearDown() throws SQLException {
+        restoreProperty(AUTO_APPLY_MODE_PROPERTY, previousAutoApplyMode);
+        restoreProperty(AUTO_APPLY_MAX_ROWS_PROPERTY, previousAutoApplyMaxRows);
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP ALL OBJECTS");
+        }
+    }
+
+    private static void restoreProperty(String name, String previousValue) {
+        if (previousValue == null) {
+            System.clearProperty(name);
+        } else {
+            System.setProperty(name, previousValue);
         }
     }
 
@@ -244,13 +264,17 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
         }
         seedStoredFingerprint(dataSource, "sha256:old");
 
+        // "riskyLookup(quantity)" is a function call -> REVIEWABLE tier (package 3.1), so this stays
+        // on the unchanged ack-required path even under the default auto-apply mode. A bare "$quantity"
+        // copy would now be SAFE and auto-apply -- see safeFieldCopyExpressionAutoAppliesWithoutAnyAcknowledgment
+        // below for that case.
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
                 Map.of("widgets", List.of("id", "name", "quantity", "auditQuantity")),
                 Map.of("widgets", List.of("auditQuantity")),
                 Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditQuantity", "BIGINT")),
                 Map.of("widgets", List.of("auditQuantity")),
                 Map.of("widgets", List.of("auditQuantity")),
-                Map.of("widgets", Map.of("auditQuantity", "$quantity")));
+                Map.of("widgets", Map.of("auditQuantity", "riskyLookup(quantity)")));
 
         // DoD (Move 9 B1): unacknowledged, an expression default still refuses the boot exactly as it
         // did before this feature existed -- no ackToken submitted anywhere in this test.
@@ -265,6 +289,155 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
         try (Connection connection = dataSource.getConnection()) {
             assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"),
                     "an unacknowledged expression backfill must never add the column at all");
+        }
+    }
+
+    // ---- BOUNDARY_LIFT_PLAN_2026-09-02 package 3.1 (B2, REG-202): risk-tiered auto-apply ----
+
+    @Test
+    void safeFieldCopyExpressionAutoAppliesWithoutAnyAcknowledgment() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (2, 'beta', 20)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        // "$quantity" is a single-column copy -> SAFE. Default mode (safe) + default threshold
+        // (10000 rows) + zero failing rows must auto-apply with NO ackToken ever inserted.
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditQuantity", "BIGINT")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("auditQuantity", "$quantity")));
+
+        executor.afterMigrate(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "auditQuantity"),
+                    "a SAFE expression default must auto-apply and add the column");
+            assertTrue(isNotNull(metadata, "widgets", "auditQuantity"));
+            assertEquals(10L, readLong(connection, "auditQuantity", 1));
+            assertEquals(20L, readLong(connection, "auditQuantity", 2));
+        }
+    }
+
+    @Test
+    void safeExpressionDoesNotAutoApplyWhenAutoApplyModeIsNone() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        System.setProperty(AUTO_APPLY_MODE_PROPERTY, "none");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditQuantity", "BIGINT")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("auditQuantity", "$quantity")));
+
+        // Even a SAFE candidate must not bypass the ack requirement once the operator has opted out
+        // via auto-apply=none.
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("B2:expression_backfill_requires_ack:"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"));
+        }
+    }
+
+    @Test
+    void safeExpressionOverTheRowThresholdStillRequiresAcknowledgment() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        // One row affected but a zero threshold -- SAFE alone is not enough to auto-apply.
+        System.setProperty(AUTO_APPLY_MAX_ROWS_PROPERTY, "0");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditQuantity", "BIGINT")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("auditQuantity", "$quantity")));
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("B2:expression_backfill_requires_ack:"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"));
+        }
+    }
+
+    @Test
+    void reviewableExpressionAutoAppliesOnlyWhenModeIsSafeAndReviewable() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        System.setProperty(AUTO_APPLY_MODE_PROPERTY, "safe-and-reviewable");
+
+        // A VARCHAR target -- not BIGINT -- because no FunctionRegistry is ever wired for a
+        // defaultExpression evaluation (functions are only usable in invariant expressions elsewhere),
+        // so a function-call expression always falls through to ValueExpressionEvaluator's raw-text
+        // fallback (a pre-existing quirk, unrelated to this package) rather than a real computed value.
+        // A VARCHAR column accepts that fallback text; this test only asserts the auto-apply GATE
+        // (REVIEWABLE needs the wider mode), not what the fallback value happens to be.
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditTag")),
+                Map.of("widgets", List.of("auditTag")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditTag", "VARCHAR(200)")),
+                Map.of("widgets", List.of("auditTag")),
+                Map.of("widgets", List.of("auditTag")),
+                Map.of("widgets", Map.of("auditTag", "riskyLookup(quantity)")));
+
+        // REVIEWABLE only auto-applies once the operator explicitly opts into the wider mode -- no
+        // ackToken is ever inserted in this test.
+        executor.afterMigrate(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "auditTag"));
+            assertTrue(isNotNull(metadata, "widgets", "auditTag"));
+        }
+    }
+
+    @Test
+    void highRiskExpressionNeverAutoAppliesEvenUnderTheWidestMode() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        // The widest mode this property accepts -- HIGH_RISK still must never auto-apply.
+        System.setProperty(AUTO_APPLY_MODE_PROPERTY, "safe-and-reviewable");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditQuantity", "BIGINT")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", List.of("auditQuantity")),
+                Map.of("widgets", Map.of("auditQuantity", "scope.exists(x => x.status == 'A')")));
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("B2:expression_backfill_requires_ack:"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"));
         }
     }
 

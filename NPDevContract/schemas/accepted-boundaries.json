@@ -12,8 +12,8 @@
     {
       "id": "B2",
       "kind": "HITTABLE",
-      "userFacingText": "Expression-valued backfills require a dry-run preview and explicit acknowledgment. Preview affected rows first via the schema migration preview endpoint.",
-      "workaround": "Call GET /api/admin/schema-migration/expression-backfill-preview, review affected rows, then acknowledge via the existing /acknowledge endpoint.",
+      "userFacingText": "Expression-valued backfills require a dry-run preview and explicit acknowledgment -- UNLESS the expression is classified SAFE (a constant, a single-column copy, or a pure same-row arithmetic/comparison/logical expression with no function call) and a fresh preview shows zero failing rows under the configured row threshold, in which case it auto-applies on boot with a logged, itemized record of what it did. REVIEWABLE (any function call) and HIGH_RISK (a cross-record 'scope.*' call) expressions always still require the dry-run preview and explicit acknowledgment.",
+      "workaround": "Call GET /api/admin/schema-migration/expression-backfill-preview to see each candidate's risk tier and whether it will auto-apply; for anything not SAFE, review affected rows and acknowledge via the existing /acknowledge endpoint. Tune auto-apply with -Dnpdev.schema.backfill.auto-apply=none|safe|safe-and-reviewable (default safe) and -Dnpdev.schema.backfill.auto-apply-max-rows=<n> (default 10000).",
       "enforcingDiagnosticCodes": ["B2:expression_backfill_requires_ack"]
     },
     {
