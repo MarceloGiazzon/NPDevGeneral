@@ -132,6 +132,13 @@ final class MigrationMutex {
     static Held acquire(DataSource dataSource) {
         long budgetMillis = waitMillis();
         long deadline = System.nanoTime() + budgetMillis * 1_000_000L;
+        // 3.2 (package B4 migrate-only + progress-aware waiting): captured lazily, the first time
+        // this loop actually contends -- an uncontended acquire() (the overwhelming common case) must
+        // not pay for a query it will never use. null means "not yet captured", distinct from an
+        // empty SchemaHistoryStore.mostRecentActivity() read (which means "captured, and nothing has
+        // ever been recorded").
+        SchemaHistoryStore.RecentActivity progressBaseline = null;
+        boolean baselineCaptured = false;
         Connection connection = null;
         try {
             connection = dataSource.getConnection();
@@ -160,8 +167,36 @@ final class MigrationMutex {
                     connection = null; // ownership transfers to the caller's release()
                     return held;
                 }
+                if (!baselineCaptured) {
+                    // First contention: snapshot whatever activity already existed before this boot
+                    // started waiting, so the deadline check below judges progress made DURING the
+                    // wait, not activity the holder had already recorded before this waiter arrived.
+                    progressBaseline = SchemaHistoryStore.mostRecentActivity(dataSource).orElse(null);
+                    baselineCaptured = true;
+                }
                 if (System.nanoTime() >= deadline) {
-                    throw new IllegalStateException(waitedOutMessage(budgetMillis, dataSource));
+                    SchemaHistoryStore.RecentActivity latest =
+                            SchemaHistoryStore.mostRecentActivity(dataSource).orElse(null);
+                    // 3.2: "demonstrably progressing" means NEW observable activity since the
+                    // baseline -- not merely that some row exists. A single very long pass with no
+                    // intermediate rows (e.g. one huge backfill) will still eventually read as
+                    // stalled once its own runtime outlasts one budget window; that is an accepted,
+                    // named limit of coarse pass-level observability (see this class's own javadoc on
+                    // why a HUNG boot is deliberately not distinguished from a slow one) -- an
+                    // operator facing a legitimately long single pass raises the budget with
+                    // -D + WAIT_SECONDS_PROPERTY, same as before this package.
+                    boolean progressed = latest != null && !latest.equals(progressBaseline);
+                    if (progressed) {
+                        System.out.println("NPDev schema lifecycle: wait budget elapsed, but the holder recorded "
+                                + "new schema-change activity during the wait (" + latest.stepName() + ", outcome "
+                                + latest.outcome() + ") -- extending the wait by another " + (budgetMillis / 1000L)
+                                + "s rather than refusing. The configured " + WAIT_SECONDS_PROPERTY + " is a floor, "
+                                + "not a ceiling, while real progress keeps being observed.");
+                        progressBaseline = latest;
+                        deadline = System.nanoTime() + budgetMillis * 1_000_000L;
+                    } else {
+                        throw new IllegalStateException(waitedOutMessage(budgetMillis, dataSource, latest));
+                    }
                 }
                 waited = true;
                 Thread.sleep(POLL_MILLIS);
@@ -315,12 +350,28 @@ final class MigrationMutex {
      * The give-up diagnostic. Names the holder from the human-readable claim row when there is one,
      * and is explicit that the mutex is connection-scoped -- so an operator reading this knows a
      * crashed instance cannot be the cause and looks for a live, hung one instead.
+     *
+     * @param lastActivity the most recent {@code npdev_schema_history} row observed at the moment
+     *                      this wait gave up (3.2), or {@code null} if none was ever recorded -- see
+     *                      {@link SchemaHistoryStore#mostRecentActivity}. Distinct from a "stalled"
+     *                      judgment: this method is only reached once the caller has already decided
+     *                      progress was NOT observed during the wait, so naming the last known state
+     *                      (if any) tells an operator what the holder was last doing, even though it
+     *                      was not enough to extend the budget.
      */
-    private static String waitedOutMessage(long budgetMillis, DataSource dataSource) {
+    private static String waitedOutMessage(
+            long budgetMillis, DataSource dataSource, SchemaHistoryStore.RecentActivity lastActivity) {
         String holder = MigrationClaimStore.current(dataSource)
                 .map(claim -> "instance " + claim.instanceId() + " on host " + claim.hostname()
                         + ", claimed at epoch-ms " + claim.claimedAtUtc())
                 .orElse("an instance that did not record a readable claim row");
+        String progressNote = lastActivity == null
+                ? " No schema-change activity has been recorded for this migration (this is normal on a "
+                        + "first-ever boot, where there is nothing yet to rename/widen/backfill), so there is "
+                        + "nothing to judge progress against."
+                : " Last recorded schema-change activity: " + lastActivity.stepName() + " (outcome "
+                        + lastActivity.outcome() + ") at epoch-ms " + lastActivity.recordedAtUtc()
+                        + " -- unchanged for the whole wait, which is why it was not extended.";
         // The "Another NPDev instance is currently migrating..." sentence is matched VERBATIM by
         // NPDevCli's boot-log classifier (npdev_cli.py's MIGRATION_CLAIM_HELD diagnostic greps this
         // exact phrase as a substring), so it is kept word for word even though the surrounding
@@ -334,8 +385,8 @@ final class MigrationMutex {
                 + "on a migration lock rather than refusing, so waiting the full budget means the other "
                 + "migration is still running or its process is hung -- the lock is scoped to that instance's "
                 + "database connection, so a CRASHED instance would already have released it and this boot "
-                + "would have proceeded. Let the other migration finish and retry, raise the budget with -D"
-                + WAIT_SECONDS_PROPERTY + "=<seconds>, or kill the hung instance. See "
+                + "would have proceeded." + progressNote + " Let the other migration finish and retry, raise the "
+                + "budget with -D" + WAIT_SECONDS_PROPERTY + "=<seconds>, or kill the hung instance. See "
                 + "docs/SCHEMA_EVOLUTION.md#collision-detection.";
     }
 

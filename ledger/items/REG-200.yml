@@ -1,0 +1,112 @@
+id: REG-200
+title: >-
+  Migrate-only job mode + progress-aware adaptive waiting -- the production answer to B4's
+  multi-instance migration lock
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 3.2 (B4), wave 3. User selected this package
+  explicitly among the remaining Wave 3/4 options. B4's own record already documents the real
+  mechanism (R9.3's connection-scoped wait/refuse mutex) as correct but incomplete: a boot could
+  only WAIT for a concurrent migration or REFUSE naming the holder, with a fixed budget and zero
+  visibility into whether the holder was actually making progress. This package adds the actual
+  production answer (run migration alone, before any instance serves traffic, so nothing ever
+  contends the lock) plus makes the existing wait adaptive rather than purely time-boxed.
+surface: runtimehost-core (db), appgen ops tooling, B4 registry (ledger/boundaries,
+  accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MigrationMutex.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MigrationClaimStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaHistoryStore.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorMigrateOnlyTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationMutexProgressAwareWaitTest.java
+  - scripts/appgen/Build-NpdevApp.ps1
+  - ledger/boundaries/B4.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. The production answer exists: `npdev.schema.lifecycle.mode=MIGRATE_ONLY` (read by the new
+     `SchemaLifecycleExecutor.exitIfMigrateOnly`/`migrateOnlyRequested`, mirroring REPORT_ONLY's
+     existing property/split-for-testability shape) boots the schema lifecycle, runs it for real
+     (unlike REPORT_ONLY, which writes nothing), then `System.exit(0)` BEFORE the web server binds a
+     port -- checked in the public `migrate(Flyway)` overload, AFTER `migrate(Flyway, SchemaManifest)`
+     returns, deliberately unlike REPORT_ONLY's early exit, so every branch (ExternallyManaged
+     verification, Ephemeral wipe, the ordinary apply path) has already done its real work first.
+     `Migrate-Only.ps1` (new, sibling of the existing `Impact-Only.ps1`, same jar-lookup/foreground-run/
+     exit-propagation shape) is the ops-tooling CLI surface, wired behind a new `-MigrateOnly` switch
+     on `Build-NpdevApp.ps1`. Run alone, as a one-shot job (a K8s init/Job container, a CI deploy step)
+     before any serving instance boots, B4's wait/refuse machinery then never fires in a correctly-
+     ordered deployment -- there is exactly one boot, and nothing else is racing it. This is also the
+     schema-realization step Wave 3's package 3.3 (H2->Postgres promotion) depends on.
+
+  2. A waiting instance can see why it is waiting, as observability only -- never as the release
+     mechanism, and the connection-scoped mutex `MigrationMutex.java:44-58` documents is UNCHANGED.
+     Rather than inventing a new progress table, `SchemaHistoryStore.mostRecentActivity` (new) reads
+     the LATEST row of the pre-existing `npdev_schema_history` audit table, which `recordStepPass`
+     already writes write-before-execute (PARTIAL-CRASH, flipped to APPLIED after) for every real pass
+     -- TABLE_RENAME, COLUMN_RENAME, TYPE_WIDENING, RELAX_NOT_NULL, EXPRESSION_BACKFILL,
+     REQUIRED_BACKFILL, TIGHTEN_PLATFORM_COLUMNS (all pre-existing LNCH-1 remediation R4/F5 call
+     sites, unmodified). This gives "which pass, when it started" for free from already-tested
+     infrastructure; "which table" rides along in each pass's own `items_json` item-detail list.
+     Deliberately does NOT call `ensureHistoryTable` (unlike every WRITE path in that file): a WAITER
+     self-creating `npdev_schema_history` before the boot it is waiting on has called
+     `flyway.migrate()` would be a NEW REG-7.2, so existence is checked read-only via
+     `SqlDialects.active().tableExistsInCurrentSchemaSql` first, and a missing table reads as "no
+     activity recorded" -- correct on a first-ever boot, where nothing yet exists to diff against.
+
+  3. `MigrationMutex.acquire`'s wait loop now keeps `npdev.schema.lock.waitSeconds` as the FLOOR
+     (unchanged) but extends past it when the LATEST `mostRecentActivity` row differs from a baseline
+     captured the moment this boot first found the lock contended -- "demonstrably progressing" means
+     NEW activity observed during the wait, not merely that some row exists at all. A waiter facing no
+     new activity refuses at the floor with the pre-existing `B4:migration_lock_held:`-prefixed,
+     NPDevCli-classifier-matched message, UNCHANGED verbatim, now appended with the last recorded
+     activity (pass name, outcome, timestamp) or an explicit "nothing recorded" note when there was
+     none. Extension is uncapped by design, matching this class's own pre-existing javadoc philosophy
+     ("a migration has no safe maximum duration... bounded by the size of the user's data") -- a named,
+     accepted limit: one very long single pass with no intermediate rows will still eventually read as
+     stalled once its own runtime outlasts one budget window, which an operator resolves the same way
+     as before this package (raise the budget with -D + the same property).
+
+  4. REG-7.2 (H2's fresh-database gap) is decided explicitly, not silently carried, in
+     `MigrationClaimStore`'s own javadoc: the LOCK has had no gap since R9.3 (the row-lock fallback's
+     dedicated `npdev_lock` schema, which Flyway never inspects, already covers a virgin database on
+     every engine). What remains -- the human-readable claim ROW, and now `npdev_schema_history` for
+     the same structural reason -- goes unrecorded during a first-ever boot by deliberate design
+     (recording it would recreate REG-7.2 for THAT table). RESTATED as a deliberate, narrow, named
+     residue rather than closed with a new file-lock sidecar, because item 1's MIGRATE_ONLY mode is
+     the actual mitigation: the residue only bites when two boots race a first-ever migration against
+     each other, and MIGRATE_ONLY makes that scenario unreachable in a correctly-ordered deployment.
+
+  Register updated across all three non-code seams (ledger/boundaries/B4.yml,
+  NPDevContract/schemas/accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md) -- the doc row was
+  additionally found STALE (still describing the pre-R9.3 detect-and-refuse mechanism, never updated
+  when R9.3 shipped) and corrected as part of this package, not left compounding. B4 stays HITTABLE:
+  the wait/refuse boundary itself is unchanged and still real; what changed is that the boundary now
+  has a documented production mitigation (MIGRATE_ONLY) and a more informative refusal, matching the
+  plan's own framing ("the production answer... B4 then cannot fire in a correct deployment").
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationMutexProgressAwareWaitTest.java
+  asserts: >-
+    Two-thread H2 tests against a real in-memory database (mirroring MigrationLockConcurrentBootTest's
+    established shape): (1) a waiter whose original 1s budget elapses while new npdev_schema_history
+    activity is recorded during the wait does NOT throw at the original deadline (proven by the
+    waiter's completion latch still being unset well past it), then succeeds once the holder releases.
+    (2) a waiter facing NO recorded activity still refuses at the configured floor (under 3s, not
+    hanging), with the B4:migration_lock_held: prefix and the new "no activity recorded" note present.
+    SchemaLifecycleExecutorMigrateOnlyTest covers migrateOnlyRequested()'s property parsing directly
+    (case-insensitive MIGRATE_ONLY vs. REPORT_ONLY/APPLY/unset), following
+    SchemaLifecycleExecutorReportOnlyTest's own precedent of never calling System.exit inside the test
+    JVM -- the actual exit is exercised only via a real `java -jar` process (Migrate-Only.ps1).
+    Existing coverage proven unaffected: SchemaLifecycleExecutorMigrationClaimTest's exact-timeout
+    assertions (waitSeconds=1, no activity ever recorded in that scenario) and
+    MigrationLockConcurrentBootTest's REG-7.2/serialization assertions are untouched by this package's
+    additions -- read before writing to confirm neither test's exact message-content or timing
+    assertions would be broken by the new progress-aware branch.
+  provenRed: false

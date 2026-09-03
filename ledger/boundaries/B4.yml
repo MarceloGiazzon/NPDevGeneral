@@ -13,5 +13,20 @@ codeLinkedNote: >-
   message IS the violation's message). NPDevCli's MIGRATION_CLAIM_HELD boot-log classifier still
   matches (its grep is a substring check, unaffected by a leading prefix).
   Proven by SchemaLifecycleExecutorMigrationClaimTest (waits-then-times-out scenario).
+  2026-09-03 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 3.2, REG-200): re-traced again. The
+  wait/refuse mechanism itself is unchanged, but two things were added on top. (1) The production
+  answer: `npdev.schema.lifecycle.mode=MIGRATE_ONLY` (SchemaLifecycleExecutor.exitIfMigrateOnly) runs
+  the schema lifecycle once and exits before the web server binds a port, wired to a new
+  `-MigrateOnly` switch / `Migrate-Only.ps1` on Build-NpdevApp.ps1 -- run alone, before any serving
+  instance boots, and this boundary cannot fire because nothing is racing it. (2) The wait itself is
+  now progress-aware: MigrationMutex.acquire keeps waitSeconds as a FLOOR but extends past it while
+  SchemaHistoryStore.mostRecentActivity (new, reads the pre-existing npdev_schema_history
+  write-before-execute rows) shows new activity since the wait began, and waitedOutMessage now names
+  the last recorded activity (or its absence) alongside the unchanged holder/B4-prefix text.
+  REG-7.2's residual gap (the human-readable claim/history row is unrecorded on a first-ever boot) is
+  restated explicitly in MigrationClaimStore's javadoc rather than newly closed -- MIGRATE_ONLY is the
+  accepted mitigation. Proven by MigrationMutexProgressAwareWaitTest (extension + floor-refusal) and
+  SchemaLifecycleExecutorMigrateOnlyTest (property parsing); SchemaLifecycleExecutorMigrationClaimTest
+  and MigrationLockConcurrentBootTest's pre-existing assertions confirmed unaffected.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B4"
 classification: HITTABLE

@@ -26,8 +26,8 @@
     {
       "id": "B4",
       "kind": "HITTABLE",
-      "userFacingText": "Another app instance holds the migration lock. Wait for it to finish or clear the claim via the admin endpoint.",
-      "workaround": "The second instance waits under the real lock (a Postgres advisory lock or an H2 atomic claim row); use ControlPanel's clear() only as a deliberate manual escape hatch.",
+      "userFacingText": "Another app instance holds the migration lock. Wait for it to finish -- the boot's own log shows progress and adapts its wait budget while real activity is observed -- or clear the claim via the admin endpoint.",
+      "workaround": "Run migration as a one-shot MIGRATE_ONLY job (Migrate-Only.ps1 / npdev.schema.lifecycle.mode=MIGRATE_ONLY) before any serving instance boots, so nothing ever contends the lock. If two instances do race, the second waits under the real lock (a session advisory lock, or H2's row-lock fallback in its own dedicated schema), extending its budget automatically while npdev_schema_history shows the holder still making progress, and refuses naming the holder plus its last recorded activity if the holder stalls; use ControlPanel's clear() only as a deliberate manual escape hatch for the display row.",
       "enforcingDiagnosticCodes": ["B4:migration_lock_held"]
     },
     {

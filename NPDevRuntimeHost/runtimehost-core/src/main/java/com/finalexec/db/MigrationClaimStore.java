@@ -38,6 +38,30 @@ import javax.sql.DataSource;
  * <p>The REG-91 diagnostics below are unchanged and still throw, because they describe a claim TABLE
  * that is genuinely broken (a legacy {@code NOT NULL} shape, a seed insert rejected for a reason
  * that is not a duplicate, a canonical row that is absent) rather than a slot that is busy.
+ *
+ * <h2>REG-7.2's remaining residue -- restated explicitly, not silently carried (package 3.2)</h2>
+ *
+ * <p>The LOCK itself has no REG-7.2 gap left, on any engine, including a genuinely virgin database:
+ * {@link MigrationMutex} closed that by giving its row-lock fallback a dedicated schema
+ * ({@code npdev_lock}) that Flyway never inspects. What remains, unchanged by package 3.2, is exactly
+ * what {@link #claim}'s own javadoc above already names: on a first-ever boot this class writes no
+ * human-readable claim ROW (writing one would recreate REG-7.2 for THIS table, which does live in
+ * Flyway's schema). Package 3.2's new progress-observability feature ({@link SchemaHistoryStore
+ * #mostRecentActivity}) inherits the identical shape for the same reason -- {@code
+ * npdev_schema_history} also lives in Flyway's schema, and in practice never gets written during a
+ * first-ever boot anyway, since there is nothing yet to rename/widen/backfill on a database with no
+ * prior state. A waiter contending a first-ever boot therefore sees neither a named holder nor any
+ * progress detail; {@link MigrationMutex#acquire}'s timeout message says so honestly rather than
+ * inventing an answer.
+ *
+ * <p>This is accepted as a deliberate, narrow, NAMED residue rather than built around, because
+ * package 3.2 ships the actual mitigation alongside it: {@code npdev.schema.lifecycle.mode=
+ * MIGRATE_ONLY} (see {@code SchemaLifecycleExecutor.exitIfMigrateOnly}) is the production answer for
+ * exactly the deployment shape where two boots could ever race a first-ever migration -- run it alone,
+ * as a one-shot job, before any serving instance starts, and there is no second boot to contend the
+ * lock with in the first place. A residue that only bites when a deployment races a first-ever boot
+ * against another first-ever boot is not worth a new file-lock sidecar; it is worth documenting and
+ * pointing at the mode that makes it unreachable in a correctly-ordered deployment.
  */
 public final class MigrationClaimStore {
 

@@ -65,6 +65,14 @@ param(
   # (offline, no DB needed); -ImpactOnly = model-vs-LIVE-DATABASE (the GeneXus impact; the target
   # database must already be reachable -- this script does not start it for you).
   [switch]$ImpactOnly,
+  # 3.2 (B4 migrate-only + progress-aware waiting): -MigrateOnly builds the jar, then runs it ONCE
+  # with npdev.schema.lifecycle.mode=MIGRATE_ONLY -- the schema lifecycle runs for real (unlike
+  # -ImpactOnly's REPORT_ONLY, which writes nothing) and the process exits before the web server
+  # binds a port, whether it succeeded (exit 0) or a boundary refused it (non-zero -- see stdout for
+  # the B4/B5/... diagnostic). This is the production answer to B4: run it as a one-shot job (a K8s
+  # init/Job container, a CI deploy step) BEFORE any serving instance boots, so no instance ever
+  # contends the migration lock with another one in a correctly-ordered deployment.
+  [switch]$MigrateOnly,
   # -AcknowledgeDestructive <token>: threads the token into the generator's new
   # --destructiveAcknowledgment flag (LNCH-1 P6 task 6.2b), landing it verbatim in the generated
   # manifest's destructiveAcknowledgment key -- the value SchemaLifecycleExecutor's Phase 4
@@ -977,6 +985,32 @@ exit $code
 '@
 Set-Content -LiteralPath (Join-Path $OpsDir 'Impact-Only.ps1') -Value $ImpactOnlyApp -Encoding UTF8
 
+# 3.2 (B4 migrate-only + progress-aware waiting): sibling of Impact-Only.ps1, same jar-lookup /
+# foreground-run / exit-code-propagation shape, but npdev.schema.lifecycle.mode=MIGRATE_ONLY
+# actually APPLIES the migration (REPORT_ONLY writes nothing) and then still exits before the web
+# server binds a port -- see SchemaLifecycleExecutor.exitIfMigrateOnly. This is the one-shot-job
+# entry point package 3.2's own done-when asks for: run this alone, before any serving instance
+# boots, and B4's wait/refuse machinery never engages because nothing is racing it.
+$MigrateOnlyApp = @'
+$ErrorActionPreference = 'Stop'
+$plan = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'app-plan.json') | ConvertFrom-Json
+$jar = Get-ChildItem -LiteralPath $plan.appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
+       Where-Object { $_.FullName -like '*\build\libs\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
+if ($null -eq $jar) { Write-Host 'Runnable jar not found. Run Build-App.ps1 first.' -ForegroundColor Red; exit 1 }
+Write-Host "Running the schema migration for $($plan.appName) as a one-shot job (MIGRATE_ONLY) -- no serving instance will start..."
+$javaArgs = @("-Dnpdev.schema.lifecycle.mode=MIGRATE_ONLY", '-jar', $jar.FullName,
+              "--server.port=$($plan.serverPort)", "--spring.profiles.active=$($plan.springProfiles)")
+& java @javaArgs
+$code = $LASTEXITCODE
+if ($code -eq 0) {
+  Write-Host "Migration applied (exit 0). Safe to start serving instances now." -ForegroundColor Green
+} else {
+  Write-Host "Migration did not complete (exit $code) -- see output above for the boundary diagnostic (B4/B5/...)." -ForegroundColor Red
+}
+exit $code
+'@
+Set-Content -LiteralPath (Join-Path $OpsDir 'Migrate-Only.ps1') -Value $MigrateOnlyApp -Encoding UTF8
+
 # Recovery for a lost Super User key: no network endpoint can safely do this (there's no
 # authenticated Super User yet to ask, same chicken-and-egg BootstrapAdminController has), so this
 # requires filesystem/process access to the server -- the appropriate trust boundary for "reissue
@@ -1268,6 +1302,7 @@ if (-not $GenerateOnly) {
   Write-Host "  & '$OpsDir\Start-App.ps1'"
   Write-Host "  & '$OpsDir\Test-App.ps1'"
   Write-Host "  & '$OpsDir\Impact-Only.ps1'   (pre-deploy: impact vs. the live database, zero writes)"
+  Write-Host "  & '$OpsDir\Migrate-Only.ps1'  (one-shot job: apply the migration, exit before serving)"
 }
 if ($ImpactOnly) {
   if ($GenerateOnly) { Write-Host '-ImpactOnly has no effect combined with -GenerateOnly (no jar would exist to run).' -ForegroundColor Yellow; exit 1 }
@@ -1275,6 +1310,14 @@ if ($ImpactOnly) {
   & (Join-Path $OpsDir 'Build-App.ps1')
   if ($LASTEXITCODE -ne 0) { Write-Host 'Build failed; cannot compute impact.' -ForegroundColor Red; exit $LASTEXITCODE }
   & (Join-Path $OpsDir 'Impact-Only.ps1')
+  exit $LASTEXITCODE
+}
+if ($MigrateOnly) {
+  if ($GenerateOnly) { Write-Host '-MigrateOnly has no effect combined with -GenerateOnly (no jar would exist to run).' -ForegroundColor Yellow; exit 1 }
+  Write-Step "-MigrateOnly: building $AppId, then running it once as a MIGRATE_ONLY one-shot job..."
+  & (Join-Path $OpsDir 'Build-App.ps1')
+  if ($LASTEXITCODE -ne 0) { Write-Host 'Build failed; cannot migrate.' -ForegroundColor Red; exit $LASTEXITCODE }
+  & (Join-Path $OpsDir 'Migrate-Only.ps1')
   exit $LASTEXITCODE
 }
 exit 0

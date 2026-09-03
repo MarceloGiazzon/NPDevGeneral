@@ -35,12 +35,24 @@ pwsh -File scripts\hygiene\Test-WorkspaceSlimness.ps1
 Default limits:
 
 - maximum workspace size, excluding `.git`: `75 MB`
-- maximum workspace file count, excluding `.git`: `4005`
+- maximum workspace file count, excluding `.git`: **retired as a gate, 2026-09-03 (REG-200, B4/package
+  3.2)** — still measured and reported (`policy.maxFileCount` / `summary.fileCount` in
+  `workspace-cleanliness-report.json`), never enforced. The last configured value, `4005`, is kept in
+  `Test-WorkspaceSlimness.ps1`'s `$MaxFileCount` parameter only as a record of where enforcement
+  stopped.
 
-  **This number has been raised five times (3000 → 3400 → 3500 → 3600 → 4000 → 4005) while the size
-  limit has never moved.** Each raise was justified and recorded in `Test-WorkspaceSlimness.ps1`'s own
+  **Why now, not raised a sixth time.** This is the exact trip the prior session (2026-09-02) said, in
+  writing, in two places (`Test-WorkspaceSlimness.ps1`'s own parameter comment and the paragraph
+  below), would be the one to retire on: "if it needs raising a SIXTH time, retire it rather than raise
+  it." It tripped again the very next session — 4008 against 4005, over by exactly the 3 legitimate
+  tracked files this package added (two test classes, one ledger item) — which is as clean a
+  confirmation as the prior session's own diagnosis could ask for: ordinary, legitimate work keeps
+  bumping a ceiling that was never the thing actually tracking bloat.
+
+  **This number was raised five times (3000 → 3400 → 3500 → 3600 → 4000 → 4005) while the size
+  limit never moved.** Each raise was justified and recorded in `Test-WorkspaceSlimness.ps1`'s own
   parameter comment, and that is exactly how a limit stops meaning anything, so the history matters
-  more than the current value:
+  more than the retired value:
 
   - `3000 → 3400` (Move 12) — ~180 legitimate new tracked files; the actual overage was rebuildable
     trees, cleaned by the commands below rather than by the number.
@@ -69,9 +81,10 @@ Default limits:
   few days and the next trip is more likely to mean something.
 
   **This paragraph said "if it needs raising a fifth time, retire it rather than raise it" -- the
-  fifth time came (above) and it was raised anyway, on an explicit owner decision. If it needs raising
-  a SIXTH time, retire it rather than raise it.** The size limit is the one that has actually tracked
-  bloat (28 of 75 MB through all five raises).
+  fifth time came (above) and it was raised anyway, on an explicit owner decision, which then said: if
+  it needs raising a SIXTH time, retire it rather than raise it. The sixth time came the very next
+  session (above) and it was retired, not raised.** The size limit is the one that has actually tracked
+  bloat (28 of 75 MB through all six raises-then-retirement) and remains the enforced one.
 - maximum `scripts` size: `10 MB`
 - maximum `scripts` file count: `500`
 - maximum `scripts\reports\out` size: `15 MB`
