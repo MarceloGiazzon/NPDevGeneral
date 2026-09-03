@@ -381,7 +381,15 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
     }
 
     @Test
-    void reviewableExpressionAutoAppliesOnlyWhenModeIsSafeAndReviewable() throws SQLException {
+    void reviewableExpressionNeverAutoAppliesBecauseThisEvaluatorCannotResolveAnyFunctionCall() throws SQLException {
+        // A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"): before A2, this expression's function call
+        // silently fell through ValueExpressionEvaluator's raw-text fallback -- a pre-existing quirk
+        // this same test used to document and accept -- so `!candidate.hasFailures()` was trivially
+        // true and it auto-applied under safe-and-reviewable mode, WRITING THE LITERAL EXPRESSION TEXT
+        // into the column for every row. ExpressionBackfillPreview#evaluateRows now forces a function-
+        // call expression to null (never a fabricated "value"), so ExpressionBackfillShadowProof's
+        // "every row produced a value" check correctly fails it -- it does not auto-apply, and the
+        // column is never added, no acknowledgment submitted in this test.
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
             statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
@@ -389,12 +397,6 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
         seedStoredFingerprint(dataSource, "sha256:old");
         System.setProperty(AUTO_APPLY_MODE_PROPERTY, "safe-and-reviewable");
 
-        // A VARCHAR target -- not BIGINT -- because no FunctionRegistry is ever wired for a
-        // defaultExpression evaluation (functions are only usable in invariant expressions elsewhere),
-        // so a function-call expression always falls through to ValueExpressionEvaluator's raw-text
-        // fallback (a pre-existing quirk, unrelated to this package) rather than a real computed value.
-        // A VARCHAR column accepts that fallback text; this test only asserts the auto-apply GATE
-        // (REVIEWABLE needs the wider mode), not what the fallback value happens to be.
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
                 Map.of("widgets", List.of("id", "name", "quantity", "auditTag")),
                 Map.of("widgets", List.of("auditTag")),
@@ -403,14 +405,53 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 Map.of("widgets", List.of("auditTag")),
                 Map.of("widgets", Map.of("auditTag", "riskyLookup(quantity)")));
 
-        // REVIEWABLE only auto-applies once the operator explicitly opts into the wider mode -- no
-        // ackToken is ever inserted in this test.
-        executor.afterMigrate(dataSource, manifest);
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("B2:expression_backfill_requires_ack:"), refusal.getMessage());
 
         try (Connection connection = dataSource.getConnection()) {
-            DatabaseMetaData metadata = connection.getMetaData();
-            assertTrue(hasColumn(metadata, "widgets", "auditTag"));
-            assertTrue(isNotNull(metadata, "widgets", "auditTag"));
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditTag"),
+                    "must never auto-apply, and must never add the column while it is unproven");
+        }
+    }
+
+    @Test
+    void reviewableFunctionCallExpressionRefusesEvenWithAnExplicitAcknowledgment() throws SQLException {
+        // The regression proof for the SAME bug the test above closes: even an operator willing to
+        // ACKNOWLEDGE this backfill must not have it silently succeed with garbage. Preview now
+        // honestly reports a failure for every row (ExpressionBackfillPreview#evaluateRows's A2 fix),
+        // so the acknowledged-apply path refuses with the SAME "produces no value" message a genuinely
+        // unresolvable $field reference gets -- see acknowledgedExpressionDefaultWithAFailingRowRefusesAndAddsNoColumn.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
+            statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "name", "quantity", "auditTag")),
+                Map.of("widgets", List.of("auditTag")),
+                Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditTag", "VARCHAR(200)")),
+                Map.of("widgets", List.of("auditTag")),
+                Map.of("widgets", List.of("auditTag")),
+                Map.of("widgets", Map.of("auditTag", "riskyLookup(quantity)")));
+
+        List<ExpressionBackfillPreview.Item> preview = ExpressionBackfillPreview.preview(dataSource, manifest);
+        assertEquals(1, preview.size());
+        assertTrue(preview.get(0).hasFailures(),
+                "A2's own honesty fix: a function-call expression must be reported as failing, never as a "
+                        + "fabricated success carrying the raw expression text");
+        String ackToken = ExpressionBackfillPreview.expectedToken(manifest.schemaFingerprint(), preview);
+        PendingSchemaAcknowledgmentStore.insert(dataSource, manifest.schemaFingerprint(), ackToken, null, "test-operator");
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("produces no value for at least one existing row"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditTag"),
+                    "an acknowledged-but-unresolvable expression must never add the column, let alone "
+                            + "populate it with the raw expression text");
         }
     }
 

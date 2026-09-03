@@ -23,5 +23,39 @@ codeLinkedNote: >-
   expression's TEXT, not its evaluated result, and reuses `ComputedExpression`'s own parser (new
   `functionCalls` traversal) rather than a second grammar. `classification` stays HITTABLE: the
   refusal itself is unchanged for anything not proven SAFE.
-ref: "docs/ACCEPTED_BOUNDARIES.md#B2"
+
+  2026-09-03 (REAL_LIFT_PLAN_2026-09-03.md package A2, "real lift"): a REVIEWABLE candidate no
+  longer needs the ack SOLELY because it was classified REVIEWABLE -- `ExpressionBackfillShadowProof`
+  proves it safe by RUNNING it: every affected row must produce a value, AND a second, independent
+  evaluation of the same expression against the same live rows must agree with the first (a
+  determinism check no amount of reading the expression's TEXT can give). A proven-safe REVIEWABLE
+  candidate auto-applies under `auto-apply=safe-and-reviewable`, writing the ALREADY-PROVEN values
+  directly (no third evaluation). `ExpressionBackfillRiskClassifier` keeps classifying, but is now an
+  INPUT to eligibility, not the verdict -- the shadow run is the authority. SAFE candidates keep their
+  existing lighter check unchanged (every SAFE form is structurally deterministic by the classifier's
+  own definition, so a shadow proof adds nothing).
+
+  HONEST FINDING, verified against real code (not assumed): in TODAY'S platform, this shadow proof can
+  never actually SUCCEED for a REVIEWABLE (or HIGH_RISK) candidate, because
+  `ExpressionBackfillPreview#evaluateRows` evaluates through
+  `com.npdev.kernel.concepts.ValueExpressionEvaluator`, which calls `ComputedExpression.evaluate` with
+  an EMPTY `FunctionRegistry` (no function is ever wired for this evaluation path -- confirmed the
+  same root cause REG-202 already named for HIGH_RISK's `scope.*` applies equally to EVERY function
+  call, REVIEWABLE included: nothing this evaluator's grammar calls a "function" can resolve here).
+  This package ALSO fixed a real, silent-corruption bug this same fact caused: before A2, an
+  unresolvable function call fell through `ValueExpressionEvaluator`'s own last-resort fallback and
+  returned the RAW EXPRESSION TEXT AS IF IT WERE A COMPUTED VALUE --
+  `SchemaLifecycleExecutorRequiredFieldBackfillTest`'s predecessor test
+  (`reviewableExpressionAutoAppliesOnlyWhenModeIsSafeAndReviewable`) had already documented and
+  silently accepted this as "a pre-existing quirk," and it meant a REVIEWABLE expression could
+  auto-apply (writing garbage) under `safe-and-reviewable` mode with ZERO evaluation failure ever
+  surfacing. `ExpressionBackfillPreview#evaluateRows` now forces a function-call expression's result to
+  `null` (an honest failure) rather than accepting that fallback -- so every REVIEWABLE/HIGH_RISK
+  candidate is now correctly reported as failing, at preview time, at shadow-proof time, AND at
+  acknowledged-apply time, consistently, everywhere. The shadow-proof MECHANISM is real, tested, and
+  ready -- it will start succeeding the moment a real `FunctionRegistry` is wired into this evaluation
+  path (a separate, future change, out of this package's scope) -- but has no live candidate it can
+  currently prove safe. HIGH_RISK, specifically, is thus doubly unreachable: REG-202's own
+  `scope.*`-specific note, and now this evaluator-wide fact that subsumes it.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B2, ExpressionBackfillShadowProof.java, ExpressionBackfillShadowProofTest.java, ExpressionBackfillShadowProofIntegrationTest.java, SchemaLifecycleExecutorRequiredFieldBackfillTest#reviewableExpressionNeverAutoAppliesBecauseThisEvaluatorCannotResolveAnyFunctionCall / #reviewableFunctionCallExpressionRefusesEvenWithAnExplicitAcknowledgment, REAL_LIFT_PLAN_2026-09-03.md package A2"
 classification: HITTABLE

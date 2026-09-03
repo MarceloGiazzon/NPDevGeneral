@@ -1,0 +1,99 @@
+id: STOR-23
+title: >-
+  A2: shadow-column proof-of-safety for REVIEWABLE expression-default backfills -- prove safety by
+  running the expression twice, not by classifying its text (B2, REAL_LIFT_PLAN_2026-09-03)
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md Track A package A2 (B2) -- depends on A1 (STOR-21) only in the sense the
+  plan's own §3 framing anticipated ("built on A1's journaled phases"); in practice this package needed
+  no journal at all, since a shadow proof is two in-memory evaluations plus one direct write, not a
+  multi-statement resumable sequence -- noted as a premise correction, not a deviation.
+surface: runtimehost-core (db/backfill), B2 registry (ledger/boundaries, accepted-boundaries.json,
+  docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ExpressionBackfillShadowProof.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ExpressionBackfillPreview.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/BackfillPass.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ExpressionBackfillShadowProofTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ExpressionBackfillShadowProofIntegrationTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRequiredFieldBackfillTest.java
+  - ledger/boundaries/B2.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  PREMISE CORRECTION #1 (verified before building, matching the plan's own §1 discipline): the plan
+  sketched "add a shadow column NULLable -> backfill it for real -> verify -> apply NOT NULL" as if a
+  SEPARATE shadow column were needed. Re-reading against the actual codebase: BackfillPass already adds
+  the TARGET column nullable, backfills, then tightens -- a shadow column would just duplicate that
+  shape. Built instead: two IN-MEMORY evaluations (ExpressionBackfillShadowProof), compared before
+  anything is written, then the TARGET column is added and populated ONCE with the already-proven
+  values. Same safety property (nothing is written until proven), no duplicate DB column, no A1 journal
+  dependency (a two-pass in-memory proof plus one write is not a multi-phase resumable sequence).
+
+  PREMISE CORRECTION #2, the important one, FOUND WHILE BUILDING (not assumed, not theorized): the
+  plan's own done-when #2 example ("a now()-shaped expression correctly proves unstable and keeps its
+  ack") does not hold for THIS evaluator -- ValueExpressionEvaluator's now()/uuid() are HARD-CODED
+  deterministic constants (Instant.EPOCH.toString() / a name-based UUID), not real wall-clock time
+  (verified by reading the evaluator, not assumed) -- so they were never actually at risk, and were
+  already correctly classified SAFE. The REAL, live risk this package's shadow proof exists for is any
+  GENUINE function call, and investigating THAT surfaced something bigger: `ExpressionBackfillPreview`
+  evaluates through `ValueExpressionEvaluator` -> `ComputedExpression.evaluate` with an EMPTY
+  FunctionRegistry (no function is ever wired for this path -- REG-202's own note about HIGH_RISK's
+  scope.* applies to EVERY function call, not just scope.*). An unresolvable function call fell through
+  to a last-resort fallback that returned the RAW EXPRESSION TEXT as if it were a computed value --
+  already documented as "a pre-existing quirk" by the very test this package's predecessor updated
+  (reviewableExpressionAutoAppliesOnlyWhenModeIsSafeAndReviewable), which showed a REVIEWABLE expression
+  auto-applying and WRITING GARBAGE under safe-and-reviewable mode, undetected by any check anywhere.
+
+  DONE-WHEN, verified in order:
+  1. A REVIEWABLE candidate proven safe by ExpressionBackfillShadowProof (every row populated, two
+     evaluations agree) auto-applies under auto-apply=safe-and-reviewable, logging what it did and that
+     determinism was verified (AUTO-APPLIED log line, unchanged shape, now covers both SAFE and
+     proven-REVIEWABLE candidates in one message). SAFE tier's existing lighter check is UNCHANGED.
+  2. Non-determinism is caught by double-evaluation, not guessed from the function name -- proven by
+     ExpressionBackfillShadowProofTest's direct unit tests of the comparison logic (fabricated row
+     values, since NOTHING in today's evaluator vocabulary is actually non-deterministic to exercise
+     the branch live -- now()/uuid() are fixed constants, verified per premise correction #2 above).
+  3. FunctionRegistry purity/determinism metadata: NOT built -- honestly not applicable today. There are
+     ZERO registered functions in this evaluation path (empty registry) to attach metadata to; the
+     actual behavioral ask ("classification stops being the verdict, the shadow run is the authority")
+     IS built and is what makes this point moot rather than unaddressed.
+  4. HIGH_RISK given honest treatment: not deleted, but the register now states plainly that BOTH
+     REVIEWABLE and HIGH_RISK are structurally unreachable for auto-apply today (same root cause, empty
+     FunctionRegistry), each still always requiring an ack in practice -- true to the plan's "a ladder
+     rung nobody can stand on should not be in the register" instruction, extended to a rung the plan
+     did not realize was in the SAME state (REVIEWABLE), found only by verifying rather than assuming.
+  5. The acknowledgment endpoint is unchanged, and DOES still correctly refuse (now with an HONEST
+     "produces no value" reason, not a silent garbage-write) for a candidate that fails the proof --
+     proven by reviewableFunctionCallExpressionRefusesEvenWithAnExplicitAcknowledgment, the direct
+     regression test for the corruption bug this package fixed.
+
+  A REAL, NAMEABLE SAFETY IMPROVEMENT even though the shadow proof has no live candidate to succeed on
+  yet: before this package, an operator running with auto-apply=safe-and-reviewable (an EXISTING,
+  already-shipped opt-in from REG-202) could have a REVIEWABLE backfill silently write the literal
+  expression text into production rows with zero warning. After this package, that is structurally
+  impossible -- every function-call expression is now honestly reported as failing, everywhere it is
+  evaluated, and the fix required no opt-in to take effect (ExpressionBackfillPreview#evaluateRows is
+  unconditional).
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ExpressionBackfillShadowProofTest.java
+  asserts: >-
+    ExpressionBackfillShadowProofTest (5 tests, pure comparison logic against fabricated row values):
+    happy path carries proven values; an unpopulated row is not safe; a disagreeing row is
+    nondeterministic-not-safe; a row missing from the second pass is treated as nondeterministic; zero
+    rows is trivially safe. ExpressionBackfillShadowProofIntegrationTest (3 tests, real H2): a $field
+    copy proves safe end-to-end through the real evaluateRows plumbing; a function-call expression can
+    never prove safe (confirms the empty-FunctionRegistry finding live); zero affected rows is safe
+    with nothing proven. SchemaLifecycleExecutorRequiredFieldBackfillTest (2 tests replacing the
+    predecessor that documented the bug as a "quirk"): reviewableExpressionNeverAutoAppliesBecause...
+    (no ack submitted, refuses, column never added) and reviewableFunctionCallExpressionRefuses...
+    (WITH an explicit ack, still refuses with the honest "produces no value" message, column never
+    populated with garbage -- the direct regression proof). Every PRE-EXISTING SAFE-tier and
+    HIGH_RISK-tier test in the same file re-run unmodified, proving zero behavior change for what
+    already worked correctly. Closing verification: scripts/quality/run-runtimehost-gate.ps1 green.
+  provenRed: false
