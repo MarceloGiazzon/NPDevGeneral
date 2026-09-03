@@ -1,0 +1,120 @@
+id: STOR-21
+title: >-
+  A1: resumable, journaled migration execution -- a hand-written conversion hook mixing DDL with a
+  verifySql on an implicit-commit engine can now automatically split into idempotent, journaled
+  phases and RUN, resuming past a real process crash instead of refusing (B11)
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md, Track A package A1 (B11) -- the plan's designated starting point:
+  substrate for A2 (shadow-column backfill proof, which reuses this journal for its own phases), and
+  the only package that removes an existing data-loss-adjacent failure mode (a half-applied migration
+  a human has to repair by hand) on its own.
+surface: runtimehost-core (db/migration-execution, db/conversion-hooks), B11 registry (ledger/boundaries,
+  accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MigrationPhaseJournal.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookPhaseSplitter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookPhaseRunner.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerH2Test.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookPhaseSplitterTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationPhaseJournalTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidPhaseHarness.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidPhaseCrashResumeTest.java
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/p75-multi/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/p75-multi/convert.sql
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/p75-unguardable/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/p75-unguardable/convert.sql
+  - ledger/boundaries/B11.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  PREMISE VERIFIED FIRST (matching the plan's own §1 discipline): every GENERATED conversions[] hook
+  (ConversionHookEmitter.java) is ALREADY idempotent by construction (STOR-5 "B12's guarantee" --
+  guarded ADD COLUMN + a WHERE-col-IS-NULL-guarded UPDATE + a re-runnable SET NOT NULL), and the "safe
+  convergent passes" (rename/relax/widen, SchemaHistoryStore#recordStepPass) already have equivalent
+  write-before-execute + re-diff-driven resumability. Neither needed rebuilding. The ACTUAL gap this
+  plan's done-when #1/#4 target -- and the only place STOR-20's refusal still fires in practice -- is
+  OPERATOR-authored hand-written hooks (migrations/ folder), whose arbitrary SQL has no such guarantee.
+
+  DONE-WHEN, verified in order:
+
+  1. Idempotent DDL shapes: NEW -- ConversionHookPhaseSplitter mechanically rewrites a hand-written
+     hook's ADD COLUMN / CREATE TABLE / CREATE [UNIQUE] INDEX statements through the SAME
+     SqlDialect#guardedXxx surface (STOR-5) the generator already uses, and recognizes ALTER COLUMN
+     SET|DROP NOT NULL as idempotent-by-nature (no rewrite needed). A DDL shape it does not recognize
+     (a bare DROP COLUMN, an exotic ALTER) BLOCKS the whole split rather than guessing -- same
+     "refuses anything it does not recognise, rather than parsing SQL" discipline SqlDdlGuards already
+     documents. Generated hooks were already idempotent (verified above); safe-pass DDL was
+     out of scope for this package (already resumable via a different, already-proven mechanism).
+  2. Phase journal: NEW table npdev_migration_phase_journal (migration_id, phase_group, phase_ordinal,
+     phase_kind, statement_hash, started_at_utc, completed_at_utc) -- MigrationPhaseJournal.java,
+     consulted BEFORE a phase runs (distinct from SchemaHistoryStore's after-the-fact audit rows).
+     migrationId = sha256(fromFingerprint -> toFingerprint), stable across every boot converging the
+     same transition (fromFingerprint does not change until afterMigrate writes the new one at the
+     very end). phaseGroup = hook id; phaseOrdinal = the hook's own statement index.
+  3. Resume: ConversionHookPhaseRunner iterates a hook's split phases in original order, skipping any
+     already COMPLETED (matching statement hash); a DDL phase's three writes (recordStarted / execute /
+     recordCompleted) each auto-commit separately (safe because the DDL is idempotent by construction
+     -- see #1); a DML phase's statement + BOTH journal writes commit together in ONE transaction (the
+     atomicity, not idempotence, is what makes arbitrary hand-authored DML safe to retry from scratch).
+  4. STOR-20's refusal is replaced, opt-in, by a NEW `mixedDdlVerify=split` mode (kept opt-in rather
+     than made the new default -- same reasoning STOR-20 used for `refuse`: no existing app should
+     change behavior on upgrade with no release cycle to notice via; flipping the default is a
+     deliberately deferred follow-up, tracked in B11.yml same as `refuse` before it). `warn` (default)
+     and `refuse` (STOR-20's hard stop) are UNCHANGED -- verified by re-running their existing tests
+     unmodified. `split` mode's own refusal (an unguardable statement) fires BEFORE running anything
+     and names the exact blocking statement, per done-when #4's own wording.
+  5. Kill-the-JVM test: MigrationKillMidPhaseCrashResumeTest launches a REAL child JVM
+     (MigrationKillMidPhaseHarness) against a file-backed H2 database, running phase 0 only (the ADD
+     COLUMN) of a 3-phase hand-written hook, forcing a durable CHECKPOINT SYNC, then calling
+     Runtime.halt(137) -- no shutdown hook, no finally block anywhere in that JVM runs, the closest an
+     in-process test can get to `kill -9`. A SECOND child process then runs the REAL
+     ConversionHookRunner.run() boot path against the same file and is asserted to: skip the
+     already-completed phase (resumedSkipped=1), run exactly the 2 remaining phases (ran=2), and leave
+     the database fully converged with zero data loss (every row backfilled, none lost or duplicated).
+     This is the literal "run it by actually killing the process, not by simulating an exception" test
+     the plan asked for.
+
+  REAL BUG FOUND BY THE ACCEPTANCE TEST ITSELF (fixed, not worked around): the first gate run of the
+  kill-JVM test's simpler sibling (splitMode_resumesSkippingAlreadyCompletedPhases) failed for real.
+  Root cause: SchemaDiffEngine keys a column PRESENT-BUT-NOT-YET-TIGHTENED live as
+  `TIGHTEN_NOT_NULL:table:column`, a DIFFERENT item key than `ADD_REQUIRED_COLUMN:table:column` a
+  hook's own `claims` entry names (used only while the column is still MISSING). A hook selected
+  purely by claim-intersection against the live diff therefore stops being considered the instant its
+  OWN first phase (the ADD COLUMN) commits -- exactly the crash window a resumable migration must
+  resume THROUGH. This is a PRE-EXISTING latent gap, not something this package introduced: it applies
+  equally to a GENERATED conversions[] hook killed between its ADD COLUMN and its UPDATE/SET NOT NULL
+  on H2/MySQL (a real process crash, not merely a verify failure, which stays within one boot/
+  transaction and never needed cross-boot re-selection) -- B12's "idempotent by construction" framing
+  covered the hook's SQL being safe to re-run, never whether the hook would be RE-SELECTED for
+  re-running after a real crash. Fixed by MigrationPhaseJournal#hasAnyActivity: a hook is now selected
+  if EITHER its claims intersect the unresolved diff (unchanged) OR the journal shows it was EVER
+  touched for this migrationId (new) -- an already-fully-completed hook's phases all skip cheaply on
+  re-selection; a genuinely mid-flight one resumes. Only affects SPLIT mode (the journal is empty for
+  warn/refuse-mode hooks, so their selection is provably unchanged). The GENERATED-hook version of this
+  same latent gap is NOT fixed by this package (generated hooks do not go through SPLIT mode) --
+  flagged here as a real, still-open residual worth its own follow-up item, not silently left unnoted.
+
+  B2 NOTE (A2 dependency, not built in this package): A2 (shadow-column proof-of-safety) is explicitly
+  designed in the plan to reuse THIS journal for its own phases (shadow-column add / backfill / verify
+  / NOT NULL). That reuse is A2's own work, not duplicated here.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidPhaseCrashResumeTest.java
+  asserts: >-
+    aKilledMigrationResumesOnTheNextBootWithNoDataLoss (new, the acceptance test): real child-JVM
+    kill -9 equivalent mid-migration, real second-boot resume, zero data loss, exact phase
+    ran/skipped counts. ConversionHookPhaseSplitterTest (new, 8 tests): classification correctness for
+    every recognized/unrecognized DDL shape, DML passthrough, original-order preservation, hash-over-
+    original-text. MigrationPhaseJournalTest (new, 6 tests): isCompleted's full state matrix
+    (never-recorded / started-not-completed / completed / hash-mismatch / retry-overwrite),
+    migrationId stability. ConversionHookRunnerH2Test (4 new tests): split-mode fresh multi-phase run,
+    split-mode resume-skipping-completed-phase, split-mode refuse-naming-the-blocking-statement, plus
+    every PRE-EXISTING warn/refuse-mode test re-run unmodified to prove zero behavior change for
+    apps not opting in. Closing verification: scripts/quality/run-runtimehost-gate.ps1 run green.
+  provenRed: false

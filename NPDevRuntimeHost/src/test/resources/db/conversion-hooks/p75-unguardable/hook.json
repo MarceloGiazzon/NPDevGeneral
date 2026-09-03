@@ -1,0 +1,7 @@
+{
+  "id": "p75-unguardable",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_unguardable:status"],
+  "description": "A1 fixture (REAL_LIFT_PLAN_2026-09-03): a hand-written hook whose second statement is a bare DROP COLUMN -- a DDL shape ConversionHookPhaseSplitter deliberately does not know how to render idempotent, so SPLIT mode must refuse it (naming the statement) rather than guess.",
+  "verifySql": "SELECT COUNT(*) FROM p75_unguardable WHERE status IS NULL",
+  "verifyExpect": 0
+}

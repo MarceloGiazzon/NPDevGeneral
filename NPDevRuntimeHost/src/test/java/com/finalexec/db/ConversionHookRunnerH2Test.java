@@ -225,6 +225,118 @@ class ConversionHookRunnerH2Test {
     }
 
     @Test
+    void splitMode_multiPhaseHookRunsEveryPhaseAndVerifies() throws SQLException {
+        // A1 (REAL_LIFT_PLAN_2026-09-03, B11 "real lift"): mode=split runs the SAME mixed-DDL/DML
+        // hook STOR-20's refuse mode would have blocked -- but instead of refusing, it decomposes the
+        // hook into three journaled phases (ADD COLUMN, UPDATE backfill, SET NOT NULL) and runs all
+        // three in order on a fresh boot (nothing was journaled yet, so nothing is skipped).
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "split");
+        try {
+            exec("CREATE TABLE p75_multi (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_multi", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+            List<String> phasesApplied = history.stream()
+                    .filter(row -> "HOOK_PHASES_APPLIED".equals(row[1]))
+                    .map(row -> row[2])
+                    .toList();
+            assertEquals(1, phasesApplied.size(), history.toString());
+            assertTrue(phasesApplied.get(0).contains("ran=3"), phasesApplied.get(0));
+            assertTrue(phasesApplied.get(0).contains("resumedSkipped=0"), phasesApplied.get(0));
+
+            List<String> outcomes = history.stream().map(row -> row[1]).toList();
+            assertTrue(outcomes.contains("HOOK_VERIFIED"), outcomes.toString());
+            assertTrue(outcomes.contains("HOOK_APPLIED"), outcomes.toString());
+            assertTrue(unresolvedKeys(manifest).isEmpty(), unresolvedKeys(manifest).toString());
+            assertEquals(0L, singleLongQuery("SELECT COUNT(*) FROM p75_multi WHERE status IS NULL"));
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void splitMode_resumesSkippingAlreadyCompletedPhases() throws SQLException {
+        // A1: simulates a boot that crashed after phase 0 (the ADD COLUMN) had already committed but
+        // before phase 1 (the DML backfill) ran -- exactly the half-applied window STOR-20's refusal
+        // used to make impossible to reach at all. A resumed boot must skip the already-completed
+        // phase and finish the rest, never re-attempt the DDL and never leave the row unresolved.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "split");
+        try {
+            exec("CREATE TABLE p75_multi (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_multi", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            // What a real crashed first boot would have left behind: the DDL already applied...
+            exec("ALTER TABLE p75_multi ADD COLUMN status VARCHAR(20)");
+            // ...and its journal row already marked completed.
+            String fromFingerprint = SchemaLifecycleExecutor.readStoredFingerprintPublic(dataSource);
+            String migrationId = MigrationPhaseJournal.migrationId(fromFingerprint, manifest.schemaFingerprint());
+            MigrationPhaseJournal.PhaseKey key = new MigrationPhaseJournal.PhaseKey(migrationId, "p75-multi", 0);
+            String phase0Hash = sha256Hex("ALTER TABLE p75_multi ADD COLUMN status VARCHAR(20)");
+            try (Connection connection = dataSource.getConnection()) {
+                MigrationPhaseJournal.recordStarted(connection, key, "DDL", phase0Hash);
+                MigrationPhaseJournal.recordCompleted(connection, key);
+            }
+
+            ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+            List<String> phasesApplied = history.stream()
+                    .filter(row -> "HOOK_PHASES_APPLIED".equals(row[1]))
+                    .map(row -> row[2])
+                    .toList();
+            assertEquals(1, phasesApplied.size(), history.toString());
+            assertTrue(phasesApplied.get(0).contains("ran=2"),
+                    "only the DML backfill and SET NOT NULL should run: " + phasesApplied.get(0));
+            assertTrue(phasesApplied.get(0).contains("resumedSkipped=1"),
+                    "the already-completed ADD COLUMN phase must be skipped, not re-run: " + phasesApplied.get(0));
+
+            assertTrue(unresolvedKeys(manifest).isEmpty(), unresolvedKeys(manifest).toString());
+            assertEquals(0L, singleLongQuery("SELECT COUNT(*) FROM p75_multi WHERE status IS NULL"));
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void splitMode_unguardableStatementRefusesNamingItBeforeRunningAnything() throws SQLException {
+        // A1: a hook whose second statement is a bare DROP COLUMN has no recognized idempotent-DDL
+        // shape -- SPLIT mode must refuse it (naming the exact statement), and BEFORE running anything
+        // at all, matching STOR-20's own "refuse before running, never a partial apply" discipline.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "split");
+        try {
+            exec("CREATE TABLE p75_unguardable (id BIGINT PRIMARY KEY, legacy VARCHAR(10))");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_unguardable", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id", "legacy"), List.of("id", "status"));
+
+            IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                    () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+            assertTrue(refusal.getMessage().contains("B11:mixed_ddl_verify_refused:"), refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("DROP COLUMN legacy"), refusal.getMessage());
+
+            List<String> outcomes = history.stream().map(row -> row[1]).toList();
+            assertTrue(outcomes.contains("HOOK_FAILED"), outcomes.toString());
+            assertFalse(outcomes.contains("HOOK_PHASES_APPLIED"), outcomes.toString());
+            assertEquals(0L, singleLongQuery(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'P75_UNGUARDABLE' "
+                            + "AND COLUMN_NAME = 'STATUS'"),
+                    "refused before running -- the ADD COLUMN in phase 0 must never have executed either");
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
     void rule4_verifyMismatchAbortsBeforeAnyDestructiveStep() throws SQLException {
         exec("CREATE TABLE p75_verifyfail (id BIGINT PRIMARY KEY)");
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
@@ -335,6 +447,20 @@ class ConversionHookRunnerH2Test {
     private void exec(String sql) throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute(sql);
+        }
+    }
+
+    private static String sha256Hex(String text) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(text.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(hash.length * 2);
+            for (byte b : hash) {
+                hex.append(String.format("%02x", b));
+            }
+            return hex.toString();
+        } catch (java.security.NoSuchAlgorithmException exception) {
+            throw new IllegalStateException("SHA-256 not available", exception);
         }
     }
 
