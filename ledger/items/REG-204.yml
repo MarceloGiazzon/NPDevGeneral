@@ -1,0 +1,80 @@
+id: REG-204
+title: >-
+  Decide plugin:java-controller isolation (B30-B): trusted tier by design, generator warns at
+  mount time
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 4.4 (B30-B), wave 4. SEC-5 ruled plugin:java-controller
+  out of the IPC process pool with a real reason: a controller mount is a raw Spring
+  @RestController wired by DispatcherServlet, with no CapabilityCall interception point a process
+  boundary could sit behind. The plan named this a design-first package -- the deliverable is the
+  DECISION, not new isolation code -- with a recommendation to declare it a trusted tier by design
+  now (Analisis 2's trusted/declarative/isolated ladder) rather than build real servlet-level
+  interception, and to make the generator say so at mount time.
+surface: generator/emitters, boundary register
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/RuntimeApiEmitterPluginControllerWarningTest.java
+  - ledger/boundaries/B30.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  Took the plan's recommended option (b): `plugin:java-controller` is declared a TRUSTED tier by
+  design, not a gap awaiting servlet-level interception. Real interception (option a -- routing a
+  controller mount's handling across the process boundary the way `plugin:java-source` now does)
+  stays a recorded, deliberately-not-built option, revisited only if third-party plugin distribution
+  becomes a product goal -- not attempted here, since it is real L-XL work that changes how a
+  generated app dispatches HTTP, and nothing on record asks for it yet.
+
+  The code half of the deliverable: `RuntimeApiEmitter.emitJavaControllerMounts` (NPDevGenerator)
+  now prints one console warning per mounted `plugin:java-controller`, at GENERATION time --
+  `npdev generate app: WARNING (B30) -- plugin:java-controller '<capability>' (basePath <path>)
+  runs IN-PROCESS with the application's full privileges. This mount kind is a TRUSTED tier by
+  design: admission-checked at generation/boot (bytecode denylist) but NOT sandboxed -- unlike
+  plugin:java-source, it gets no OS-process isolation and no memory/CPU ceiling. Mount here only
+  code you trust like your own application's; see docs/ACCEPTED_BOUNDARIES.md#B30.` -- matching the
+  existing console-warning precedent already used elsewhere in the generator (`FinalAppAssembler`'s
+  runtimehost-libs-manifest warning, `GeneratorMain`'s build.dependencies collision warnings), rather
+  than inventing a new warnings-collection mechanism for one call site. Prints once per mount (not
+  once overall), naming the capability, so an author sees it for every controller their OWN model
+  actually mounts -- never assuming a controller mount is contained the way a `plugin:java-source`
+  mount now genuinely is (SEC-5/SEC-6/SEC-7).
+
+  Verified with a new generator-level test (`RuntimeApiEmitterPluginControllerWarningTest`) that
+  generates the real `NPDevSamples/probes/p7-plugin-controller` fixture (two mounted controllers,
+  `adminTools` + `superOnlyTools`, already used by `run-r10-plugin-controller-proof.py` as R10's live
+  proof) with `System.out` captured, asserting both capability names appear in a B30-tagged warning
+  naming "TRUSTED tier by design" and linking `docs/ACCEPTED_BOUNDARIES.md#B30`.
+
+  Register updated across the bookkeeping seams (plan section 5): `ledger/boundaries/B30.yml`'s
+  `codeLinkedNote` extended (not replaced) to record the decision and the new warning code, same
+  "extend the note, don't invent a new shape" discipline B1's own REG-197 package used.
+  `NPDevContract/schemas/accepted-boundaries.json`'s B30 entry `userFacingText`/`workaround` extended
+  to mention the generation-time warning. `docs/ACCEPTED_BOUNDARIES.md`'s B30 row's "residue"
+  sentence rewritten from "see wave 4's open design question" to the actual decision, and its
+  Revisit-trigger cell rewritten from "an isolation decision becomes a real need -- open, not
+  started" to "real servlet-level interception, only if third-party plugin distribution becomes a
+  product goal -- the trusted-tier-by-design decision is otherwise permanent, not a placeholder".
+  `classification` is UNCHANGED (HITTABLE) -- this records a design decision and adds a warning, it
+  does not close the underlying limitation (a hostile plugin:java-controller is still not contained,
+  by design, same as before this package).
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/RuntimeApiEmitterPluginControllerWarningTest.java
+  asserts: >-
+    warnsOncePerMountedPluginControllerNamingItsCapability generates the real p7-plugin-controller
+    probe fixture with System.out captured and asserts a B30-tagged "TRUSTED tier by design" warning
+    appears once per mounted controller (adminTools, superOnlyTools), each naming its own capability,
+    plus the docs/ACCEPTED_BOUNDARIES.md#B30 reference. Narrow-verified green during implementation
+    (`:generator:test --tests "*RuntimeApiEmitterPluginControllerWarningTest*"`, after one transient
+    Gradle daemon classloading failure cleared on --rerun -- confirmed unrelated to this change, same
+    class loads fine in every other test in the module). Closing verification, all green: full
+    `run-generator-gate.ps1` (T2, 2066s), full `run-runtimehost-gate.ps1` (T2, 521s), full
+    `run-ai-knowledge-gate.ps1` (T2, 40/40 checkers), full `run-kernel-quality-gate.ps1` (T2,
+    unaffected by this diff but run for complete T2 closure, 188s). All four run 2026-09-03, package
+    closed same day as REG-203 (4.2).
+  provenRed: true
