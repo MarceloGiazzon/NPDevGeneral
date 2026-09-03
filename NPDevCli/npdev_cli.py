@@ -10006,7 +10006,15 @@ def run_why(args: argparse.Namespace) -> int:
     print(f"{match['id']} -- {match['kind']}")
     print("=" * 60)
     print(match["userFacingText"])
-    note = _BOUNDARY_KIND_NOTE.get(match["kind"], "")
+    if match["kind"] == "POSTURAL" and match.get("enforcingDiagnosticCodes"):
+        # BOUNDARY_LIFT_PLAN_2026-09-02.md package 3.4 (B11): the blanket POSTURAL note below assumes
+        # "nothing to hit" for every POSTURAL row -- true until B11 gained an opt-in enforced refusal
+        # while the underlying engine limitation stayed POSTURAL (permanent, not NPDev's choice). A
+        # POSTURAL row that also carries a real code needs its own note, not the blanket one.
+        note = ("The underlying limitation itself is permanent and upstream (not NPDev's choice), "
+                "but an opt-in enforcement now exists -- see the diagnostic code(s) below.")
+    else:
+        note = _BOUNDARY_KIND_NOTE.get(match["kind"], "")
     if note:
         print(f"\n({note})")
     print(f"\nWorkaround: {match['workaround']}")

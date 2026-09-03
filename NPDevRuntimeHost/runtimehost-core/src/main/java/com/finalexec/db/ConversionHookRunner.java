@@ -82,6 +82,38 @@ public final class ConversionHookRunner {
     private static final java.util.regex.Pattern MIXES_DDL_PATTERN =
             java.util.regex.Pattern.compile("(?is).*\\b(ALTER|DROP|CREATE)\\s+TABLE\\b.*");
 
+    /**
+     * BOUNDARY_LIFT_PLAN_2026-09-02 package 3.4 (B11): whether the {@link #MIXES_DDL_PATTERN} shape on
+     * a non-{@link StorageCapability#DDL_IN_TRANSACTION} engine only warns (today's unchanged behavior,
+     * the default -- no existing app breaks without notice on upgrade) or refuses the boot outright
+     * BEFORE running the hook, so the mixed state can never be authored into existence rather than only
+     * be warned about after the fact. Overridable with
+     * {@code -Dnpdev.schema.conversionHooks.mixedDdlVerify=warn|refuse}.
+     */
+    private static final String MIXED_DDL_VERIFY_PROPERTY = "npdev.schema.conversionHooks.mixedDdlVerify";
+
+    private enum MixedDdlVerifyMode {
+        WARN, REFUSE
+    }
+
+    private static MixedDdlVerifyMode resolveMixedDdlVerifyMode() {
+        String configured = System.getProperty(MIXED_DDL_VERIFY_PROPERTY);
+        if (configured == null || configured.isBlank()) {
+            return MixedDdlVerifyMode.WARN;
+        }
+        String trimmed = configured.trim();
+        if ("refuse".equalsIgnoreCase(trimmed)) {
+            return MixedDdlVerifyMode.REFUSE;
+        }
+        if ("warn".equalsIgnoreCase(trimmed)) {
+            return MixedDdlVerifyMode.WARN;
+        }
+        // A typo in an operator-set property must not silently widen or narrow what refuses.
+        System.out.println("NPDev schema lifecycle: ignoring unrecognized " + MIXED_DDL_VERIFY_PROPERTY
+                + "='" + configured + "' (expected warn|refuse); using the default 'warn'.");
+        return MixedDdlVerifyMode.WARN;
+    }
+
     private ConversionHookRunner() {
     }
 
@@ -166,25 +198,50 @@ public final class ConversionHookRunner {
                         + "' has no convert SQL for engine '" + engine + "' -- refusing the boot.");
             }
 
-            // SER closure-plan G6, widened by B11.1 (boundaries-2026-08-12 plan): a detection guard for
-            // the implicit-commit-on-DDL caveat -- warn AT THE MOMENT it matters, when a hook actually
-            // mixes DDL with a verifySql on an engine where a verify failure will NOT roll the DDL back
-            // (docs/ACCEPTED_BOUNDARIES.md B11), rather than only in a javadoc an operator may never
-            // read. Asks the dialect (STOR-2's own precedent, via PartialApplicationTruth) instead of
-            // hardcoding "h2" -- MySQL commits implicitly on DDL too, and the OLD "h2".equals(engine)
-            // check would have missed it while ALSO firing wrongly for SQL Server (detectEngine's own
-            // two-value "postgres"/"h2" fold collapses every non-Postgres engine to "h2" for SQL-variant
-            // selection, which is fine for that purpose but was never a correct signal for THIS warning).
+            // SER closure-plan G6, widened by B11.1 (boundaries-2026-08-12 plan) and package 3.4
+            // (BOUNDARY_LIFT_PLAN_2026-09-02.md, B11): a detection guard for the implicit-commit-on-DDL
+            // caveat -- act AT THE MOMENT it matters, when a hook actually mixes DDL with a verifySql on
+            // an engine where a verify failure will NOT roll the DDL back (docs/ACCEPTED_BOUNDARIES.md
+            // B11), rather than only in a javadoc an operator may never read. Asks the dialect (STOR-2's
+            // own precedent, via PartialApplicationTruth) instead of hardcoding "h2" -- MySQL commits
+            // implicitly on DDL too, and the OLD "h2".equals(engine) check would have missed it while
+            // ALSO firing wrongly for SQL Server (detectEngine's own two-value "postgres"/"h2" fold
+            // collapses every non-Postgres engine to "h2" for SQL-variant selection, which is fine for
+            // that purpose but was never a correct signal for THIS check).
             if (!SqlDialects.active().supports(StorageCapability.DDL_IN_TRANSACTION)
                     && hook.verifySql() != null && !hook.verifySql().isBlank()
                     && MIXES_DDL_PATTERN.matcher(sql).matches()) {
                 String activeEngineName = SqlDialects.active().name();
+                if (resolveMixedDdlVerifyMode() == MixedDdlVerifyMode.REFUSE) {
+                    // Refused BEFORE executeAndVerify runs -- the mixed state (DDL already committed,
+                    // DML rolled back) is never authored into existence at all, not merely warned about
+                    // after the fact. The auto-split suggestion names a concrete two-hook shape rather
+                    // than attempting to split the SQL automatically (rejecting a DDL-journal-style
+                    // "clever" fix for the same reason the plan rejects one platform-wide: executing
+                    // generated DDL at the moment state is least certain is the higher-risk move, not
+                    // the safer one).
+                    historyWriter.write(historyLabel(hook), "HOOK_FAILED",
+                            List.of("B11:mixed_ddl_verify_refused:" + hook.id() + " on " + activeEngineName));
+                    throw new IllegalStateException("B11:mixed_ddl_verify_refused: conversion hook '" + hook.id()
+                            + "' mixes DDL with a verifySql on '" + activeEngineName + "'. That engine COMMITS "
+                            + "IMPLICITLY ON DDL, so if the verify failed the DDL would NOT be rolled back "
+                            + "(data changes made after it would be) -- refused before running, rather than "
+                            + "risking that half-applied state. Split it into two hooks that run in the "
+                            + "existing ascending-id order, each in its own transaction (rule 3): one with the "
+                            + "DDL alone and no verifySql (e.g. id '" + hook.id() + "-1-ddl'), one with the "
+                            + "data movement and this verifySql (e.g. id '" + hook.id() + "-2-verify'). Set "
+                            + "-D" + MIXED_DDL_VERIFY_PROPERTY + "=warn to keep the prior warn-and-proceed "
+                            + "behavior for one more boot while you migrate. Run `npdev why B11` for the full "
+                            + "explanation.");
+                }
                 System.out.println("NPDev schema lifecycle: WARNING -- conversion hook '" + hook.id()
                         + "' mixes DDL with a verifySql on '" + activeEngineName + "'. That engine COMMITS "
                         + "IMPLICITLY ON DDL, so if the verify fails the DDL will NOT be rolled back (data "
                         + "changes made after it will be). Split destructive DDL and data movement into "
                         + "separate hooks/boots, or run this conversion on an engine with transactional DDL "
-                        + "(Postgres, SQL Server). Run `npdev why B11` for the full explanation.");
+                        + "(Postgres, SQL Server). Set -D" + MIXED_DDL_VERIFY_PROPERTY + "=refuse to refuse "
+                        + "this shape outright instead of only warning. Run `npdev why B11` for the full "
+                        + "explanation.");
             }
 
             String sqlHash = sha256Hex(sql);
