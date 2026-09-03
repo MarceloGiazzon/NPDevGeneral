@@ -4,5 +4,5 @@ dependencies {
     // tracing-redaction-default's SensitiveKeyPolicy loads from -- one rule source, not a second
     // independent copy for the in-app producer.
     implementation project(':adapters:tracing-redaction-default')
-    implementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.22.2'
 }

@@ -7,20 +7,20 @@ dependencies {
     compileOnly 'org.springframework:spring-context:6.1.12'
     compileOnly 'org.springframework:spring-web:6.1.12'
     compileOnly 'org.springframework.boot:spring-boot-actuator:3.3.2'
-    compileOnly 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    compileOnly 'jakarta.servlet:jakarta.servlet-api:6.1.0'
 
     // Fix: annotations referenced in code (e.g., @JsonInclude(Include.NON_EMPTY))
-    compileOnly 'com.fasterxml.jackson.core:jackson-annotations:2.17.2'
+    compileOnly 'com.fasterxml.jackson.core:jackson-annotations:2.22'
 
     testImplementation 'org.springframework:spring-jdbc:6.1.12'
     testImplementation 'org.springframework:spring-web:6.1.12'
     testImplementation 'org.springframework:spring-test:6.1.12'
     testImplementation 'org.springframework.boot:spring-boot-actuator:3.3.2'
-    testImplementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
-    testImplementation 'com.h2database:h2:2.2.224'
+    testImplementation 'jakarta.servlet:jakarta.servlet-api:6.1.0'
+    testImplementation 'com.h2database:h2:2.4.240'
 
     // Fix for tests too
-    testImplementation 'com.fasterxml.jackson.core:jackson-annotations:2.17.2'
+    testImplementation 'com.fasterxml.jackson.core:jackson-annotations:2.22'
 }
 
 // Wave 1.3 (LC-C2, MASTER_AI_PLATFORM_PROGRAMME_v2.md): re-sign an app's npdev-generated/ tree with
