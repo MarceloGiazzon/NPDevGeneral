@@ -1,0 +1,7 @@
+{
+  "id": "p75-multi",
+  "claims": ["ADD_REQUIRED_COLUMN:p75_multi:status"],
+  "description": "A1 fixture (REAL_LIFT_PLAN_2026-09-03): a hand-written hook with THREE statements -- a DDL add-column, a DML backfill, and a DDL not-null tighten -- so a SPLIT-mode run exercises multiple journaled phases in order.",
+  "verifySql": "SELECT COUNT(*) FROM p75_multi WHERE status IS NULL",
+  "verifyExpect": 0
+}

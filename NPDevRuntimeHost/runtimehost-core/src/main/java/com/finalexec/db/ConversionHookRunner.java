@@ -93,7 +93,7 @@ public final class ConversionHookRunner {
     private static final String MIXED_DDL_VERIFY_PROPERTY = "npdev.schema.conversionHooks.mixedDdlVerify";
 
     private enum MixedDdlVerifyMode {
-        WARN, REFUSE
+        WARN, REFUSE, SPLIT
     }
 
     private static MixedDdlVerifyMode resolveMixedDdlVerifyMode() {
@@ -108,9 +108,17 @@ public final class ConversionHookRunner {
         if ("warn".equalsIgnoreCase(trimmed)) {
             return MixedDdlVerifyMode.WARN;
         }
+        // A1 (REAL_LIFT_PLAN_2026-09-03, B11 "real lift"): opt-in automatic phase-split-and-journal --
+        // see ConversionHookPhaseSplitter/ConversionHookPhaseRunner. Kept opt-in rather than made the
+        // new default, for the same reason STOR-20 kept 'refuse' opt-in: no existing app should change
+        // behavior on upgrade with no release cycle to notice via. Flipping the default is a
+        // deliberately deferred follow-up, same as 'refuse' before it.
+        if ("split".equalsIgnoreCase(trimmed)) {
+            return MixedDdlVerifyMode.SPLIT;
+        }
         // A typo in an operator-set property must not silently widen or narrow what refuses.
         System.out.println("NPDev schema lifecycle: ignoring unrecognized " + MIXED_DDL_VERIFY_PROPERTY
-                + "='" + configured + "' (expected warn|refuse); using the default 'warn'.");
+                + "='" + configured + "' (expected warn|refuse|split); using the default 'warn'.");
         return MixedDdlVerifyMode.WARN;
     }
 
@@ -158,9 +166,21 @@ public final class ConversionHookRunner {
             return false;
         }
 
+        // A1 (REAL_LIFT_PLAN_2026-09-03): a hook's OWN first phase committing (e.g. its ADD COLUMN)
+        // changes the live schema shape that SchemaDiffEngine diffs against -- a present-but-not-yet-
+        // tightened column reclassifies from ADD_REQUIRED_COLUMN to TIGHTEN_NOT_NULL, a DIFFERENT item
+        // key than the one the hook's own `claims` entry names. Selecting hooks by claim-intersection
+        // alone would silently stop considering a hook the instant its first phase committed -- exactly
+        // the crash window a resumable migration must resume THROUGH, not get permanently stuck on.
+        // MigrationPhaseJournal.hasAnyActivity is the fix: it answers "did split mode ever touch this
+        // hook for THIS migration", independent of how the diff engine currently classifies the item.
+        String migrationId = MigrationPhaseJournal.migrationId(
+                SchemaLifecycleExecutor.readStoredFingerprintPublic(dataSource), manifest.schemaFingerprint());
+
         List<Hook> selected = new ArrayList<>();
         for (Hook hook : loadHooks()) {
-            boolean matches = hook.claims().stream().anyMatch(unresolvedKeys::contains);
+            boolean matches = hook.claims().stream().anyMatch(unresolvedKeys::contains)
+                    || hasIncompletePhaseActivity(dataSource, migrationId, hook.id());
             if (matches) {
                 selected.add(hook);
             } else {
@@ -208,11 +228,15 @@ public final class ConversionHookRunner {
             // ALSO firing wrongly for SQL Server (detectEngine's own two-value "postgres"/"h2" fold
             // collapses every non-Postgres engine to "h2" for SQL-variant selection, which is fine for
             // that purpose but was never a correct signal for THIS check).
+            boolean usedPhaseSplit = false;
             if (!SqlDialects.active().supports(StorageCapability.DDL_IN_TRANSACTION)
                     && hook.verifySql() != null && !hook.verifySql().isBlank()
                     && MIXES_DDL_PATTERN.matcher(sql).matches()) {
                 String activeEngineName = SqlDialects.active().name();
-                if (resolveMixedDdlVerifyMode() == MixedDdlVerifyMode.REFUSE) {
+                MixedDdlVerifyMode mode = resolveMixedDdlVerifyMode();
+                if (mode == MixedDdlVerifyMode.SPLIT) {
+                    usedPhaseSplit = runSplitPhases(dataSource, migrationId, historyWriter, hook, sql, activeEngineName);
+                } else if (mode == MixedDdlVerifyMode.REFUSE) {
                     // Refused BEFORE executeAndVerify runs -- the mixed state (DDL already committed,
                     // DML rolled back) is never authored into existence at all, not merely warned about
                     // after the fact. The auto-split suggestion names a concrete two-hook shape rather
@@ -233,37 +257,57 @@ public final class ConversionHookRunner {
                             + "-D" + MIXED_DDL_VERIFY_PROPERTY + "=warn to keep the prior warn-and-proceed "
                             + "behavior for one more boot while you migrate. Run `npdev why B11` for the full "
                             + "explanation.");
+                } else {
+                    System.out.println("NPDev schema lifecycle: WARNING -- conversion hook '" + hook.id()
+                            + "' mixes DDL with a verifySql on '" + activeEngineName + "'. That engine COMMITS "
+                            + "IMPLICITLY ON DDL, so if the verify fails the DDL will NOT be rolled back (data "
+                            + "changes made after it will be). Split destructive DDL and data movement into "
+                            + "separate hooks/boots, or run this conversion on an engine with transactional DDL "
+                            + "(Postgres, SQL Server), or set -D" + MIXED_DDL_VERIFY_PROPERTY + "=split to have "
+                            + "the platform do that automatically and resume safely on a crash. Set -D"
+                            + MIXED_DDL_VERIFY_PROPERTY + "=refuse to refuse this shape outright instead of only "
+                            + "warning. Run `npdev why B11` for the full explanation.");
                 }
-                System.out.println("NPDev schema lifecycle: WARNING -- conversion hook '" + hook.id()
-                        + "' mixes DDL with a verifySql on '" + activeEngineName + "'. That engine COMMITS "
-                        + "IMPLICITLY ON DDL, so if the verify fails the DDL will NOT be rolled back (data "
-                        + "changes made after it will be). Split destructive DDL and data movement into "
-                        + "separate hooks/boots, or run this conversion on an engine with transactional DDL "
-                        + "(Postgres, SQL Server). Set -D" + MIXED_DDL_VERIFY_PROPERTY + "=refuse to refuse "
-                        + "this shape outright instead of only warning. Run `npdev why B11` for the full "
-                        + "explanation.");
             }
 
             String sqlHash = sha256Hex(sql);
 
-            // SER-P7 (finding #1 fix): run the convert SQL AND its verifySql in ONE transaction, so a
-            // verify mismatch (or a verifySql that errors) rolls the WHOLE hook back -- nothing persists.
-            // Previously the convert SQL committed first and verify ran on a separate connection, so a
-            // failing verify aborted the boot but the hook's (possibly destructive) changes stayed
-            // committed and a re-boot silently proceeded.
-            //
-            // "Nothing persisted" is literally true only on an engine that keeps DDL inside the
-            // transaction. H2 does not (boundary B11) and MySQL does not, so what the refusal says
-            // now comes from rollbackTruth() rather than from this assumption. See its javadoc.
+            // A1 (REAL_LIFT_PLAN_2026-09-03): a phase-split hook already ran every statement, each its
+            // own journaled, resumable phase (ConversionHookPhaseRunner) -- only the closing verify
+            // still needs to run, on its own read-only connection. Everything below this branch treats
+            // "outcome" identically either way; only how it was produced differs.
             HookOutcome outcome;
-            try {
-                outcome = executeAndVerify(dataSource, sql, hook.verifySql(), hook.verifyExpect());
-            } catch (SQLException exception) {
-                historyWriter.write(historyLabel(hook), "HOOK_FAILED",
-                        List.of("sqlHash=" + sqlHash, "error=" + exception.getMessage()));
-                throw new IllegalStateException("Conversion hook '" + hook.id()
-                        + "' failed executing its convert SQL (" + rollbackTruth() + "): "
-                        + exception.getMessage() + " -- refusing the boot.", exception);
+            if (usedPhaseSplit) {
+                try {
+                    outcome = verifyOnly(dataSource, hook.verifySql(), hook.verifyExpect());
+                } catch (SQLException exception) {
+                    historyWriter.write(historyLabel(hook), "HOOK_FAILED",
+                            List.of("sqlHash=" + sqlHash, "error=" + exception.getMessage()));
+                    throw new IllegalStateException("Conversion hook '" + hook.id()
+                            + "' ran every journaled phase but its closing verifySql failed to run: "
+                            + exception.getMessage() + " -- refusing the boot. The phases already applied "
+                            + "remain applied (B11: no rollback on an implicit-commit engine); the next boot "
+                            + "resumes from the journal and re-checks the verify.", exception);
+                }
+            } else {
+                // SER-P7 (finding #1 fix): run the convert SQL AND its verifySql in ONE transaction, so a
+                // verify mismatch (or a verifySql that errors) rolls the WHOLE hook back -- nothing persists.
+                // Previously the convert SQL committed first and verify ran on a separate connection, so a
+                // failing verify aborted the boot but the hook's (possibly destructive) changes stayed
+                // committed and a re-boot silently proceeded.
+                //
+                // "Nothing persisted" is literally true only on an engine that keeps DDL inside the
+                // transaction. H2 does not (boundary B11) and MySQL does not, so what the refusal says
+                // now comes from rollbackTruth() rather than from this assumption. See its javadoc.
+                try {
+                    outcome = executeAndVerify(dataSource, sql, hook.verifySql(), hook.verifyExpect());
+                } catch (SQLException exception) {
+                    historyWriter.write(historyLabel(hook), "HOOK_FAILED",
+                            List.of("sqlHash=" + sqlHash, "error=" + exception.getMessage()));
+                    throw new IllegalStateException("Conversion hook '" + hook.id()
+                            + "' failed executing its convert SQL (" + rollbackTruth() + "): "
+                            + exception.getMessage() + " -- refusing the boot.", exception);
+                }
             }
 
             if (outcome.verifyRan() && outcome.verifyError() != null) {
@@ -313,6 +357,73 @@ public final class ConversionHookRunner {
     }
 
     /**
+     * A1 (REAL_LIFT_PLAN_2026-09-03, B11 "real lift"): the SPLIT-mode alternative to STOR-20's hard
+     * refusal -- classifies {@code sql} into single-statement, resumable phases and runs whichever
+     * ones {@link MigrationPhaseJournal} does not already show completed for this migration. Throws a
+     * refusal, in the same spirit as REFUSE mode's, naming the exact blocking statement, when the hook
+     * contains a DDL shape this platform does not know how to render idempotent -- refused BEFORE
+     * running anything, never a partial split.
+     *
+     * @param migrationId precomputed once by the caller ({@code run}'s own selection step already
+     *                     needs it for {@link #hasIncompletePhaseActivity}) rather than re-derived here
+     * @return {@code true} always (a boolean, not void, so the call site reads as setting a flag);
+     *         every failure path throws instead of returning {@code false}
+     */
+    private static boolean runSplitPhases(DataSource dataSource, String migrationId,
+            HistoryWriter historyWriter, Hook hook, String sql, String activeEngineName) {
+        ConversionHookPhaseSplitter.SplitResult splitResult =
+                ConversionHookPhaseSplitter.split(sql, SqlDialects.active());
+        if (!splitResult.isSplittable()) {
+            ConversionHookPhaseSplitter.Blocked blocked = splitResult.blocked();
+            historyWriter.write(historyLabel(hook), "HOOK_FAILED",
+                    List.of("B11:mixed_ddl_verify_refused:" + hook.id() + " on " + activeEngineName,
+                            "blockedStatement=" + blocked.statement()));
+            throw new IllegalStateException("B11:mixed_ddl_verify_refused: conversion hook '" + hook.id()
+                    + "' mixes DDL with a verifySql on '" + activeEngineName + "', and statement #"
+                    + blocked.ordinal() + " (" + blocked.statement() + ") " + blocked.reason() + " -- refused "
+                    + "before running, rather than risking a half-applied state no automatic split could make "
+                    + "safe. Split it into two hooks by hand (rule 3): one with the DDL alone and no verifySql, "
+                    + "one with the data movement and this verifySql. Set -D" + MIXED_DDL_VERIFY_PROPERTY
+                    + "=warn to keep the prior warn-and-proceed behavior. Run `npdev why B11` for the full "
+                    + "explanation.");
+        }
+        try {
+            ConversionHookPhaseRunner.PhaseOutcome outcome =
+                    ConversionHookPhaseRunner.run(dataSource, migrationId, hook.id(), splitResult.phases());
+            historyWriter.write(historyLabel(hook), "HOOK_PHASES_APPLIED",
+                    List.of("phases=" + splitResult.phases().size(), "ran=" + outcome.phasesRun(),
+                            "resumedSkipped=" + outcome.phasesSkipped()));
+        } catch (SQLException exception) {
+            historyWriter.write(historyLabel(hook), "HOOK_FAILED",
+                    List.of("phase execution error=" + exception.getMessage()));
+            throw new IllegalStateException("Conversion hook '" + hook.id() + "' failed executing a journaled "
+                    + "phase: " + exception.getMessage() + " -- refusing the boot. Every phase already "
+                    + "completed stays applied (B11); the next boot resumes at the first phase not yet "
+                    + "completed.", exception);
+        }
+        return true;
+    }
+
+    /** Runs only {@code verifySql} on a fresh connection -- the closing check for a hook whose phases
+     *  already ran via {@link #runSplitPhases}. No transaction to roll back: every phase already
+     *  committed for real (the whole point of forward-only resumability on an implicit-commit engine),
+     *  so a verify failure here refuses the boot without touching data that is already durably
+     *  applied. */
+    private static HookOutcome verifyOnly(DataSource dataSource, String verifySql, int verifyExpect) throws SQLException {
+        if (verifySql == null || verifySql.isBlank()) {
+            return new HookOutcome(true, false, -1L, null);
+        }
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(verifySql);
+             ResultSet resultSet = statement.executeQuery()) {
+            long actual = resultSet.next() ? resultSet.getLong(1) : -1L;
+            return new HookOutcome(actual == verifyExpect, true, actual, null);
+        } catch (SQLException verifyException) {
+            return new HookOutcome(false, true, -1L, verifyException.getMessage());
+        }
+    }
+
+    /**
      * SER-P7.4: a read-only index of every {@code hook.json} claim currently on the classpath,
      * {@code itemKey -> hookId} -- NO diff computation, NO SQL execution. The Impact Report uses this
      * to show {@code HOOK: <id>} for an item a hook WOULD resolve if this boot actually ran, before it
@@ -337,6 +448,20 @@ public final class ConversionHookRunner {
      *  {@code jar:} URL when {@link #loadHooks} is driven from inside a packaged boot jar). */
     static long loadedHooksWithConvertSqlCount() {
         return loadHooks().stream().filter(h -> h.commonSql() != null && !h.commonSql().isBlank()).count();
+    }
+
+    /** Opens the connection {@link MigrationPhaseJournal#hasAnyActivity} needs -- a hook-selection-time
+     *  pre-check, so it degrades to "no activity" (never blocks selection) rather than propagating a
+     *  checked exception into the selection loop's stream/lambda-free {@code for} on a transient read
+     *  failure; the same table this reads is also opened fresh inside {@link #runSplitPhases} moments
+     *  later for the hooks that DO get selected, so a failure here just means one fewer resume signal
+     *  this boot, not a lost migration. */
+    private static boolean hasIncompletePhaseActivity(DataSource dataSource, String migrationId, String hookId) {
+        try (Connection connection = dataSource.getConnection()) {
+            return MigrationPhaseJournal.hasAnyActivity(connection, migrationId, hookId);
+        } catch (SQLException exception) {
+            return false;
+        }
     }
 
     private static String historyLabel(Hook hook) {
@@ -556,8 +681,13 @@ public final class ConversionHookRunner {
      * </ul>
      * Comment/quote text is preserved verbatim in the output (not stripped) -- the target engine
      * understands its own comment syntax fine; this only decides where NOT to split.
+     *
+     * <p>Package-private (not {@code private}) since A1 (REAL_LIFT_PLAN_2026-09-03):
+     * {@link ConversionHookPhaseSplitter} reuses this exact lexer rather than duplicating it, so SPLIT
+     * mode's statement boundaries are byte-identical to the ones {@link #splitStatements} always used
+     * to execute a non-split hook.
      */
-    private static List<String> splitStatements(String sql) {
+    static List<String> splitStatements(String sql) {
         List<String> statements = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         SplitterState state = SplitterState.NORMAL;

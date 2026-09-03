@@ -1,0 +1,64 @@
+id: STOR-22
+title: >-
+  A generated conversions[] hook killed between its ADD COLUMN and its UPDATE/SET NOT NULL on H2/MySQL
+  stops being re-selected on the next boot -- the SAME hook-reselection gap STOR-21 fixed for
+  SPLIT-mode hand-written hooks, still open for generated hooks (which never go through SPLIT mode)
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-03
+source: >-
+  Found while closing STOR-21 (REAL_LIFT_PLAN_2026-09-03.md package A1) -- the kill-JVM acceptance
+  test's simpler sibling (ConversionHookRunnerH2Test#splitMode_resumesSkippingAlreadyCompletedPhases)
+  failed on first run and traced back to this root cause. The fix built for A1
+  (MigrationPhaseJournal#hasAnyActivity, wired into ConversionHookRunner's hook-selection loop) only
+  helps a hook running in SPLIT mode, because only SPLIT mode ever writes to the phase journal.
+  Generated conversions[] hooks (ConversionHookEmitter.java) still run through the ORIGINAL
+  executeAndVerify path (one connection, one transaction, no journal), so they have no journal
+  activity to fall back on if claim-matching stops finding them.
+surface: runtimehost-core (db/conversion-hooks), generator (dbconfig/ConversionHookEmitter)
+detail: |
+  ROOT CAUSE (verified, not theorized -- this is what STOR-21's own regression proved):
+  SchemaDiffEngine (NPDevRuntimeHost/.../schemastate/SchemaDiffEngine.java:241-282) keys a column that
+  is PRESENT live but not yet NOT-NULL as `TIGHTEN_NOT_NULL:table:column` (compareColumn path) -- a
+  DIFFERENT item key than `ADD_REQUIRED_COLUMN:table:column` (addColumnItem path), which only applies
+  while the column is still MISSING. A hook's `hook.json` `claims` array names the ORIGINAL
+  `ADD_REQUIRED_COLUMN:...` key (correct at generation time, since that is the item the hook was
+  written to resolve). ConversionHookRunner.run() selects hooks by intersecting `claims` against the
+  CURRENTLY unresolved diff -- so the instant a hook's own ADD COLUMN statement commits (H2/MySQL
+  commit DDL implicitly, mid-hook, regardless of the hook's own transaction), the live diff
+  reclassifies the SAME table/column to `TIGHTEN_NOT_NULL:...`, no longer matching the hook's claim.
+
+  WHY THIS IS A REAL GAP, NOT A THEORETICAL ONE: this requires an ACTUAL PROCESS CRASH (kill -9,
+  Runtime.halt, OOM-killer, host reboot) between the hook's ADD COLUMN statement and its subsequent
+  UPDATE/SET NOT NULL statements -- NOT a verifySql mismatch (which fails within the SAME transaction/
+  boot and never needs cross-boot re-selection at all). On the NEXT boot, ConversionHookRunner would
+  silently skip the hook ("claims nothing in the current unresolved diff"), leaving the column
+  permanently nullable and unpopulated with no automatic path to finish the migration -- worse than a
+  clean refusal, since nothing NAMES the problem either. B12's "idempotent by construction" framing
+  (STOR-5) proved the hook's OWN SQL is safe to re-run; it never verified the hook would be
+  RE-SELECTED for re-running after a real crash, which is the part that is actually broken here.
+
+  WHY NOT FIXED IN STOR-21: MigrationPhaseJournal is new machinery this package built specifically for
+  SPLIT mode's per-statement resumability; generated hooks run through executeAndVerify's original
+  single-transaction path and never touch the journal, so hasAnyActivity always returns false for them
+  -- the STOR-21 fix genuinely does not reach this case. Widening it needs one of: (a) route generated
+  hooks through the SAME phase-splitter/journal machinery SPLIT mode uses (they are already idempotent
+  by construction, so every phase would be a safe no-op guard rewrite, likely a small, low-risk change
+  since ConversionHookPhaseSplitter already recognizes ADD COLUMN / SET NOT NULL, generated hooks'
+  exact two DDL shapes); or (b) a narrower fix: make hook selection ALSO match on the (table, column)
+  pair a `TIGHTEN_NOT_NULL`/`NEEDS_BACKFILL` item names against claims of the SAME shape
+  (`ADD_REQUIRED_COLUMN:table:column`), independent of the journal, which would fix both generated AND
+  warn/refuse-mode hand-written hooks in one change but needs care not to over-broaden which hooks a
+  given diff item can pull in.
+
+  DONE-WHEN (not yet built): a kill-JVM test structurally identical to
+  MigrationKillMidPhaseCrashResumeTest, but against a GENERATED conversions[] hook (e.g. a `copy` op)
+  instead of a hand-written one, proves the boot resumes and completes with no data loss and no human
+  step, on the default `warn`-mode configuration (no opt-in required, since this is not a STOR-20/A1
+  opt-in feature -- generated hooks are meant to be safe by default today).
+guard:
+  kind: test
+  ref: (not yet written -- see DONE-WHEN above)
+  asserts: N/A -- OPEN
+  provenRed: false
