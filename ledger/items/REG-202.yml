@@ -1,0 +1,138 @@
+id: REG-202
+title: >-
+  Expression-backfill risk tiers (SAFE/REVIEWABLE/HIGH_RISK) -- a SAFE default no longer needs an
+  operator's acknowledgment
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 3.1 (B2), wave 3 -- no dependency, user-selected from
+  the offered Wave 3/4 list at the start of this session ("3.1 -- B2 backfill risk tiers").
+surface: NPDevContract/dsl (expr), NPDevKernel/kernel (concepts), runtimehost-core (db), controlpanel
+  REST, B2 registry (ledger/boundaries, accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/expr/ComputedExpressionTest.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ExpressionBackfillRiskClassifier.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ExpressionBackfillRiskClassifierTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/BackfillPass.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ExpressionBackfillPreviewJson.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaImpactController.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRequiredFieldBackfillTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ExpressionBackfillPreviewJsonTest.java
+  - ledger/boundaries/B2.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. Expressions are classified SAFE / REVIEWABLE / HIGH_RISK by
+     `ExpressionBackfillRiskClassifier.classify` (new, `com.npdev.kernel.concepts`, sibling of
+     `ValueExpressionEvaluator`). SAFE is a constant (`now()`/`uuid()` -- both already deterministic,
+     fixed values in this evaluator, not the real wall clock -- a quoted literal, `true`/`false`, a
+     bare number), a single-column `$field` copy, or any `ComputedExpression` parse with NO function
+     call anywhere (arithmetic/comparison/logical over `$field`s and literals only, e.g.
+     `"quantity * unitPrice"`). REVIEWABLE is any parse containing a function call. HIGH_RISK is a
+     call whose name starts with `"scope."` -- the one concrete cross-record signal
+     `ComputedExpression`'s grammar carries today (`DIRECT_FUNCTION_NAMES` names `"scope.exists"`). An
+     unparseable expression classifies REVIEWABLE, not HIGH_RISK: nothing proves it dangerous, only
+     that nothing proves it safe.
+
+     Reuses, rather than re-derives, the grammar: `ComputedExpression` gained a `collectFunctionCalls`
+     traversal (mirrors the existing `collectFields`/`referencedFields` pattern exactly, including
+     recursing into a `Lambda` body -- unlike `collectFields`, a call name inside a lambda body IS a
+     real function call worth finding) and a public `functionCalls(String)` entry point.
+     `ValueExpressionEvaluator.evaluate`'s special-form dispatch (`now()`/`uuid()`/`$field`/quoted/
+     boolean/numeric) was extracted into named package-private predicates with IDENTICAL conditions
+     (a pure, behavior-preserving refactor -- verified by the full existing + new test suite passing
+     unchanged) so the classifier can never diagnose a form differently than the evaluator actually
+     treats it.
+
+  2. A SAFE candidate whose Pass-1 scan (already computed by the pre-existing
+     `ExpressionBackfillPreview.evaluate` call in `BackfillPass`) shows zero failing rows and a row
+     count at or under the configured threshold applies automatically in `BackfillPass
+     .applyRequiredFieldBackfills`, with a loud, itemized `AUTO-APPLIED ... no acknowledgment required`
+     log line naming each `table.column (N row(s))`. Recorded to `npdev_schema_history` under a
+     DISTINCT step name (`EXPRESSION_BACKFILL_AUTO_SAFE`) from the acknowledged path's
+     `EXPRESSION_BACKFILL`, so the two are distinguishable in the audit trail. The re-evaluate-right-
+     before-writing safety net `applyExpressionBackfill` already had (never trusting a stale preview)
+     is unchanged and covers the auto-apply path too.
+
+  3. REVIEWABLE and HIGH_RISK are unchanged by default: they still fall through to the existing
+     preview + `ackToken` + `/acknowledge` path, verbatim.
+
+  4. `npdev.schema.backfill.auto-apply = none|safe|safe-and-reviewable` (default `safe`) gates which
+     tiers are eligible to auto-apply; `npdev.schema.backfill.auto-apply-max-rows` (default 10000) is
+     the row-count threshold. Both follow `MigrationMutex.waitMillis`'s exact defensive-parsing idiom
+     (a typo logs and falls back to the default rather than silently changing behavior). HIGH_RISK is
+     eligible under NO mode -- that ladder rung deliberately does not exist, matching the plan's
+     rejection of a blanket `--force`/`auto-acknowledge-backfills` escape hatch. The chosen mode (and
+     threshold) is printed at boot whenever an expression-default candidate exists (this pass only
+     runs on a fingerprint-changed boot to begin with, so "printed at boot" means every boot where
+     there is something to classify, not an unconditional banner on every boot regardless of schema
+     change).
+
+  5. `GET /api/admin/schema-migration/expression-backfill-preview` renders each candidate in the shape
+     Analisis 2 sketched: `table`/`column` (unchanged), `nullabilityChange` (new, constant
+     `"NULLABLE -> NOT NULL"` -- this pass's entire point), `expression` (unchanged), `rowsAffected`/
+     `distinctValues`/`failedRowIds` (unchanged -- "rows affected"/"null results"), `steps` (new, the
+     ordered ADD COLUMN / UPDATE / SET NOT NULL recipe `BackfillPass`'s own class javadoc already
+     documents), plus `riskTier` and `autoApplyEligible` (new, beyond the plan's literal 5-item list
+     but squarely in its spirit -- an operator seeing why a REVIEWABLE/HIGH_RISK item still needs
+     acknowledgment). The rendering logic lives in `ExpressionBackfillPreviewJson.encode` (new,
+     `runtimehost-core`, sibling of the existing `ImpactReportJson`/`ImpactReportText` "render, don't
+     inline in the controller" pattern) rather than inline in `SchemaImpactController` -- not only
+     cleaner separation, but a real constraint: `SchemaImpactControllerTest` has no
+     `schema-realization-manifest.json` on its test classpath (documented in that file's own existing
+     comment), so a controller-inlined version of this encoding could never get real line coverage and
+     would have tripped the RuntimeHost JaCoCo ratchet's hard floor -- confirmed live: the first
+     controller-inlined version of this code dropped RuntimeHost coverage from 18.3301% to 18.312% and
+     `run-runtimehost-gate.ps1` failed on it; moving the same logic into runtimehost-core (out of the
+     ratchet's measured scope, same precedent REG-201's own item recorded for `/promote/verify`) and
+     giving it a direct, classpath-independent unit test (`ExpressionBackfillPreviewJsonTest`, 5 cases)
+     closed it with a real gate-green run, not a scope cut.
+
+  Explicitly not doing, matching the plan: lazy backfill computed on read (Analisis 4) -- out of
+  scope, changes read-path semantics platform-wide for one migration case.
+
+  A pre-existing test's premise became stale by this package's own definition and was corrected, not
+  deleted: `unacknowledgedExpressionDefaultWithRealExpressionTextStillRefusesUnchanged` used `"$quantity"`
+  as its "still refuses without ack" expression -- now SAFE, so it would auto-apply under the default
+  mode. Its expression was changed to a function-call form (`"riskyLookup(quantity)"`, REVIEWABLE tier)
+  so the test still proves what its name says, without weakening any assertion.
+
+  Register updated across all three non-code seams (ledger/boundaries/B2.yml stays classification
+  HITTABLE -- REVIEWABLE/HIGH_RISK are still refused exactly as before; NPDevContract/schemas
+  /accepted-boundaries.json; docs/ACCEPTED_BOUNDARIES.md's B2 row, extended in place).
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRequiredFieldBackfillTest.java
+  asserts: >-
+    (Guard.ref names one representative integration-test file; the full coverage this item relies on
+    spans five files.) SchemaLifecycleExecutorRequiredFieldBackfillTest, against a real H2 database:
+    safeFieldCopyExpressionAutoAppliesWithoutAnyAcknowledgment (a SAFE candidate auto-applies with NO
+    ackToken ever inserted, both rows backfilled to their own computed value);
+    safeExpressionDoesNotAutoApplyWhenAutoApplyModeIsNone (auto-apply=none opts a SAFE candidate back
+    into the ack requirement); safeExpressionOverTheRowThresholdStillRequiresAcknowledgment (SAFE tier
+    alone is not enough once the row count exceeds the configured threshold);
+    reviewableExpressionAutoAppliesOnlyWhenModeIsSafeAndReviewable (REVIEWABLE auto-applies only under
+    the wider opt-in mode); highRiskExpressionNeverAutoAppliesEvenUnderTheWidestMode (a
+    "scope."-prefixed call refuses even under safe-and-reviewable -- that ladder rung does not exist);
+    unacknowledgedExpressionDefaultWithRealExpressionTextStillRefusesUnchanged (corrected to a
+    REVIEWABLE expression, proving the pre-existing unacknowledged-refusal behavior is genuinely
+    unchanged for anything not SAFE). ExpressionBackfillRiskClassifierTest (kernel, 6 cases) and
+    ComputedExpressionTest's four new functionCalls cases (DSL, including the scope-prefix and
+    nested-lambda-call cases) cover the classifier and its shared grammar traversal directly.
+    ExpressionBackfillPreviewJsonTest (5 cases) covers the rendered shape, including the
+    autoApplyEligible=false-despite-SAFE-tier case (a failing row) that the controller-level shape
+    alone could never exercise. Closing verification: DSL module full test suite green
+    (:NPDevContract:dsl:test), kernel module full test suite green (:kernel:test), and
+    scripts/quality/run-runtimehost-gate.ps1 (compile + full test suite, 745 tests + the new ones +
+    assembled sample-app boot + coverage ratchet) green -- all three run AFTER restaging
+    Build/runtimehost-libs via scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars, required
+    because this package's kernel-module changes must be visible to the jar the assembled sample app
+    actually links against.
+  provenRed: false

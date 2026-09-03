@@ -53,6 +53,16 @@ public final class ComputedExpression {
         }
 
         /**
+         * Collect the name of every function call anywhere in this node (and its children),
+         * including inside a {@code Call}'s arguments and a {@code Lambda}'s body -- scope-prefixed
+         * names (e.g. {@code "scope.exists"}) kept as declared. Used for expression-default risk
+         * classification ({@code ExpressionBackfillRiskClassifier}, B2): a function call is the one
+         * signal that an expression needs more than a pure same-row computation to evaluate.
+         */
+        default void collectFunctionCalls(java.util.Set<String> out) {
+        }
+
+        /**
          * LNCH-15: invoke this node as a one-argument lambda (only {@code Lambda} overrides this
          * -- see its javadoc), binding {@code item} to the lambda's parameter for one evaluation
          * of its body. Lets a {@link FunctionRegistry} function (e.g. a quantifier) call a lambda
@@ -169,6 +179,19 @@ public final class ComputedExpression {
     }
 
     /**
+     * The set of function names called anywhere in the expression (B2 risk classification) --
+     * scope-prefixed names (e.g. {@code "scope.exists"}) kept as declared so a caller can
+     * distinguish a cross-record call from an ordinary one. Empty for an expression made only of
+     * literals, variables, and arithmetic/comparison/logical operators. Throws
+     * {@link ExpressionException} if the expression doesn't parse.
+     */
+    public static java.util.Set<String> functionCalls(String expression) {
+        java.util.Set<String> out = new java.util.LinkedHashSet<>();
+        parse(expression).collectFunctionCalls(out);
+        return out;
+    }
+
+    /**
      * True if the expression's top-level operator always yields a boolean (comparison,
      * {@code &&}/{@code ||}, unary {@code !}, or a boolean literal) — a syntactic check, not an
      * evaluation, so it doesn't require variable bindings. Used for compile-time validation of
@@ -235,6 +258,10 @@ public final class ComputedExpression {
         public void collectFields(java.util.Set<String> out) {
             operand.collectFields(out);
         }
+
+        public void collectFunctionCalls(java.util.Set<String> out) {
+            operand.collectFunctionCalls(out);
+        }
     }
 
     private static final java.util.Set<String> BOOLEAN_OPS = java.util.Set.of(
@@ -248,6 +275,11 @@ public final class ComputedExpression {
         public void collectFields(java.util.Set<String> out) {
             left.collectFields(out);
             right.collectFields(out);
+        }
+
+        public void collectFunctionCalls(java.util.Set<String> out) {
+            left.collectFunctionCalls(out);
+            right.collectFunctionCalls(out);
         }
 
         public Object eval(Map<String, Object> vars) {
@@ -320,6 +352,13 @@ public final class ComputedExpression {
                 }
             }
         }
+
+        public void collectFunctionCalls(java.util.Set<String> out) {
+            out.add(name);
+            for (Node arg : args) {
+                arg.collectFunctionCalls(out);
+            }
+        }
     }
 
     /**
@@ -336,6 +375,13 @@ public final class ComputedExpression {
         public void collectFields(java.util.Set<String> out) {
             // The body's field refs (e.g. "x.field") are scoped to the per-item binding, not the
             // outer concept's fields -- collecting them would produce false "unknown field" hits.
+        }
+
+        public void collectFunctionCalls(java.util.Set<String> out) {
+            // Unlike collectFields, a call inside the lambda body IS a real function call worth
+            // surfacing (e.g. items.all(x => x.tag.matches("A.*"))) -- the per-item scoping that
+            // makes field refs meaningless outside their binding doesn't apply to call names.
+            body.collectFunctionCalls(out);
         }
 
         public Object invokeLambda(Object item, Map<String, Object> outerVars) {
