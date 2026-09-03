@@ -10,6 +10,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -234,11 +235,48 @@ final class BackfillPass {
                     + AUTO_APPLY_MAX_ROWS_PROPERTY + "=<n>).");
 
             List<ExpressionBackfillPreview.Item> autoApply = new ArrayList<>();
-            for (ExpressionBackfillPreview.Item candidate : expressionCandidates) {
-                ExpressionBackfillRiskClassifier.Tier tier =
-                        ExpressionBackfillRiskClassifier.classify(candidate.expression());
-                if (mode.eligible(tier) && !candidate.hasFailures() && candidate.rowsAffected() <= maxRows) {
-                    autoApply.add(candidate);
+            // A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"): a REVIEWABLE candidate does not get to
+            // auto-apply on the strength of its classification -- "has a function call" proves
+            // nothing about safety, it only proves the platform cannot rule out risk from TEXT alone.
+            // It must pass ExpressionBackfillShadowProof's own two-evaluation proof (every row
+            // produces a value, AND a second independent evaluation agrees with the first) before it
+            // is treated as eligible. SAFE candidates keep the EXISTING lighter check unchanged: every
+            // SAFE form is structurally deterministic by ExpressionBackfillRiskClassifier's own
+            // definition (no function call at all), so a shadow proof could not tell it anything a
+            // second evaluation of a constant or a $field copy does not already guarantee by
+            // construction.
+            Map<String, Map<Object, Object>> provenValuesByKey = new LinkedHashMap<>();
+            if (mode != AutoApplyMode.NONE) {
+                try (Connection connection = dataSource.getConnection()) {
+                    for (ExpressionBackfillPreview.Item candidate : expressionCandidates) {
+                        ExpressionBackfillRiskClassifier.Tier tier =
+                                ExpressionBackfillRiskClassifier.classify(candidate.expression());
+                        if (tier == ExpressionBackfillRiskClassifier.Tier.SAFE) {
+                            if (mode.eligible(tier) && !candidate.hasFailures() && candidate.rowsAffected() <= maxRows) {
+                                autoApply.add(candidate);
+                            }
+                        } else if (tier == ExpressionBackfillRiskClassifier.Tier.REVIEWABLE
+                                && mode.eligible(tier) && candidate.rowsAffected() <= maxRows) {
+                            ExpressionBackfillShadowProof.ShadowProofResult proof = ExpressionBackfillShadowProof.prove(
+                                    connection, candidate.table(), candidate.column(), candidate.expression());
+                            if (proof.safe()) {
+                                autoApply.add(candidate);
+                                provenValuesByKey.put(candidate.table() + "." + candidate.column(), proof.provenValues());
+                            } else if (!proof.nondeterministicRowIds().isEmpty()) {
+                                System.out.println("NPDev schema lifecycle: expression-default backfill for "
+                                        + candidate.table() + "." + candidate.column() + " is NOT auto-applying -- "
+                                        + "two evaluations of the SAME expression against the same live rows "
+                                        + "disagreed for row id(s) " + proof.nondeterministicRowIds()
+                                        + " (non-deterministic) -- it still requires an operator acknowledgment "
+                                        + "(B2 package A2, REAL_LIFT_PLAN_2026-09-03.md).");
+                            }
+                            // An unpopulated-row failure needs no separate log line here -- the unchanged
+                            // ack-required path below already reports failedRowIds identically either way.
+                        }
+                    }
+                } catch (SQLException exception) {
+                    throw new IllegalStateException(
+                            "Failed shadow-proving REVIEWABLE expression-default backfill(s)", exception);
                 }
             }
 
@@ -253,19 +291,27 @@ final class BackfillPass {
                             () -> {
                                 try (Connection connection = dataSource.getConnection()) {
                                     for (ExpressionBackfillPreview.Item candidate : autoApply) {
-                                        applyExpressionBackfill(connection, manifest, candidate);
+                                        Map<Object, Object> proven =
+                                                provenValuesByKey.get(candidate.table() + "." + candidate.column());
+                                        if (proven != null) {
+                                            applyProvenExpressionBackfill(
+                                                    connection, manifest, candidate.table(), candidate.column(), proven);
+                                        } else {
+                                            applyExpressionBackfill(connection, manifest, candidate);
+                                        }
                                         autoApplied.add(candidate.table() + "." + candidate.column()
                                                 + " (" + candidate.rowsAffected() + " row(s))");
                                     }
                                 }
                             });
                 } catch (SQLException exception) {
-                    throw new IllegalStateException("Failed auto-applying SAFE expression-default backfill(s) ("
+                    throw new IllegalStateException("Failed auto-applying expression-default backfill(s) ("
                             + autoApplied.size() + "/" + autoApply.size() + " applied before failure: "
                             + autoApplied + ")", exception);
                 }
                 System.out.println("NPDev schema lifecycle: AUTO-APPLIED " + autoApply.size()
-                        + " SAFE expression-default backfill(s), no acknowledgment required (B2 package 3.1): "
+                        + " expression-default backfill(s) -- SAFE by classification, or REVIEWABLE proven safe by "
+                        + "a double-evaluation shadow run (B2 package A2) -- no acknowledgment required: "
                         + autoApplied);
                 // Mutate the list in place (never reassign the reference) -- expressionCandidates is
                 // captured by the acknowledgment-path lambda below, which requires it stay effectively
@@ -540,8 +586,40 @@ final class BackfillPass {
     private static void applyExpressionBackfill(
             Connection connection, SchemaLifecycleExecutor.SchemaManifest manifest, ExpressionBackfillPreview.Item item
     ) throws SQLException {
-        String table = item.table();
-        String column = item.column();
+        List<ExpressionBackfillPreview.RowValue> rows =
+                ExpressionBackfillPreview.evaluateRows(connection, item.table(), item.column(), item.expression());
+        Map<Object, Object> values = new LinkedHashMap<>();
+        for (ExpressionBackfillPreview.RowValue row : rows) {
+            if (row.value() == null) {
+                throw new IllegalStateException("Expression default re-evaluation for " + item.table() + "."
+                        + item.column() + " row id " + row.displayId() + " produced no value at apply time (it did "
+                        + "not during the acknowledged preview) -- refusing to backfill with a partial result. "
+                        + "Re-preview and re-acknowledge before retrying.");
+            }
+            values.put(row.rawId(), row.value());
+        }
+        applyExpressionBackfillValues(connection, manifest, item.table(), item.column(), values);
+    }
+
+    /**
+     * A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"): writes values ALREADY PROVEN safe by {@link
+     * ExpressionBackfillShadowProof} -- no re-evaluation here. Re-evaluating a third time would not
+     * prove anything the shadow proof's two evaluations did not already establish; skipping it is
+     * what makes this cheaper than the acknowledgment path's own re-evaluate-at-apply-time discipline,
+     * which exists specifically to protect against staleness across an operator's preview/acknowledge
+     * ROUND TRIP (potentially a separate HTTP request, arbitrarily later) -- a round trip that does
+     * not exist here: proof and apply happen in the SAME boot, moments apart, under the same
+     * migration mutex with nothing else able to write to this table in between.
+     */
+    private static void applyProvenExpressionBackfill(Connection connection,
+            SchemaLifecycleExecutor.SchemaManifest manifest, String table, String column,
+            Map<Object, Object> provenValues) throws SQLException {
+        applyExpressionBackfillValues(connection, manifest, table, column, provenValues);
+    }
+
+    private static void applyExpressionBackfillValues(Connection connection,
+            SchemaLifecycleExecutor.SchemaManifest manifest, String table, String column,
+            Map<Object, Object> values) throws SQLException {
         // `safeTable`/`safeColumn` stay RAW: guardedAddColumn puts them into an
         // information_schema string LITERAL, where a quoted name would never match. The
         // quoted pair is for the statement TEXT (STOR-6).
@@ -558,20 +636,12 @@ final class BackfillPass {
                         "ALTER TABLE " + quotedTable + " ADD COLUMN " + quotedColumn + " " + safeType))) {
             add.executeUpdate();
         }
-        List<ExpressionBackfillPreview.RowValue> rows =
-                ExpressionBackfillPreview.evaluateRows(connection, table, column, item.expression());
-        for (ExpressionBackfillPreview.RowValue row : rows) {
-            if (row.value() == null) {
-                throw new IllegalStateException("Expression default re-evaluation for " + table + "." + column
-                        + " row id " + row.displayId() + " produced no value at apply time (it did not during the "
-                        + "acknowledged preview) -- refusing to backfill with a partial result. Re-preview and "
-                        + "re-acknowledge before retrying.");
-            }
+        for (Map.Entry<Object, Object> entry : values.entrySet()) {
             try (PreparedStatement update = connection.prepareStatement(
                     "UPDATE " + quotedTable + " SET " + quotedColumn + " = ? WHERE "
                             + quotedIdColumn + " = ?")) {
-                update.setObject(1, row.value());
-                update.setObject(2, row.rawId());
+                update.setObject(1, entry.getValue());
+                update.setObject(2, entry.getKey());
                 update.executeUpdate();
             }
         }

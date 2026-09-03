@@ -80,8 +80,31 @@ public final class ExpressionBackfillPreview {
     /** Scans every row {@code column} would backfill (NULL rows if it already exists live; every row
      * if it does not) and evaluates {@code expression} against each -- the ONE row-scanning pass both
      * {@link #preview} (dry-run summary) and {@code BackfillPass}'s apply step (fresh re-evaluation
-     * right before writing, never trusting a stale preview) share. */
+     * right before writing, never trusting a stale preview) share.
+     *
+     * <p>A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"): a function-call expression is FORCED to
+     * {@code null} here, never handed {@link ValueExpressionEvaluator}'s own return value directly.
+     * {@code ValueExpressionEvaluator.evaluate} is called here with NO {@code FunctionRegistry} wired
+     * at all (REG-202's own note on why HIGH_RISK is unreachable in practice) -- so a function call it
+     * cannot resolve does not throw and does not evaluate to {@code null} either, it falls through to
+     * {@code ComputedExpression}'s own last-resort fallback and returns the RAW EXPRESSION TEXT as if
+     * that were a computed value. Verified live: {@code
+     * SchemaLifecycleExecutorRequiredFieldBackfillTest#reviewableExpressionAutoAppliesOnlyWhenModeIsSafeAndReviewable}
+     * already documented this exact quirk before this package existed. Silently treating that raw text
+     * as a "value" would mean {@link #hasFailures} reports false success for something that was never
+     * genuinely computed at all -- and {@link ExpressionBackfillShadowProof}'s two-evaluation check
+     * cannot catch it either, because the SAME broken fallback returns the SAME text both times
+     * (perfectly deterministic, just not real). This check is therefore load-bearing for A2's
+     * auto-apply safety, not cosmetic: every REVIEWABLE/HIGH_RISK candidate (by definition, ANY
+     * expression containing at least one function call) is treated as failing evaluation for EVERY
+     * row, exactly as honest as the boot already is about not being able to run that function --
+     * matching the SAME reasoning that already, correctly, keeps auto-apply from EVER reaching this
+     * shape (a null result is treated as a failed row everywhere it is read). Scoped to this class
+     * only -- {@link ValueExpressionEvaluator}'s own fallback (used by the live row-creation path,
+     * {@code DefaultConceptGateway.save}) is unchanged and out of scope.
+     */
     static List<RowValue> evaluateRows(Connection connection, String table, String column, String expression) throws SQLException {
+        boolean forceNullForUnresolvableFunctionCall = containsFunctionCall(expression);
         String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         boolean columnExistsLive = SchemaLifecycleExecutor.readActualColumns(connection.getMetaData(), table).stream()
                 .anyMatch(column::equalsIgnoreCase);
@@ -108,12 +131,24 @@ public final class ExpressionBackfillPreview {
                         row.put(camelCase, value);
                     }
                 }
-                Object result = ValueExpressionEvaluator.evaluate(expression, row);
+                Object result = forceNullForUnresolvableFunctionCall ? null : ValueExpressionEvaluator.evaluate(expression, row);
                 Object rawId = row.containsKey("id") ? row.get("id") : ("row#" + ordinal);
                 results.add(new RowValue(rawId, result));
             }
         }
         return results;
+    }
+
+    private static boolean containsFunctionCall(String expression) {
+        try {
+            return !com.npdev.dsl.v1.expr.ComputedExpression.functionCalls(expression).isEmpty();
+        } catch (com.npdev.dsl.v1.expr.ComputedExpression.ExpressionException unparseable) {
+            // An expression that fails to parse here at all is not this method's problem to diagnose
+            // (author-time validation already rejects genuinely invalid syntax) -- but treating it as
+            // "no function call" would be an unwarranted assumption of safety, so treat it the same as
+            // "cannot resolve", conservatively.
+            return true;
+        }
     }
 
     /** Package-private (Move 9 B1): {@code BackfillPass} calls this directly for a candidate it
