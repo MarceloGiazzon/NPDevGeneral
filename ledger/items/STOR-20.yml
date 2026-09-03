@@ -1,0 +1,100 @@
+id: STOR-20
+title: >-
+  Split-by-construction: a hand-written conversion hook mixing DDL with a verifySql on an
+  implicit-commit engine can now refuse the boot outright, opt-in (B11)
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 3.4 (B11), wave 3 -- no dependency, picked as the
+  natural continuation of the same Wave 3 "migration engine" cluster after package 3.1 (REG-202,
+  B2) closed, while REG-202's own AI-knowledge-gate verification ran in the background.
+surface: runtimehost-core (db/conversion-hooks), cli (npdev why), B11 registry (ledger/boundaries,
+  accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerH2Test.java
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B11.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. The plan's originally-sketched "split into ordered phases with their own resume points" was
+     evaluated and deliberately NOT built: the plan itself offers this as an "OR refused with a named
+     code and an auto-split suggestion" alternative, and automatically parsing arbitrary hand-authored
+     SQL to separate DDL from DML is exactly the DDL-journal-style risk the plan rejects platform-wide
+     (§6) -- executing generated statements at the moment state is least certain, on the engines that
+     cannot roll them back either. Refuse-with-a-named-code-and-a-suggestion is the lower-risk half of
+     the plan's own "OR", and is what shipped: `ConversionHookRunner`'s existing `MIXES_DDL_PATTERN`
+     detection (unchanged, from B11.1) now, on a non-`DDL_IN_TRANSACTION` engine, either warns (today's
+     behavior, unchanged) or REFUSES BEFORE the hook runs at all -- never a partial apply -- naming a
+     concrete two-hook split as a suggestion (DDL alone with no `verifySql`; data movement with this
+     `verifySql`; run in the existing ascending-id order, each in its own transaction, per rule 3) for
+     the author to apply BY HAND. No hook.json/convert.sql FORMAT change, so no `npdev migrate` codemod
+     and no `BREAKING.md` entry (the repo rule that pair is for a format change, not a runtime-behavior
+     opt-in) -- confirmed against the repo rule's own wording before deciding not to write either.
+
+  2. `npdev.schema.conversionHooks.mixedDdlVerify = warn | refuse` (default `warn`, MigrationMutex.
+     waitMillis's exact defensive-parsing idiom for a bad value) gates it. Default stays `warn` --
+     TODAY'S UNCHANGED BEHAVIOR -- deliberately, not `refuse`: flipping a boot-time refusal on by
+     default for every H2/MySQL app with this shape, with no prior release cycle to notice via, is
+     exactly the "broken without notice" outcome the plan's own done-when #2 wording warns against.
+     Refuse is available NOW via explicit opt-in; flipping the DEFAULT to refuse is a deliberately
+     deferred follow-up, recorded in ledger/boundaries/B11.yml rather than done silently in this pass.
+
+  3. The refusal carries `B11:mixed_ddl_verify_refused:` as a message prefix (discoverable in the boot
+     log/exception message, matching B2/B4/B5/B10's own convention) and a `HOOK_FAILED` history row
+     before throwing -- consulting `StorageCapability.DDL_IN_TRANSACTION` to CHOOSE the execution
+     strategy (refuse vs. warn-and-proceed) is the "capability-aware planner" the plan's done-when #3
+     asks for; no separate planner class was needed since the existing per-hook loop already asks the
+     capability, it just needed its OUTCOME to become capability-and-config-driven instead of only a
+     log line.
+
+  4. Rule 5 (post-hook re-diff) is unchanged -- the code path this package touches runs strictly
+     BEFORE a hook's SQL executes at all, so rule 5's post-application re-diff backstop is untouched
+     by construction, not merely left alone by omission.
+
+  5. Register rewritten across all three non-code seams (`ledger/boundaries/B11.yml`,
+     `NPDevContract/schemas/accepted-boundaries.json`, `docs/ACCEPTED_BOUNDARIES.md`'s B11 row,
+     extended in place, keeping the B11.1-B11.3 history). `classification` stays POSTURAL -- the
+     underlying engine limitation (H2/MySQL commit DDL implicitly) is still permanent and upstream,
+     matching the plan's own framing ("the engine limitation is still true and still POSTURAL, but the
+     shape that exposes it can no longer be authored"). `codeLinked` flips `false` -> `true`: B11 is
+     the first POSTURAL boundary in the register to also carry a real, sometimes-firing diagnostic
+     code, which made `NPDevCli/npdev_cli.py`'s `npdev why <id>` command's blanket POSTURAL note
+     ("this fails silently, nothing to hit") factually wrong for this one row -- found live while
+     manually verifying `npdev why B11`'s output, and fixed: `run_why` now prints a distinct note for
+     a POSTURAL boundary that also carries `enforcingDiagnosticCodes`, leaving every other POSTURAL
+     row's note (B3, B29, etc., genuinely nothing to hit) unchanged. `npdev_cli.py` has no existing
+     test file for the `why` command at all (a pre-existing gap, not introduced here); adding one from
+     scratch was judged disproportionate scope for this fix and left as a follow-up, not silently
+     skipped -- the fix was instead verified by direct CLI invocation against three cases (B11
+     POSTURAL-with-codes, B2 HITTABLE, B3 POSTURAL-no-codes).
+  scripts/quality/twin-pair-registry.json: no new rule needed -- this package reuses one real class
+  (StorageCapability, ConversionHookRunner's own existing MIXES_DDL_PATTERN detection) rather than
+  duplicating knowledge as a naming convention across independent files, so there is no "two surfaces
+  that could silently drift" shape for a twin-pair rule to guard.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerH2Test.java
+  asserts: >-
+    mixedDdlVerifyRefusesBeforeRunningWhenModeIsRefuse (new): against a real H2 database, reusing the
+    SAME p75_resolve fixture hook B11.1's own test proves mixes DDL with a verifySql, opting into
+    mixedDdlVerify=refuse asserts the boot refuses with B11:mixed_ddl_verify_refused: in the message,
+    the active engine name, "COMMITS IMPLICITLY ON DDL", the "Split it into two hooks" suggestion, and
+    the mixedDdlVerify=warn escape hatch -- plus a HOOK_FAILED history row, no HOOK_APPLIED row, and
+    the claimed item still fully unresolved afterward (nothing ran). mixedDdlVerifyModeDoesNotMatterOnATransactionalDdlEngine
+    (new): refuse mode set but the active dialect is Postgres (has DDL_IN_TRANSACTION) -- the hook
+    still applies normally, proving the guard is a true no-op on a transactional-DDL engine regardless
+    of mode, mirroring b11_1_noWarningOnAnEngineWithTransactionalDdl's own proof for warn mode.
+    b11_1_hookMixingDdlWithVerifySqlOnAnImplicitCommitEngineWarnsBeforeRunning (existing, unchanged,
+    re-run) proves the default (no property set) still warns-and-proceeds exactly as before --
+    confirms zero behavior change for every app that does not opt in. Closing verification:
+    scripts/quality/run-runtimehost-gate.ps1 (compile + full test suite + assembled sample-app boot +
+    coverage ratchet) run green after this package's changes, restaging Build/runtimehost-libs first
+    (runtimehost-core-only change this time, no kernel-module recompile needed).
+  provenRed: false

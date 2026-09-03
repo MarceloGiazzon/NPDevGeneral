@@ -1,18 +1,29 @@
 id: B11
 title: "H2 (and MySQL, STOR-2) have no transactional DDL -- a failed hook verifySql rolls back DML but not DDL"
-codeLinked: false
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. The limit is upstream engine
-  behaviour, not a refusal NPDev issues -- H2 and MySQL commit DDL implicitly, so a rollback takes the
-  DML and leaves the DDL. What NPDev adds is advisory, not a gate: ConversionHookRunner's
-  MIXES_DDL_PATTERN warning fired before the hook runs (asking
+  POSTURAL: the underlying engine limitation is still upstream behaviour, not a choice NPDev makes --
+  H2 and MySQL commit DDL implicitly, so a rollback takes the DML and leaves the DDL, permanently, on
+  those engines. What changed (BOUNDARY_LIFT_PLAN_2026-09-02.md package 3.4): the SHAPE that exposes
+  it -- a hand-written hook mixing DDL with a verifySql on such an engine -- no longer has to be
+  authored blind. `ConversionHookRunner`'s MIXES_DDL_PATTERN detection (asking
   SqlDialects.active().supports(StorageCapability.DDL_IN_TRANSACTION) rather than hardcoding "h2",
-  which would have missed MySQL and wrongly fired on SQL Server), and a remedy sentence appended to
-  PartialApplicationTruth#afterRollback's truthful diagnosis. Neither is a ValidationDiagnostic and
-  neither carries a boundaryId. Rule 5 (post-hook re-diff) is the engine-independent backstop and is
-  confirmed to run on the H2 path against a real H2 database. Open, owner-only (B11.4, deliberately
-  unanswered in the row itself): whether H2 (file) should remain the zero-prerequisite default engine
-  given that it is the one engine where a failed conversion hook can leave DDL applied and DML rolled
-  back -- a product tradeoff, not an engineering question this entry can resolve.
-ref: "docs/ACCEPTED_BOUNDARIES.md#B11 -- docs/archive/programme-history/IMPACT_REPORTS.md, ConversionHookRunner javadoc (the MIXES_DDL_PATTERN warning), PartialApplicationTruth#afterRollback, PartialApplicationTruthTest#implicitCommitEngineFailureMessageCarriesTheRemedy, ConversionHookRunnerH2Test#b11_1_*/#rule5_*, STOR-2"
+  unchanged since B11.1) now REFUSES the boot before running the hook at all, carrying
+  `B11:mixed_ddl_verify_refused:` as a message prefix, once an operator opts in via
+  `-Dnpdev.schema.conversionHooks.mixedDdlVerify=refuse` -- gated behind an opt-in property
+  (default stays `warn`, today's unchanged behaviour) so no existing app breaks without notice on
+  upgrade; flipping the default to `refuse` is a deliberately deferred follow-up, tracked here rather
+  than done silently. The refusal names a concrete auto-split suggestion (two hooks, DDL-only then
+  data-movement-with-verify, run in the existing ascending-id order per rule 3) rather than
+  attempting to split the SQL automatically -- rejecting a DDL-journal-style "clever" fix for the same
+  reason the plan rejects one platform-wide. `-Dnpdev.schema.conversionHooks.mixedDdlVerify=warn`
+  keeps today's warn-and-proceed behaviour for one more boot for an operator who hits the refusal
+  unexpectedly. A remedy sentence is still also appended to PartialApplicationTruth#afterRollback's
+  truthful diagnosis, for the case a mixed hook runs anyway (warn mode, or an engine the pattern
+  doesn't match). Rule 5 (post-hook re-diff) is unchanged, the engine-independent backstop. Open,
+  owner-only (B11.4, deliberately unanswered in the row itself): whether H2 (file) should remain the
+  zero-prerequisite default engine given that it is the one engine where a failed conversion hook can
+  leave DDL applied and DML rolled back -- a product tradeoff, not an engineering question this entry
+  can resolve.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B11 -- docs/archive/programme-history/IMPACT_REPORTS.md, ConversionHookRunner javadoc (the MIXES_DDL_PATTERN warning/refusal), PartialApplicationTruth#afterRollback, PartialApplicationTruthTest#implicitCommitEngineFailureMessageCarriesTheRemedy, ConversionHookRunnerH2Test#b11_1_*/#rule5_*/#mixedDdlVerify*, STOR-2, BOUNDARY_LIFT_PLAN_2026-09-02.md package 3.4"
 classification: POSTURAL

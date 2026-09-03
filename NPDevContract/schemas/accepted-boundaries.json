@@ -76,8 +76,8 @@
       "id": "B11",
       "kind": "POSTURAL",
       "userFacingText": "H2 and MySQL commit DDL implicitly, so if a migration hook fails partway, its data changes roll back but any schema change it already made stays applied -- the database can end up in a state your model doesn't fully describe.",
-      "workaround": "Split destructive DDL and data movement into separate hooks/boots on an engine without transactional DDL (H2, MySQL). NPDev prints a warning naming the active engine before running a hook that mixes DDL with a verifySql. Postgres and SQL Server roll back fully, so the split is only needed on H2/MySQL.",
-      "enforcingDiagnosticCodes": []
+      "workaround": "Split destructive DDL and data movement into separate hooks/boots on an engine without transactional DDL (H2, MySQL), each hook running in the existing ascending-id order in its own transaction. By default NPDev prints a warning naming the active engine before running a hook that mixes DDL with a verifySql; set -Dnpdev.schema.conversionHooks.mixedDdlVerify=refuse to refuse the boot outright before running that hook instead, so the mixed state can never be authored into existence. Postgres and SQL Server roll back fully, so none of this is needed there.",
+      "enforcingDiagnosticCodes": ["B11:mixed_ddl_verify_refused"]
     },
     {
       "id": "B12",

@@ -170,6 +170,61 @@ class ConversionHookRunnerH2Test {
     }
 
     @Test
+    void mixedDdlVerifyRefusesBeforeRunningWhenModeIsRefuse() throws SQLException {
+        // BOUNDARY_LIFT_PLAN_2026-09-02.md package 3.4 (B11): the same mixed-DDL/verifySql shape B11.1
+        // only warns about by default now refuses the boot outright -- and BEFORE running, not after a
+        // partial apply -- once an operator opts in via the property.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "refuse");
+        try {
+            exec("CREATE TABLE p75_resolve (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_resolve", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                    () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+            assertTrue(refusal.getMessage().contains("B11:mixed_ddl_verify_refused:"), refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("p75-resolve"), refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("COMMITS IMPLICITLY ON DDL"), refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("Split it into two hooks"), refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("mixedDdlVerify=warn"),
+                    "must name the escape hatch back to today's behavior: " + refusal.getMessage());
+
+            List<String> outcomes = history.stream().map(row -> row[1]).toList();
+            assertTrue(outcomes.contains("HOOK_FAILED"), outcomes.toString());
+            assertFalse(outcomes.contains("HOOK_APPLIED"), "refused before running -- nothing must apply: " + outcomes);
+            Set<String> after = unresolvedKeys(manifest);
+            assertTrue(after.stream().anyMatch(k -> k.startsWith("ADD_REQUIRED_COLUMN:p75_resolve:status")),
+                    "the item the hook would have claimed must remain fully unresolved: " + after);
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void mixedDdlVerifyModeDoesNotMatterOnATransactionalDdlEngine() throws SQLException {
+        // Refuse mode set, but Postgres has DDL_IN_TRANSACTION -- the whole guard is a no-op there
+        // regardless of mode, same as b11_1_noWarningOnAnEngineWithTransactionalDdl for warn mode.
+        SqlDialects.setActive(com.npdev.kernel.storage.sql.PostgresDialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "refuse");
+        try {
+            exec("CREATE TABLE p75_resolve (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_resolve", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+            assertTrue(unresolvedKeys(manifest).isEmpty(), "the hook must still apply normally");
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
     void rule4_verifyMismatchAbortsBeforeAnyDestructiveStep() throws SQLException {
         exec("CREATE TABLE p75_verifyfail (id BIGINT PRIMARY KEY)");
         SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
