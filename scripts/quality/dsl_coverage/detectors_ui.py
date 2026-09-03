@@ -18,8 +18,9 @@ def _has_panel_action_concept_query(model: dict) -> bool:
 
 
 def _has_field_picker_filter(model: dict) -> bool:
-    """B16/B19 (Move 9 A3): a field's picker.filter -- the reference field's own single-clause
-    predicate constraining its auto-picker's candidate rows."""
+    """B16/B19 (Move 9 A3; Wave 4 4.3 Step 1, 2026-09-03): a field's picker.filter -- the reference
+    field's own AND-composed, optionally $root-parameterized predicate constraining its auto-picker's
+    candidate rows."""
     for concept in (model.get("concepts", None) or []):
         if not isinstance(concept, dict):
             continue

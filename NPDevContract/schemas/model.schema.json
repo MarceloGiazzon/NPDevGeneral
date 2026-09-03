@@ -1031,7 +1031,7 @@
             "type": "string",
             "minLength": 1
           },
-          "description": "Move 7 W1: typed replacement for transaction.metadata.visibleWhen. Keyed by collection/band name -> a client-tier predicate (e.g. \"$root.tipo != 'CANCELLED'\") gating whether that region renders. Presentation-only -- a hidden collection's rows still commit unchanged; this never gates persistence or authorization."
+          "description": "Move 7 W1: typed replacement for transaction.metadata.visibleWhen. Keyed by collection/band name -> a client-tier predicate (e.g. \"$root.tipo != 'CANCELLED'\") gating whether that region renders. BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1: AND (&&) / OR (||) -composed, e.g. \"$root.tipo == 'RECEBIMENTO' && $ui.modo == 'Simples'\". Presentation-only -- a hidden collection's rows still commit unchanged; this never gates persistence or authorization."
         },
         "uiState": {
           "type": "object",
@@ -1162,7 +1162,7 @@
         "filter": {
           "type": "string",
           "minLength": 1,
-          "description": "Same picker.filter shape a plain FK field declares -- a single-clause predicate constraining candidate rows, enforced server-side."
+          "description": "Same picker.filter shape a plain FK field declares -- an AND-composed predicate (\"field == literal\" (&& field == literal)*; a clause's literal may be $root.<field>, referencing the aggregate's root record) constraining candidate rows, enforced server-side. BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1."
         },
         "multiSelect": {
           "type": "boolean",
@@ -1597,7 +1597,7 @@
             "filter": {
               "type": "string",
               "minLength": 1,
-              "description": "A single-clause predicate (\"field == literal\" / \"field != literal\", the same grammar visibleWhen/query.where already use) constraining the picker's candidate rows. Enforced server-side against the query, not client-side decoration."
+              "description": "An AND-composed predicate (\"field == literal\" (&& field == literal)*, the same grammar visibleWhen shares) constraining the picker's candidate rows -- a clause's literal may be $root.<field>, referencing the aggregate's root record (or, with no enclosing aggregate, the field's own record). Enforced server-side against the query, not client-side decoration. OR is not supported here -- use a visibleWhen predicate instead. BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1."
             },
             "multiSelect": {
               "type": "boolean",

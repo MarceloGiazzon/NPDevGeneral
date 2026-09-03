@@ -651,6 +651,68 @@ class AggregateWorkbenchExpansionTest {
     }
 
     /**
+     * BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: a no-panel band picker's
+     * {@code filter} now AND-composes multiple clauses and may reference the aggregate's root record
+     * via {@code $root.<field>} -- {@link com.npdev.dsl.v1.compiler.AutoPanelExpander}'s
+     * {@code parseBandPickerFilterClauses}, wired through {@code PickerFilterGrammar}.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void noPanelBandPickerFilterAndComposesClausesAndResolvesARootReference() throws Exception {
+        String json = """
+            {
+              "dslVersion": "1.0.0", "namespace": "wms.typed7b", "version": "1.0",
+              "concepts": [
+                { "name": "Expedicao", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "tipo", "type": "string" } ] },
+                { "name": "ExpedicaoItem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "expedicaoId", "type": "uuid" } ] },
+                { "name": "MovtoOrigem", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "itemSeq", "type": "uuid" }, { "name": "local", "type": "string" } ] }
+              ],
+              "aggregates": [
+                { "name": "Expedicao", "root": "Expedicao",
+                  "collections": [
+                    { "name": "itens", "concept": "ExpedicaoItem", "childField": "expedicaoId", "ownership": "owned",
+                      "collections": [
+                        { "name": "origens", "concept": "MovtoOrigem", "childField": "itemSeq", "ownership": "owned" }
+                      ] }
+                  ] }
+              ],
+              "autoPanels": [ { "aggregate": "Expedicao",
+                "transaction": {
+                  "bandPickers": {
+                    "origens": { "filter": "local == 'A' && id == $root.tipo" }
+                  }
+                } } ]
+            }
+            """;
+        CompiledModel model = compile(json);
+
+        CompiledPanel workbench = model.getPanels().stream()
+                .filter(p -> "ExpedicaoWorkbench".equals(p.name())).findFirst()
+                .orElseThrow(() -> new AssertionError("expected ExpedicaoWorkbench"));
+        Map<String, Object> wb = (Map<String, Object>) workbench.metadata().get("workbench");
+        List<Map<String, Object>> sections = (List<Map<String, Object>>) wb.get("sections");
+        Map<String, Object> itens = sections.get(0);
+        List<Map<String, Object>> bands = (List<Map<String, Object>>) itens.get("bands");
+        Map<String, Object> origens = bands.get(0);
+        Map<String, Object> picker = (Map<String, Object>) origens.get("picker");
+        assertNotNull(picker, "no-panel bandPickers entry must survive compilation");
+
+        List<Map<String, Object>> clauses = (List<Map<String, Object>>) picker.get("defaultFilterExpression");
+        assertEquals(2, clauses.size(), "AND-composed filter must produce two clauses");
+        assertEquals("local", clauses.get(0).get("field"));
+        assertEquals("A", clauses.get(0).get("value"));
+        assertEquals("id", clauses.get(1).get("field"));
+        assertEquals("tipo", clauses.get(1).get("rootRef"), "$root.tipo must resolve as a rootRef, not a static value");
+        assertNull(clauses.get(1).get("value"));
+    }
+
+    /**
      * Move 7 W1: when BOTH the typed and untyped spellings are declared on the same surface, the
      * typed one wins entirely (same precedence rule Move 6 established for hooks/derivedFields) --
      * the untyped metadata is ignored outright, not merged.

@@ -1,0 +1,187 @@
+id: REG-205
+title: >-
+  B16 Step 1: AND-compose field.picker/bandPickers filters with a $root.<field> reference, and
+  AND/OR-compose transaction.visibleWhen's $ui/$root predicates
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 4.3 (B16), wave 4 -- the last remaining Wave 4
+  package. The plan's own text described this as "extend today's single-clause field == literal
+  grammar -- shared by field.picker filter, visibleWhen, and query.where -- with AND/OR composition
+  and parameterization by the current record's fields, in ONE grammar implementation so all three
+  surfaces gain it together". Re-verifying that premise against live code (this session, before
+  writing anything) found it stale in the same way section 1 of the plan document itself had already
+  found eight OTHER premises stale: there are four separate, independently-implemented grammars, not
+  one shared one, and two of the three named surfaces were already further along than the plan
+  assumed. `query.where` (QueryPredicateGrammar) already had a v2 grammar (OR-groups, AND, IN,
+  contains/startsWith, is-null, reference-path joins) wired end-to-end at both authoring-time
+  validation and runtime execution since commit ef168b12 (2026-08-19), predating this plan --
+  nothing to do there. Field-level `ui.visibleWhen`/`enabledWhen`/`readonlyWhen`/`requiredWhen`
+  (business-ui-app.mustache's `evaluateWhen()`) already had a full OR/AND/parens grammar with
+  sibling-field parameterization -- nothing to do there either. The two real gaps were
+  `field.picker.filter`/`bandPickers.filter` (genuinely single-clause, zero parameterization by any
+  other record -- the `$row.` prefix it accepted names the picker's OWN target row, not a reference
+  to any other record) and `transaction.visibleWhen`'s `$ui`/`$root` predicates (genuinely
+  single-predicate only, unlike the field-level grammar). Step 1 closes both.
+surface: dsl/compiler+validation (query, compiler, validation packages), generator/emitters, generated-app client JS (2 mustache templates), schema, corpus, boundary register
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/query/PickerFilterGrammar.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/query/PickerFilterGrammarTest.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiler/AggregateWorkbenchExpansionTest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterPickerFilterTest.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/validation/AutoPanelUiStateValidationTest.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/WorkbenchUiStateNeverCommittedTest.java
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - ledger/boundaries/B16.yml
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **New shared grammar, not a change to QueryPredicateGrammar.** `PickerFilterGrammar` (new,
+  `NPDevContract/dsl/.../query/`) is deliberately a SEPARATE class from `QueryPredicateGrammar`, not
+  an extension of it: `QueryPredicateGrammar.Literal` is pattern-matched exhaustively by production
+  code (`ConceptQueryPredicateCompiler.resolveLiteral`) that assumes exactly two variants
+  (`Value`/`Placeholder`) via `instanceof`+cast, not a switch expression -- adding a third variant
+  for `$root.field` there would risk a silent `ClassCastException` at a call site this feature has no
+  reason to touch. Grammar: `clause ("&&" clause)*`, `clause := field ("=="|"!=") literal`, `literal
+  := "'" text "'" | bareText | "$root." field`. `||` is refused outright (throws, naming
+  `visibleWhen` as the alternative) because the REAL server-side enforcement of this filter
+  (`business-concept-crud-controller.mustache`'s `parseWhereClauses`, confirmed by reading it directly
+  -- a different, actual production controller than `ConceptQueryController.java`, which is not the
+  route the generated client hits) only understands comma/semicolon-separated AND today, not OR.
+
+  Reused from BOTH previous ad hoc parsers -- `AutoPanelExpander.parseBandPickerFilterExpression`
+  (dsl module, now `parseBandPickerFilterClauses`) and `BusinessUiEmitter.parsePickerFilterExpression`
+  (generator module, now `parsePickerFilterClauses`) -- eliminating the hand-copied duplication the
+  original code's own comment explained ("DSL module cannot depend on the generator"): both now call
+  the ONE grammar class and only duplicate the small, type-specific field-existence-check loop each
+  needs against its own concept representation (`ConceptAst` vs `CompiledConcept` -- two different
+  types at two different compiler phases that cannot be unified without the dsl module depending on
+  the generator). `defaultFilterExpression` (the client-facing JSON key both paths feed) changed from
+  a single `{field,operator,value}` object to a LIST of such objects (a `$root.<field>` clause carries
+  `rootRef` instead of `value`) -- `BusinessUiEmitter.parseDefaultFilterExpression` (the older,
+  legacy colon-syntax `referenceSemantics.defaultFilter` parser) is untouched and its single result
+  is now wrapped in a one-element list at the call site, so the client always sees one shape
+  regardless of which authoring syntax produced it. On any clause that fails to validate (an unknown
+  target field, or an unknown `$root` field against the resolved root concept -- the field's own
+  concept when there is no enclosing aggregate, matching how `$root` already resolves for
+  `visibleWhen`), the WHOLE filter drops, matching this surface's own pre-existing "a bad filter
+  drops the filter, it does not fail compilation" precedent, now extended across N clauses instead of
+  one.
+
+  `PanelValidation` gained a NEW authoring-time check (`validatePickerFilterRootReferences`, called
+  from `validateBandPickers`) that parses a band picker's filter and errors on a `$root.<field>`
+  clause naming a field the aggregate's root concept does not declare -- the same class of catch
+  `validateRootFieldReference` already established for `visibleWhen`'s own `$root` references (a
+  typo'd field must fail at authoring time, not silently drop the whole filter forever with no error
+  anywhere). `validateUiStateReference`/`validateRootFieldReference` were widened to split an
+  AND/OR-composed `visibleWhen` expression into its individual predicates first (a small, local,
+  quote-aware `&&`/`||` splitter, `splitVisibleWhenClauses`) and validate each one independently,
+  instead of anchoring the whole two regexes (`UI_STATE_PREDICATE`/`ROOT_FIELD_PREDICATE`, unchanged)
+  against the WHOLE expression -- so a typo buried in the second clause of an AND/OR-composed
+  `visibleWhen` is caught, not silently invisible to validation the way it was before (proven by two
+  new tests asserting exactly this).
+
+  Client JS, two templates, both ported from ALREADY-PROVEN code rather than inventing new grammars:
+  `workbench-page.html.mustache`'s `evaluateVisibleWhen()` (previously two fully-anchored
+  single-predicate regexes for `$ui.<name>`/`$root.<path>`) is now an AND/OR/parens tokenizer/parser
+  ported from `business-ui-app.mustache`'s own `evaluateWhen()`/`tokenizeWhen()` (the field-level
+  evaluator, already battle-tested in the SAME generated app) -- the only real change is
+  `parsePrimary`'s IDENT resolution (`resolveVisibleWhenIdent`), which dispatches `$ui.<name>`/
+  `$root.<dotted.path>` to `uiStateValues`/the aggregate's `root` draft object instead of a flat
+  sibling-field lookup, preserving the exact STRING-COERCED comparison the old anchored regexes
+  always did (so a boolean/numeric root field still compares correctly against a quoted literal --
+  only composition is new, a single well-formed predicate behaves identically to before). Both
+  `whereExpression()` (business-ui-app.mustache, the plain FK-field picker path) and
+  `bandPickerWhereExpression()` (workbench-page.html.mustache, the band-picker path) now iterate an
+  array of clauses instead of building one `field:op:value` triple, resolving any `rootRef` clause
+  against the CURRENT live form (`currentFormValues`'s own resolution source for the FK-field path,
+  since a plain field has no aggregate root beyond its own record) or the aggregate's current draft
+  (`store.toDraft()`, for the band-picker path) at request-build time, and dropping the WHOLE where
+  string (not sending a partial/malformed one) if any clause's reference cannot resolve -- same
+  "a bad filter drops the filter" precedent, enforced client-side this time since that is where the
+  resolution against a live, in-progress record has to happen.
+
+  Schema descriptions updated (no structural change -- these fields were always free-form strings)
+  across all four `model.schema.json` mirrors; `check-schema-mirror-consistency.py` clean.
+  `docs/ACCEPTED_BOUNDARIES.md`'s B16 row and `ledger/boundaries/B16.yml` updated: the "single-clause"
+  framing is now stale and corrected; `selectorRef` (named, reusable selectors -- Step 2) stays
+  descoped, so `classification` is UNCHANGED (HITTABLE), with the revisit trigger narrowed from
+  "a concrete need for a multi-clause filter" (now closed) to "a concrete need for named, reusable
+  selectors". `NPDevSamples/dsl-conformance-max` gained two corpus witnesses:
+  `WidgetOrderTypedActionsWorkbench`'s `lines.notes` visibleWhen now AND-composes a `$ui`/`$root`
+  predicate pair, and `WidgetOrderNoPanelPickerWorkbench`'s `notes` band-picker filter now AND-composes
+  a static clause with a `$root.<field>` reference.
+
+  This is the SIX-active-months-of-Wave-4 closer: with 4.3 done, `BOUNDARY_LIFT_PLAN_2026-09-02.md`'s
+  Wave 4 (4.1/4.2/4.3/4.4) is now entirely closed.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/query/PickerFilterGrammarTest.java
+  asserts: >-
+    (Guard.ref names one representative file for check-done-item-guards.py's single-path resolver;
+    full coverage spans six test files across two modules.) PickerFilterGrammarTest (12 cases): AND
+    composition, the $root.<field> reference (bare and composed with a static clause), the $row.
+    prefix no-op, OR refused outright with a message naming visibleWhen, malformed-clause/empty-clause/
+    bare-$root-with-no-field all throwing. BusinessUiEmitterPickerFilterTest (6 cases, real
+    model-compile-through-manifest end to end): single eq/ne clauses (existing, now array-shaped),
+    AND composition, a $root reference producing a rootRef (not value) in the emitted JSON, and a
+    $root reference to a field the concept does not declare silently dropping the WHOLE filter.
+    AggregateWorkbenchExpansionTest (1 new case): a no-panel band picker's filter AND-composes and
+    resolves $root against the TRUE aggregate root concept (not the band's own concept), verified via
+    real compilation through to the workbench descriptor. AutoPanelUiStateValidationTest (6 new
+    cases): AND- and OR-composed visibleWhen validates clean when every clause is valid; a typo
+    buried in the SECOND clause of an AND- or OR-composed visibleWhen is still caught (the actual
+    regression Step 1 exists to close); a band picker filter's $root reference validates clean
+    against a declared root field and is refused against an undeclared one.
+    WorkbenchUiStateNeverCommittedTest (1 updated case): the rewritten AND/OR-composable
+    evaluateVisibleWhen still resolves both $ui.<name> (via uiStateValues) and $root.<field>, proven
+    by inspecting the rendered template source rather than executing it (no JS test harness exists
+    for the generated client). Narrow, during implementation: full `:NPDevContract:dsl:test` green
+    (twice, after AutoPanelExpander/PanelValidation changes and again after adding all new dsl-side
+    tests); full `:generator:test` green (twice, after BusinessUiEmitter changes and again after the
+    WorkbenchUiStateNeverCommittedTest fix); `check-dsl-coverage.py` and
+    `check-schema-mirror-consistency.py` both clean; a real `validateModel` run against the edited
+    `dsl-conformance-max` corpus model passed with zero errors.
+
+    Live-browser verification was attempted (generate + build + boot a real FinalApp from
+    `dsl-conformance-max` via ScrapForAI) and PARTIALLY completed: the app served every modified
+    static asset with zero page/console JS errors across a full page-load -> header-fill -> add-row
+    -> band-render -> click-through flow, and the rewritten evaluateVisibleWhen/tokenizeVisibleWhen
+    genuinely executed live (the "lines" section's own $root.status visibleWhen had to evaluate true
+    for it to render, and it did). The specific case NOT reached live -- a $root.<field> reference
+    resolving to a REAL persisted value and appearing in the picker's where= request -- needs a
+    successful record save first, and the save 503'd because this ad hoc sample boot never ran H2
+    schema realization (a pre-existing environment/tooling gap in how the sample was booted for this
+    one-off check, unrelated to this change -- `run-sample-app.ps1` does not run schema realization,
+    unlike whatever normal first-boot path does). Tracing the resulting empty where= capture confirmed
+    it was this change's OWN "an unresolved $root reference drops the whole filter" safety behavior
+    firing correctly (root.id is genuinely `undefined` pre-save), not a bug -- but the "resolves to a
+    real value and sends it" path itself stays confirmed only by code review + the unit-level tests
+    above, not a live network capture. Not proven live: a saved record's real $root.id value appearing
+    correctly composed into a live where= request.
+
+    Closing verification, all green, 2026-09-03: full `run-generator-gate.ps1` (T2, 221.7s), full
+    `run-runtimehost-gate.ps1` (T2, 510.8s, assembled sample apps' own suites), full
+    `run-kernel-quality-gate.ps1` (T2, 184.8s, unaffected by this diff but run for complete T2
+    closure). `run-ai-knowledge-gate.ps1` (T2) failed on its first run (334.3s) -- `[6/39]
+    security-pattern-sweep`'s `--fail-on-new` caught 2 untriaged hits, both the SAME fingerprint
+    (377efb4b86dc, `swallowed-security-exception`), at the two new `catch
+    (PickerFilterGrammar.UnsupportedFilterException) -> return List.of();` sites
+    (AutoPanelExpander.java:1075, BusinessUiEmitter.java:1222). Triaged safe (not a security decision
+    -- a syntax-parse failure matching this surface's own pre-existing "a bad filter drops the filter"
+    precedent) and allowlisted (`scripts/quality/security-pattern-sweep-allowlist.json`, `frozenCount`
+    raised 524->525 in the same commit); `check-allowlist-citations.py` clean (525, report-only).
+    Re-run of just `run-all-gates.ps1 -Only aiKnowledge` then green (324.5s, 40/40 checkers). All four
+    T2 gates confirmed green as of this closing pass.
+  provenRed: true

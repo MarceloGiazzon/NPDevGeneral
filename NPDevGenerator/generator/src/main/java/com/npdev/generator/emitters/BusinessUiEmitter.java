@@ -21,6 +21,7 @@ import com.npdev.dsl.v1.compiled.CompiledPanelAction;
 import com.npdev.dsl.v1.compiled.CompiledPresentationMetadata;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.query.PickerFilterGrammar;
 import com.npdev.dsl.v1.settings.NpdevSettings;
 import com.npdev.dsl.v1.settings.SettingResolver;
 import com.npdev.dsl.v1.settings.SettingTarget;
@@ -1015,11 +1016,18 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         reference.put("defaultFilter", firstNonBlank(defaultFilter, ""));
         // B16/B19 (Move 9 A3): referenceSemantics.defaultFilter's older colon/bare-equals grammar
         // wins if declared (unchanged, existing corpus behavior); picker.filter's visibleWhen-style
-        // "field == 'literal'" / "field != 'literal'" grammar is the fallback -- one target shape
-        // (defaultFilterExpression), two accepted authoring syntaxes.
-        parseDefaultFilterExpression(defaultFilter, target)
-                .or(() -> parsePickerFilterExpression(field.getPicker() == null ? null : field.getPicker().filter(), target))
-                .ifPresent(expression -> reference.put("defaultFilterExpression", expression));
+        // AND-composed "field == 'literal'" / "field != 'literal'" grammar (BOUNDARY_LIFT_PLAN
+        // 2026-09-02 Wave 4 4.3/B16 Step 1: now multi-clause, optionally referencing $root.<field> --
+        // for a plain FK field with no enclosing aggregate, "root" is the field's own concept,
+        // sourceConcept) is the fallback -- one target shape (defaultFilterExpression, always a list
+        // of clauses), two accepted authoring syntaxes.
+        List<Map<String, Object>> filterClauses = parseDefaultFilterExpression(defaultFilter, target)
+                .<List<Map<String, Object>>>map(List::of)
+                .orElseGet(() -> parsePickerFilterClauses(
+                        field.getPicker() == null ? null : field.getPicker().filter(), target, sourceConcept));
+        if (!filterClauses.isEmpty()) {
+            reference.put("defaultFilterExpression", filterClauses);
+        }
         reference.put("filterMode", "bounded-lookup-v1.1");
         boolean multiple = (field.getReferenceSemantics() != null && field.getReferenceSemantics().isMultiple())
                 || (field.getPicker() != null && field.getPicker().multiSelect());
@@ -1190,48 +1198,49 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     /**
-     * B16/B19 (Move 9 A3): translates {@code picker.filter}'s {@code visibleWhen}-style grammar
-     * ({@code "field == 'literal'"} / {@code "field != 'literal'"}, an optional {@code $row.} prefix
-     * on the field, per the boundary's own example) into the SAME {@code {field, operator, value}}
-     * shape {@link #parseDefaultFilterExpression} already produces from {@code
-     * referenceSemantics.defaultFilter}'s older colon/bare-equals grammar -- one target shape the
-     * client/server filtering pipeline already consumes, two accepted authoring syntaxes.
+     * BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: translates {@code
+     * picker.filter}'s grammar -- AND-composed {@code "field == 'literal'"} / {@code "field !=
+     * 'literal'"} clauses, an optional {@code $row.} prefix on a field (a no-op naming the picker's
+     * own target row, per the boundary's own example) and an optional {@code $root.<field>}
+     * reference to {@code rootConcept} -- via the shared {@link PickerFilterGrammar} into the SAME
+     * list-of-{@code {field, operator, value|rootRef}} shape {@link #parseDefaultFilterExpression}
+     * already produces (wrapped in a one-element list) from {@code referenceSemantics.defaultFilter}'s
+     * older colon/bare-equals grammar -- one target shape the client/server filtering pipeline
+     * already consumes, two accepted authoring syntaxes. Silently returns an empty list for an
+     * unparseable expression, a clause naming a field {@code target} does not declare, or a {@code
+     * $root} reference a field {@code rootConcept} does not declare -- matching this path's own
+     * precedent (a bad filter drops the whole filter, it does not fail compilation).
      */
-    private static Optional<Map<String, Object>> parsePickerFilterExpression(String expression, CompiledConcept target) {
+    private static List<Map<String, Object>> parsePickerFilterClauses(
+            String expression, CompiledConcept target, CompiledConcept rootConcept) {
         if (expression == null || expression.isBlank()) {
-            return Optional.empty();
+            return List.of();
         }
-        String trimmed = expression.trim();
-        int notEqualsIndex = trimmed.indexOf("!=");
-        int equalsIndex = trimmed.indexOf("==");
-        String field;
-        String operator;
-        String value;
-        if (notEqualsIndex >= 0 && (equalsIndex < 0 || notEqualsIndex < equalsIndex)) {
-            field = trimmed.substring(0, notEqualsIndex).trim();
-            operator = "ne";
-            value = trimmed.substring(notEqualsIndex + 2).trim();
-        } else if (equalsIndex >= 0) {
-            field = trimmed.substring(0, equalsIndex).trim();
-            operator = "eq";
-            value = trimmed.substring(equalsIndex + 2).trim();
-        } else {
-            return Optional.empty();
+        List<PickerFilterGrammar.Clause> clauses;
+        try {
+            clauses = PickerFilterGrammar.parse(expression);
+        } catch (PickerFilterGrammar.UnsupportedFilterException ignored) {
+            return List.of();
         }
-        if (field.startsWith("$row.")) {
-            field = field.substring("$row.".length());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (PickerFilterGrammar.Clause clause : clauses) {
+            if (clause.field().isEmpty() || firstExistingField(target, clause.field()) == null) {
+                return List.of();
+            }
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("field", clause.field());
+            map.put("operator", clause.operator() == PickerFilterGrammar.Operator.NEQ ? "ne" : "eq");
+            if (clause.literal() instanceof PickerFilterGrammar.Literal.RootReference rootRef) {
+                if (rootConcept == null || firstExistingField(rootConcept, rootRef.field()) == null) {
+                    return List.of();
+                }
+                map.put("rootRef", rootRef.field());
+            } else {
+                map.put("value", ((PickerFilterGrammar.Literal.Value) clause.literal()).value());
+            }
+            out.add(map);
         }
-        if (value.length() >= 2 && value.startsWith("'") && value.endsWith("'")) {
-            value = value.substring(1, value.length() - 1);
-        }
-        if (field.isEmpty() || firstExistingField(target, field) == null) {
-            return Optional.empty();
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("field", field);
-        out.put("operator", operator);
-        out.put("value", value);
-        return Optional.of(out);
+        return List.copyOf(out);
     }
 
     private static Optional<Map<String, Object>> parseDefaultFilterExpression(String expression, CompiledConcept target) {

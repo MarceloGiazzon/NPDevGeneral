@@ -4683,7 +4683,7 @@
       openPickerDialog(field, function (id, label) {
         hidden.value = id;
         display.value = label;
-      });
+      }, browseBtn);
     });
     wrapper.appendChild(browseBtn);
 
@@ -5337,7 +5337,7 @@
     return wrapper;
   }
 
-  function openPickerDialog(field, onSelect) {
+  function openPickerDialog(field, onSelect, contextElement) {
     const reference = field.reference || {};
     const content = document.createElement("div");
     content.className = "picker-dialog";
@@ -5374,7 +5374,7 @@
       params.set("direction", "asc");
       const normalizedFilter = filter && filter.trim() ? filter.trim() : "";
       if (normalizedFilter) { params.set("filter", normalizedFilter); }
-      const where = whereExpression(reference.defaultFilterExpression);
+      const where = whereExpression(reference.defaultFilterExpression, contextElement);
       if (where) { params.set("where", where); }
       try {
         const payload = await fetchJson(reference.endpointBase + "?" + params.toString(), {
@@ -5449,11 +5449,49 @@
     setTimeout(function () { searchInput.focus(); }, 50);
   }
 
-  function whereExpression(defaultFilterExpression) {
-    if (!defaultFilterExpression || !defaultFilterExpression.field || !defaultFilterExpression.operator) {
+  // BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: reads a $root.<field>-referencing
+  // clause's live value directly off the enclosing <form> (found by walking up from contextElement --
+  // the picker's own Browse button is always inside the form being edited by the time it is clicked).
+  // Returns null when there is no enclosing form or the field has no control, matching
+  // currentFormValues()'s own null-safety rather than throwing mid-request-build.
+  function resolveRootFieldValue(rootField, contextElement) {
+    const form = contextElement && contextElement.closest ? contextElement.closest("form") : null;
+    if (!form || !form.elements[rootField]) {
+      return null;
+    }
+    const control = form.elements[rootField];
+    return control.type === "checkbox" ? control.checked : control.value;
+  }
+
+  // AND-combined clauses (BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3/B16 Step 1 -- was a
+  // single {field, operator, value} object; now a list, matching parseWhereClauses'
+  // comma-separated where= grammar server-side) into that same "field:op:value,field:op:value" text.
+  // A clause carrying rootRef (a $root.<field> reference) has its value resolved here, against the
+  // CURRENT live form -- if any clause cannot be resolved, the WHOLE filter is dropped (matches the
+  // generation-time parsers' own "a bad filter drops the filter" precedent) rather than silently
+  // narrowing to fewer constraints than the author declared.
+  function whereExpression(clauses, contextElement) {
+    if (!Array.isArray(clauses) || !clauses.length) {
       return "";
     }
-    return defaultFilterExpression.field + ":" + defaultFilterExpression.operator + ":" + text(defaultFilterExpression.value);
+    const parts = [];
+    for (let i = 0; i < clauses.length; i++) {
+      const clause = clauses[i];
+      if (!clause || !clause.field || !clause.operator) {
+        return "";
+      }
+      let value;
+      if (clause.rootRef) {
+        value = resolveRootFieldValue(clause.rootRef, contextElement);
+        if (value === null || value === undefined) {
+          return "";
+        }
+      } else {
+        value = clause.value;
+      }
+      parts.push(clause.field + ":" + clause.operator + ":" + text(value));
+    }
+    return parts.join(",");
   }
 
   function lookupLabel(reference, row) {

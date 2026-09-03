@@ -1,6 +1,7 @@
 id: B16
-title: "A field's auto-picker supports a declared filter/multi-select via field.picker -- selectorRef itself stays descoped (0 Java, 0 schema, never built)"
+title: "A field's auto-picker supports a declared filter/multi-select via field.picker (now AND-composed and $root-parameterized, Wave 4 4.3/B16 Step 1) -- selectorRef itself stays descoped (0 Java, 0 schema, never built)"
 codeLinked: true
 codeLinkedNote: "Declaring selectorRef anywhere in a model fails JSON-schema structural validation (additionalProperties:false) with code json_schema_additionalproperties -- a GENERIC code shared by every unrecognized-property case, not unique to selectorRef on its own. ValidationDiagnosticNormalizer.structuralDiagnostic() (NPDevContract/dsl/.../validation/ValidationDiagnosticNormalizer.java) now special-cases message.getProperty()=='selectorRef' to also populate boundaryId='B16' on the emitted ValidationDiagnostic -- the one boundary this session wired concretely, proving the mechanism end to end (RED/GREEN verified against a live model declaring selectorRef)."
 ref: "docs/ACCEPTED_BOUNDARIES.md#B16"
 classification: HITTABLE
+step1Note: "BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 Step 1 (2026-09-03): the recorded revisit trigger (multi-clause AND/OR filter demand) is closed. field.picker.filter/bandPickers.filter now AND-compose via the new shared PickerFilterGrammar (NPDevContract/dsl/.../query/PickerFilterGrammar.java) and may reference $root.<field> (resolved client-side against the aggregate's root record). transaction.visibleWhen's $ui/$root predicates gained the same AND/OR composition. selectorRef (Step 2, named reusable selectors) remains descoped -- classification stays HITTABLE, revisit trigger narrowed to Step 2's own demand."

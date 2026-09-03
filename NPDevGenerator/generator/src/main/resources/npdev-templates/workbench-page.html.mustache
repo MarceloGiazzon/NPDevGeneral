@@ -469,26 +469,119 @@
   // construction rather than by remembering.
   var uiStateValues = {};
 
+  // BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: AND/OR-composed replacement
+  // for what used to be two fully-anchored single-predicate regexes (a $ui.<name> OR a $root.<path>
+  // predicate, never both, never combined). Ported from business-ui-app.mustache's
+  // evaluateWhen()/tokenizeWhen() -- the SAME OR->AND->CMP->PRIMARY grammar with parens and the same
+  // fail-OPEN-on-anything-unparsable contract -- with PRIMARY's IDENT resolution changed to dispatch
+  // $ui.<name>/$root.<dotted.path> to resolveVisibleWhenIdent() instead of a flat sibling-field
+  // lookup. Each identifier's value is STRING-COERCED exactly as the old anchored regexes always did
+  // (so a boolean/numeric root field still compares correctly against a quoted literal) -- only
+  // composition is new, a single well-formed predicate behaves identically to before.
   function evaluateVisibleWhen(root, expression) {
     var expr = String(expression || "").trim();
-    if (!expr) return true;
-    var u = /^\$?ui\.(\w+)\s*(==|!=)\s*'([^']*)'$/.exec(expr);
-    if (u) {
-      var current = uiStateValues[u[1]];
-      var value = current == null ? "" : String(current);
-      return u[2] === "==" ? value === u[3] : value !== u[3];
+    if (!expr) { return true; }
+    try {
+      var tokens = tokenizeVisibleWhen(expr);
+      var pos = 0;
+      function peek() { return tokens[pos]; }
+      function advance() { return tokens[pos++]; }
+      function parseOr() {
+        var left = parseAnd();
+        while (peek() && peek().type === "OR") { advance(); left = parseAnd() || left; }
+        return left;
+      }
+      function parseAnd() {
+        var left = parseCmp();
+        while (peek() && peek().type === "AND") { advance(); left = parseCmp() && left; }
+        return left;
+      }
+      function parseCmp() {
+        var left = parsePrimary();
+        var op = peek();
+        if (op && (op.type === "EQ" || op.type === "NEQ")) {
+          advance();
+          var right = parsePrimary();
+          return op.type === "EQ" ? left === right : left !== right;
+        }
+        return Boolean(left);
+      }
+      function parsePrimary() {
+        var tok = advance();
+        if (!tok) { throw new Error("Unexpected end of expression"); }
+        if (tok.type === "LPAREN") {
+          var value = parseOr();
+          var close = advance();
+          if (!close || close.type !== "RPAREN") { throw new Error("Expected )"); }
+          return value;
+        }
+        if (tok.type === "STRING") { return tok.value; }
+        if (tok.type === "NULL") { return null; }
+        if (tok.type === "IDENT") { return resolveVisibleWhenIdent(tok.value, root); }
+        throw new Error("Unexpected token " + tok.type);
+      }
+      var result = parseOr();
+      if (pos !== tokens.length) { throw new Error("Trailing tokens in expression"); }
+      return Boolean(result);
+    } catch (error) {
+      return true;
     }
-    var m = /^\$?root\.([\w.]+)\s*(==|!=)\s*'([^']*)'$/.exec(expr);
-    if (!m) return true;
-    var path = m[1], op = m[2], literal = m[3];
-    var parts = path.split(".");
-    var cur = root;
-    for (var i = 0; i < parts.length; i++) {
-      if (cur == null) { cur = undefined; break; }
-      cur = cur[parts[i]];
+  }
+
+  // Resolves a $ui.<name> or $root.<dotted.path> identifier to the SAME string-coerced value the old
+  // single-predicate regexes produced (String(value), null/undefined -> ""). Throws for anything else
+  // (an unrecognized root, or a bare identifier with no $ui./$root. shape), caught by
+  // evaluateVisibleWhen's own try/catch, which fails OPEN exactly as the anchored regexes did for any
+  // non-matching expression.
+  function resolveVisibleWhenIdent(token, root) {
+    var name = token.charAt(0) === "$" ? token.slice(1) : token;
+    if (name.indexOf("ui.") === 0) {
+      var current = uiStateValues[name.slice(3)];
+      return current == null ? "" : String(current);
     }
-    var actual = cur == null ? "" : String(cur);
-    return op === "==" ? actual === literal : actual !== literal;
+    if (name.indexOf("root.") === 0) {
+      var parts = name.slice(5).split(".");
+      var cur = root;
+      for (var i = 0; i < parts.length; i++) {
+        if (cur == null) { cur = undefined; break; }
+        cur = cur[parts[i]];
+      }
+      return cur == null ? "" : String(cur);
+    }
+    throw new Error("Unrecognized identifier '" + token + "' -- expected $ui.<name> or $root.<field>");
+  }
+
+  function tokenizeVisibleWhen(expr) {
+    var tokens = [];
+    var i = 0;
+    while (i < expr.length) {
+      var c = expr[i];
+      if (/\s/.test(c)) { i++; continue; }
+      if (c === "(") { tokens.push({ type: "LPAREN" }); i++; continue; }
+      if (c === ")") { tokens.push({ type: "RPAREN" }); i++; continue; }
+      if (c === "'" || c === "\"") {
+        var quote = c;
+        var j = i + 1;
+        var value = "";
+        while (j < expr.length && expr[j] !== quote) { value += expr[j]; j++; }
+        tokens.push({ type: "STRING", value: value });
+        i = j + 1;
+        continue;
+      }
+      if (expr.substr(i, 2) === "==") { tokens.push({ type: "EQ" }); i += 2; continue; }
+      if (expr.substr(i, 2) === "!=") { tokens.push({ type: "NEQ" }); i += 2; continue; }
+      if (expr.substr(i, 2) === "&&") { tokens.push({ type: "AND" }); i += 2; continue; }
+      if (expr.substr(i, 2) === "||") { tokens.push({ type: "OR" }); i += 2; continue; }
+      var identMatch = /^\$?[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*/.exec(expr.slice(i));
+      if (identMatch) {
+        var word = identMatch[0];
+        tokens.push(word === "null" ? { type: "NULL" } : { type: "IDENT", value: word });
+        i += word.length;
+        continue;
+      }
+      throw new Error("Unexpected character '" + c + "' in expression");
+    }
+    return tokens;
   }
 
   /** Move 11 W6: seed each declared control from its `default` once, before the first render. */
@@ -1012,12 +1105,40 @@
   // (invisible, backdrop-covered) grid behind it, and focus returns to whatever opened the picker
   // (the band's own picker-trigger button, STRINGS['action.select']) on close. Checked against this file's other keyboard
   // surface: input.cell's Escape is unused (no cell-edit-cancel exists to collide with).
-  // B19: field:operator:value, the SAME encoding business-ui-app.mustache's own whereExpression()
-  // builds for an FK field's reference.defaultFilterExpression -- ConceptQueryFilterSupport/
-  // parseWhereClauses (server) already parses this format, unchanged by this addition.
-  function bandPickerWhereExpression(defaultFilterExpression) {
-    if (!defaultFilterExpression || !defaultFilterExpression.field || !defaultFilterExpression.operator) { return ""; }
-    return defaultFilterExpression.field + ":" + defaultFilterExpression.operator + ":" + String(defaultFilterExpression.value == null ? "" : defaultFilterExpression.value);
+  // B19: field:operator:value(,field:operator:value)*, the SAME encoding business-ui-app.mustache's
+  // own whereExpression() builds for an FK field's reference.defaultFilterExpression --
+  // ConceptQueryFilterSupport/parseWhereClauses (server) already parses this comma-separated,
+  // AND-combined format, unchanged by this addition.
+  //
+  // BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: defaultFilterExpression is now
+  // always a list of clauses (was a single object), and a clause carrying rootRef (a $root.<field>
+  // reference) has its value resolved here against `root` -- the aggregate's current draft
+  // (store.toDraft()), the SAME object evaluateVisibleWhen's own $root.<field> already reads. If any
+  // clause cannot be resolved, the WHOLE filter is dropped (matches the generation-time parsers' own
+  // "a bad filter drops the filter" precedent) rather than silently narrowing to fewer constraints
+  // than the author declared.
+  function bandPickerWhereExpression(clauses, root) {
+    if (!Array.isArray(clauses) || !clauses.length) { return ""; }
+    var parts = [];
+    for (var i = 0; i < clauses.length; i++) {
+      var clause = clauses[i];
+      if (!clause || !clause.field || !clause.operator) { return ""; }
+      var value;
+      if (clause.rootRef) {
+        var cur = root;
+        var pathParts = String(clause.rootRef).split(".");
+        for (var j = 0; j < pathParts.length; j++) {
+          if (cur == null) { cur = undefined; break; }
+          cur = cur[pathParts[j]];
+        }
+        if (cur === undefined || cur === null) { return ""; }
+        value = cur;
+      } else {
+        value = clause.value;
+      }
+      parts.push(clause.field + ":" + clause.operator + ":" + String(value == null ? "" : value));
+    }
+    return parts.join(",");
   }
 
   function openBandPicker(secCollection, rowId, bd) {
@@ -1115,7 +1236,7 @@
       // wrapper), unlike the panel path above -- normalized to the same { id, data } shape renderRows expects.
       var params = new URLSearchParams();
       params.set("page", "0"); params.set("size", "100");
-      var where = bandPickerWhereExpression(picker.defaultFilterExpression);
+      var where = bandPickerWhereExpression(picker.defaultFilterExpression, store.toDraft());
       if (where) { params.set("where", where); }
       fetch(picker.endpointBase + "?" + params.toString(), { headers: authHeaders() })
         .then(function (r) { return r.json(); })

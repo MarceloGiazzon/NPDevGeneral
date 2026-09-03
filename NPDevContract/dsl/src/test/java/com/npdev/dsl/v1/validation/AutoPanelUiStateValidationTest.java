@@ -145,6 +145,81 @@ class AutoPanelUiStateValidationTest {
                         + new SemanticValidator().validate(ast));
     }
 
+    // -- BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: AND/OR-composed visibleWhen --
+
+    @Test
+    @DisplayName("an AND-composed visibleWhen validates clean when every clause is valid")
+    void andComposedVisibleWhenValidatesClean() throws Exception {
+        ModelAst ast = parse(model("""
+                  "uiState": {
+                    "registro": { "values": ["Recebimento", "Expedicao"] }
+                  },
+                  "visibleWhen": { "itens": "$root.situacao == 'Pendente' && $ui.registro == 'Recebimento'" }
+                """));
+        assertTrue(new SemanticValidator().validate(ast).isEmpty(),
+                "both AND-combined clauses are individually valid: " + new SemanticValidator().validate(ast));
+    }
+
+    @Test
+    @DisplayName("an OR-composed visibleWhen validates clean when every clause is valid")
+    void orComposedVisibleWhenValidatesClean() throws Exception {
+        ModelAst ast = parse(model("""
+                  "visibleWhen": { "itens": "$root.situacao == 'Pendente' || $root.situacao == 'Confirmada'" }
+                """));
+        assertTrue(new SemanticValidator().validate(ast).isEmpty(),
+                "both OR-combined clauses are individually valid: " + new SemanticValidator().validate(ast));
+    }
+
+    @Test
+    @DisplayName("a typo in the SECOND clause of an AND-composed visibleWhen is still caught")
+    void secondClauseOfAndComposedVisibleWhenIsStillValidated() throws Exception {
+        ModelAst ast = parse(model("""
+                  "visibleWhen": { "itens": "$root.situacao == 'Pendente' && $root.naoExiste == 'X'" }
+                """));
+        List<String> errors = new SemanticValidator().validate(ast);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("$root.naoExiste") && e.contains("not a declared field")),
+                "a bad $root reference buried in the second AND clause must still be caught, got: " + errors);
+    }
+
+    @Test
+    @DisplayName("a typo in the SECOND clause of an OR-composed visibleWhen is still caught")
+    void secondClauseOfOrComposedVisibleWhenIsStillValidated() throws Exception {
+        ModelAst ast = parse(model("""
+                  "uiState": {
+                    "registro": { "values": ["Recebimento"] }
+                  },
+                  "visibleWhen": { "itens": "$ui.registro == 'Recebimento' || $ui.naoExiste == 'X'" }
+                """));
+        List<String> errors = new SemanticValidator().validate(ast);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("$ui.naoExiste") && e.contains("not declared")),
+                "a bad $ui reference buried in the second OR clause must still be caught, got: " + errors);
+    }
+
+    // -- BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: $root in a band picker filter --
+
+    @Test
+    @DisplayName("a band picker filter's $root reference to a declared root field validates clean")
+    void bandPickerFilterRootReferenceToADeclaredFieldValidatesClean() throws Exception {
+        // bandPickers keys must name a NESTED band (one level under a top-level collection) --
+        // "posicoes" under "itens", the same shape bandVisibleWhenReachesTheBandDescriptor uses.
+        ModelAst ast = parse(model("""
+                  "bandPickers": { "posicoes": { "filter": "papel == $root.situacao" } }
+                """, true));
+        assertTrue(new SemanticValidator().validate(ast).isEmpty(),
+                "situacao is declared on the root concept Movimento: " + new SemanticValidator().validate(ast));
+    }
+
+    @Test
+    @DisplayName("a band picker filter's $root reference to an UNDECLARED root field is refused, not silently dropped")
+    void bandPickerFilterRootReferenceToAnUndeclaredFieldIsRefused() throws Exception {
+        ModelAst ast = parse(model("""
+                  "bandPickers": { "posicoes": { "filter": "papel == $root.naoExiste" } }
+                """, true));
+        List<String> errors = new SemanticValidator().validate(ast);
+        assertTrue(errors.stream().anyMatch(e -> e.contains("$root.naoExiste") && e.contains("not a declared field")),
+                "expected a $root field-existence error for the band picker filter, got: " + errors);
+    }
+
     private static ModelAst parse(String json) throws Exception {
         return new JsonModelParser().parse(MAPPER.readTree(json));
     }

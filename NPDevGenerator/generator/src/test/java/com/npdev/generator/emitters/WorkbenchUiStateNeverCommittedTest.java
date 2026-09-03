@@ -54,17 +54,22 @@ public class WorkbenchUiStateNeverCommittedTest {
     }
 
     @Test
-    @DisplayName("one grammar, two roots: evaluateVisibleWhen resolves $ui.<name> and still resolves $root.<field>")
+    @DisplayName("one grammar, two roots: evaluateVisibleWhen resolves $ui.<name> and still resolves $root.<field>, "
+            + "now AND/OR-composable (BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1)")
     void visibleWhenResolvesBothRoots() {
         String page = TEMPLATES.render("workbench-page.html.mustache", Map.of());
-        String body = region(page, "function evaluateVisibleWhen(root, expression)", 1400);
+        String evaluator = region(page, "function evaluateVisibleWhen(root, expression)", 2200);
+        String resolver = region(page, "function resolveVisibleWhenIdent(token, root)", 1000);
 
-        assertTrue(body.contains("ui\\\\.(\\\\w+)") || body.contains("ui\\.(\\w+)"),
-                "expected a $ui.<name> branch in the shared predicate evaluator:\n" + body);
-        assertTrue(body.contains("root\\.([\\w.]+)"),
-                "the pre-existing $root.<field> branch must be untouched:\n" + body);
-        assertTrue(body.contains("uiStateValues["),
-                "the $ui branch must read the presentation-only store:\n" + body);
+        assertTrue(evaluator.contains("resolveVisibleWhenIdent"),
+                "the AND/OR-composable evaluator must delegate identifier resolution to "
+                        + "resolveVisibleWhenIdent so a $ui/$root reference works inside ANY clause, "
+                        + "not just as the whole expression:\n" + evaluator);
+        assertTrue(resolver.contains("ui.") && resolver.contains("uiStateValues["),
+                "expected a $ui.<name> branch reading the presentation-only uiStateValues store:\n" + resolver);
+        assertTrue(resolver.contains("root."),
+                "the pre-existing $root.<field> resolution (dotted-path walk against `root`) must "
+                        + "still be reachable:\n" + resolver);
     }
 
     private static String region(String source, String marker, int length) {
