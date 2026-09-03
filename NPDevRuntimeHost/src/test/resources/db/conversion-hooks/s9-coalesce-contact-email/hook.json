@@ -1,0 +1,7 @@
+{
+  "id": "s9-coalesce-contact-email",
+  "claims": ["ADD_REQUIRED_COLUMN:s9_customers:contact_email"],
+  "description": "Wave 4 (B13 vocabulary expansion): generator-produced convert.sql for a declared coalesce conversion (op=coalesce, concept=Customer), captured verbatim from ConversionHookEmitterDeclaredConversionsTest and adapted only to a test-unique table name.",
+  "verifySql": "SELECT COUNT(*) FROM s9_customers WHERE contact_email IS NULL",
+  "verifyExpect": 0
+}

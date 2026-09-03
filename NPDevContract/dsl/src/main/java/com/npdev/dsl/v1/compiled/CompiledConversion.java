@@ -10,7 +10,9 @@ import java.util.List;
  * The generator compiles this into the {@code db/conversion-hooks/<id>/{hook.json,convert.sql}}
  * shape {@code ConversionHookRunner} already executes at boot. {@code mergeFrom}/{@code with} back
  * {@code merge}; {@code convert} reuses {@code from}/{@code to} (see {@code ConversionAst}'s own
- * javadoc for why it has no separate {@code toType}).
+ * javadoc for why it has no separate {@code toType}). Wave 4 (B13 vocabulary expansion):
+ * {@code coalesce} reuses {@code mergeFrom}/{@code to} (no {@code with} -- nothing is joined);
+ * {@code case} reuses {@code from}/{@code to} plus {@code when}/{@code elseValue}.
  */
 public record CompiledConversion(
         String id,
@@ -22,16 +24,22 @@ public record CompiledConversion(
         CompiledConversionLookupMatch match,
         String set,
         List<String> mergeFrom,
-        String with
+        String with,
+        List<CompiledConversionCaseWhen> when,
+        String elseValue
 ) {
     public CompiledConversion {
         into = into == null ? List.of() : List.copyOf(into);
         mergeFrom = mergeFrom == null ? List.of() : List.copyOf(mergeFrom);
+        when = when == null ? List.of() : List.copyOf(when);
     }
 
     public record CompiledConversionSplitTarget(String field, String take) {
     }
 
     public record CompiledConversionLookupMatch(String concept, String on, String equals) {
+    }
+
+    public record CompiledConversionCaseWhen(String equals, String then) {
     }
 }

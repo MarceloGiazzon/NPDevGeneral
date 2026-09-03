@@ -23,11 +23,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * S7 Phase B (B13 declarative conversion vocabulary) + S8 W1.2 (roadmap deferred item #4): proves,
- * against a real H2 database, that the EXACT convert.sql {@link ConversionHookEmitter}
- * (NPDevGenerator) generates for each of the five declarative ops actually converts real data when
- * run through the real {@link ConversionHookRunner} -- the fixtures under {@code
- * src/test/resources/db/conversion-hooks/s7-*}/{@code s8-*} are captured verbatim from {@code
+ * S7 Phase B (B13 declarative conversion vocabulary) + S8 W1.2 (roadmap deferred item #4) + Wave 4
+ * (BOUNDARY_LIFT_PLAN_2026-09-02.md package 4.2, vocabulary expansion): proves, against a real H2
+ * database, that the EXACT convert.sql {@link ConversionHookEmitter} (NPDevGenerator) generates for
+ * each of the seven declarative ops actually converts real data when run through the real
+ * {@link ConversionHookRunner} -- the fixtures under {@code src/test/resources/db/conversion-hooks/
+ * s7-*}/{@code s8-*}/{@code s9-*} are captured verbatim from {@code
  * ConversionHookEmitterDeclaredConversionsTest}'s own generator output (only the table names were
  * changed, to keep this suite's claims from colliding with the sibling P7.5 fixtures). Idempotence
  * (B12's guarantee) is proven by running each hook a second time and confirming it is a true no-op
@@ -232,6 +233,88 @@ class ConversionHookRunnerDeclaredConversionsTest {
         IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
         assertTrue(exception.getMessage().contains("s8-convert-priority"), exception.getMessage());
+    }
+
+    /** Wave 4 (B13 vocabulary expansion): coalesce reuses merge's mergeFrom/to shape but proves the
+     *  more interesting COALESCE behaviour -- a NULL first source falls through to the second,
+     *  rather than concatenating both. */
+    @Test
+    void coalesceConversionPicksTheFirstNonNullSourceColumn_thenIsANoOpOnRerun() throws SQLException {
+        exec("CREATE TABLE s9_customers (id BIGINT PRIMARY KEY, primary_email VARCHAR(100), secondary_email VARCHAR(100))");
+        exec("INSERT INTO s9_customers (id, primary_email, secondary_email) VALUES (1, NULL, 'ada@example.com')");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s9_customers", Map.of("id", "BIGINT", "primary_email", "VARCHAR(100)", "secondary_email", "VARCHAR(100)"),
+                List.of("id", "primary_email", "secondary_email"),
+                List.of("id", "primary_email", "secondary_email", "contact_email"));
+
+        boolean applied = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+        assertTrue(applied, "the coalesce hook must have run");
+        assertEquals("ada@example.com", singleStringQuery("SELECT contact_email FROM s9_customers WHERE id = 1"));
+        assertTrue(history.stream().map(row -> row[1]).toList().contains("HOOK_APPLIED"));
+
+        history.clear();
+        boolean appliedAgain = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+        assertTrue(history.isEmpty(), "a fully-converged conversion must write zero history on rerun: " + history);
+        assertEquals(false, appliedAgain, "rerunning an already-resolved conversion must be a true no-op");
+        assertEquals("ada@example.com", singleStringQuery("SELECT contact_email FROM s9_customers WHERE id = 1"),
+                "the value must be unchanged by the idempotent rerun");
+    }
+
+    /** Wave 4: X0 rule, data-layer half for coalesce -- a row where EVERY source field is NULL still
+     *  yields NULL from COALESCE(...), and the closing ALTER COLUMN ... SET NOT NULL must fail the
+     *  whole hook rather than silently leaving the row unconverted. */
+    @Test
+    void coalesceConversionWithEverySourceFieldNullFailsTheBootLoudlyRatherThanLeavingANullResidue() throws SQLException {
+        exec("CREATE TABLE s9_customers (id BIGINT PRIMARY KEY, primary_email VARCHAR(100), secondary_email VARCHAR(100))");
+        exec("INSERT INTO s9_customers (id, primary_email, secondary_email) VALUES (1, NULL, NULL)");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s9_customers", Map.of("id", "BIGINT", "primary_email", "VARCHAR(100)", "secondary_email", "VARCHAR(100)"),
+                List.of("id", "primary_email", "secondary_email"),
+                List.of("id", "primary_email", "secondary_email", "contact_email"));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+        assertTrue(exception.getMessage().contains("s9-coalesce-contact-email"), exception.getMessage());
+    }
+
+    /** Wave 4: proves both branches of a case conversion in one pass -- a matched WHEN clause and an
+     *  unmatched row falling back to the declared ELSE default. */
+    @Test
+    void caseConversionMapsMatchedAndUnmatchedValuesToTheirDeclaredReplacements_thenIsANoOpOnRerun() throws SQLException {
+        exec("CREATE TABLE s9_orders (id BIGINT PRIMARY KEY, region_code VARCHAR(20))");
+        exec("INSERT INTO s9_orders (id, region_code) VALUES (1, 'S'), (2, 'ZZ')");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s9_orders", Map.of("id", "BIGINT", "region_code", "VARCHAR(20)"),
+                List.of("id", "region_code"), List.of("id", "region_code", "region_label"));
+
+        boolean applied = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+        assertTrue(applied, "the case hook must have run");
+        assertEquals("South", singleStringQuery("SELECT region_label FROM s9_orders WHERE id = 1"));
+        assertEquals("Unknown", singleStringQuery("SELECT region_label FROM s9_orders WHERE id = 2"),
+                "an unmatched value must fall back to the declared else");
+
+        history.clear();
+        boolean appliedAgain = ConversionHookRunner.run(dataSource, manifest, historyWriter);
+        assertTrue(history.isEmpty(), "a fully-converged conversion must write zero history on rerun: " + history);
+        assertEquals(false, appliedAgain);
+    }
+
+    /** Wave 4: X0 rule, data-layer half for case -- a row matching no WHEN clause, on a case
+     *  conversion declaring no ELSE, is left NULL by the bare CASE ... END, and the closing ALTER
+     *  COLUMN ... SET NOT NULL must fail the whole hook rather than leaving it unconverted. */
+    @Test
+    void caseConversionWithNoElseOnAnUnmatchedValueFailsTheBootLoudlyRatherThanLeavingANullResidue() throws SQLException {
+        exec("CREATE TABLE s9_orders (id BIGINT PRIMARY KEY, region_code VARCHAR(20))");
+        exec("INSERT INTO s9_orders (id, region_code) VALUES (1, 'ZZ')");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "s9_orders", Map.of("id", "BIGINT", "region_code", "VARCHAR(20)"),
+                List.of("id", "region_code"), List.of("id", "region_code", "region_label_strict"));
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+        assertTrue(exception.getMessage().contains("s9-case-no-else"), exception.getMessage());
     }
 
     // ---- helpers (mirrors ConversionHookRunnerH2Test's own) ----

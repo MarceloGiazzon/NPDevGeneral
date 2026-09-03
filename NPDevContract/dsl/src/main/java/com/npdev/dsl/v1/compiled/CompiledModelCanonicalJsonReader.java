@@ -256,6 +256,16 @@ public final class CompiledModelCanonicalJsonReader {
         // raw instead (same reasoning as JsonModelParser's own "with" parsing).
         JsonNode withNode = node.get("with");
         String with = (withNode != null && !withNode.isNull()) ? withNode.asText() : null;
+        // Wave 4 (B13 vocabulary expansion): "when"/"elseValue" are case's literal branches -- "then"
+        // and "elseValue" read raw like "with" above, for the same "" != absent reasoning.
+        List<CompiledConversion.CompiledConversionCaseWhen> when = new ArrayList<>();
+        for (JsonNode whenNode : array(node, "when")) {
+            JsonNode thenNode = whenNode.get("then");
+            String thenValue = (thenNode != null && !thenNode.isNull()) ? thenNode.asText() : null;
+            when.add(new CompiledConversion.CompiledConversionCaseWhen(text(whenNode, "equals"), thenValue));
+        }
+        JsonNode elseNode = node.get("elseValue");
+        String elseValue = (elseNode != null && !elseNode.isNull()) ? elseNode.asText() : null;
         return new CompiledConversion(
                 text(node, "id"),
                 text(node, "concept"),
@@ -266,7 +276,9 @@ public final class CompiledModelCanonicalJsonReader {
                 match,
                 optionalText(node, "set"),
                 toStringList(node.get("mergeFrom")),
-                with
+                with,
+                when,
+                elseValue
         );
     }
 

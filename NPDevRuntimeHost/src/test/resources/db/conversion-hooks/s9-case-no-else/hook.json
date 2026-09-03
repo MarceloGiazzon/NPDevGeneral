@@ -1,0 +1,7 @@
+{
+  "id": "s9-case-no-else",
+  "claims": ["ADD_REQUIRED_COLUMN:s9_orders:region_label_strict"],
+  "description": "Wave 4 (B13 vocabulary expansion): a case conversion with no declared 'else' -- proves an unmatched row is left NULL and the closing SET NOT NULL fails the boot loudly, same X0 discipline every other op in this suite already proves.",
+  "verifySql": "SELECT COUNT(*) FROM s9_orders WHERE region_label_strict IS NULL",
+  "verifyExpect": 0
+}

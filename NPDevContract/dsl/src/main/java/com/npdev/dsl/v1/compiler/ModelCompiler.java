@@ -3,6 +3,7 @@ package com.npdev.dsl.v1.compiler;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.ContextAst;
 import com.npdev.dsl.v1.ast.ConversionAst;
+import com.npdev.dsl.v1.ast.ConversionCaseWhenAst;
 import com.npdev.dsl.v1.ast.ConversionLookupMatchAst;
 import com.npdev.dsl.v1.ast.ConversionSplitTargetAst;
 import com.npdev.dsl.v1.ast.DocumentAst;
@@ -735,13 +736,45 @@ public final class ModelCompiler {
                     requireConversionField(conversionAst.id(), concept, conversionAst.from(), "from");
                     requireConversionField(conversionAst.id(), concept, conversionAst.to(), "to");
                 }
+                // Wave 4 (B13 vocabulary expansion): coalesce reuses merge's mergeFrom/to shape but
+                // with a different (weaker) minimum-source-fields rationale message -- COALESCE over
+                // one field would just be 'copy', same "that's not a real op" reasoning merge's own
+                // check uses.
+                case "coalesce" -> {
+                    if (conversionAst.mergeFrom().size() < 2) {
+                        throw new IllegalArgumentException("conversion '" + conversionAst.id()
+                                + "' has op 'coalesce' but declares fewer than 2 'from' fields ("
+                                + conversionAst.mergeFrom() + ") -- coalescing fewer than two fields is just 'copy'");
+                    }
+                    for (String coalesceField : conversionAst.mergeFrom()) {
+                        requireConversionField(conversionAst.id(), concept, coalesceField, "from[]");
+                    }
+                    requireConversionField(conversionAst.id(), concept, conversionAst.to(), "to");
+                }
+                // Wave 4 (B13 vocabulary expansion): case maps from's literal values to literal
+                // replacements via 'when' (1+ equals/then pairs, evaluated in declared order) with an
+                // optional 'elseValue' default -- a row matching neither is left NULL, same X0
+                // discipline the rest of this vocabulary already applies (see ConversionAst's javadoc).
+                case "case" -> {
+                    requireConversionField(conversionAst.id(), concept, conversionAst.from(), "from");
+                    requireConversionField(conversionAst.id(), concept, conversionAst.to(), "to");
+                    if (conversionAst.when().isEmpty()) {
+                        throw new IllegalArgumentException("conversion '" + conversionAst.id()
+                                + "' has op 'case' but declares no 'when' clauses");
+                    }
+                }
                 default -> throw new IllegalArgumentException("conversion '" + conversionAst.id()
                         + "' declares op '" + conversionAst.op()
-                        + "', which is not a recognized conversion op (copy, split, lookup, merge, convert)");
+                        + "', which is not a recognized conversion op "
+                        + "(copy, split, lookup, merge, convert, coalesce, case)");
             }
             CompiledConversion.CompiledConversionLookupMatch compiledMatch = conversionAst.match() == null ? null
                     : new CompiledConversion.CompiledConversionLookupMatch(
                             conversionAst.match().concept(), conversionAst.match().on(), conversionAst.match().equals());
+            List<CompiledConversion.CompiledConversionCaseWhen> compiledWhen = new ArrayList<>();
+            for (ConversionCaseWhenAst whenAst : conversionAst.when()) {
+                compiledWhen.add(new CompiledConversion.CompiledConversionCaseWhen(whenAst.equals(), whenAst.then()));
+            }
             compiled.add(new CompiledConversion(
                     conversionAst.id(),
                     conversionAst.concept(),
@@ -752,7 +785,9 @@ public final class ModelCompiler {
                     compiledMatch,
                     conversionAst.set(),
                     conversionAst.mergeFrom(),
-                    conversionAst.with()
+                    conversionAst.with(),
+                    compiledWhen,
+                    conversionAst.elseValue()
             ));
         }
         return compiled;
