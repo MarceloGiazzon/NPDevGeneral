@@ -124,15 +124,25 @@ certificate automatically, no further config needed.
 
 ## Concurrent instances and external databases
 
-The platform's deployment posture is still single-instance: exactly one app instance boots against a
-given database at a time. As of REG-7.3, a second instance booting concurrently against the same
-database is **detected and refused loudly** (naming the holder), instead of silently interleaving
-migrations — but this is a detect-and-refuse claim row, not a lock; see
-`docs/SCHEMA_EVOLUTION.md#collision-detection` for the exact mechanism, the manual escape hatch for a
-crashed holder (`POST /api/admin/schema-migration/clear-claim`), and the honest limitation (a true
-near-simultaneous-insert race remains theoretically possible, and the very first-ever boot of a brand
-new database is not claim-protected). Do not roll out multi-instance deployments of the same
-app+database relying on this as a strict mutex.
+**As of R9.3, migration is a real lock, not detect-and-refuse.** Two instances booting concurrently
+against the same database **serialize** on the migration mutex rather than one of them being killed:
+Postgres/MySQL/SQL Server take the engine's own session advisory lock; H2 takes a row lock in a
+dedicated schema Flyway never inspects. Both are connection-scoped, so a crashed holder releases
+automatically the instant its socket dies — no lease, no heartbeat, no operator step. A boot that
+waits out its configured budget (`npdev.schema.lock.waitSeconds`, extended automatically while
+`npdev_schema_history` shows the holder genuinely still progressing — see
+`docs/SCHEMA_EVOLUTION.md#collision-detection`) refuses loudly, naming the holder and its last
+recorded activity, rather than interleaving migrations.
+
+**The production answer for a real multi-instance rolling deploy is `npdev.schema.lifecycle.mode=
+MIGRATE_ONLY`** (`Migrate-Only.ps1` / `Build-NpdevApp.ps1 -MigrateOnly`, REG-200): run it once, as a
+one-shot job (a K8s init/Job container, a CI deploy step), before ANY serving instance boots. With
+migration ordered ahead of every instance this way, no two instances ever contend the lock in the
+first place — see `docs/SCHEMA_EVOLUTION.md#collision-detection` for the exact mechanism, the manual
+display-only escape hatch for a crashed holder's claim row (`POST
+/api/admin/schema-migration/clear-claim`), and the one honest remaining limitation (the human-readable
+claim/history row is not recorded on a genuinely virgin database's first-ever boot — narrow, named,
+and made unreachable by `MIGRATE_ONLY` in a correctly-ordered deployment).
 
 If your database schema is managed outside NPDev (a pre-existing legacy system, or an operator running
 the DDL by hand), declare `schemaLifecycle.ownership: "ExternallyManaged"` in `db.definition.json` —

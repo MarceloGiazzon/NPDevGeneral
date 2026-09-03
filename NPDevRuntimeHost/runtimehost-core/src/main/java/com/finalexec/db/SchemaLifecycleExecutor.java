@@ -271,6 +271,43 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     @Override
     public void migrate(Flyway flyway) {
         migrate(flyway, loadManifest());
+        exitIfMigrateOnly();
+    }
+
+    /**
+     * 3.2 (B4 migrate-only + progress-aware waiting): the production answer to B4 -- boot the schema
+     * lifecycle, run it, exit, BEFORE the web server binds a port, so a deployment can run migration
+     * as a one-shot job (K8s init/Job container, CI step) ahead of every serving instance. B4's
+     * wait/refuse machinery in {@link MigrationMutex} then never fires in a correctly-ordered
+     * deployment, because no instance is racing another one to migrate -- there is exactly one boot,
+     * and it does nothing else.
+     *
+     * <p>Checked AFTER {@link #migrate(Flyway, SchemaManifest)} returns, deliberately unlike
+     * REPORT_ONLY's early exit (line ~439 above, before any DDL): every branch above -- the
+     * ExternallyManaged verification, the Ephemeral wipe, the ordinary apply path -- has already done
+     * its real work by the time this runs, and this only decides whether to hand control back to
+     * Spring Boot to keep booting into a serving app, or to stop here instead. Reads the SAME
+     * {@code npdev.schema.lifecycle.mode} property REPORT_ONLY reads -- the two are mutually
+     * exclusive values of one switch, never combined.
+     *
+     * <p>{@link #migrateOnlyRequested()} is the testable half (mirrors {@link #codeFor}'s split for
+     * REPORT_ONLY); the {@code System.exit} call itself is, like REPORT_ONLY's, exercised only via a
+     * real {@code java -jar} process (see {@code Migrate-Only.ps1}), never inside the test JVM.
+     */
+    private static void exitIfMigrateOnly() {
+        if (!migrateOnlyRequested()) {
+            return;
+        }
+        System.out.println("NPDev schema lifecycle: MIGRATE_ONLY mode complete -- schema realized; exiting before "
+                + "the app serves traffic (npdev.schema.lifecycle.mode=MIGRATE_ONLY).");
+        System.out.flush();
+        System.exit(0);
+    }
+
+    /** Package-private for direct unit testing without touching {@code System.exit} -- see
+     *  {@link #exitIfMigrateOnly}. */
+    static boolean migrateOnlyRequested() {
+        return "MIGRATE_ONLY".equalsIgnoreCase(System.getProperty("npdev.schema.lifecycle.mode", "APPLY"));
     }
 
     /**

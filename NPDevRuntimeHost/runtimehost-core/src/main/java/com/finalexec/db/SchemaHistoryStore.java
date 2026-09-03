@@ -113,6 +113,55 @@ final class SchemaHistoryStore {
         }
     }
 
+    /** 3.2 (B4 migrate-only + progress-aware waiting): the most recent row in {@code npdev_schema_history},
+     *  regardless of outcome -- unlike {@link #latestOutcomeOverall}, which filters to APPLIED/
+     *  MANUALLY_MARKED_DONE ("did the fingerprint pointer really advance"), a waiter needs to see a
+     *  row the instant it is written, before the pass finishes. {@link #recordStepPass} writes
+     *  PARTIAL-CRASH BEFORE running its DDL and flips it to APPLIED only after, so a still-PARTIAL-CRASH
+     *  latest row IS the "a pass is running right now" signal, and its {@code appliedAtUtc} is that
+     *  pass's start time. */
+    record RecentActivity(String stepName, String outcome, long recordedAtUtc) {
+    }
+
+    /** Read-only, and deliberately never calls {@link #ensureHistoryTable}: this is read from
+     *  {@link MigrationMutex}'s WAIT loop, which can run before the boot currently holding the lock
+     *  has ever called {@code flyway.migrate()}. Self-creating {@code npdev_schema_history} in that
+     *  window would be a NEW REG-7.2 -- a WAITER, not the holder, poisoning Flyway's own "empty
+     *  schema" check out from under the boot it is waiting on. A table that does not exist yet simply
+     *  means no step pass has ever run against this database, which reads correctly as "no activity
+     *  recorded" -- exactly what a first-ever boot looks like before its first rename/widen/backfill
+     *  pass (there is nothing yet to diff against). Never throws: observability only, and must never
+     *  affect whether -- or how long -- a boot waits for reasons of its own. */
+    static Optional<RecentActivity> mostRecentActivity(DataSource dataSource) {
+        try (Connection connection = dataSource.getConnection()) {
+            if (!historyTableExists(connection)) {
+                return Optional.empty();
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT classification, outcome, applied_at_utc FROM " + HISTORY_TABLE
+                            + " ORDER BY applied_at_utc DESC")) {
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    return resultSet.next()
+                            ? Optional.of(new RecentActivity(
+                                    resultSet.getString(1), resultSet.getString(2), resultSet.getLong(3)))
+                            : Optional.empty();
+                }
+            }
+        } catch (SQLException exception) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean historyTableExists(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                SqlDialects.active().tableExistsInCurrentSchemaSql(HISTORY_TABLE))) {
+            try (ResultSet resultSet = statement.executeQuery()) {
+                resultSet.next();
+                return resultSet.getInt(1) > 0;
+            }
+        }
+    }
+
     /**
      * LNCH-1 Phase 4 (task 4.4). Idempotent, self-bootstrapped exactly like {@code METADATA_TABLE}
      * -- called at the top of every history write so a fresh app (no prior destructive/rename/

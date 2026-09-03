@@ -701,41 +701,82 @@ over, mark that older build's fingerprint done and redeploy.
 
 ## Collision detection
 
-**REG-7.3.** The platform's deployment posture is single-instance (`docs/DEPLOYMENT.md`) — exactly one
-app instance boots against a given database at a time. This feature makes a violation **loud** instead
-of silently interleaving migrations, without introducing a real lock: a single-row **claim** in a
-self-bootstrapped `npdev_schema_migration_claim` table (`claim_key` fixed at `'schema-migration'`,
-primary-keyed so a second concurrent `INSERT` fails), taken at the top of every upgrade boot and
-released in a `finally`:
+**R9.3: a real lock, not detect-and-refuse.** Two instances booting concurrently against the same
+database **serialize** — the second WAITS for the first to finish, rather than either being refused on
+sight or (the pre-R9.3 shape this section used to describe) racing a single claim-row `INSERT` where
+the loser died. `MigrationMutex` dispatches by CAPABILITY, never by engine name:
 
-- **Held by someone else** → the boot refuses immediately, naming the holder:
+- **Postgres, MySQL, SQL Server** take the engine's own session advisory lock (`pg_try_advisory_lock`
+  and equivalents) — session-scoped, needs no table, so it protects even a genuinely virgin database
+  with no special case.
+- **H2** takes a row lock (`SELECT ... FOR UPDATE SKIP LOCKED`) on a single seeded row, held open in
+  its own transaction. The table lives in a DEDICATED schema (`npdev_lock`) that Flyway never
+  inspects — which is what protects a first-ever boot too: Flyway's own emptiness check never sees it.
+
+Both mechanisms are scoped to the CONNECTION that took them, held open for the whole migration and
+never returned to the pool. A boot that crashes mid-migration releases the lock the instant its socket
+dies — no lease, no heartbeat, no operator step. A HUNG (not crashed) boot holds it until killed; the
+timeout message below says so rather than pretending otherwise.
+
+`MigrationClaimStore`'s single-row `npdev_schema_migration_claim` table still exists, but is now
+**bookkeeping only, never load-bearing for exclusion** — it feeds the ControlPanel's "who holds it"
+display and the timeout message below, and a stale row left by a crashed instance no longer blocks
+anything (the mutex, not this row, is what a crashed instance actually loses).
+
+- **Held by someone else** → the boot WAITS (`npdev.schema.lock.waitSeconds`, default 300s), then
+  refuses if the budget runs out **and no new progress was observed during the wait** (see
+  "Progress-aware waiting" below):
   ```
-  Another NPDev instance is currently migrating this database (instance <uuid> on host <hostname>,
-  claimed at epoch-ms <t>). Concurrent schema migrations are not supported (REG-7.3) -- wait for it to
-  finish and retry, or if it crashed mid-migration, clear the stale claim via POST
-  /api/admin/schema-migration/clear-claim (SUPERUSER)...
+  B4:migration_lock_held:Another NPDev instance is currently migrating this database (instance <uuid>
+  on host <hostname>, claimed at epoch-ms <t>), and this boot timed out after <n>s waiting for it.
+  Concurrent boots serialize on a migration lock rather than refusing, so waiting the full budget means
+  the other migration is still running or its process is hung -- the lock is scoped to that instance's
+  database connection, so a CRASHED instance would already have released it and this boot would have
+  proceeded. <last recorded activity, or its absence> Let the other migration finish and retry, raise
+  the budget with -Dnpdev.schema.lock.waitSeconds=<seconds>, or kill the hung instance.
   ```
-- **Crashed holder (stale claim)** — the manual escape hatch, SUPERUSER-gated:
+- **Crashed holder** — no operator action needed at all: the mutex releases itself when the crashed
+  instance's connection dies, and the very next boot walks straight in.
+- **Stale display row only** — the manual escape hatch, SUPERUSER-gated, now purely cosmetic (R9.3
+  demoted it from a recovery step; it cannot touch a live mutex, only the display row):
   ```
   GET  /api/admin/schema-migration/claim        # inspect: { "held": true/false, ... }
-  POST /api/admin/schema-migration/clear-claim   # unconditionally deletes the row
+  POST /api/admin/schema-migration/clear-claim   # unconditionally blanks the display row
   ```
-  Clearing a claim while another instance genuinely holds it **re-introduces the exact race** this
-  feature detects — that is a deliberate operator decision this endpoint trusts the caller to make.
 
-**Honest limitations (D3):**
-- **This is detect-and-refuse, not a lock.** A true TOCTOU race between two near-simultaneous
-  `INSERT`s is possible on an engine without strict insert serialization. If this becomes frequent in
-  practice, the documented upgrade path is a real `pg_advisory_lock` (Postgres) + an H2 lock table —
-  deliberately not built for v1 per the owner's "add guard rails later if needed."
-- **The very first-ever boot of a brand new database is not claim-protected.** The claim is only
-  attempted when a schema fingerprint is already stored (an upgrade/repeat boot). Claiming
-  unconditionally on a genuinely virgin database would self-bootstrap this table *before*
-  `flyway.migrate()` ever runs, which makes Flyway see a non-empty schema with no history table and
-  refuse outright — a real bug this scoping decision avoids (found and fixed via a live boot
-  rehearsal). In practice this narrows the gap to something *smaller* than the register's own
-  practical example (two containers racing against an *already-initialized* database), which — the
-  common real-world case — is fully protected.
+**The production answer: run migration alone, before any instance serves traffic.**
+`npdev.schema.lifecycle.mode=MIGRATE_ONLY` (`Migrate-Only.ps1` / `Build-NpdevApp.ps1 -MigrateOnly`,
+REG-200) boots the schema lifecycle, applies it for real, then exits before the web server binds a
+port — run it as a one-shot job (a K8s init/Job container, a CI deploy step) ahead of every serving
+instance, and this boundary cannot fire because nothing is ever racing it. This is the answer to "how
+do I actually deploy a real multi-instance rollout" — the wait/refuse mechanism above is what protects
+you when a deployment is NOT ordered this way, not a substitute for ordering it this way.
+
+**Progress-aware waiting (REG-200).** `npdev.schema.lock.waitSeconds` is a FLOOR, not a fixed ceiling:
+if the budget expires but `npdev_schema_history` shows activity that postdates the wait's own start
+(the same write-before-execute rows every rename/widen/relax/backfill pass already writes — PARTIAL-
+CRASH before running its DDL, flipped to APPLIED after), the wait extends by another full budget
+window rather than refusing. This is observability only, never the release mechanism, and is uncapped
+by design — a migration has no safe maximum duration NPDev can know in advance (bounded by the size of
+the user's data, not by anything the platform knows). A waiter facing no new activity in a whole budget
+window refuses at the floor as before, now naming the holder's last recorded activity (or its absence)
+alongside the holder identity.
+
+**Honest limitations:**
+- **REG-7.2's narrow residue.** The human-readable claim row (and, for the same structural reason,
+  the progress-observability read above) is not recorded on a genuinely virgin database's first-ever
+  boot — recording it would self-bootstrap a table into Flyway's schema *before* `flyway.migrate()`
+  ever runs, which makes Flyway see a non-empty schema with no history table and refuse outright (a
+  real bug this scoping decision avoids, found and fixed via a live boot rehearsal). The LOCK itself
+  has no such gap on any engine — only the bookkeeping/observability rows do. This residue only bites
+  when two boots race a first-ever migration against each other; `MIGRATE_ONLY` above makes that
+  scenario unreachable in a correctly-ordered deployment, which is why it is restated here rather than
+  closed with a new file-lock sidecar.
+- **A single very long pass with no intermediate rows** (one huge backfill, say) will eventually read
+  as stalled once its own runtime outlasts one budget window, even if it is still legitimately
+  running — coarse pass-level observability cannot distinguish that from a genuinely hung process. An
+  operator facing a legitimately long single pass raises `npdev.schema.lock.waitSeconds` by hand, the
+  same escape valve that existed before this feature.
 - **`ExternallyManaged` apps never claim.** NPDev issues no DDL against them, so there is nothing to
   serialize.
 
@@ -789,15 +830,15 @@ missing):
   has no ownership record yet, so its first upgrade will not drop a concept's table; the boot after
   that will. This is deliberate: without ownership evidence, a table someone created by hand in the
   same schema is indistinguishable from a dropped concept, and the executor refuses to guess.
-- **Single-instance migrations: now detected and refused, not silent (REG-7.3, closed 2026-07-22).**
-  The platform's deployment posture is still single-instance (see `docs/DEPLOYMENT.md`), but a
-  concurrent second boot against the same database no longer silently interleaves migrations — it is
-  refused loudly, naming the holder (see [Collision detection](#collision-detection)). This is
-  detect-and-refuse, **not** a lock: a true near-simultaneous-insert race remains possible in theory,
-  and the very first-ever boot of a brand new database is not claim-protected (only
-  upgrade/repeat boots are). Do not roll out multi-instance deployments of the same app+database
-  relying on this as a strict mutex; if collisions become frequent in practice, the documented upgrade
-  path is a real database lock (`pg_advisory_lock` + an H2 lock table), not built for v1.
+- **Multi-instance migration is a real lock, not detect-and-refuse (R9.3; MIGRATE_ONLY + progress-aware
+  waiting, REG-200).** A concurrent second boot against the same database serializes under a real,
+  connection-scoped mutex (a session advisory lock on Postgres/MySQL/SQL Server, a row lock in a
+  dedicated schema on H2) rather than racing a claim-row insert — see
+  [Collision detection](#collision-detection) for the full mechanism, `npdev.schema.lifecycle.mode=
+  MIGRATE_ONLY` for the production one-shot-job answer, and the progress-aware adaptive wait. The one
+  remaining named residue is narrow: the human-readable claim/history row is unrecorded on a genuinely
+  virgin database's first-ever boot (recording it would break Flyway's own baseline detection), which
+  `MIGRATE_ONLY` makes unreachable in a correctly-ordered deployment.
 
 ## Tenant-id canonicalization (REG-25)
 
