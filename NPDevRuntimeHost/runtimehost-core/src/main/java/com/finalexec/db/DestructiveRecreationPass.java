@@ -146,7 +146,10 @@ final class DestructiveRecreationPass {
         return new SchemaLifecycleExecutor.DestructiveRecreation(true, false, List.copyOf(affectedTables));
     }
 
-    private static void executeDropColumn(Connection connection, String table, String column) throws SQLException {
+    // Package-private (not private), matching executeNarrowTypeDropAndRecreate's own precedent below:
+    // B5-B (boundary-lift 2026-09-02, package 4.1) reuses this DDL verbatim from ReverseMigrationPlanner
+    // rather than duplicating the ALTER TABLE ... DROP COLUMN string a second time.
+    static void executeDropColumn(Connection connection, String table, String column) throws SQLException {
         String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         String safeColumn = SchemaLifecycleExecutor.quotedIdentifier(column);
         try (PreparedStatement statement = connection.prepareStatement(
@@ -155,7 +158,8 @@ final class DestructiveRecreationPass {
         }
     }
 
-    private static void executeDropTableCascade(Connection connection, String table) throws SQLException {
+    // Package-private, same B5-B reuse reason as executeDropColumn above.
+    static void executeDropTableCascade(Connection connection, String table) throws SQLException {
         String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         // Same CASCADE rationale as the whole-schema path (see executeWholeSchemaWipe): drops any
         // dependent FK constraint along with the table; it does not touch a referencing table's rows.

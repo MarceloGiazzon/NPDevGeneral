@@ -35,10 +35,10 @@ pwsh -File scripts\hygiene\Test-WorkspaceSlimness.ps1
 Default limits:
 
 - maximum workspace size, excluding `.git`: `75 MB`
-- maximum workspace file count, excluding `.git`: `4000`
+- maximum workspace file count, excluding `.git`: `4005`
 
-  **This number has been raised four times (3000 → 3400 → 3500 → 3600 → 4000) while the size limit
-  has never moved.** Each raise was justified and recorded in `Test-WorkspaceSlimness.ps1`'s own
+  **This number has been raised five times (3000 → 3400 → 3500 → 3600 → 4000 → 4005) while the size
+  limit has never moved.** Each raise was justified and recorded in `Test-WorkspaceSlimness.ps1`'s own
   parameter comment, and that is exactly how a limit stops meaning anything, so the history matters
   more than the current value:
 
@@ -47,6 +47,14 @@ Default limits:
   - `3400 → 3500` (2026-08-08) and `3500 → 3600` (2026-08-10) — small tracked fixtures and modules.
   - `3600 → 4000` (2026-08-11, owner decision on close-the-gaps-2026-08-10 D-c, which had proposed
     retiring the count instead).
+  - `4000 → 4005` (2026-09-02, REG-199/B5-B) — 5 legitimate new tracked files (two source classes, two
+    test classes, one ledger item). **This is the fifth raise the paragraph below already said should
+    be a retirement instead — done anyway on an explicit owner decision, made after being told that in
+    the moment (the workspace was also carrying an unrelated stale worktree,
+    `.claude/worktrees/agent-a9485dd59902c3b16`, holding an unmerged commit, which a cleaner fix would
+    have investigated before raising anything -- left alone, not this session's call to remove).** The
+    open question below is now live, not hypothetical: the next time this trips, retire the count
+    rather than raise it again.
 
   **Be precise about what 4000 buys, because the obvious story is wrong.** The count blocked two
   commits during that session, and it is tempting to call that a false positive on whoever was
@@ -60,8 +68,10 @@ Default limits:
   ~450 of headroom for legitimately tracked files, so ordinary work stops bumping the ceiling every
   few days and the next trip is more likely to mean something.
 
-  **If it needs raising a fifth time, retire it rather than raise it.** The size limit is the one
-  that has actually tracked bloat (28 of 75 MB through all four raises).
+  **This paragraph said "if it needs raising a fifth time, retire it rather than raise it" -- the
+  fifth time came (above) and it was raised anyway, on an explicit owner decision. If it needs raising
+  a SIXTH time, retire it rather than raise it.** The size limit is the one that has actually tracked
+  bloat (28 of 75 MB through all five raises).
 - maximum `scripts` size: `10 MB`
 - maximum `scripts` file count: `500`
 - maximum `scripts\reports\out` size: `15 MB`

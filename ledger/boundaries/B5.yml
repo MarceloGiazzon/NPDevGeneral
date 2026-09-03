@@ -31,5 +31,22 @@ codeLinkedNote: >-
   Proven by SchemaLifecycleExecutorSchemaAheadDiagnosisTest (both the real-snapshot itemized case and
   the no-snapshot-recorded graceful fallback) and SchemaAheadAnalysisTest (the resolution mapping for
   every SafetyClass bucket, plus a snapshot JSON round-trip).
+
+  B5-B (REG-199, boundary-lift 2026-09-02 package 4.1): turns B5-A's diagnosis into an action for the
+  PURE-SUPERSET case only. `ReverseMigrationPlanner` computes a fresh live diff (never the stored
+  snapshot -- that stays advisory-only) via the same plumbing the Impact Report uses, buckets it with
+  the EXISTING `SchemaAheadAnalysis.resolutionFor`, and refuses the whole plan outright (never a
+  silent partial reversal) if any item needs the newer build OR is a type-narrowing item (out of scope
+  per the plan's own done-when). Ready plans execute behind the SAME `DestructiveAckToken` function
+  the forward path uses, reusing `DestructiveRecreationPass`'s DROP primitives and
+  `SchemaDropSnapshotWriter`'s pre-drop snapshot unchanged. Clearing the ahead-gate needed no new
+  fingerprint-writing plumbing: one more `npdev_schema_history` row is enough for the next normal boot
+  to self-converge through the untouched `beforeMigrate`/`afterMigrate` path. `npdev db reverse-migrate
+  --preview`/`--ack-token` (ReverseMigrateMain) mirrors `db schema-ahead`'s no-boot CLI shape. B5 stays
+  HITTABLE: narrowed further (additive-only ahead diffs are now actionable), not lifted -- any
+  ambiguous or type-narrowing diff still refuses unconditionally, exactly as before.
+  Proven by SchemaLifecycleExecutorReverseMigrationTest (a real pure-superset reversal end-to-end,
+  including the REAL beforeMigrate boot clean afterward; and a rename-shaped diff refusing as
+  ambiguous) and ReverseMigrationPlannerTest (classify()'s bucket mapping, pure/no-DB).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B5"
 classification: HITTABLE
