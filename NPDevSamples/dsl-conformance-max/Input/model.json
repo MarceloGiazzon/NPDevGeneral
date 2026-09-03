@@ -705,7 +705,7 @@
       "aggregate": "WidgetOrderAggregate",
       "route": "/widget-orders-typed",
       "metadata": {
-        "purpose": "Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): dsl-conformance-max witness for the TYPED transaction.actions/.visibleWhen/.bandPickers, alongside WidgetOrderWorkbench's existing coverage of the untyped, deprecated transaction.metadata equivalents just above -- both spellings still work this release, but a typo in this typed form now fails at schema time instead of silently doing nothing."
+        "purpose": "Move 7 W1 (docs/MOVE7_IMPLEMENTATION_SPEC.md): dsl-conformance-max witness for the TYPED transaction.actions/.visibleWhen/.bandPickers, alongside WidgetOrderWorkbench's existing coverage of the untyped, deprecated transaction.metadata equivalents just above -- both spellings still work this release, but a typo in this typed form now fails at schema time instead of silently doing nothing. lines.notes's visibleWhen (BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a $ui.<name> predicate with a $root.<field> predicate in one expression."
       },
       "transaction": {
         "actions": [
@@ -739,7 +739,7 @@
         },
         "visibleWhen": {
           "lines": "$root.status != 'CANCELLED'",
-          "lines.notes": "$ui.recordKind == 'INBOUND'"
+          "lines.notes": "$ui.recordKind == 'INBOUND' && $root.status != 'CANCELLED'"
         },
         "bandPickers": {
           "notes": {
@@ -757,14 +757,14 @@
       "aggregate": "WidgetOrderAggregate",
       "route": "/widget-orders-no-panel-picker",
       "metadata": {
-        "purpose": "BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1 (B19): dsl-conformance-max witness for a bandPickers entry with NO panel -- filter/multiSelect only, resolving a projection targeting the band's own collection concept (WidgetOrderLineNote) directly through the generic reference-lookup endpoint, instead of a hand-authored Selection panel."
+        "purpose": "BOUNDARY_LIFT_PLAN_2026-09-02.md work package 1.1 (B19): dsl-conformance-max witness for a bandPickers entry with NO panel -- filter/multiSelect only, resolving a projection targeting the band's own collection concept (WidgetOrderLineNote) directly through the generic reference-lookup endpoint, instead of a hand-authored Selection panel. Its filter (Wave 4 4.3/B16 Step 1) is also the corpus witness for AND-composing a static clause with a $root.<field> reference, resolved client-side against the aggregate's root record (WidgetOrder) at request-build time."
       },
       "transaction": {
         "bandPickers": {
           "notes": {
             "label": "Pick a reviewed note",
             "columns": ["id", "text"],
-            "filter": "text == 'Reviewed'"
+            "filter": "text == 'Reviewed' && widgetOrderLineId == $root.id"
           }
         }
       }

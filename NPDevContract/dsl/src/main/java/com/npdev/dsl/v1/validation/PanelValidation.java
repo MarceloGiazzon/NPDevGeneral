@@ -43,6 +43,7 @@ import com.npdev.dsl.v1.ast.PresentationMetadataAst;
 import com.npdev.dsl.v1.ast.ProcedureAst;
 import com.npdev.dsl.v1.ast.ProcedureParameterAst;
 import com.npdev.dsl.v1.ast.ProcedureStepAst;
+import com.npdev.dsl.v1.query.PickerFilterGrammar;
 import com.npdev.dsl.v1.ast.QueryAst;
 import com.npdev.dsl.v1.ast.ReferenceSemanticsAst;
 import com.npdev.dsl.v1.ast.RuleProfileAst;
@@ -162,7 +163,7 @@ final class PanelValidation {
                 validateRegions(here, autoPanel, aggregate, errors);
                 validateWorkbenchActions(here, autoPanel, procedureNames, errors);
                 validateVisibleWhen(here, autoPanel, aggregate, entitiesByLower, errors);
-                validateBandPickers(here, autoPanel, aggregate, errors);
+                validateBandPickers(here, autoPanel, aggregate, entitiesByLower, errors);
             }
         }
     }
@@ -254,13 +255,26 @@ final class PanelValidation {
      *
      * <p>Anything that is not a {@code $ui.} predicate is left alone here: {@code $root.<field>}
      * predicates are validated separately by {@link #validateRootFieldReference}.
+     *
+     * <p>BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: {@code
+     * evaluateVisibleWhen} composes multiple predicates with {@code &&}/{@code ||}; this checks each
+     * one individually via {@link #splitVisibleWhenClauses} rather than only the whole expression as
+     * one anchored match, so a typo in the SECOND predicate of an AND/OR-composed visibleWhen is no
+     * longer invisible to authoring-time validation.
      */
     private static void validateUiStateReference(
             String label, String expression, AutoPanelSurfaceAst transaction, List<String> errors) {
         if (expression == null || expression.isBlank()) {
             return;
         }
-        Matcher matcher = UI_STATE_PREDICATE.matcher(expression.trim());
+        for (String clause : splitVisibleWhenClauses(expression.trim())) {
+            validateUiStateClause(label, clause.trim(), transaction, errors);
+        }
+    }
+
+    private static void validateUiStateClause(
+            String label, String expression, AutoPanelSurfaceAst transaction, List<String> errors) {
+        Matcher matcher = UI_STATE_PREDICATE.matcher(expression);
         if (!matcher.matches()) {
             return;
         }
@@ -294,13 +308,23 @@ final class PanelValidation {
      * exactly the failure {@code $ui.<name>} was closed against in Move 11 W6. Unlike {@code $ui},
      * there is no fixed value set to check literals against -- root concept fields are typed, open
      * domains -- so this only checks that the field itself is declared, not the literal.
+     *
+     * <p>BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: checks each individual
+     * predicate of an AND/OR-composed expression (see {@link #validateUiStateReference}'s own note).
      */
     private static void validateRootFieldReference(
             String label, String expression, ConceptAst rootConcept, List<String> errors) {
         if (expression == null || expression.isBlank() || rootConcept == null) {
             return;
         }
-        Matcher matcher = ROOT_FIELD_PREDICATE.matcher(expression.trim());
+        for (String clause : splitVisibleWhenClauses(expression.trim())) {
+            validateRootFieldClause(label, clause.trim(), rootConcept, errors);
+        }
+    }
+
+    private static void validateRootFieldClause(
+            String label, String expression, ConceptAst rootConcept, List<String> errors) {
+        Matcher matcher = ROOT_FIELD_PREDICATE.matcher(expression);
         if (!matcher.matches()) {
             return;
         }
@@ -321,6 +345,32 @@ final class PanelValidation {
             Pattern.compile("^\\$?root\\.([A-Za-z_][A-Za-z0-9_]*)\\s*(==|!=)\\s*'([^']*)'$");
 
     /**
+     * Splits a {@code visibleWhen} expression into individual predicates, tolerant of both {@code
+     * &&} and {@code ||} combinators -- {@link #validateUiStateReference}/{@link
+     * #validateRootFieldReference} only check each atomic predicate, never the boolean structure
+     * combining them ({@code evaluateVisibleWhen} in the generated client is the runtime source of
+     * truth for that). Quote-aware, so a predicate's own string literal is never torn in half.
+     */
+    private static List<String> splitVisibleWhenClauses(String expression) {
+        List<String> parts = new ArrayList<>();
+        boolean inQuote = false;
+        int start = 0;
+        for (int index = 0; index < expression.length(); index++) {
+            char current = expression.charAt(index);
+            if (current == '\'') {
+                inQuote = !inQuote;
+            } else if (!inQuote && index + 1 < expression.length()
+                    && (current == '&' || current == '|') && expression.charAt(index + 1) == current) {
+                parts.add(expression.substring(start, index));
+                index++;
+                start = index + 1;
+            }
+        }
+        parts.add(expression.substring(start));
+        return parts;
+    }
+
+    /**
      * Move 7 W1: typed replacement for {@code transaction.metadata.bandPickers} -- keys must name a
      * real declared band (a nested collection one level under a top-level collection). {@code panel}
      * is an opaque reference to an authored Selection surface with no closed universe to validate its
@@ -337,9 +387,16 @@ final class PanelValidation {
      * message is the boundaryId link {@code ValidationDiagnosticNormalizer}'s {@code
      * BOUNDARY_PREFIX_IDS} map strips before pattern-matching -- same convention {@code B1}/{@code
      * B13} already use.
+     *
+     * <p>BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: also checks a declared
+     * {@code filter}'s {@code $root.<field>} references (if any) against the aggregate's root
+     * concept, same reasoning as {@link #validateRootFieldReference} -- a typo'd {@code $root} field
+     * here would otherwise silently pass at authoring time and then have {@code AutoPanelExpander}
+     * drop the WHOLE filter at compile time with no error anywhere.
      */
     private static void validateBandPickers(
-            String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate, List<String> errors) {
+            String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate,
+            Map<String, ConceptAst> entitiesByLower, List<String> errors) {
         AutoPanelSurfaceAst transaction = autoPanel.transaction();
         if (transaction == null || transaction.bandPickers().isEmpty() || aggregate == null) {
             return;
@@ -350,6 +407,8 @@ final class PanelValidation {
                 bandNames.add(normalize(band.name()));
             }
         }
+        ConceptAst rootConcept = aggregate.root() == null
+                ? null : entitiesByLower.get(normalize(aggregate.root()));
         for (Map.Entry<String, WorkbenchBandPickerAst> entry : transaction.bandPickers().entrySet()) {
             if (!bandNames.contains(normalize(entry.getKey()))) {
                 errors.add(panelLabel + " transaction.bandPickers: unrecognized band '" + entry.getKey()
@@ -365,6 +424,44 @@ final class PanelValidation {
                         + "band's own collection concept directly) -- neither was given"
                         + " -- suggestedFix: add a panel naming a Selection surface, or filter/multiSelect "
                         + "to target the band's own collection concept directly");
+            }
+            validatePickerFilterRootReferences(
+                    panelLabel + " transaction.bandPickers." + entry.getKey() + ".filter",
+                    picker.filter(), rootConcept, errors);
+        }
+    }
+
+    /**
+     * BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: shared by
+     * {@link #validateBandPickers} and (via {@code PropertyResolver}-style field-level pickers being
+     * out of this method's reach) any future picker.filter validator -- parses {@code expression}
+     * with {@link PickerFilterGrammar} and checks every {@code $root.<field>} clause's field against
+     * {@code rootConcept}. Silently returns for a null/blank expression, a null {@code rootConcept},
+     * or an expression {@code PickerFilterGrammar} cannot parse -- this method's whole job is the
+     * {@code $root} field-existence check, not general filter-syntax validation (which today's
+     * generation-time parsers deliberately handle by silently dropping the whole filter, not erroring).
+     */
+    private static void validatePickerFilterRootReferences(
+            String label, String expression, ConceptAst rootConcept, List<String> errors) {
+        if (expression == null || expression.isBlank() || rootConcept == null) {
+            return;
+        }
+        List<PickerFilterGrammar.Clause> clauses;
+        try {
+            clauses = PickerFilterGrammar.parse(expression);
+        } catch (PickerFilterGrammar.UnsupportedFilterException ignored) {
+            return;
+        }
+        Set<String> fieldNames = rootConcept.getFields().stream()
+                .map(FieldAst::getName)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        for (PickerFilterGrammar.Clause clause : clauses) {
+            if (clause.literal() instanceof PickerFilterGrammar.Literal.RootReference rootRef
+                    && !fieldNames.contains(normalize(rootRef.field()))) {
+                errors.add(label + ": predicate references $root." + rootRef.field()
+                        + ", which is not a declared field on root concept " + rootConcept.getName()
+                        + " (declared: " + (fieldNames.isEmpty() ? "none" : new TreeSet<>(fieldNames)) + ")");
             }
         }
     }

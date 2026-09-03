@@ -29,6 +29,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * already enforces against real rows ({@code business-concept-crud-controller.mustache}'s
  * {@code applyWhere}/{@code parseWhereClauses}) -- proven end to end at the generation layer here;
  * the enforcement itself is unchanged, proven code this fix deliberately does not touch.
+ *
+ * <p>BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: {@code
+ * defaultFilterExpression} is now always a JSON ARRAY of clauses (AND-combined via
+ * {@link com.npdev.dsl.v1.query.PickerFilterGrammar}) instead of a single object, and a clause may
+ * carry a {@code rootRef} (a {@code $root.<field>} reference resolved client-side against the
+ * current record) instead of a static {@code value}.
  */
 class BusinessUiEmitterPickerFilterTest {
 
@@ -93,10 +99,12 @@ class BusinessUiEmitterPickerFilterTest {
         JsonNode reference = widgetRefReference(", \"picker\": { \"filter\": \"ativo == true\" }");
 
         JsonNode expression = reference.get("defaultFilterExpression");
-        assertTrue(expression != null && !expression.isNull(), "expected a defaultFilterExpression to be derived from picker.filter");
-        assertEquals("ativo", expression.get("field").asText());
-        assertEquals("eq", expression.get("operator").asText());
-        assertEquals("true", expression.get("value").asText());
+        assertTrue(expression != null && expression.isArray() && expression.size() == 1,
+                "expected a one-clause defaultFilterExpression array derived from picker.filter");
+        JsonNode clause = expression.get(0);
+        assertEquals("ativo", clause.get("field").asText());
+        assertEquals("eq", clause.get("operator").asText());
+        assertEquals("true", clause.get("value").asText());
     }
 
     @Test
@@ -104,10 +112,50 @@ class BusinessUiEmitterPickerFilterTest {
         JsonNode reference = widgetRefReference(", \"picker\": { \"filter\": \"$row.name != 'Discontinued'\" }");
 
         JsonNode expression = reference.get("defaultFilterExpression");
-        assertTrue(expression != null && !expression.isNull());
-        assertEquals("name", expression.get("field").asText());
-        assertEquals("ne", expression.get("operator").asText());
-        assertEquals("Discontinued", expression.get("value").asText());
+        assertTrue(expression != null && expression.isArray() && expression.size() == 1);
+        JsonNode clause = expression.get(0);
+        assertEquals("name", clause.get("field").asText());
+        assertEquals("ne", clause.get("operator").asText());
+        assertEquals("Discontinued", clause.get("value").asText());
+    }
+
+    @Test
+    void pickerFilterWithAndCombinesMultipleClauses() throws Exception {
+        JsonNode reference = widgetRefReference(
+                ", \"picker\": { \"filter\": \"ativo == true && name != 'Discontinued'\" }");
+
+        JsonNode expression = reference.get("defaultFilterExpression");
+        assertTrue(expression != null && expression.isArray() && expression.size() == 2,
+                "expected two AND-combined clauses");
+        assertEquals("ativo", expression.get(0).get("field").asText());
+        assertEquals("name", expression.get(1).get("field").asText());
+        assertEquals("ne", expression.get(1).get("operator").asText());
+    }
+
+    @Test
+    void pickerFilterWithRootReferenceCarriesARootRefInsteadOfAValue() throws Exception {
+        // Order (the FK field's own concept) has no field named "name" outside Widget, but it DOES
+        // declare "widgetRef" -- so $root.widgetRef resolves against Order, the sourceConcept, since
+        // there is no enclosing aggregate here.
+        JsonNode reference = widgetRefReference(", \"picker\": { \"filter\": \"id == $root.widgetRef\" }");
+
+        JsonNode expression = reference.get("defaultFilterExpression");
+        assertTrue(expression != null && expression.isArray() && expression.size() == 1);
+        JsonNode clause = expression.get(0);
+        assertEquals("id", clause.get("field").asText());
+        assertEquals("eq", clause.get("operator").asText());
+        assertTrue(clause.get("value") == null || clause.get("value").isMissingNode(),
+                "a $root reference clause must not carry a static value");
+        assertEquals("widgetRef", clause.get("rootRef").asText());
+    }
+
+    @Test
+    void pickerFilterWithRootReferenceToAnUndeclaredFieldDropsTheWholeFilter() throws Exception {
+        JsonNode reference = widgetRefReference(", \"picker\": { \"filter\": \"id == $root.doesNotExist\" }");
+
+        JsonNode expression = reference.get("defaultFilterExpression");
+        assertTrue(expression == null || expression.isNull() || expression.isMissingNode(),
+                "a $root reference to a field Order does not declare must silently drop the whole filter");
     }
 
     @Test

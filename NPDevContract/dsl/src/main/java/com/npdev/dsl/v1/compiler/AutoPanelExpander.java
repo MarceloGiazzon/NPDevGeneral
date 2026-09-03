@@ -24,6 +24,7 @@ import com.npdev.dsl.v1.compiled.CompiledUiStateControl;
 import com.npdev.dsl.v1.compiled.CompiledWorkbenchAction;
 import com.npdev.dsl.v1.compiled.CompiledWorkbenchActionApplyTo;
 import com.npdev.dsl.v1.compiled.CompiledWorkbenchBandPicker;
+import com.npdev.dsl.v1.query.PickerFilterGrammar;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -150,8 +151,9 @@ final class AutoPanelExpander {
                 conceptByBandName.put(band.name(), band.concept());
             }
         }
+        ConceptAst rootConceptAst = conceptsByName.get(normalize(rootConcept));
         Map<String, Map<String, Object>> bandPickers = bandPickers(
-                autoPanel.transaction(), settings, conceptByBandName, conceptsByName, contexts);
+                autoPanel.transaction(), settings, conceptByBandName, conceptsByName, contexts, rootConceptAst);
         // Conditional surface by toggle (Move 5, Wave 2C / Gap 2, docs/MOVE3_G2_CHECKLISTS.md): declared
         // under transaction.metadata.visibleWhen keyed by collection/band name, same untyped mechanism as
         // bandPickers above. PRESENTATION-ONLY -- see visibleWhenByCollection()'s own doc comment.
@@ -646,13 +648,13 @@ final class AutoPanelExpander {
     @SuppressWarnings("unchecked")
     private static Map<String, Map<String, Object>> bandPickers(
             CompiledAutoPanelSurface transaction, CompiledSettings settings) {
-        return bandPickers(transaction, settings, Map.of(), Map.of(), List.of());
+        return bandPickers(transaction, settings, Map.of(), Map.of(), List.of(), null);
     }
 
     private static Map<String, Map<String, Object>> bandPickers(
             CompiledAutoPanelSurface transaction, CompiledSettings settings,
             Map<String, String> conceptByBandName, Map<String, ConceptAst> conceptsByName,
-            List<com.npdev.dsl.v1.compiled.CompiledContext> contexts) {
+            List<com.npdev.dsl.v1.compiled.CompiledContext> contexts, ConceptAst rootConcept) {
         Map<String, Map<String, Object>> pickers = new LinkedHashMap<>();
         if (transaction == null) {
             return pickers;
@@ -693,8 +695,11 @@ final class AutoPanelExpander {
                     picker.put("filter", typedPicker.filter().trim());
                     String bandConcept = conceptByBandName.get(entry.getKey());
                     ConceptAst concept = bandConcept == null ? null : conceptsByName.get(normalize(bandConcept));
-                    parseBandPickerFilterExpression(typedPicker.filter(), concept)
-                            .ifPresent(expression -> picker.put("defaultFilterExpression", expression));
+                    List<Map<String, Object>> clauses =
+                            parseBandPickerFilterClauses(typedPicker.filter(), concept, rootConcept);
+                    if (!clauses.isEmpty()) {
+                        picker.put("defaultFilterExpression", clauses);
+                    }
                 }
                 if (typedPicker.multiSelect()) {
                     picker.put("multiSelect", true);
@@ -1048,54 +1053,52 @@ final class AutoPanelExpander {
     }
 
     /**
-     * B19: the SAME {@code field == 'literal'} / {@code field != 'literal'} grammar
-     * {@code BusinessUiEmitter.parsePickerFilterExpression} parses for an FK field's {@code
-     * picker.filter} -- mirrored here (not called into, since the DSL module cannot depend on the
-     * generator) so a no-panel band picker's filter reaches the client as the SAME {@code
-     * {field, operator, value}} triple shape {@code defaultFilterExpression} already uses, rather
-     * than a raw string the client would need its own second parser for. Silently returns empty for
-     * an unparseable expression or a field the band's own concept does not declare -- matching the
-     * FK-field path's own precedent (a bad filter drops the filter, it does not fail compilation).
+     * BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 (B16) Step 1: parses a no-panel band
+     * picker's {@code filter} via the shared {@link PickerFilterGrammar} -- AND-composed clauses,
+     * optionally referencing the aggregate's root record via {@code $root.<field>} -- into the SAME
+     * list-of-{@code {field, operator, value|rootRef}} shape {@code BusinessUiEmitter}'s FK-field
+     * picker path emits, rather than a raw string the client would need its own second parser for.
+     * Silently returns an empty list for an unparseable expression, a clause naming a field the
+     * band's own concept does not declare, or a {@code $root.<field>} reference the aggregate's root
+     * concept does not declare -- matching the FK-field path's own precedent (a bad filter drops the
+     * whole filter, it does not fail compilation; {@code PanelValidation} is where a {@code $root}
+     * reference to an undeclared field is a real authoring-time error).
      */
-    private static java.util.Optional<Map<String, Object>> parseBandPickerFilterExpression(
-            String expression, ConceptAst concept) {
+    private static List<Map<String, Object>> parseBandPickerFilterClauses(
+            String expression, ConceptAst concept, ConceptAst rootConcept) {
         if (expression == null || expression.isBlank() || concept == null) {
-            return java.util.Optional.empty();
+            return List.of();
         }
-        String trimmed = expression.trim();
-        int notEqualsIndex = trimmed.indexOf("!=");
-        int equalsIndex = trimmed.indexOf("==");
-        String field;
-        String operator;
-        String value;
-        if (notEqualsIndex >= 0 && (equalsIndex < 0 || notEqualsIndex < equalsIndex)) {
-            field = trimmed.substring(0, notEqualsIndex).trim();
-            operator = "ne";
-            value = trimmed.substring(notEqualsIndex + 2).trim();
-        } else if (equalsIndex >= 0) {
-            field = trimmed.substring(0, equalsIndex).trim();
-            operator = "eq";
-            value = trimmed.substring(equalsIndex + 2).trim();
-        } else {
-            return java.util.Optional.empty();
+        List<PickerFilterGrammar.Clause> clauses;
+        try {
+            clauses = PickerFilterGrammar.parse(expression);
+        } catch (PickerFilterGrammar.UnsupportedFilterException ignored) {
+            return List.of();
         }
-        if (field.startsWith("$row.")) {
-            field = field.substring("$row.".length());
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (PickerFilterGrammar.Clause clause : clauses) {
+            if (!conceptDeclaresField(concept, clause.field())) {
+                return List.of();
+            }
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("field", clause.field());
+            map.put("operator", clause.operator() == PickerFilterGrammar.Operator.NEQ ? "ne" : "eq");
+            if (clause.literal() instanceof PickerFilterGrammar.Literal.RootReference rootRef) {
+                if (rootConcept == null || !conceptDeclaresField(rootConcept, rootRef.field())) {
+                    return List.of();
+                }
+                map.put("rootRef", rootRef.field());
+            } else {
+                map.put("value", ((PickerFilterGrammar.Literal.Value) clause.literal()).value());
+            }
+            out.add(map);
         }
-        if (value.length() >= 2 && value.startsWith("'") && value.endsWith("'")) {
-            value = value.substring(1, value.length() - 1);
-        }
-        String fieldName = field;
-        boolean fieldExists = !fieldName.isEmpty() && concept.getFields().stream()
+        return List.copyOf(out);
+    }
+
+    private static boolean conceptDeclaresField(ConceptAst concept, String fieldName) {
+        return !fieldName.isEmpty() && concept.getFields().stream()
                 .anyMatch(f -> normalize(f.getName()).equals(normalize(fieldName)));
-        if (!fieldExists) {
-            return java.util.Optional.empty();
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("field", field);
-        out.put("operator", operator);
-        out.put("value", value);
-        return java.util.Optional.of(out);
     }
 
     private static boolean hasText(String value) {
