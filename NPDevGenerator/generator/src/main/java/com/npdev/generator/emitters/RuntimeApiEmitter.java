@@ -1230,6 +1230,22 @@ writer.writeRelative(
         if (controllerMounts.isEmpty()) {
             return Set.of();
         }
+        // Wave 4 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 4.4, B30-B): plugin:java-controller is a
+        // TRUSTED tier by design, not sandboxed like plugin:java-source (SEC-5's real OS-process
+        // isolation + memory/CPU ceiling applies to java-source only -- a mounted controller is a raw
+        // Spring @RestController wired by DispatcherServlet, with no CapabilityCall interception
+        // point a process boundary could sit behind, see B30's own row in docs/ACCEPTED_BOUNDARIES.md
+        // for the full reasoning). Printed here, at generation time, so an author sees it for every
+        // app that actually mounts one -- never assuming a controller mount is contained the way a
+        // java-source mount now is.
+        for (GeneratedPluginMountPlan.Mount mount : controllerMounts) {
+            System.out.println("npdev generate app: WARNING (B30) -- plugin:java-controller '"
+                    + mount.capability() + "' (basePath " + mount.controllerBasePath() + ") runs IN-PROCESS "
+                    + "with the application's full privileges. This mount kind is a TRUSTED tier by design: "
+                    + "admission-checked at generation/boot (bytecode denylist) but NOT sandboxed -- unlike "
+                    + "plugin:java-source, it gets no OS-process isolation and no memory/CPU ceiling. Mount "
+                    + "here only code you trust like your own application's; see docs/ACCEPTED_BOUNDARIES.md#B30.");
+        }
         Set<String> classResources = emitJavaControllerFiles(controllerMounts);
         writer.writeRelative(
                 "src/main/resources/npdev/plugin-controllers/plugin-controller-security.json",

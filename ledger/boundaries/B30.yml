@@ -50,8 +50,16 @@ codeLinkedNote: >-
   with an explicit scaled-down `-Xms` whenever a memory ceiling is configured.
 
   The boundary's residue is now narrower, not gone: `plugin:java-controller` is UNCHANGED (still
-  in-process, memory/CPU unbounded -- Model B was scoped to `plugin:java-source` only; see B30-B in
-  `BOUNDARY_LIFT_PLAN_2026-09-02.md` wave 4 for the open design question), and static analysis at
+  in-process, memory/CPU unbounded -- Model B was scoped to `plugin:java-source` only). Package 4.4
+  (B30-B, REG-204, 2026-09-03) answers the open design question `BOUNDARY_LIFT_PLAN_2026-09-02.md`
+  wave 4 posed: `plugin:java-controller` is declared a TRUSTED tier BY DESIGN, not a gap awaiting a
+  fix -- a controller mount is a raw Spring `@RestController` wired by `DispatcherServlet`, with no
+  `CapabilityCall` interception point a process boundary could sit behind (SEC-5's own reason for
+  excluding it from the IPC pool). `RuntimeApiEmitter.emitJavaControllerMounts` now prints a
+  generation-time warning naming each mounted controller's capability, so an author sees the trust
+  tier for every app that actually mounts one. Servlet-level interception remains a recorded,
+  deliberately-not-built option, revisited only if third-party plugin distribution becomes a
+  product goal. Static analysis at
   both ends is still the ONLY admission gate -- a proxy class elsewhere on the app classpath that
   performs a forbidden capability on the plugin's behalf, or a plugin that busy-loops inside its own
   process without exceeding the memory/CPU ceiling, is still outside what either the bytecode
