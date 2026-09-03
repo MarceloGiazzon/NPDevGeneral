@@ -1,0 +1,129 @@
+id: REG-201
+title: >-
+  One-command H2->Postgres promotion (npdev db promote) -- schema realization + deeper-than-row-count
+  verification on top of the already-shipped data-only copy
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-03
+source: >-
+  BOUNDARY_LIFT_PLAN_2026-09-02.md work package 3.3 (B10), wave 3 -- depends on 3.2's MIGRATE_ONLY
+  mechanism (REG-200), shipped earlier the same session. User asked for "more development, less
+  gates" mid-session; this package was picked because it was the one Wave 3/4 item newly unblocked
+  by the session's own prior work, matching the plan's own dependency note ("Depends on 3.2").
+surface: runtimehost-core (db), controlpanel REST, cli, B10 registry (ledger/boundaries,
+  accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md, docs/SCHEMA_EVOLUTION.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/PromoteMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/PromotionVerifier.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaAcknowledgmentController.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/PromoteMainTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/PromotionVerifierTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaManifestWithEngineTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/CrossEngineDataPromotionContinuesPastFailureTest.java
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B10.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+  - docs/SCHEMA_EVOLUTION.md
+detail: |
+  DONE-WHEN, verified in order:
+
+  1. `npdev db promote --app <dir> --to <postgres-url> [--dry-run]` (new, `PromoteMain`, mirrors
+     `ReverseMigrateMain`'s no-Spring-boot shape) runs the whole arc in one command: realize the
+     target schema, preview, apply, verify. Schema realization reuses package 3.2's MIGRATE_ONLY
+     mechanism DIRECTLY IN-PROCESS rather than via a subprocess boot -- MIGRATE_ONLY is "run
+     SchemaLifecycleExecutor.migrate(Flyway, SchemaManifest), then exit before serving", and
+     `PromoteMain` never serves anything, so calling that package-private method directly (same
+     package, `com.finalexec.db`) against a hand-built `Flyway` instance reaches the identical DDL
+     with no subprocess, no port, no Spring context to boot at all.
+
+  2. A real, previously-latent correctness gap was found and fixed while building this, not shipped
+     around: `SchemaLifecycleExecutor.migrate`'s `pinDialectFromManifest` trusts `manifest.engine()`
+     unconditionally to pin `SqlDialects.active()` -- correct for a normal boot (the manifest IS that
+     app's own configured engine) and WRONG for promoting to a genuinely different target engine
+     (an H2-sourced manifest realizing schema against a Postgres connection would pin H2's DDL guard
+     syntax against Postgres). `SchemaManifest.withEngine(String)` (new, package-private instance
+     method, reconstructs a manifest with every field but `engine` unchanged) plus deriving the
+     target's real dialect from `SqlDialects.forConnection` (never trusting the manifest, same "trust
+     the socket" reasoning `MigrationMutex`/every sibling `*Main` class already applies) closes this
+     for `PromoteMain`'s call site without touching `pinDialectFromManifest` itself (a change to an
+     already-tested, REG-106-sensitive method would have been a much larger, riskier change than this
+     package's own scope). Proven directly: `SchemaManifestWithEngineTest#
+     migrateActuallyPinsTheOverriddenEngineNotTheOriginalOrWhateverWasActive` sets THREE different
+     dialects in play (active-before/original-manifest/overridden-manifest, all different) and asserts
+     only the override survives.
+
+  3. Verification deeper than row counts: `PromotionVerifier` (new) adds per-column null counts and
+     an order-independent per-table content hash (a per-row hash, SUMMED not chained across rows, so
+     read order -- which two engines are not guaranteed to agree on -- cannot flip the verdict), both
+     computed in a single JAVA-side scan per side (never database-side hashing, never dialect-bound
+     SQL, STOR-1-clean by construction). FK/index/shape parity is NOT reimplemented: `PromotionVerifier
+     .verify` reuses `ExternalSchemaVerification.findExternalSchemaIncompatibilities` verbatim against
+     the target -- the exact same question `ExternallyManaged` boots already answer, so this is the
+     third caller of that method, not a second, drifting copy of the comparison (REG-6's own
+     argument). Deliberately CLI-only, not mirrored as a REST endpoint: an earlier draft added
+     `POST /api/admin/schema-migration/promote/verify`, but its response-formatting method (like its
+     `/promote/preview`/`/promote/apply` siblings') has no path to real unit coverage without a
+     generated `schema-realization-manifest.json` on the controller test's own classpath, and the
+     RuntimeHost JaCoCo ratchet is a hard floor `check-coverage-ratchet.py` never lowers -- adding
+     REST surface the plan's own done-when never asked for, purely to mirror the CLI, was not worth
+     tripping it. Removed before this package closed; add it later, alongside real controller-level
+     coverage, if a REST caller genuinely needs it.
+
+  4. The command's output ends in `PROMOTION VERIFIED` or an itemized list of what did not match
+     (row-count/content-hash/null-count mismatches, and any shape problem), never a bare success
+     message -- `PromoteMain#printVerify` renders every independent signal that failed, not just a
+     boolean. `--dry-run` writes NOTHING to the target (no realization, no copy) -- only
+     `CrossEngineDataPromotion.preview`, already read-only.
+
+  5. A failed table not aborting the rest was ALREADY true (`CrossEngineDataPromotion.apply`'s loop,
+     fixed under QUAL-38 in a prior session) but its own regression-proof test
+     (`CrossEngineDataPromotionTest`) is `@Tag("integration")`, Testcontainers-Postgres-gated (never
+     runs in the plain `test` task per `scripts/policy/local-test-profile.json`), and declares only
+     ONE business table -- so it could prove a single table's failure is REPORTED correctly, but never
+     that the loop actually CONTINUES to a later table (a subtly different property; QUAL-38's own
+     regression was exactly a loop that stopped early). `CrossEngineDataPromotionContinuesPastFailureTest`
+     (new, H2-only, no Docker) closes that specific gap: two tables, one missing on the target (fails
+     first, since manifests iterate in declaration order), one present (must still copy) -- asserts
+     both appear in the result and the second table's row count/copy count are correct.
+
+  Explicitly still not doing, matching the plan's own scope: H2-SQL -> Postgres-SQL translation.
+  Every DDL statement realized on the target is the SAME generated, engine-specific V1__ migration
+  the app's own boot would run against that engine (via Flyway, off `classpath:db/schema-realization`),
+  never a hand-translated one.
+
+  Register updated across all three non-code seams (ledger/boundaries/B10.yml,
+  NPDevContract/schemas/accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md), plus
+  docs/SCHEMA_EVOLUTION.md's own "H2->Postgres data promotion" limitation bullet, which described the
+  pre-package-3.3 data-only, target-must-already-exist shape. B10 stays HITTABLE: schema realization
+  is now included, but H2-SQL->Postgres-SQL translation is still deliberately out of scope, matching
+  the boundary's own narrowed (not lifted) framing.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/PromotionVerifierTest.java
+  asserts: >-
+    Five scenarios against two real H2 in-memory databases (source/target), proving each of
+    PromotionVerifier's independent signals actually catches what it claims to, not merely that a
+    verifier exists: (1) identical data on both sides verifies clean across every signal;
+    (2) rows inserted in the OPPOSITE order on the target still verify clean, proving the content
+    hash is genuinely order-independent (a sum, not a chained/ordered hash); (3) same row count,
+    different column content -- the hash catches it even though row count alone would not;
+    (4) a NULL on the target where the source has a value -- caught per-column even when row counts
+    and (by design of the test data) the hash could plausibly still differ enough to also flag it,
+    asserting the null-count signal specifically rather than relying on the hash alone;
+    (5) a missing target table reports zero rows rather than throwing. SchemaManifestWithEngineTest
+    separately proves the dialect-override mechanism PromoteMain's cross-engine design depends on
+    (three different dialect values in play; only the explicit override survives into
+    SqlDialects.active() after a real migrate() call). CrossEngineDataPromotionContinuesPastFailureTest
+    closes the QUAL-38 regression-proof gap the existing Postgres-gated test could not cover locally.
+    PromoteMainTest covers argument-parsing/connection-failure branches, matching
+    SchemaVerifyMainTest's own documented discipline for this *Main family (the full realize/preview/
+    apply/verify arc against two genuinely different engines needs a real generated app + a real
+    target database to prove, not a unit test -- classpath:db/schema-realization is empty in this
+    template repo's own test run). Closing verification: RuntimeHost gate
+    (scripts/quality/run-runtimehost-gate.ps1) run green (compile + full test suite + assembled
+    sample-app boot) after this package's changes.
+  provenRed: false

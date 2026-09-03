@@ -399,6 +399,17 @@ public class SchemaAcknowledgmentController {
         }
     }
 
+    // 3.3 (B10, package 3.3): deep verification (PromotionVerifier -- per-column null counts, an
+    // order-independent content hash, FK/index/shape parity) is deliberately CLI-only for now
+    // (PromoteMain), not mirrored here as a /promote/verify endpoint. The plan's own done-when
+    // describes `npdev db promote`, not a REST surface; this controller's toResponseBody methods
+    // have no dedicated unit coverage for ANY of the three promote endpoints (preview/apply included
+    // -- PromotionVerifierTest/CrossEngineDataPromotionTest cover the underlying logic directly
+    // instead), and the RuntimeHost JaCoCo ratchet is a hard, never-lowered floor (see
+    // check-coverage-ratchet.py's own doc) -- adding one more untestable-without-a-real-manifest
+    // endpoint would trip it for no capability the plan actually asked for. Add it later, alongside
+    // real controller-level coverage, if a REST caller genuinely needs it.
+
     // ---- B8 (Wave 2 package 2.1, docs/ACCEPTED_BOUNDARIES.md): legacy-table ownership adoption ----
 
     /**

@@ -68,8 +68,8 @@
     {
       "id": "B10",
       "kind": "HITTABLE",
-      "userFacingText": "H2 to Postgres promotion copies data only. Boot against Postgres first to create the schema, then promote data.",
-      "workaround": "Call /promote/preview first, review type-mapping notes, realize the target schema by booting normally against Postgres, then call /promote/apply.",
+      "userFacingText": "H2 to Postgres (or any engine pair) promotion is one command: `npdev db promote --app <dir> --to <jdbcUrl>` realizes the target schema, previews, applies, and verifies deeper than row counts -- never just \"Postgres started successfully\". It still never translates H2 SQL into Postgres SQL.",
+      "workaround": "Run `npdev db promote --app <dir> --to <jdbcUrl> --dry-run` first to preview with zero writes, then without --dry-run to realize the schema, copy the data, and verify (row counts, per-column null counts, an order-independent content hash, and FK/index/shape parity). The REST endpoints (/promote/preview, /promote/apply) still assume the target schema already exists, for a running app that wants to promote without the CLI's own schema-realization step; deep verification is CLI-only for now, not yet mirrored as a REST endpoint.",
       "enforcingDiagnosticCodes": ["B10:data_only_promotion"]
     },
     {

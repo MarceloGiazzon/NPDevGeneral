@@ -798,10 +798,28 @@ missing):
   restores exactly one `(snapshot, table)` pair per call — never "restore everything" — and never
   overwrites a row that is live with content different from the snapshot; see
   [Snapshots and restore](#snapshots-and-restore).
-- **H2→Postgres data promotion is a real command now (Move 9 A4), but data-only.** `CrossEngineDataPromotion`
-  (`POST /api/admin/schema-migration/promote/preview` then `/promote/apply`) copies rows typed per
-  column; it never realizes schema on the target and never reconciles a shape that has drifted since
-  the target's schema was last realized — that target table must already exist.
+- **H2→Postgres (or any engine pair) promotion is now one command, and verifies deeper than row
+  counts (Move 9 A4; one-command arc + deep verification, B10, package 3.3).**
+  `npdev db promote --app <dir> --to <jdbcUrl> [--dry-run]` (`PromoteMain`, no app boot required)
+  realizes the target schema, previews, applies, and verifies in one run — realization reuses package
+  3.2's `MIGRATE_ONLY` mechanism in-process (a real `Flyway` instance against the target, the SAME
+  `classpath:db/schema-realization` migrations the app's own boot runs; see `PromoteMain`'s own
+  javadoc for why the target's dialect is derived from its CONNECTION, not the source manifest, when
+  the two engines differ). `CrossEngineDataPromotion` (`POST /api/admin/schema-migration/promote/preview`
+  then `/promote/apply`) still copies rows typed per column, unchanged; the target table no longer has
+  to already exist before you run this command (it did before this package, and the REST endpoints
+  themselves still assume it does — the CLI is what added realization). `PromotionVerifier`
+  (called from `PromoteMain`, CLI-only — deliberately not mirrored as a REST endpoint yet, see
+  `SchemaAcknowledgmentController`'s own comment for why) is the deeper check the plan's own words
+  demand ("never 'Postgres started successfully'"): per-column null counts, an order-independent content hash
+  per table (a per-row hash, summed rather than chained, so read order cannot flip the verdict), and
+  FK/index/shape parity read from the manifest (reusing `ExternalSchemaVerification`, the same check
+  `ExternallyManaged` boots already run — not a second, drifting copy of it). `npdev db promote`
+  prints `PROMOTION VERIFIED` or an itemized list of exactly what did not match. It still never
+  reconciles a shape that has drifted on its own since the target was last realized outside this
+  command's own realize step, and it still does not translate H2 SQL into Postgres SQL — every DDL
+  statement comes from the same generated, engine-specific `V1__` migration the app's own boot would
+  run, never a hand-translated one.
 - **`ExternallyManaged` compatibility verification is column-shaped only (REG-7.1).** It confirms
   every declared table/column exists live with a compatible SQL type; it does NOT check nullability,
   uniqueness constraints, indexes, or foreign keys. A schema that passes this check can still be

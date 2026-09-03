@@ -1,5 +1,5 @@
 id: B10
-title: "H2->Postgres data promotion is a real, operator-driven command -- schema reconciliation is out of scope"
+title: "H2->Postgres data promotion is a real, one-command, operator-driven arc -- schema realization included, SQL translation still out of scope"
 codeLinked: true
 codeLinkedNote: >-
   2026-08-25 (remediation plan W2.3). CrossEngineDataPromotion.copyTable already threw
@@ -19,5 +19,38 @@ codeLinkedNote: >-
   (`-PincludePostgresMatrix` only) -- see QUAL-38 for the real fix (either restore per-table catching
   or update the javadoc/test to the now-intentional stricter behavior; a genuine product decision,
   not a mechanical fix).
+
+  QUAL-38 UPDATE (2026-08-26): fixed -- copyTable's missing-target-table case returns a per-table
+  TableCopyResult again, never throws; the loop no longer aborts.
+
+  2026-09-03 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 3.3, REG-201): the boundary's own "missing
+  piece is orchestration, not an engine" is closed. `npdev db promote --app <dir> --to <jdbcUrl>
+  [--dry-run]` (new, `PromoteMain`, no app boot required) runs the whole arc in one command: realize
+  the target schema (new -- reuses package 3.2's MIGRATE_ONLY mechanism in-process, a real Flyway
+  instance against the target, no subprocess/port needed; see `PromoteMain`'s own javadoc for why the
+  target's dialect is derived from its CONNECTION rather than the source manifest, and
+  `SchemaManifest.withEngine`, added for this call site), preview, apply (unchanged,
+  `CrossEngineDataPromotion`), then verify DEEPER than row counts (new, `PromotionVerifier`:
+  per-column null counts, an order-independent per-table content hash -- summed, not chained, per-row
+  hashes -- and FK/index/shape parity, reusing `ExternalSchemaVerification.
+  findExternalSchemaIncompatibilities` rather than a second copy of that comparison). Deliberately
+  CLI-only for now, not mirrored as a REST endpoint -- SchemaAcknowledgmentController's toResponseBody
+  methods have no dedicated unit coverage for ANY of the promote endpoints (preview/apply included),
+  the RuntimeHost JaCoCo ratchet is a hard, never-lowered floor, and a REST-only capability the
+  package's own done-when never asked for is not worth tripping it; add one later, alongside real
+  controller-level coverage, if a REST caller genuinely needs it. Prints `PROMOTION VERIFIED` or an
+  itemized list of exactly what did not match -- never a bare success message. Also closed a real gap
+  in QUAL-38's own regression-proof coverage while
+  implementing this: the existing pinning test (`CrossEngineDataPromotionTest`) is
+  Testcontainers-Postgres-gated and only ever declared ONE business table, so it could not actually
+  prove the apply loop CONTINUES past a failed table, only that one table's own failure is reported
+  correctly -- a new, H2-only, locally-runnable test
+  (`CrossEngineDataPromotionContinuesPastFailureTest`) closes that with two tables, one missing on
+  the target, proving the second still copies.
+
+  Explicitly still not doing: H2-SQL -> Postgres-SQL translation. Every DDL statement realized on the
+  target is the SAME generated, engine-specific V1__ migration the app's own boot would run against
+  that engine, never a hand-translated one -- the canonical schema (manifest) is already the
+  intermediate representation, per the plan's own framing.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B10"
 classification: HITTABLE
