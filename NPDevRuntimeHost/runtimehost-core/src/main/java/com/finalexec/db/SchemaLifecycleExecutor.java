@@ -765,6 +765,48 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // above (D4: a mark is checked before this branch is ever reached), so it can never trip this.
         Optional<SchemaHistoryStore.HistoryPoint> aheadOfBuild = SchemaHistoryStore.databaseMigratedPastThisBuild(dataSource, manifest);
         if (aheadOfBuild.isPresent()) {
+            // A3 (REAL_LIFT_PLAN_2026-09-03, B5 "real lift"): before refusing outright, check whether
+            // every difference the ahead state actually introduces is TOLERABLE for this build to run
+            // past -- an ADDITIVE-only difference this build's own projected reads/writes
+            // (JdbcBusinessConceptStore, PostgresPersistenceCapabilityAdapter -- neither issues a bare
+            // `select *` any more) never touch in the first place. This only ever WIDENS what may
+            // proceed; a genuinely incompatible difference still refuses below, unchanged, with the
+            // SAME itemized REG-198 analysis this refusal has always carried.
+            // Never let a failure COMPUTING the verdict crash the boot with an opaque exception -- the
+            // existing refusal below is already safe and well-tested; a verdict this class cannot even
+            // compute degrades to that refusal rather than to an unrelated stack trace (the same
+            // never-throws discipline SchemaAheadAnalysis#render already uses one line below).
+            SchemaCompatibilityVerdict.Verdict verdict;
+            try {
+                verdict = SchemaCompatibilityVerdict.assess(dataSource, manifest);
+            } catch (RuntimeException failure) {
+                System.out.println("NPDev schema lifecycle: could not compute the schema-ahead compatibility "
+                        + "verdict (" + failure.getMessage() + ") -- falling back to refusing, safely, exactly "
+                        + "as before this check existed.");
+                verdict = new SchemaCompatibilityVerdict.Verdict(java.util.List.of(
+                        new SchemaCompatibilityVerdict.Difference(null, null,
+                                SchemaCompatibilityVerdict.Tolerance.INCOMPATIBLE,
+                                "verdict computation itself failed: " + failure.getMessage())));
+            }
+            if (verdict.compatible()) {
+                SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null,
+                        "PROCEED_SCHEMA_AHEAD_COMPATIBLE");
+                if (verdict.differences().isEmpty()) {
+                    System.out.println("NPDev schema lifecycle: this database was migrated past this build "
+                            + "(now at fingerprint " + aheadOfBuild.get().toFingerprint() + "), but introduces no "
+                            + "structural difference from this build's own manifest -- booting normally (B5 "
+                            + "package A3, REAL_LIFT_PLAN_2026-09-03.md).");
+                } else {
+                    System.out.println("NPDev schema lifecycle: this database was migrated past this build (now "
+                            + "at fingerprint " + aheadOfBuild.get().toFingerprint() + ") -- booting anyway (B5 "
+                            + "package A3, REAL_LIFT_PLAN_2026-09-03.md): every difference is additive and this "
+                            + "build's own reads/writes never touch it:");
+                    for (SchemaCompatibilityVerdict.Difference difference : verdict.differences()) {
+                        System.out.println("  - " + difference.describe());
+                    }
+                }
+                return DestructiveRecreation.none();
+            }
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
             // Restores the detail a prior rewrite of this message lost: the exact ahead fingerprint
             // (an operator needs it to tell which later build touched this database) and the

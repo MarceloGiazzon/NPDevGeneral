@@ -300,7 +300,8 @@ public final class PostgresPersistenceCapabilityAdapter
         try (Connection c = dataSource.getConnection()) {
             TableColumns tableColumns = resolveTableColumns(c, table);
             String idColumn = resolveIdColumn(table, tableColumns);
-            String sql = "select * from " + table + " where " + idColumn + " = ?";
+            String sql = "select " + selectListSql(concept, table, tableColumns, idColumn) + " from " + table
+                    + " where " + idColumn + " = ?";
 
             try (PreparedStatement ps = c.prepareStatement(sql)) {
                 ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
@@ -326,7 +327,8 @@ public final class PostgresPersistenceCapabilityAdapter
             TableColumns tableColumns = resolveTableColumns(connection, table);
             Map<String, Object> sqlCriteria = normalizeCriteria(table, crit, tableColumns);
 
-            StringBuilder sql = new StringBuilder("select * from ").append(table);
+            StringBuilder sql = new StringBuilder("select ").append(selectListSql(concept, table, tableColumns))
+                    .append(" from ").append(table);
             List<Object> params = new ArrayList<>();
 
             if (!sqlCriteria.isEmpty()) {
@@ -463,8 +465,9 @@ public final class PostgresPersistenceCapabilityAdapter
                 return findById(concept, id);
             }
             String idColumn = resolveIdColumn(table, tableColumns);
-            String sql = "select * from " + table + " where " + idColumn + " = ? and "
-                    + tableColumns.columnName(TENANT_COLUMN) + " = ?";
+            String tenantColumn = tableColumns.columnName(TENANT_COLUMN);
+            String sql = "select " + selectListSql(concept, table, tableColumns, idColumn, tenantColumn)
+                    + " from " + table + " where " + idColumn + " = ? and " + tenantColumn + " = ?";
             try (PreparedStatement ps = c.prepareStatement(sql)) {
                 ps.setObject(1, bindable(ps, coerceValueForColumn(idColumn, id)));
                 ps.setString(2, scope.tenantId());
@@ -724,6 +727,48 @@ public final class PostgresPersistenceCapabilityAdapter
             throw unknownFieldException(table, List.of(runtimeField), tableColumns);
         }
         return column;
+    }
+
+    /**
+     * A3 (REAL_LIFT_PLAN_2026-09-03, B5 "real lift"): the explicit column list to {@code SELECT} for
+     * {@code concept} -- never {@code *}. Built from THIS BUILD's compiled model ({@link
+     * CompiledConcept#getFields()}) plus {@code alwaysInclude} (the id column, and the tenant column
+     * for a tenant-scoped read), each resolved through {@link #resolveColumn} -- which already only
+     * resolves a field to a column that ALSO actually exists live, so a column this build expects but
+     * a genuinely different live schema is missing is silently excluded here rather than causing a
+     * raw SQL error (the existing schema-state machinery, not this method, decides whether that gap
+     * is tolerable or must refuse the boot). Falls back to {@code *} when there is no compiled model
+     * wired in (a generic/non-generated deployment, e.g. a caller using the no-{@link CompiledModel}
+     * constructor) or the concept is unknown to it, preserving today's behavior exactly for those
+     * cases.
+     *
+     * <p>A NEWER database can carry columns this build's compiled model has never heard of (B5's
+     * schema-ahead case) -- they are never candidates here, since the candidate list comes from the
+     * COMPILED MODEL, not from live introspection; only the resolution step (does the live table have
+     * it) looks at the database, mirroring exactly what {@link #save} already does for writes (class
+     * javadoc: "accepted only when they can be resolved to actual database columns").
+     */
+    private String selectListSql(Object concept, String table, TableColumns tableColumns, String... alwaysInclude) {
+        CompiledConcept compiledConcept = findCompiledConcept(concept);
+        if (compiledConcept == null) {
+            return "*";
+        }
+        LinkedHashSet<String> columns = new LinkedHashSet<>();
+        for (String extra : alwaysInclude) {
+            if (extra != null) {
+                columns.add(extra);
+            }
+        }
+        for (CompiledField field : compiledConcept.getFields()) {
+            String column = resolveColumn(table, field.getName(), tableColumns);
+            if (column != null) {
+                columns.add(column);
+            }
+        }
+        if (columns.isEmpty()) {
+            return "*";
+        }
+        return String.join(", ", columns);
     }
 
     private static String resolveColumn(String table, String runtimeField, TableColumns tableColumns) {

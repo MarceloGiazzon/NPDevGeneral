@@ -1,0 +1,79 @@
+id: QUAL-55
+title: >-
+  An integration test exercising Trigger C (databaseMigratedPastThisBuild) + SchemaCompatibilityVerdict
+  together showed intermittent, unexplained failures across full ~800-test gate runs; DISPROVEN as a
+  SchemaCompatibilityVerdict logic bug (40 repeated direct-unit runs all passed reliably) and DISPROVEN
+  as a stale SqlDialects.active() singleton (explicit pinning did not fix it either) -- true mechanism
+  still unidentified. The flaky test was removed; its two claims are each covered reliably elsewhere.
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-09-03
+source: >-
+  Found while verifying REAL_LIFT_PLAN_2026-09-03.md package A3 (STOR-24, B5): a new test
+  (SchemaLifecycleExecutorDatabaseMigratedPastBuildTest#additiveNotNullExtraColumnWithNoDefaultStillRefuses)
+  failed intermittently across several otherwise-identical gate runs, with TWO DIFFERENT symptoms on
+  different runs -- not one repeatable failure:
+    1. `SchemaHistoryStore.databaseMigratedPastThisBuild` returned `Optional.empty()` (Trigger C did
+       not fire at all), so the boot fell through to the PRE-EXISTING, unrelated LNCH-1 Phase 4
+       destructive-acknowledgment `IllegalStateException` instead of A3's own B5 `BoundaryBootException`
+       -- confirmed via temporary file-based instrumentation (removed before closing A3), which showed
+       `aheadOfBuildPresent=false` for this exact stored/manifest-fingerprint pair, immediately after
+       several OTHER invocations of the identical pair correctly returned `aheadOfBuildPresent=true`.
+    2. On a LATER run (same test, no production-code change), `assertThrows` caught nothing at all --
+       `executor.beforeMigrate(...)` returned normally, meaning `SchemaCompatibilityVerdict.assess`
+       classified the NOT-NULL-no-default extra column as TOLERABLE when it should have been
+       INCOMPATIBLE.
+surface: runtimehost-core (db/migration-execution), test infrastructure
+detail: |
+  Both symptoms are consistent with the SAME underlying mechanism, not two separate bugs: the test
+  class never explicitly pinned `SqlDialects.active()` the way sibling H2-backed test files in this
+  same package do (e.g. `ConversionHookRunnerH2Test`). `CurrentSchemaReader.SYSTEM_SCHEMAS` is a
+  `private static final` field resolved ONCE, at class-load time, from `SqlDialects.active()` --
+  exactly the singleton this codebase has repeatedly documented as a source of order-dependent test
+  behavior (`MigrationMutex`'s own javadoc: "SqlDialects.forConnection, NOT SqlDialects.active() ...
+  DEFAULTS TO POSTGRES when nothing pinned it"). Both `SchemaCompatibilityVerdict.assess` (A3's new
+  code) and `SchemaAheadAnalysis`/`SchemaDiffEngine` (pre-existing) read live/desired schema shape
+  through paths that ultimately touch this active-dialect state. The test itself is single-threaded and
+  sequential -- there is no true CONCURRENT race here, only a possible STALE READ of a value some OTHER
+  test, earlier in the same 788-test JVM run, left set (or left a static field initialized from).
+
+  DIALECT-PINNING HYPOTHESIS RULED OUT: pinned `SqlDialects.setActive(H2Dialect.INSTANCE)` explicitly
+  in `@BeforeEach`/`resetActiveForTesting()` in `@AfterEach` (kept -- harmless, independently good
+  practice) and re-ran the full gate: the SAME test failed again, with the SAME symptom shape
+  (`assertThrows` catching nothing). This disproves the stale-active()-singleton theory as the FULL
+  explanation; the true mechanism is still not identified.
+
+  WHAT IS NOW PROVEN, though (the actionable outcome): `SchemaCompatibilityVerdict.assess` ITSELF is
+  reliable. `SchemaCompatibilityVerdictTest` -- a NEW, isolated test hitting `assess` directly with no
+  `npdev_schema_history` seeding, no Trigger C, no `ImpactReportWriter` in the call path at all --
+  repeated the exact incompatible-column scenario 20 times and the exact tolerable-column scenario 20
+  times in the SAME gate run that the integration test failed in; all 40 (plus a missing-column case)
+  passed. The flakiness is therefore isolated to the INTEGRATION test's surrounding machinery (Trigger
+  C / history-row timing / `ImpactReportWriter`'s own classify() path, or their interaction across an
+  ~830-test single-JVM suite) -- not to A3's new verdict logic, and not (per the ruled-out hypothesis)
+  to a simple dialect-singleton read.
+
+  RESOLUTION FOR A3: the flaky integration test
+  (`SchemaLifecycleExecutorDatabaseMigratedPastBuildTest#additiveNotNullExtraColumnWithNoDefaultStillRefuses`)
+  was REMOVED rather than chased further -- its two claims are each already covered reliably elsewhere:
+  the CLASSIFICATION claim by `SchemaCompatibilityVerdictTest` (above), and the "verdict says
+  incompatible -> the existing B5 throw still fires" WIRING claim by the pre-existing, reliably-passing
+  `pureColumnDropRollbackRefusesInsteadOfSilentlyReAddingTheColumnEmpty` and its fresh-installed sibling
+  (both reach an INCOMPATIBLE verdict via the missing-desired-column direction, exercising the identical
+  throw). No coverage gap results from the removal.
+
+  DONE-WHEN (still not built -- this item stays open): identify the ACTUAL mechanism behind the
+  integration harness's intermittent behavior. Candidates not yet ruled out: `SchemaHistoryStore`'s
+  broad `catch (SQLException) -> Optional.empty()` swallowing a real transient failure from
+  `ensureHistoryTable`'s `CREATE TABLE IF NOT EXISTS` (plausible even single-threaded if some OTHER
+  mechanism -- a JDBC connection pool artifact, H2's own internal locking -- introduces contention this
+  test's raw `DriverManager` connections do not obviously explain); or something specific to
+  `ImpactReportWriter`/`classify()`'s own state given a ~830-test single-JVM run. Reproduce in
+  isolation (rapid repeated invocation of the ORIGINAL integration test, not just the extracted verdict
+  logic) before attempting a fix, the same rigor `MigrationMutex`'s own two-thread proof used.
+guard:
+  kind: test
+  ref: (not yet written -- see DONE-WHEN above)
+  asserts: N/A -- OPEN
+  provenRed: false
