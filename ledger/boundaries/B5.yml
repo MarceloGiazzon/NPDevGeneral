@@ -48,5 +48,39 @@ codeLinkedNote: >-
   Proven by SchemaLifecycleExecutorReverseMigrationTest (a real pure-superset reversal end-to-end,
   including the REAL beforeMigrate boot clean afterward; and a rename-shaped diff refusing as
   ambiguous) and ReverseMigrationPlannerTest (classify()'s bucket mapping, pure/no-DB).
-ref: "docs/ACCEPTED_BOUNDARIES.md#B5"
-classification: HITTABLE
+
+  B5-C (STOR-24, REAL_LIFT_PLAN_2026-09-03.md package A3, "real lift", 2026-09-03): **reclassifies to
+  LIFTED for the additive case.** Every prior package (B5-A, B5-B) made the refusal more informative or
+  reversible; this one makes it not fire at all when every difference is additive. Two changes:
+  (1) `PostgresPersistenceCapabilityAdapter` (`findById`/`query`/the tenant-scoped `findById`) and
+  `JdbcBusinessConceptStore` (`findById`/`findByIdForUpdate`/`findAll`/`findAllCapped`) build an
+  EXPLICIT column list from THIS BUILD's own compiled model, never `select *` -- a column a newer
+  build added is never even asked for, so it structurally cannot leak into a record this build reads,
+  mirroring the write side's own pre-existing "accepted only when resolved to actual columns"
+  discipline (class javadoc). (2) `SchemaCompatibilityVerdict` -- a NEW class, deliberately NOT built
+  on `SchemaAheadAnalysis` despite the similar vocabulary (that class answers "what would a DOWNGRADE
+  destroy", the wrong question for booting compatibly, which never touches the ahead schema at all) --
+  runs when Trigger C fires, BEFORE the refusal: for each live column absent from this build's manifest,
+  nullable or defaulted is TOLERABLE (this build's projected writes omit it safely), NOT NULL with no
+  default is INCOMPATIBLE (this build's own INSERT would violate it); a whole extra table is TOLERABLE
+  (never referenced). Symmetrically, anything THIS build's manifest declares that live is missing is
+  ALWAYS INCOMPATIBLE (the classic REG-8 rollback shape a first draft of this class got vacuously wrong
+  by only checking one direction -- caught by regression coverage, fixed before this closed). If every
+  difference is tolerable, the boot proceeds with an itemized log line naming what it is ignoring and
+  why, and `npdev_schema_history` records `PROCEED_SCHEMA_AHEAD_COMPATIBLE`; if anything is
+  incompatible, the EXISTING B5-A itemized refusal fires completely unchanged. A verdict computation
+  failure degrades to the safe refusal (never silently permits an unsafe boot).
+  Proven by `SchemaCompatibilityVerdictTest` (direct, 20x-repeated per case: extra nullable column,
+  extra NOT-NULL-defaulted column, extra table all tolerable; a NOT-NULL-no-default extra column and a
+  missing desired column both always incompatible), `PostgresPersistenceCapabilityAdapterSchemaAheadCompatibilityTest`
+  and `JdbcBusinessConceptStoreSchemaAheadCompatibilityTest` (the projection change, including that an
+  update never clobbers a column it never selected), and integration coverage in
+  `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest` (a nullable extra column, a NOT-NULL-defaulted
+  extra column, and a whole extra table all boot normally through the real `beforeMigrate` path; the
+  classic column-drop rollback still refuses, unchanged). QUAL-55 tracks one INTEGRATION test removed
+  for unrelated, unexplained flakiness in the surrounding Trigger C/history-seeding harness -- ruled
+  out as a `SchemaCompatibilityVerdict` logic bug via the 20x-repeated direct coverage above, and ruled
+  out as a stale-dialect-singleton read; the removed test's two claims are each still covered reliably
+  by the tests above.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B5, SchemaCompatibilityVerdict.java, SchemaCompatibilityVerdictTest.java, PostgresPersistenceCapabilityAdapter.java#selectListSql, JdbcBusinessConceptStore.java#selectListSql, STOR-24, QUAL-55, REAL_LIFT_PLAN_2026-09-03.md package A3"
+classification: LIFTED

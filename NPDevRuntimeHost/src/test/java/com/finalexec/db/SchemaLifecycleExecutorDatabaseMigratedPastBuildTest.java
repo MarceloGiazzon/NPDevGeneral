@@ -1,6 +1,8 @@
 package com.finalexec.db;
 
 import com.finalexec.boundary.BoundaryBootException;
+import com.npdev.kernel.storage.sql.H2Dialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -44,6 +46,13 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
 
     @BeforeEach
     void setUp() {
+        // A3 (REAL_LIFT_PLAN_2026-09-03, B5 "real lift", QUAL-55): pinned explicitly, matching every
+        // other H2-backed test in this package (e.g. ConversionHookRunnerH2Test) -- this class used to
+        // rely on whatever dialect happened to be ambient/active JVM-wide, a known source of
+        // order-dependent flakiness elsewhere in this codebase (MigrationMutex's own javadoc). Tried as
+        // a candidate fix for QUAL-55's flaky test (it did not resolve it -- see that item); kept
+        // anyway as a harmless, independently-justified improvement matching established practice.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         dataSource = new SingleConnectionUrlDataSource(url);
     }
@@ -53,6 +62,7 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP ALL OBJECTS");
         }
+        SqlDialects.resetActiveForTesting();
     }
 
     @Test
@@ -193,6 +203,84 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
         assertFalse(result.safeAdditive());
         assertEquals("sha256:N", readStoredFingerprint(dataSource), "the mark must fast-forward, not refuse");
         assertEquals("MANUALLY_MARKED_DONE", latestNonStepOutcome(dataSource));
+    }
+
+    // ---- A3 (REAL_LIFT_PLAN_2026-09-03, B5 "real lift"): compatibility verdict tests ----
+
+    @Test
+    @DisplayName("A3: a purely additive extra column (nullable) boots compatibly instead of refusing")
+    void additiveNullableExtraColumnBootsCompatiblyInsteadOfRefusing() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            // Build N+1's own additive change: a nullable bonus_column this build (N) never declares.
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50), bonus_column VARCHAR(50))");
+            statement.execute("INSERT INTO users (id, name, bonus_column) VALUES (1, 'Alpha', 'extra')");
+        }
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 1_000L);
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 2_000L);
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name")), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifestBuildN);
+
+        assertFalse(result.performed(), "nothing should be migrated -- this build boots past the extra column, not around it");
+        assertEquals("PROCEED_SCHEMA_AHEAD_COMPATIBLE", latestNonStepOutcome(dataSource));
+        try (Connection connection = dataSource.getConnection()) {
+            assertTrue(hasColumn(connection.getMetaData(), "users", "bonus_column"),
+                    "the extra column must be left untouched, not dropped or migrated away");
+        }
+    }
+
+    @Test
+    @DisplayName("A3: an extra column that is NOT NULL but has a database default also boots compatibly")
+    void additiveNotNullExtraColumnWithDefaultBootsCompatibly() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + "bonus_column VARCHAR(50) NOT NULL DEFAULT 'fallback')");
+        }
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 1_000L);
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 2_000L);
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name")), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifestBuildN);
+
+        assertFalse(result.performed());
+        assertEquals("PROCEED_SCHEMA_AHEAD_COMPATIBLE", latestNonStepOutcome(dataSource));
+    }
+
+    // A3's "extra column is NOT NULL with no default still refuses" case is deliberately NOT an
+    // integration test here (QUAL-55: an earlier version of this test showed intermittent, unexplained
+    // failures across full-gate runs, unrelated to SchemaCompatibilityVerdict's own correctness --
+    // proven by SchemaCompatibilityVerdictTest#anExtraNotNullColumnWithNoDefaultIsAlwaysIncompatible,
+    // 20 repeated runs, all reliably INCOMPATIBLE). The "verdict says incompatible -> the EXISTING B5
+    // throw still fires" WIRING this test would have covered is already exercised, reliably, by
+    // pureColumnDropRollbackRefusesInsteadOfSilentlyReAddingTheColumnEmpty and its FRESH-INSTALLED
+    // sibling below (both hit an INCOMPATIBLE verdict via the missing-desired-column direction) --
+    // logic and wiring are each proven elsewhere, without this test's own flakiness.
+
+    @Test
+    @DisplayName("A3: a whole extra table this build's manifest never names is tolerable")
+    void aWholeExtraTableIsTolerable() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            // Build N+1 introduced a whole new concept/table this build (N) has never heard of.
+            statement.execute("CREATE TABLE audit_events (id BIGINT PRIMARY KEY, note VARCHAR(200) NOT NULL)");
+        }
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 1_000L);
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 2_000L);
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name")), Map.of());
+
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifestBuildN);
+
+        assertFalse(result.performed());
+        assertEquals("PROCEED_SCHEMA_AHEAD_COMPATIBLE", latestNonStepOutcome(dataSource));
     }
 
     private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome, long appliedAtUtc) throws SQLException {

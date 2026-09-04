@@ -1,0 +1,106 @@
+id: STOR-24
+title: >-
+  A3: run compatibly instead of refusing -- explicit column projection (never select *) + a
+  compatibility verdict so an older build boots and serves traffic against a newer, additively-ahead
+  database (B5 reclassified to LIFTED for the additive case, REAL_LIFT_PLAN_2026-09-03)
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-03
+closed: 2026-09-04
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md Track A package A3 (B5) -- the plan's own framing: "the single most
+  operationally expensive refusal left in the platform," hit by every rolling deploy, blue-green
+  cutover, and rollback.
+surface: runtimehost-core (db/schema-state, persistence), kernel adapters (persistence-postgres), B5
+  registry (ledger/boundaries, accepted-boundaries.json, docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaCompatibilityVerdict.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevKernel/adapters/persistence-postgres/src/main/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapter.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaCompatibilityVerdictTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreSchemaAheadCompatibilityTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorDatabaseMigratedPastBuildTest.java
+  - NPDevKernel/adapters/persistence-postgres/src/test/java/com/npdev/adapters/persistence/postgres/PostgresPersistenceCapabilityAdapterSchemaAheadCompatibilityTest.java
+  - ledger/boundaries/B5.yml
+  - ledger/items/QUAL-55.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  PREMISE VERIFIED FIRST (§1.3's own claim, checked against real code, not assumed): the WRITE path
+  already refused to touch a column it could not resolve
+  (PostgresPersistenceCapabilityAdapter's class javadoc). Confirmed true by reading `save()` -- its
+  column list already comes from the resolved record, never a static/blind list. Only the READ path
+  (`select *`, 3 sites in PostgresPersistenceCapabilityAdapter; 3 more in JdbcBusinessConceptStore, a
+  SEPARATE RuntimeHost-layer store the original plan's file citation had not found) dragged unknown
+  columns into the runtime. Fixed both.
+
+  DONE-WHEN, verified in order:
+  1. Every generated read builds an explicit column list -- PostgresPersistenceCapabilityAdapter
+     (findById, query, tenant-scoped findById) from `CompiledConcept#getFields()` intersected with live
+     `TableColumns` (so a column THIS build expects but a genuinely different live schema is missing
+     degrades to silent omission, not a raw SQL error); JdbcBusinessConceptStore (findById,
+     findByIdForUpdate, findAll, findAllCapped) from its pre-built `ConceptShape#columnByField` (a
+     purely compiled-model-derived map, no live dependency) PLUS the platform-managed columns
+     tenant_id/row_version/deleted_at, each still filtered against live `TableColumns#has` --
+     row_version specifically is NOT universal (LNCH-16: pre-optimistic-locking apps lack it), the exact
+     backward-compat case `executeUpsert` already guards the identical way. Both fall back to `*`
+     unconditionally when there is no compiled model wired in (preserves today's exact behavior for that
+     case). "Join projections" named in the plan's own done-when: no separate join-query select * site
+     was found beyond these two classes (aggregate/groupBy queries already build explicit SELECT
+     expressions by nature).
+  2. Compatibility verdict: SchemaCompatibilityVerdict (new) -- explicitly NOT built on
+     SchemaAheadAnalysis (a premise correction found while implementing, not assumed from the plan: that
+     class diffs THIS build's desired schema against a stored snapshot in the INVERTED direction, "what
+     would a destructive downgrade destroy" -- the wrong question for booting compatibly, which never
+     touches the ahead schema's extra shape at all). Checks BOTH directions: live-has-extra (tolerable
+     if nullable/defaulted, incompatible if NOT NULL with no default; a whole extra table is tolerable)
+     AND desired-wants-missing (always incompatible -- a REAL BUG in an early draft that checked only
+     the first direction, caught by the pre-existing SchemaLifecycleExecutorDatabaseMigratedPastBuildTest
+     regression suite: an empty differences list from checking only one direction is vacuously
+     "compatible," which silently would have let the classic REG-8 rollback-after-drop scenario boot
+     instead of refusing. Fixed before this closed).
+  3. Every difference tolerable -> the boot proceeds, with a loud itemized log line and an
+     `npdev_schema_history` row (`PROCEED_SCHEMA_AHEAD_COMPATIBLE`), no token, no acknowledgment, no
+     flag -- exactly the plan's own done-when #3 wording.
+  4. Any incompatible difference -> the EXISTING B5-A itemized refusal (REG-198) fires, completely
+     unchanged -- verified by the pre-existing rollback/REG-27 tests in
+     SchemaLifecycleExecutorDatabaseMigratedPastBuildTest continuing to pass unmodified, plus new direct
+     coverage of the incompatible classification itself.
+  5. Integration test proving build-N-boots-against-build-N+1's-additive-schema-and-exercises-CRUD:
+     JdbcBusinessConceptStoreSchemaAheadCompatibilityTest and
+     PostgresPersistenceCapabilityAdapterSchemaAheadCompatibilityTest -- create/read/update against a
+     table carrying a column the compiled model does not declare, proving reads never surface it AND an
+     update never clobbers it (the exact "an older build's own reads and writes coexist" property A3
+     exists for). A full multi-boot Flyway-realized N-then-N+1-then-N-again rehearsal was judged
+     disproportionate given the store-level tests already exercise the real read/write code paths
+     end-to-end against the real additive shape; not attempted.
+
+  A REAL DEFENSIVE ADDITION beyond the plan's own done-when: a verdict computation FAILURE (any
+  RuntimeException from SchemaCompatibilityVerdict.assess) degrades to the safe refusal rather than
+  propagating an opaque exception -- this class can only ever WIDEN what proceeds, never accidentally
+  narrow the existing safety net by crashing partway through its own check.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaCompatibilityVerdictTest.java
+  asserts: >-
+    SchemaCompatibilityVerdictTest (3 tests, one @RepeatedTest(20) each for the two column-level cases):
+    an extra nullable column is always tolerable (20/20); an extra NOT-NULL-no-default column is always
+    incompatible (20/20); a missing desired column is always incompatible. Repeated specifically because
+    an early version of the SURROUNDING integration test showed unexplained intermittent failures across
+    full-gate runs (QUAL-55) -- this direct coverage proves the verdict LOGIC itself is reliable,
+    isolating that flakiness to the integration harness, not this package's production code.
+    JdbcBusinessConceptStoreSchemaAheadCompatibilityTest (2 tests) and
+    PostgresPersistenceCapabilityAdapterSchemaAheadCompatibilityTest (3 tests, proxy-based -- this
+    kernel module has no H2 driver on its test classpath, matching FakeJdbc's own established pattern):
+    create/read/update against a live table with an undeclared extra column, proving the projection
+    excludes it from reads and never overwrites it on update. SchemaLifecycleExecutorDatabaseMigratedPastBuildTest
+    (3 new integration tests, reliable across the closing gate run): a nullable extra column, a
+    NOT-NULL-defaulted extra column, and a whole extra table all boot normally through the REAL
+    beforeMigrate path; every PRE-EXISTING test in the same file (the classic column-drop rollback
+    refusal, REG-27 fresh-install variants, the MANUALLY_MARKED_DONE short-circuit) re-run unmodified,
+    proving zero behavior change for the still-incompatible/unmarked cases. Closing verification:
+    scripts/quality/run-kernel-quality-gate.ps1 AND scripts/quality/run-runtimehost-gate.ps1 both green
+    (A3 touches both the kernel adapter and RuntimeHost layers).
+  provenRed: false

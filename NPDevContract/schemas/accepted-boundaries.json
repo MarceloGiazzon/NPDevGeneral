@@ -32,9 +32,9 @@
     },
     {
       "id": "B5",
-      "kind": "HITTABLE",
-      "userFacingText": "This database was migrated by a newer build. Deploy a build at or after that version, or -- for a pure-superset ahead diff (nothing this build wants is missing) -- reverse it back down. Any ambiguous or type-narrowing diff still refuses unconditionally. The refusal names exactly what differs, classified as safe to ignore / needing the newer build / needing a destructive downgrade.",
-      "workaround": "Roll forward, or use mark-done deliberately after verifying by hand (or with `npdev db verify`). Run `npdev db schema-ahead --report` for the itemized diagnosis without booting the app, or `npdev db reverse-migrate --preview` / `--ack-token <token>` to step a pure-superset ahead database back down.",
+      "kind": "LIFTED",
+      "userFacingText": "This database was migrated by a newer build, and this older build boots and serves traffic normally as long as every difference is additive (an extra column this build ignores, or a whole extra table) -- logged, never touched, never a refusal. If any difference is genuinely incompatible (this build needs something missing, or an extra column is NOT NULL with no usable default), the boot still refuses, naming exactly what differs, classified as needing the newer build / needing a destructive downgrade. For a pure-superset ahead diff (nothing this build wants is missing), that residual case can also be reversed back down.",
+      "workaround": "Nothing to do for the additive case -- it boots on its own. For a genuinely incompatible difference: roll forward, use mark-done deliberately after verifying by hand (or with `npdev db verify`), or -- for a pure-superset ahead diff only -- `npdev db reverse-migrate --preview` / `--ack-token <token>` to step it back down. Run `npdev db schema-ahead --report` for the itemized diagnosis without booting the app.",
       "enforcingDiagnosticCodes": ["B5:schema_ahead_detected"]
     },
     {

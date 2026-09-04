@@ -34,6 +34,7 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -113,17 +114,19 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?"
-                + deletedAtFilter(shape);
         Connection connection = openConnection();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            bindObject(statement, 1, coerceId(id));
-            bindObject(statement, 2, tenantId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    return Optional.empty();
+        try {
+            String sql = "SELECT " + selectListSql(connection, shape) + " FROM " + sqlId(shape.tableName())
+                    + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?" + deletedAtFilter(shape);
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                bindObject(statement, 1, coerceId(id));
+                bindObject(statement, 2, tenantId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(toRecord(shape, tenantId, resultSet));
                 }
-                return Optional.of(toRecord(shape, tenantId, resultSet));
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed reading concept " + conceptName + " from JDBC store", exception);
@@ -145,17 +148,20 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
         ConceptShape shape = shape(conceptName);
-        String sql = com.npdev.kernel.storage.sql.SqlDialects.active().selectForUpdate(
-                "*", sqlId(shape.tableName()), sqlId(shape.idColumn()) + " = ? AND tenant_id = ?" + deletedAtFilter(shape));
         Connection connection = openConnection();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            bindObject(statement, 1, coerceId(id));
-            bindObject(statement, 2, tenantId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    return Optional.empty();
+        try {
+            String sql = dialect.selectForUpdate(
+                    selectListSql(connection, shape), sqlId(shape.tableName()),
+                    sqlId(shape.idColumn()) + " = ? AND tenant_id = ?" + deletedAtFilter(shape));
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                bindObject(statement, 1, coerceId(id));
+                bindObject(statement, 2, tenantId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (!resultSet.next()) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(toRecord(shape, tenantId, resultSet));
                 }
-                return Optional.of(toRecord(shape, tenantId, resultSet));
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed reading (for update) concept " + conceptName + " from JDBC store", exception);
@@ -167,17 +173,19 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public List<ConceptRecord> findAll(String tenantId, String conceptName) {
         ConceptShape shape = shape(conceptName);
-        String sql = "SELECT * FROM " + sqlId(shape.tableName()) + " WHERE tenant_id = ?" + deletedAtFilter(shape)
-                + " ORDER BY " + sqlId(shape.idColumn());
         Connection connection = openConnection();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            bindObject(statement, 1, tenantId);
-            try (ResultSet resultSet = statement.executeQuery()) {
-                List<ConceptRecord> out = new ArrayList<>();
-                while (resultSet.next()) {
-                    out.add(toRecord(shape, tenantId, resultSet));
+        try {
+            String sql = "SELECT " + selectListSql(connection, shape) + " FROM " + sqlId(shape.tableName())
+                    + " WHERE tenant_id = ?" + deletedAtFilter(shape) + " ORDER BY " + sqlId(shape.idColumn());
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                bindObject(statement, 1, tenantId);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    List<ConceptRecord> out = new ArrayList<>();
+                    while (resultSet.next()) {
+                        out.add(toRecord(shape, tenantId, resultSet));
+                    }
+                    return List.copyOf(out);
                 }
-                return List.copyOf(out);
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed listing concept " + conceptName + " from JDBC store", exception);
@@ -197,23 +205,25 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
     @Override
     public ConceptListSlice<ConceptRecord> findAllCapped(String tenantId, String conceptName, int maxRows) {
         ConceptShape shape = shape(conceptName);
-        String sql = dialect.paginated("SELECT * FROM " + sqlId(shape.tableName())
-                + " WHERE tenant_id = ?" + deletedAtFilter(shape) + " ORDER BY " + sqlId(shape.idColumn()) + " ").stripTrailing();
         Connection connection = openConnection();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            int nextIndex = 1;
-            bindObject(statement, nextIndex++, tenantId);
-            for (int pageValue : dialect.limitOffset().values(maxRows + 1, 0)) {
-                statement.setInt(nextIndex++, pageValue);
-            }
-            try (ResultSet resultSet = statement.executeQuery()) {
-                List<ConceptRecord> out = new ArrayList<>();
-                while (resultSet.next()) {
-                    out.add(toRecord(shape, tenantId, resultSet));
+        try {
+            String sql = dialect.paginated("SELECT " + selectListSql(connection, shape) + " FROM " + sqlId(shape.tableName())
+                    + " WHERE tenant_id = ?" + deletedAtFilter(shape) + " ORDER BY " + sqlId(shape.idColumn()) + " ").stripTrailing();
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                int nextIndex = 1;
+                bindObject(statement, nextIndex++, tenantId);
+                for (int pageValue : dialect.limitOffset().values(maxRows + 1, 0)) {
+                    statement.setInt(nextIndex++, pageValue);
                 }
-                boolean truncated = out.size() > maxRows;
-                List<ConceptRecord> bounded = truncated ? List.copyOf(out.subList(0, maxRows)) : List.copyOf(out);
-                return new ConceptListSlice<>(bounded, truncated);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    List<ConceptRecord> out = new ArrayList<>();
+                    while (resultSet.next()) {
+                        out.add(toRecord(shape, tenantId, resultSet));
+                    }
+                    boolean truncated = out.size() > maxRows;
+                    List<ConceptRecord> bounded = truncated ? List.copyOf(out.subList(0, maxRows)) : List.copyOf(out);
+                    return new ConceptListSlice<>(bounded, truncated);
+                }
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed listing (capped) concept " + conceptName + " from JDBC store", exception);
@@ -1087,6 +1097,50 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
      *  risk the rest of this class's parameterized queries don't already avoid elsewhere. */
     private static String deletedAtFilter(ConceptShape shape) {
         return shape.softDelete() ? " AND deleted_at IS NULL" : "";
+    }
+
+    /**
+     * A3 (REAL_LIFT_PLAN_2026-09-03, B5 "real lift"): the explicit column list to {@code SELECT} for
+     * this concept -- never {@code *}. Candidates are what THIS BUILD's compiled model declares
+     * ({@code shape.columnByField()}) plus the platform-managed columns {@link #toRecord} always
+     * looks for (tenant_id, row_version, and deleted_at for a soft-delete concept), each included
+     * only if the LIVE table actually has it -- {@code row_version} in particular is NOT universal
+     * (LNCH-16: "tables generated before optimistic locking existed have no row_version column", the
+     * exact backward-compat case {@link #executeUpsert} already guards with the same {@code
+     * TableColumns#has} check reused here).
+     *
+     * <p>A NEWER database can carry columns this build's compiled model has never heard of (B5's
+     * schema-ahead case) -- they are never even candidates here, since the candidate list comes from
+     * the COMPILED MODEL, not from live introspection; only the FILTER (does the live table have it)
+     * looks at the database. Falls back to {@code *} only if {@code TableColumns} itself came back
+     * empty (a catalog read failure, or a table that does not exist yet) -- never silently emitting an
+     * empty column list.
+     */
+    private String selectListSql(Connection connection, ConceptShape shape) {
+        TableColumns liveColumns = tableColumns(connection, shape.tableName());
+        LinkedHashSet<String> candidates = new LinkedHashSet<>(shape.columnByField().values());
+        candidates.add("tenant_id");
+        candidates.add("row_version");
+        if (shape.softDelete()) {
+            candidates.add("deleted_at");
+        }
+        List<String> present = new ArrayList<>();
+        for (String candidate : candidates) {
+            if (liveColumns.has(candidate)) {
+                present.add(candidate);
+            }
+        }
+        if (present.isEmpty()) {
+            return "*";
+        }
+        StringBuilder sql = new StringBuilder();
+        for (int i = 0; i < present.size(); i++) {
+            if (i > 0) {
+                sql.append(", ");
+            }
+            sql.append(sqlId(present.get(i)));
+        }
+        return sql.toString();
     }
 
     private ConceptRecord toRecord(ConceptShape shape, String tenantId, ResultSet resultSet) throws SQLException {
