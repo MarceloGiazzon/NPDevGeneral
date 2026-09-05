@@ -5,8 +5,9 @@ title: >-
   SPLIT-mode hand-written hooks, still open for generated hooks (which never go through SPLIT mode)
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-03
+closed: 2026-09-05
 source: >-
   Found while closing STOR-21 (REAL_LIFT_PLAN_2026-09-03.md package A1) -- the kill-JVM acceptance
   test's simpler sibling (ConversionHookRunnerH2Test#splitMode_resumesSkippingAlreadyCompletedPhases)
@@ -17,6 +18,12 @@ source: >-
   executeAndVerify path (one connection, one transaction, no journal), so they have no journal
   activity to fall back on if claim-matching stops finding them.
 surface: runtimehost-core (db/conversion-hooks), generator (dbconfig/ConversionHookEmitter)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidGeneratedHookHarness.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidGeneratedHookCrashResumeTest.java
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/stor22-copy/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/stor22-copy/convert.sql
 detail: |
   ROOT CAUSE (verified, not theorized -- this is what STOR-21's own regression proved):
   SchemaDiffEngine (NPDevRuntimeHost/.../schemastate/SchemaDiffEngine.java:241-282) keys a column that
@@ -57,3 +64,48 @@ detail: |
   instead of a hand-written one, proves the boot resumes and completes with no data loss and no human
   step, on the default `warn`-mode configuration (no opt-in required, since this is not a STOR-20/A1
   opt-in feature -- generated hooks are meant to be safe by default today).
+
+  RESOLUTION: took option (b) from the analysis above -- narrow, precise (table, column) matching,
+  not routing generated hooks through SPLIT's journal machinery. `ConversionHookRunner.run()`'s
+  selection predicate gained one more OR clause (`tightenedColumnStillClaimed`): a claim of shape
+  `ADD_REQUIRED_COLUMN:<table>:<col>` also matches when the residual diff contains
+  `TIGHTEN_NOT_NULL:<table>:<col>` for the SAME pair -- exact on (table, column), never just the
+  table, so it cannot pull in an unrelated hook. `loadClaimIndex()` (feeds the read-only Impact
+  Report) got the same alias so a report run between the crash and the next boot shows `HOOK: <id>`
+  instead of a false NEEDS_ATTENTION for something that self-heals. No new hook.json field, no
+  runtime distinction between generated and hand-written hooks, no opt-in -- fires only for the exact
+  key shape this bug produces, works under the default `warn` config as the DONE-WHEN required, and
+  (the ledger's own noted bonus) transparently covers any hand-written hook using the same claim
+  shape too.
+
+  A first draft of the new fixture's `convert.sql` used a plain `ADD COLUMN` with no `IF NOT EXISTS`
+  guard -- caught immediately by the kill-JVM test itself on the very first run ("Duplicate column
+  name STATUS"), since the resumed boot correctly re-selected the hook (proving the production fix)
+  and then re-ran its convert.sql from statement 1 against a column the crash had already added.
+  Fixed by matching `H2Dialect.guardedAddColumn`'s real output (`ADD COLUMN IF NOT EXISTS`) in the
+  fixture -- a test-fixture bug, not a production one, but left here because the failure mode is
+  informative: it is exactly the shape a REAL generated hook could never hit (ConversionHookEmitter
+  always emits the guarded form), which is further evidence the fixture now matches production
+  faithfully.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidGeneratedHookCrashResumeTest.java
+  asserts: >-
+    aKilledGeneratedHookResumesOnTheNextBootWithNoDataLoss (new, the acceptance test): a REAL child
+    JVM killed via Runtime.halt(137) right after a generated hook's ADD COLUMN commits (H2 implicit-
+    commit-on-DDL), under the DEFAULT warn-mode configuration (no split, no journal) -- the exact
+    crash window this item describes. A second real child process then runs the production
+    ConversionHookRunner.run() boot path and is asserted to re-select the hook (HOOK_APPLIED +
+    CONVERSION_HOOKS RESOLVED in its history output, not a silent skip) and leave the database fully
+    converged with zero data loss (every row backfilled, none lost or duplicated). Existing
+    ConversionHookRunnerH2Test and MigrationKillMidPhaseCrashResumeTest re-run unmodified to confirm
+    the widened selection predicate changes nothing for SPLIT-mode or exact-claim-match hooks.
+    Closing verification: scripts/quality/run-runtimehost-gate.ps1 run green (834 tests).
+  provenRed: true
+  provenRedNote: >-
+    The new kill-JVM test failed on its first real run, but for a fixture bug (see detail) rather
+    than the production defect: it proved the hook WAS correctly re-selected (the production fix
+    working) and then hit "Duplicate column name STATUS" re-running an un-guarded ADD COLUMN. Before
+    the production fix, the same test would instead have shown no re-selection at all (a silent skip,
+    RESUME_HARNESS: DONE with no HOOK_APPLIED line) and a permanently-nullable, unpopulated column --
+    the actual defect this item tracks.

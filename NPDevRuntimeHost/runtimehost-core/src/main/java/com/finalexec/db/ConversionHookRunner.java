@@ -95,6 +95,11 @@ public final class ConversionHookRunner {
      */
     private static final String MIXED_DDL_VERIFY_PROPERTY = "npdev.schema.conversionHooks.mixedDdlVerify";
 
+    /** STOR-22: the two item-key prefixes a hook's target column can appear under across a crash --
+     *  see {@link #tightenedColumnStillClaimed}. */
+    private static final String ADD_REQUIRED_COLUMN_PREFIX = "ADD_REQUIRED_COLUMN:";
+    private static final String TIGHTEN_NOT_NULL_PREFIX = "TIGHTEN_NOT_NULL:";
+
     private enum MixedDdlVerifyMode {
         WARN, REFUSE, SPLIT
     }
@@ -210,7 +215,8 @@ public final class ConversionHookRunner {
         List<Hook> selected = new ArrayList<>();
         for (Hook hook : loadHooks()) {
             boolean matches = hook.claims().stream().anyMatch(unresolvedKeys::contains)
-                    || hasIncompletePhaseActivity(dataSource, migrationId, hook.id());
+                    || hasIncompletePhaseActivity(dataSource, migrationId, hook.id())
+                    || tightenedColumnStillClaimed(hook, unresolvedKeys);
             if (matches) {
                 selected.add(hook);
             } else {
@@ -492,6 +498,13 @@ public final class ConversionHookRunner {
         for (Hook hook : loadHooks()) {
             for (String claim : hook.claims()) {
                 index.put(claim, hook.id());
+                // STOR-22: also index the TIGHTEN_NOT_NULL alias so a report run after a mid-hook crash
+                // shows "HOOK: <id>" (it will actually resolve on the next boot -- see
+                // tightenedColumnStillClaimed) instead of a false NEEDS_ATTENTION.
+                if (claim.startsWith(ADD_REQUIRED_COLUMN_PREFIX)) {
+                    index.put(TIGHTEN_NOT_NULL_PREFIX + claim.substring(ADD_REQUIRED_COLUMN_PREFIX.length()),
+                            hook.id());
+                }
             }
         }
         return index;
@@ -517,6 +530,24 @@ public final class ConversionHookRunner {
         } catch (SQLException exception) {
             return false;
         }
+    }
+
+    /** STOR-22: a hook's own ADD COLUMN committing before a crash (H2/MySQL implicit-commit-on-DDL)
+     *  reclassifies its target column from ADD_REQUIRED_COLUMN to TIGHTEN_NOT_NULL
+     *  (SchemaDiffEngine#compareColumn) -- a different item key than the one claims[] names. Matching on
+     *  the SAME (table, column) pair under the TIGHTEN_NOT_NULL key re-selects the hook so its
+     *  already-idempotent convert.sql (STOR-5/B12) can finish what the crash interrupted. Covers the
+     *  single-transaction executeAndVerify path (every generated hook's default); the SPLIT-mode journal
+     *  check above already covers the phase-split path. */
+    private static boolean tightenedColumnStillClaimed(Hook hook, Set<String> unresolvedKeys) {
+        for (String claim : hook.claims()) {
+            if (claim.startsWith(ADD_REQUIRED_COLUMN_PREFIX)
+                    && unresolvedKeys.contains(TIGHTEN_NOT_NULL_PREFIX
+                            + claim.substring(ADD_REQUIRED_COLUMN_PREFIX.length()))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String historyLabel(Hook hook) {
