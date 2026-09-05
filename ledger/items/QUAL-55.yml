@@ -72,8 +72,3 @@ detail: |
   `ImpactReportWriter`/`classify()`'s own state given a ~830-test single-JVM run. Reproduce in
   isolation (rapid repeated invocation of the ORIGINAL integration test, not just the extracted verdict
   logic) before attempting a fix, the same rigor `MigrationMutex`'s own two-thread proof used.
-guard:
-  kind: test
-  ref: (not yet written -- see DONE-WHEN above)
-  asserts: N/A -- OPEN
-  provenRed: false

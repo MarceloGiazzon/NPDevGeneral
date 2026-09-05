@@ -116,13 +116,14 @@ public final class ConversionHookEmitter {
         }
 
         if (model != null) {
+            Path definitionDir = modelSourcePath == null ? null : modelSourcePath.getParent();
             for (CompiledConversion conversion : model.getConversions()) {
                 if (!emittedIds.add(conversion.id().toLowerCase(Locale.ROOT))) {
                     throw new IllegalStateException("conversions[] id '" + conversion.id()
                             + "' collides with an operator-authored migrations/ conversion hook id -- "
                             + "rename one of the two.");
                 }
-                emitDeclared(conversion, model, hooksOut);
+                emitDeclared(conversion, model, hooksOut, definitionDir, outRoot);
             }
         }
     }
@@ -176,11 +177,21 @@ public final class ConversionHookEmitter {
      * {@code SET NOT NULL} then fails the boot loudly with the engine's own error -- never a silent
      * partial conversion.
      */
-    private void emitDeclared(CompiledConversion conversion, CompiledModel model, Path hooksOut) throws IOException {
+    private void emitDeclared(CompiledConversion conversion, CompiledModel model, Path hooksOut,
+            Path definitionDir, Path outRoot) throws IOException {
         CompiledConcept concept = model.findConcept(conversion.concept())
                 .orElseThrow(() -> new IllegalStateException("conversion '" + conversion.id()
                         + "' declares concept '" + conversion.concept() + "', which is not a declared concept"));
         String table = SqlIdentifierSupport.tableName(concept);
+
+        // B1 (REAL_LIFT_PLAN_2026-09-03, B13): javaHook is a sibling alternative to the declarative op
+        // switch below -- it writes no convert.sql at all (ConversionHookRunner dispatches it through
+        // the isolated plugin pool instead of a JDBC statement) and needs its own admission +
+        // plugin-runtime manifest registration, done by ConversionHookJavaHookEmitter.
+        if (conversion.javaHook() != null) {
+            emitJavaHookDeclared(conversion, concept, table, hooksOut, definitionDir, outRoot);
+            return;
+        }
 
         List<String> statements = new ArrayList<>();
         List<String> claims = new ArrayList<>();
@@ -383,6 +394,60 @@ public final class ConversionHookEmitter {
                 StandardCharsets.UTF_8);
         Files.writeString(destDir.resolve("convert.sql"), engineHeader() + convertSql,
                 StandardCharsets.UTF_8);
+    }
+
+    /**
+     * B1 (REAL_LIFT_PLAN_2026-09-03, B13): compiles a javaHook conversion to hook.json ONLY -- no
+     * convert.sql, since {@code ConversionHookRunner} dispatches this hook through the isolated
+     * plugin pool instead of a JDBC statement. {@code claims} is author-declared (not derivable from
+     * a black-box Java method the way every other op's claims are derived from {@code to}) --
+     * resolved against the concept's real fields here (same X0 discipline {@code requireField}
+     * already enforces for every other op) and turned into the identical
+     * {@code ADD_REQUIRED_COLUMN:<table>:<col>} claim-key format, so {@code ConversionHookRunner}'s
+     * claim-intersection selection needs no changes. verifySql is auto-generated from the same
+     * claimed columns (none left NULL) -- same closing-verify discipline every other op gets, with no
+     * new DSL surface for the author to declare it separately.
+     */
+    private void emitJavaHookDeclared(CompiledConversion conversion, CompiledConcept concept, String table,
+            Path hooksOut, Path definitionDir, Path outRoot) throws IOException {
+        List<String> claims = new ArrayList<>();
+        List<String> verifyNullChecks = new ArrayList<>();
+        for (String claimField : conversion.claims()) {
+            String claimCol = SqlIdentifierSupport.columnName(requireField(concept, claimField));
+            claims.add("ADD_REQUIRED_COLUMN:" + table + ":" + claimCol);
+            verifyNullChecks.add(claimCol);
+        }
+
+        StringBuilder verifySql = new StringBuilder("SELECT COUNT(*) FROM ").append(table).append(" WHERE ");
+        for (int i = 0; i < verifyNullChecks.size(); i++) {
+            if (i > 0) {
+                verifySql.append(" OR ");
+            }
+            verifySql.append(verifyNullChecks.get(i)).append(" IS NULL");
+        }
+
+        com.fasterxml.jackson.databind.node.ObjectNode hookJsonNode = OBJECT_MAPPER.createObjectNode();
+        hookJsonNode.put("id", conversion.id());
+        com.fasterxml.jackson.databind.node.ArrayNode claimsNode = hookJsonNode.putArray("claims");
+        claims.forEach(claimsNode::add);
+        hookJsonNode.put("description", "Generated from declared conversion '" + conversion.id()
+                + "' (javaHook, concept=" + conversion.concept() + ").");
+        hookJsonNode.put("verifySql", verifySql.toString());
+        hookJsonNode.put("verifyExpect", 0);
+        com.fasterxml.jackson.databind.node.ObjectNode javaHookNode = hookJsonNode.putObject("javaHook");
+        javaHookNode.put("class", conversion.javaHook().className());
+        javaHookNode.put("method", conversion.javaHook().method());
+
+        validate(hookJsonNode, Path.of("conversions[" + conversion.id() + "]"), loadSchema());
+
+        String safeId = sanitizeId(conversion.id(), Path.of("conversions[" + conversion.id() + "]"));
+        Path destDir = hooksOut.resolve(safeId);
+        Files.createDirectories(destDir);
+        Files.writeString(destDir.resolve("hook.json"),
+                OBJECT_MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(hookJsonNode),
+                StandardCharsets.UTF_8);
+
+        ConversionHookJavaHookEmitter.admitAndRegister(conversion, definitionDir, outRoot);
     }
 
     private static CompiledField requireField(CompiledConcept concept, String fieldName) {

@@ -3,7 +3,7 @@ title: >-
   A1: resumable, journaled migration execution -- a hand-written conversion hook mixing DDL with a
   verifySql on an implicit-commit engine can now automatically split into idempotent, journaled
   phases and RUN, resuming past a real process crash instead of refusing (B11)
-type: FEATURE
+type: GAP
 severity: MEDIUM
 status: DONE
 opened: 2026-09-03

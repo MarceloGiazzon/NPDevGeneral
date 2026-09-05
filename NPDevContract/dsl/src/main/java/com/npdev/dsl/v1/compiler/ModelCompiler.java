@@ -692,6 +692,39 @@ public final class ModelCompiler {
         for (ConversionAst conversionAst : ordered) {
             ConceptAst concept = requireConversionConcept(conversionAst.id(), conversionAst.concept(), conceptsByNormalizedName);
             List<CompiledConversion.CompiledConversionSplitTarget> into = new ArrayList<>();
+            // B1 (REAL_LIFT_PLAN_2026-09-03, B13): javaHook is a sibling alternative to op (see
+            // ConversionAst's own javadoc) -- it skips the op vocabulary switch entirely and instead
+            // resolves its author-declared claims against the same concept, same X0 discipline as
+            // 'to' everywhere else in this switch.
+            if (conversionAst.javaHook() != null) {
+                if (conversionAst.claims().isEmpty()) {
+                    throw new IllegalArgumentException("conversion '" + conversionAst.id()
+                            + "' declares javaHook but no 'claims'");
+                }
+                for (String claim : conversionAst.claims()) {
+                    requireConversionField(conversionAst.id(), concept, claim, "claims[]");
+                }
+                compiled.add(new CompiledConversion(
+                        conversionAst.id(),
+                        conversionAst.concept(),
+                        conversionAst.op(),
+                        conversionAst.from(),
+                        conversionAst.to(),
+                        into,
+                        null,
+                        conversionAst.set(),
+                        conversionAst.mergeFrom(),
+                        conversionAst.with(),
+                        List.of(),
+                        conversionAst.elseValue(),
+                        new CompiledConversion.CompiledJavaHook(
+                                conversionAst.javaHook().source(),
+                                conversionAst.javaHook().className(),
+                                conversionAst.javaHook().method()),
+                        conversionAst.claims()
+                ));
+                continue;
+            }
             switch (conversionAst.op()) {
                 case "copy" -> {
                     requireConversionField(conversionAst.id(), concept, conversionAst.from(), "from");
@@ -787,7 +820,9 @@ public final class ModelCompiler {
                     conversionAst.mergeFrom(),
                     conversionAst.with(),
                     compiledWhen,
-                    conversionAst.elseValue()
+                    conversionAst.elseValue(),
+                    null,
+                    conversionAst.claims()
             ));
         }
         return compiled;

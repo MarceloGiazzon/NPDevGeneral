@@ -158,7 +158,12 @@ public final class CompiledModelCanonicalJson {
             ObjectNode node = JsonNodeFactory.instance.objectNode();
             node.put("id", safe(conversion.id()));
             node.put("concept", safe(conversion.concept()));
-            node.put("op", safe(conversion.op()));
+            // B1 (REAL_LIFT_PLAN_2026-09-03, B13): op is null for a javaHook conversion (sibling
+            // alternative, not an 8th enum value) -- omitted rather than written as "", matching how
+            // every other optional field below is conditionally written.
+            if (conversion.op() != null) {
+                node.put("op", conversion.op());
+            }
             if (conversion.from() != null) {
                 node.put("from", conversion.from());
             }
@@ -201,6 +206,16 @@ public final class CompiledModelCanonicalJson {
             }
             if (conversion.elseValue() != null) {
                 node.put("elseValue", conversion.elseValue());
+            }
+            if (conversion.javaHook() != null) {
+                ObjectNode javaHookNode = node.putObject("javaHook");
+                javaHookNode.put("source", safe(conversion.javaHook().source()));
+                javaHookNode.put("class", safe(conversion.javaHook().className()));
+                javaHookNode.put("method", safe(conversion.javaHook().method()));
+            }
+            if (!conversion.claims().isEmpty()) {
+                ArrayNode claims = node.putArray("claims");
+                conversion.claims().forEach(claims::add);
             }
             conversions.add(node);
         }

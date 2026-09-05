@@ -1,6 +1,51 @@
 id: B13
 title: "Conversion hooks are SQL-only -- no Java DataMigrationHook (declarative conversions[] vocabulary covers copy/split/lookup/merge/convert/coalesce/case)"
 codeLinked: true
-codeLinkedNote: "PackValidation now prefixes unresolvable join path errors with B13:unresolvable_join_path:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching. Wave 4 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 4.2, REG-203) widened the vocabulary to seven ops -- coalesce (COALESCE(...), reuses merge's mergeFrom/to shape) and case (CASE WHEN...END, literal value mapping) -- both plain ANSI SQL needing no dialect-specific emission; classification and this code link are unchanged."
-ref: "docs/ACCEPTED_BOUNDARIES.md#B13"
-classification: HITTABLE
+codeLinkedNote: >-
+  PackValidation now prefixes unresolvable join path errors with B13:unresolvable_join_path:, and
+  ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern
+  matching. Wave 4 (BOUNDARY_LIFT_PLAN_2026-09-02.md package 4.2, REG-203) widened the vocabulary to
+  seven ops -- coalesce (COALESCE(...), reuses merge's mergeFrom/to shape) and case (CASE
+  WHEN...END, literal value mapping) -- both plain ANSI SQL needing no dialect-specific emission;
+  classification and this code link are unchanged.
+
+  B1 (STOR-25, REAL_LIFT_PLAN_2026-09-03.md package B1, "real lift", 2026-09-04): **reclassifies to
+  LIFTED.** The refusal reason (a Java hook would run in-process with the app's full privileges)
+  stopped being true once SEC-3/5/7 gave plugin:java-source mounts a real OS-process-isolated pool
+  with resource ceilings -- this package is the adapter between the conversion-hook vocabulary and
+  that existing pool, not new isolation machinery. A model now declares
+  conversions[].javaHook: {source, class, method} as a sibling alternative to op (not an 8th enum
+  value -- the fields are disjoint); the generator admits the source through the SAME bytecode/AST
+  escape-detection a plugin:java-source mount goes through (PluginJavaSourcePolicy,
+  TrustedSourceBytecodeInspector), copies it into the app's compiled source tree, and registers ONE
+  plugin-manifest adapter row (ConversionHookJavaHookEmitter) so PluginIpcChildProcessPool's existing
+  null-when-empty bean condition (NpdevPluginConfig, keyed on java-source-runtime-refs.json) "just
+  works" for an app whose only plugin surface is a javaHook. At migration time
+  (JavaMigrationHookRunner, runtimehost-core) the hook runs in the pooled child process, dispatched
+  through ManifestDrivenJavaSourcePluginHandler reused verbatim (no new child-side class -- a
+  javaHook's author contract, one Map in and one Map out, is exactly that handler's existing shape);
+  the child's return value carries the write back to the host, which performs the actual UPDATE
+  itself, so the child never gets a DataSource and never calls back into anything. Each batch ("the
+  next N rows where any claimed column is still NULL" -- a written row drops out of that WHERE clause
+  on the very next read, so re-running the same query IS the pagination, no cursor to get wrong)
+  participates in A1's phase journal (MigrationPhaseJournal, STOR-21) exactly like a DML phase: the
+  write and the journal row commit together on one connection, so a killed child resumes on the next
+  boot rather than stranding the migration. SEC-7's memory/CPU ceilings apply automatically (same
+  pool, same admission). The closing verifySql (auto-generated from the claimed columns, same as
+  every declarative op) runs after every batch completes -- same discipline a SQL hook has today.
+  dsl-conformance-max carries a real example (OrderSummaryHook, conversions[] entry
+  0008-java-hook-order-summary).
+
+  Caveat, checked against real code rather than assumed (same discipline STOR-24/B5 used): B13's
+  HITTABLE entry in NPDevContract/schemas/accepted-boundaries.json is about a DIFFERENT, narrower
+  concern than "SQL-only" -- a conversion referencing a concept/field that does not resolve
+  (B13:unresolvable_join_path, PackValidation). That refusal is UNCHANGED and stays HITTABLE: it
+  still fires, and now ALSO covers a javaHook's claims[] (ModelCompiler#compileConversions resolves
+  each claim against the concept's real fields, same X0 discipline as every op's own field checks --
+  proven by ConversionHookEmitterJavaHookTest#claimsResolveAgainstTheRealConceptFieldsSameX0DisciplineAsEveryOtherOp).
+  What is LIFTED here is specifically the title's "no Java DataMigrationHook" claim -- the two were
+  historically tracked under the same boundary id but are genuinely separate concerns; this package
+  did not touch the reference-validation one and left NPDevContract/schemas/accepted-boundaries.json
+  unmodified.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B13, ConversionHookJavaHookEmitter.java, JavaMigrationHookRunner.java, STOR-25, REAL_LIFT_PLAN_2026-09-03.md package B1"
+classification: LIFTED

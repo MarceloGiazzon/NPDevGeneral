@@ -4,8 +4,9 @@ title: >-
   QUAL-48's fix -- a different nondeterministic line, not yet identified
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-09-02
+closed: 2026-09-03
 source: >-
   Surfaced running run-all-gates.ps1 during BOUNDARY_LIFT_PLAN_2026-09-02.md wave 1 (EDIT-17's real
   DSL edits: AutoPanelExpander/PanelValidation/ModelCompiler/SqlIdentifierSupport, plus a rewritten
@@ -39,12 +40,44 @@ detail: |
   (`:dsl:clean :dsl:test --no-build-cache` from NPDevGenerator, twice, diff every (package,
   sourcefile, line) covered/uncovered flip between the two jacocoTestReport.xml files) -- and either
   made deterministic or the floor is set to a value proven stable across N consecutive real runs.
+
+  CLOSED VIA THE ALTERNATE CRITERION, NOT A ROOT-CAUSED FIX. Ran QUAL-48's own method, but at N=5
+  instead of 2 for stronger confidence: `:dsl:clean :dsl:test --no-build-cache --no-daemon
+  --console=plain` from NPDevGenerator, five consecutive times against the current source tree
+  (post-REG-205/B16, i.e. after the EDIT-17 work this item's `source` field was opened against had
+  already landed and merged forward). Saved each run's jacocoTestReport.xml
+  (`D:\WorkSpace\NPDev\Build\gradle\npdev-generator\dsl\reports\jacoco\test\jacocoTestReport.xml`,
+  copied out between runs since the next `:dsl:clean` deletes it) and diffed every
+  (package, sourcefile, line) -> (missed-instructions, covered-instructions, missed-branches,
+  covered-branches) tuple across all 5, using run 1 as the base for each comparison.
+
+  Result: ZERO flips across all 5 runs, out of 21779 lines compared each time. Every run measured
+  byte-for-byte identical totals -- LINE 3223 missed / 18556 covered = 85.2013%, matching
+  scripts/policy/coverage-baseline.json's NPDevContract/dsl floor exactly (auto-ratcheted to that
+  same number earlier this session by the REG-205/B16 gate run per that entry's own `measuredOn`
+  timestamp). The 85.0558%/85.0518% wobble this item was opened against did NOT reproduce.
+
+  Honest interpretation: this does NOT prove the underlying mechanism is fixed, only that it did not
+  fire in this 5-run sample against today's source. Two explanations remain live and are NOT
+  distinguished by this evidence: (1) whatever caused the 2026-09-02 wobble was specific to that
+  session's in-progress EDIT-17 code and no longer exists in the code as it landed, or (2) the
+  mechanism is still present but is a rarer intermittent flip than QUAL-48's (which reproduced on
+  2 runs out of 2, every time it was tried) and this sample of 5 simply did not hit it. No specific
+  nondeterministic line could be identified either way, because none flipped to find -- QUAL-48's
+  diff method only surfaces a culprit when a flip actually occurs.
+
+  Closed per this item's own done-when ALTERNATE clause ("or the floor is set to a value proven
+  stable across N consecutive real runs") rather than the root-cause clause. If this recurs again in
+  a future session, re-run this same N=5 method fresh (do not reuse these numbers, which are already
+  stale by then) -- and if a flip is finally caught, diff it down to the specific line the way
+  QUAL-48 did, since that is the only way to get a real deterministic guard in place.
 guard:
   kind: manual
   ref: scripts/policy/coverage-baseline.json
   asserts: >-
-    Not yet guarded by a test -- the root cause is unidentified. Once found (via QUAL-48's diff
-    method), the fix should get the same shape of guard QUAL-48's own
-    PackSignatureTest#malformedSignatureLengthIsRejectedWithoutThrowing did: a new deterministic
-    test exercising whichever branch was flapping.
+    No specific line-level guard exists, because no specific nondeterministic line was ever caught
+    flipping in this investigation (5/5 runs were byte-identical). The manual guard is the N=5
+    reproduction itself, documented in this item and in coverage-baseline.json's NPDevContract/dsl
+    `note` field's 2026-09-03 entry -- future recurrence should re-run the same method rather than
+    trust this item's numbers, which will be stale.
   provenRed: false

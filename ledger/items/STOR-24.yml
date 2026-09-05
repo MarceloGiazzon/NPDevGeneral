@@ -3,7 +3,7 @@ title: >-
   A3: run compatibly instead of refusing -- explicit column projection (never select *) + a
   compatibility verdict so an older build boots and serves traffic against a newer, additively-ahead
   database (B5 reclassified to LIFTED for the additive case, REAL_LIFT_PLAN_2026-09-03)
-type: FEATURE
+type: GAP
 severity: MEDIUM
 status: DONE
 opened: 2026-09-03

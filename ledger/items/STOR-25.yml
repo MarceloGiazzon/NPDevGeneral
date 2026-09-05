@@ -1,0 +1,152 @@
+id: STOR-25
+title: >-
+  B1: Java migration hooks on the isolated plugin pool -- conversions[].javaHook runs a pooled,
+  OS-process-isolated child instead of in-process SQL, reads/writes only through IPC callback frames,
+  and participates in A1's phase journal so a killed child resumes instead of stranding the migration
+  (B13)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-04
+closed: 2026-09-04
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md, Track B package B1 (B13) -- the user's chosen next package after
+  Track A (STOR-21/23/24) closed. The refusal reason (a Java hook would run with the app's full
+  in-process privileges) stopped being true once SEC-3/5/7 gave plugin:java-source mounts a real
+  OS-process-isolated pool with resource ceilings; this package is the adapter between the
+  conversion-hook vocabulary and that existing pool, not new isolation machinery.
+surface: NPDevContract/dsl (conversions AST/compiled/schema), NPDevGenerator (dbconfig/ConversionHookEmitter,
+  RuntimeApiEmitter plugin manifest emission), runtimehost-core (db/conversion-hooks,
+  npdev/service/pluginipc), B13 registry (ledger/boundaries, accepted-boundaries.json,
+  docs/ACCEPTED_BOUNDARIES.md), NPDevSamples/dsl-conformance-max
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConversionAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConversion.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/conversion-hook.schema.json
+  - NPDevGenerator/generator/src/main/resources/schema/conversion-hook.schema.json
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookJavaHookEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/ConversionHookEmitterJavaHookTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JavaMigrationHookRunner.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerJavaHookTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidJavaHookHarness.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidJavaHookCrashResumeTest.java
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevSamples/dsl-conformance-max/Input/conversion-hooks/orderSummary/src/main/java/com/npdev/samples/dslconformance/conversion/OrderSummaryHook.java
+  - scripts/quality/dsl_coverage/detectors_model.py
+  - scripts/quality/dsl_coverage/features.py
+  - ledger/boundaries/B13.yml
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  Plan: C:\Users\Marcelo\.claude\plans\idempotent-swinging-gadget.md (approved 2026-09-04).
+
+  DONE-WHEN (from REAL_LIFT_PLAN_2026-09-03.md section 4, B1):
+  1. A model declares conversions[].javaHook: {source, class, method}; the generator admits it
+     through the same bytecode/AST policy a plugin:java-source mount goes through
+     (TrustedSourceBytecodeInspector + PluginJavaSourcePolicy.validatePluginJavaSource -- same static
+     entry points, no new rule sets).
+  2. At migration time the hook runs in a pooled child process (PluginIpcChildProcessPool); an
+     InvokeFrame carries the row batch, the hook reads/writes only through CallbackFrames
+     (migrationHookRowWrite/writeBatch, allowlisted via a second RuntimePluginAdapterRegistry manifest
+     row under the same pluginId) -- the child never gets a DataSource.
+  3. SEC-7's memory/CPU ceilings apply (same pool, same admission -- verified by a test, not new code).
+  4. The hook participates in A1's phase journal (MigrationPhaseJournal/PhaseKey keyed by
+     (migrationId, hookId, batchOrdinal)) -- resumable; a killed child resumes on the next boot rather
+     than stranding the migration.
+  5. A hook that fails verifySql fails the phase with the same discipline a SQL hook has today
+     (unchanged code path, reused after the Java hook's batches complete).
+  6. dsl-conformance-max carries a real javaHook example.
+
+  Schema design decision (see plan for full reasoning): javaHook is a SIBLING alternative to op, not
+  an 8th op enum value (the fields are disjoint) -- op becomes optional, javaHook + claims (author-
+  declared field names, since a Java hook is a black box to the compiler's automatic claim derivation)
+  become required together. This is additive-only: no existing model's op stays valid unchanged, so no
+  BREAKING.md entry and no npdev migrate codemod (checked BREAKING.md's own convention, which only
+  logs changes affecting an EXISTING model).
+
+  DONE-WHEN, verified in order:
+
+  1. Schema: conversions[].javaHook is a SIBLING of op (op becomes optional; javaHook + claims become
+     required together) across all 4 model.schema.json copies (check-schema-mirror-consistency.py
+     clean) plus both conversion-hook.schema.json copies (byte-identical, manually diffed). Threaded
+     through ConversionAst/CompiledConversion/CompiledModelCanonicalJson(Reader)/ModelCompiler/
+     JsonModelParser -- the full AST/compiler/parser/canonical-JSON chain a new conversions[] field
+     needs (twin-pair-registry.json's REG-104-class rule), not just the JSON-level schema.
+  2. Generation-time admission: a javaHook mounts through the SAME bytecode/AST policy a
+     plugin:java-source mount goes through -- ConversionHookJavaHookEmitter reuses
+     PluginJavaSourcePolicy.validatePluginJavaSource and ManifestDrivenJavaSourcePluginHandler
+     VERBATIM (zero new child-side code, zero new admission rule sets), registering a second
+     java-source-runtime-refs.json manifest row under the hook's own pluginId.
+  3. Runtime execution: JavaMigrationHookRunner runs the hook in the pooled, OS-process-isolated
+     child (PluginIpcChildProcessPool, same pool plugin:java-source mounts already use -- SEC-3/5/7's
+     resource ceilings apply unchanged, no new isolation machinery). The child reads/writes only
+     through IPC callback frames (migrationHookRowWrite/writeBatch); it never receives a DataSource.
+  4. Resumability: the hook participates in A1's MigrationPhaseJournal (same table STOR-21 built),
+     keyed so a killed child resumes on the next boot rather than stranding the migration --
+     MigrationKillMidJavaHookCrashResumeTest launches a REAL child JVM (MigrationKillMidJavaHookHarness)
+     against a file-backed H2 database, halts it mid-batch (Runtime.halt(137), no shutdown hook), then
+     boots a second child that resumes and completes with zero data loss -- the same kill-JVM proof
+     shape A1's own MigrationKillMidPhaseCrashResumeTest established, applied to the isolated-process
+     case.
+  5. dsl-conformance-max carries a real javaHook example (OrderSummaryHook.java) -- registered in
+     scripts/quality/dsl_coverage/{detectors_model.py,features.py} so check-dsl-coverage.py tracks the
+     feature (clean run confirmed).
+  6. All four T2 gates run green from a clean invocation in this session: run-generator-gate.ps1
+     (54 tasks, 1m4s), run-runtimehost-gate.ps1 (assembled simple-contact-intake sample, including a
+     genuine ~7min :test run of the copied ConversionHookRunnerJavaHookTest/
+     MigrationKillMidJavaHookCrashResumeTest classes, BUILD SUCCESSFUL), run-kernel-quality-gate.ps1
+     (162s), run-ai-knowledge-gate.ps1 (291s, after real fixes below).
+
+  THREE REAL BUGS FOUND CLOSING THE AI-KNOWLEDGE GATE, FIXED (not worked around):
+  (a) ledger/items/STOR-21.yml, STOR-23.yml, STOR-24.yml and this item all used `type: FEATURE`,
+      which has never been a valid ledger item type (ledger/README.md and generate_open_items.py's
+      VALID_TYPES both only ever allowed GAP|BUG|PROCESS|BOUNDARY) -- generate_open_items.py's own
+      validator stopped at the first offender (STOR-21) and had never been exercised end-to-end
+      against the real ledger by check-done-item-guards.py's calibration until this session. Fixed by
+      changing all four to `type: GAP`, matching sibling items STOR-20/STOR-22 in the same series.
+  (b) STOR-22.yml, QUAL-55.yml and this item (while still OPEN) each carried a placeholder `guard:`
+      block with an unresolvable `ref` ("(not yet written...)") marked "asserts: N/A -- OPEN".
+      check-done-item-guards.py's R2 rule is deliberate: ANY item carrying a guard: block, DONE or
+      not, must have it actually resolve -- a guard only makes sense once there is a real one to
+      point to. Fixed by removing the placeholder blocks; a real guard gets added when each item
+      actually goes DONE (this item's own guard, below, is the real one).
+  (c) 15 untriaged security-pattern-sweep hits (6 read-without-tenant-predicate, 8 sql-string-building,
+      1 swallowed-security-exception) across PostgresPersistenceCapabilityAdapter.java (pre-existing,
+      B3's own established scoped/unscoped findById split), JavaMigrationHookRunner.java (new,
+      migration-only whole-table batch read/write -- model-author-controlled table/column identifiers
+      from the hook's own manifest, strictly less capability than the arbitrary Java code a javaHook
+      author can already run), MigrationPhaseJournal.java (new internal npdev_migration_phase_journal
+      tracking table, no tenant column by design, same class as SchemaHistoryStore/MigrationMarkStore),
+      JdbcBusinessConceptStore.java (pre-existing, compiled-model-derived identifiers, values bound),
+      and ExpressionBackfillPreview.java (pre-existing, a fail-CLOSED conservative branch, not a
+      bypass -- already self-documented at its call site). All 15 individually reviewed and triaged
+      into scripts/quality/security-pattern-sweep-allowlist.json (frozenCount 525 -> 538) with a
+      per-fingerprint reason; zero blanket allowlisting. (a) and (c) affected code from the PRIOR
+      session's STOR-21/23/24 work (already committed at 8cfe0ec3/a4b11daa/10daaeef) that had never
+      had the AI-knowledge gate run against it -- found and fixed while closing THIS package, not
+      introduced by it.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidJavaHookCrashResumeTest.java
+  asserts: >-
+    aKilledJavaHookMigrationResumesOnTheNextBootWithNoDataLossOrDuplication (the acceptance test): a real child-JVM
+    kill -9 equivalent mid-javaHook-batch (Runtime.halt(137), no shutdown hook), a real second-boot
+    resume through JavaMigrationHookRunner/MigrationPhaseJournal, and an assertion of zero data loss
+    (every row processed exactly once, none lost or duplicated). ConversionHookRunnerJavaHookTest
+    (new): a javaHook is admitted, mounted through the isolated plugin pool, and runs a
+    fresh multi-batch migration end to end against H2. ConversionHookEmitterJavaHookTest (3 tests,
+    generator side): admission through the same bytecode/AST policy plugin:java-source uses,
+    including a real bytecode/AST escape-rejection test. Closing verification: all four T2 gates
+    (run-generator-gate.ps1, run-runtimehost-gate.ps1, run-kernel-quality-gate.ps1,
+    run-ai-knowledge-gate.ps1) run green in this session.
+  provenRed: false

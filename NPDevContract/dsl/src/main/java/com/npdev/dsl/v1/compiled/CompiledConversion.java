@@ -13,6 +13,12 @@ import java.util.List;
  * javadoc for why it has no separate {@code toType}). Wave 4 (B13 vocabulary expansion):
  * {@code coalesce} reuses {@code mergeFrom}/{@code to} (no {@code with} -- nothing is joined);
  * {@code case} reuses {@code from}/{@code to} plus {@code when}/{@code elseValue}.
+ *
+ * <p>B1 (REAL_LIFT_PLAN_2026-09-03, B13): {@code javaHook} is a sibling alternative to {@code op}
+ * (see {@code ConversionAst}'s own javadoc) -- the emitter compiles it to {@code hook.json}'s
+ * {@code javaHook} object instead of a sibling {@code convert.sql}, and {@code claims} (author-
+ * declared, since a Java hook is a black box to automatic claim derivation) into the identical
+ * {@code ADD_REQUIRED_COLUMN:<table>:<col>} claim-key format every other op already produces.
  */
 public record CompiledConversion(
         String id,
@@ -26,12 +32,15 @@ public record CompiledConversion(
         List<String> mergeFrom,
         String with,
         List<CompiledConversionCaseWhen> when,
-        String elseValue
+        String elseValue,
+        CompiledJavaHook javaHook,
+        List<String> claims
 ) {
     public CompiledConversion {
         into = into == null ? List.of() : List.copyOf(into);
         mergeFrom = mergeFrom == null ? List.of() : List.copyOf(mergeFrom);
         when = when == null ? List.of() : List.copyOf(when);
+        claims = claims == null ? List.of() : List.copyOf(claims);
     }
 
     public record CompiledConversionSplitTarget(String field, String take) {
@@ -41,5 +50,9 @@ public record CompiledConversion(
     }
 
     public record CompiledConversionCaseWhen(String equals, String then) {
+    }
+
+    /** B1 (B13): the compiled, field-resolved form of {@code ConversionAst.JavaHookAst}. */
+    public record CompiledJavaHook(String source, String className, String method) {
     }
 }

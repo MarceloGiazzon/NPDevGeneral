@@ -57,8 +57,3 @@ detail: |
   instead of a hand-written one, proves the boot resumes and completes with no data loss and no human
   step, on the default `warn`-mode configuration (no opt-in required, since this is not a STOR-20/A1
   opt-in feature -- generated hooks are meant to be safe by default today).
-guard:
-  kind: test
-  ref: (not yet written -- see DONE-WHEN above)
-  asserts: N/A -- OPEN
-  provenRed: false
