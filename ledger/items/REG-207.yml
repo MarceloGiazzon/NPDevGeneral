@@ -1,0 +1,125 @@
+id: REG-207
+title: >-
+  H2Local (embedded file) boot lock -- the last multi-process boot gap, closed with an OS-level
+  file-lock sidecar (new boundary B31)
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md's own final line item (section 6.1/1.1, "B4 -- nothing left to lift...
+  close REG-7.2 and fix the row"), the last remaining piece of that plan per the user's standing
+  directive to finish it in full. Re-verifying that instruction against live code (this session) found
+  its own label was a red herring: REG-7.2 (Flyway's "found non-empty schema but no history table"
+  error) and its documented residue are about a bookkeeping ROW going unwritten on a first-ever
+  boot -- already fully reasoned through and explicitly decided NOT to need a sidecar (REG-200,
+  2026-09-03, same day, "not worth a new file-lock sidecar... because MIGRATE_ONLY is the actual
+  mitigation"). The REAL, still-open gap sits one layer earlier and is unrelated to REG-7.2: H2Local
+  (embedded file, jdbc:h2:file:...) has zero multi-process boot protection, unlike every other
+  engine/mode. This is genuinely new work, not a stale-premise no-op like this session's earlier two
+  packages (C1/REG-206, C2/EDIT-18).
+surface: runtimehost-core (db), B31 registry (ledger/boundaries, accepted-boundaries.json,
+  docs/ACCEPTED_BOUNDARIES.md), NPDevCli boot-log classifier
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/H2LocalBootLock.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/H2LocalBootLockEnvironmentPostProcessor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/resources/META-INF/spring.factories
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/H2LocalBootLockTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/H2LocalBootLockEnvironmentPostProcessorTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/H2LocalBootLockHarness.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/H2LocalBootLockCrossProcessTest.java
+  - ledger/boundaries/B31.yml
+  - docs/ACCEPTED_BOUNDARIES.md
+  - NPDevContract/schemas/accepted-boundaries.json
+  - NPDevCli/npdev_cli.py
+detail: |
+  **Where the failure actually happens, and why that rules out fixing it inside SchemaLifecycleExecutor/
+  MigrationMutex.** `SchemaLifecycleExecutor implements FlywayMigrationStrategy`; its
+  `migrate(Flyway, SchemaManifest)` reads `flyway.getConfiguration().getDataSource()` -- Spring's OWN
+  primary DataSource bean (an autoconfigured Hikari pool), not a lazily-connecting Flyway-internal one.
+  Spring Boot's default HikariCP `initializationFailTimeout` eagerly validates one real connection
+  during that bean's OWN construction, inside `ApplicationContext` refresh -- strictly BEFORE
+  `FlywayMigrationStrategy.migrate()` (where the migration lock lives) ever runs. So a second H2Local
+  process racing the same file today crashes with a raw, uncaught `BeanCreationException` at Spring
+  bean-wiring time, not a wait inside the existing migration-lock machinery.
+
+  **The fix runs even earlier, via Spring Boot's own SPI for exactly this.** `H2LocalBootLock`
+  (portable, no Spring/boundary imports) derives a sidecar lock-file path from the JDBC URL
+  (`jdbc:h2:file:` prefix stripped, everything from the first `;` onward stripped -- H2's own parameter
+  separator) and blocks on `FileChannel.tryLock()` in a poll loop, its own budget property
+  (`npdev.h2local.bootLock.waitSeconds`, default 30s -- deliberately separate from
+  `npdev.schema.lock.waitSeconds`'s 300s default: a migration "has no safe maximum duration" but a
+  rolling restart's file-handle release should be near-instant, and sharing the property would mean
+  raising one silently changes the other). `H2LocalBootLockEnvironmentPostProcessor`, registered in
+  `META-INF/spring.factories` alongside the pre-existing `BoundaryBootExceptionFailureAnalyzer` entry,
+  reads `npdev.database.engine`/`spring.datasource.url` off the environment and calls it -- an
+  `EnvironmentPostProcessor` runs once the `Environment` is prepared but before ANY bean (including
+  the DataSource bean) exists, and deliberately does NOT implement `Ordered` so it runs AFTER
+  `ConfigDataEnvironmentPostProcessor` has already resolved `application-npdev-db.properties` (at
+  `HIGHEST_PRECEDENCE + 10`) -- otherwise the two properties it reads would still be blank.
+
+  **A same-JVM contention shape a same-JVM test CAN legitimately hit, and had to be handled correctly:**
+  `FileChannel.tryLock()` returns `null` only for a genuinely different OS PROCESS; a different
+  thread/channel in the SAME JVM already holding an overlapping lock throws
+  `OverlappingFileLockException` instead (e.g. a cached `@SpringBootTest` context reusing the same
+  H2Local file against a fresh context in the same test JVM). The retry loop treats both identically as
+  contention -- getting this wrong would crash a perfectly normal test-context switch with an unhandled
+  exception instead of a clean wait/diagnostic.
+
+  **Held for the app's full lifetime, not just the migration window, on purpose.** Unlike
+  `MigrationMutex` (releases the instant migration finishes, so multiple instances can then serve
+  traffic against a shared server), H2Local already permits only one live process against a file for
+  its ENTIRE run -- this makes that pre-existing constraint visible as a graceful wait instead of a
+  crash, not a new restriction. Released on `ContextClosedEvent` (registered via
+  `application.addListeners(...)`, available from inside `postProcessEnvironment`) -- covers graceful
+  shutdown AND the case where a later bean fails in the same boot (Spring's own failure handling still
+  closes a context that was created) -- with an idempotent JVM shutdown-hook fallback for "the context
+  was never created at all." A `kill -9` releases the underlying OS lock automatically either way, the
+  direct analog of `MigrationMutex`'s own connection-scoped release.
+
+  **Wrapped into a boundary, not a bare exception**: `H2LocalBootLock` throws a plain
+  `IllegalStateException` prefixed `B31:h2local_boot_lock_held:` (mirrors `MigrationMutex.
+  waitedOutMessage()`'s `B4:migration_lock_held:` convention exactly, under a new id so the two
+  failure classes stay distinguishable); the thin post-processor wraps it into
+  `BoundaryBootException(new BoundaryViolation("B31", "boot", ...))` -- the identical shape
+  `SchemaLifecycleExecutor` already uses for `MigrationClaimStore` failures -- so it flows through
+  `FinalExecApplication.main()`'s existing `findBoundaryBootException`/exit-code-4 handling and
+  `BoundaryBootExceptionFailureAnalyzer`'s clean printout with ZERO changes to either (verified against
+  Spring Boot 3.5.16's actual pinned source: no try/catch wraps `EnvironmentPostProcessor` invocation,
+  and the analyzer has no constructor dependency on the `ApplicationContext`, which does not exist yet
+  this early).
+
+  New boundary B31, not folded into B4: B4 is specifically about migration serialization; this fires on
+  ANY overlapping H2Local boot regardless of a pending migration. Reusing B4 would force editing
+  `B4.yml`/`MigrationClaimStore.java`'s existing "not worth a new file-lock sidecar" sentences, which
+  are still accurate for what they actually describe (REG-7.2's bookkeeping-row residue) -- left
+  untouched here rather than risk implying that unrelated gap changed.
+
+  Explicitly out of scope, and why: no `NPDevGenerator` change (the two properties this reads are
+  already emitted for every H2Local app; the new wait-budget property is read via `System.getProperty`,
+  the same mechanism `npdev.schema.lock.waitSeconds` already uses, needing no generator emission
+  either); no cleanup/deletion of the sidecar lock file ever (Windows' open-file-delete semantics make
+  that unsafe -- it is a permanent zero-byte marker, the same spirit as H2's own historical `.lock.db`
+  files).
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/H2LocalBootLockCrossProcessTest.java
+  asserts: >-
+    (Guard.ref names the one genuinely cross-PROCESS proof; coverage spans four test files.)
+    H2LocalBootLockCrossProcessTest spawns two REAL `java` processes against the same H2Local file
+    (mirrors MigrationKillMidPhaseCrashResumeTest's child-process/argfile mechanics, run
+    CONCURRENTLY rather than sequentially): a contender genuinely waits (proven via the log showing
+    "another process currently holds" BEFORE it acquires, not merely serializing by luck) then
+    succeeds once the holder releases; a contender given a short budget times out and its process exit
+    carries the exact `B31:h2local_boot_lock_held:` message. H2LocalBootLockTest (same-JVM, in-process)
+    proves URL parsing (H2Local file URLs parse, every other engine/URL shape no-ops rather than
+    refuses) and that a same-JVM `OverlappingFileLockException` is retried as contention rather than
+    crashing. H2LocalBootLockEnvironmentPostProcessorTest proves the wiring layer in isolation (no real
+    `ApplicationContext` boot): a non-H2Local engine adds no listener; an H2Local engine adds exactly
+    one `ContextClosedEvent` listener that, when fired, genuinely releases the real OS-level lock; a
+    lock timeout surfaces as `BoundaryBootException` naming boundary B31. Narrow, during
+    implementation: `gradlew.bat :runtimehost-core:test --tests "*H2LocalBootLock*"` and
+    `gradlew.bat :NPDevRuntimeHost:test --tests "*H2LocalBootLockCrossProcessTest*"`. Closing
+    verification: full `run-all-gates.ps1` (all four T2 gates).
+  provenRed: true

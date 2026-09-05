@@ -2334,6 +2334,18 @@ def _classify_boot_failure(log_text: str) -> dict | None:
                            "that row, not a live connection-held lock, and does nothing to free one.",
             help_key="migration-claim-held",
         )
+    # H2LOCAL_BOOT_LOCK_HELD: H2LocalBootLock refuses a concurrent H2Local (embedded file) boot (B31).
+    if "Another process is currently using this H2 (file) database" in log_text:
+        return _diag(
+            "BOOT", "H2LOCAL_BOOT_LOCK_HELD",
+            "Another process already has this H2 (file) database open.",
+            suggested_fix="Expected during a rolling restart's brief overlap -- wait for the previous "
+                           "instance to finish exiting (a boot waits up to "
+                           "-Dnpdev.h2local.bootLock.waitSeconds, default 30s, before giving up on its "
+                           "own). If no other instance is actually running, confirm nothing is stuck "
+                           "holding the database file named in the boot log before retrying.",
+            help_key="h2local-boot-lock-held",
+        )
     if "Web server failed to start" in log_text and "port" in log_text.lower():
         return _diag(
             "BOOT", "PORT_IN_USE",
