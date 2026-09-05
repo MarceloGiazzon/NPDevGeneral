@@ -1,5 +1,6 @@
 package com.npdev.generator.emitters;
 
+import com.npdev.generator.emitters.pluginsource.policy.PluginControllerRouteVisitor;
 import com.npdev.generator.emitters.pluginsource.policy.PluginJavaSourcePolicyVisitor;
 import com.npdev.generator.emitters.trustedsource.compile.InMemoryTrustedJavaSource;
 import com.sun.source.tree.CompilationUnitTree;
@@ -72,6 +73,48 @@ public final class PluginJavaSourcePolicy {
                 .orElse("");
         if (!syntaxErrors.isBlank()) {
             throw new IllegalStateException("Plugin Java source syntax error in " + relativePath + ": " + syntaxErrors);
+        }
+    }
+
+    /**
+     * B30/SEC-9: parses a mounted {@code plugin:java-controller} class and returns its route table
+     * (httpMethod + full path + method name per route), refusing generation if any route method
+     * declares a parameter shape {@link PluginControllerRouteVisitor} cannot bind without a live
+     * Spring request context. Called from {@code GeneratedPluginMountPlan.loadJavaControllerDescriptor}
+     * -- a separate parse pass from {@link #validatePluginJavaSource}'s escape check, since the two
+     * run at different generator stages (descriptor loading vs. file emission).
+     */
+    public static List<PluginControllerRouteVisitor.Route> validateAndExtractControllerRoutes(String source, String relativePath) {
+        var compiler = ToolProvider.getSystemJavaCompiler();
+        if (compiler == null) {
+            throw new IllegalStateException("Plugin controller route extraction requires a JDK compiler: " + relativePath);
+        }
+        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+        try (StandardJavaFileManager fileManager = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8)) {
+            JavaFileObject sourceFile = new InMemoryTrustedJavaSource(relativePath, source);
+            JavacTask task = (JavacTask) compiler.getTask(
+                    null,
+                    fileManager,
+                    diagnostics,
+                    List.of("-proc:none"),
+                    null,
+                    List.of(sourceFile)
+            );
+            Iterable<? extends CompilationUnitTree> units = task.parse();
+            List<String> violations = new ArrayList<>();
+            PluginControllerRouteVisitor visitor = new PluginControllerRouteVisitor(violations);
+            for (CompilationUnitTree unit : units) {
+                visitor.scan(unit, null);
+            }
+            if (!violations.isEmpty()) {
+                throw new IllegalStateException(
+                        "Unsupported plugin controller method shape in " + relativePath + ": " + String.join("; ", violations)
+                );
+            }
+            return visitor.routes();
+        }
+        catch (IOException ex) {
+            throw new IllegalStateException("Plugin controller route extraction failed for " + relativePath + ": " + ex.getMessage(), ex);
         }
     }
 }

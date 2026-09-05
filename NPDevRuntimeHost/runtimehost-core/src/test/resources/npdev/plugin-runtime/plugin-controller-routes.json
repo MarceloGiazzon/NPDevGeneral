@@ -1,0 +1,15 @@
+{
+  "manifestVersion": "1.0.0",
+  "controllerPlugins": [
+    {
+      "capability": "sampleController",
+      "controllerClassName": "com.finalexec.npdev.service.pluginipc.fixtures.SampleControllerForHandlerTest",
+      "basePath": "/api/plugins/sample",
+      "routes": [
+        { "httpMethod": "GET", "path": "/api/plugins/sample/ping", "methodName": "ping" },
+        { "httpMethod": "GET", "path": "/api/plugins/sample/users/{id}", "methodName": "getUser" },
+        { "httpMethod": "POST", "path": "/api/plugins/sample/users", "methodName": "createUser" }
+      ]
+    }
+  ]
+}

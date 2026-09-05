@@ -381,6 +381,20 @@
       ]
     },
     {
+      "id": "npdev-plugin-controller-route-manifest",
+      "citedBy": "SEC-9 (B30 package B2, REAL_LIFT_PLAN_2026-09-03 Track B)",
+      "description": "ManifestDrivenJavaControllerPluginHandler (the in-child dispatcher a pooled worker uses for a plugin:java-controller invoke) needs a mounted controller's FQCN + route table (httpMethod/path/methodName), by capability, to resolve and reflectively invoke the right method -- the ONLY other place that route table is ever computed is GeneratedPluginMountPlan's AST pass (PluginControllerRouteVisitor), which runs at generation time and would otherwise discard it. The tracked literal `npdev/plugin-runtime/plugin-controller-routes.json` is the resource path RuntimeApiEmitter.emitPluginControllerRouteManifestIfNeeded writes this data manifest to AND the constant PluginControllerRouteManifestLoader reads at load time -- if the two ever drift, the loader silently returns an empty manifest (resource absent = 'no controller mounts' signal, the same convention npdev-java-source-runtime-refs above uses) while the generator keeps emitting entries, and PluginControllerProxyHandler's SimpleUrlHandlerMapping bean (PluginControllerSecurityConfig) never registers the route at all -- a mount that silently serves nothing rather than failing loudly.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev/plugin-runtime/plugin-controller-routes.json"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java",
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginControllerRouteManifestLoader.java"
+      ]
+    },
+    {
       "id": "capability-execution-policy-mirror",
       "citedBy": "RUN-4 (R8d, ledger/items/RUN-4.yml)",
       "description": "CapabilityExecutionPolicy (kernel) and CompiledCapabilityExecutionPolicy (DSL module) are independent classes with the same field-for-field shape (retryCount/retryDelayMs/timeoutMs/circuitOpenAfterFailures/circuitOpenMs/bulkheadMaxConcurrent/idempotencyKeyField/failureClassification) -- the kernel cannot depend on the DSL's compiled-model types, so there is no single shared type to enforce this instead. R8d (2026-08) deliberately left both untouched (adapter-level deadlines only, per the card's own sequencing: adapter deadlines first, the kernel-wide default -- CapabilityExecutionPolicy.defaults()'s zeros -- a separate, later decision). Registered here as groundwork for whoever DOES touch the kernel default or either shape next: a field added to one side without the other is exactly REG-104's 'parses/compiles clean, never reaches the runtime on the skipped side' shape. Each class carries the 'npdev-capability-execution-policy-mirror' token in its javadoc so dropping one (e.g. a rewrite that deletes the class) is a gate failure rather than a silent divergence.",

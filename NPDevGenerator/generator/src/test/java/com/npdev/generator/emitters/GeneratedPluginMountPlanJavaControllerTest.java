@@ -196,6 +196,101 @@ final class GeneratedPluginMountPlanJavaControllerTest {
         assertTrue(failure.getCause().getMessage().contains("/wide-open"), failure.getCause().getMessage());
     }
 
+    /**
+     * B30/SEC-9: the route table {@code ManifestDrivenJavaControllerPluginHandler} (NPDevRuntimeHost)
+     * needs for isolated dispatch -- extracted via a real AST pass, distinct from the regex-based
+     * basePath-containment check above. Covers all three declaratively-bindable parameter kinds.
+     */
+    @Test
+    void extractsTheRouteTableForDeclarativelyBindableParameters() throws Exception {
+        Path modelPath = writeModel("adminTools", "AdminToolsController");
+        writeDescriptor("adminTools", "AdminToolsController",
+                "com.npdev.generated.plugin.admintools.AdminToolsController",
+                "/api/plugins/admin-tools", "ADMIN");
+        writeControllerSourceWithBody("adminTools", "com.npdev.generated.plugin.admintools", "AdminToolsController", """
+                package com.npdev.generated.plugin.admintools;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.PathVariable;
+                import org.springframework.web.bind.annotation.PostMapping;
+                import org.springframework.web.bind.annotation.RequestBody;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RequestParam;
+                import org.springframework.web.bind.annotation.RestController;
+                @RestController
+                @RequestMapping("/api/plugins/admin-tools")
+                public class AdminToolsController {
+                    @GetMapping("/ping")
+                    public String ping() { return "pong"; }
+                    @GetMapping("/users/{id}")
+                    public String getUser(@PathVariable("id") String id, @RequestParam(value = "verbose", required = false) String verbose) {
+                        return id;
+                    }
+                    @PostMapping("/users")
+                    public String createUser(@RequestBody String body) { return body; }
+                }
+                """);
+
+        GeneratedPluginMountPlan plan = GeneratedPluginMountPlan.fromModelSource(modelPath);
+
+        GeneratedPluginMountPlan.Mount mount = plan.javaControllerMounts().get(0);
+        var routes = mount.controllerRoutes();
+        assertEquals(3, routes.size());
+        assertTrue(routes.stream().anyMatch(r -> r.httpMethod().equals("GET")
+                && r.path().equals("/api/plugins/admin-tools/ping") && r.methodName().equals("ping")));
+        assertTrue(routes.stream().anyMatch(r -> r.httpMethod().equals("GET")
+                && r.path().equals("/api/plugins/admin-tools/users/{id}") && r.methodName().equals("getUser")));
+        assertTrue(routes.stream().anyMatch(r -> r.httpMethod().equals("POST")
+                && r.path().equals("/api/plugins/admin-tools/users") && r.methodName().equals("createUser")));
+    }
+
+    @Test
+    void refusesGenerationWhenARouteMethodHasAnUnannotatedParameter() throws Exception {
+        Path modelPath = writeModel("adminTools", "AdminToolsController");
+        writeDescriptor("adminTools", "AdminToolsController",
+                "com.npdev.generated.plugin.admintools.AdminToolsController",
+                "/api/plugins/admin-tools", "ADMIN");
+        writeControllerSourceWithBody("adminTools", "com.npdev.generated.plugin.admintools", "AdminToolsController", """
+                package com.npdev.generated.plugin.admintools;
+                import jakarta.servlet.http.HttpServletRequest;
+                import org.springframework.web.bind.annotation.GetMapping;
+                import org.springframework.web.bind.annotation.RestController;
+                @RestController
+                public class AdminToolsController {
+                    @GetMapping("/api/plugins/admin-tools/ping")
+                    public String ping(HttpServletRequest request) { return "pong"; }
+                }
+                """);
+
+        RuntimeException failure = assertThrows(RuntimeException.class,
+                () -> GeneratedPluginMountPlan.fromModelSource(modelPath));
+        String message = failure.getCause().getMessage();
+        assertTrue(message.contains("@PathVariable"), message);
+        assertTrue(message.contains("request"), message);
+    }
+
+    @Test
+    void refusesGenerationWhenARouteMethodUsesBareRequestMappingWithNoVerb() throws Exception {
+        Path modelPath = writeModel("adminTools", "AdminToolsController");
+        writeDescriptor("adminTools", "AdminToolsController",
+                "com.npdev.generated.plugin.admintools.AdminToolsController",
+                "/api/plugins/admin-tools", "ADMIN");
+        writeControllerSourceWithBody("adminTools", "com.npdev.generated.plugin.admintools", "AdminToolsController", """
+                package com.npdev.generated.plugin.admintools;
+                import org.springframework.web.bind.annotation.RequestMapping;
+                import org.springframework.web.bind.annotation.RestController;
+                @RestController
+                public class AdminToolsController {
+                    @RequestMapping("/api/plugins/admin-tools/ping")
+                    public String ping() { return "pong"; }
+                }
+                """);
+
+        RuntimeException failure = assertThrows(RuntimeException.class,
+                () -> GeneratedPluginMountPlan.fromModelSource(modelPath));
+        String message = failure.getCause().getMessage();
+        assertTrue(message.contains("specific HTTP verb"), message);
+    }
+
     private Path writeModel(String capabilityName, String capabilityType) throws Exception {
         Path modelPath = artifactRoot.resolve("model.json");
         Files.writeString(modelPath, """

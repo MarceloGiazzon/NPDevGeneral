@@ -1251,7 +1251,49 @@ writer.writeRelative(
                 "src/main/resources/npdev/plugin-controllers/plugin-controller-security.json",
                 pluginControllerSecurityManifestSource(controllerMounts)
         );
+        emitPluginControllerRouteManifestIfNeeded(controllerMounts);
         return classResources;
+    }
+
+    /**
+     * B30/SEC-9: the data twin of {@code emitJavaSourceRuntimeRefManifestIfNeeded} for controller
+     * mounts -- {@code ManifestDrivenJavaControllerPluginHandler} (NPDevRuntimeHost) needs the route
+     * table {@code GeneratedPluginMountPlan}'s AST pass already validated, by capability, to bind an
+     * HTTP request to the right method inside the isolated child. Written into the app as
+     * {@code npdev/plugin-runtime/plugin-controller-routes.json}; a blank model (no controller
+     * mounts) writes no manifest, matching the java-source manifest's own no-op-manifest convention.
+     *
+     * <p>npdev-plugin-controller-route-manifest: twin-pair token (scripts/quality/twin-pair-registry.json)
+     * binding this emission to {@code GeneratedPluginMountPlan}'s route extraction and
+     * {@code PluginControllerRouteManifestLoader} (NPDevRuntimeHost, the reader).
+     */
+    private void emitPluginControllerRouteManifestIfNeeded(List<GeneratedPluginMountPlan.Mount> controllerMounts) {
+        if (controllerMounts.isEmpty()) {
+            return;
+        }
+        ArrayNode entries = OBJECT_MAPPER.createArrayNode();
+        for (GeneratedPluginMountPlan.Mount mount : controllerMounts) {
+            ObjectNode entry = OBJECT_MAPPER.createObjectNode();
+            entry.put("capability", mount.capability());
+            entry.put("controllerClassName", mount.controllerClassName());
+            entry.put("basePath", mount.controllerBasePath());
+            ArrayNode routes = entry.putArray("routes");
+            for (var route : mount.controllerRoutes()) {
+                ObjectNode routeNode = OBJECT_MAPPER.createObjectNode();
+                routeNode.put("httpMethod", route.httpMethod());
+                routeNode.put("path", route.path());
+                routeNode.put("methodName", route.methodName());
+                routes.add(routeNode);
+            }
+            entries.add(entry);
+        }
+        ObjectNode root = OBJECT_MAPPER.createObjectNode();
+        root.put("manifestVersion", "1.0.0");
+        root.set("controllerPlugins", entries);
+        writer.writeRelative(
+                "src/main/resources/npdev/plugin-runtime/plugin-controller-routes.json",
+                prettyJson(root)
+        );
     }
 
     private Set<String> emitJavaControllerFiles(List<GeneratedPluginMountPlan.Mount> controllerMounts) {
