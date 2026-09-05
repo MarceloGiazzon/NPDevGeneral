@@ -30,6 +30,24 @@
       "type": "integer",
       "default": 0,
       "description": "The count verifySql must return. Defaults to 0 (e.g. \"no rows left unconverted\")."
+    },
+    "javaHook": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "method"],
+      "description": "B1 (REAL_LIFT_PLAN_2026-09-03, B13): when present, ConversionHookRunner runs this hook as a Java method in the isolated plugin pool instead of a sibling convert.sql -- mutually exclusive with a convert.sql file existing alongside this hook.json. class/method are enough to invoke the already-admitted, already-compiled hook at runtime; the source root that was admitted at generation time is not recorded here (same shape the plugin:java-source runtime manifest already uses).",
+      "properties": {
+        "class": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The hook's FQCN, admitted through the same bytecode escape-detection a plugin:java-source mount goes through."
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The method ConversionHookRunner invokes, one row batch per call: List<Map<String,Object>> -> List<Map<String,Object>>."
+        }
+      }
     }
   }
 }

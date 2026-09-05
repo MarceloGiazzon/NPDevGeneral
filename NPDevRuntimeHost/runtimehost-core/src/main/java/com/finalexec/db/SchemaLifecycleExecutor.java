@@ -11,6 +11,9 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
+import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
+import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
+import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessPool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.flyway.FlywayMigrationStrategy;
@@ -247,6 +250,26 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      */
     @Autowired(required = false)
     private CompiledModel compiledModel;
+
+    /**
+     * B1 (REAL_LIFT_PLAN_2026-09-03, B13): the beans a {@code javaHook} conversion hook needs to run
+     * in the isolated plugin pool. Same optionality shape as {@link #compiledModel} above and for the
+     * same reason (dozens of {@code new SchemaLifecycleExecutor()} test call sites with no Spring
+     * context) -- {@code null} on every app with no javaHook conversion, which is also exactly when
+     * {@link PluginIpcChildProcessPool}'s own bean is null (NpdevPluginConfig's
+     * java-source-runtime-refs.json-driven condition; ConversionHookJavaHookEmitter only ever writes
+     * an entry there alongside a javaHook hook.json). Package-private, not private, so
+     * SchemaLifecycleExecutor*Test can set these directly without a Spring context, same as {@link
+     * #forcePhysicalSchema} below.
+     */
+    @Autowired(required = false)
+    PluginIpcChildProcessPool pluginIpcChildProcessPool;
+
+    @Autowired(required = false)
+    RuntimePluginAdapterRegistry runtimePluginAdapterRegistry;
+
+    @Autowired(required = false)
+    PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator;
 
     /**
      * npdev.trial.force-physical-schema (default false, preserving Row 16's InMemory no-op for every
@@ -948,7 +971,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // Idempotent no-op (and writes no history) when nothing is currently unresolved.
         conversionHooksAppliedLastDecision = ConversionHookRunner.run(dataSource, manifest,
                 (label, outcome, details) ->
-                        SchemaHistoryStore.insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(), label, details, outcome));
+                        SchemaHistoryStore.insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(), label, details, outcome),
+                new ConversionHookRunner.JavaHookRuntimeContext(
+                        pluginIpcChildProcessPool, runtimePluginAdapterRegistry, pluginExecutionPolicyEvaluator));
 
         // LNCH-1 P5 (5.3): a required bond/FK field missing from an existing, populated table is
         // intercepted HERE, before SchemaDeltaReport ever runs -- independently re-derived per

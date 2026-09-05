@@ -19,7 +19,8 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
     _has_concept_soft_delete, _has_concept_temporal, _has_field_access, _has_locale_label,
-    _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field, _has_flow_io_schema,
+    _has_conversion_java_hook, _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field,
+    _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
     _has_groupby_multi_hop_join, _has_await_timeout, _has_on_failure, _has_parallel_await_foreach,
     _has_parallel_await_multistep_foreach, _has_post_checkpoint,
@@ -316,6 +317,10 @@ FEATURE_DETECTORS = {
     # discipline as every op above.
     "conversions.op.coalesce": lambda m: _has_conversion_op(m, "coalesce"),
     "conversions.op.case": lambda m: _has_conversion_op(m, "case"),
+    # B1 (REAL_LIFT_PLAN_2026-09-03, B13): javaHook is a sibling alternative to op, not another
+    # closed-enum op value (see ConversionAst's own javadoc) -- tracked separately so a regression
+    # to only the SQL-op vocabulary still zero-coverage-fails the build.
+    "conversions.javaHook": _has_conversion_java_hook,
     # PACK-9: an app's root provides.roleBindings map -- the app-visible half of the role('logicalName')
     # compile-time binding token (PackRoleBindingRewriter, NPDevContract/dsl parser package). The
     # token itself lives inside a pack.json a composing app imports, not in model.json, so it is

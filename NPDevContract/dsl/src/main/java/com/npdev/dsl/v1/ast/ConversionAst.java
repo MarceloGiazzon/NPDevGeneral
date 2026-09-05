@@ -44,6 +44,14 @@ import java.util.List;
  *       left NULL by the generated {@code CASE WHEN ... END} -- the closing {@code SET NOT NULL}
  *       then fails the boot loudly on it, same X0 discipline as every other op here.</li>
  * </ul>
+ *
+ * <p>B1 (REAL_LIFT_PLAN_2026-09-03, B13): {@code javaHook} is a SIBLING alternative to {@code op},
+ * not an 8th enum value -- its fields ({@code source}/{@code class}/{@code method}) are disjoint
+ * from every op's own shape. Exactly one of {@code op}/{@code javaHook} is present (schema
+ * {@code oneOf}, re-checked by the compiler). {@code claims} is required alongside {@code javaHook}:
+ * every op above derives its claims automatically from {@code to}, but a Java hook is a black box to
+ * the compiler, so its author declares the field names it resolves; the compiler still checks each
+ * one against {@code concept}'s real fields, same X0 discipline {@code to} gets everywhere else.
  */
 public record ConversionAst(
         String id,
@@ -57,7 +65,9 @@ public record ConversionAst(
         List<String> mergeFrom,
         String with,
         List<ConversionCaseWhenAst> when,
-        String elseValue
+        String elseValue,
+        JavaHookAst javaHook,
+        List<String> claims
 ) {
     public ConversionAst {
         if (id == null || id.isBlank()) {
@@ -66,11 +76,32 @@ public record ConversionAst(
         if (concept == null || concept.isBlank()) {
             throw new IllegalArgumentException("conversion concept must be non-blank");
         }
-        if (op == null || op.isBlank()) {
-            throw new IllegalArgumentException("conversion op must be non-blank");
+        if ((op == null || op.isBlank()) == (javaHook == null)) {
+            throw new IllegalArgumentException(
+                    "conversion '" + id + "' must declare exactly one of op/javaHook");
         }
         into = into == null ? List.of() : List.copyOf(into);
         mergeFrom = mergeFrom == null ? List.of() : List.copyOf(mergeFrom);
         when = when == null ? List.of() : List.copyOf(when);
+        claims = claims == null ? List.of() : List.copyOf(claims);
+    }
+
+    /** B1 (B13): {@code source} is a source-root path (same shape {@code plugin:java-source}'s
+     *  {@code implementation.sourceRoot} uses), {@code className} the FQCN, {@code method} the
+     *  method name -- admitted through the same bytecode/AST escape-detection a
+     *  {@code plugin:java-source} mount goes through ({@code PluginJavaSourcePolicy},
+     *  {@code TrustedSourceBytecodeInspector}). */
+    public record JavaHookAst(String source, String className, String method) {
+        public JavaHookAst {
+            if (source == null || source.isBlank()) {
+                throw new IllegalArgumentException("javaHook source must be non-blank");
+            }
+            if (className == null || className.isBlank()) {
+                throw new IllegalArgumentException("javaHook class must be non-blank");
+            }
+            if (method == null || method.isBlank()) {
+                throw new IllegalArgumentException("javaHook method must be non-blank");
+            }
+        }
     }
 }

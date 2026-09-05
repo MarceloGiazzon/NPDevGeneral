@@ -1,21 +1,36 @@
 {
-  "closedAt": "2026-09-03T08:46:15.1534991Z",
+  "closedAt": "2026-09-05T00:18:10.2572344Z",
   "branch": "main",
-  "head": "7d7c944c",
-  "headSubject": "feat(REG-204): decide plugin:java-controller isolation -- trusted tier by design (B30-B, package 4.4)",
-  "summary": "Shipped two more BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 packages: REG-203 (B13) widened the declarative conversion vocabulary from 5 to 7 ops by adding coalesce (COALESCE(...), reuses merge's mergeFrom/to shape) and case (CASE WHEN...THEN...ELSE...END, literal value mapping) -- both plain ANSI SQL needing no dialect-specific emission, threaded through the full DSL pipeline (AST/parser/compiler/compiled-model/canonical-JSON/SQL-emitter) with new unit + real-H2 integration tests and corpus coverage; and REG-204 (B30-B) closed the plugin:java-controller isolation design question by declaring it a trusted tier by design and making RuntimeApiEmitter print a generation-time warning naming each mounted controller's capability, verified against the real p7-plugin-controller probe fixture. Both committed and pushed to main as separate commits (27774331, 7d7c944c) after a genuine correctness catch: REG-203's ledger item used an invalid type: FEATURE, caught by the full AI-knowledge gate and fixed to type: GAP.",
-  "nextStep": "Wave 4's one remaining item is 4.3 (B16 -- multi-clause picker/visibleWhen/query.where filters). User was explicitly asked whether to continue into it this session and chose to stop -- ask again at the start of the next session rather than picking it unilaterally. Step 1 (effort M): extend today's single-clause field==literal grammar (shared by field.picker filter, visibleWhen, and query.where) with AND/OR composition and parameterization by the current record's fields, in ONE grammar implementation so all three surfaces gain it together. Step 2 (effort L, only if step 1's users ask for reuse): named, reusable top-level selectors[] -- if this is built, the REG-108/REG-104 four-plus-one-seam new-top-level-array threading rule is non-negotiable (see plan section 4.3's own trap callout). Read the plan's section 4.3 entry before starting. Completing 4.3 would close BOUNDARY_LIFT_PLAN_2026-09-02.md's Wave 4 entirely (2.1-2.3/3.1-3.4/4.1 already done, 4.2/4.4 done this session).",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\BOUNDARY_LIFT_PLAN_2026-09-02.md",
+  "head": "10daaeef",
+  "headSubject": "feat(STOR-24): run compatibly instead of refusing -- A3 (REAL_LIFT_PLAN_2026-09-03, B5 -> LIFTED for the additive case)",
+  "summary": "Implemented REAL_LIFT_PLAN_2026-09-03.md Track B package B1 (STOR-25, B13) in full: conversions[].javaHook now runs a Java migration hook in the SAME OS-process-isolated plugin pool plugin:java-source mounts use -- DSL schema (javaHook as a sibling to op, not an 8th enum value) across all 4 model.schema.json copies + both conversion-hook.schema.json copies, full AST/compiler/parser/canonical-JSON threading, a real dsl-conformance-max example (OrderSummaryHook), generator-side admission and manifest registration (new ConversionHookJavaHookEmitter, reusing PluginJavaSourcePolicy and ManifestDrivenJavaSourcePluginHandler verbatim with zero new child-side code), and a new runtime batch/phase-journal loop (JavaMigrationHookRunner) wired into ConversionHookRunner/SchemaLifecycleExecutor. Wrote 3 new tests including a real killed-JVM crash/resume proof mirroring A1's own harness. Also found and fixed a real environmental bug mid-session: the shell's cwd had drifted into NPDevGenerator, and Gradle's wrapper resolves the project root from the CALLER's cwd (not the wrapper script's own location) -- this silently built/reported against the wrong project for several absolute-path gradlew invocations, producing one false-positive BUILD SUCCESSFUL (redone correctly after the fix) and the first run-generator-gate.ps1 failure (re-run correctly afterward).",
+  "nextStep": "Everything is UNCOMMITTED in the working tree (see git status) -- nothing was committed or pushed this session. 1) Check D:\\WorkSpace\\NPDev\\Build\\digest-logs\\20260905T001116Z-pwsh--NoProfile--File.log -- run-generator-gate.ps1 was still in progress (not concluded) when this session closed; if it's not still running, re-run it: 'pwsh -NoProfile -File scripts/quality/run-generator-gate.ps1' from D:\\WorkSpace\\NPDev\\NPDev_General. CRITICAL: always Set-Location to the exact project root BEFORE running any gradlew.bat command (even via absolute path) -- Gradle's wrapper resolves the project from the CALLER's cwd, not the wrapper script's location, which caused real false-positive/false-negative results this session. 2) Once run-generator-gate.ps1 is green, run 'pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1' the same way -- it assembles dsl-conformance-max for real and is the FIRST real run of the 2 new tests that need it (ConversionHookRunnerJavaHookTest, MigrationKillMidJavaHookCrashResumeTest); both are written but unverified beyond compiling. 3) Then run run-kernel-quality-gate.ps1 and run-ai-knowledge-gate.ps1 (all four T2 gates needed before closing -- this package touches DSL/generator/kernel-adjacent code). 4) On green, update ledger/items/STOR-25.yml from status:OPEN to DONE with a files: list and verification details (mirror STOR-21/23/24's format), commit, and push. Implementation plan (approved, full design rationale): C:\\Users\\Marcelo\\.claude\\plans\\idempotent-swinging-gadget.md.",
+  "plan": "C:\\Users\\Marcelo\\.claude\\plans\\idempotent-swinging-gadget.md",
   "blocked": "",
-  "verified": "REG-203: full run-generator-gate.ps1 (T2, 2066s incl. deterministic-generation double-build + dsl-reference-output-floor) green; full run-runtimehost-gate.ps1 (T2, 521s, assembled simple-contact-intake sample's own :test ran the new ConversionHookRunnerDeclaredConversionsTest cases against a real generated app + coverage ratchet) green; full run-ai-knowledge-gate.ps1 (T2, 40/40 checkers) green on the second run after fixing the type:FEATURE->GAP ledger error the first run caught; full run-kernel-quality-gate.ps1 (T2, 188s, unaffected by this diff but run for complete T2 closure) green. Narrow, during implementation: :NPDevContract:dsl:test full suite green, :generator:test --tests ConversionHookEmitter green (18/18), check-dsl-coverage.py clean, check-schema-mirror-consistency.py clean (4/4 copies), security-pattern-sweep.py's 2 new hits triaged+allowlisted (ceiling 522->524, check-allowlist-citations.py clean). REG-204: covered by the same four T2 gates above (touches only the generator, no kernel/DSL files); narrow :generator:test --tests RuntimeApiEmitterPluginControllerWarningTest green (one transient Gradle daemon classloading failure cleared on --rerun, confirmed unrelated).",
-  "dirtyCount": 2,
+  "verified": "none of the 4 T2 gates completed this session (run-generator-gate.ps1 was still in progress at close, see NextStep). Narrow verification that DID pass: :NPDevContract:dsl:test full suite green; check-dsl-coverage.py clean (new conversions.javaHook feature registered and covered); check-schema-mirror-consistency.py clean (4/4 model.schema.json copies); the two conversion-hook.schema.json copies manually diffed byte-identical; :generator:test --tests ConversionHookEmitterJavaHookTest green (3/3, including a real bytecode/AST escape-rejection test); runtimehost-core compileJava + compileTestJava green (confirmed genuine after fixing the cwd bug -- an earlier run of this same check was a false positive against the wrong project). NOT yet run: the 2 new tests requiring an assembled dsl-conformance-max (ConversionHookRunnerJavaHookTest, MigrationKillMidJavaHookCrashResumeTest) -- they compile-check only via the template's own gate, not standalone.",
+  "dirtyCount": 32,
   "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
+    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConversionAst.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConversion.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+    " M NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+    " M NPDevContract/schemas/authoring/model.schema.json",
+    " M NPDevContract/schemas/conversion-hook.schema.json",
+    " M NPDevContract/schemas/model.schema.json",
+    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java",
+    " M NPDevGenerator/generator/src/main/resources/schema/conversion-hook.schema.json",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java",
+    " M NPDevSamples/dsl-conformance-max/Input/model.json",
+    " M docs/ACCEPTED_BOUNDARIES.md",
+    " M ledger/boundaries/B13.yml",
+    " M ledger/items/QUAL-54.yml",
+    " M ledger/session-state/current.json"
   ],
   "unpushed": 0,
-  "landedCommits": [
-    "7d7c944c feat(REG-204): decide plugin:java-controller isolation -- trusted tier by design (B30-B, package 4.4)",
-    "27774331 feat(REG-203): expand B13 conversion vocabulary with coalesce/case (B13, package 4.2)"
-  ]
+  "landedCommits": []
 }

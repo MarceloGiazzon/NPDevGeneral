@@ -266,10 +266,17 @@ public final class CompiledModelCanonicalJsonReader {
         }
         JsonNode elseNode = node.get("elseValue");
         String elseValue = (elseNode != null && !elseNode.isNull()) ? elseNode.asText() : null;
+        // B1 (REAL_LIFT_PLAN_2026-09-03, B13): javaHook is a sibling alternative to op -- op is
+        // therefore optional here (omitted on write when null, see CompiledModelCanonicalJson).
+        JsonNode javaHookNode = node.get("javaHook");
+        CompiledConversion.CompiledJavaHook javaHook = javaHookNode == null || javaHookNode.isNull()
+                ? null
+                : new CompiledConversion.CompiledJavaHook(
+                        text(javaHookNode, "source"), text(javaHookNode, "class"), text(javaHookNode, "method"));
         return new CompiledConversion(
                 text(node, "id"),
                 text(node, "concept"),
-                text(node, "op"),
+                optionalText(node, "op"),
                 optionalText(node, "from"),
                 optionalText(node, "to"),
                 into,
@@ -278,7 +285,9 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("mergeFrom")),
                 with,
                 when,
-                elseValue
+                elseValue,
+                javaHook,
+                toStringList(node.get("claims"))
         );
     }
 

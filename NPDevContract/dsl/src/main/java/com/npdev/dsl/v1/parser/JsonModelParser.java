@@ -737,10 +737,32 @@ public final class JsonModelParser {
             }
             JsonNode elseNode = conversionNode.get("else");
             String elseValue = (elseNode != null && !elseNode.isNull()) ? elseNode.asText() : null;
+            // B1 (REAL_LIFT_PLAN_2026-09-03, B13): javaHook is a sibling alternative to op -- both are
+            // structurally optional here (the schema's oneOf, re-checked by ConversionAst's own
+            // compact constructor, enforces exactly one is present).
+            JsonNode javaHookNode = conversionNode.get("javaHook");
+            com.npdev.dsl.v1.ast.ConversionAst.JavaHookAst javaHook = null;
+            if (javaHookNode != null && !javaHookNode.isNull()) {
+                javaHook = new com.npdev.dsl.v1.ast.ConversionAst.JavaHookAst(
+                        requiredText(javaHookNode, "source"),
+                        requiredText(javaHookNode, "class"),
+                        requiredText(javaHookNode, "method")
+                );
+            }
+            List<String> claims = new ArrayList<>();
+            JsonNode claimsNode = conversionNode.get("claims");
+            if (claimsNode != null && !claimsNode.isNull()) {
+                if (!claimsNode.isArray()) {
+                    throw new IOException("conversions[" + id + "].claims must be an array");
+                }
+                for (JsonNode claimElement : claimsNode) {
+                    claims.add(claimElement.asText());
+                }
+            }
             out.add(new com.npdev.dsl.v1.ast.ConversionAst(
                     id,
                     requiredText(conversionNode, "concept"),
-                    requiredText(conversionNode, "op"),
+                    readText(conversionNode, "op"),
                     from,
                     readText(conversionNode, "to"),
                     into,
@@ -749,7 +771,9 @@ public final class JsonModelParser {
                     mergeFrom,
                     with,
                     when,
-                    elseValue
+                    elseValue,
+                    javaHook,
+                    claims
             ));
         }
         return out;

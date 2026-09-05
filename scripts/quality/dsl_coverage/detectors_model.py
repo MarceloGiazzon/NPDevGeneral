@@ -535,3 +535,13 @@ def _has_conversion_op(model: dict, op: str) -> bool:
         isinstance(c, dict) and c.get("op") == op
         for c in (model.get("conversions", None) or [])
     )
+
+
+def _has_conversion_java_hook(model: dict) -> bool:
+    """B1 (REAL_LIFT_PLAN_2026-09-03, B13): javaHook is a sibling alternative to op, not another
+    op value -- tracked as its own conversions.javaHook feature rather than a conversions.op.*
+    entry."""
+    return any(
+        isinstance(c, dict) and isinstance(c.get("javaHook"), dict)
+        for c in (model.get("conversions", None) or [])
+    )

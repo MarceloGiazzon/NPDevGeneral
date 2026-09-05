@@ -375,7 +375,8 @@
         { "name": "priorityText", "type": "string", "ui": { "label": "Priority (legacy text)" } },
         { "name": "priorityNumber", "type": "integer", "ui": { "label": "Priority" } },
         { "name": "regionCode", "type": "string", "ui": { "label": "Region code (legacy)" } },
-        { "name": "regionLabel", "type": "string", "ui": { "label": "Region" } }
+        { "name": "regionLabel", "type": "string", "ui": { "label": "Region" } },
+        { "name": "orderSummary", "type": "string", "ui": { "label": "Order summary (java hook)" } }
       ]
     },
     {
@@ -442,7 +443,14 @@
     { "id": "0007-case-order-region-label", "concept": "ConversionDemoOrder", "op": "case",
       "from": "regionCode", "to": "regionLabel",
       "when": [ { "equals": "N", "then": "North" }, { "equals": "S", "then": "South" } ],
-      "else": "Unknown" }
+      "else": "Unknown" },
+    { "id": "0008-java-hook-order-summary", "concept": "ConversionDemoOrder",
+      "javaHook": {
+        "source": "conversion-hooks/orderSummary/src/main/java",
+        "class": "com.npdev.samples.dslconformance.conversion.OrderSummaryHook",
+        "method": "summarize"
+      },
+      "claims": [ "orderSummary" ] }
   ],
 
   "capabilities": [
