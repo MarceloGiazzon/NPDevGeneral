@@ -72,3 +72,22 @@ detail: |
   `ImpactReportWriter`/`classify()`'s own state given a ~830-test single-JVM run. Reproduce in
   isolation (rapid repeated invocation of the ORIGINAL integration test, not just the extracted verdict
   logic) before attempting a fix, the same rigor `MigrationMutex`'s own two-thread proof used.
+
+  2026-09-05 EXPERIMENT (negative result, one more hypothesis ruled out): built a throwaway stress
+  harness (`Qual55StressReproTest`, `runtimehost-core/src/test/`, NOT committed -- run once, standalone
+  via runtimehost-core's own gradlew, then deleted; not wired into any gate) that reconstructed the
+  removed test's exact scenario (extra column NOT NULL, no default -> must refuse) and ran it 200 times
+  in one JVM while 4 background threads continuously created/altered/dropped OTHER, unrelated H2
+  in-memory databases concurrently -- a deliberate attempt at real multi-connection H2 contention
+  (9,164 noise iterations completed during the run) as a stand-in for whatever an ~830-test single-JVM
+  suite produces that an isolated 40-repeat run does not. Result: 200/200 correct refusals, zero
+  anomalies of either originally-observed shape. RULES OUT: plain concurrent-H2-connection contention
+  (lock waits, `ensureHistoryTable`'s `CREATE TABLE IF NOT EXISTS` racing another connection) as a
+  SUFFICIENT cause on its own, at this volume. Does NOT rule out the `ImpactReportWriter`/`classify()`
+  state candidate, nor anything requiring the specific classes/ordering/duration of the real ~830-test
+  suite (JIT/GC timing, a specific OTHER test's leftover static state) that a same-class synthetic loop
+  cannot approximate -- narrows the remaining search, does not close it. Methodology note for whoever
+  continues this: the harness needed `SHUTDOWN` (not `DROP ALL OBJECTS`) in its per-iteration cleanup --
+  H2's `DB_CLOSE_DELAY=-1` keeps a named in-memory database's Engine/MVStore registered for the rest of
+  the JVM's life even after every connection closes and table drops, so 400 iterations without it
+  exhausted the test JVM's heap before completing a single anomaly-relevant run.

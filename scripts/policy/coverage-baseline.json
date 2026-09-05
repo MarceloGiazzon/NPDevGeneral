@@ -63,8 +63,8 @@
       "note": "2026-08-25 (remediation plan W3.4, QUAL-32's COV-MCP finding): no longer a placeholder. NPDevMcp/tests/test_server_tools.py (new, 15 tests, stdlib unittest) covers the three AI-authoring-bridge tools the plan named -- npdev_search_examples, npdev_search_fix, npdev_check_support -- against hand-built fixture indexes (NPDEV_BUILD_ROOT pointed at a temp dir), plus one end-to-end test through handle_request's real JSON-RPC tools/call dispatch. Wired into run-ai-knowledge-gate.ps1 (step [19b/39]) beside the pre-existing NPDevCli step, same coverage.py wrapping, own --data-file so the two `coverage run` invocations don't clobber each other's default .coverage file. First real measurement: 38.4615% (155/403 statements) -- honest, not a target; the other ~15 tools (validate, inspect_app, generate, build_and_run, ...) remain untested. git ls-files under NPDevMcp now returns tests/test_server_tools.py alongside server.py + README.md."
     },
     "scripts": {
-      "coveragePercent": 66.6204,
-      "measuredOn": "2026-09-05T06:56:19Z",
+      "coveragePercent": 67.5868,
+      "measuredOn": "2026-09-05T19:08:38Z",
       "reportFormat": "coverage-py-json",
       "reportGlobs": [
         "scripts/reports/out/python-coverage/scripts-coverage.json"

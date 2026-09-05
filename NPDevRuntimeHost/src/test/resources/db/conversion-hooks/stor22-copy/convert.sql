@@ -1,0 +1,3 @@
+ALTER TABLE stor22_conv ADD COLUMN IF NOT EXISTS status VARCHAR(20);
+UPDATE stor22_conv SET status = 'unknown' WHERE status IS NULL;
+ALTER TABLE stor22_conv ALTER COLUMN status SET NOT NULL;

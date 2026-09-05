@@ -1,0 +1,7 @@
+{
+  "id": "stor22-copy",
+  "claims": ["ADD_REQUIRED_COLUMN:stor22_conv:status"],
+  "description": "STOR-22 fixture: shaped exactly like ConversionHookEmitter's generated 'copy' op output (ADD COLUMN + null-guarded UPDATE + SET NOT NULL, one verifySql) -- proves a hook killed mid-execution on the DEFAULT (un-split) executeAndVerify path is re-selected on the next boot.",
+  "verifySql": "SELECT COUNT(*) FROM stor22_conv WHERE status IS NULL",
+  "verifyExpect": 0
+}
