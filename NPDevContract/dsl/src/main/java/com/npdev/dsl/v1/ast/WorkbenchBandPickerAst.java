@@ -14,21 +14,30 @@ import java.util.Map;
  * {@code panel} is no longer required: a band picker with only {@code filter}/{@code multiSelect}
  * targets its own collection's concept directly (the same reference-lookup endpoint an FK field's
  * picker already uses), rather than a hand-authored Selection panel.
+ *
+ * <p>REAL_LIFT_PLAN_2026-09-03 package C2 (boundary B16 Step 2, EDIT-18): {@code selectorRef} is the
+ * same reference {@link FieldPickerAst} gained, on the same terms (wholesale display/search/order,
+ * local {@code filter} AND-composed on top).
  */
 public record WorkbenchBandPickerAst(
         String panel, String label, List<String> columns, String filter, boolean multiSelect,
-        Map<String, String> labelLocales
+        Map<String, String> labelLocales, String selectorRef
 ) {
     public WorkbenchBandPickerAst {
         columns = columns == null ? List.of() : List.copyOf(columns);
         labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
     }
 
+    public WorkbenchBandPickerAst(String panel, String label, List<String> columns, String filter, boolean multiSelect,
+                                   Map<String, String> labelLocales) {
+        this(panel, label, columns, filter, multiSelect, labelLocales, null);
+    }
+
     public WorkbenchBandPickerAst(String panel, String label, List<String> columns, String filter, boolean multiSelect) {
-        this(panel, label, columns, filter, multiSelect, Map.of());
+        this(panel, label, columns, filter, multiSelect, Map.of(), null);
     }
 
     public WorkbenchBandPickerAst(String panel, String label, List<String> columns) {
-        this(panel, label, columns, null, false, Map.of());
+        this(panel, label, columns, null, false, Map.of(), null);
     }
 }

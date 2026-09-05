@@ -546,6 +546,9 @@ public final class CompiledModelCanonicalJson {
             pickerNode.set("columns", toStringArray(picker.columns()));
             pickerNode.put("filter", safe(picker.filter()));
             pickerNode.put("multiSelect", picker.multiSelect());
+            if (!picker.orderBy().isEmpty()) {
+                pickerNode.set("orderBy", toStringArray(picker.orderBy()));
+            }
             node.set(safe(entry.getKey()), pickerNode);
         }
         return node;
@@ -1820,7 +1823,8 @@ public final class CompiledModelCanonicalJson {
         return node;
     }
 
-    /** B16/B19 (Move 9 A3): serializes a field's declared picker filter/multiSelect. */
+    /** B16/B19 (Move 9 A3): serializes a field's declared picker filter/multiSelect. EDIT-18 adds
+     *  the resolved-selector fields, written only when non-empty (unset unless selectorRef resolved). */
     private static JsonNode toFieldPicker(CompiledFieldPicker picker) {
         if (picker == null) {
             return JsonNodeFactory.instance.nullNode();
@@ -1828,6 +1832,15 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("filter", safe(picker.filter()));
         node.put("multiSelect", picker.multiSelect());
+        if (!picker.displayFields().isEmpty()) {
+            node.set("displayFields", toStringArray(picker.displayFields()));
+        }
+        if (!picker.searchFields().isEmpty()) {
+            node.set("searchFields", toStringArray(picker.searchFields()));
+        }
+        if (!picker.orderBy().isEmpty()) {
+            node.set("orderBy", toStringArray(picker.orderBy()));
+        }
         return node;
     }
 

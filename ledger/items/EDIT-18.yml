@@ -1,0 +1,163 @@
+id: EDIT-18
+title: >-
+  C2 (boundary B16 Step 2): field.picker.selectorRef / bandPickers.selectorRef finally wire
+  PACK-11's own "referenced by grids/fields via picker" claim for selectors[] -- true for the first
+  time, lifting B16 by construction
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md Track C package C2 (boundary B16) -- the user directed the whole plan
+  be finished; C1 (boundary B1, REG-206) closed first. The plan's own §5 C2 draft proposed building a
+  brand-new top-level selectors[] array from scratch and threading it through the REG-108 four-place
+  discipline. Re-verifying that premise against live code (three parallel Explore passes, this
+  session, before writing anything) found it stale in the same shape section 1 of the plan document
+  itself had already found nine other premises stale: selectors[] already existed (PACK-11, commit
+  1f2fbeb7, 2026-08-18) as a top-level model/pack array (SelectorAst: name/concept/multiSelect/
+  filters/columns/returnMapping/metadata), already schema-declared across all 4 model.schema.json
+  copies, already pack-composable (ModelSourceResolver.MODEL_ARRAY_KEYS), already validated
+  (PanelValidation.validateSelectors), already corpus-covered (dsl-conformance-max's
+  WidgetCatalogPicker), and already carrying its own twin-pair rule (selector-expansion-four-place)
+  naming AutoPanelExpander.expandSelector as its fourth place -- selectors don't round-trip through
+  CompiledModelCanonicalJson because ModelCompiler EXPANDS each one into a standalone routed picker
+  panel (/select/<name>) at compile time, per PACK-11's own resolution note.
+
+  What PACK-11 never built: SelectorAst's own class javadoc has claimed since day one that a selector
+  is "a named multi- or single-select picker over a concept, referenced by grids/fields via picker"
+  -- but field.picker's schema ({filter, multiSelect}, additionalProperties:false) had no way to name
+  one. That claim was aspirational, not descriptive, from the moment PACK-11 shipped. This IS
+  boundary B16's exact gap -- not a new concept to invent, but PACK-11's own stated intent, finally
+  finished. Building a second, competing selectors[]-shaped array (as the plan's draft implied) would
+  have collided with this one by name and duplicated its plumbing for zero additional lift.
+surface: dsl/ast, dsl/parser, dsl/compiler, dsl/compiled, dsl/validation, generator/emitters,
+  generated-app client JS (2 mustache templates), schema, corpus, dsl coverage, boundary register
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/SelectorAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/FieldPickerAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/WorkbenchBandPickerAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledFieldPicker.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledWorkbenchBandPicker.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/SelectorPickerResolver.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - scripts/quality/dsl_coverage/detectors_ui.py
+  - scripts/quality/dsl_coverage/features.py
+  - scripts/quality/check-dsl-coverage.py
+  - ledger/boundaries/B16.yml
+  - docs/ACCEPTED_BOUNDARIES.md
+  - NPDevContract/schemas/accepted-boundaries.json
+detail: |
+  **Where resolution happens, and why it has to.** `field.picker`'s two real consumers sit on
+  opposite sides of the compile/emit boundary: `AutoPanelExpander` (band pickers) runs DURING
+  `ModelCompiler`'s own AST-to-Compiled pass, with `ModelAst` in scope; `BusinessUiEmitter` (plain FK
+  fields) only ever sees `CompiledModel` -- by the time it runs, `ModelAst.getSelectors()` no longer
+  exists (selectors are expanded away). So resolution had to happen at COMPILE time, inside
+  `ModelCompiler.toCompiledFieldPicker` and `ModelCompiler`'s band-picker construction, the one place
+  both the picker being compiled and a `Map<String, SelectorAst>` (built once per `compileResolved`
+  call) coexist. `CompiledFieldPicker`/`CompiledWorkbenchBandPicker` now carry the FULLY RESOLVED
+  picker (`filter` already AND-composed, `displayFields`/`searchFields`/`orderBy` already adopted) --
+  `BusinessUiEmitter` never needs to know a selector was involved at all.
+
+  **New shared resolver, not a third duplicate.** `SelectorPickerResolver` (new,
+  `NPDevContract/dsl/.../compiler/`) is called from both `ModelCompiler.toCompiledFieldPicker` (plain
+  field) and `ModelCompiler`'s band-picker compilation -- matching REG-205's own "eliminate
+  hand-copied duplication" precedent rather than growing a third ad hoc merge. Display/search/order
+  are adopted WHOLESALE from the selector (field.picker has no local properties to merge them with);
+  `filter` is the one property a picker may ALSO declare locally, AND-composed with the selector's
+  own `filter` by plain string concatenation -- valid because `PickerFilterGrammar`'s grammar is
+  already flat-AND, so `"a && b"` parses identically whether an author wrote it or this concatenation
+  produced it. An unresolvable `selectorRef` resolves to "nothing from the selector" here -- this
+  class never reports the error itself; `PanelValidation` is the one place a missing selector id
+  becomes an authoring-time diagnostic.
+
+  **A real half-wired detail found while extending `SelectorAst`**: its existing `filters[]` property
+  is a list of SEARCHABLE FIELD NAMES (confirmed against the real corpus witness,
+  `WidgetCatalogPicker`'s `filters: ["sku", "displayName"]`), not a filter PREDICATE -- a naming
+  collision with `field.picker.filter`'s own meaning that this package had to keep straight rather
+  than conflate. `SelectorAst` gained two genuinely new properties: `orderBy` (display field names,
+  sort order) and `filter` (a real `PickerFilterGrammar` predicate, distinct from `filters[]`).
+
+  **Validation** (`PanelValidation.validateSelectorReferences`, new): a `selectorRef` naming an
+  undeclared selector is a named ERROR (mirrors `PropertyValidation`'s `settableAt` existence-check
+  pattern -- collect names up front, check membership at each reference site, `suggestedFix` naming
+  the real ones); a `selectors[]` entry referenced by NOTHING is a WARNING, not an error (plan's own
+  done-when #4) -- no exact precedent for "declared but unused = warning" existed in this codebase
+  before this package.
+
+  **`orderBy` is real, not decorative.** Both generated client pickers already built a `sort`/
+  `direction` query param (`business-ui-app.mustache`'s FK-field dialog: hardcoded to
+  `displayField`; `workbench-page.html.mustache`'s band-picker dialog: had none at all). Both now use
+  a resolved `orderBy`'s FIRST field when present -- the underlying list endpoint's `sort` param is
+  single-field, so multi-field `orderBy` is accepted and stored but only its first entry sorts in v1;
+  a documented, deliberate scope limit, not an oversight.
+
+  **A real, now-dead special case removed, not left behind.**
+  `ValidationDiagnosticNormalizer.DESCOPED_PROPERTY_BOUNDARY_IDS` existed specifically to tag
+  `selectorRef`'s old schema-rejection error with `boundaryId=B16` (REG-135/B16 Step 0's own
+  mechanism-proving case). Now that `selectorRef` is a real schema property, that rejection can never
+  fire again -- the map and its one call site were deleted, not left as inert scaffolding for a
+  now-impossible case. No test referenced this mechanism (confirmed by search before removing it).
+  Its twin-pair rule (`boundary-b16-registry-code-link`, `scripts/quality/twin-pair-registry.json`)
+  was removed in the same commit, not left to fail forever -- B16 has no enforcing diagnostic code
+  left to link at all now (`accepted-boundaries.json`'s `enforcingDiagnosticCodes` for B16 is `[]`).
+
+  **Corpus**: `dsl-conformance-max`'s pre-existing `WidgetCatalogPicker` selector (PACK-11's own
+  witness) gained `orderBy`/`filter` and is now referenced via `selectorRef` from TWO different
+  concepts' fields -- `WidgetOrderLine.catalogEntryId` (selectorRef alone) and
+  `WidgetPriceListEntry.catalogEntryId` (selectorRef PLUS a local filter, proving the AND-compose) --
+  satisfying the plan's own done-when #5 ("a real selector used by two pickers") while exercising the
+  `ModelCompiler`/`BusinessUiEmitter` path twice through the real generator pipeline, not a
+  hand-written fixture. **Explicitly not corpus-witnessed**: the `AutoPanelExpander` band-picker
+  consumption path -- no band collection in `dsl-conformance-max` naturally targets the same concept
+  (`WidgetCatalogEntry`) as its one selector, and forcing a concept mismatch into the corpus purely
+  for coverage would teach a wrong usage pattern to anyone reading it as a reference. Covered by unit
+  test instead (see guard below).
+
+  **Explicitly out of scope, and why**: no `BREAKING.md` entry, no `npdev migrate` codemod -- every
+  change is additive (two new optional fields on an existing optional array, one new optional field
+  property on two existing picker shapes); no existing model's behavior changes. No new
+  `check-twin-pair-consistency.py` rule -- `selector-expansion-four-place` already guards the
+  `selectors` key's presence across files; the two new fields inside `SelectorAst` are guarded by
+  the new tests below, the same way any other field addition to an already-registered array is.
+guard:
+  kind: test
+  ref: NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/compiler/SelectorPickerResolverTest.java
+  asserts: >-
+    (Guard.ref names one representative file for check-done-item-guards.py's single-path resolver;
+    coverage spans four test files across dsl/generator.) SelectorPickerResolverTest (7 cases,
+    package com.npdev.dsl.v1.compiler): a selectorRef alone resolves the selector's
+    display/search/orderBy/filter wholesale; selectorRef PLUS a local filter AND-composes both
+    (selector's filter, then " && ", then the local filter); a selector with no filter of its own
+    uses only the local one; an unresolvable selectorRef falls back to local-filter-only with empty
+    display/search/orderBy; no selectorRef leaves the local filter unchanged; a blank local filter is
+    treated as absent. AutoPanelExpanderTest's 3 new bandPickerSelectorRef* cases (real
+    model-compile-through-CompiledModel): the band-picker path adopts columns/orderBy/filter from the
+    SAME resolver, AND-composes a local filter the same way, and a band picker with no selectorRef
+    keeps its own local columns/filter unchanged. BusinessUiEmitterPickerFilterTest's 3 new
+    selectorRef* cases (real model-compile-through-generated-manifest, mirroring its own existing
+    picker.filter cases): the plain-FK-field path adopts displayFields/searchFields/orderBy/filter
+    from the selector, AND-composes a local filter, and an unresolvable selectorRef falls back to
+    normal inference rather than the selector's columns. PanelValidationSelectorReferencesTest (3
+    cases, real SemanticValidator.validateWithWarnings): a real selectorRef validates clean with no
+    warning; an undeclared selectorRef is a real error naming the bad name; a declared-but-unreferenced
+    selector is a warning, not an error, naming the unused selector. Narrow, during implementation:
+    full `:NPDevContract:dsl:test` green, full `:generator:test` green, `check-dsl-coverage.py` and
+    `check-schema-mirror-consistency.py` both clean. Closing verification: `run-fast-gate.ps1` then
+    full `run-all-gates.ps1`, both green (see ledger/session-state/history.jsonl for exact timings).
+  provenRed: true

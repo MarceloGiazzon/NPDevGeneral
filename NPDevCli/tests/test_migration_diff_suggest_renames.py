@@ -10,7 +10,10 @@ emits -- directly. Stdlib-only (unittest), matching this repo's convention. Run 
 from __future__ import annotations
 
 import io
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -73,6 +76,62 @@ class PrintRenameCandidatesTest(unittest.TestCase):
         self.assertIn("legacy_flag", text)
         self.assertIn("could not resolve this pair to a DSL field", text)
         self.assertNotIn("npdev migrate rename", text)
+
+
+def _run(cwd: Path, *cmd: str) -> None:
+    subprocess.run(list(cmd), cwd=str(cwd), check=True, capture_output=True, text=True)
+
+
+def _git_commit(repo_dir: Path, message: str) -> None:
+    _run(repo_dir, "git", "-c", "user.name=npdev-test", "-c", "user.email=npdev-test@example.com", "add", "-A")
+    _run(repo_dir, "git", "-c", "user.name=npdev-test", "-c", "user.email=npdev-test@example.com",
+         "commit", "--quiet", "-m", message)
+
+
+@unittest.skipUnless(shutil.which("git"), "git not on PATH")
+class GitCommittedSnapshotTest(unittest.TestCase):
+    """`_git_committed_snapshot` (REAL_LIFT_PLAN_2026-09-03 package C1, boundary B1, REG-206):
+    `migration diff --suggest-renames`'s fallback baseline when none is given by hand. Real git
+    repos via subprocess, matching test_pack_lock_tamper_guard.py's precedent -- this is exactly
+    the kind of thing a synthetic/mocked git would give false confidence about.
+    """
+
+    def test_resolves_the_HEAD_committed_copy_not_the_dirty_working_copy(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _run(repo, "git", "init", "--quiet", "--initial-branch=main")
+            model_path = repo / "model.json"
+            model_path.write_text('{"version": "1.0.0"}', encoding="utf-8", newline="\n")
+            _git_commit(repo, "initial model")
+
+            # Dirty the working copy after committing -- the snapshot must reflect HEAD, not this.
+            model_path.write_text('{"version": "2.0.0"}', encoding="utf-8", newline="\n")
+
+            snapshot = npdev_cli._git_committed_snapshot(model_path)
+
+            self.assertIsNotNone(snapshot)
+            self.assertTrue(snapshot.exists())
+            self.assertEqual(snapshot.read_text(encoding="utf-8"), '{"version": "1.0.0"}')
+
+    def test_returns_none_outside_a_git_repo(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            model_path = Path(tmp) / "model.json"
+            model_path.write_text('{"version": "1.0.0"}', encoding="utf-8")
+
+            self.assertIsNone(npdev_cli._git_committed_snapshot(model_path))
+
+    def test_returns_none_for_an_untracked_file_with_no_committed_history(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            _run(repo, "git", "init", "--quiet", "--initial-branch=main")
+            # Something else committed, so the repo is real, but model.json itself never was.
+            (repo / "README.md").write_text("placeholder", encoding="utf-8")
+            _git_commit(repo, "unrelated initial commit")
+
+            model_path = repo / "model.json"
+            model_path.write_text('{"version": "1.0.0"}', encoding="utf-8")
+
+            self.assertIsNone(npdev_cli._git_committed_snapshot(model_path))
 
 
 if __name__ == "__main__":

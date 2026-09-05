@@ -93,11 +93,11 @@ final class PanelValidation {
     private static final Set<String> PANEL_ACTION_BINDINGS =
             Set.of("conceptquery", "conceptmutation", "procedure", "flow");
 
-    static void validateSelectors(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
-        Set<String> selectorNames = new HashSet<>();
+    static void validateSelectors(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors, List<String> warnings) {
+        Map<String, String> selectorNamesByNormalized = new HashMap<>();
         for (SelectorAst selector : modelAst.getSelectors()) {
             String here = "Selector " + selector.name();
-            if (!selectorNames.add(normalize(selector.name()))) {
+            if (selectorNamesByNormalized.put(normalize(selector.name()), selector.name()) != null) {
                 errors.add(here + ": duplicate selector name");
             }
             if (!hasText(selector.concept())) {
@@ -106,6 +106,67 @@ final class PanelValidation {
                 errors.add(here + ": concept not found: " + selector.concept());
             }
         }
+        validateSelectorReferences(modelAst, selectorNamesByNormalized, errors, warnings);
+    }
+
+    /**
+     * REAL_LIFT_PLAN_2026-09-03 package C2 (boundary B16 Step 2, EDIT-18): {@code
+     * field.picker.selectorRef} / {@code transaction.bandPickers.<name>.selectorRef} naming a real
+     * selector id -- an error, mirroring {@code PropertyValidation}'s {@code settableAt}
+     * existence-check pattern (collect names up front, check membership at each reference site, a
+     * {@code suggestedFix} naming the real ones). A selector declared but referenced by NOTHING is a
+     * warning, not an error (plan's own done-when #4) -- an unused declaration is a smell, not a
+     * broken model.
+     */
+    private static void validateSelectorReferences(
+            ModelAst modelAst, Map<String, String> selectorNamesByNormalized, List<String> errors, List<String> warnings) {
+        // No early return on an empty selectorNamesByNormalized: a selectorRef declared anywhere
+        // while zero selectors[] exist is STILL an undeclared-selector error, not a no-op.
+        Set<String> referenced = new HashSet<>();
+        for (ConceptAst concept : modelAst.getConcepts()) {
+            for (FieldAst field : concept.getFields()) {
+                if (field.getPicker() == null) {
+                    continue;
+                }
+                checkSelectorRefExists(
+                        "Field " + concept.getName() + "." + field.getName() + ".picker.selectorRef",
+                        field.getPicker().selectorRef(), selectorNamesByNormalized, referenced, errors);
+            }
+        }
+        for (AutoPanelAst autoPanel : modelAst.getAutoPanels()) {
+            AutoPanelSurfaceAst transaction = autoPanel.transaction();
+            if (transaction == null) {
+                continue;
+            }
+            for (Map.Entry<String, WorkbenchBandPickerAst> entry : transaction.bandPickers().entrySet()) {
+                checkSelectorRefExists(
+                        "AutoPanel " + autoPanel.name() + " transaction.bandPickers." + entry.getKey() + ".selectorRef",
+                        entry.getValue().selectorRef(), selectorNamesByNormalized, referenced, errors);
+            }
+        }
+        for (Map.Entry<String, String> entry : selectorNamesByNormalized.entrySet()) {
+            if (!referenced.contains(entry.getKey())) {
+                warnings.add("Selector " + entry.getValue() + ": declared but not referenced by any "
+                        + "field.picker.selectorRef or transaction.bandPickers.*.selectorRef -- suggestedFix: "
+                        + "reference it from a picker, or remove the unused declaration");
+            }
+        }
+    }
+
+    private static void checkSelectorRefExists(
+            String label, String selectorRef, Map<String, String> selectorNamesByNormalized,
+            Set<String> referenced, List<String> errors) {
+        if (!hasText(selectorRef)) {
+            return;
+        }
+        String normalized = normalize(selectorRef);
+        if (!selectorNamesByNormalized.containsKey(normalized)) {
+            errors.add(label + " names undeclared selector '" + selectorRef
+                    + "' -- suggestedFix: declare it in selectors[], or choose one of "
+                    + (selectorNamesByNormalized.isEmpty() ? "none declared" : new TreeSet<>(selectorNamesByNormalized.values())));
+            return;
+        }
+        referenced.add(normalized);
     }
 
     static void validateAutoPanels(

@@ -189,20 +189,6 @@
       ]
     },
     {
-      "id": "boundary-b16-registry-code-link",
-      "citedBy": "REG-135",
-      "description": "ledger/boundaries/B16.yml declares codeLinked:true, naming ValidationDiagnosticNormalizer.java's DESCOPED_PROPERTY_BOUNDARY_IDS map as B16's real enforcement. If a future refactor removes the 'B16' mapping from that Java file without updating the registry entry (or vice versa -- someone adds a new boundaryId string in code without a matching ledger/boundaries/*.yml file), the registry would claim a code link that does not exist, or code would silently attach an unregistered boundaryId -- the exact 'every hittable boundary has an enforcing code, and vice versa' check REG-135 names as its own twin-pair gate.",
-      "kind": "field-in-all-files",
-      "trackedFields": [
-        "B16"
-      ],
-      "caseSensitive": true,
-      "files": [
-        "ledger/boundaries/B16.yml",
-        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ValidationDiagnosticNormalizer.java"
-      ]
-    },
-    {
       "id": "build-root-resolution-eleven-place",
       "citedBy": "REG-144",
       "description": "Eleven independent copies of NPDev's external-build-root resolution must agree on HOW they find the repo root, because Gradle writes build output to the root they compute and the PowerShell/Python tooling reads it back from the root THEY compute. They used to walk up looking for a directory literally NAMED 'NPDev_General'; a clone named anything else (GitHub checks this repo out as 'NPDevGeneral') made every copy fall through to its own fallback, and the fallbacks disagreed -- measured in a real renamed clone: NPDevKernel resolved to <clone>/Build, NPDevContract/dsl to <clone>/NPDevContract/Build, and Get-NPDevBuildRoot to <clone>/../Build. THREE roots. Gradle built 30 adapter jars into one and sync-runtimehost-libs.ps1 searched another, so three packaged-app proof tests failed on Linux CI for twelve days while passing locally, because the author's directory really is named NPDev_General and the walk succeeded there by coincidence. All eleven now identify the repo root by its CONTENTS (the NPDevContract + NPDevGenerator + NPDevKernel modules), never by its name, and each carries the 'npdev-build-root-resolution' token so dropping one is a gate failure rather than a silent return to three roots. BT-1 added a twelfth copy (NPDevRuntimeHost/runtimehost-core/build.gradle) for the same reason -- the id keeps its original 'eleven' name (an identifier, not a live count) rather than risk a rename breaking something that refers to it by string.",

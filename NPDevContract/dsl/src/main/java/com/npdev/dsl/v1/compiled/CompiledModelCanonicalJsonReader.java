@@ -488,7 +488,8 @@ public final class CompiledModelCanonicalJsonReader {
                     toStringList(pickerNode.get("columns")),
                     optionalText(pickerNode, "filter"),
                     booleanValue(pickerNode, "multiSelect"),
-                    readLabelLocales(pickerNode, "label")));
+                    readLabelLocales(pickerNode, "label"),
+                    toStringList(pickerNode.get("orderBy"))));
         });
         return out;
     }
@@ -730,12 +731,16 @@ public final class CompiledModelCanonicalJsonReader {
         );
     }
 
-    /** B16/B19 (Move 9 A3): reads a field's declared picker filter/multiSelect. */
+    /** B16/B19 (Move 9 A3): reads a field's declared picker filter/multiSelect. EDIT-18 adds the
+     *  resolved-selector fields (empty when absent -- selectorRef did not resolve, or was not set). */
     private static CompiledFieldPicker toFieldPicker(JsonNode node) {
         if (node == null || node.isNull() || node.isMissingNode()) {
             return null;
         }
-        return new CompiledFieldPicker(optionalText(node, "filter"), booleanValue(node, "multiSelect"));
+        return new CompiledFieldPicker(
+                optionalText(node, "filter"), booleanValue(node, "multiSelect"),
+                toStringList(node.get("displayFields")), toStringList(node.get("searchFields")),
+                toStringList(node.get("orderBy")));
     }
 
     /** R5.5: reads a field's declared {read, write} authorization rule -- same shape as

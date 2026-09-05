@@ -5,8 +5,8 @@
     {
       "id": "B1",
       "kind": "HITTABLE",
-      "userFacingText": "NPDev cannot tell a rename from a drop-plus-add by shape alone, so a rename still requires a declared 'renamedFrom' -- but the dead end is gone: `npdev migration diff --suggest-renames` ranks and scores every candidate with its evidence, and `npdev migrate rename --from-suggestions <file>` applies the ones you accept in one command.",
-      "workaround": "Run `npdev migration diff --suggest-renames --baseline <old model.json> --current <new model.json>` to see ranked candidates (table/column, score, every contributing signal). Accept ones you agree with by copying their {concept, droppedField, addedField} entry into a file and running `npdev migrate rename --from-suggestions <file> [--write]` -- or declare renamedFrom by hand, same as before.",
+      "userFacingText": "NPDev cannot tell a rename from a drop-plus-add by shape alone, so a rename still requires a declared 'renamedFrom' -- but every disciplined authoring surface already captures that as real intent, not a guess: the generated authoring UI stamps it automatically, `npdev migrate rename` stamps it mechanically, and an AI/human submitting through `npdev_author_submit` gets a real enforced gate (AuthoringDiffGate) that refuses an unaccounted rename/removal. Only a raw hand-edit bypassing all of these has no capture -- for that case, `npdev migration diff --suggest-renames` ranks and scores every candidate with its evidence (now resolving its baseline from git automatically when one isn't given), and `npdev migrate rename --from-suggestions <file>` applies the ones you accept in one command.",
+      "workaround": "Prefer the generated authoring UI, `npdev migrate rename`, or `npdev author submit` -- each declares the rename for you. For a raw hand-edit: run `npdev migration diff --suggest-renames --current <new model.json>` (inside a git work tree with a committed prior version, `--baseline` can be omitted) to see ranked candidates. Accept ones you agree with by copying their {concept, droppedField, addedField} entry into a file and running `npdev migrate rename --from-suggestions <file> [--write]` -- or declare renamedFrom by hand.",
       "enforcingDiagnosticCodes": ["B1:rename_self_reference", "B1:rename_source_missing", "B1:rename_ambiguous"]
     },
     {
@@ -109,10 +109,10 @@
     },
     {
       "id": "B16",
-      "kind": "HITTABLE",
-      "userFacingText": "A field's auto-picker supports a declared filter/multi-select via field.picker; declaring the separate selectorRef property is not supported.",
-      "workaround": "Use field.picker.filter / field.picker.multiSelect directly on the reference field; the older referenceSemantics.defaultFilter grammar still works unchanged.",
-      "enforcingDiagnosticCodes": ["json_schema_additionalproperties"]
+      "kind": "LIFTED",
+      "userFacingText": "A field's auto-picker supports a declared filter/multi-select via field.picker, AND now a named, reusable picker configuration: declare a selectors[] entry once ({name, concept, columns, filters, orderBy, filter}) and reference it from any number of fields or band pickers via picker.selectorRef -- its display/search/order/filter are adopted wholesale, and a local filter (if also declared) AND-composes on top.",
+      "workaround": "Use field.picker.filter / field.picker.multiSelect directly for a one-off picker; use picker.selectorRef to reuse the same configuration across multiple fields/band pickers without re-declaring it each time. The older referenceSemantics.defaultFilter grammar still works unchanged.",
+      "enforcingDiagnosticCodes": []
     },
     {
       "id": "B17",
@@ -166,8 +166,8 @@
     {
       "id": "B30",
       "kind": "HITTABLE",
-      "userFacingText": "A mounted plugin:java-source runs OS-process-isolated (a separate child JVM per worker, IPC dispatch) with an enforced OS-level ceiling (default 512MB memory / 50% CPU on Windows Job Objects or Linux cgroups) -- it is admission-checked at generation and boot against a bytecode denylist (filesystem/network IO, process/system control, reflection, dynamic loading, threads, scripting, detached async work, JVM internals) AND bounded at runtime. A mounted plugin:java-controller is a TRUSTED tier by design (package 4.4, REG-204): it still runs in-process with the application's full privileges, admission-checked but NOT sandboxed -- memory and CPU are unbounded for that mount kind, and a hostile plugin:java-controller is not contained. The generator itself now warns at generation time, once per mounted controller, naming its capability.",
-      "workaround": "For plugin:java-source, the OS-level ceiling is on by default; retune via npdev.runtime.plugin-ipc-pool.memory-limit-mb / .cpu-rate-percent if a real plugin's workload needs more headroom than the measured 512MB/50% default. Treat plugin:java-controller like your own application code: only mount plugins you trust there -- the generation-time warning is a reminder, not a gate.",
+      "userFacingText": "Both plugin:java-source and plugin:java-controller mounts run OS-process-isolated (a separate child JVM per worker, IPC dispatch) with an enforced OS-level ceiling (default 512MB memory / 50% CPU on Windows Job Objects or Linux cgroups) -- each is admission-checked at generation and boot against a bytecode denylist (filesystem/network IO, process/system control, reflection, dynamic loading, threads, scripting, detached async work, JVM internals) AND bounded at runtime (SEC-3/5/6/7 for java-source, SEC-9 for java-controller, 2026-09-05). The residue is now identical and permanent for both mount kinds: static analysis at both ends is still the only admission gate -- a proxy class elsewhere on the app classpath performing a forbidden capability on a plugin's behalf, or a plugin that busy-loops inside its own bounded process without exceeding the memory/CPU ceiling, is bounded but not stopped early.",
+      "workaround": "The OS-level ceiling is on by default for both mount kinds; retune via npdev.runtime.plugin-ipc-pool.memory-limit-mb / .cpu-rate-percent if a real plugin's workload needs more headroom than the measured 512MB/50% default. Isolation is unconditional for both -- only mount plugin code you trust the SOURCE of; admission checks escapes, it does not review business logic.",
       "enforcingDiagnosticCodes": ["B30:plugin_bytecode_violation"]
     }
   ]

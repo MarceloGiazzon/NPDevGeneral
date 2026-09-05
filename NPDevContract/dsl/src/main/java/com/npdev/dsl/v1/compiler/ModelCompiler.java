@@ -181,6 +181,15 @@ public final class ModelCompiler {
         Map<String, DomainTypeAst> domainTypesByLower = indexDomainTypes(modelAst.getDomainTypes());
         Map<String, ConceptAst> conceptsByLower = indexConcepts(modelAst.getConcepts());
         Map<String, EffectiveEntityDef> effectiveCache = new HashMap<>();
+        // REAL_LIFT_PLAN_2026-09-03 package C2 (boundary B16 Step 2, EDIT-18): resolved once here so
+        // both a plain field's picker (below) and a band picker's (compileAutoPanelSurface, threaded
+        // through) can look up a selectorRef by name -- ModelAst.getSelectors() is only in scope
+        // during compilation, never after (selectors are expanded away, they do not round-trip
+        // through CompiledModel -- see ledger/items/PACK-11.yml).
+        Map<String, SelectorAst> selectorsByName = new LinkedHashMap<>();
+        for (SelectorAst selector : modelAst.getSelectors()) {
+            selectorsByName.put(selector.name(), selector);
+        }
 
         List<DomainTypeAst> orderedDomainTypes = new ArrayList<>(modelAst.getDomainTypes());
         orderedDomainTypes.sort(Comparator.comparing(domainType -> normalize(domainType.getName())));
@@ -290,7 +299,7 @@ public final class ModelCompiler {
                         f.getRenamedFrom(),
                         toCompiledFileMetadata(f.getFile()),
                         f.isSensitive(),
-                        toCompiledFieldPicker(f.getPicker()),
+                        toCompiledFieldPicker(f.getPicker(), selectorsByName),
                         toCompiledFieldAccess(f.getAccess())
                 ));
 
@@ -537,7 +546,7 @@ public final class ModelCompiler {
         orderedAutoPanels.sort(Comparator.comparing(autoPanel -> normalize(autoPanelKey(autoPanel))));
         List<CompiledAutoPanel> autoPanels = new ArrayList<>();
         for (AutoPanelAst autoPanelAst : orderedAutoPanels) {
-            autoPanels.add(compileAutoPanel(autoPanelAst));
+            autoPanels.add(compileAutoPanel(autoPanelAst, selectorsByName));
         }
 
         // Expand concept-bound AutoPanels into ordinary panels (Selection/Detail/Transaction/Prompt),
@@ -1003,22 +1012,22 @@ public final class ModelCompiler {
         return autoPanel.aggregate() == null ? "" : autoPanel.aggregate();
     }
 
-    private static CompiledAutoPanel compileAutoPanel(AutoPanelAst autoPanelAst) {
+    private static CompiledAutoPanel compileAutoPanel(AutoPanelAst autoPanelAst, Map<String, SelectorAst> selectorsByName) {
         return new CompiledAutoPanel(
                 autoPanelAst.name(),
                 autoPanelAst.concept(),
                 autoPanelAst.aggregate(),
                 autoPanelAst.route(),
                 new ArrayList<>(autoPanelAst.surfaces()),
-                compileAutoPanelSurface(autoPanelAst.selection()),
-                compileAutoPanelSurface(autoPanelAst.detail()),
-                compileAutoPanelSurface(autoPanelAst.transaction()),
-                compileAutoPanelSurface(autoPanelAst.prompt()),
+                compileAutoPanelSurface(autoPanelAst.selection(), selectorsByName),
+                compileAutoPanelSurface(autoPanelAst.detail(), selectorsByName),
+                compileAutoPanelSurface(autoPanelAst.transaction(), selectorsByName),
+                compileAutoPanelSurface(autoPanelAst.prompt(), selectorsByName),
                 sortObjectMap(autoPanelAst.metadata())
         );
     }
 
-    private static CompiledAutoPanelSurface compileAutoPanelSurface(AutoPanelSurfaceAst surface) {
+    private static CompiledAutoPanelSurface compileAutoPanelSurface(AutoPanelSurfaceAst surface, Map<String, SelectorAst> selectorsByName) {
         if (surface == null) {
             return null;
         }
@@ -1050,10 +1059,17 @@ public final class ModelCompiler {
         Map<String, CompiledWorkbenchBandPicker> bandPickers = new LinkedHashMap<>();
         for (Map.Entry<String, WorkbenchBandPickerAst> entry : surface.bandPickers().entrySet()) {
             WorkbenchBandPickerAst picker = entry.getValue();
+            // EDIT-18: selectorRef adopts the selector's columns wholesale (falling back to the
+            // picker's own local columns when unresolved) and AND-composes filter, same as a plain
+            // field's picker -- see SelectorPickerResolver's javadoc.
+            SelectorPickerResolver.Resolved resolved =
+                    SelectorPickerResolver.resolve(picker.selectorRef(), picker.filter(), selectorsByName);
+            List<String> columns = resolved.displayFields().isEmpty()
+                    ? new ArrayList<>(picker.columns()) : new ArrayList<>(resolved.displayFields());
             bandPickers.put(entry.getKey(),
                     new CompiledWorkbenchBandPicker(
-                            picker.panel(), picker.label(), new ArrayList<>(picker.columns()),
-                            picker.filter(), picker.multiSelect(), picker.labelLocales()));
+                            picker.panel(), picker.label(), columns,
+                            resolved.filter(), picker.multiSelect(), picker.labelLocales(), resolved.orderBy()));
         }
         // Move 11 W6: declared transient UI state a `$ui.<name>` visibleWhen predicate can read.
         Map<String, CompiledUiStateControl> uiState = new LinkedHashMap<>();
@@ -2093,12 +2109,18 @@ public final class ModelCompiler {
         return new CompiledFileMetadata(file.contentTypes(), file.maxSizeBytes(), file.multiple());
     }
 
-    /** B16/B19 (Move 9 A3): compiles a field's declared picker filter/multiSelect. */
-    private static CompiledFieldPicker toCompiledFieldPicker(FieldPickerAst picker) {
+    /** B16/B19 (Move 9 A3): compiles a field's declared picker filter/multiSelect. EDIT-18: when
+     *  {@code selectorRef} is set, resolves it via {@link SelectorPickerResolver} -- see that
+     *  class's javadoc for the merge/adoption rules. */
+    private static CompiledFieldPicker toCompiledFieldPicker(FieldPickerAst picker, Map<String, SelectorAst> selectorsByName) {
         if (picker == null) {
             return null;
         }
-        return new CompiledFieldPicker(picker.filter(), picker.multiSelect());
+        SelectorPickerResolver.Resolved resolved =
+                SelectorPickerResolver.resolve(picker.selectorRef(), picker.filter(), selectorsByName);
+        return new CompiledFieldPicker(
+                resolved.filter(), picker.multiSelect(),
+                resolved.displayFields(), resolved.searchFields(), resolved.orderBy());
     }
 
     /** R5.5: compiles a field's declared {read, write} authorization rule. */
