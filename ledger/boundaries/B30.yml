@@ -66,5 +66,51 @@ codeLinkedNote: >-
   inspector or the OS ceiling catches. A hostile, determined `plugin:java-source` is now BOUNDED
   (cannot exhaust host memory/CPU, cannot survive the wall-clock timeout by ignoring interrupt) but
   still not fully contained; a hostile `plugin:java-controller` is unchanged from Model A.
+
+  2026-09-05 (SEC-9, REAL_LIFT_PLAN_2026-09-03.md package B2): the residue this row narrowed to on
+  2026-08-27 -- "unchanged, still in-process, memory/CPU unbounded" -- is GONE. `plugin:java-controller`
+  now crosses the process boundary the same way `plugin:java-source` and B13's Java migration hooks
+  already do: `FinalExecApplication`'s `@ComponentScan` excludes the reserved
+  `com.npdev.generated.plugin.*` package outright, so a mounted controller's copied source (still
+  admitted through the unchanged `PluginJavaSourcePolicy.validatePluginJavaSource` escape check) never
+  becomes a live Spring bean at all. `PluginControllerSecurityConfig` (app tree) registers a
+  `SimpleUrlHandlerMapping` at `Ordered.HIGHEST_PRECEDENCE` pointing every mount's `basePath` at
+  `PluginControllerProxyHandler` (runtimehost-core, reusable across any generated app); the proxy
+  builds a request envelope (method, matched route, path variables, query params, JSON-or-string body)
+  and dispatches it through the SAME `PluginIpcChildProcessPool` bean B1 built, using a new
+  generation-time-derived route table (`npdev/plugin-runtime/plugin-controller-routes.json`, from a
+  real AST pass -- `PluginControllerRouteVisitor` -- GeneratedPluginMountPlan runs alongside its
+  existing regex-based basePath-containment check) so `ManifestDrivenJavaControllerPluginHandler`
+  (the in-child dispatcher) can reflectively resolve and invoke the matched method. A minimal,
+  explicitly-scoped parameter binder (no-arg / `@PathVariable` / `@RequestParam` / `@RequestBody`, each
+  requiring an EXPLICIT annotation name so binding never depends on the `-parameters` compiler flag)
+  is admitted at GENERATION time, not request time -- any other parameter shape
+  (`HttpServletRequest`, `Authentication`, an injected service) is refused before the app ever exists.
+  SEC-7's memory/CPU ceilings and killed-child/interrupted-checkout failure modes apply unchanged (same
+  pool, no new isolation machinery); the proxy maps a killed/timed-out child to HTTP 504 rather than a
+  hang or a 500. Callbacks are rejected in v1 (matching every other production `PluginIpcHostSession`
+  caller today) -- a controller mount gets no DataSource, no Spring context, no host classloader, full
+  stop; a real host-callback path is a separable follow-up. Verified live via
+  `run-r10-plugin-controller-proof.py` against a real generated app
+  (`NPDevSamples/probes/p7-plugin-controller`): the ADMIN-gated mount answers with the EXACT body the
+  old in-process controller produced (indistinguishable to the caller), the SUPERUSER-gated mount still
+  returns 403 for the same caller (D9's enforcement re-verified after a real bug -- the first attempt
+  left the role interceptor wired the old `WebMvcConfigurer.addInterceptors` way, which a
+  `SimpleUrlHandlerMapping` bean never auto-detects; fixed by attaching a basePath-scoped
+  `MappedInterceptor` directly to the mapping instance), and a new `@PathVariable`/`@RequestParam`
+  route proves the binder end to end through the generator's own emitted manifest. Manually confirmed
+  via `Win32_Process` (SEC-7's own proof methodology): the booted app shows two real child `java.exe`
+  processes running `PluginIpcChildProcessMain`, not an in-process stand-in. Cold/warm overhead measured
+  (~514ms cold, ~7-13ms warm after the first couple of calls) -- comparable in shape to SEC-6's own
+  java-source measurement, isolation left unconditional (no trusted-in-process opt-out was built,
+  matching `plugin:java-source`'s own posture). **The boundary's residue is now the same statement B30's
+  `plugin:java-source` half already carries**: static analysis at both ends is still the ONLY admission
+  gate -- a proxy class elsewhere on the app classpath performing a forbidden capability on a mounted
+  controller's behalf, or a controller busy-looping inside its own bounded process without exceeding
+  the memory/CPU ceiling, is still outside what either the bytecode inspector or the OS ceiling catches.
+  A hostile `plugin:java-controller` is now BOUNDED (cannot exhaust host memory/CPU, cannot survive the
+  wall-clock timeout by ignoring interrupt) the same way `plugin:java-source` already was -- but still
+  not fully contained. See `ledger/items/SEC-9.yml` for the full done-when list and the real bug found
+  closing it.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B30"
 classification: HITTABLE

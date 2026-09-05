@@ -1,5 +1,6 @@
 package com.npdev.generator.emitters;
 
+import com.npdev.generator.emitters.pluginsource.policy.PluginControllerRouteVisitor;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledPluginRequirement;
 import com.npdev.dsl.v1.compiled.CompiledPluginRequirementGraph;
@@ -387,6 +388,18 @@ public final class GeneratedPluginMountPlan {
             // declares a route outside its own basePath -- the strictly stronger guarantee versus a
             // boot-time backstop, since a generated app can then never have the vulnerability at all.
             validateControllerRoutesWithinBasePath(controllerClassSource, basePath, descriptorPath);
+            // B30/SEC-9: the isolated in-child dispatcher needs the same route table this class just
+            // validated -- extracted via a real AST pass (not the regex scan above, which only checks
+            // basePath containment and discards the tuples) so the dispatcher can bind method
+            // parameters and reject an unsupported method shape at generation time, not request time.
+            List<PluginControllerRouteVisitor.Route> routes;
+            try {
+                String controllerSourceText = Files.readString(controllerClassSource, StandardCharsets.UTF_8);
+                routes = PluginJavaSourcePolicy.validateAndExtractControllerRoutes(controllerSourceText, controllerClassSource.toString());
+            } catch (IOException exception) {
+                throw new RuntimeException("Failed reading plugin:java-controller source for route extraction: "
+                        + controllerClassSource, exception);
+            }
             JsonNode security = mount.path("security");
             String minimumRole = requiredText(security, "minimumRole", descriptorPath);
 
@@ -414,7 +427,8 @@ public final class GeneratedPluginMountPlan {
                     resolvedSourceRoot,
                     controllerClass,
                     basePath,
-                    minimumRole.toUpperCase(Locale.ROOT)
+                    minimumRole.toUpperCase(Locale.ROOT),
+                    routes
             );
         } catch (IOException exception) {
             throw new RuntimeException("Failed reading plugin:java-controller descriptor: " + descriptorPath, exception);
@@ -729,6 +743,12 @@ public final class GeneratedPluginMountPlan {
             int lastDot = fullyQualified.lastIndexOf('.');
             return lastDot < 0 ? fullyQualified : fullyQualified.substring(lastDot + 1);
         }
+
+        /** B30/SEC-9: the route table {@code ManifestDrivenJavaControllerPluginHandler} (NPDevRuntimeHost)
+         *  needs to dispatch inside the isolated child, or an empty list for any other mount kind. */
+        public List<PluginControllerRouteVisitor.Route> controllerRoutes() {
+            return javaController == null ? List.of() : javaController.routes();
+        }
     }
 
     public record PackageGroup(
@@ -790,7 +810,8 @@ public final class GeneratedPluginMountPlan {
             Path resolvedSourceRoot,
             String controllerClass,
             String basePath,
-            String minimumRole
+            String minimumRole,
+            List<PluginControllerRouteVisitor.Route> routes
     ) {
     }
 

@@ -12,10 +12,24 @@ import org.springframework.context.annotation.FilterType;
         "com.finalexec",
         "com.npdev.generated"
 },
-        excludeFilters = @ComponentScan.Filter(
-                type = FilterType.REGEX,
-                pattern = "com\\.npdev\\.generated\\.runtime\\.NPDevRuntimeApplication"
-        )
+        excludeFilters = {
+                @ComponentScan.Filter(
+                        type = FilterType.REGEX,
+                        pattern = "com\\.npdev\\.generated\\.runtime\\.NPDevRuntimeApplication"
+                ),
+                // B30/SEC-9: a mounted plugin:java-controller class is copied verbatim into this
+                // reserved package (GeneratedPluginMountPlan.PLUGIN_CONTROLLER_PACKAGE_PREFIX) so the
+                // isolated child process can classload it, but it must NEVER become a live Spring bean
+                // here -- that was the exact in-process dispatch this package replaces with
+                // PluginControllerProxyHandler over the pooled child process. Every request still
+                // reaches the declared basePath (PluginControllerProxyConfig's SimpleUrlHandlerMapping
+                // registers it), and PluginControllerSecurityConfig's role interceptor still applies
+                // (it matches by URL pattern, not by bean) -- only direct component-scan wiring stops.
+                @ComponentScan.Filter(
+                        type = FilterType.REGEX,
+                        pattern = "com\\.npdev\\.generated\\.plugin\\..*"
+                )
+        }
 )
 public class FinalExecApplication {
 

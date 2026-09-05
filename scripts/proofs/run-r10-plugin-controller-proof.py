@@ -20,18 +20,29 @@ R10 card names explicitly: `runtime-supported-controllers.json`'s three enforcem
 that package by definition, so a FOURTH enforcement point (PluginControllerSecurityConfig) had to be
 built, one that reads a manifest GENERATED PER APP rather than a fixed platform one.
 
-THE TWO ASSERTIONS
--------------------
+THE THREE ASSERTIONS
+---------------------
 1. **The mount actually serves a request.** GET /api/plugins/admin-tools/ping with the dev API key
-   returns 200 -- the author's hand-written controller, copied from the definition directory at
-   generation time, is a live Spring bean answering real HTTP.
+   returns 200 -- the author's hand-written controller, no longer a live Spring bean at all
+   (B30/SEC-9: FinalExecApplication's @ComponentScan excludes it), is invoked reflectively inside a
+   real, separate, OS-process-isolated child (PluginIpcChildProcessPool) and its response relayed back
+   by PluginControllerProxyHandler -- indistinguishable to the caller from the old in-process dispatch.
 2. **minimumRole is ENFORCED, not merely declared -- D9.** GET /api/plugins/super-only/ping with the
    SAME dev API key returns 403. adminTools declares minimumRole=ADMIN, which the dev/auth.mode=none
    profile grants to every caller (CLAUDE.md's agent-proxy precedent: "ADMIN is no gate at all in dev
    apps"); superOnlyTools declares minimumRole=SUPERUSER, which that same fallback NEVER grants
    ("SUPERUSER is never in that fallback set"). The identical caller succeeding against one endpoint
    and being rejected by the other is what proves the wrapper checks the DECLARED role per mount, not
-   just "is this caller authenticated at all."
+   just "is this caller authenticated at all." (B30/SEC-9: the role interceptor is now attached
+   directly to PluginControllerSecurityConfig's own SimpleUrlHandlerMapping bean, not registered
+   through WebMvcConfigurer.addInterceptors -- the isolated dispatch path answers every plugin
+   controller request now, so an interceptor Spring MVC's own auto-configured HandlerMapping beans
+   would have seen is invisible to it unless attached directly.)
+3. **The isolated in-child dispatcher's reflective parameter binder, end to end (B30/SEC-9).** GET
+   /api/plugins/admin-tools/echo/hello?shout=true returns 200 with body {"value":"HELLO"} -- proves
+   the generator's AST-derived route table (plugin-controller-routes.json) and
+   ManifestDrivenJavaControllerPluginHandler's reflective @PathVariable/@RequestParam binding work
+   through the REAL generated pipeline, not just a hand-written unit-test fixture.
 
 Deliberately h2-local (this session's test-cadence policy): this proves the mount + security-wrapper
 mechanism, not a storage dialect. The GitHub Actions PR gate's Postgres/MySQL/SqlServer matrix is the
@@ -117,6 +128,23 @@ def main(argv: list[str] | None = None) -> int:
                        f"(minimumRole=SUPERUSER) -- proving PluginControllerSecurityConfig's "
                        f"interceptor checks the DECLARED role per mount, genuinely rejecting an "
                        f"under-privileged caller, not merely gating on authentication."),
+        })
+
+        # 3. B30/SEC-9: the isolated in-child dispatcher's reflective @PathVariable/@RequestParam
+        # binder, proven through the REAL generated pipeline (generator AST route extraction ->
+        # plugin-controller-routes.json -> PluginControllerProxyHandler -> the pooled child process),
+        # not just a hand-written unit-test fixture.
+        status3, body3 = _engine_proof.http("GET", f"{base}/api/plugins/admin-tools/echo/hello?shout=true")
+        ok3 = status3 == 200 and isinstance(body3, dict) and body3.get("value") == "HELLO"
+        results.append({
+            "assertion": "isolated-dispatcher-binds-path-variable-and-request-param",
+            "ok": ok3,
+            "detail": (f"status={status3}; body={body3!r}, expected 200 with value='HELLO'. Proves the "
+                       f"generator's AST-derived route table and the in-child reflective binder "
+                       f"(ManifestDrivenJavaControllerPluginHandler) correctly bind a @PathVariable "
+                       f"('hello') and an optional @RequestParam ('shout=true') for a route that only "
+                       f"exists via plugin-controller-routes.json, end to end through the isolated "
+                       f"child process."),
         })
     except SystemExit as exc:
         failure = str(exc)

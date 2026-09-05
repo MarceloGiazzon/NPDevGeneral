@@ -2,20 +2,27 @@ package com.finalexec.config;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.npdev.service.pluginipc.PluginControllerHandlerMappingSupport;
+import com.finalexec.npdev.service.pluginipc.PluginControllerProxyHandler;
+import com.finalexec.npdev.service.pluginipc.PluginControllerRouteManifest;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.HandlerInterceptor;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.handler.MappedInterceptor;
+import org.springframework.web.servlet.handler.SimpleUrlHandlerMapping;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -25,10 +32,10 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * R10 -- the FOURTH runtime-supported-controller enforcement point, distinct in kind from the other
- * three named in {@code runtime-supported-controllers.json}/{@code RuntimeControllerAllowlistConfig}/
- * {@code build.gradle.template}'s {@code unsupportedRuntimeHostControllerSources}/
- * {@code run-runtime-surface-evidence.ps1}.
+ * R10/B30/SEC-9 -- the FOURTH runtime-supported-controller enforcement point, distinct in kind from
+ * the other three named in {@code runtime-supported-controllers.json}/
+ * {@code RuntimeControllerAllowlistConfig}/{@code build.gradle.template}'s
+ * {@code unsupportedRuntimeHostControllerSources}/{@code run-runtime-surface-evidence.ps1}.
  *
  * <p><b>Why a fourth mechanism, not a fourth use of the existing three.</b> Those three all key off
  * {@code com/finalexec/api} plus ONE fixed, byte-identical-per-app manifest describing the
@@ -42,59 +49,55 @@ import java.util.Set;
  * architecturally sound (that manifest is not supposed to vary per app).
  *
  * <p><b>What this class actually enforces (D9).</b> "Does {@code plugin:java-controller} enforce
- * {@code security.minimumRole}, or merely declare it?" -- decision D9 (recorded in
- * {@code __OutsideRepo/strategy-2026-08-12/ROADMAP.md}) answers: enforce it, with an emitted wrapper,
- * because a declared-only security field is worse than none -- it reads as a guarantee nothing
- * checks. This class is that wrapper, generalized: it reads the per-app manifest the generator wrote
+ * {@code security.minimumRole}, or merely declare it?" -- decision D9 answers: enforce it, with an
+ * emitted wrapper, because a declared-only security field is worse than none. This class is that
+ * wrapper: it reads the per-app manifest the generator wrote
  * ({@code npdev/plugin-controllers/plugin-controller-security.json}) and, for every mounted
  * controller, registers a {@link HandlerInterceptor} that checks
  * {@link RuntimeContextService#currentContext(HttpServletRequest)}{@code .hasRole(minimumRole)} BEFORE
- * the author's controller method ever runs -- the same {@code requireSuperUser} idiom
- * {@code AgentProxyController} already uses, generalized from one hardcoded role to a per-mount
- * declared one. An interceptor, not a rewritten/wrapped controller class, because it needs no
- * knowledge of the author's endpoint methods -- it guards the URL prefix, which every framework-routed
- * request to that controller must cross.
+ * the request ever reaches {@link PluginControllerProxyHandler} -- the same {@code requireSuperUser}
+ * idiom {@code AgentProxyController} already uses, generalized to a per-mount declared role.
+ *
+ * <p><b>B30/SEC-9 correction (found by the live proof, not assumed):</b> a {@code WebMvcConfigurer
+ * .addInterceptors}-registered {@link org.springframework.web.servlet.config.annotation.InterceptorRegistry}
+ * entry is only ever wired into the {@code HandlerMapping} beans Spring MVC's OWN auto-configuration
+ * builds ({@code RequestMappingHandlerMapping} and friends) -- it is never re-detected by an
+ * independently-declared {@link SimpleUrlHandlerMapping} bean the way a global
+ * {@link MappedInterceptor} bean would be. Since the isolated dispatch path
+ * ({@code PluginControllerProxyHandler}, registered via a {@code SimpleUrlHandlerMapping} at
+ * {@link Ordered#HIGHEST_PRECEDENCE} so it wins the reserved {@code /api/plugins/*} prefix before
+ * {@code RequestMappingHandlerMapping} is even consulted) now answers every plugin-controller
+ * request, the interceptor MUST be attached directly to that same mapping -- see
+ * {@link #pluginControllerHandlerMapping}, which wraps one {@link MinimumRoleInterceptor} per mount in
+ * a {@link MappedInterceptor} scoped to that mount's own {@code basePath + "/**"} (so two mounts with
+ * different roles never bleed into each other on a single shared interceptor list) and sets them
+ * directly on the mapping instance, rather than relying on Spring to auto-detect them.
  *
  * <p><b>Fail closed, not fail silent.</b> Every controller class under
- * {@code com.npdev.generated.plugin.} MUST have a matching manifest entry, checked here at boot
- * ({@link #addInterceptors}, which runs during the same context refresh every other bean is created
- * in). If the generator's copy step and its manifest-writing step ever drift apart -- a future bug, a
- * hand-edited source tree, anything that puts a controller under the reserved package without a
- * security declaration to match -- the app REFUSES TO START rather than silently serving an unguarded
- * route. This mirrors {@code RuntimeControllerAllowlistConfig}'s enumerate-beans-by-naming-convention
- * shape, but inverted: that class silently REMOVES an unlisted bean (a platform controller merely not
- * being in this app's release channel is not exceptional); this one THROWS (a plugin controller
- * existing at all was the author's explicit intent, so one missing its security declaration is a real
- * defect, not a channel decision).
+ * {@code com.npdev.generated.plugin.} MUST have a matching manifest entry -- more precisely,
+ * post-B30/SEC-9, NONE should exist as a live Spring bean at all ({@link #onContextRefreshed}, which
+ * fires once every singleton bean in the context exists). If the generator's copy step and its
+ * manifest-writing step ever drift apart -- a future bug, a hand-edited source tree, a broken
+ * {@code @ComponentScan} exclude filter -- the app REFUSES TO START rather than silently serving an
+ * unguarded, in-process route.
  *
  * <p><b>What this class does NOT independently verify.</b> The interceptor registered here trusts
  * that the manifest's {@code basePath} actually covers every route the named controller class
- * registers with Spring -- it never inspects {@code RequestMappingHandlerMapping} itself. That
- * invariant is established at GENERATION time instead, by
- * {@code GeneratedPluginMountPlan.validateControllerRoutesWithinBasePath} (a regex scan of the
- * controller's {@code @RequestMapping}/{@code @GetMapping}/etc. annotations against the declared
- * basePath, refusing to generate an app whose controller declares a route outside it) -- an
- * adversarial-review finding on the original R10 PR that a declared basePath meant nothing on its
- * own: a second, undeclared route in the same class compiled, mounted and served completely
- * unguarded, because neither generation nor this class's orphan check ever looked past the class
- * name. Generation-time was chosen over a boot-time route walk here because it is the strictly
- * stronger guarantee -- a generated app can then never have the vulnerability at all, rather than
- * merely being stopped from booting with it.
+ * declares -- it never inspects the route table itself. That invariant is established at GENERATION
+ * time instead, by {@code GeneratedPluginMountPlan.validateControllerRoutesWithinBasePath} (refusing
+ * to generate an app whose controller declares a route outside its basePath) and
+ * {@code PluginControllerRouteVisitor} (refusing an unsupported route-method parameter shape).
  *
  * <p><b>npdev-plugin-controller-security-enforcement</b>: the twin-pair token
- * (scripts/quality/twin-pair-registry.json) binding this class to {@code GeneratedPluginMountPlan}
- * (which validates the descriptor and the reserved package prefix at generation time),
- * {@code RuntimeApiEmitter} (which writes the manifest this class reads), and
- * {@code run-r10-plugin-controller-proof.py} (the live generate+build+boot+HTTP proof this whole
- * mechanism is verified by -- this class imports {@code com.npdev.generated.*}, so per
- * {@code build.gradle.template}'s {@code generatedRuntimeDependentMainSources} exclusion it is
- * compiled ONLY inside an assembled app, never in a bare-template unit test; CLAUDE.md's own
- * "RuntimeHost tests that name com.npdev.generated. never run in any gate" note is why this class
- * has no JUnit test of its own -- one would be dead weight in run-runtimehost-gate.ps1, exactly the
- * trap that note warns about).
+ * (scripts/quality/twin-pair-registry.json) binding this class to {@code GeneratedPluginMountPlan},
+ * {@code RuntimeApiEmitter}, and {@code run-r10-plugin-controller-proof.py} (the live
+ * generate+build+boot+HTTP proof this whole mechanism is verified by -- this class imports
+ * {@code com.npdev.generated.*}, so per {@code build.gradle.template}'s
+ * {@code generatedRuntimeDependentMainSources} exclusion it is compiled ONLY inside an assembled app,
+ * never in a bare-template unit test).
  */
 @Configuration
-public class PluginControllerSecurityConfig implements WebMvcConfigurer {
+public class PluginControllerSecurityConfig {
 
     static final String MANIFEST_RESOURCE = "npdev/plugin-controllers/plugin-controller-security.json";
 
@@ -113,34 +116,53 @@ public class PluginControllerSecurityConfig implements WebMvcConfigurer {
         this.applicationContext = applicationContext;
     }
 
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        List<MountedControllerEntry> entries = loadManifest();
-        failClosedIfAnyPluginControllerBeanIsUndeclared(entries);
-        for (MountedControllerEntry entry : entries) {
-            registry.addInterceptor(new MinimumRoleInterceptor(entry.minimumRole(), entry.controllerClass()))
-                    .addPathPatterns(entry.basePath() + "/**");
-        }
+    /**
+     * B30/SEC-9: the isolated dispatch path's {@code HandlerMapping} -- see the class javadoc for why
+     * the role interceptor must be attached here directly rather than through
+     * {@code WebMvcConfigurer.addInterceptors}. The urlMap/mapping construction itself is delegated to
+     * {@link PluginControllerHandlerMappingSupport} (runtimehost-core, unit-tested there) -- this
+     * method's own surface is kept to just the one thing that genuinely needs
+     * {@link RuntimeContextService}: building each mount's {@link MinimumRoleInterceptor}.
+     * {@code NPDevRuntimeHost/src/main}'s own coverage ratchet only ever measures THIS class, never
+     * runtimehost-core (feedback_runtimehost_coverage_ratchet_scope) -- for a sample with no mounted
+     * controller this method's loop runs zero iterations regardless, so minimizing what lives here
+     * (rather than what lives in the tested-elsewhere support class) is a real, not cosmetic, fix.
+     */
+    @Bean
+    public SimpleUrlHandlerMapping pluginControllerHandlerMapping(
+            PluginControllerRouteManifest pluginControllerRouteManifest,
+            PluginControllerProxyHandler pluginControllerProxyHandler
+    ) {
+        MappedInterceptor[] interceptors = loadManifest().stream()
+                .map(entry -> new MappedInterceptor(
+                        new String[]{entry.basePath() + "/**"},
+                        new MinimumRoleInterceptor(entry.minimumRole(), entry.controllerClass())))
+                .toArray(MappedInterceptor[]::new);
+        return PluginControllerHandlerMappingSupport.buildHandlerMapping(
+                pluginControllerRouteManifest, pluginControllerProxyHandler, interceptors);
+    }
+
+    @EventListener(ContextRefreshedEvent.class)
+    public void onContextRefreshed() {
+        failClosedIfAnyPluginControllerBeanIsUndeclared();
     }
 
     /**
-     * Runs even when {@code entries} is empty: an app with NO declared plugin controllers must still
-     * refuse to start if a {@code com.npdev.generated.plugin.*} controller bean somehow exists anyway
-     * -- an empty manifest is not evidence of an empty package, only of nothing DECLARED.
+     * B30/SEC-9 tightening: since {@code FinalExecApplication}'s {@code @ComponentScan} now excludes
+     * {@code com.npdev.generated.plugin.*} entirely (the package a mounted controller's source is
+     * copied into, so the isolated child can classload it -- see {@code PluginControllerProxyHandler}),
+     * NO bean should EVER exist under that prefix, declared or not: the guard that used to be
+     * "undeclared plugin controller bean" is now simply "any plugin controller bean at all," a
+     * stronger and simpler invariant. Its previous form (accepting a bean whose class name matched a
+     * manifest entry) would now be vacuously permissive -- a future change that broke the exclude
+     * filter would silently restore in-process dispatch for exactly the classes this guard is meant to
+     * catch.
      *
-     * <p>Adversarial-review finding: an earlier version of this method enumerated only
-     * {@code @RestController} beans, so a controller written as plain {@code @Controller} +
-     * {@code @ResponseBody} on its methods (same HTTP-serving behaviour, different annotation) would
-     * be invisible to this guard -- present, routable, and never checked. Enumerates
-     * {@code @Controller} beans too (this also covers {@code @RestController}, since it is itself
-     * meta-annotated {@code @Controller}; both are queried explicitly rather than relying on that
-     * meta-annotation resolution, so this stays correct even if that Spring behaviour ever changes).
+     * <p>Adversarial-review finding (unchanged from the original R10 review, still applies): enumerates
+     * both {@code @RestController} and {@code @Controller} beans, since a controller written as plain
+     * {@code @Controller} + {@code @ResponseBody} would otherwise be invisible to this guard.
      */
-    private void failClosedIfAnyPluginControllerBeanIsUndeclared(List<MountedControllerEntry> entries) {
-        Set<String> declaredSimpleNames = new LinkedHashSet<>();
-        for (MountedControllerEntry entry : entries) {
-            declaredSimpleNames.add(simpleName(entry.controllerClass()));
-        }
+    private void failClosedIfAnyPluginControllerBeanIsUndeclared() {
         Set<String> candidateBeanNames = new LinkedHashSet<>();
         candidateBeanNames.addAll(List.of(applicationContext.getBeanNamesForAnnotation(RestController.class)));
         candidateBeanNames.addAll(List.of(applicationContext.getBeanNamesForAnnotation(Controller.class)));
@@ -149,20 +171,13 @@ public class PluginControllerSecurityConfig implements WebMvcConfigurer {
             if (beanType == null || !beanType.getName().startsWith(RESERVED_PLUGIN_CONTROLLER_PACKAGE_PREFIX)) {
                 continue;
             }
-            if (!declaredSimpleNames.contains(beanType.getSimpleName())) {
-                throw new IllegalStateException(
-                        "Plugin controller " + beanType.getName() + " (bean '" + beanName + "') is not declared "
-                                + "in " + MANIFEST_RESOURCE + " -- every controller under "
-                                + RESERVED_PLUGIN_CONTROLLER_PACKAGE_PREFIX + " must have a matching "
-                                + "security.minimumRole entry, or it would serve requests with no role check at "
-                                + "all. Refusing to start.");
-            }
+            throw new IllegalStateException(
+                    "Plugin controller " + beanType.getName() + " (bean '" + beanName + "') is a live Spring bean "
+                            + "under " + RESERVED_PLUGIN_CONTROLLER_PACKAGE_PREFIX + " -- this package is excluded "
+                            + "from component scanning (FinalExecApplication) and must be dispatched only through "
+                            + "the isolated child process (PluginControllerProxyHandler), never in-process. Refusing "
+                            + "to start.");
         }
-    }
-
-    private static String simpleName(String fullyQualifiedClassName) {
-        int lastDot = fullyQualifiedClassName.lastIndexOf('.');
-        return lastDot < 0 ? fullyQualifiedClassName : fullyQualifiedClassName.substring(lastDot + 1);
     }
 
     private List<MountedControllerEntry> loadManifest() {
@@ -200,7 +215,9 @@ public class PluginControllerSecurityConfig implements WebMvcConfigurer {
     /**
      * D9's enforcement. One instance per mounted controller, each closing over its OWN declared role
      * -- never a shared/global role -- so two plugin controllers with different security postures in
-     * the same app cannot bleed into each other.
+     * the same app cannot bleed into each other. Wrapped in a basePath-scoped {@link MappedInterceptor}
+     * by {@link #pluginControllerHandlerMapping} rather than relying on annotation-driven path
+     * matching, since this class is no longer a {@code WebMvcConfigurer}.
      */
     private final class MinimumRoleInterceptor implements HandlerInterceptor {
         private final String minimumRole;

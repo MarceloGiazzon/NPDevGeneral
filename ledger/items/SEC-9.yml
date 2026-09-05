@@ -1,0 +1,152 @@
+id: SEC-9
+title: >-
+  B2: plugin:java-controller crosses the process boundary -- every mounted controller's HTTP request
+  is now dispatched through the same OS-process-isolated pool B1 built for Java migration hooks,
+  reflectively invoked inside a real separate child process instead of running in-process with the
+  app's full privileges (B30)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md, Track B package B2 (B30) -- the user's chosen next package after B1
+  (STOR-25) closed. REG-204 had declared plugin:java-controller a trusted tier "by design" because a
+  controller mount had no CapabilityCall interception point a process boundary could sit behind; this
+  package builds that interception point (a host-side proxy + in-child dispatcher) rather than leaving
+  the declaration as the final answer.
+surface: NPDevGenerator (GeneratedPluginMountPlan route extraction + parameter-shape admission,
+  RuntimeApiEmitter manifest emission), runtimehost-core (npdev/service/pluginipc,
+  config/PluginControllerProxyConfig, config/NpdevPluginConfig), NPDevRuntimeHost app tree
+  (FinalExecApplication component-scan exclusion, config/PluginControllerSecurityConfig),
+  NPDevSamples/probes/p7-plugin-controller, scripts/proofs/run-r10-plugin-controller-proof.py,
+  B30 registry (ledger/boundaries, docs/ACCEPTED_BOUNDARIES.md)
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/GeneratedPluginMountPlan.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/PluginJavaSourcePolicy.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/pluginsource/policy/PluginControllerRouteVisitor.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/GeneratedPluginMountPlanJavaControllerTest.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/FinalExecApplication.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginControllerSecurityConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/PluginControllerProxyConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevPluginConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginControllerProxyHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/ManifestDrivenJavaControllerPluginHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginControllerRouteManifest.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginControllerRouteManifestLoader.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/ManifestDrivenJavaControllerPluginHandlerTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginControllerRouteManifestTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/fixtures/SampleControllerForHandlerTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/resources/npdev/plugin-runtime/plugin-controller-routes.json
+  - NPDevSamples/probes/p7-plugin-controller/Input/capabilities/adminTools/src/main/java/com/npdev/generated/plugin/admintools/AdminToolsController.java
+  - scripts/proofs/run-r10-plugin-controller-proof.py
+  - scripts/quality/twin-pair-registry.json
+  - ledger/boundaries/B30.yml
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  Plan: C:\Users\Marcelo\.claude\plans\humming-percolating-lampson.md (approved 2026-09-05).
+
+  DONE-WHEN (from REAL_LIFT_PLAN_2026-09-03.md section 4, B2), verified in order:
+
+  1. The generator emits a host-side proxy, not a per-mount generated Java class: FinalExecApplication's
+     @ComponentScan now excludes com.npdev.generated.plugin.* entirely, so a mounted controller's copied
+     source (unchanged, still admitted through PluginJavaSourcePolicy.validatePluginJavaSource) never
+     becomes a live Spring bean. PluginControllerSecurityConfig (app-only tree, needs
+     RuntimeContextService) owns a SimpleUrlHandlerMapping at Ordered.HIGHEST_PRECEDENCE registering
+     PluginControllerProxyHandler (runtimehost-core, reusable/testable without a generated app) against
+     every mount's basePath -- read from the manifest already emitted for D9's security wrapper, no
+     per-app generated proxy class.
+  2. The proxy serializes a request envelope (httpMethod, matched route path, path variables, query
+     params, JSON-or-string body) into a CapabilityCall and dispatches through the SAME
+     PluginIpcChildProcessPool bean B1 (STOR-25) built -- NpdevPluginConfig's pool-creation condition
+     widened to fire when EITHER java-source-runtime-refs.json OR the new plugin-controller-routes.json
+     is non-empty, so an app with only controller mounts still gets the pool.
+  3. A minimal in-child dispatcher (ManifestDrivenJavaControllerPluginHandler) maps the envelope to the
+     plugin controller's method via a NEW generation-time-derived route table
+     (npdev/plugin-runtime/plugin-controller-routes.json, written by
+     RuntimeApiEmitter.emitPluginControllerRouteManifestIfNeeded from a real AST pass --
+     PluginControllerRouteVisitor -- that GeneratedPluginMountPlan runs alongside the existing
+     regex-based basePath-containment check), reflectively invokes it, and returns a response envelope
+     (status/headers/body) in a CapabilityResult/ResponseFrame.
+  4. The child reaches host services ONLY through CallbackFrames -- and gets none in v1: every
+     production PluginIpcHostSession caller today (plugin:java-source, B1's migration hooks) already
+     rejects every callback, so PluginControllerProxyHandler does the same (rejectCallback), which is a
+     strict superset of "no DataSource, no Spring context, no host classloader," not a shortfall against
+     it. Granting a real callback path is a separable follow-up, not part of narrowing B30's residue.
+  5. SEC-7's ceilings apply unchanged (same pool, same admission) -- no new isolation machinery.
+  6. Streaming/large bodies: NOT built in v1 (declared limitation, see below) -- the envelope reads the
+     full request body into memory via requireJsonSafeArgs's own JSON-safety check, same as every other
+     CapabilityCall today.
+  7. A real generated app (NPDevSamples/probes/p7-plugin-controller) serves a plugin:java-controller
+     route end-to-end through the proxy, verified via run-r10-plugin-controller-proof.py (three
+     assertions, all passing): (a) GET /api/plugins/admin-tools/ping returns the exact
+     {"ok":true,"controller":"AdminToolsController"} body the ORIGINAL in-process controller produced,
+     now via the isolated child -- observably identical to the caller; (b) GET
+     /api/plugins/super-only/ping still returns 403 for the same dev-key caller (D9's minimumRole
+     enforcement, now re-wired directly onto the isolated dispatch path's own HandlerMapping -- see the
+     real bug found below); (c) GET /api/plugins/admin-tools/echo/hello?shout=true returns
+     {"value":"HELLO"}, proving the generator's AST-derived route table and the in-child reflective
+     @PathVariable/@RequestParam binder work end to end through the REAL generated pipeline, not just a
+     hand-written unit-test fixture. Manually confirmed via Win32_Process (SEC-7's own proof
+     methodology): booting the assembled app shows TWO real child java.exe processes running
+     `-Dloader.main=com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessMain` as children of the
+     app's own JVM (poolSize=2, pre-spawned synchronously at boot) -- not a simulated or in-process
+     stand-in.
+
+  A REAL BUG FOUND AND FIXED DURING VERIFICATION (not assumed away): the first implementation attempt
+  registered PluginControllerProxyHandler via a plain SimpleUrlHandlerMapping bean and left D9's
+  minimumRole interceptor wired the OLD way (WebMvcConfigurer.addInterceptors). The live proof caught
+  it immediately -- the SUPERUSER-gated mount returned 200, not 403. Root cause: a
+  WebMvcConfigurer.addInterceptors-registered interceptor is only ever wired into the HandlerMapping
+  beans Spring MVC's OWN auto-configuration builds (RequestMappingHandlerMapping and its siblings); it
+  is never auto-detected by an independently-declared SimpleUrlHandlerMapping bean the way a global
+  MappedInterceptor bean would be. Since the isolated proxy's mapping is registered at
+  Ordered.HIGHEST_PRECEDENCE (it must win the reserved /api/plugins/* prefix before
+  RequestMappingHandlerMapping is even consulted), the old interceptor registration became silently
+  dead for every plugin-controller request. Fixed by moving the SimpleUrlHandlerMapping bean itself into
+  PluginControllerSecurityConfig (the only place with access to both RuntimeContextService and the
+  security manifest) and attaching one basePath-scoped MappedInterceptor-wrapped MinimumRoleInterceptor
+  per mount DIRECTLY to that mapping instance -- re-verified green immediately after.
+
+  Design choices recorded (see plan for full reasoning, not repeated in gate output):
+  - Stopping in-process dispatch is a @ComponentScan exclude filter, not a new source set/classpath
+    split -- the pooled child already runs on the host app's own full classpath (proven by B1), so the
+    controller's compiled class needs no relocation, only removal from Spring's bean-creation view.
+  - Controller method shape stays real Spring MVC (not java-source's Map->Object convention) -- a
+    minimal, explicitly-scoped reflective binder (no-arg / @PathVariable / @RequestParam / @RequestBody,
+    each requiring an EXPLICIT annotation name so binding never depends on the -parameters compiler
+    flag) is admitted via a new AST visitor (PluginControllerRouteVisitor, reusing
+    PluginJavaSourcePolicy's existing JavacTask.parse() pass) that refuses any other parameter shape
+    (HttpServletRequest, Authentication, an injected service) at GENERATION time, not request time.
+  - Measured (manual Win32_Process/HTTP timing check, single app instance, 8 sequential warm calls after
+    one cold call, admin-tools/ping route): cold ~514ms, warm settling to roughly 7-13ms per call after
+    the first couple of requests -- comparable in shape to SEC-6's own java-source measurement
+    (223-393ms cold, 1-2ms warm), a bit higher warm-state overhead here (HTTP envelope
+    marshaling/AntPathMatcher vs. a raw batch invoke) but far below any reasonable request timeout.
+    Isolation is unconditional (no opt-in/trusted-in-process escape hatch was built) -- matching
+    plugin:java-source's own unconditional posture, not a per-deployment choice.
+
+  All four T2 gates run green in this session (see guard below for the exact invocation).
+guard:
+  kind: test
+  ref: scripts/proofs/run-r10-plugin-controller-proof.py
+  asserts: >-
+    Three real generate+build+boot+HTTP assertions against NPDevSamples/probes/p7-plugin-controller:
+    admin-gated-mount-serves-a-real-request (200, exact response body match through the isolated
+    child), superuser-gated-mount-rejects-the-same-caller-d9 (403, D9's minimumRole enforcement
+    survives the re-wiring onto the isolated dispatch path), isolated-dispatcher-binds-path-variable-and-request-param
+    (200, {"value":"HELLO"} -- the generator's AST-derived route table and in-child reflective binder
+    proven end to end, not just against a hand-written unit-test fixture). Unit-level coverage:
+    GeneratedPluginMountPlanJavaControllerTest (route extraction + parameter-shape admission, 3 new
+    tests), ManifestDrivenJavaControllerPluginHandlerTest (5 tests, reflective dispatch/binding),
+    PluginControllerRouteManifestTest (4 tests, longest-basePath-prefix matching). Closing
+    verification: all four T2 gates (run-generator-gate.ps1, run-runtimehost-gate.ps1,
+    run-kernel-quality-gate.ps1, run-ai-knowledge-gate.ps1) run green in this session, confirmed via a
+    single clean run-all-gates.ps1 invocation (log:
+    D:\WorkSpace\NPDev\Build\digest-logs\20260905T050915Z-pwsh--NoProfile--File.log, exit=0, ALL 4 GATES
+    GREEN): generator PASSED in 91.5s, runtimeHost PASSED in 480.8s, kernel PASSED in 18.1s, aiKnowledge
+    PASSED in 370.1s (962s total). A prior same-session invocation
+    (20260905T043507Z-pwsh--NoProfile--File.log) stalled mid-step-38/39 with no process left computing
+    it and no final verdict line ever written; this rerun is the one actually verified end to end.
+  provenRed: true

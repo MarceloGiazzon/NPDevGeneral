@@ -12,6 +12,8 @@ import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.PluginManifestSchemaValidator;
 import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifest;
 import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifestLoader;
+import com.finalexec.npdev.service.pluginipc.PluginControllerRouteManifest;
+import com.finalexec.npdev.service.pluginipc.PluginControllerRouteManifestLoader;
 import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessPool;
 import com.finalexec.npdev.service.pluginipc.PluginProcessResourceLimits;
 import com.finalexec.npdev.service.PluginPackageSchemaValidator;
@@ -239,13 +241,13 @@ public class NpdevPluginConfig {
 
     /**
      * SEC-5: the app-wide pool of OS-process-isolated workers {@code PluginIpcCapabilityHandler} routes
-     * every {@code plugin:java-source} invoke through. Returns {@code null} (no bean instance, per
-     * Spring's own {@code @Bean}-returning-null contract) when {@code java-source-runtime-refs.json} is
-     * absent/empty -- the SAME graceful-absence signal {@link JavaSourceRuntimeRefManifestLoader}
-     * already uses -- so an app with no {@code plugin:java-source} mount at all never spawns a single
-     * idle child JVM. Nothing autowires this bean unless a generated {@code
-     * GeneratedJavaSourceCapabilityProviders} bean exists to ask for it, which only happens under the
-     * same condition.
+     * every {@code plugin:java-source} invoke through, and (B30/SEC-9) {@code PluginControllerProxyHandler}
+     * routes every {@code plugin:java-controller} HTTP request through. Returns {@code null} (no bean
+     * instance, per Spring's own {@code @Bean}-returning-null contract) when BOTH
+     * {@code java-source-runtime-refs.json} and {@code plugin-controller-routes.json} are absent/empty
+     * -- the SAME graceful-absence signal {@link JavaSourceRuntimeRefManifestLoader} and
+     * {@link PluginControllerRouteManifestLoader} already use -- so an app with no isolated mount of
+     * either kind never spawns a single idle child JVM.
      */
     @Bean(destroyMethod = "close")
     public PluginIpcChildProcessPool pluginIpcChildProcessPool(
@@ -256,8 +258,9 @@ public class NpdevPluginConfig {
             @Value("${npdev.runtime.plugin-ipc-pool.memory-limit-mb:0}") int memoryLimitMb,
             @Value("${npdev.runtime.plugin-ipc-pool.cpu-rate-percent:0}") int cpuRatePercent
     ) throws java.io.IOException {
-        JavaSourceRuntimeRefManifest manifest = new JavaSourceRuntimeRefManifestLoader(objectMapper).load();
-        if (manifest.byRuntimeRef().isEmpty()) {
+        JavaSourceRuntimeRefManifest javaSourceManifest = new JavaSourceRuntimeRefManifestLoader(objectMapper).load();
+        PluginControllerRouteManifest controllerRouteManifest = new PluginControllerRouteManifestLoader(objectMapper).load();
+        if (javaSourceManifest.byRuntimeRef().isEmpty() && controllerRouteManifest.isEmpty()) {
             return null;
         }
         PluginProcessResourceLimits limits = (memoryLimitMb > 0 || cpuRatePercent > 0)
