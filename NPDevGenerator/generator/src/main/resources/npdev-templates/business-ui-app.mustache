@@ -5370,7 +5370,12 @@
       const params = new URLSearchParams();
       params.set("page", "0");
       params.set("size", "30");
-      params.set("sort", reference.displayField || reference.targetIdField);
+      // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): a resolved selectorRef's orderBy, when
+      // present -- the endpoint's sort param is single-field, so the first declared field wins.
+      const sortField = Array.isArray(reference.orderBy) && reference.orderBy.length
+        ? reference.orderBy[0]
+        : (reference.displayField || reference.targetIdField);
+      params.set("sort", sortField);
       params.set("direction", "asc");
       const normalizedFilter = filter && filter.trim() ? filter.trim() : "";
       if (normalizedFilter) { params.set("filter", normalizedFilter); }

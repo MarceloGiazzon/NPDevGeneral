@@ -31,6 +31,70 @@ class AutoPanelExpanderTest {
         return found.get();
     }
 
+    // ----------------------------------------------------------------------------------------
+    // REAL_LIFT_PLAN_2026-09-03 package C2 (boundary B16 Step 2, EDIT-18):
+    // transaction.bandPickers.<name>.selectorRef -- the band-picker half of the same mechanism
+    // BusinessUiEmitterPickerFilterTest proves for a plain FK field.
+    // ----------------------------------------------------------------------------------------
+
+    private static final String BAND_PICKER_MODEL = """
+        {
+          "dslVersion": "1.0.0", "namespace": "wms.bandpicker", "version": "1.0",
+          "concepts": [
+            { "name": "Note", "fields": [
+                { "name": "id", "type": "uuid", "id": true, "required": true },
+                { "name": "text", "type": "string" }
+            ] }
+          ],
+          "selectors": [
+            { "name": "NotePicker", "concept": "Note", "multiSelect": true,
+              "filters": ["text"], "columns": ["id", "text"], "orderBy": ["text"],
+              "filter": "text != ''" }
+          ],
+          "autoPanels": [
+            { "name": "NoteWorkbench", "concept": "Note", "aggregate": "NoteAggregate",
+              "route": "/notes",
+              "transaction": {
+                "bandPickers": {
+                  "notes": { %s }
+                }
+              }
+            }
+          ]
+        }
+        """;
+
+    private static com.npdev.dsl.v1.compiled.CompiledWorkbenchBandPicker compiledNotesBandPicker(String pickerBody) throws Exception {
+        CompiledModel model = compile(BAND_PICKER_MODEL.formatted(pickerBody));
+        return model.getAutoPanels().get(0).transaction().bandPickers().get("notes");
+    }
+
+    @Test
+    void bandPickerSelectorRefAdoptsColumnsOrderByAndFilterFromTheNamedSelector() throws Exception {
+        var picker = compiledNotesBandPicker("\"selectorRef\": \"NotePicker\"");
+
+        assertEquals(List.of("id", "text"), picker.columns());
+        assertEquals(List.of("text"), picker.orderBy());
+        assertEquals("text != ''", picker.filter());
+    }
+
+    @Test
+    void bandPickerSelectorRefWithALocalFilterAndComposesBoth() throws Exception {
+        var picker = compiledNotesBandPicker(
+                "\"selectorRef\": \"NotePicker\", \"filter\": \"id != $root.id\"");
+
+        assertEquals("text != '' && id != $root.id", picker.filter());
+    }
+
+    @Test
+    void bandPickerWithNoSelectorRefKeepsItsOwnLocalColumnsAndFilterUnchanged() throws Exception {
+        var picker = compiledNotesBandPicker("\"columns\": [\"id\"], \"filter\": \"text != ''\"");
+
+        assertEquals(List.of("id"), picker.columns());
+        assertEquals("text != ''", picker.filter());
+        assertTrue(picker.orderBy().isEmpty());
+    }
+
     @Test
     void slimConceptAutoPanelExpandsToThreeSurfaces() throws Exception {
         String json = """

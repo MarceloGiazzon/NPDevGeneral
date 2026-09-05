@@ -2782,6 +2782,48 @@ def _tag_jars_match_head(tag: str, root: Path) -> bool:
         return False
 
 
+def _git_committed_snapshot(model_path: Path) -> Path | None:
+    """The HEAD-committed version of `model_path`, for `migration diff --suggest-renames` when no
+    `--baseline` is given (REAL_LIFT_PLAN_2026-09-03 package C1, boundary B1). Same "declared
+    absence, never guessed presence" convention as `_current_git_tag`/`_tag_jars_match_head`
+    above: returns None -- never raises -- the moment git is absent, the model isn't inside a work
+    tree, or HEAD has no committed copy of this exact file, so the caller refuses with a clear
+    message instead of silently comparing against nothing.
+    """
+    if shutil.which("git") is None:
+        return None
+    model_path = model_path.resolve()
+    try:
+        toplevel = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=model_path.parent, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if toplevel.returncode != 0 or not toplevel.stdout.strip():
+        return None
+    repo_dir = Path(toplevel.stdout.strip())
+    try:
+        relpath = model_path.relative_to(repo_dir).as_posix()
+    except ValueError:
+        return None
+    try:
+        show = subprocess.run(
+            ["git", "show", f"HEAD:{relpath}"],
+            cwd=repo_dir, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if show.returncode != 0 or not show.stdout:
+        return None
+    snapshot_dir = Path(tempfile.mkdtemp(prefix="npdev-migration-diff-baseline-"))
+    snapshot = snapshot_dir / model_path.name
+    # newline="" -- write exactly what `git show` produced; Path.write_text's default newline
+    # translation turns \n into \r\n on Windows, which would corrupt a committed LF model.json.
+    snapshot.write_text(show.stdout, encoding="utf-8", newline="")
+    return snapshot
+
+
 def _try_download_runtimehost_libs(tag: str, libs_dir: Path, out: "_SetupOutput",
                                     base_url: str | None = None) -> bool:
     """Best-effort download of `runtimehost-libs-<tag>.zip` (+ sibling `SHA256SUMS`) from this
@@ -7221,6 +7263,11 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     guard against a different, retired thing -- model.json declaring migrationManagement/
     migrations/schemaEvolution config keys). Reproduced live: every invocation threw
     CONFIG_MIGRATIONS_DISABLED on the first flag. See ledger/items/REG-102.yml.
+
+    REAL_LIFT_PLAN_2026-09-03 package C1 (boundary B1, REG-206): `--baseline` is optional. When
+    omitted, `_git_committed_snapshot` resolves HEAD's committed copy of `--current` as the
+    baseline, so `--suggest-renames`'s advisory RenameCandidateScorer gets real evidence instead of
+    requiring a hand-supplied snapshot every time.
     """
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -7228,8 +7275,20 @@ def run_migration_diff(args: argparse.Namespace) -> None:
     if not wrapper.exists():
         raise CliError(f"Gradle wrapper not found: {wrapper}")
 
-    baseline = Path(args.baseline).expanduser().resolve()
     current = Path(args.current).expanduser().resolve()
+    if args.baseline:
+        baseline = Path(args.baseline).expanduser().resolve()
+    else:
+        # REAL_LIFT_PLAN_2026-09-03 package C1 (boundary B1): no --baseline given -- resolve one
+        # from git instead of forcing every caller to supply a snapshot by hand.
+        baseline = _git_committed_snapshot(current)
+        if baseline is None:
+            raise CliError(
+                f"no --baseline given and no git-committed version of {current} was found -- "
+                "pass --baseline explicitly, or commit the model first so one can be resolved "
+                "from HEAD."
+            )
+        print(f"migration diff: no --baseline given, resolved from git HEAD ({baseline})")
     output = Path(args.output).expanduser().resolve() if args.output else root / "build" / "npdev-migration-diff"
     decision_report = Path(args.decision_report).expanduser().resolve() if args.decision_report else output / "migration-diff-decision.json"
 
@@ -12869,7 +12928,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migration_sub = migration.add_subparsers(dest="migration_command")
     migration_diff = migration_sub.add_parser("diff")
-    migration_diff.add_argument("--baseline", required=True)
+    migration_diff.add_argument(
+        "--baseline", required=False, default=None,
+        help="Previous model.json snapshot. Omit it when --current is inside a git work tree with "
+             "a committed prior version -- REAL_LIFT_PLAN_2026-09-03 package C1 (boundary B1) then "
+             "resolves the baseline from HEAD automatically instead of requiring one by hand.",
+    )
     migration_diff.add_argument("--current", required=True)
     migration_diff.add_argument("--output")
     migration_diff.add_argument("--decision-report", dest="decision_report")

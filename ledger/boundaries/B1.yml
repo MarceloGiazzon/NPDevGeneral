@@ -1,6 +1,47 @@
 id: B1
 title: "No automatic rename inference -- a rename must be declared via renamedFrom"
 codeLinked: true
-codeLinkedNote: "ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern matching. REG-197 (boundary lift plan 2026-09-02, package 2.2) added com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer, shared by ImpactReportText#appendPossibleRenames (RuntimeHost, live-database) and MigrationPlanEmitter#diffColumns (generator, model-vs-model) -- ranks and scores rename candidates, never applies one. The refusal itself is unchanged; the dead end around satisfying it is gone (npdev migration diff --suggest-renames, npdev migrate rename --from-suggestions)."
+codeLinkedNote: >-
+  ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and
+  ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern
+  matching. REG-197 (boundary lift plan 2026-09-02, package 2.2) added
+  com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer, shared by
+  ImpactReportText#appendPossibleRenames (RuntimeHost, live-database) and
+  MigrationPlanEmitter#diffColumns (generator, model-vs-model) -- ranks and scores rename
+  candidates, never applies one. The refusal itself is unchanged; the dead end around satisfying it
+  is gone (npdev migration diff --suggest-renames, npdev migrate rename --from-suggestions).
+
+  REG-206 (REAL_LIFT_PLAN_2026-09-03 package C1, 2026-09-05): the row's prior "editor path" claim
+  cited `updateField` in `editorUtils.ts` as the one place a rename's intent survived -- that file
+  no longer exists (`NPDevEditor/ui-react` removed 2026-08-17/20, confirmed zero hits outside build
+  output). Direct code reading (not the plan's own draft assumption) found the stale citation
+  papered over a bigger fact: rename intent is ALREADY captured, undamaged, on every disciplined
+  authoring surface, not just the editor's replacement:
+    - The generated authoring UI (`ModelAuthoringEmitter`/`model-authoring.mustache`) stamps
+      `renamedFrom` client-side the same way the old editor did (a name present as imported gets
+      stamped; one created in-session does not).
+    - `npdev migrate rename` (`NPDevCli/npdev_cli.py:1058`, `_stamp_field_rename`) stamps
+      `renamedFrom` mechanically -- a declared operation, never a guess.
+    - `npdev_author_submit` (NPDevMcp) REQUIRES a `npdev-authoring-submission.v1` manifest
+      (`NPDevContract/schemas/authoring/authoring-submission.schema.json`), content-hash-keyed to
+      the previous model (`previousModelSha256`) and enforced by `AuthoringDiffGate`
+      (NPDevGenerator `authoring` package, AI_AUTHORING_CONTRACT-2026-07-31.md Parts 6/9): it
+      REFUSES any concept/field removal not accounted for by a real `renamedFrom` marker or a
+      declared `deliberateRemovals` entry, and refuses a hallucinated `renamedFrom`. A real half-
+      built gap found while reading it: `manifest.renames[]` was declared in the schema and
+      documented as checked, but nothing actually read that array -- `AuthoringDiffGate` now also
+      refuses a declared rename with no backing `renamedFrom` (`AUTHORING_RENAME_NOT_BACKED`).
+    - `migration diff --suggest-renames` (`NPDevCli/npdev_cli.py`, `_git_committed_snapshot`) no
+      longer requires `--baseline` by hand when the model is under git -- it resolves HEAD's
+      committed copy automatically, so the advisory `RenameCandidateScorer` gets real evidence
+      instead of nothing, matching the plan's own done-when #5 (git-based reconstruction fallback,
+      suggestion only, never applied).
+  Building a brand-new unified "journal" sidecar on top of these three already-working mechanisms
+  was considered and rejected -- it would eliminate zero additional refusals for a disciplined
+  author, at real cost (a new DSL sidecar concept, breaking-change/codemod discipline). The row
+  stays HITTABLE, exactly as the plan itself predicted ("B1 stays HITTABLE for hand-edited models
+  only") -- the one genuinely uncaptured case is a raw hand-edit of model.json through none of the
+  above, which no journal design (new or old) can capture on an edit path it never sees. That is
+  honest permanent residue, the same shape as B11's engine limit, not a defect.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B1"
 classification: HITTABLE

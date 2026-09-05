@@ -144,7 +144,7 @@ public final class SemanticValidator {
         AggregateValidation.validateAggregates(effectiveModel, entitiesByLower, errors);
         DocumentValidation.validateDocuments(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateAutoPanels(effectiveModel, entitiesByLower, errors, warnings);
-        PanelValidation.validateSelectors(effectiveModel, entitiesByLower, errors);
+        PanelValidation.validateSelectors(effectiveModel, entitiesByLower, errors, warnings);
         // REG-185: the model-wide reference sweep, LAST among the cross-reference checks on purpose
         // -- every site another validator already covers is excluded by
         // ReferenceIntegrityValidation.REPORTED_ELSEWHERE, so this only ever speaks about the sites

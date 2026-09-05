@@ -1236,6 +1236,11 @@
       // wrapper), unlike the panel path above -- normalized to the same { id, data } shape renderRows expects.
       var params = new URLSearchParams();
       params.set("page", "0"); params.set("size", "100");
+      // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): a resolved selectorRef's orderBy, when
+      // present -- the endpoint's sort param is single-field, so the first declared field wins.
+      if (Array.isArray(picker.orderBy) && picker.orderBy.length) {
+        params.set("sort", picker.orderBy[0]); params.set("direction", "asc");
+      }
       var where = bandPickerWhereExpression(picker.defaultFilterExpression, store.toDraft());
       if (where) { params.set("where", where); }
       fetch(picker.endpointBase + "?" + params.toString(), { headers: authHeaders() })

@@ -187,6 +187,14 @@
           "ui": { "label": "SKU" }
         },
         {
+          "name": "catalogEntryId",
+          "type": "uuid",
+          "ui": { "label": "Catalog entry" },
+          "picker": {
+            "selectorRef": "WidgetCatalogPicker"
+          }
+        },
+        {
           "name": "quantity",
           "type": "integer",
           "required": true,
@@ -417,6 +425,15 @@
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "productCode", "type": "string", "required": true, "ui": { "label": "Product code" } },
+        {
+          "name": "catalogEntryId",
+          "type": "uuid",
+          "ui": { "label": "Catalog entry" },
+          "picker": {
+            "selectorRef": "WidgetCatalogPicker",
+            "filter": "displayName != 'Retired'"
+          }
+        },
         { "name": "amount", "type": "decimal", "required": true, "ui": { "label": "Amount" } },
         { "name": "validFrom", "type": "date", "required": true, "ui": { "label": "Valid from" } },
         { "name": "validTo", "type": "date", "required": true, "ui": { "label": "Valid to" } }
@@ -601,11 +618,13 @@
       "multiSelect": true,
       "filters": [ "sku", "displayName" ],
       "columns": [ "sku", "displayName", "discontinued" ],
+      "orderBy": [ "sku" ],
+      "filter": "discontinued == false",
       "returnMapping": {
         "sku": "sku"
       },
       "metadata": {
-        "purpose": "Coverage for selectors[]: no other corpus model declares one."
+        "purpose": "Coverage for selectors[] (declaration) and, since EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2), field.picker.selectorRef -- referenced by WidgetOrderLine.catalogEntryId and WidgetPriceListEntry.catalogEntryId below, proving one named selector's display/search/orderBy/filter resolve identically for two different referencing fields on two different concepts."
       }
     }
   ],

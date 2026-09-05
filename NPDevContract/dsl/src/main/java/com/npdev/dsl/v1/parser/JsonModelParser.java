@@ -1448,7 +1448,9 @@ public final class JsonModelParser {
                     parseTextArray(selectorNode.get("filters")),
                     parseTextArray(selectorNode.get("columns")),
                     parseObjectMap(selectorNode.get("returnMapping")),
-                    parseObjectMap(selectorNode.get("metadata"))
+                    parseObjectMap(selectorNode.get("metadata")),
+                    parseTextArray(selectorNode.get("orderBy")),
+                    readText(selectorNode, "filter")
             ));
         }
         return out;
@@ -1588,7 +1590,8 @@ public final class JsonModelParser {
                     parseTextArray(pickerNode.get("columns")),
                     filter,
                     multiSelect,
-                    readLabelLocales(pickerNode, "label")
+                    readLabelLocales(pickerNode, "label"),
+                    readText(pickerNode, "selectorRef")
             ));
         }
         return out;
@@ -2017,14 +2020,15 @@ public final class JsonModelParser {
         return new FileMetadataAst(contentTypes, maxSizeBytes, multiple);
     }
 
-    /** B16/B19 (Move 9 A3): parses a field's `picker: {filter, multiSelect}` block. */
+    /** B16/B19 (Move 9 A3): parses a field's `picker: {filter, multiSelect, selectorRef}` block --
+     *  `selectorRef` added by REAL_LIFT_PLAN_2026-09-03 package C2 (EDIT-18). */
     private static FieldPickerAst parseFieldPicker(JsonNode node) {
         if (node == null || node.isNull()) {
             return null;
         }
         String filter = readText(node, "filter");
         boolean multiSelect = node.has("multiSelect") && node.get("multiSelect").asBoolean(false);
-        return new FieldPickerAst(filter, multiSelect);
+        return new FieldPickerAst(filter, multiSelect, readText(node, "selectorRef"));
     }
 
     /** R5.5: parses a field's `access: {read, write}` block -- same shape/grammar as a concept's

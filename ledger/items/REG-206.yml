@@ -1,0 +1,104 @@
+id: REG-206
+title: >-
+  C1 (boundary B1): confirm rename intent is already captured on the CLI and AI-authoring
+  surfaces, close the one real gap found (manifest.renames[] unenforced), and add the git-based
+  baseline fallback the plan itself called for
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  REAL_LIFT_PLAN_2026-09-03.md Track C package C1 (boundary B1) -- the user directed the whole plan
+  be finished; this is the first of the two remaining Track C packages (C2/B16 next). The plan's
+  own draft proposed building a brand-new append-only "model change journal" sidecar written by
+  three authoring surfaces, on the premise that "today that [rename] fact is thrown away everywhere
+  except the authoring UI's renamedFrom stamp." Re-verifying that premise against live code (three
+  parallel Explore passes, this session) found it stale for two of the three surfaces, in the same
+  spirit as the plan's own section 1 premise corrections (A3/B5's `select *` finding, B30's
+  already-existing interception seam): `npdev migrate rename` (NPDevCli) already stamps
+  `renamedFrom` mechanically, and `npdev_author_submit` (NPDevMcp) already requires and enforces a
+  content-hash-keyed `npdev-authoring-submission.v1` manifest via `AuthoringDiffGate`, which refuses
+  any unaccounted rename/removal -- functionally the "capture intent, don't infer" mechanism the
+  plan wanted, already shipped (AI_AUTHORING_CONTRACT-2026-07-31.md Parts 6/9), just never credited
+  against B1's row. Building a new unified journal on top of these already-working mechanisms would
+  have eliminated zero additional refusals for a disciplined author, at real cost (a new top-level
+  DSL sidecar concept, BREAKING.md + npdev migrate codemod discipline, three more writers) -- see
+  the plan's own bar (section 0: "Lifted by construction... not a document explaining why the wall
+  is correct") and its refusal to manufacture packages that don't need one (section 6).
+surface: cli, generator/authoring, ledger/boundaries
+files:
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_migration_diff_suggest_renames.py
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/authoring/AuthoringDiffGate.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/authoring/AuthoringDiffGateTest.java
+  - ledger/boundaries/B1.yml
+  - docs/ACCEPTED_BOUNDARIES.md
+  - NPDevContract/schemas/accepted-boundaries.json
+detail: |
+  Two real gaps found and closed; everything else was already lifted and is now credited as such.
+
+  1. **Git-based reconstruction fallback for `migration diff --suggest-renames`** (the plan's own
+     done-when #5 -- genuinely not built before this package). `--baseline` on the `migration diff`
+     subcommand (`npdev_cli.py`, argparse wiring) is now optional. `run_migration_diff`, when
+     `args.baseline` is omitted, calls a new helper `_git_committed_snapshot(model_path)` (placed
+     beside `_current_git_tag`, reusing its exact `subprocess.run([...], cwd=..., capture_output=True,
+     text=True, timeout=10)` style and its "declared absence, never guessed presence" convention):
+     confirms `shutil.which("git")`, resolves the model's git work-tree root via
+     `git rev-parse --show-toplevel` run with cwd set to the model's own directory (NOT this repo's
+     root -- an app's model.json commonly lives in a separate repo the caller owns), and runs
+     `git show HEAD:<relpath>` into a fresh temp file. Returns None -- never raises -- the moment git
+     is absent, the file isn't inside a work tree, or HEAD has no committed copy, so
+     `run_migration_diff` refuses with a clear `CliError` rather than silently comparing against
+     nothing. Written via `Path.write_text(..., newline="")` deliberately, not the default -- Windows
+     newline-translation would otherwise turn a committed LF model.json into CRLF before it is even
+     diffed. Explicit `--baseline` continues to override; unchanged when supplied.
+  2. **Closed a real half-built gap in `AuthoringDiffGate`.** `manifest.renames[]`
+     (authoring-submission.schema.json) is documented as requiring "a matching renamedFrom in the
+     submitted model," but nothing ever actually checked that -- only `deliberateRemovals` and
+     `securityChanges` were read off the manifest; `renames[]` was schema-declared and silently
+     unenforced in every existing test (`baseManifest` always hardcoded it to `[]`). New method
+     `checkDeclaredRenamesAreBacked` (both `kind: concept` and `kind: field` entries) now refuses a
+     declared rename with no backing `renamedFrom` (`AUTHORING_RENAME_NOT_BACKED`) -- a manifest that
+     claims a rename the model does not actually declare is exactly the kind of unverified claim this
+     gate exists to catch (never trust the manifest as fact, C2). Deliberately NOT enforcing the
+     reverse (every real `renamedFrom` must also appear in `manifest.renames[]`) -- the existing
+     removal-accounted check already covers the refusal that matters; making `renames[]` mandatory
+     bookkeeping for something the model already declares authoritatively would add friction with no
+     safety benefit.
+  3. **B1's row rewritten**, all three seams (`ledger/boundaries/B1.yml`,
+     `docs/ACCEPTED_BOUNDARIES.md`, `NPDevContract/schemas/accepted-boundaries.json`): removed the
+     dead `editorUtils.ts` citation (`NPDevEditor/ui-react` removed 2026-08-17/20, confirmed zero
+     hits outside build output); credited the generated authoring UI, `npdev migrate rename`, and
+     `npdev_author_submit`/`AuthoringDiffGate` as already-working disciplined surfaces; documented
+     the git-fallback and the `manifest.renames[]` fix. **Classification stays HITTABLE** -- matches
+     the plan's own predicted outcome ("B1 stays HITTABLE for hand-edited models only"), now accurate
+     and narrowly scoped rather than aspirational: a raw hand-edit through none of the three
+     disciplined surfaces has nothing to capture it, and no journal design (new or old) can see an
+     edit path it never runs through -- honest permanent residue, the same shape as B11's engine
+     limit, not a defect.
+
+  Explicitly out of scope, and why: no new journal sidecar file, no new top-level DSL array or
+  field, no BREAKING.md entry, no npdev migrate codemod, no dsl-conformance-max example -- nothing
+  about the DSL/model shape changed. No change to ModelAuthoringEmitter or the generated UI --
+  already correct.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_migration_diff_suggest_renames.py
+  asserts: >-
+    (Guard.ref names one representative file for check-done-item-guards.py's single-path resolver;
+    coverage spans two files across two languages.) test_migration_diff_suggest_renames.py's new
+    GitCommittedSnapshotTest (3 cases, real git repos via subprocess, matching
+    test_pack_lock_tamper_guard.py's precedent -- skipped if git is not on PATH): resolves the
+    HEAD-committed copy of a model file, not its dirty uncommitted working copy; returns None
+    outside a git repo; returns None for a file that has never itself been committed even though
+    the repo around it has real history. AuthoringDiffGateTest.java's 3 new c1_* cases: a declared
+    field rename with no matching renamedFrom is refused (AUTHORING_RENAME_NOT_BACKED); the same
+    shape backed by a real renamedFrom passes cleanly; a declared concept rename with no matching
+    renamedFrom is refused. Narrow, during implementation:
+    `python -m unittest NPDevCli.tests.test_migration_diff_suggest_renames -v` (6/6 green, including
+    the 3 pre-existing `_print_rename_candidates` cases, proving no regression) and
+    `gradlew.bat :generator:test --tests com.npdev.generator.authoring.AuthoringDiffGateTest`
+    (BUILD SUCCESSFUL, 20/20 green -- confirmed via the JUnit XML report, not just the console
+    summary, since --console=plain prints no per-test names).
+  provenRed: true

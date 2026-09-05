@@ -704,6 +704,11 @@ final class AutoPanelExpander {
                 if (typedPicker.multiSelect()) {
                     picker.put("multiSelect", true);
                 }
+                if (!typedPicker.orderBy().isEmpty()) {
+                    // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): only ever non-empty when
+                    // selectorRef resolved -- ModelCompiler is the only writer of this field.
+                    picker.put("orderBy", new ArrayList<>(typedPicker.orderBy()));
+                }
                 pickers.put(entry.getKey(), picker);
             }
             return pickers;
@@ -983,6 +988,14 @@ final class AutoPanelExpander {
         metadata.put("multiSelect", selector.multiSelect());
         metadata.put("filters", new ArrayList<>(selector.filters()));
         metadata.put("returnMapping", new LinkedHashMap<>(selector.returnMapping()));
+        // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): orderBy/filter, additive alongside the
+        // existing filters/columns -- unset unless the selector declares them.
+        if (!selector.orderBy().isEmpty()) {
+            metadata.put("orderBy", new ArrayList<>(selector.orderBy()));
+        }
+        if (selector.filter() != null && !selector.filter().isBlank()) {
+            metadata.put("filter", selector.filter());
+        }
         return new CompiledPanel(
                 selector.name(),
                 "/select/" + selector.name().toLowerCase(Locale.ROOT),

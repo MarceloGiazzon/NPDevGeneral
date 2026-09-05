@@ -1,7 +1,45 @@
 id: B16
-title: "A field's auto-picker supports a declared filter/multi-select via field.picker (now AND-composed and $root-parameterized, Wave 4 4.3/B16 Step 1) -- selectorRef itself stays descoped (0 Java, 0 schema, never built)"
+title: "A field's auto-picker supports a declared filter/multi-select via field.picker (AND-composed and $root-parameterized, Wave 4 4.3/B16 Step 1) and now a named, reusable selectorRef (Step 2, EDIT-18) -- selectorRef is real"
 codeLinked: true
-codeLinkedNote: "Declaring selectorRef anywhere in a model fails JSON-schema structural validation (additionalProperties:false) with code json_schema_additionalproperties -- a GENERIC code shared by every unrecognized-property case, not unique to selectorRef on its own. ValidationDiagnosticNormalizer.structuralDiagnostic() (NPDevContract/dsl/.../validation/ValidationDiagnosticNormalizer.java) now special-cases message.getProperty()=='selectorRef' to also populate boundaryId='B16' on the emitted ValidationDiagnostic -- the one boundary this session wired concretely, proving the mechanism end to end (RED/GREEN verified against a live model declaring selectorRef)."
+codeLinkedNote: >-
+  Step 1 (2026-09-03): declaring selectorRef anywhere in a model used to fail JSON-schema structural
+  validation (additionalProperties:false) with the generic code json_schema_additionalproperties.
+  ValidationDiagnosticNormalizer.structuralDiagnostic() special-cased message.getProperty()=='selectorRef'
+  to also populate boundaryId='B16' on the emitted ValidationDiagnostic, proving the boundary-tagging
+  mechanism end to end against the one property that was genuinely descoped.
+
+  Step 2 (REAL_LIFT_PLAN_2026-09-03 package C2, EDIT-18, 2026-09-05): **selectorRef now exists and
+  is real** -- that special-case is gone (removed, not left dead: `DESCOPED_PROPERTY_BOUNDARY_IDS`
+  and its one call site in ValidationDiagnosticNormalizer.java), because selectorRef no longer fails
+  schema validation at all. The plan's own draft assumed a brand-new top-level `selectors[]` array
+  would need building from scratch; direct code reading found `selectors[]` already existed (PACK-11,
+  2026-08-18, `SelectorAst`) as a standalone-panel-only mechanism whose own javadoc already claimed
+  "referenced by grids/fields via picker" -- aspirational since PACK-11 shipped, never wired. This
+  package extended `SelectorAst` with `orderBy`/`filter` (distinct from its existing `filters[]`,
+  which are searchable field NAMES) and wired `field.picker.selectorRef` /
+  `transaction.bandPickers.<name>.selectorRef` to resolve it: `SelectorPickerResolver`
+  (NPDevContract/dsl `compiler` package, shared by both `ModelCompiler.toCompiledFieldPicker` for a
+  plain FK field and `ModelCompiler`'s band-picker compilation) adopts the selector's
+  columns/filters/orderBy wholesale and AND-composes its `filter` with any local `filter` by string
+  concatenation (valid because `PickerFilterGrammar` is already flat-AND). Resolution happens at
+  COMPILE time, not emission time -- `BusinessUiEmitter` only ever sees `CompiledModel`, and
+  `ModelAst.getSelectors()` does not survive past compilation (selectors are expanded away, per
+  PACK-11's own `selector-expansion-four-place` twin-pair rule), so `CompiledFieldPicker`/
+  `CompiledWorkbenchBandPicker` now carry the FULLY RESOLVED picker (an emitter never needs to know a
+  selector was involved). `PanelValidation.validateSelectorReferences` refuses a `selectorRef` naming
+  an undeclared selector (mirroring `PropertyValidation`'s `settableAt` existence-check pattern) and
+  WARNS (not errors) on a selector declared but referenced by nothing -- first precedent in this
+  codebase for that severity split on an unused declaration. `orderBy` is real, not decorative: both
+  generated client pickers (`business-ui-app.mustache`'s FK-field dialog, `workbench-page.html.mustache`'s
+  band-picker dialog) now sort their fetch by the resolved `orderBy`'s first field when present (the
+  underlying list endpoint's `sort` param is single-field). Corpus witness: `dsl-conformance-max`'s
+  pre-existing `WidgetCatalogPicker` selector, referenced via `selectorRef` from TWO different
+  concepts' fields (`WidgetOrderLine.catalogEntryId`, `WidgetPriceListEntry.catalogEntryId` -- the
+  latter also AND-composing a local filter), proving one named selector resolves identically for two
+  independent referencing fields. The band-picker consumption path (`AutoPanelExpander`) is covered
+  by unit tests, not corpus -- no natural band-collection in the corpus model targets
+  `WidgetCatalogEntry`, and forcing a concept mismatch into the corpus purely for coverage would
+  teach a wrong usage pattern to anyone reading it as a reference (see ledger/items/EDIT-18.yml).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B16"
-classification: HITTABLE
-step1Note: "BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 Step 1 (2026-09-03): the recorded revisit trigger (multi-clause AND/OR filter demand) is closed. field.picker.filter/bandPickers.filter now AND-compose via the new shared PickerFilterGrammar (NPDevContract/dsl/.../query/PickerFilterGrammar.java) and may reference $root.<field> (resolved client-side against the aggregate's root record). transaction.visibleWhen's $ui/$root predicates gained the same AND/OR composition. selectorRef (Step 2, named reusable selectors) remains descoped -- classification stays HITTABLE, revisit trigger narrowed to Step 2's own demand."
+classification: LIFTED
+step1Note: "BOUNDARY_LIFT_PLAN_2026-09-02.md Wave 4 package 4.3 Step 1 (2026-09-03): the recorded revisit trigger (multi-clause AND/OR filter demand) is closed. field.picker.filter/bandPickers.filter now AND-compose via the new shared PickerFilterGrammar (NPDevContract/dsl/.../query/PickerFilterGrammar.java) and may reference $root.<field> (resolved client-side against the aggregate's root record). transaction.visibleWhen's $ui/$root predicates gained the same AND/OR composition. Step 2 (named reusable selectors) shipped 2026-09-05, EDIT-18 -- see codeLinkedNote above."

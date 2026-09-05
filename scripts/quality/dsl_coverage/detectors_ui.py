@@ -31,6 +31,33 @@ def _has_field_picker_filter(model: dict) -> bool:
     return False
 
 
+def _has_picker_selector_ref(model: dict) -> bool:
+    """EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): a field's or a band
+    picker's selectorRef -- the reference this gate's own "selectors" feature (declaring one) never
+    proved was actually consumed anywhere. Checks both surfaces since either one alone would leave
+    the other's wiring untested."""
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            picker = field.get("picker") if isinstance(field, dict) else None
+            if isinstance(picker, dict) and picker.get("selectorRef"):
+                return True
+    for panel in (model.get("autoPanels", None) or []):
+        if not isinstance(panel, dict):
+            continue
+        transaction = panel.get("transaction")
+        if not isinstance(transaction, dict):
+            continue
+        band_pickers = transaction.get("bandPickers")
+        if not isinstance(band_pickers, dict):
+            continue
+        for picker in band_pickers.values():
+            if isinstance(picker, dict) and picker.get("selectorRef"):
+                return True
+    return False
+
+
 def _has_band_picker_filter(model: dict) -> bool:
     """B16/B19 (Move 9 A3): a bandPickers entry's filter/multiSelect -- the SAME two properties a
     plain FK field's picker declares, reused on a band collection's own picker."""

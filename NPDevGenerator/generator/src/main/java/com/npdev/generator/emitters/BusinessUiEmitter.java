@@ -1013,6 +1013,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         reference.put("pickerColumns", pickerColumns);
         reference.put("displayTemplate", firstNonBlank(referenceDisplayTemplate(field), ""));
         reference.put("previewFields", effectiveReferencePreviewFields(field, target, displayFields));
+        // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): only ever non-empty when picker.selectorRef
+        // resolved -- ModelCompiler is the only writer of CompiledFieldPicker.orderBy().
+        if (field.getPicker() != null && !field.getPicker().orderBy().isEmpty()) {
+            reference.put("orderBy", existingFields(target, field.getPicker().orderBy()));
+        }
         reference.put("defaultFilter", firstNonBlank(defaultFilter, ""));
         // B16/B19 (Move 9 A3): referenceSemantics.defaultFilter's older colon/bare-equals grammar
         // wins if declared (unchanged, existing corpus behavior); picker.filter's visibleWhen-style
@@ -1138,6 +1143,12 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         if (!searchFields.isEmpty()) {
             return searchFields;
         }
+        // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): a resolved selectorRef's search fields,
+        // when referenceSemantics did not already declare its own (more specific wins).
+        List<String> fromSelector = field.getPicker() == null ? List.of() : existingFields(target, field.getPicker().searchFields());
+        if (!fromSelector.isEmpty()) {
+            return fromSelector;
+        }
         List<String> inferred = target.getFields().stream()
                 .filter(candidate -> isFilterable(candidate) && !candidate.isId())
                 .map(CompiledField::getName)
@@ -1161,6 +1172,11 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         List<String> explicitPreview = existingFields(target, previewFields);
         if (!explicitPreview.isEmpty()) {
             return explicitPreview;
+        }
+        // EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): a resolved selectorRef's display columns.
+        List<String> fromSelector = field.getPicker() == null ? List.of() : existingFields(target, field.getPicker().displayFields());
+        if (!fromSelector.isEmpty()) {
+            return fromSelector;
         }
         LinkedHashSet<String> out = new LinkedHashSet<>();
         if (displayField != null && !displayField.isBlank()) {

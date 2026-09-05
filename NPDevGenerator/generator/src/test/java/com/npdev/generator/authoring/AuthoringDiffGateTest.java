@@ -205,6 +205,62 @@ class AuthoringDiffGateTest {
     }
 
     // --------------------------------------------------------------------------------------
+    // REAL_LIFT_PLAN_2026-09-03 package C1 (boundary B1) -- manifest.renames must be backed
+    // --------------------------------------------------------------------------------------
+
+    @Test
+    void c1_declaredFieldRenameWithNoMatchingRenamedFromIsRefused() throws Exception {
+        ModelAst previous = model(conceptModel("1.0", ORDER_WITH_CLIENT_NAME));
+        ModelAst submitted = model(conceptModel("1.1", """
+            [ { "name": "Order", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "customerName", "type": "string", "renamedFrom": "clientName" } ] } ]
+            """));
+        // Manifest claims a DIFFERENT rename than the one the model actually declares.
+        JsonNode manifest = manifest(baseManifest("1.0", "1.1", """
+            "renames": [ { "kind": "field", "concept": "Order", "from": "clientName", "to": "shippingName" } ]
+            """).replace("\"renames\": [],", ""));
+
+        AuthoringDiffGate.GateResult result = AuthoringDiffGate.evaluate(SHA_OK, previous, submitted, manifest);
+
+        assertFalse(result.passed());
+        assertTrue(hasCode(result, "AUTHORING_RENAME_NOT_BACKED"), result.violations().toString());
+    }
+
+    @Test
+    void c1_declaredFieldRenameBackedByARealRenamedFromPasses() throws Exception {
+        ModelAst previous = model(conceptModel("1.0", ORDER_WITH_CLIENT_NAME));
+        ModelAst submitted = model(conceptModel("1.1", """
+            [ { "name": "Order", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "customerName", "type": "string", "renamedFrom": "clientName" } ] } ]
+            """));
+        JsonNode manifest = manifest(baseManifest("1.0", "1.1", """
+            "renames": [ { "kind": "field", "concept": "Order", "from": "clientName", "to": "customerName" } ]
+            """).replace("\"renames\": [],", ""));
+
+        AuthoringDiffGate.GateResult result = AuthoringDiffGate.evaluate(SHA_OK, previous, submitted, manifest);
+
+        assertTrue(result.passed(), result.violations().toString());
+    }
+
+    @Test
+    void c1_declaredConceptRenameWithNoMatchingRenamedFromIsRefused() throws Exception {
+        ModelAst previous = model(conceptModel("1.0", TRIVIAL_CONCEPT));
+        ModelAst submitted = model(conceptModel("1.1", """
+            [ { "name": "Gizmo", "fields": [ { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
+            """));
+        JsonNode manifest = manifest(baseManifest("1.0", "1.1", """
+            "renames": [ { "kind": "concept", "from": "Widget", "to": "Gizmo" } ]
+            """).replace("\"renames\": [],", ""));
+
+        AuthoringDiffGate.GateResult result = AuthoringDiffGate.evaluate(SHA_OK, previous, submitted, manifest);
+
+        assertFalse(result.passed());
+        assertTrue(hasCode(result, "AUTHORING_RENAME_NOT_BACKED"), result.violations().toString());
+    }
+
+    // --------------------------------------------------------------------------------------
     // F7 / A3 -- name reused for a different thing
     // --------------------------------------------------------------------------------------
 

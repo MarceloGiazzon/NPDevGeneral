@@ -32,10 +32,10 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
 from .detectors_ui import (  # noqa: F401 - every name the table below references
     _has_autopanel_selection_data_source_procedure, _has_band_picker_filter,
     _has_field_picker_filter, _has_panel_action_concept_query, _has_panel_action_download,
-    _has_panel_data_source_on_row_load, _has_region_component_mount, _has_transaction_hook,
-    _has_typed_workbench_actions, _has_workbench_after_action, _has_workbench_apply_to,
-    _has_workbench_band_pickers, _has_workbench_derived, _has_workbench_ui_state,
-    _has_workbench_visible_when,
+    _has_panel_data_source_on_row_load, _has_picker_selector_ref, _has_region_component_mount,
+    _has_transaction_hook, _has_typed_workbench_actions, _has_workbench_after_action,
+    _has_workbench_apply_to, _has_workbench_band_pickers, _has_workbench_derived,
+    _has_workbench_ui_state, _has_workbench_visible_when,
 )
 
 FEATURE_DETECTORS = {
@@ -251,6 +251,10 @@ FEATURE_DETECTORS = {
     # Move 9 A3 (docs/ACCEPTED_BOUNDARIES.md B16/B19): a bandPickers entry's filter/multiSelect --
     # the same two properties a plain FK field's picker declares, unifying the two picker shapes.
     "bandPicker.filter": _has_band_picker_filter,
+    # EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2, boundary B16 Step 2): a picker (field or band)
+    # naming a real selectors[] entry by selectorRef -- distinct from the "selectors" feature below,
+    # which only proves one is DECLARED, never that anything actually references it.
+    "field.picker.selectorRef": _has_picker_selector_ref,
     "aggregate.onCommit": _has_aggregate_on_commit,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3B / Gap 8): onValidate is a sibling of
     # onCommit, not a flag on it -- tracked separately so a regression to just this field still

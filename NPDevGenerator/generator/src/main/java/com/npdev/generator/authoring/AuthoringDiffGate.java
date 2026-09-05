@@ -34,6 +34,11 @@ import java.util.Set;
  *       (A2, C2) -- an unaccounted removal is a hard failure</li>
  *   <li>every {@code renamedFrom} in the submitted model names something that existed in the
  *       previous model (A4) -- catches a hallucinated rename</li>
+ *   <li>every {@code manifest.renames} entry is BACKED by a real {@code renamedFrom} in the
+ *       submitted model (REAL_LIFT_PLAN_2026-09-03 package C1, boundary B1) -- the manifest states
+ *       intent, but until this check existed nothing verified that intent against the model the
+ *       schema-diff engine actually trusts, so a stated rename with no matching marker passed
+ *       silently</li>
  *   <li>a rename does not also change the field's shape in the same step (A5)</li>
  *   <li>a name declared as a deliberate removal does not still exist in the submitted model (A3)
  *       -- catches a retired name reused for a different thing</li>
@@ -111,6 +116,7 @@ public final class AuthoringDiffGate {
         checkConceptRenamedFromExists(submittedModel, previousConcepts, violations);
         checkConceptRemovalsAccounted(previousModel, submittedConcepts, submittedToPreviousConceptName, manifest, violations);
         checkNoReusedRemovedConceptName(submittedConcepts, manifest, violations);
+        checkDeclaredRenamesAreBacked(submittedConcepts, manifest, violations);
 
         for (ConceptAst submittedConcept : submittedModel.getConcepts()) {
             String previousConceptName = submittedToPreviousConceptName.getOrDefault(submittedConcept.getName(), submittedConcept.getName());
@@ -302,6 +308,51 @@ public final class AuthoringDiffGate {
                         "concepts[" + removedName + "]",
                         "Use a different name for the new concept, or retire the removal declaration in a "
                                 + "later submission once the old name is free."));
+            }
+        }
+    }
+
+    /**
+     * REAL_LIFT_PLAN_2026-09-03 package C1 (boundary B1): {@code manifest.renames} is documented
+     * (authoring-submission.schema.json) as requiring "a matching renamedFrom in the submitted
+     * model," but until this method existed nothing actually checked that -- only
+     * {@code deliberateRemovals} and {@code securityChanges} were ever read off the manifest. A
+     * declared rename with no backing {@code renamedFrom} is exactly the kind of unverified claim
+     * this gate exists to catch (never trust the manifest as fact, C2) -- it is refused here
+     * rather than silently accepted.
+     */
+    private static void checkDeclaredRenamesAreBacked(Map<String, ConceptAst> submittedConcepts, JsonNode manifest, List<Violation> violations) {
+        JsonNode renames = manifest.get("renames");
+        if (renames == null || !renames.isArray()) {
+            return;
+        }
+        for (JsonNode entry : renames) {
+            String kind = textOrNull(entry, "kind");
+            String from = textOrNull(entry, "from");
+            String to = textOrNull(entry, "to");
+            if (from == null || to == null) {
+                continue; // malformed entry -- authoring-submission.schema.json's job, not this gate's
+            }
+            if ("concept".equals(kind)) {
+                ConceptAst submitted = submittedConcepts.get(to);
+                if (submitted == null || !from.equals(normalize(submitted.getRenamedFrom()))) {
+                    violations.add(Violation.error("AUTHORING_RENAME_NOT_BACKED",
+                            "manifest.renames declares concept '" + from + "' renamed to '" + to + "', but the "
+                                    + "submitted model's concept '" + to + "' does not carry a matching "
+                                    + "renamedFrom (the manifest states intent; the model itself carries the "
+                                    + "mechanism the engine trusts).",
+                            "renames", "Add renamedFrom:\"" + from + "\" to concept '" + to + "' in the submitted model."));
+                }
+            } else if ("field".equals(kind)) {
+                String concept = textOrNull(entry, "concept");
+                ConceptAst submittedConcept = concept == null ? null : submittedConcepts.get(concept);
+                FieldAst submittedField = submittedConcept == null ? null : byName(submittedConcept.getFields(), FieldAst::getName).get(to);
+                if (submittedField == null || !from.equals(normalize(submittedField.getRenamedFrom()))) {
+                    violations.add(Violation.error("AUTHORING_RENAME_NOT_BACKED",
+                            "manifest.renames declares field '" + concept + "." + from + "' renamed to '" + to
+                                    + "', but the submitted model does not carry a matching renamedFrom on that field.",
+                            "renames", "Add renamedFrom:\"" + from + "\" to field '" + concept + "." + to + "'."));
+                }
             }
         }
     }
