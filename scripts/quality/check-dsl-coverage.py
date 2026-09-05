@@ -87,7 +87,16 @@ def calibrate() -> int:
             "flows": [{"name": "F", "steps": [{"name": "s", "type": "forEach",
                                                  "collection": "x", "itemKey": "i", "steps": []}]}]
         }), encoding="utf-8")
-        models = [("calibrate/used", used)]
+        # EDIT-18 (REAL_LIFT_PLAN_2026-09-03 package C2): a real fixture exercising
+        # _has_picker_selector_ref's actual branching (a field with a picker.selectorRef), not just
+        # the outer empty-input early-exits every OTHER fixture above happens to touch incidentally --
+        # the gap that let this detector's real logic sit at zero coverage until this case was added.
+        picker_selector_ref = tmp_path / "picker_selector_ref.json"
+        picker_selector_ref.write_text(json.dumps({
+            "concepts": [{"name": "C", "fields": [
+                {"name": "f", "type": "reference", "picker": {"selectorRef": "S"}}]}]
+        }), encoding="utf-8")
+        models = [("calibrate/used", used), ("calibrate/picker_selector_ref", picker_selector_ref)]
         cov = coverage(models)
 
         def report(label: str, feature: str, expect_fail: bool) -> None:
@@ -100,6 +109,8 @@ def calibrate() -> int:
         print("Calibration -- must catch a zero-coverage feature, pass a covered one:")
         report("step.forEach (used by the fixture above)", "step.forEach", expect_fail=False)
         report("selectors (unused by the fixture above)", "selectors", expect_fail=True)
+        report("field.picker.selectorRef (used by the picker_selector_ref fixture)",
+               "field.picker.selectorRef", expect_fail=False)
 
     if not ok:
         print("\nFAIL: at least one control did not behave as required.", file=sys.stderr)

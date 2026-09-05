@@ -1,0 +1,33 @@
+id: B31
+title: "H2Local (embedded file) boot is a real lock, not an uncaught crash"
+codeLinked: true
+codeLinkedNote: >-
+  2026-09-05 (REAL_LIFT_PLAN_2026-09-03.md package B4-closure, REG-207): B4's own multi-process
+  migration lock (MigrationMutex/MigrationClaimStore) is proven safe under real two-process contention
+  for Postgres/MySQL/SQL Server (session advisory locks) and H2Server (a row lock in a dedicated
+  npdev_lock schema, over H2Server's own TCP endpoint -- MigrationLockConcurrentBootTest). H2Local
+  (jdbc:h2:file:..., a raw embedded-file connection with no server process arbitrating access) had NO
+  multi-process boot protection at all: a second OS process racing the same file (the realistic case
+  is a rolling restart's brief overlap, not two permanent instances -- H2Local is inherently
+  single-process for its whole lifetime) hit H2's own "database already in use" exception on its very
+  first DataSource.getConnection() call, which fires during Spring's own Hikari pool construction --
+  strictly BEFORE SchemaLifecycleExecutor/MigrationMutex ever run -- so it surfaced as a raw, uncaught
+  BeanCreationException, not a wait or a clean diagnostic. Deliberately NOT filed under B4: B4 is
+  specifically about migration serialization; this fires on ANY overlapping H2Local boot regardless of
+  a pending migration, and B4.yml/MigrationClaimStore.java's own "not worth a new file-lock sidecar"
+  prose is about REG-7.2's unrelated bookkeeping-row residue and remains accurate as written.
+  H2LocalBootLock (new, com.finalexec.db) + H2LocalBootLockEnvironmentPostProcessor (registered via
+  META-INF/spring.factories as a Spring Boot EnvironmentPostProcessor -- the framework's own SPI for
+  running before ANY bean, including the DataSource bean, is created) close the gap: an OS-level
+  FileChannel.tryLock() on a sidecar file beside the H2 data file, in a bounded poll loop
+  (npdev.h2local.bootLock.waitSeconds, its own budget -- deliberately not shared with
+  npdev.schema.lock.waitSeconds, since this is a rolling-restart file-handle release, not an unbounded
+  migration), held for the app's full lifetime and released on ContextClosedEvent (with an idempotent
+  JVM-shutdown-hook fallback). A same-JVM OverlappingFileLockException (e.g. a cached @SpringBootTest
+  context reusing the same file) is treated as ordinary contention, not a crash. On timeout, throws
+  BoundaryBootException prefixed B31:h2local_boot_lock_held:, flowing through FinalExecApplication's
+  existing catch/exit-code-4 handling with zero changes to that file. Proven by
+  H2LocalBootLockCrossProcessTest against two REAL java processes (wait-then-succeed, and
+  wait-then-refuse-with-the-named-diagnostic).
+ref: "docs/ACCEPTED_BOUNDARIES.md#B31"
+classification: HITTABLE

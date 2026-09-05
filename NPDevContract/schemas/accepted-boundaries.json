@@ -169,6 +169,13 @@
       "userFacingText": "Both plugin:java-source and plugin:java-controller mounts run OS-process-isolated (a separate child JVM per worker, IPC dispatch) with an enforced OS-level ceiling (default 512MB memory / 50% CPU on Windows Job Objects or Linux cgroups) -- each is admission-checked at generation and boot against a bytecode denylist (filesystem/network IO, process/system control, reflection, dynamic loading, threads, scripting, detached async work, JVM internals) AND bounded at runtime (SEC-3/5/6/7 for java-source, SEC-9 for java-controller, 2026-09-05). The residue is now identical and permanent for both mount kinds: static analysis at both ends is still the only admission gate -- a proxy class elsewhere on the app classpath performing a forbidden capability on a plugin's behalf, or a plugin that busy-loops inside its own bounded process without exceeding the memory/CPU ceiling, is bounded but not stopped early.",
       "workaround": "The OS-level ceiling is on by default for both mount kinds; retune via npdev.runtime.plugin-ipc-pool.memory-limit-mb / .cpu-rate-percent if a real plugin's workload needs more headroom than the measured 512MB/50% default. Isolation is unconditional for both -- only mount plugin code you trust the SOURCE of; admission checks escapes, it does not review business logic.",
       "enforcingDiagnosticCodes": ["B30:plugin_bytecode_violation"]
+    },
+    {
+      "id": "B31",
+      "kind": "HITTABLE",
+      "userFacingText": "Another process currently has this H2 (file) database open. This is expected during a rolling restart's brief overlap -- the boot waits for it to release rather than failing immediately, and normally resolves on its own once the old instance finishes exiting.",
+      "workaround": "Wait for the previous instance to finish exiting -- H2Local is inherently single-process, so this is not a misconfiguration. If restarts legitimately take longer than the default 30s budget, raise it with -Dnpdev.h2local.bootLock.waitSeconds=<seconds>. If no other instance is actually running, confirm nothing is stuck holding the database file (the boot log names the exact lock file path) before retrying.",
+      "enforcingDiagnosticCodes": ["B31:h2local_boot_lock_held"]
     }
   ]
 }
