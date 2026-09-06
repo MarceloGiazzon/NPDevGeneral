@@ -1376,6 +1376,11 @@
           "type": "string",
           "description": "Declares this concept is a rename of a previously-existing concept with this name, so a regeneration's schema-lifecycle classifies its table as a rename instead of an unrelated drop+create."
         },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift): a stable identity for this concept, generated once and never reused (npdev migrate assign-uids stamps one). When a live table's persisted uid matches a model concept's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
+        },
         "satelliteOf": {
           "type": "string",
           "minLength": 1,
@@ -1608,6 +1613,11 @@
         "renamedFrom": {
           "type": "string",
           "description": "Declares this field is a rename of a previously-existing column with this name, so a regeneration's schema-lifecycle classifies it as a rename instead of an unrelated remove+add."
+        },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift): a stable identity for this field, generated once and never reused (npdev migrate assign-uids stamps one). When a live column's persisted uid matches a model field's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
         },
         "picker": {
           "type": "object",

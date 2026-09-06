@@ -300,7 +300,8 @@ public final class ModelCompiler {
                         toCompiledFileMetadata(f.getFile()),
                         f.isSensitive(),
                         toCompiledFieldPicker(f.getPicker(), selectorsByName),
-                        toCompiledFieldAccess(f.getAccess())
+                        toCompiledFieldAccess(f.getAccess()),
+                        f.getUid()
                 ));
 
                 if (f.isRequired()) {
@@ -349,7 +350,8 @@ public final class ModelCompiler {
                             concept.getSatelliteOf(),
                             toCompiledOrigin(concept.getOrigin()),
                             concept.isSoftDelete(),
-                            concept.isTemporal()
+                            concept.isTemporal(),
+                            concept.getUid()
                     )
             );
             List<String> invariantRefs = new ArrayList<>(invariantsByCanonicalRef.keySet());

@@ -659,7 +659,8 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "satelliteOf"),
                 toOrigin(node.get("origin")),
                 booleanValue(node, "softDelete"),
-                booleanValue(node, "temporal")
+                booleanValue(node, "temporal"),
+                optionalText(node, "uid")
         );
     }
 
@@ -727,7 +728,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toFileMetadata(node.get("file")),
                 booleanValue(node, "sensitive"),
                 toFieldPicker(node.get("picker")),
-                toFieldAccess(node.get("access"))
+                toFieldAccess(node.get("access")),
+                optionalText(node, "uid")
         );
     }
 

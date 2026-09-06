@@ -124,9 +124,11 @@ class ModelAuthoringEmitterTest {
                 new GeneratedSourceWriter(generated, new RegenerationPolicy())).emit(compile(writeSimpleModel()));
         String html = Files.readString(generated.resolve("src/main/resources/static/model-authoring.html"));
 
-        // concept.fields is required, and an id field is the platform convention.
-        assertTrue(html.contains("{ name: 'id', type: 'uuid', id: true, required: true }"),
-                "Every scaffolded concept must carry its id field:\n" + html);
+        // concept.fields is required, and an id field is the platform convention. REG-209 (B1 lift):
+        // every scaffolded field/concept now also stamps a uid (generateUid()) -- part of the same
+        // literal this assertion already pins.
+        assertTrue(html.contains("{ name: 'id', type: 'uuid', id: true, required: true, uid: generateUid() }"),
+                "Every scaffolded concept must carry its id field, stamped with a uid:\n" + html);
 
         // LifecycleValidation: statusField must NAME a field the concept declares, that field must be
         // of type `enum`, and its enumValues must cover every state (a transition may only name values

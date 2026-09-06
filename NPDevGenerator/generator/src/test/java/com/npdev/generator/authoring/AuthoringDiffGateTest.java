@@ -330,6 +330,88 @@ class AuthoringDiffGateTest {
     }
 
     // --------------------------------------------------------------------------------------
+    // REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7) -- uid stability
+    // --------------------------------------------------------------------------------------
+
+    @Test
+    void editingAFieldsExistingUidIsRefused() throws Exception {
+        ModelAst previous = model(conceptModel("1.0", """
+            [ { "name": "Widget", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "qty", "type": "int", "uid": "abcdefgh12345678" } ] } ]
+            """));
+        ModelAst submitted = model(conceptModel("1.1", """
+            [ { "name": "Widget", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "qty", "type": "int", "uid": "zzzzzzzz99999999" } ] } ]
+            """));
+        JsonNode manifest = manifest(baseManifest("1.0", "1.1", ""));
+
+        AuthoringDiffGate.GateResult result = AuthoringDiffGate.evaluate(SHA_OK, previous, submitted, manifest);
+
+        assertFalse(result.passed());
+        assertTrue(hasCode(result, "AUTHORING_UID_CHANGED"), result.violations().toString());
+    }
+
+    @Test
+    void editingAConceptsExistingUidIsRefused() throws Exception {
+        ModelAst previous = model(conceptModel("1.0", """
+            [ { "name": "Widget", "uid": "abcdefgh12345678", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
+            """));
+        ModelAst submitted = model(conceptModel("1.1", """
+            [ { "name": "Widget", "uid": "zzzzzzzz99999999", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true } ] } ]
+            """));
+        JsonNode manifest = manifest(baseManifest("1.0", "1.1", ""));
+
+        AuthoringDiffGate.GateResult result = AuthoringDiffGate.evaluate(SHA_OK, previous, submitted, manifest);
+
+        assertFalse(result.passed());
+        assertTrue(hasCode(result, "AUTHORING_UID_CHANGED"), result.violations().toString());
+    }
+
+    @Test
+    void aStableUnchangedUidPasses() throws Exception {
+        ModelAst previous = model(conceptModel("1.0", """
+            [ { "name": "Widget", "uid": "abcdefgh12345678", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "qty", "type": "int", "uid": "11112222333344445555666677778888" } ] } ]
+            """));
+        ModelAst submitted = model(conceptModel("1.1", """
+            [ { "name": "Widget", "uid": "abcdefgh12345678", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "qty", "type": "int", "uid": "11112222333344445555666677778888" } ] } ]
+            """));
+        JsonNode manifest = manifest(baseManifest("1.0", "1.1", ""));
+
+        AuthoringDiffGate.GateResult result = AuthoringDiffGate.evaluate(SHA_OK, previous, submitted, manifest);
+
+        assertTrue(result.passed(), result.violations().toString());
+    }
+
+    @Test
+    void aRenamedFieldKeepingItsUidPasses() throws Exception {
+        // A rename AND a stable uid together must not be double-flagged -- the field is matched to
+        // its previous incarnation via renamedFrom, same as checkNoRenameShapeChange does.
+        ModelAst previous = model(conceptModel("1.0", """
+            [ { "name": "Widget", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "qty", "type": "int", "uid": "abcdefgh12345678" } ] } ]
+            """));
+        ModelAst submitted = model(conceptModel("1.1", """
+            [ { "name": "Widget", "fields": [
+                  { "name": "id", "type": "uuid", "id": true, "required": true },
+                  { "name": "quantity", "type": "int", "renamedFrom": "qty", "uid": "abcdefgh12345678" } ] } ]
+            """));
+        JsonNode manifest = manifest(baseManifest("1.0", "1.1", ""));
+
+        AuthoringDiffGate.GateResult result = AuthoringDiffGate.evaluate(SHA_OK, previous, submitted, manifest);
+
+        assertTrue(result.passed(), result.violations().toString());
+    }
+
+    // --------------------------------------------------------------------------------------
     // F3 / A9 / A10 / E6 -- undeclared security-relevant change
     // --------------------------------------------------------------------------------------
 

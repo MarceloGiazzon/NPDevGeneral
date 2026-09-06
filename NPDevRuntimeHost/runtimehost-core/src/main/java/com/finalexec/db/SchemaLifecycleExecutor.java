@@ -1358,10 +1358,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     void attemptInPlaceRenames(DataSource dataSource, SchemaManifest manifest) {
         record ColumnRename(String table, String oldName, String newName) {
         }
+        // REG-209 (B1 lift, package P7): consult the persisted uid identity map BEFORE the diff/
+        // classification pipeline ever runs, ahead of the model's own declared businessTableRenamedColumns
+        // -- a live column whose recorded uid matches a model field's declared uid, but whose name
+        // differs, IS a declared rename (identity says so), fed into the SAME map columnFactsFor already
+        // reads for every OTHER declared rename. A model with no uids declared returns the manifest's own
+        // businessTableRenamedColumns completely unchanged -- behaves exactly as today.
+        SchemaManifest effectiveManifest = manifest.withRenamedColumns(
+                ColumnIdentityStore.resolveRenamesByIdentity(dataSource, manifest));
         // SER-P4.4: the whole plan -- the renames to apply, the tables deferred to the destructive path,
         // and the stale-marker warnings -- is now derived from the canonical SchemaDiff (proven equal to
         // the former RenameResolution loop at P4.4a), not a second live introspection.
-        ColumnRenamePass.ColumnRenamePlan derived = ColumnRenamePass.columnRenamesFromDiff(dataSource, manifest);
+        ColumnRenamePass.ColumnRenamePlan derived = ColumnRenamePass.columnRenamesFromDiff(dataSource, effectiveManifest);
         for (String warning : derived.staleWarnings()) {
             System.out.println(warning);
         }
@@ -2181,6 +2189,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // (a record without a table, the reverse case, is harmless and self-corrects -- see
         // ownedTablesJson's live-table intersection).
         recordOwnershipForLiveManifestTables(dataSource, manifest);
+        // REG-209 (B1 lift, package P7): persist this boot's model-declared uids against the columns
+        // they are currently bound to -- on EVERY successful pass, including one that changed nothing,
+        // so the very first post-uid boot leaves a baseline a FUTURE hand-edited rename can be
+        // resolved against. A model with no uids declared is a no-op (ColumnIdentityStore.record
+        // checks this itself before touching the database at all).
+        ColumnIdentityStore.record(dataSource, manifest);
         // LNCH-1 remediation R2 (F1): required-field backfill/refusal enforcement lives HERE, at the
         // single call site every boot path crosses, gated on a fingerprint mismatch. Before R2 it was
         // scattered across five beforeMigrate branches (safe-additive/rename-resolved only) and was
@@ -2569,8 +2583,56 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // SchemaManifestLoader defaults it to an empty map, so a pre-existing app behaves exactly
             // as it did (no expression-default preview/backfill data means BackfillPass's refusal path
             // is unchanged).
-            Map<String, Map<String, String>> businessTableColumnDefaultExpressions
+            Map<String, Map<String, String>> businessTableColumnDefaultExpressions,
+            // REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): the MODEL's own
+            // declared uid for every table/column that has one (table -> column -> uid), mirroring
+            // businessTableRenamedColumns's exact shape. Added LAST, same convention as every field
+            // above it -- absent from a manifest emitted before this field existed simply means
+            // "no uids declared", and attemptInPlaceRenames falls back to the pre-existing
+            // businessTableRenamedColumns path exactly as it did before uids existed.
+            Map<String, Map<String, String>> businessTableColumnUids
     ) {
+        /** REG-209 backward-compatible convenience constructor matching the PRE-uid 25-arg shape --
+         * defaults the new uid map to empty. Keeps every existing hand-built manifest (tests, and any
+         * caller that predates uids) compiling and behaving identically -- a model with no uids at
+         * all behaves exactly as today. */
+        public SchemaManifest(
+                String engine,
+                String storageMode,
+                boolean physicalDatabase,
+                String schemaFingerprint,
+                List<String> internalTables,
+                List<String> businessTables,
+                Map<String, List<String>> businessTableColumns,
+                Map<String, List<String>> businessTableAdditiveColumns,
+                Map<String, Map<String, String>> businessTableColumnTypes,
+                Map<String, Map<String, String>> businessTableRenamedColumns,
+                Map<String, String> businessTableRenames,
+                boolean allowDestructiveRecreate,
+                String strategy,
+                String scope,
+                String destructiveRecreateConfirmation,
+                String destructiveAcknowledgment,
+                Map<String, List<String>> businessTableRequiredColumns,
+                Map<String, Map<String, String>> businessTableColumnDefaultLiterals,
+                Map<String, List<String>> businessTableExpressionDefaultColumns,
+                Map<String, List<UniqueConstraintDecl>> businessTableUniqueConstraints,
+                List<String> planItemStableStrings,
+                String ownership,
+                Map<String, List<ForeignKeyDecl>> businessTableForeignKeys,
+                Map<String, List<IndexDecl>> businessTableIndexes,
+                Map<String, Map<String, String>> businessTableColumnDefaultExpressions
+        ) {
+            this(engine, storageMode, physicalDatabase, schemaFingerprint, internalTables, businessTables,
+                    businessTableColumns, businessTableAdditiveColumns, businessTableColumnTypes,
+                    businessTableRenamedColumns, businessTableRenames, allowDestructiveRecreate, strategy,
+                    scope, destructiveRecreateConfirmation, destructiveAcknowledgment,
+                    businessTableRequiredColumns, businessTableColumnDefaultLiterals,
+                    businessTableExpressionDefaultColumns, businessTableUniqueConstraints,
+                    planItemStableStrings, ownership, businessTableForeignKeys, businessTableIndexes,
+                    businessTableColumnDefaultExpressions, Map.of());
+        }
+
         /** Move 9 B1 backward-compatible convenience constructor matching the PRE-B1 24-arg shape
          * (every field through the SER-G8 FK/index maps) -- defaults the new expression-text map to
          * empty. Keeps every existing hand-built manifest from that era (tests, and any caller that
@@ -2755,7 +2817,28 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     allowDestructiveRecreate, strategy, scope, destructiveRecreateConfirmation,
                     destructiveAcknowledgment, businessTableRequiredColumns, businessTableColumnDefaultLiterals,
                     businessTableExpressionDefaultColumns, businessTableUniqueConstraints, planItemStableStrings,
-                    ownership, businessTableForeignKeys, businessTableIndexes, businessTableColumnDefaultExpressions);
+                    ownership, businessTableForeignKeys, businessTableIndexes, businessTableColumnDefaultExpressions,
+                    businessTableColumnUids);
+        }
+
+        /**
+         * REG-209 (B1 lift, package P7): a copy of this manifest with {@code businessTableRenamedColumns}
+         * replaced -- every OTHER field, including {@code businessTableColumnUids} itself, is unchanged.
+         * {@link ColumnIdentityStore#resolveRenamesByIdentity} uses this to feed an identity-augmented
+         * renames map into the SAME pipeline a declared {@code renamedFrom} already flows through
+         * ({@link #columnFactsFor} reads {@code businessTableRenamedColumns} directly, feeding {@code
+         * DesiredColumn.renamedFromColumn} and from there {@code SchemaDiffEngine}'s {@code SAFE_RENAME}
+         * classification) -- no second classification path to keep in sync.
+         */
+        SchemaManifest withRenamedColumns(Map<String, Map<String, String>> replacementRenamedColumns) {
+            return new SchemaManifest(engine, storageMode, physicalDatabase, schemaFingerprint,
+                    internalTables, businessTables, businessTableColumns, businessTableAdditiveColumns,
+                    businessTableColumnTypes, replacementRenamedColumns, businessTableRenames,
+                    allowDestructiveRecreate, strategy, scope, destructiveRecreateConfirmation,
+                    destructiveAcknowledgment, businessTableRequiredColumns, businessTableColumnDefaultLiterals,
+                    businessTableExpressionDefaultColumns, businessTableUniqueConstraints, planItemStableStrings,
+                    ownership, businessTableForeignKeys, businessTableIndexes, businessTableColumnDefaultExpressions,
+                    businessTableColumnUids);
         }
 
         boolean destructiveAllowed() {

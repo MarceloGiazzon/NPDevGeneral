@@ -12,6 +12,7 @@ public final class CompiledConcept extends CompiledEntity {
     private final CompiledOrigin origin;
     private final boolean softDelete;
     private final boolean temporal;
+    private final String uid;
 
     public CompiledConcept(String name, String className, String tableName, List<CompiledField> fields) {
         this(name, className, tableName, fields, List.of(), List.of(), null, null, null, null, List.of());
@@ -231,6 +232,31 @@ public final class CompiledConcept extends CompiledEntity {
             boolean softDelete,
             boolean temporal
     ) {
+        this(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel,
+                module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, null);
+    }
+
+    /** REG-209 (B1 lift): a stable identity for this concept, generated once and never reused -- see getUid. */
+    public CompiledConcept(
+            String name,
+            String className,
+            String tableName,
+            List<CompiledField> fields,
+            List<String> expressionInvariants,
+            List<CompiledInvariant> invariants,
+            CompiledLifecycle lifecycle,
+            CompiledPresentationMetadata ui,
+            String truthLevel,
+            String module,
+            List<CompiledIndex> indexes,
+            CompiledConceptAccess access,
+            String renamedFrom,
+            String satelliteOf,
+            CompiledOrigin origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid
+    ) {
         super(name, className, tableName, fields, expressionInvariants, invariants, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -240,6 +266,7 @@ public final class CompiledConcept extends CompiledEntity {
         this.origin = origin;
         this.softDelete = softDelete;
         this.temporal = temporal;
+        this.uid = uid;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -284,6 +311,12 @@ public final class CompiledConcept extends CompiledEntity {
      *  caller-supplied `asOf` date; false (the default) leaves the concept's read path unchanged. */
     public boolean isTemporal() {
         return temporal;
+    }
+
+    /** REG-209 (B1 lift): a stable identity for this concept, generated once and never reused
+     *  (npdev migrate assign-uids stamps one); null if the concept declares none. */
+    public String getUid() {
+        return uid;
     }
 
     public static CompiledConcept fromLegacyEntity(CompiledEntity legacy) {

@@ -23,6 +23,7 @@ public final class FieldAst {
     private final boolean sensitive;
     private final FieldPickerAst picker;
     private final FieldAccessAst access;
+    private final String uid;
 
     public FieldAst(String name, String type, boolean id, boolean required, boolean unique) {
         this(name, type, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -217,6 +218,32 @@ public final class FieldAst {
             FieldPickerAst picker,
             FieldAccessAst access
     ) {
+        this(name, type, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, sensitive, picker, access, null);
+    }
+
+    /** REG-209 (B1 lift): a stable identity for this field, generated once and never reused (see getUid). */
+    public FieldAst(
+            String name,
+            String type,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            ReferenceSemanticsAst referenceSemantics,
+            String domainType,
+            SchemaAst schema,
+            List<EnumOptionAst> enumOptions,
+            PresentationMetadataAst ui,
+            String connectable,
+            String renamedFrom,
+            FileMetadataAst file,
+            boolean sensitive,
+            FieldPickerAst picker,
+            FieldAccessAst access,
+            String uid
+    ) {
         this.name = name;
         this.type = type;
         this.id = id;
@@ -235,6 +262,7 @@ public final class FieldAst {
         this.sensitive = sensitive;
         this.picker = picker;
         this.access = access;
+        this.uid = uid;
     }
 
     public String getName() { return name; }
@@ -261,4 +289,7 @@ public final class FieldAst {
     public FieldPickerAst getPicker() { return picker; }
     /** R5.5: this field's declared {read, write} authorization rule, or null if undeclared. */
     public FieldAccessAst getAccess() { return access; }
+    /** REG-209 (B1 lift): a stable identity for this field, generated once and never reused
+     *  (npdev migrate assign-uids stamps one); null if the field declares none. */
+    public String getUid() { return uid; }
 }

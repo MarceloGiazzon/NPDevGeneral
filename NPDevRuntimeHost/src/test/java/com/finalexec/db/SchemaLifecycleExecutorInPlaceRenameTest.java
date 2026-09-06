@@ -100,6 +100,89 @@ class SchemaLifecycleExecutorInPlaceRenameTest {
     }
 
     @Test
+    void renameIsResolvedByIdentityWhenNoRenamedFromIsDeclared() throws SQLException {
+        // REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): the plan's own
+        // "Done when" scenario -- a hand-edit that changes a field's name but keeps its uid, with NO
+        // renamedFrom marker at all. A prior boot's ColumnIdentityStore.record already recorded this
+        // uid against the OLD live column name (seeded directly here, standing in for that prior
+        // boot) -- attemptInPlaceRenames must resolve the rename by identity alone.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, old_name VARCHAR(50), version BIGINT)");
+            statement.execute("INSERT INTO widgets (id, old_name, version) VALUES (1, 'alpha', 1)");
+            statement.execute("INSERT INTO widgets (id, old_name, version) VALUES (2, 'beta', 1)");
+        }
+        seedColumnIdentity(dataSource, "widgets", "old_name", "abcdefgh12345678");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithUids(
+                Map.of("widgets", List.of("id", "new_name", "version")),
+                Map.of("widgets", List.of()),
+                Map.of("widgets", Map.of("id", "BIGINT", "new_name", "VARCHAR(50)", "version", "BIGINT")),
+                Map.of(), // no renamedFrom declared at all -- identity alone must explain this
+                Map.of("widgets", Map.of("new_name", "abcdefgh12345678"))
+        );
+
+        executor.attemptInPlaceRenames(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "new_name"), "identity-resolved rename must apply the same as a declared one");
+            assertFalse(hasColumn(metadata, "widgets", "old_name"), "old column name must no longer exist");
+            try (PreparedStatement statement = connection.prepareStatement("SELECT new_name FROM widgets WHERE id = ?")) {
+                statement.setLong(1, 1L);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    assertTrue(resultSet.next());
+                    assertEquals("alpha", resultSet.getString(1), "row data must survive an identity-resolved rename unchanged");
+                }
+            }
+        }
+    }
+
+    @Test
+    void aColumnWithNoMatchingPersistedIdentityIsNotRenamed() throws SQLException {
+        // The other half of the "Done when" bar: a model with uids that do NOT match anything
+        // persisted (e.g. a genuinely new field, never seen before) must NOT be treated as a rename
+        // -- it is left for the ordinary additive-column path, exactly as an unrelated new column
+        // always was.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, old_name VARCHAR(50), version BIGINT)");
+            statement.execute("INSERT INTO widgets (id, old_name, version) VALUES (1, 'alpha', 1)");
+        }
+        // Identity table has a row, but for a DIFFERENT uid than the model declares below.
+        seedColumnIdentity(dataSource, "widgets", "old_name", "zzzzzzzz99999999");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithUids(
+                Map.of("widgets", List.of("id", "old_name", "brand_new_col", "version")),
+                Map.of("widgets", List.of("brand_new_col")),
+                Map.of("widgets", Map.of("id", "BIGINT", "old_name", "VARCHAR(50)", "brand_new_col", "VARCHAR(50)", "version", "BIGINT")),
+                Map.of(),
+                Map.of("widgets", Map.of("brand_new_col", "abcdefgh12345678"))
+        );
+
+        executor.attemptInPlaceRenames(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "old_name"), "old_name must be untouched -- no matching identity means no rename");
+            assertFalse(hasColumn(metadata, "widgets", "brand_new_col"), "attemptInPlaceRenames itself never ADDS a column -- that is the additive-column pass' job, not renamed in as a false positive here");
+        }
+    }
+
+    private static void seedColumnIdentity(DataSource dataSource, String table, String column, String uid) throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE npdev_column_identity (table_name VARCHAR(255) NOT NULL, "
+                    + "column_name VARCHAR(255) NOT NULL, uid VARCHAR(255) NOT NULL, recorded_at_utc BIGINT NOT NULL)");
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO npdev_column_identity (table_name, column_name, uid, recorded_at_utc) VALUES (?, ?, ?, ?)")) {
+                insert.setString(1, table);
+                insert.setString(2, column);
+                insert.setString(3, uid);
+                insert.setLong(4, System.currentTimeMillis());
+                insert.executeUpdate();
+            }
+        }
+    }
+
+    @Test
     void renameComposedWithASeparateAdditiveColumnLeavesTableSafeAdditive() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, old_name VARCHAR(50), version BIGINT)");
@@ -207,6 +290,44 @@ class SchemaLifecycleExecutorInPlaceRenameTest {
                 Map.of(),
                 Map.of(),
                 Map.of()
+        );
+    }
+
+    /** REG-209 (B1 lift, package P7): same shape as {@link #manifest}, plus an explicit
+     *  businessTableColumnUids map -- used to prove identity-based rename resolution. */
+    private static SchemaLifecycleExecutor.SchemaManifest manifestWithUids(
+            Map<String, List<String>> businessTableColumns,
+            Map<String, List<String>> businessTableAdditiveColumns,
+            Map<String, Map<String, String>> businessTableColumnTypes,
+            Map<String, Map<String, String>> businessTableRenamedColumns,
+            Map<String, Map<String, String>> businessTableColumnUids) {
+        return new SchemaLifecycleExecutor.SchemaManifest(
+                "H2Local",
+                "jdbc",
+                true,
+                "sha256:test",
+                List.of(),
+                List.copyOf(businessTableColumns.keySet()),
+                businessTableColumns,
+                businessTableAdditiveColumns,
+                businessTableColumnTypes,
+                businessTableRenamedColumns,
+                Map.of(),
+                true,
+                "DropAndRecreateOnStructureChange",
+                "NpdevOwnedTablesOnly",
+                "I_UNDERSTAND_TABLE_DATA_WILL_BE_DELETED",
+                "",
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                List.of(),
+                "NpdevManaged",
+                Map.of(),
+                Map.of(),
+                Map.of(),
+                businessTableColumnUids
         );
     }
 

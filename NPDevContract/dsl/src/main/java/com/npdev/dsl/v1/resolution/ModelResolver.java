@@ -238,7 +238,8 @@ public final class ModelResolver {
                 concept.getSatelliteOf(),
                 concept.getOrigin(),
                 concept.isSoftDelete(),
-                concept.isTemporal()
+                concept.isTemporal(),
+                concept.getUid()
         );
     }
 
@@ -334,7 +335,8 @@ public final class ModelResolver {
                 specialization.getSatelliteOf(),
                 mergedOrigin,
                 mergedSoftDelete,
-                mergedTemporal
+                mergedTemporal,
+                specialization.getUid()
         );
     }
 

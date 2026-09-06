@@ -1,0 +1,167 @@
+id: REG-209
+title: >-
+  A stable uid resolves a concept/field rename by identity, on any editing path including a raw
+  hand-edit -- no journal, no inference (boundary B1 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-06
+closed: 2026-09-06
+source: >-
+  ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7 (Wave 3, last and alone -- the only package that
+  can break every generated app at once). B1.yml's own residue: "The one genuinely uncaptured case
+  is a raw hand-edit of model.json through none of the above, which no journal design (new or old)
+  can capture on an edit path it never sees." Correct for a journal -- a journal records the edit,
+  so it must see it happen. Identity is different: it lives in the file the hand-editor is already
+  editing.
+surface: >-
+  NPDevContract/dsl (schema mirrors, AST/compiled/canonical-JSON/resolver chain), runtimehost-core
+  (persistence + rename-by-identity resolution), NPDevGenerator (manifest emission, authoring
+  stamping, authoring-diff protection), NPDevCli (the assign-uids codemod), and
+  NPDevSamples/dsl-conformance-max (corpus coverage).
+files:
+  - NPDevContract/schemas/model.schema.json
+  - NPDevContract/schemas/authoring/model.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/model.schema.json
+  - NPDevContract/dsl/resources/Schemas/model.schema.json
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ConceptAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/FieldAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledConcept.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledField.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/packs/PackExtensionComposer.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/SchemaRealizationEmitter.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/model-authoring.mustache
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/authoring/AuthoringDiffGate.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ColumnIdentityStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaManifestLoader.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevCli/npdev_cli.py
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - scripts/quality/dsl_coverage/detectors_model.py
+  - scripts/quality/dsl_coverage/features.py
+  - scripts/quality/twin-pair-registry.json
+  - BREAKING.md
+  - ledger/boundaries/B1.yml
+detail: |
+  **Step 1, schema (four mirrors, zero pack.schema.json changes needed):** `uid` (`^[a-z0-9]{8,32}$`,
+  optional) added to `$defs/concept` and `$defs/field` in all four `model.schema.json` copies.
+  `pack.schema.json` needed NO changes at all -- traced, not assumed, before editing: both its own
+  copies `$ref` `model.schema.json#/$defs/concept`/`#/$defs/field` directly rather than duplicating
+  the property list, so a pack's concept/field definitions inherit `uid` automatically.
+  `check-schema-mirror-consistency.py` confirms all four still semantically match.
+
+  **Step 2, the five-place chain (REG-104), done as a mechanical telescoping-constructor add:**
+  `ConceptAst`/`FieldAst` (AST) and `CompiledConcept`/`CompiledField` (compiled) each gained a new
+  trailing `uid` field via a new terminal constructor overload -- every EXISTING call site across
+  the whole codebase keeps compiling unchanged (the old terminal constructor now delegates,
+  defaulting `uid` to `null`). `JsonModelParser` reads `uid` at both levels; `ModelCompiler` passes
+  `f.getUid()`/`concept.getUid()` through to the compiled objects; `CompiledModelCanonicalJson`
+  (writer) emits `"uid"` alongside `"renamedFrom"`; `CompiledModelCanonicalJsonReader` reads it back
+  -- pinned by a new twin-pair rule (`uid-canonical-json-writer-reader-twin-pair`) so a writer/reader
+  drift here cannot recur silently, matching REG-104's own warning ("the generator only ever reads
+  canonical JSON... a writer without a matching reader loses the value with no error anywhere").
+  `ModelResolver.sanitizeConcept`/`.mergeConcept` (specialization wins on merge, matching
+  `renamedFrom`/`satelliteOf`'s own precedent) both thread it through too.
+
+  **Two adjacent, pre-existing latent bugs found and fixed while doing this, neither new:**
+  `SchemaManifest.withEngine` (`PromoteMain`/`PromotionArc`'s own dialect-pinning wither, STOR-29)
+  was NOT re-threading `businessTableColumnUids` -- caught immediately because adding the new field
+  forced a full re-check of every reconstruction site; fixed alongside. `PackExtensionComposer`'s
+  two `CompiledConcept` rebuild sites (`mergeAdditively`, `withFields`) had silently dropped
+  `isTemporal()` since R5.8 shipped, well before this package -- `withFields`'s own javadoc
+  ("every OTHER property carried over unchanged") makes this an unambiguous pre-existing bug, not a
+  judgment call; fixed alongside adding `uid` threading to the same two call sites.
+
+  **Step 3, persistence:** new `ColumnIdentityStore` (runtimehost-core), self-creating
+  `npdev_column_identity(table_name, column_name, uid, recorded_at_utc)` exactly like
+  `SchemaHistoryStore`'s own `CREATE TABLE IF NOT EXISTS` pattern (no second self-creation
+  convention invented). `SchemaManifest` gained `businessTableColumnUids` (table -> column -> uid,
+  same shape as `businessTableRenamedColumns`) as its 26th field, sourced by a new
+  `SchemaRealizationEmitter.columnUids` (mirrors `columnRenames` exactly) and read back by
+  `SchemaManifestLoader`. `SchemaLifecycleExecutor#afterMigrate` calls
+  `ColumnIdentityStore.record` on EVERY successful pass -- including one that changes nothing, so
+  the first post-uid boot always has a baseline for a FUTURE rename to resolve against. A write
+  failure degrades to a logged warning, never blocks the boot (same resilience posture as
+  `SchemaHistoryStore`'s own history-row writes) -- this is a convenience mechanism for a future
+  rename, not a correctness gate for the boot in progress.
+
+  **Step 4, resolution by identity -- fed into the EXISTING pipeline, no parallel path:** traced the
+  real chokepoint before writing anything: `attemptInPlaceRenames` calls
+  `ColumnRenamePass.columnRenamesFromDiff`, which calls `DesiredSchemaFactory.fromManifest`, which
+  calls `SchemaLifecycleExecutor.columnFactsFor` for every table -- and THAT method reads
+  `manifest.businessTableRenamedColumns()` directly, feeding `ColumnFacts.renamedFrom` ->
+  `DesiredColumn.renamedFromColumn` -> `SchemaDiffEngine`'s `SafetyClass.SAFE_RENAME`
+  classification. `ColumnIdentityStore.resolveRenamesByIdentity` computes an
+  identity-augmented renames map (a live column whose persisted uid matches a model field's
+  declared uid, but whose name differs, is added as a synthesized rename; the model's OWN declared
+  `renamedFrom` always wins if both exist) and a new `SchemaManifest.withRenamedColumns` wither
+  (mirroring the pre-existing `withEngine` wither exactly) swaps it in -- so `attemptInPlaceRenames`
+  hands `columnRenamesFromDiff` an EFFECTIVE manifest, and every downstream classification step
+  behaves exactly as it already does for a declared `renamedFrom`, with zero new code in the
+  classification path itself.
+
+  **Step 5, the codemod:** `npdev migrate assign-uids --model <path> [--write]` stamps a random
+  16-hex-char uid (`secrets.token_hex(8)`, never a name-derived hash -- a hash of the name changes
+  when the name changes, defeating the whole mechanism) on every concept/field lacking one.
+  Idempotent by construction (only stamps where absent) -- proven live: run twice against a real
+  74-field corpus model copy, second run reports "0 stamped, 74 already present" and produces a
+  byte-identical file (verified by `diff`). A malformed existing uid (fails the schema pattern) is
+  left untouched with a warning, never silently re-stamped -- re-stamping would break identity for
+  anything already resolved against it.
+
+  **Step 6, authoring surfaces:** `model-authoring.mustache`'s `newConcept`/`newField` (the ONLY
+  concept/field creation points in the client-side authoring page) now stamp a uid via a small
+  `Math.random()`-based generator (not `crypto.randomUUID()` -- avoids a secure-context requirement
+  some local `file://` setups do not satisfy; this is a stable identifier, not a security-sensitive
+  value). `npdev migrate rename`'s `_stamp_field_rename` needed NO change at all -- traced, not
+  assumed: it mutates the field dict in place, touching only `name`/`renamedFrom`, so any existing
+  `uid` key survives automatically. `AuthoringDiffGate` gained `checkConceptUidNotChanged`/
+  `checkFieldUidNotChanged` (new `AUTHORING_UID_CHANGED` violation, reusing
+  `AUTHORING_RENAME_NOT_BACKED`'s own ERROR/path/suggestedFix shape) -- refuses a submission that
+  EDITS an existing uid to a different value; absent, or stable-and-unchanged (including a field
+  that is ALSO renamed in the same submission, matched via `renamedFrom` the same way
+  `checkNoRenameShapeChange` already does), both pass.
+
+  **Step 7, corpus coverage:** `concept.uid`/`field.uid` registered as two new tracked features in
+  `check-dsl-coverage.py`'s registry (`_has_concept_uid`/`_has_field_uid`, mirroring
+  `_has_renamed_field` exactly), witnessed by one hand-picked, deterministic `uid` on
+  `dsl-conformance-max`'s `WidgetOrder` concept and its `orderNumber` field (not a bulk codemod run
+  against the corpus -- a small, legible, hand-authored diff). `check-dsl-coverage.py` and
+  `check-dsl-conformance-generates.py` both pass clean.
+
+  **What was NOT built, deliberately:** no new "journal" sidecar concept -- traced and rejected the
+  same way REG-206 rejected it for the OTHER three authoring surfaces: it would eliminate zero
+  additional refusals for a disciplined author, at real cost (a new DSL concept, its own
+  breaking-change/codemod discipline). `ConceptValidation`'s three `B1:` diagnostics
+  (`rename_self_reference`/`rename_source_missing`/`rename_ambiguous`), `ValidationDiagnosticNormalizer`'s
+  `B1:` prefix stripping, and `RenameCandidateScorer` are all UNTOUCHED, per the plan's own
+  explicit "do not remove" list -- a declared `renamedFrom` still needs validating, and a model with
+  no uids yet still benefits from scored suggestions.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorInPlaceRenameTest.java
+  asserts: >-
+    renameIsResolvedByIdentityWhenNoRenamedFromIsDeclared (new) proves the plan's own "Done when"
+    scenario end to end against real H2: a live table with data, a model declaring a NEW column name
+    with a uid but NO renamedFrom marker, and a pre-seeded npdev_column_identity row (standing in
+    for a prior boot's own record) -- attemptInPlaceRenames renames the column in place and every
+    row's data survives. aColumnWithNoMatchingPersistedIdentityIsNotRenamed (new) proves the negative:
+    a uid that matches nothing persisted is correctly left for the ordinary additive-column path,
+    never a false-positive rename. All 3 PRE-EXISTING tests in the same file (renameIsAppliedInPlace
+    AndDataSurvives, renameComposedWithASeparateAdditiveColumnLeavesTableSafeAdditive, and a third)
+    pass completely unchanged, proving "a model with no uids at all behaves exactly as today."
+    AuthoringDiffGateTest gained 4 new tests (editingAFieldsExistingUidIsRefused,
+    editingAConceptsExistingUidIsRefused, aStableUnchangedUidPasses, aRenamedFieldKeepingItsUidPasses)
+    -- all pass, 24/24 total in that file. The dsl module's full test suite, runtimehost-core's full
+    test suite, and the generator module's AuthoringDiffGateTest all pass clean; check-dsl-coverage.py,
+    check-dsl-conformance-generates.py, check-schema-mirror-consistency.py, and
+    check-twin-pair-consistency.py all pass. A full run-all-gates.ps1 (all four T2 gates) was run as
+    the definitive end-of-plan verification, since this package (per the plan's own sequencing note)
+    is "the only package that can break every generated app at once" and closes Wave 3 alone.
+  provenRed: false

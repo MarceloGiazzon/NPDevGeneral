@@ -470,16 +470,29 @@
     return entry;
   }
 
+  // REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): a random uid, never a
+  // name-derived hash -- a hash of the name changes when the name changes, which would defeat the
+  // whole rename-by-identity mechanism. Plain Math.random(), not crypto.randomUUID(): this is a
+  // stable identifier, not a security-sensitive value, and Math.random() works in every context
+  // this page runs in (crypto.randomUUID() requires a secure context some local file:// setups do
+  // not satisfy). 16 lowercase alphanumeric chars, comfortably inside the schema's ^[a-z0-9]{8,32}$.
+  function generateUid() {
+    var chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    var out = '';
+    for (var i = 0; i < 16; i++) { out += chars.charAt(Math.floor(Math.random() * chars.length)); }
+    return out;
+  }
+
   function newField(name, type, required) {
-    var field = { name: name, type: type };
+    var field = { name: name, type: type, uid: generateUid() };
     if (required) { field.required = true; }
     return labelled(field);
   }
 
   function newConcept(name, fields) {
-    var all = [labelled({ name: 'id', type: 'uuid', id: true, required: true })];
+    var all = [labelled({ name: 'id', type: 'uuid', id: true, required: true, uid: generateUid() })];
     (fields || []).forEach(function (f) { all.push(labelled(f)); });
-    return labelled({ name: name, fields: all });
+    return labelled({ name: name, fields: all, uid: generateUid() });
   }
 
   function ensureLifecycle(concept) {

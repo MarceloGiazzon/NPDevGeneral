@@ -12,6 +12,7 @@ public final class ConceptAst extends EntityAst {
     private final OriginAst origin;
     private final boolean softDelete;
     private final boolean temporal;
+    private final String uid;
 
     public ConceptAst(String name, List<FieldAst> fields, List<InvariantAst> invariants) {
         this(name, null, null, fields, invariants, List.of(), null, null, null, null, List.of());
@@ -235,6 +236,31 @@ public final class ConceptAst extends EntityAst {
             boolean softDelete,
             boolean temporal
     ) {
+        this(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel,
+                module, indexes, access, renamedFrom, satelliteOf, origin, softDelete, temporal, null);
+    }
+
+    /** REG-209 (B1 lift): a stable identity for this concept, generated once and never reused -- see getUid. */
+    public ConceptAst(
+            String name,
+            String extendsName,
+            String specializesName,
+            List<FieldAst> fields,
+            List<InvariantAst> invariants,
+            List<EventAst> events,
+            LifecycleAst lifecycle,
+            PresentationMetadataAst ui,
+            TruthLevel truthLevel,
+            String module,
+            List<IndexAst> indexes,
+            ConceptAccessAst access,
+            String renamedFrom,
+            String satelliteOf,
+            OriginAst origin,
+            boolean softDelete,
+            boolean temporal,
+            String uid
+    ) {
         super(name, extendsName, specializesName, fields, invariants, events, lifecycle, ui, truthLevel);
         this.module = (module == null || module.isBlank()) ? null : module;
         this.indexes = indexes == null ? List.of() : List.copyOf(indexes);
@@ -244,6 +270,7 @@ public final class ConceptAst extends EntityAst {
         this.origin = origin;
         this.softDelete = softDelete;
         this.temporal = temporal;
+        this.uid = uid;
     }
 
     /** Optional module membership (MODULE settings-cascade scope anchor); null if the concept declares none. */
@@ -288,6 +315,12 @@ public final class ConceptAst extends EntityAst {
      *  caller-supplied `asOf` date; false (the default) leaves the concept's read path unchanged. */
     public boolean isTemporal() {
         return temporal;
+    }
+
+    /** REG-209 (B1 lift): a stable identity for this concept, generated once and never reused
+     *  (npdev migrate assign-uids stamps one); null if the concept declares none. */
+    public String getUid() {
+        return uid;
     }
 
     public static ConceptAst fromLegacyEntity(EntityAst legacy) {

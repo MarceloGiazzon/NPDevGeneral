@@ -84,6 +84,7 @@
     {
       "name": "WidgetOrder",
       "truthLevel": "T2",
+      "uid": "wo00000000000001",
       "ui": {
         "label": { "default": "Widget order", "pt-BR": "Pedido de widget" }
       },
@@ -93,6 +94,7 @@
           "name": "orderNumber",
           "type": "string",
           "required": false,
+          "uid": "wo0f000000000001",
           "defaultExpression": "nextNumber('orderNumber')",
           "ui": { "label": "Order number" }
         },
