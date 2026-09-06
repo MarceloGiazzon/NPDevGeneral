@@ -168,14 +168,70 @@ detail: |
   had no unit test either -- see this item's own guard, which relies on a real end-to-end proof
   instead); verification is the E8 CI job itself going green again on the real GitHub-hosted runner
   that caught this, not a new mock-based unit test.
+
+  2026-09-06 SECOND REGRESSION, SAME E8 JOB (a real, pre-existing gap this item's own classpath
+  reduction shipped with, unmasked only once the sandbox-crash fix above let the plugin child
+  actually start): the child now ran, but died with `NoClassDefFoundError: com/google/common/hash/
+  Hashing` -- `PluginChildClasspath`'s marker list (`PluginIpcChildProcessMain`, the app's own
+  output, kernel, Jackson, conditionally Spring-web) only recognizes PLATFORM classes; it has no way
+  to know a plugin's OWN business logic calls into some OTHER library (Guava here), because -- as
+  this item's own detail section already established -- no `libraries[]` manifest declaring such a
+  dependency exists anywhere in the DSL. Every `plugin:java-source`/`plugin:java-controller` mount
+  that calls an external library has been broken this way since this item shipped (105bc7d5); E8
+  exists specifically to catch this and correctly did, four pushes running, once the sandbox crash
+  above stopped masking it.
+
+  Fixed with a constant-pool scan, not a new DSL field (weighed against a `libraries[]` declaration --
+  correct but a real DSL feature needing schema changes in 4 places plus an `npdev migrate` codemod
+  per this repo's own model-array-field checklist -- and against a curated deny-list, simpler but an
+  ongoing maintenance burden and a weaker "real reduction" than this item's original intent):
+  `TrustedSourceBytecodeInspector` (NPDevKernel, the SAME shared reader both B30 admission gates
+  already use) gained a new public `referencedClassNames(InputStream, displayName)`, reusing its
+  existing constant-pool reader to answer a different question ("what does this class reference",
+  not "does this violate policy"). `PluginChildClasspath.compute` gained a third parameter,
+  `pluginOwnedClassNames` -- every mounted plugin's dotted FQCN, read from
+  `JavaSourceRuntimeRefManifest.Entry#mainClass` / `PluginControllerRouteManifest.Entry#
+  controllerClassName`, BOTH of which `NpdevPluginConfig` already loaded at this call site for other
+  reasons, so no new manifest read was needed. Each plugin-owned class (plus its `$`-siblings, same
+  reasoning `PluginBytecodeBootGate`'s own sibling expansion already documented -- inner/anonymous
+  classes are separate class files) is located in whichever classpath entry actually holds it (always
+  the app's own compiled output, per this item's own established fact) and scanned; every class it
+  references becomes an ADDITIONAL marker, so the classpath entry genuinely holding that dependency
+  is kept alongside the fixed platform set -- for BOTH the plain multi-entry classpath and the
+  fat-jar (`BOOT-INF/classes/`) case.
+
+  Not a new security hole: the actual admission authority over what a plugin may call at all is
+  still `TrustedSourceBytecodeInspector`'s escape denylist (generation-time `PluginJavaSourcePolicy`
+  + boot-time `PluginBytecodeBootGate`) and `PluginRestrictedClassLoader`'s runtime denylist, neither
+  of which this change touches -- this only makes an ALREADY-ADMITTED plugin's declared third-party
+  calls actually resolve at runtime, which is E8's whole point ("a user capability calls an external
+  library at runtime" is a supported capability, not an escape). A plugin referencing something the
+  denylist does not explicitly cover (e.g. a raw JDBC driver class -- `java/sql/` is not in either
+  denylist today) was ALREADY admitted past both gates before this fix; this fix only means such a
+  class's OWN driver jar, if referenced, is now handed to it instead of failing with a
+  `NoClassDefFoundError` that happened to accidentally cover that gap. If that specific gap needs
+  closing, it belongs in `TrustedSourceBytecodeInspector`'s own denylist, independent of this fix.
+
+  New test `PluginChildClasspathTest#keepsAThirdPartyJarAPluginOwnClassGenuinelyReferences` proves
+  the mechanism against a REAL compiled class (in-test `javax.tools.JavaCompiler`) referencing a REAL
+  jar already on the test JVM's own classpath (`org.junit.jupiter.api`, deliberately not one of the
+  fixed markers) rather than a synthetic fixture, since the new code path genuinely parses bytecode
+  where the pre-existing tests only ever checked resource-name existence. Verified live: all 4
+  `PluginChildClasspathTest` cases pass, `TrustedSourceBytecodeInspectorTest` (9 cases) passes
+  unchanged, and `run-runtimehost-gate.ps1` (regenerate + rebuild + the assembled sample app's full
+  suite) passes green. Final confirmation is the E8 CI job itself, on the same real GitHub-hosted
+  runner that caught both regressions.
 guard:
   kind: test
   ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginChildClasspathTest.java
   asserts: >-
-    PluginChildClasspathTest (3 tests) and PluginRestrictedClassLoaderTest (9 tests) both pass,
-    covering the classpath-reduction and classloader-denylist logic in isolation, including the
-    fat-jar extraction path and the java-source arbitrary-package non-regression. The full
-    runtimehost-core module suite (117 tests, 22 classes) passes clean. The real end-to-end proof --
+    PluginChildClasspathTest (4 tests, updated 2026-09-06 with
+    keepsAThirdPartyJarAPluginOwnClassGenuinelyReferences) and PluginRestrictedClassLoaderTest
+    (9 tests) both pass, covering the classpath-reduction and classloader-denylist logic in
+    isolation, including the fat-jar extraction path, the java-source arbitrary-package
+    non-regression, and (2026-09-06) a plugin's own third-party library reference actually
+    surviving the reduction. The full runtimehost-core module suite (117 tests, 22 classes) passes
+    clean. The real end-to-end proof --
     the one thing a unit test cannot cover, per this file's own docstring on why
     PluginControllerSecurityConfig is untestable outside an assembled app --
     scripts/proofs/run-r10-plugin-controller-proof.py passes against a freshly generated and booted

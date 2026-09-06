@@ -64,6 +64,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Configuration
 public class NpdevPluginConfig {
@@ -271,10 +272,16 @@ public class NpdevPluginConfig {
                 !"off".equalsIgnoreCase(sandbox));
         // SEC-10 (B30 lift): a pooled worker no longer runs on the host's own full classpath -- only
         // the entries containing something the child genuinely needs (PluginIpcChildProcessMain,
-        // kernel, Jackson, the app's own compiled output, and Spring's web-annotation classes when a
-        // plugin:java-controller mount exists). See PluginChildClasspath's own javadoc.
+        // kernel, Jackson, the app's own compiled output, Spring's web-annotation classes when a
+        // plugin:java-controller mount exists, and -- 2026-09-06 fix -- any third-party class a
+        // mounted plugin's own compiled code genuinely references). See PluginChildClasspath's own
+        // javadoc.
+        List<String> pluginOwnedClassNames = Stream.concat(
+                javaSourceManifest.byRuntimeRef().values().stream().map(JavaSourceRuntimeRefManifest.Entry::mainClass),
+                controllerRouteManifest.byCapability().values().stream().map(PluginControllerRouteManifest.Entry::controllerClassName)
+        ).toList();
         String restrictedClasspath = PluginChildClasspath.compute(
-                System.getProperty("java.class.path"), !controllerRouteManifest.isEmpty());
+                System.getProperty("java.class.path"), !controllerRouteManifest.isEmpty(), pluginOwnedClassNames);
         PluginContainmentTierLog.logAtBoot(restrictedClasspath, limits);
         return new PluginIpcChildProcessPool(
                 poolSize,

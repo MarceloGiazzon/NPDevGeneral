@@ -1,5 +1,8 @@
 package com.finalexec.npdev.service.pluginipc;
 
+import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
+
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,6 +44,18 @@ import java.util.regex.Pattern;
  * com.finalexec.*} and non-plugin {@code com.npdev.generated.*} classes alongside the plugin class,
  * since they cannot be physically split -- {@link PluginRestrictedClassLoader} is what actually
  * refuses those at class-load time; this class only removes UNRELATED third-party jars.</p>
+ *
+ * <p><b>2026-09-06 fix: a plugin's OWN third-party dependency (E8, Guava) was being dropped too.</b>
+ * The fixed marker list above only recognizes PLATFORM classes -- it has no way to know a specific
+ * plugin's business logic calls into some other library (there is still no {@code libraries[]}
+ * manifest declaring it, the same absence established above). Every {@code plugin:java-source}/
+ * {@code plugin:java-controller} mount's own compiled class (named by
+ * {@code JavaSourceRuntimeRefManifest}/{@code PluginControllerRouteManifest}, already loaded at this
+ * call site for other reasons) is now scanned with {@link TrustedSourceBytecodeInspector}'s
+ * constant-pool reader -- the SAME reader the B30 admission gates already use, just asking a
+ * different question ("what does this reference" instead of "does this violate policy") -- and every
+ * class it references becomes an ADDITIONAL marker, so the classpath entry actually holding that
+ * library is kept alongside the fixed platform set.</p>
  */
 public final class PluginChildClasspath {
 
@@ -78,12 +93,20 @@ public final class PluginChildClasspath {
      * to hand to {@link PluginIpcChildProcess}'s plain {@code -cp} branch -- the fat-jar case no
      * longer needs {@code PropertiesLauncher} once its content is extracted onto a normal,
      * multi-entry classpath.
+     *
+     * @param pluginOwnedClassNames every mounted {@code plugin:java-source}/{@code plugin:java-controller}
+     *         class's dotted FQCN (from {@code JavaSourceRuntimeRefManifest.Entry#mainClass}/
+     *         {@code PluginControllerRouteManifest.Entry#controllerClassName}) -- scanned for
+     *         third-party classes the plugin's own code genuinely references (class javadoc above).
      */
-    public static String compute(String hostClasspath, boolean anyControllerMounts) throws IOException {
-        List<String> needed = markers(anyControllerMounts);
+    public static String compute(String hostClasspath, boolean anyControllerMounts,
+            List<String> pluginOwnedClassNames) throws IOException {
+        List<String> needed = new ArrayList<>(markers(anyControllerMounts));
         if (isSingleJarPath(hostClasspath) && PluginIpcChildProcess.isExecutableSpringBootArchive(hostClasspath)) {
+            needed.addAll(referencedMarkersFromFatJar(Path.of(hostClasspath), pluginOwnedClassNames));
             return String.join(File.pathSeparator, extractFromFatJar(Path.of(hostClasspath), needed));
         }
+        needed.addAll(referencedMarkersFromClasspath(hostClasspath, pluginOwnedClassNames));
         List<String> kept = new ArrayList<>();
         for (String entry : hostClasspath.split(Pattern.quote(File.pathSeparator))) {
             if (!entry.isBlank() && entryHasAnyMarker(Path.of(entry), needed)) {
@@ -91,6 +114,154 @@ public final class PluginChildClasspath {
             }
         }
         return String.join(File.pathSeparator, kept);
+    }
+
+    /**
+     * Every class a plugin-owned class's OWN compiled bytecode references (Guava's {@code Hashing},
+     * say), as classpath-resource markers ({@code "com/google/common/hash/Hashing.class"}) -- a
+     * plugin class always lives in exactly one classpath entry (the app's own compiled output, per
+     * this class's own javadoc), so the first entry found holding it is scanned and the search stops.
+     * Includes the class's {@code $}-sibling files (inner/anonymous classes are separate class
+     * files), matching {@code PluginBytecodeBootGate}'s own sibling-expansion for the same reason.
+     */
+    private static List<String> referencedMarkersFromClasspath(String hostClasspath, List<String> pluginOwnedClassNames)
+            throws IOException {
+        List<String> markers = new ArrayList<>();
+        for (String dottedClassName : pluginOwnedClassNames) {
+            String basePath = dottedClassName.replace('.', '/');
+            for (String entryPath : hostClasspath.split(Pattern.quote(File.pathSeparator))) {
+                if (entryPath.isBlank()) {
+                    continue;
+                }
+                Path entry = Path.of(entryPath);
+                List<String> resourcePaths = pluginClassResourcePaths(entry, basePath);
+                if (resourcePaths.isEmpty()) {
+                    continue;
+                }
+                for (String resourcePath : resourcePaths) {
+                    byte[] classBytes = readEntryBytes(entry, resourcePath);
+                    if (classBytes != null) {
+                        markers.addAll(referencedClassMarkers(classBytes, resourcePath));
+                    }
+                }
+                break;
+            }
+        }
+        return markers;
+    }
+
+    /** The fat-jar twin of {@link #referencedMarkersFromClasspath}: a plugin class always lives
+     *  under {@code BOOT-INF/classes/}, never inside a nested {@code BOOT-INF/lib/*.jar}. */
+    private static List<String> referencedMarkersFromFatJar(Path fatJarPath, List<String> pluginOwnedClassNames)
+            throws IOException {
+        if (pluginOwnedClassNames.isEmpty()) {
+            return List.of();
+        }
+        List<String> markers = new ArrayList<>();
+        try (JarFile jarFile = new JarFile(fatJarPath.toFile())) {
+            for (String dottedClassName : pluginOwnedClassNames) {
+                String basePath = dottedClassName.replace('.', '/');
+                String topLevel = BOOT_INF_CLASSES + basePath + ".class";
+                if (jarFile.getEntry(topLevel) == null) {
+                    continue;
+                }
+                List<String> resourcePaths = new ArrayList<>();
+                resourcePaths.add(topLevel);
+                resourcePaths.addAll(matchingJarEntries(jarFile, BOOT_INF_CLASSES, basePath));
+                for (String resourcePath : resourcePaths) {
+                    java.util.zip.ZipEntry entry = jarFile.getEntry(resourcePath);
+                    try (InputStream in = jarFile.getInputStream(entry)) {
+                        markers.addAll(referencedClassMarkers(in.readAllBytes(), resourcePath));
+                    }
+                }
+            }
+        }
+        return markers;
+    }
+
+    /** The class file at {@code basePath + ".class"} plus any {@code $}-sibling in the same entry,
+     *  or empty if this entry does not hold that class at all. */
+    private static List<String> pluginClassResourcePaths(Path entry, String basePath) throws IOException {
+        String topLevel = basePath + ".class";
+        if (Files.isDirectory(entry)) {
+            if (!Files.exists(entry.resolve(topLevel))) {
+                return List.of();
+            }
+            List<String> resolved = new ArrayList<>();
+            resolved.add(topLevel);
+            int lastSlash = basePath.lastIndexOf('/');
+            String packageDir = lastSlash < 0 ? "" : basePath.substring(0, lastSlash);
+            String base = lastSlash < 0 ? basePath : basePath.substring(lastSlash + 1);
+            Path packagePath = packageDir.isEmpty() ? entry : entry.resolve(packageDir);
+            if (Files.isDirectory(packagePath)) {
+                try (var files = Files.list(packagePath)) {
+                    files.map(p -> p.getFileName().toString())
+                            .filter(name -> name.startsWith(base + "$") && name.endsWith(".class"))
+                            .forEach(name -> resolved.add((packageDir.isEmpty() ? "" : packageDir + "/") + name));
+                }
+            }
+            return resolved;
+        }
+        if (!Files.isRegularFile(entry)) {
+            return List.of();
+        }
+        try (JarFile jarFile = new JarFile(entry.toFile())) {
+            if (jarFile.getEntry(topLevel) == null) {
+                return List.of();
+            }
+            List<String> resolved = new ArrayList<>();
+            resolved.add(topLevel);
+            resolved.addAll(matchingJarEntries(jarFile, "", basePath));
+            return resolved;
+        } catch (IOException notAJar) {
+            return List.of();
+        }
+    }
+
+    /** {@code $}-sibling entries of {@code prefix + basePath} inside an already-open jar (top-level
+     *  match excluded -- the caller already knows the top-level class exists). */
+    private static List<String> matchingJarEntries(JarFile jarFile, String prefix, String basePath) {
+        int lastSlash = basePath.lastIndexOf('/');
+        String packagePrefix = prefix + (lastSlash < 0 ? "" : basePath.substring(0, lastSlash + 1));
+        String base = lastSlash < 0 ? basePath : basePath.substring(lastSlash + 1);
+        List<String> matches = new ArrayList<>();
+        Enumeration<JarEntry> entries = jarFile.entries();
+        while (entries.hasMoreElements()) {
+            String name = entries.nextElement().getName();
+            if (name.startsWith(packagePrefix + base + "$") && name.endsWith(".class")) {
+                matches.add(name);
+            }
+        }
+        return matches;
+    }
+
+    private static byte[] readEntryBytes(Path entry, String resourcePath) throws IOException {
+        if (Files.isDirectory(entry)) {
+            Path file = entry.resolve(resourcePath);
+            return Files.exists(file) ? Files.readAllBytes(file) : null;
+        }
+        if (!Files.isRegularFile(entry)) {
+            return null;
+        }
+        try (JarFile jarFile = new JarFile(entry.toFile())) {
+            java.util.zip.ZipEntry jarEntry = jarFile.getEntry(resourcePath);
+            if (jarEntry == null) {
+                return null;
+            }
+            try (InputStream in = jarFile.getInputStream(jarEntry)) {
+                return in.readAllBytes();
+            }
+        } catch (IOException notAJar) {
+            return null;
+        }
+    }
+
+    private static List<String> referencedClassMarkers(byte[] classBytes, String displayName) throws IOException {
+        try (InputStream in = new ByteArrayInputStream(classBytes)) {
+            return new TrustedSourceBytecodeInspector().referencedClassNames(in, displayName).stream()
+                    .map(owner -> owner + ".class")
+                    .toList();
+        }
     }
 
     private static boolean isSingleJarPath(String classpath) {
