@@ -25,6 +25,13 @@ import static org.junit.jupiter.api.Assertions.fail;
  * H2Local file (mirrors {@code MigrationKillMidPhaseCrashResumeTest}'s child-process/argfile
  * mechanics, adapted to run the two processes CONCURRENTLY rather than sequentially, since the whole
  * point here is proving genuine overlap, not a crash-then-resume sequence).
+ *
+ * <p>STOR-27 (B31 lift): the two tests above needed no change at all -- this harness calls {@link
+ * H2LocalBootLock#acquireIfNeeded} directly, bypassing the URL-rewrite decision ({@link
+ * H2LocalAutoServer}) that only {@code H2LocalBootLockEnvironmentPostProcessor} (the real production
+ * caller) consults, so they keep proving the lock PRIMITIVE unconditionally, exactly as before.
+ * {@link #bothProcessesConnectSuccessfullyWhenAutoServerIsEnabled} is the new case: two real
+ * processes, a URL naming {@code AUTO_SERVER=TRUE} explicitly, neither ever waiting.
  */
 class H2LocalBootLockCrossProcessTest {
 
@@ -88,6 +95,47 @@ class H2LocalBootLockCrossProcessTest {
             }
         } finally {
             holder.destroyForcibly();
+        }
+    }
+
+    @Test
+    void bothProcessesConnectSuccessfullyWhenAutoServerIsEnabled(@TempDir Path tempDir) throws Exception {
+        // STOR-27 (B31 lift): the AUTO_SERVER=TRUE case -- H2's own TCP server arbitrates access, so
+        // both processes connect straight through, neither ever logging a wait. This bypasses
+        // H2LocalBootLock entirely (mirrors production: H2LocalBootLockEnvironmentPostProcessor skips
+        // the lock once it sees AUTO_SERVER=TRUE in the URL), so the harness's "connect" mode opens a
+        // real JDBC connection directly rather than calling the lock primitive.
+        String jdbcUrl = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL;AUTO_SERVER=TRUE";
+        Path releaseSignal = tempDir.resolve("release.signal");
+
+        File firstLog = tempDir.resolve("first.log").toFile();
+        Process first = startHarness(tempDir, "first", firstLog, "connect", jdbcUrl,
+                releaseSignal.toAbsolutePath().toString());
+        try {
+            waitForLogToContain(firstLog, "HARNESS: CONNECTED", Duration.ofSeconds(20));
+
+            File secondLog = tempDir.resolve("second.log").toFile();
+            Process second = startHarness(tempDir, "second", secondLog, "connect", jdbcUrl,
+                    releaseSignal.toAbsolutePath().toString());
+            try {
+                waitForLogToContain(secondLog, "HARNESS: CONNECTED", Duration.ofSeconds(20));
+                assertFalse(readQuietly(secondLog).contains("waiting"), readQuietly(secondLog));
+                assertFalse(readQuietly(firstLog).contains("waiting"), readQuietly(firstLog));
+
+                Files.writeString(releaseSignal, "release");
+
+                waitForExit(first, Duration.ofSeconds(20));
+                assertEquals(0, first.exitValue(), readQuietly(firstLog));
+                assertTrue(readQuietly(firstLog).contains("HARNESS: DISCONNECTED"), readQuietly(firstLog));
+
+                waitForExit(second, Duration.ofSeconds(20));
+                assertEquals(0, second.exitValue(), readQuietly(secondLog));
+                assertTrue(readQuietly(secondLog).contains("HARNESS: DISCONNECTED"), readQuietly(secondLog));
+            } finally {
+                second.destroyForcibly();
+            }
+        } finally {
+            first.destroyForcibly();
         }
     }
 

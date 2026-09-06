@@ -404,8 +404,21 @@ public final class UserDatabaseDefinitionLoader {
             // PORT-1: "./" + an app-relative root, so Spring resolves it at boot against the app's
             // own working directory instead of against a drive letter from the machine that
             // generated it. H2 resolves a relative file: path against the JVM's working directory.
+            // STOR-27 (B31 lift): AUTO_SERVER=TRUE minted here too, not just appended at boot by
+            // H2LocalBootLockEnvironmentPostProcessor -- so the app's OWN application.properties is
+            // truthful about the mode it actually runs in, matching NPDevCli's identical formula
+            // (twin-pair rule h2local-auto-server-url-twin-pair). The post-processor's own "never
+            // touch a URL that already names AUTO_SERVER" rule means minting it here changes nothing
+            // it would otherwise have appended -- it only makes the generated file honest sooner.
+            // NO DB_CLOSE_ON_EXIT=FALSE here, unlike H2Server below -- H2 refuses that combination
+            // outright ("Feature not supported: AUTO_SERVER=TRUE && DB_CLOSE_ON_EXIT=FALSE"), so
+            // every H2Local boot minting both together fails before Flyway ever runs. AUTO_SERVER's
+            // own TCP-server lifecycle is the reason DB_CLOSE_ON_EXIT=FALSE existed at all (keeping
+            // H2's JVM-shutdown-hook close from racing another process using the same file); once
+            // AUTO_SERVER=TRUE is active that concern is AUTO_SERVER's to own, so this reverts to
+            // H2's default (DB_CLOSE_ON_EXIT=TRUE).
             case H2_LOCAL -> "jdbc:h2:file:./" + identity.resolvedDataRoot() + "/" + identity.resolvedDatabaseName()
-                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
+                    + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;WRITE_DELAY=0;AUTO_SERVER=TRUE";
             // H2Server resolves the path SERVER-side, so the relative path is relative to the H2
             // process's baseDir -- which Create-Environment sets to the FinalApp directory, the same
             // anchor the client uses. Both halves therefore name <app>/data/<db>, from either end.

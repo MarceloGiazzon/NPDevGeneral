@@ -27,10 +27,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * B31. Ordering/no-op/wiring only, at the {@link org.springframework.boot.env.EnvironmentPostProcessor}
  * level -- no real {@code ApplicationContext} boot. The real cross-process contention proof is
  * {@code H2LocalBootLockCrossProcessTest}; {@link H2LocalBootLockTest} covers the lock primitive
- * itself. This class proves the three things specific to the wiring layer: a non-H2Local engine adds
- * no listener, an H2Local engine adds exactly one {@link ContextClosedEvent} listener that genuinely
- * releases the lock when fired, and a lock failure surfaces as {@link BoundaryBootException} naming
- * boundary B31.
+ * itself. This class proves the wiring layer: a non-H2Local engine adds no listener; an H2Local URL
+ * naming {@code AUTO_SERVER=FALSE} explicitly (or with the STOR-27 opt-out property set) still adds
+ * exactly one {@link ContextClosedEvent} listener that genuinely releases the lock when fired, and a
+ * lock failure on that path surfaces as {@link BoundaryBootException} naming boundary B31.
+ *
+ * <p>STOR-27 (B31 lift): an H2Local URL naming NO {@code AUTO_SERVER} token at all is now rewritten
+ * to {@code AUTO_SERVER=TRUE} and the boot lock below is skipped entirely -- see {@link
+ * H2LocalAutoServer} and the tests at the bottom of this class. Every test above that boundary keeps
+ * exercising the (still real, still needed) opt-out path by pinning {@code AUTO_SERVER=FALSE}
+ * explicitly, exactly like the {@code MigrationKillMid*} harnesses.
  */
 class H2LocalBootLockEnvironmentPostProcessorTest {
 
@@ -71,9 +77,9 @@ class H2LocalBootLockEnvironmentPostProcessorTest {
     }
 
     @Test
-    @DisplayName("H2Local adds exactly one ContextClosedEvent listener, and firing it releases the real lock")
-    void h2LocalRegistersAReleaseListenerThatActuallyReleases() throws Exception {
-        String url = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL";
+    @DisplayName("H2Local with AUTO_SERVER=FALSE adds exactly one ContextClosedEvent listener, and firing it releases the real lock")
+    void h2LocalWithAutoServerDisabledRegistersAReleaseListenerThatActuallyReleases() throws Exception {
+        String url = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL;AUTO_SERVER=FALSE";
         MockEnvironment environment = new MockEnvironment();
         environment.setProperty("npdev.database.engine", "H2Local");
         environment.setProperty("spring.datasource.url", url);
@@ -112,9 +118,9 @@ class H2LocalBootLockEnvironmentPostProcessorTest {
     }
 
     @Test
-    @DisplayName("a genuine lock timeout surfaces as BoundaryBootException naming boundary B31")
-    void lockTimeoutSurfacesAsBoundaryBootException() throws Exception {
-        String url = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL";
+    @DisplayName("a genuine lock timeout on the AUTO_SERVER=FALSE path surfaces as BoundaryBootException naming boundary B31")
+    void h2LocalWithAutoServerDisabledLockTimeoutSurfacesAsBoundaryBootException() throws Exception {
+        String url = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL;AUTO_SERVER=FALSE";
         Path lockFilePath = H2LocalBootLock.lockFilePathFor(url);
         Files.createDirectories(lockFilePath.getParent());
         System.setProperty(WAIT_SECONDS_PROPERTY, "1");
@@ -132,5 +138,83 @@ class H2LocalBootLockEnvironmentPostProcessorTest {
             assertEquals("B31", failure.getViolation().boundaryId());
             assertTrue(failure.getMessage().startsWith("B31:h2local_boot_lock_held:"));
         }
+    }
+
+    // ---- STOR-27 (B31 lift): AUTO_SERVER routing ----
+
+    @Test
+    @DisplayName("an H2Local URL naming no AUTO_SERVER token is rewritten to AUTO_SERVER=TRUE and the boot lock is skipped")
+    void h2LocalWithNoAutoServerTokenDefaultsToAutoServerAndSkipsTheBootLock() {
+        String url = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL";
+        MockEnvironment environment = new MockEnvironment();
+        environment.setProperty("npdev.database.engine", "H2Local");
+        environment.setProperty("spring.datasource.url", url);
+        SpringApplication application = new SpringApplication();
+        int baselineListenerCount = application.getListeners().size();
+
+        assertDoesNotThrow(() -> processor.postProcessEnvironment(environment, application));
+
+        assertEquals(baselineListenerCount, application.getListeners().size(),
+                "AUTO_SERVER=TRUE means H2's own TCP server arbitrates access -- no boot-lock listener needed");
+        assertEquals(url + ";AUTO_SERVER=TRUE", environment.getProperty("spring.datasource.url"));
+    }
+
+    @Test
+    @DisplayName("a real generator-shaped URL (DB_CLOSE_ON_EXIT=FALSE, no AUTO_SERVER token) is "
+            + "rewritten with DB_CLOSE_ON_EXIT=FALSE stripped, not just AUTO_SERVER=TRUE appended")
+    void h2LocalUrlCarryingDbCloseOnExitFalseHasItStrippedWhenAutoServerIsAppended() {
+        // The exact shape UserDatabaseDefinitionLoader.jdbcUrl minted for every H2Local app before
+        // STOR-27, and what npdev_cli.py's _jdbc_url_for_verify still mints too -- proven live via
+        // run-r10-plugin-controller-proof.py against a probe app carrying this real shape: H2
+        // refuses "AUTO_SERVER=TRUE && DB_CLOSE_ON_EXIT=FALSE" outright at boot.
+        String url = "jdbc:h2:file:" + tempDir.resolve("mydb")
+                + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0";
+        MockEnvironment environment = new MockEnvironment();
+        environment.setProperty("npdev.database.engine", "H2Local");
+        environment.setProperty("spring.datasource.url", url);
+        SpringApplication application = new SpringApplication();
+
+        assertDoesNotThrow(() -> processor.postProcessEnvironment(environment, application));
+
+        String rewritten = environment.getProperty("spring.datasource.url");
+        assertTrue(rewritten.toUpperCase(java.util.Locale.ROOT).contains("AUTO_SERVER=TRUE"),
+                "AUTO_SERVER=TRUE must still be appended: " + rewritten);
+        assertTrue(!rewritten.toUpperCase(java.util.Locale.ROOT).contains("DB_CLOSE_ON_EXIT=FALSE"),
+                "DB_CLOSE_ON_EXIT=FALSE must be stripped -- H2 refuses it combined with AUTO_SERVER=TRUE: "
+                        + rewritten);
+    }
+
+    @Test
+    @DisplayName("a URL already naming AUTO_SERVER=FALSE is never rewritten, and the boot lock still applies")
+    void h2LocalUrlAlreadyNamingAutoServerFalseIsNeverRewritten() {
+        String url = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL;AUTO_SERVER=FALSE";
+        MockEnvironment environment = new MockEnvironment();
+        environment.setProperty("npdev.database.engine", "H2Local");
+        environment.setProperty("spring.datasource.url", url);
+        SpringApplication application = new SpringApplication();
+        int baselineListenerCount = application.getListeners().size();
+
+        processor.postProcessEnvironment(environment, application);
+
+        assertEquals(url, environment.getProperty("spring.datasource.url"), "never touch a URL that already names AUTO_SERVER");
+        assertEquals(baselineListenerCount + 1, application.getListeners().size(),
+                "AUTO_SERVER=FALSE means the OS-level boot lock still arbitrates access");
+    }
+
+    @Test
+    @DisplayName("npdev.h2local.autoServer=false opts a no-token URL out of the rewrite and keeps the old boot-lock behavior")
+    void autoServerOptOutPropertyKeepsTheOldBootLockBehavior() {
+        String url = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL";
+        MockEnvironment environment = new MockEnvironment();
+        environment.setProperty("npdev.database.engine", "H2Local");
+        environment.setProperty("spring.datasource.url", url);
+        environment.setProperty("npdev.h2local.autoServer", "false");
+        SpringApplication application = new SpringApplication();
+        int baselineListenerCount = application.getListeners().size();
+
+        processor.postProcessEnvironment(environment, application);
+
+        assertEquals(url, environment.getProperty("spring.datasource.url"), "opted out -- never rewritten");
+        assertEquals(baselineListenerCount + 1, application.getListeners().size());
     }
 }
