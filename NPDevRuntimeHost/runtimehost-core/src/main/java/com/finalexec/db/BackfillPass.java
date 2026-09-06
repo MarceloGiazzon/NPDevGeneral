@@ -35,17 +35,23 @@ final class BackfillPass {
     /**
      * BOUNDARY_LIFT_PLAN_2026-09-02 package 3.1 (B2): which {@link ExpressionBackfillRiskClassifier.Tier}
      * an expression-default candidate must be at or below to auto-apply without an operator
-     * acknowledgment. Overridable with {@code -Dnpdev.schema.backfill.auto-apply=none|safe|safe-and-reviewable}
-     * -- {@code HIGH_RISK} never auto-applies under any mode; that ladder rung deliberately does not
-     * exist (see the plan's rejection of a blanket {@code --force}/{@code auto-acknowledge-backfills}
-     * escape hatch).
+     * acknowledgment. Overridable with
+     * {@code -Dnpdev.schema.backfill.auto-apply=none|safe|safe-and-reviewable|proven}.
+     *
+     * <p>STOR-26 (B2 lift): {@code HIGH_RISK} never auto-applies on the strength of its
+     * classification alone -- that ladder rung still does not exist (see the plan's rejection of a
+     * blanket {@code --force}/{@code auto-acknowledge-backfills} escape hatch). {@code PROVEN} is
+     * different in kind, not degree: it auto-applies ANY tier, including {@code HIGH_RISK}, but only
+     * a candidate {@link ExpressionBackfillShadowProof} has independently PROVEN safe by running it
+     * twice against the live rows -- text classification never decides safety by itself under this
+     * mode, running it does.
      */
     private static final String AUTO_APPLY_MODE_PROPERTY = "npdev.schema.backfill.auto-apply";
     private static final String AUTO_APPLY_MAX_ROWS_PROPERTY = "npdev.schema.backfill.auto-apply-max-rows";
     private static final long DEFAULT_AUTO_APPLY_MAX_ROWS = 10_000L;
 
     private enum AutoApplyMode {
-        NONE("none"), SAFE("safe"), SAFE_AND_REVIEWABLE("safe-and-reviewable");
+        NONE("none"), SAFE("safe"), SAFE_AND_REVIEWABLE("safe-and-reviewable"), PROVEN("proven");
 
         private final String propertyValue;
 
@@ -59,6 +65,7 @@ final class BackfillPass {
                 case SAFE -> tier == ExpressionBackfillRiskClassifier.Tier.SAFE;
                 case SAFE_AND_REVIEWABLE -> tier == ExpressionBackfillRiskClassifier.Tier.SAFE
                         || tier == ExpressionBackfillRiskClassifier.Tier.REVIEWABLE;
+                case PROVEN -> true;
             };
         }
     }
@@ -75,7 +82,7 @@ final class BackfillPass {
         }
         // A typo in an operator-set property must not silently widen or narrow what auto-applies.
         System.out.println("NPDev schema lifecycle: ignoring unrecognized " + AUTO_APPLY_MODE_PROPERTY
-                + "='" + configured + "' (expected none|safe|safe-and-reviewable); using the default 'safe'.");
+                + "='" + configured + "' (expected none|safe|safe-and-reviewable|proven); using the default 'safe'.");
         return AutoApplyMode.SAFE;
     }
 
@@ -167,6 +174,8 @@ final class BackfillPass {
         // matching the destructive-item acknowledgment convention) instead of refusing immediately.
         List<ExpressionBackfillPreview.Item> expressionCandidates = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
+            com.npdev.dsl.v1.expr.ComputedExpression.FunctionRegistry registry =
+                    ExpressionBackfillPreview.registryFor(connection, manifest);
             for (BackfillItem item : backfillItemsFromDiff(dataSource, manifest)) {
                 String table = item.table();   // model-case
                 String column = item.column(); // model-case
@@ -174,7 +183,7 @@ final class BackfillPass {
                     String expression = manifest.businessTableColumnDefaultExpressions()
                             .getOrDefault(table, Map.of()).get(column);
                     if (expression != null && !expression.isBlank()) {
-                        expressionCandidates.add(ExpressionBackfillPreview.evaluate(connection, table, column, expression));
+                        expressionCandidates.add(ExpressionBackfillPreview.evaluate(connection, table, column, expression, registry));
                         continue;
                     }
                     // Move 9 B1: a manifest generated BEFORE this feature only ever carries the boolean
@@ -248,6 +257,8 @@ final class BackfillPass {
             Map<String, Map<Object, Object>> provenValuesByKey = new LinkedHashMap<>();
             if (mode != AutoApplyMode.NONE) {
                 try (Connection connection = dataSource.getConnection()) {
+                    com.npdev.dsl.v1.expr.ComputedExpression.FunctionRegistry registry =
+                            ExpressionBackfillPreview.registryFor(connection, manifest);
                     for (ExpressionBackfillPreview.Item candidate : expressionCandidates) {
                         ExpressionBackfillRiskClassifier.Tier tier =
                                 ExpressionBackfillRiskClassifier.classify(candidate.expression());
@@ -255,10 +266,14 @@ final class BackfillPass {
                             if (mode.eligible(tier) && !candidate.hasFailures() && candidate.rowsAffected() <= maxRows) {
                                 autoApply.add(candidate);
                             }
-                        } else if (tier == ExpressionBackfillRiskClassifier.Tier.REVIEWABLE
+                        } else if ((tier == ExpressionBackfillRiskClassifier.Tier.REVIEWABLE
+                                || tier == ExpressionBackfillRiskClassifier.Tier.HIGH_RISK)
                                 && mode.eligible(tier) && candidate.rowsAffected() <= maxRows) {
+                            // STOR-26 (B2 lift): HIGH_RISK reaches here only under PROVEN mode
+                            // (mode.eligible(HIGH_RISK) is false for every other mode) -- text
+                            // classification alone never auto-applies it, the shadow proof does.
                             ExpressionBackfillShadowProof.ShadowProofResult proof = ExpressionBackfillShadowProof.prove(
-                                    connection, candidate.table(), candidate.column(), candidate.expression());
+                                    connection, candidate.table(), candidate.column(), candidate.expression(), registry);
                             if (proof.safe()) {
                                 autoApply.add(candidate);
                                 provenValuesByKey.put(candidate.table() + "." + candidate.column(), proof.provenValues());
@@ -276,7 +291,7 @@ final class BackfillPass {
                     }
                 } catch (SQLException exception) {
                     throw new IllegalStateException(
-                            "Failed shadow-proving REVIEWABLE expression-default backfill(s)", exception);
+                            "Failed shadow-proving REVIEWABLE/HIGH_RISK expression-default backfill(s)", exception);
                 }
             }
 
@@ -586,8 +601,9 @@ final class BackfillPass {
     private static void applyExpressionBackfill(
             Connection connection, SchemaLifecycleExecutor.SchemaManifest manifest, ExpressionBackfillPreview.Item item
     ) throws SQLException {
-        List<ExpressionBackfillPreview.RowValue> rows =
-                ExpressionBackfillPreview.evaluateRows(connection, item.table(), item.column(), item.expression());
+        List<ExpressionBackfillPreview.RowValue> rows = ExpressionBackfillPreview.evaluateRows(
+                connection, item.table(), item.column(), item.expression(),
+                ExpressionBackfillPreview.registryFor(connection, manifest));
         Map<Object, Object> values = new LinkedHashMap<>();
         for (ExpressionBackfillPreview.RowValue row : rows) {
             if (row.value() == null) {

@@ -1,0 +1,63 @@
+id: STOR-26
+title: >-
+  Backfill shadow proof gets a real FunctionRegistry, so a REVIEWABLE/HIGH_RISK expression can
+  actually prove itself safe (boundary B2 -> LIFTED)
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P1 (Wave 1, independent). B2.yml's own residue: the
+  shadow-proof mechanism (ExpressionBackfillShadowProof, REAL_LIFT_PLAN_2026-09-03 package A2) was
+  real and tested but could never actually SUCCEED for a REVIEWABLE or HIGH_RISK candidate, because
+  ExpressionBackfillPreview#evaluateRows evaluated every expression through an EMPTY
+  FunctionRegistry -- every function call failed honestly rather than being guessed at, so no
+  candidate with a function call could ever reach auto-apply, only the always-reachable manual
+  acknowledgment path.
+surface: kernel (concepts), runtime-support adapter (schemaexpr), runtimehost-core (db), SqlDialect
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionFunctions.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ValueExpressionEvaluator.java
+  - NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcScopeExistsFn.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ExpressionBackfillPreview.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ExpressionBackfillShadowProof.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/BackfillPass.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/ValueExpressionFunctionsTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ExpressionBackfillShadowProofIntegrationTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRequiredFieldBackfillTest.java
+  - ledger/boundaries/B2.yml
+detail: |
+  One canonical registry moved into the kernel: `ValueExpressionFunctions.base()` (the five
+  value-behavior functions SchemaExpressionSupport already implemented --
+  concat/coalesce/trim/uppercase/lowercase, moved verbatim, not copied) and
+  `ValueExpressionFunctions.withScope(ScopeExistsFn)` (adds `scope.exists`, backed in production by
+  a new `JdbcScopeExistsFn` running a live query via `SqlDialect.rowExistsSql`).
+  `ValueExpressionEvaluator` gained `evaluate`/`evaluateStrict` overloads taking an explicit
+  registry (the pre-existing 2-arg overload and its `return text;` fallback for a live row-creation
+  write are untouched). `ExpressionBackfillPreview` no longer forces every function-call expression
+  to null: `unresolvedFunctionCalls(expression, registry)` names only the functions the registry
+  cannot resolve, so a registry-known call (e.g. `concat(...)`, `scope.exists(...)`) now evaluates
+  to a real per-row value instead of being blanket-refused. `BackfillPass.AutoApplyMode` gained
+  `PROVEN` -- auto-applies ANY risk tier (including HIGH_RISK) once
+  `ExpressionBackfillShadowProof` independently proves it safe by running it twice and confirming
+  every row produced a value and both runs agree; default stays `safe`, so this is opt-in.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ExpressionBackfillShadowProofIntegrationTest.java
+  asserts: >-
+    aRegistryKnownFunctionCallExpressionProvesSafeAndCarriesEveryRowsRealValue (new) proves a
+    concat(...) expression now runs the shadow proof to a genuine SUCCESS with real concatenated
+    values, not nulls -- the scenario the boundary's residue said could never happen.
+    anUnresolvableFunctionCallExpressionCanNeverProveSafe (renamed from the old "can never prove
+    safe" test, inverted per the plan's trap #1) still proves an UNKNOWN function name still fails
+    honestly. SchemaLifecycleExecutorRequiredFieldBackfillTest adds
+    scopeExistsExpressionProvesSafeAndAutoAppliesUnderProvenMode (HIGH_RISK auto-applies only under
+    PROVEN) and scopeExistsExpressionNeverAutoAppliesUnderSafeAndReviewableMode (confirms the
+    SAFE_AND_REVIEWABLE ladder rung still never auto-applies HIGH_RISK). Verified via
+    `:kernel:test`, `:adapters:runtime-support:test`, and the RuntimeHost module's own test run,
+    all green; full run-runtimehost-gate.ps1 passed clean as part of this session's later
+    checkpoint.
+  provenRed: true

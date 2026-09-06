@@ -1,7 +1,21 @@
 id: B2
-title: "Expression-valued backfills require an explicit dry-run + acknowledgment"
+title: "An expression-valued backfill the platform can prove safe by running it applies without an acknowledgment"
 codeLinked: true
 codeLinkedNote: >-
+  2026-09-05 (ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P1, STOR-26): the "HONEST FINDING" below
+  is now closed. A real `FunctionRegistry` (new `ValueExpressionFunctions.base()`/`withScope`,
+  kernel) is wired into `ExpressionBackfillPreview`'s evaluation path -- the five value-behavior
+  functions moved from `SchemaExpressionSupport` verbatim, and `scope.exists` is backed by a new
+  `JdbcScopeExistsFn` running a live query. A REVIEWABLE or HIGH_RISK candidate whose function
+  call(s) the registry can resolve now evaluates to a REAL per-row value and the shadow proof can
+  genuinely SUCCEED -- `BackfillPass.AutoApplyMode` gained `PROVEN`, which auto-applies ANY risk
+  tier once the shadow proof confirms it (opt-in; default stays `safe`). Only a function call the
+  registry does NOT know, or an expression that fails to evaluate or disagrees across the two
+  shadow runs, still requires the acknowledgment -- see `ledger/items/STOR-26.yml` for the full
+  trace. **Reclassified LIFTED** (was HITTABLE): the ack requirement still exists and still fires
+  for anything not provably safe, but the boundary's own residue -- that the mechanism could never
+  actually reach SUCCESS -- is gone.
+
   2026-08-25 (remediation plan W2.3). Re-traced from the real code: the actual "requires ack"
   refusal is a BOOT-time refusal (BackfillPass.applyRequiredFieldBackfills, merged into
   SchemaLifecycleExecutor's required-field-backfill pass), not purely a REST endpoint as this note
@@ -58,4 +72,4 @@ codeLinkedNote: >-
   currently prove safe. HIGH_RISK, specifically, is thus doubly unreachable: REG-202's own
   `scope.*`-specific note, and now this evaluator-wide fact that subsumes it.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B2, ExpressionBackfillShadowProof.java, ExpressionBackfillShadowProofTest.java, ExpressionBackfillShadowProofIntegrationTest.java, SchemaLifecycleExecutorRequiredFieldBackfillTest#reviewableExpressionNeverAutoAppliesBecauseThisEvaluatorCannotResolveAnyFunctionCall / #reviewableFunctionCallExpressionRefusesEvenWithAnExplicitAcknowledgment, REAL_LIFT_PLAN_2026-09-03.md package A2"
-classification: HITTABLE
+classification: LIFTED
