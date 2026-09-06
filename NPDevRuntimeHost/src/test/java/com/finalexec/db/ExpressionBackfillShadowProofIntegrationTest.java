@@ -1,5 +1,6 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.concepts.ValueExpressionFunctions;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,9 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"): end-to-end tests for {@link
- * ExpressionBackfillShadowProof#prove} against real H2 -- the full plumbing ({@link
- * ExpressionBackfillPreview#evaluateRows} called twice, results compared).
+ * A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"); STOR-26 (B2 lift, 2026-09-05): end-to-end tests
+ * for {@link ExpressionBackfillShadowProof#prove} against real H2 -- the full plumbing ({@link
+ * ExpressionBackfillPreview#evaluateRows} called twice, results compared), now with a real {@link
+ * ValueExpressionFunctions} registry wired in instead of an always-empty one.
  */
 class ExpressionBackfillShadowProofIntegrationTest {
 
@@ -45,8 +47,8 @@ class ExpressionBackfillShadowProofIntegrationTest {
         exec("INSERT INTO widgets (id, quantity) VALUES (2, 20)");
 
         try (Connection connection = dataSource.getConnection()) {
-            ExpressionBackfillShadowProof.ShadowProofResult result =
-                    ExpressionBackfillShadowProof.prove(connection, "widgets", "auditQuantity", "$quantity");
+            ExpressionBackfillShadowProof.ShadowProofResult result = ExpressionBackfillShadowProof.prove(
+                    connection, "widgets", "auditQuantity", "$quantity", ValueExpressionFunctions.base());
 
             assertTrue(result.safe(), result.toString());
             assertEquals(10L, result.provenValues().get(1L));
@@ -57,18 +59,40 @@ class ExpressionBackfillShadowProofIntegrationTest {
     }
 
     @Test
-    void aFunctionCallExpressionCanNeverProveSafeInThisEvaluationPath() throws SQLException {
-        // A2's own honesty fix (ExpressionBackfillPreview#evaluateRows): no FunctionRegistry is ever
-        // wired for this evaluation path (REG-202's own note on why HIGH_RISK is unreachable in
-        // practice -- verified here to apply equally to REVIEWABLE, since ANY function call, not only
-        // a scope.* one, cannot resolve). Before that fix, this would have silently "succeeded" with
-        // the raw expression text as its "value" for every row; now every row is honestly unpopulated.
+    void aRegistryKnownFunctionCallExpressionProvesSafeAndCarriesEveryRowsRealValue() throws SQLException {
+        // STOR-26 (B2 lift): the whole point of giving this evaluation path a real FunctionRegistry
+        // -- a REVIEWABLE candidate (any function call) can now genuinely prove safe, not just a
+        // SAFE same-row form. "concat" is one of the five value-behavior functions ValueExpressionFunctions
+        // resolves identically to a NEW row's own defaultExpression evaluation.
+        exec("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+        exec("INSERT INTO widgets (id, name) VALUES (1, 'alpha')");
+        exec("INSERT INTO widgets (id, name) VALUES (2, 'beta')");
+
+        try (Connection connection = dataSource.getConnection()) {
+            ExpressionBackfillShadowProof.ShadowProofResult result = ExpressionBackfillShadowProof.prove(
+                    connection, "widgets", "auditTag", "concat(name, '-audit')", ValueExpressionFunctions.base());
+
+            assertTrue(result.safe(), result.toString());
+            assertEquals("alpha-audit", result.provenValues().get(1L));
+            assertEquals("beta-audit", result.provenValues().get(2L));
+            assertTrue(result.unpopulatedRowIds().isEmpty());
+            assertTrue(result.nondeterministicRowIds().isEmpty());
+        }
+    }
+
+    @Test
+    void anUnresolvableFunctionCallExpressionCanNeverProveSafe() throws SQLException {
+        // STOR-26 (B2 lift): a function name the registry genuinely does not implement is still
+        // forced unpopulated -- proving the fix only widens what a KNOWN function can do, it does
+        // not make every function call look safe. Before the fix this was true for EVERY function
+        // call (no registry was ever wired at all); now it is true only for a name the registry
+        // truly does not have.
         exec("CREATE TABLE widgets (id BIGINT PRIMARY KEY, quantity BIGINT)");
         exec("INSERT INTO widgets (id, quantity) VALUES (1, 10)");
 
         try (Connection connection = dataSource.getConnection()) {
-            ExpressionBackfillShadowProof.ShadowProofResult result =
-                    ExpressionBackfillShadowProof.prove(connection, "widgets", "auditTag", "riskyLookup(quantity)");
+            ExpressionBackfillShadowProof.ShadowProofResult result = ExpressionBackfillShadowProof.prove(
+                    connection, "widgets", "auditTag", "riskyLookup(quantity)", ValueExpressionFunctions.base());
 
             assertFalse(result.safe());
             assertEquals(java.util.List.of("1"), result.unpopulatedRowIds());
@@ -81,8 +105,8 @@ class ExpressionBackfillShadowProofIntegrationTest {
         exec("CREATE TABLE widgets (id BIGINT PRIMARY KEY, quantity BIGINT)");
 
         try (Connection connection = dataSource.getConnection()) {
-            ExpressionBackfillShadowProof.ShadowProofResult result =
-                    ExpressionBackfillShadowProof.prove(connection, "widgets", "auditQuantity", "$quantity");
+            ExpressionBackfillShadowProof.ShadowProofResult result = ExpressionBackfillShadowProof.prove(
+                    connection, "widgets", "auditQuantity", "$quantity", ValueExpressionFunctions.base());
 
             assertTrue(result.safe());
             assertTrue(result.provenValues().isEmpty());

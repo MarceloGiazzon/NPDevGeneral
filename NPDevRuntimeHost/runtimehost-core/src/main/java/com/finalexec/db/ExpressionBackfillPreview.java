@@ -1,7 +1,9 @@
 package com.finalexec.db;
 
+import com.npdev.dsl.v1.expr.ComputedExpression;
 import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
 import com.npdev.kernel.concepts.ValueExpressionEvaluator;
+import com.npdev.kernel.concepts.ValueExpressionFunctions;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -49,6 +51,7 @@ public final class ExpressionBackfillPreview {
     public static List<Item> preview(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
         List<Item> items = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
+            ComputedExpression.FunctionRegistry registry = registryFor(connection, manifest);
             for (BackfillPass.BackfillItem candidate : BackfillPass.backfillItemsFromDiff(dataSource, manifest)) {
                 if (!candidate.refusal()) {
                     continue; // has a literal default -- BackfillPass's own literal path handles it
@@ -58,12 +61,21 @@ public final class ExpressionBackfillPreview {
                 if (expression == null || expression.isBlank()) {
                     continue; // "no default at all" refusal -- an expression preview has nothing to show
                 }
-                items.add(evaluate(connection, candidate.table(), candidate.column(), expression));
+                items.add(evaluate(connection, candidate.table(), candidate.column(), expression, registry));
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed previewing expression-default backfill(s)", exception);
         }
         return items;
+    }
+
+    /** STOR-26 (B2 lift): the one {@link ComputedExpression.FunctionRegistry} every evaluation in
+     * this package resolves through -- {@link ValueExpressionFunctions#base()}'s value-behavior
+     * functions plus {@code scope.exists}, backed by {@link JdbcScopeExistsFn} against the SAME
+     * migration connection and manifest the caller already has. */
+    static ComputedExpression.FunctionRegistry registryFor(
+            Connection connection, SchemaLifecycleExecutor.SchemaManifest manifest) {
+        return ValueExpressionFunctions.withScope(new JdbcScopeExistsFn(connection, manifest));
     }
 
     /** One row's evaluated expression-default value ({@code null} means evaluation failed for this
@@ -82,29 +94,30 @@ public final class ExpressionBackfillPreview {
      * {@link #preview} (dry-run summary) and {@code BackfillPass}'s apply step (fresh re-evaluation
      * right before writing, never trusting a stale preview) share.
      *
-     * <p>A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"): a function-call expression is FORCED to
-     * {@code null} here, never handed {@link ValueExpressionEvaluator}'s own return value directly.
-     * {@code ValueExpressionEvaluator.evaluate} is called here with NO {@code FunctionRegistry} wired
-     * at all (REG-202's own note on why HIGH_RISK is unreachable in practice) -- so a function call it
-     * cannot resolve does not throw and does not evaluate to {@code null} either, it falls through to
-     * {@code ComputedExpression}'s own last-resort fallback and returns the RAW EXPRESSION TEXT as if
-     * that were a computed value. Verified live: {@code
-     * SchemaLifecycleExecutorRequiredFieldBackfillTest#reviewableExpressionAutoAppliesOnlyWhenModeIsSafeAndReviewable}
-     * already documented this exact quirk before this package existed. Silently treating that raw text
-     * as a "value" would mean {@link #hasFailures} reports false success for something that was never
-     * genuinely computed at all -- and {@link ExpressionBackfillShadowProof}'s two-evaluation check
-     * cannot catch it either, because the SAME broken fallback returns the SAME text both times
-     * (perfectly deterministic, just not real). This check is therefore load-bearing for A2's
-     * auto-apply safety, not cosmetic: every REVIEWABLE/HIGH_RISK candidate (by definition, ANY
-     * expression containing at least one function call) is treated as failing evaluation for EVERY
-     * row, exactly as honest as the boot already is about not being able to run that function --
-     * matching the SAME reasoning that already, correctly, keeps auto-apply from EVER reaching this
-     * shape (a null result is treated as a failed row everywhere it is read). Scoped to this class
-     * only -- {@link ValueExpressionEvaluator}'s own fallback (used by the live row-creation path,
-     * {@code DefaultConceptGateway.save}) is unchanged and out of scope.
+     * <p>STOR-26 (B2 lift): a function call {@code registry} cannot resolve is FORCED to {@code
+     * null} here, never handed {@link ValueExpressionEvaluator}'s own return value directly -- see
+     * {@link #unresolvedFunctionCalls}. Before this, EVERY function call was forced null because no
+     * {@link ComputedExpression.FunctionRegistry} was ever wired in (REG-202's own note on why
+     * HIGH_RISK was unreachable in practice); now the same real registry {@code SchemaExpressionSupport}
+     * uses for a NEW row's defaults ({@link ValueExpressionFunctions#base}, plus {@code scope.exists})
+     * is wired in here too, so a resolvable call (e.g. {@code concat}, or {@code scope.exists} backed
+     * by {@link JdbcScopeExistsFn}) evaluates for REAL instead of being forced null. A call the
+     * registry genuinely does not know (or an expression that fails to parse at all) is still forced
+     * null -- treating an unresolvable call as "no computation needed" would mean {@link #hasFailures}
+     * reports false success for something never genuinely computed, which {@link
+     * ExpressionBackfillShadowProof}'s two-evaluation check could not catch either (an unresolvable
+     * call was, before this fix, perfectly deterministic in its WRONGNESS: the same raw text both
+     * times). {@link ValueExpressionEvaluator}'s own 2-arg fallback (used by the live row-creation
+     * path, {@code DefaultConceptGateway.save}) is unchanged and out of scope.
      */
-    static List<RowValue> evaluateRows(Connection connection, String table, String column, String expression) throws SQLException {
-        boolean forceNullForUnresolvableFunctionCall = containsFunctionCall(expression);
+    static List<RowValue> evaluateRows(Connection connection, String table, String column, String expression,
+            ComputedExpression.FunctionRegistry registry) throws SQLException {
+        Set<String> unresolved = unresolvedFunctionCalls(expression, registry);
+        if (!unresolved.isEmpty()) {
+            System.out.println("NPDev schema lifecycle: expression-default backfill for " + table + "." + column
+                    + " cannot resolve function call(s) " + unresolved + " -- treating every affected row as "
+                    + "unevaluated (STOR-26/B2).");
+        }
         String safeTable = SchemaLifecycleExecutor.quotedIdentifier(table);
         boolean columnExistsLive = SchemaLifecycleExecutor.readActualColumns(connection.getMetaData(), table).stream()
                 .anyMatch(column::equalsIgnoreCase);
@@ -131,7 +144,22 @@ public final class ExpressionBackfillPreview {
                         row.put(camelCase, value);
                     }
                 }
-                Object result = forceNullForUnresolvableFunctionCall ? null : ValueExpressionEvaluator.evaluate(expression, row);
+                Object result;
+                if (!unresolved.isEmpty()) {
+                    result = null;
+                } else {
+                    try {
+                        result = ValueExpressionEvaluator.evaluateStrict(expression, row, registry);
+                    } catch (RuntimeException failedToEvaluate) {
+                        // Resolvable-by-name but still failed to evaluate for THIS row -- a genuine
+                        // parse/eval failure (ExpressionException), a registry function rejecting
+                        // this row's actual argument shape or values, or (JdbcScopeExistsFn) a
+                        // wrapped SQLException. All treated the same as any other unpopulated row,
+                        // never a fabricated value: the ack-required/failed-row path already reports
+                        // this identically regardless of WHY evaluation failed.
+                        result = null;
+                    }
+                }
                 Object rawId = row.containsKey("id") ? row.get("id") : ("row#" + ordinal);
                 results.add(new RowValue(rawId, result));
             }
@@ -139,23 +167,33 @@ public final class ExpressionBackfillPreview {
         return results;
     }
 
-    private static boolean containsFunctionCall(String expression) {
+    /** The function names {@code expression} calls that {@code registry} cannot resolve -- empty
+     * means every call in the expression is one the registry actually implements. An expression that
+     * fails to parse at all is conservatively treated as "everything unresolved" (author-time
+     * validation already rejects genuinely invalid syntax; this method's job is only to decide
+     * whether evaluation here can be trusted). */
+    private static Set<String> unresolvedFunctionCalls(String expression, ComputedExpression.FunctionRegistry registry) {
+        Set<String> calls;
         try {
-            return !com.npdev.dsl.v1.expr.ComputedExpression.functionCalls(expression).isEmpty();
-        } catch (com.npdev.dsl.v1.expr.ComputedExpression.ExpressionException unparseable) {
-            // An expression that fails to parse here at all is not this method's problem to diagnose
-            // (author-time validation already rejects genuinely invalid syntax) -- but treating it as
-            // "no function call" would be an unwarranted assumption of safety, so treat it the same as
-            // "cannot resolve", conservatively.
-            return true;
+            calls = ComputedExpression.functionCalls(expression);
+        } catch (ComputedExpression.ExpressionException unparseable) {
+            return Set.of("<unparseable expression>");
         }
+        Set<String> unresolved = new LinkedHashSet<>();
+        for (String name : calls) {
+            if (registry == null || registry.lookup(name) == null) {
+                unresolved.add(name);
+            }
+        }
+        return unresolved;
     }
 
     /** Package-private (Move 9 B1): {@code BackfillPass} calls this directly for a candidate it
      * already found via its own {@link BackfillPass#backfillItemsFromDiff} scan, rather than
      * triggering {@link #preview}'s independent re-scan a second time in the same boot. */
-    static Item evaluate(Connection connection, String table, String column, String expression) throws SQLException {
-        List<RowValue> rows = evaluateRows(connection, table, column, expression);
+    static Item evaluate(Connection connection, String table, String column, String expression,
+            ComputedExpression.FunctionRegistry registry) throws SQLException {
+        List<RowValue> rows = evaluateRows(connection, table, column, expression, registry);
         Set<String> distinctValues = new LinkedHashSet<>();
         List<String> failedRowIds = new ArrayList<>();
         for (RowValue row : rows) {

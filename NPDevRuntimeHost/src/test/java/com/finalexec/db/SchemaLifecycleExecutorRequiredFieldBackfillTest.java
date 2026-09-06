@@ -381,15 +381,15 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
     }
 
     @Test
-    void reviewableExpressionNeverAutoAppliesBecauseThisEvaluatorCannotResolveAnyFunctionCall() throws SQLException {
-        // A2 (REAL_LIFT_PLAN_2026-09-03, B2 "real lift"): before A2, this expression's function call
-        // silently fell through ValueExpressionEvaluator's raw-text fallback -- a pre-existing quirk
-        // this same test used to document and accept -- so `!candidate.hasFailures()` was trivially
-        // true and it auto-applied under safe-and-reviewable mode, WRITING THE LITERAL EXPRESSION TEXT
-        // into the column for every row. ExpressionBackfillPreview#evaluateRows now forces a function-
-        // call expression to null (never a fabricated "value"), so ExpressionBackfillShadowProof's
-        // "every row produced a value" check correctly fails it -- it does not auto-apply, and the
-        // column is never added, no acknowledgment submitted in this test.
+    void reviewableExpressionWithARegistryKnownFunctionAutoAppliesUnderSafeAndReviewable() throws SQLException {
+        // STOR-26 (B2 lift): before this, EVERY function call was forced null because
+        // ExpressionBackfillPreview#evaluateRows was never given a real FunctionRegistry at all
+        // (REG-202's own note on why HIGH_RISK was unreachable in practice -- true of every
+        // REVIEWABLE candidate too, since ANY function call, not only a scope.* one, could not
+        // resolve). Now the same registry SchemaExpressionSupport uses for a NEW row's own
+        // defaultExpression (concat/coalesce/trim/uppercase/lowercase) is wired into this path too,
+        // so a REVIEWABLE candidate built from a REGISTRY-KNOWN function can genuinely prove safe via
+        // ExpressionBackfillShadowProof's two-evaluation check and auto-apply -- no acknowledgment.
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
             statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
@@ -403,25 +403,26 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditTag", "VARCHAR(200)")),
                 Map.of("widgets", List.of("auditTag")),
                 Map.of("widgets", List.of("auditTag")),
-                Map.of("widgets", Map.of("auditTag", "riskyLookup(quantity)")));
+                Map.of("widgets", Map.of("auditTag", "concat(name, '-tag')")));
 
-        IllegalStateException refusal = assertThrows(IllegalStateException.class,
-                () -> executor.afterMigrate(dataSource, manifest));
-        assertTrue(refusal.getMessage().contains("B2:expression_backfill_requires_ack:"), refusal.getMessage());
+        executor.afterMigrate(dataSource, manifest);
 
         try (Connection connection = dataSource.getConnection()) {
-            assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditTag"),
-                    "must never auto-apply, and must never add the column while it is unproven");
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "auditTag"),
+                    "a REVIEWABLE expression proven safe by the shadow proof must auto-apply and add the column");
+            assertTrue(isNotNull(metadata, "widgets", "auditTag"));
+            assertEquals("alpha-tag", readString(connection, "auditTag", 1));
         }
     }
 
     @Test
-    void reviewableFunctionCallExpressionRefusesEvenWithAnExplicitAcknowledgment() throws SQLException {
-        // The regression proof for the SAME bug the test above closes: even an operator willing to
-        // ACKNOWLEDGE this backfill must not have it silently succeed with garbage. Preview now
-        // honestly reports a failure for every row (ExpressionBackfillPreview#evaluateRows's A2 fix),
-        // so the acknowledged-apply path refuses with the SAME "produces no value" message a genuinely
-        // unresolvable $field reference gets -- see acknowledgedExpressionDefaultWithAFailingRowRefusesAndAddsNoColumn.
+    void reviewableFunctionCallExpressionWithAFailingRowStillRefusesEvenWithAnExplicitAcknowledgment() throws SQLException {
+        // STOR-26 (B2 lift): the regression this test now proves is narrower than before -- not "any
+        // function call is unresolvable" (that premise is gone), but "a REGISTRY-KNOWN function that
+        // genuinely produces no value for a row" still must not silently succeed. "concat" refuses to
+        // produce a value when any argument is null (its own documented semantics), and "missingField"
+        // does not exist on this row at all -- an honest failure, not an unresolved-function one.
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, name VARCHAR(50), quantity BIGINT)");
             statement.execute("INSERT INTO widgets (id, name, quantity) VALUES (1, 'alpha', 10)");
@@ -434,13 +435,13 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
                 Map.of("widgets", Map.of("id", "BIGINT", "name", "VARCHAR(50)", "quantity", "BIGINT", "auditTag", "VARCHAR(200)")),
                 Map.of("widgets", List.of("auditTag")),
                 Map.of("widgets", List.of("auditTag")),
-                Map.of("widgets", Map.of("auditTag", "riskyLookup(quantity)")));
+                Map.of("widgets", Map.of("auditTag", "concat(missingField, '-tag')")));
 
         List<ExpressionBackfillPreview.Item> preview = ExpressionBackfillPreview.preview(dataSource, manifest);
         assertEquals(1, preview.size());
         assertTrue(preview.get(0).hasFailures(),
-                "A2's own honesty fix: a function-call expression must be reported as failing, never as a "
-                        + "fabricated success carrying the raw expression text");
+                "a registry-known function that produces no value for a row must be reported as failing, "
+                        + "never as a fabricated success");
         String ackToken = ExpressionBackfillPreview.expectedToken(manifest.schemaFingerprint(), preview);
         PendingSchemaAcknowledgmentStore.insert(dataSource, manifest.schemaFingerprint(), ackToken, null, "test-operator");
 
@@ -450,8 +451,8 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
 
         try (Connection connection = dataSource.getConnection()) {
             assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditTag"),
-                    "an acknowledged-but-unresolvable expression must never add the column, let alone "
-                            + "populate it with the raw expression text");
+                    "an acknowledged-but-failing expression must never add the column, let alone "
+                            + "populate it with a fabricated value");
         }
     }
 
@@ -557,6 +558,100 @@ class SchemaLifecycleExecutorRequiredFieldBackfillTest {
         try (Connection connection = dataSource.getConnection()) {
             assertFalse(hasColumn(connection.getMetaData(), "widgets", "auditQuantity"),
                     "a failing acknowledged expression backfill must never add the column at all");
+        }
+    }
+
+    // ---- STOR-26 (B2 lift): PROVEN mode auto-applies ANY tier the shadow proof proves ----
+
+    @Test
+    void scopeExistsExpressionProvesSafeAndAutoAppliesUnderProvenMode() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE categories (id BIGINT PRIMARY KEY, code VARCHAR(50))");
+            statement.execute("INSERT INTO categories (id, code) VALUES (1, 'ALPHA')");
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, code VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, code) VALUES (1, 'ALPHA')");
+            statement.execute("INSERT INTO widgets (id, code) VALUES (2, 'ZETA')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        // "scope.exists" is HIGH_RISK by classification (any "scope."-prefixed call) -- it must never
+        // auto-apply on that classification alone, only PROVEN mode's shadow-proof-or-nothing gate.
+        System.setProperty(AUTO_APPLY_MODE_PROPERTY, "proven");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "code", "hasCategory"),
+                        "categories", List.of("id", "code")),
+                Map.of("widgets", List.of("hasCategory")),
+                Map.of("widgets", Map.of("id", "BIGINT", "code", "VARCHAR(50)", "hasCategory", "BOOLEAN"),
+                        "categories", Map.of("id", "BIGINT", "code", "VARCHAR(50)")),
+                Map.of("widgets", List.of("hasCategory")),
+                Map.of("widgets", List.of("hasCategory")),
+                Map.of("widgets", Map.of("hasCategory", "scope.exists('categories', 'code', code)")));
+
+        executor.afterMigrate(dataSource, manifest);
+
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metadata = connection.getMetaData();
+            assertTrue(hasColumn(metadata, "widgets", "hasCategory"),
+                    "a HIGH_RISK scope.exists expression proven safe by the shadow proof must auto-apply "
+                            + "under auto-apply=proven -- no acknowledgment");
+            assertTrue(isNotNull(metadata, "widgets", "hasCategory"));
+            assertTrue(readBoolean(connection, "hasCategory", 1), "row 1's code exists in categories");
+            assertFalse(readBoolean(connection, "hasCategory", 2), "row 2's code does not exist in categories");
+        }
+    }
+
+    @Test
+    void scopeExistsExpressionNeverAutoAppliesUnderSafeAndReviewableMode() throws SQLException {
+        // The same candidate as above, but under the widest mode BELOW "proven" -- HIGH_RISK must
+        // still never auto-apply, proving PROVEN is a distinct, wider rung, not a synonym for
+        // "safe-and-reviewable includes everything now".
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE categories (id BIGINT PRIMARY KEY, code VARCHAR(50))");
+            statement.execute("INSERT INTO categories (id, code) VALUES (1, 'ALPHA')");
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY, code VARCHAR(50))");
+            statement.execute("INSERT INTO widgets (id, code) VALUES (1, 'ALPHA')");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+        System.setProperty(AUTO_APPLY_MODE_PROPERTY, "safe-and-reviewable");
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestWithExpressionText(
+                Map.of("widgets", List.of("id", "code", "hasCategory"),
+                        "categories", List.of("id", "code")),
+                Map.of("widgets", List.of("hasCategory")),
+                Map.of("widgets", Map.of("id", "BIGINT", "code", "VARCHAR(50)", "hasCategory", "BOOLEAN"),
+                        "categories", Map.of("id", "BIGINT", "code", "VARCHAR(50)")),
+                Map.of("widgets", List.of("hasCategory")),
+                Map.of("widgets", List.of("hasCategory")),
+                Map.of("widgets", Map.of("hasCategory", "scope.exists('categories', 'code', code)")));
+
+        IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                () -> executor.afterMigrate(dataSource, manifest));
+        assertTrue(refusal.getMessage().contains("B2:expression_backfill_requires_ack:"), refusal.getMessage());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "widgets", "hasCategory"));
+        }
+    }
+
+    private static boolean readBoolean(Connection connection, String column, long id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT " + column + " FROM widgets WHERE id = ?")) {
+            statement.setLong(1, id);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next());
+                return resultSet.getBoolean(1);
+            }
+        }
+    }
+
+    private static String readString(Connection connection, String column, long id) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT " + column + " FROM widgets WHERE id = ?")) {
+            statement.setLong(1, id);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next());
+                return resultSet.getString(1);
+            }
         }
     }
 

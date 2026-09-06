@@ -316,6 +316,20 @@ public interface SqlDialect {
     }
 
     /**
+     * STOR-26 (B2 lift): a complete "does at least one matching row exist" probe --
+     * {@code SELECT 1 FROM <table> WHERE <column> = ?}, capped to at most one row the way THIS
+     * engine actually can. Built as a whole statement via {@link #rowLimited}, not a suffix alone,
+     * for the exact reason {@link #rowLimited}'s own javadoc names: SQL Server's cap is a PREFIX,
+     * so a bare suffix would not work here on every engine.
+     *
+     * @param tableName  already quoted/safe (e.g. via a caller's own identifier quoting)
+     * @param columnName already quoted/safe
+     */
+    default String rowExistsSql(String tableName, String columnName) {
+        return rowLimited("SELECT 1 FROM " + tableName + " WHERE " + columnName + " = ?", 1);
+    }
+
+    /**
      * RUN-3 (R8b): a portable {@code ORDER BY} fragment (no keyword, no leading comma) that sorts
      * {@code NULL} values of {@code column} before non-null ones, then non-null values ascending --
      * {@code NULLS FIRST} is not universal SQL. Postgres and H2 accept it natively; MySQL has never

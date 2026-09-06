@@ -58,12 +58,12 @@ final class ExpressionBackfillShadowProof {
             List<String> nondeterministicRowIds) {
     }
 
-    static ShadowProofResult prove(Connection connection, String table, String column, String expression)
-            throws SQLException {
+    static ShadowProofResult prove(Connection connection, String table, String column, String expression,
+            com.npdev.dsl.v1.expr.ComputedExpression.FunctionRegistry registry) throws SQLException {
         List<ExpressionBackfillPreview.RowValue> firstPass =
-                ExpressionBackfillPreview.evaluateRows(connection, table, column, expression);
+                ExpressionBackfillPreview.evaluateRows(connection, table, column, expression, registry);
         List<ExpressionBackfillPreview.RowValue> secondPass =
-                ExpressionBackfillPreview.evaluateRows(connection, table, column, expression);
+                ExpressionBackfillPreview.evaluateRows(connection, table, column, expression, registry);
         return compare(firstPass, secondPass);
     }
 

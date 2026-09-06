@@ -70,6 +70,86 @@ public final class ValueExpressionEvaluator {
         }
     }
 
+    /**
+     * STOR-26 (B2 lift): registry-aware sibling of {@link #evaluate(String, Map)} -- an LNCH-15
+     * function call in {@code expression} resolves against {@code functions} instead of always
+     * failing "unknown function". Same dispatch, same lenient raw-text fallback; only the registry
+     * passed to {@link ComputedExpression#evaluate(String, Map, ComputedExpression.FunctionRegistry)}
+     * differs. The 2-arg overload is unchanged and keeps feeding the live row-creation path
+     * ({@code DefaultConceptGateway.save}) exactly as before.
+     */
+    public static Object evaluate(String expression, Map<String, Object> data, ComputedExpression.FunctionRegistry functions) {
+        String text = expression == null ? "" : expression.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        if (isNowLiteral(text)) {
+            return Instant.EPOCH.toString();
+        }
+        if (isUuidLiteral(text)) {
+            return UUID.nameUUIDFromBytes("npdev-deterministic-concept-default".getBytes()).toString();
+        }
+        if (isFieldReference(text)) {
+            return data.get(text.substring(1));
+        }
+        if (isQuotedLiteral(text)) {
+            return text.substring(1, text.length() - 1);
+        }
+        if (isBooleanLiteral(text)) {
+            return Boolean.parseBoolean(text);
+        }
+        try {
+            if (text.contains(".")) {
+                return Double.parseDouble(text);
+            }
+            return Long.parseLong(text);
+        } catch (NumberFormatException ignored) {
+            try {
+                return ComputedExpression.evaluate(text, data, functions);
+            } catch (ComputedExpression.ExpressionException stillUnparseable) {
+                return text;
+            }
+        }
+    }
+
+    /**
+     * STOR-26 (B2 lift): a STRICT sibling of {@link #evaluate(String, Map, ComputedExpression.FunctionRegistry)}
+     * -- an unparseable or unresolvable expression THROWS {@link ComputedExpression.ExpressionException}
+     * instead of silently falling back to the raw expression text. Needed anywhere the raw-text
+     * fallback would itself be the bug: the expression-default backfill shadow proof
+     * ({@code ExpressionBackfillPreview}, RuntimeHost) must fail loudly, never treat unresolved
+     * text as though it were a successfully computed value.
+     */
+    public static Object evaluateStrict(String expression, Map<String, Object> data, ComputedExpression.FunctionRegistry functions) {
+        String text = expression == null ? "" : expression.trim();
+        if (text.isEmpty()) {
+            return null;
+        }
+        if (isNowLiteral(text)) {
+            return Instant.EPOCH.toString();
+        }
+        if (isUuidLiteral(text)) {
+            return UUID.nameUUIDFromBytes("npdev-deterministic-concept-default".getBytes()).toString();
+        }
+        if (isFieldReference(text)) {
+            return data.get(text.substring(1));
+        }
+        if (isQuotedLiteral(text)) {
+            return text.substring(1, text.length() - 1);
+        }
+        if (isBooleanLiteral(text)) {
+            return Boolean.parseBoolean(text);
+        }
+        try {
+            if (text.contains(".")) {
+                return Double.parseDouble(text);
+            }
+            return Long.parseLong(text);
+        } catch (NumberFormatException ignored) {
+            return ComputedExpression.evaluate(text, data, functions);
+        }
+    }
+
     // ---- special-form recognizers, extracted verbatim from evaluate()'s own dispatch (same order,
     // same conditions -- no behavior change) so ExpressionBackfillRiskClassifier (B2) can classify
     // exactly the forms this method treats as "no computation needed," never a form it would itself

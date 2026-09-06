@@ -1,12 +1,11 @@
 package com.npdev.runtime.support.crud.schemaexpr;
 
 import com.npdev.dsl.v1.expr.ComputedExpression;
+import com.npdev.kernel.concepts.ValueExpressionFunctions;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.OBJECT_MAPPER;
@@ -22,23 +21,18 @@ import static com.npdev.runtime.support.GeneratedCrudRuntimeSupport.readMapValue
 public final class SchemaExpressionSupport {
 
     /**
-     * LNCH-15: {@code concat}/{@code coalesce}/{@code trim}/{@code uppercase}/{@code lowercase}
-     * as {@link ComputedExpression.ExprFunction}s, so schema default/derived expressions route
-     * through the same unified grammar as invariants instead of this class's own hand-rolled
-     * literal/identifier/call evaluator (see {@link #evaluateSchemaExpression}). Behavior is
-     * identical to {@link #applyValueBehaviorFunction} -- kept as the implementation both this
-     * registry and the legacy fallback path share, rather than duplicating the logic twice.
+     * LNCH-15: {@code concat}/{@code coalesce}/{@code trim}/{@code uppercase}/{@code lowercase},
+     * so schema default/derived expressions route through the same unified grammar as invariants
+     * instead of this class's own hand-rolled literal/identifier/call evaluator (see
+     * {@link #evaluateSchemaExpression}). STOR-26 (B2 lift): the function set itself, and {@link
+     * #applyValueBehaviorFunction}'s implementation, moved to {@code
+     * com.npdev.kernel.concepts.ValueExpressionFunctions} so the backfill shadow proof (RuntimeHost)
+     * can resolve the identical functions -- this class delegates rather than keeping its own copy.
      */
-    public static final Set<String> VALUE_BEHAVIOR_FUNCTIONS =
-            Set.of("concat", "coalesce", "trim", "uppercase", "lowercase");
+    public static final Set<String> VALUE_BEHAVIOR_FUNCTIONS = ValueExpressionFunctions.VALUE_BEHAVIOR_FUNCTIONS;
 
     public static final ComputedExpression.FunctionRegistry SCHEMA_EXPRESSION_FUNCTIONS =
-            ComputedExpression.FunctionRegistry.of(VALUE_BEHAVIOR_FUNCTIONS.stream().collect(
-                    java.util.stream.Collectors.toMap(
-                            name -> name,
-                            name -> (ComputedExpression.ExprFunction) (args, vars) -> applyValueBehaviorFunction(
-                                    name, args.stream().map(arg -> arg.eval(vars)).toList())
-                    )));
+            ValueExpressionFunctions.base();
 
     private SchemaExpressionSupport() {
     }
@@ -106,35 +100,7 @@ public final class SchemaExpressionSupport {
     }
 
     public static Object applyValueBehaviorFunction(String functionName, List<Object> args) {
-        String normalized = normalize(functionName);
-        return switch (normalized) {
-            case "concat" -> {
-                if (args.isEmpty() || args.stream().anyMatch(Objects::isNull)) {
-                    yield null;
-                }
-                StringBuilder out = new StringBuilder();
-                for (Object arg : args) {
-                    out.append(String.valueOf(arg));
-                }
-                yield out.toString();
-            }
-            case "coalesce" -> {
-                for (Object arg : args) {
-                    if (!isMissingValue(arg)) {
-                        yield arg;
-                    }
-                }
-                yield null;
-            }
-            case "trim" -> args.size() == 1 && args.get(0) != null ? String.valueOf(args.get(0)).trim() : null;
-            case "uppercase" -> args.size() == 1 && args.get(0) != null
-                    ? String.valueOf(args.get(0)).toUpperCase(Locale.ROOT)
-                    : null;
-            case "lowercase" -> args.size() == 1 && args.get(0) != null
-                    ? String.valueOf(args.get(0)).toLowerCase(Locale.ROOT)
-                    : null;
-            default -> null;
-        };
+        return ValueExpressionFunctions.apply(functionName, args);
     }
 
     public static boolean isQuotedLiteral(String value) {
