@@ -128,3 +128,27 @@ detail: |
   candidate B's actual state (whatever `ImpactReportWriter`/`classify()` hold across calls) so the NEXT
   time this fires naturally in an ordinary gate run, it is caught with a diagnosis attached instead of
   needing another dedicated repro session.
+
+  2026-09-06 INSTRUMENTATION (permanent, follows the note above): re-examined every class in the Trigger
+  C + `SchemaCompatibilityVerdict.assess` call path (`SchemaLifecycleExecutor`, `SchemaCompatibilityVerdict`,
+  `ImpactReportWriter`, `SchemaAheadAnalysis`, `CurrentSchemaReader`) and found NONE of them hold instance
+  or mutable static state of their own -- `assess` and `classify` are pure functions of the `DataSource`/
+  `SchemaManifest` arguments they are given each call; the one static field in the whole graph
+  (`CurrentSchemaReader.SYSTEM_SCHEMAS`, resolved once from `SqlDialects.active()`) was already the
+  DIALECT-PINNING HYPOTHESIS above and already ruled out as the full explanation. So "candidate B" cannot
+  be instrumented by logging a hidden field -- there is not one. Instead added a permanent, never-throws
+  diagnostic (`SchemaLifecycleExecutor.beforeMigrateDecision`, right after `verdict` is computed, tagged
+  `[QUAL-55-DIAG]`) that logs, on EVERY pass through the Trigger C branch: thread name, timestamp, both
+  fingerprints, `SqlDialects.active()`'s class, `verdict.compatible()`, and every difference's full
+  `describe()` (table/column/tolerance/reason). This branch is not dead in the current suite: three
+  surviving tests in `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest`
+  (`additiveNullableExtraColumnBootsCompatiblyInsteadOfRefusing`,
+  `additiveNotNullExtraColumnWithDefaultBootsCompatibly`, `aWholeExtraTableIsTolerable`) plus the
+  INCOMPATIBLE-refusing `pureColumnDropRollbackRefusesInsteadOfSilentlyReAddingTheColumnEmpty` already run
+  through it on every ordinary gate run, so this diagnostic is live today, not aspirational -- it will
+  print known-good baselines on every green run and, if this mechanism ever fires naturally again (most
+  plausibly by someone re-adding NOT-NULL-no-default coverage, the exact shape the original flaky test
+  probed and which no surviving test exercises today), the `[QUAL-55-DIAG]` line attached to that run is
+  the diagnosis this item has otherwise needed a dedicated repro session to get. Verified via
+  `run-runtimehost-gate.ps1` (regenerates + rebuilds + runs the assembled sample app's full suite).
+  Does not change status: root cause is still unidentified, and this is a detector, not a fix.
