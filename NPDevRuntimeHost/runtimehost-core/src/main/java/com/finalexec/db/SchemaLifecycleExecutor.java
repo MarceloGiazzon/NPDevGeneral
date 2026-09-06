@@ -875,6 +875,30 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                                 SchemaCompatibilityVerdict.Tolerance.INCOMPATIBLE,
                                 "verdict computation itself failed: " + failure.getMessage())));
             }
+            // QUAL-55 (permanent, never-throws diagnostic): an integration test on this exact branch showed
+            // intermittent, unexplained verdict flips across full-suite runs; 246 repeated-run data points
+            // ruled out every hypothesis tried (a swallowed SQLException, a stale SqlDialects.active()
+            // singleton, plain concurrent-H2 contention) without identifying the true mechanism -- see
+            // ledger/items/QUAL-55.yml. Rather than chase it further blind, this logs the exact verdict inputs
+            // every time this branch runs, so the next NATURAL occurrence in an ordinary gate run is caught
+            // with a diagnosis already attached instead of needing another dedicated repro session.
+            try {
+                StringBuilder diagnostic = new StringBuilder("[QUAL-55-DIAG] thread=")
+                        .append(Thread.currentThread().getName())
+                        .append(" at=").append(Instant.now())
+                        .append(" aheadFp=").append(aheadOfBuild.get().toFingerprint())
+                        .append(" thisFp=").append(manifest.schemaFingerprint())
+                        .append(" activeDialect=").append(SqlDialects.active().getClass().getSimpleName())
+                        .append(" compatible=").append(verdict.compatible())
+                        .append(" differences=[");
+                for (SchemaCompatibilityVerdict.Difference difference : verdict.differences()) {
+                    diagnostic.append(difference.describe()).append("; ");
+                }
+                diagnostic.append(']');
+                System.out.println(diagnostic);
+            } catch (RuntimeException ignored) {
+                // diagnostic only -- must never affect the boot
+            }
             if (verdict.compatible()) {
                 SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null,
                         "PROCEED_SCHEMA_AHEAD_COMPATIBLE");
