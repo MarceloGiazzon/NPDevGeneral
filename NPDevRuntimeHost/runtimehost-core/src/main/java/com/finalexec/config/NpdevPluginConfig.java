@@ -12,6 +12,8 @@ import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.PluginManifestSchemaValidator;
 import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifest;
 import com.finalexec.npdev.service.pluginipc.JavaSourceRuntimeRefManifestLoader;
+import com.finalexec.npdev.service.pluginipc.PluginChildClasspath;
+import com.finalexec.npdev.service.pluginipc.PluginContainmentTierLog;
 import com.finalexec.npdev.service.pluginipc.PluginControllerRouteManifest;
 import com.finalexec.npdev.service.pluginipc.PluginControllerRouteManifestLoader;
 import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessPool;
@@ -46,7 +48,6 @@ import com.npdev.adapters.persistence.postgres.PostgresPersistenceCapabilityAdap
 import com.npdev.adapters.webhook.inproc.InProcWebhookCapabilityAdapter;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.capabilities.CapabilityBindingResolver;
 import com.npdev.kernel.ports.ConceptStore;
 import org.springframework.beans.factory.ObjectProvider;
@@ -256,21 +257,30 @@ public class NpdevPluginConfig {
             @Value("${npdev.runtime.plugin-ipc-pool.max-invocations-per-worker:200}") int maxInvocationsPerWorker,
             @Value("${npdev.runtime.plugin-ipc-pool.idle-timeout-ms:600000}") long idleTimeoutMs,
             @Value("${npdev.runtime.plugin-ipc-pool.memory-limit-mb:0}") int memoryLimitMb,
-            @Value("${npdev.runtime.plugin-ipc-pool.cpu-rate-percent:0}") int cpuRatePercent
+            @Value("${npdev.runtime.plugin-ipc-pool.cpu-rate-percent:0}") int cpuRatePercent,
+            @Value("${npdev.runtime.plugin-ipc-pool.sandbox:on}") String sandbox
     ) throws java.io.IOException {
         JavaSourceRuntimeRefManifest javaSourceManifest = new JavaSourceRuntimeRefManifestLoader(objectMapper).load();
         PluginControllerRouteManifest controllerRouteManifest = new PluginControllerRouteManifestLoader(objectMapper).load();
         if (javaSourceManifest.byRuntimeRef().isEmpty() && controllerRouteManifest.isEmpty()) {
             return null;
         }
-        PluginProcessResourceLimits limits = (memoryLimitMb > 0 || cpuRatePercent > 0)
-                ? new PluginProcessResourceLimits(memoryLimitMb > 0 ? memoryLimitMb : null, cpuRatePercent > 0 ? cpuRatePercent : null)
-                : PluginProcessResourceLimits.NONE;
+        PluginProcessResourceLimits limits = new PluginProcessResourceLimits(
+                memoryLimitMb > 0 ? memoryLimitMb : null,
+                cpuRatePercent > 0 ? cpuRatePercent : null,
+                !"off".equalsIgnoreCase(sandbox));
+        // SEC-10 (B30 lift): a pooled worker no longer runs on the host's own full classpath -- only
+        // the entries containing something the child genuinely needs (PluginIpcChildProcessMain,
+        // kernel, Jackson, the app's own compiled output, and Spring's web-annotation classes when a
+        // plugin:java-controller mount exists). See PluginChildClasspath's own javadoc.
+        String restrictedClasspath = PluginChildClasspath.compute(
+                System.getProperty("java.class.path"), !controllerRouteManifest.isEmpty());
+        PluginContainmentTierLog.logAtBoot(restrictedClasspath, limits);
         return new PluginIpcChildProcessPool(
                 poolSize,
                 maxInvocationsPerWorker,
                 Duration.ofMillis(idleTimeoutMs),
-                System.getProperty("java.class.path"),
+                restrictedClasspath,
                 limits
         );
     }
@@ -344,16 +354,21 @@ public class NpdevPluginConfig {
         );
     }
 
+    /** REG-208 (B28 lift): {@code modelHolder.get()} is deferred INSIDE the lazy {@code realize()}
+     * supplier, not captured eagerly here -- an adapter not yet realized at reload time picks up
+     * the CURRENT model the first time it actually is. An already-realized adapter's own internal
+     * snapshot (if any) is a named residual, same shape as {@code NpdevCapabilityBindingConfig
+     * #invariantEngine}. */
     @Bean
     public RuntimePluginRealizationProvider persistenceInMemoryRuntimePluginRealizationProvider(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             ConceptStore conceptStore
     ) {
         return namedRuntimePluginRealizationProvider(
                 "persistenceInMemoryCapabilityAdapter",
                 // REG-187: inject the SAME ConceptStore the generated service's CRUD reads, so a
                 // flow-driven create is visible to the service's post-flow findById under InMemory.
-                () -> new InMemoryPersistenceCapabilityAdapter(compiledModel, conceptStore)
+                () -> new InMemoryPersistenceCapabilityAdapter(modelHolder.get(), conceptStore)
         );
     }
 
@@ -361,7 +376,7 @@ public class NpdevPluginConfig {
     public RuntimePluginRealizationProvider persistencePostgresRuntimePluginRealizationProvider(
             ObjectProvider<DataSource> dataSourceProvider,
             @Value("${npdev.storage.mode:in-memory}") String storageMode,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             ConceptStore conceptStore
     ) {
         return namedRuntimePluginRealizationProvider(
@@ -369,12 +384,12 @@ public class NpdevPluginConfig {
                 () -> {
                     DataSource dataSource = dataSourceProvider.getIfAvailable();
                     if ("in-memory".equalsIgnoreCase(storageMode)) {
-                        return new InMemoryPersistenceCapabilityAdapter(compiledModel, conceptStore);
+                        return new InMemoryPersistenceCapabilityAdapter(modelHolder.get(), conceptStore);
                     }
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");
                     }
-                    return new PostgresPersistenceCapabilityAdapter(dataSource, compiledModel);
+                    return new PostgresPersistenceCapabilityAdapter(dataSource, modelHolder.get());
                 }
         );
     }
@@ -443,10 +458,14 @@ public class NpdevPluginConfig {
         );
     }
 
+    /** REG-208 (B28 lift): a boot-time diagnostic snapshot, same posture as {@code
+     * NpdevObservabilityConfig#startupValidator} -- computed once from {@code modelHolder.get()} at
+     * construction; not reload-aware, and not expected to be (a diagnostics report of the profile
+     * this instance BOOTED with). */
     @Bean
     public RuntimePluginProfileDiagnostics runtimePluginProfileDiagnostics(
             RuntimePluginProfileResolver.ResolvedRuntimePluginProfile runtimePluginProfile,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             CapabilityBindingResolver capabilityBindingResolver,
             RuntimePluginManifest runtimePluginManifest,
             PluginExecutionPolicyEvaluator pluginExecutionPolicyEvaluator
@@ -454,7 +473,7 @@ public class NpdevPluginConfig {
         Map<String, String> selectedAdapterIds = new LinkedHashMap<>();
         java.util.List<String> unresolvedCapabilities = new java.util.ArrayList<>();
 
-        Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
+        Map<String, CompiledCapability> capabilitiesByName = modelHolder.get().getCapabilities().stream()
                 .collect(Collectors.toMap(
                         CompiledCapability::getName,
                         Function.identity(),
@@ -462,7 +481,7 @@ public class NpdevPluginConfig {
                         LinkedHashMap::new
                 ));
 
-        for (CompiledCapabilityBinding binding : compiledModel.getBindings()) {
+        for (CompiledCapabilityBinding binding : modelHolder.get().getBindings()) {
             if ("eventbus".equalsIgnoreCase(binding.getCapability())) {
                 continue;
             }

@@ -73,7 +73,11 @@ public final class ManifestDrivenJavaControllerPluginHandler implements Capabili
         String methodName = call.operation();
         Map<String, Object> envelope = (Map<String, Object>) call.input();
         try {
-            Class<?> controllerClass = Class.forName(entry.controllerClassName());
+            // SEC-10 (B30 lift): the PLUGIN controller class itself loads through a restricted
+            // classloader -- this handler's own reflective dispatch below is host code and stays on
+            // the normal classloader. See PluginRestrictedClassLoader's own javadoc for what this closes.
+            Class<?> controllerClass = Class.forName(
+                    entry.controllerClassName(), true, new PluginRestrictedClassLoader(getClass().getClassLoader()));
             Method method = findMethod(controllerClass, methodName);
             if (method == null) {
                 return CapabilityResult.failure(

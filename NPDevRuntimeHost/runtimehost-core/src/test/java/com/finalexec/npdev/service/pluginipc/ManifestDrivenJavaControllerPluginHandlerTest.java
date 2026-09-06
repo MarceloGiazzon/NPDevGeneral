@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * directly (no real child process/pool needed -- the handler itself has no IPC-specific logic, it
  * only needs a {@link CapabilityCall} and the manifest resource on the test classpath, at
  * {@code src/test/resources/npdev/plugin-runtime/plugin-controller-routes.json}, pointing at
- * {@link com.finalexec.npdev.service.pluginipc.fixtures.SampleControllerForHandlerTest}).
+ * {@link com.npdev.generated.plugin.SampleControllerForHandlerTest}).
  */
 class ManifestDrivenJavaControllerPluginHandlerTest {
 

@@ -23,6 +23,18 @@ public interface PluginProcessResourceLimiter {
 
     boolean isAvailable();
 
+    /**
+     * SEC-10 (B30 lift): true when this limiter is actually applying an OS-level network/filesystem
+     * sandbox for the given limits (not merely a memory/CPU ceiling) -- used only for the boot-time
+     * containment-tier log line. Default false; {@code LinuxCgroupResourceLimiter} overrides it to
+     * report its own {@code systemd-run}-mode-and-{@code sandboxEnabled} truth. Windows has no
+     * network/filesystem sandbox mechanism at all (its own UI-restriction hardening is unconditional
+     * and not reported here), so it never overrides this.
+     */
+    default boolean networkFilesystemSandboxActive(PluginProcessResourceLimits limits) {
+        return false;
+    }
+
     /** Called before {@code ProcessBuilder.start()}; may wrap/prepend the command. Default: unchanged. */
     default List<String> wrapCommand(List<String> command, PluginProcessResourceLimits limits) {
         return command;
