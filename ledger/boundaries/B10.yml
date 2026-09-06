@@ -1,7 +1,24 @@
 id: B10
-title: "H2->Postgres data promotion is a real, one-command, operator-driven arc -- schema realization included, SQL translation still out of scope"
+title: "Cross-engine promotion realizes, copies and verifies in one call from either the CLI or REST; declarative hook verification is engine-portable"
 codeLinked: true
 codeLinkedNote: >-
+  2026-09-06 (STOR-29, `ALL_HITTABLE_LIFT_PLAN_2026-09-05.md` package P6): both residue halves are
+  closed. (a) `PromoteMain`'s realize/preview/apply/verify orchestration is now `PromotionArc`,
+  shared by the CLI and a new `POST /api/v1/admin/schema/promote` REST endpoint
+  (`SchemaPromotionController`, SUPERUSER-gated) -- a bare REST call against a completely empty
+  target now realizes the schema first, instead of refusing with `B10:data_only_promotion:` (that
+  prefix is retired from `CrossEngineDataPromotion.copyTable`'s message entirely: every real caller
+  now realizes first, so a missing target after realization is a genuine bug, not a boundary). (b)
+  `conversion-hook.schema.json` (both copies) gains a declarative `verify: {concept, where,
+  expect}` field -- restricted to a single portable null-check, the one shape the platform's own
+  hand-written `verifySql` corpus was ever seen to need (12 of 20 real fixtures) -- compiled at load
+  time via a new `SqlDialect.countWhereNullSql` (dialect package, trap 3) into the same fields the
+  rest of `ConversionHookRunner` already runs. `npdev migrate hook-verify` converts the common
+  shape automatically and reports (never guesses at) anything else. See `ledger/items/STOR-29.yml`
+  for the full mechanism, what was deliberately left out of scope, and two unrelated gates this
+  package's own newness surfaced (a runtime-surface-evidence controller-allowlist registration, a
+  JaCoCo coverage-ratchet fix) along the way.
+
   2026-08-25 (remediation plan W2.3). CrossEngineDataPromotion.copyTable already threw
   `BoundaryBootException(new BoundaryViolation("B10", "promotion", ...))` before this session (Wave
   2, commit 50ddf3ea). Code carried as a `B10:data_only_promotion:` message prefix, same convention
@@ -52,5 +69,14 @@ codeLinkedNote: >-
   target is the SAME generated, engine-specific V1__ migration the app's own boot would run against
   that engine, never a hand-translated one -- the canonical schema (manifest) is already the
   intermediate representation, per the plan's own framing.
+
+  **Reclassified LIFTED** (was HITTABLE) -- **residue named, not claimed away:** a hand-written
+  `verifySql` is still possible and still carries the author's own dialect (an opt-in escape hatch,
+  not the only way now); H2-SQL -> Postgres-SQL DDL translation remains explicitly out of scope, for
+  the same reason named above (the canonical manifest is already the engine-agnostic intermediate
+  representation, so there is no raw DDL text to translate). The platform's own auto-generated
+  multi-column verify SQL (`ConversionHookEmitter`'s `verifyNullChecks` sites) was left as
+  hand-built text rather than routed through the new declarative field or dialect method -- already
+  portable ANSI SQL, so a purity nit, not a real gap.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B10"
-classification: HITTABLE
+classification: LIFTED

@@ -112,6 +112,30 @@ class ConversionHookRunnerH2Test {
     }
 
     @Test
+    void stor29_declarativeVerifyFieldResolvesTheSameWayAHandWrittenVerifySqlWould() throws SQLException {
+        // STOR-29 (B10 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P6): stor29-declarative-verify's
+        // hook.json carries `verify: {concept, where, expect}` instead of verifySql/verifyExpect --
+        // proves ConversionHookRunner.compileDeclarativeVerify compiles it correctly and the rest of
+        // the run (transaction, HOOK_VERIFIED outcome, resolution) is unchanged either way.
+        exec("CREATE TABLE stor29_declarative (id BIGINT PRIMARY KEY)");
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                "stor29_declarative", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                List.of("id"), List.of("id", "status"));
+
+        ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+        Set<String> after = unresolvedKeys(manifest);
+        assertTrue(after.isEmpty(), "the hook's own convert.sql added the column for real -- nothing left unresolved: " + after);
+
+        List<String> outcomes = history.stream().map(row -> row[1]).toList();
+        assertTrue(outcomes.contains("HOOK_STARTED"), outcomes.toString());
+        assertTrue(outcomes.contains("HOOK_VERIFIED"), outcomes.toString());
+        assertTrue(outcomes.contains("HOOK_APPLIED"), outcomes.toString());
+        assertTrue(outcomes.contains("RESOLVED"), outcomes.toString());
+        assertEquals(0L, singleLongQuery("SELECT COUNT(*) FROM stor29_declarative WHERE status IS NULL"));
+    }
+
+    @Test
     void b11_1_hookMixingDdlWithVerifySqlOnAnImplicitCommitEngineWarnsBeforeRunning() throws SQLException {
         // docs/ACCEPTED_BOUNDARIES.md B11.1: the warning must fire BEFORE the hook runs, asking the
         // dialect's DDL_IN_TRANSACTION capability (not a hardcoded "h2" string -- STOR-2's own

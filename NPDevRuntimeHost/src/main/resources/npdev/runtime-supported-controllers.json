@@ -41,7 +41,8 @@
     "RuntimeRefreshController",
     "RuntimeTopologyExplorerController",
     "BetaOnboardingController",
-    "FlowBuilderController"
+    "FlowBuilderController",
+    "SchemaPromotionController"
   ],
   "deferredControllers": [
   ],

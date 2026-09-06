@@ -1,0 +1,10 @@
+{
+  "id": "stor29-declarative-verify",
+  "claims": ["ADD_REQUIRED_COLUMN:stor29_declarative:status"],
+  "description": "STOR-29 (B10 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P6) fixture: same shape as p75-resolve, but authored with the new declarative verify field instead of a hand-written verifySql, proving ConversionHookRunner.compileDeclarativeVerify end to end against real H2.",
+  "verify": {
+    "concept": "stor29_declarative",
+    "where": "status IS NULL",
+    "expect": 0
+  }
+}

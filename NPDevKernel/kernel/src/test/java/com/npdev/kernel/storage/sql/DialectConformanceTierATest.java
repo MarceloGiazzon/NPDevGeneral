@@ -574,6 +574,21 @@ class DialectConformanceTierATest {
         }
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("STOR-29 (B10 lift): every engine renders a portable null-check count, since IS [NOT] NULL has no per-engine variance")
+    void everyDialectRendersACountWhereNullStatement(SqlDialect dialect) {
+        String isNull = dialect.countWhereNullSql("widgets", "status", true);
+        assertTrue(isNull.toLowerCase(java.util.Locale.ROOT).contains("select count(*)"), isNull);
+        assertTrue(isNull.contains("widgets") && isNull.contains("status"), isNull);
+        assertTrue(isNull.toUpperCase(java.util.Locale.ROOT).contains("IS NULL")
+                        && !isNull.toUpperCase(java.util.Locale.ROOT).contains("IS NOT NULL"),
+                isNull);
+
+        String isNotNull = dialect.countWhereNullSql("widgets", "status", false);
+        assertTrue(isNotNull.toUpperCase(java.util.Locale.ROOT).contains("IS NOT NULL"), isNotNull);
+    }
+
     @Test
     @DisplayName("C1: SQL Server's cap goes AFTER DISTINCT, and refuses what it cannot place")
     void sqlServerPrefixCapHandlesDistinctAndRefusesCtes() {

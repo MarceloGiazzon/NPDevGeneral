@@ -330,6 +330,22 @@ public interface SqlDialect {
     }
 
     /**
+     * STOR-29 (B10 lift): renders a conversion hook's declarative {@code verify: {concept, where,
+     * expect}} field -- {@code SELECT COUNT(*) FROM <table> WHERE <column> IS [NOT] NULL} -- as a
+     * whole statement in the dialect package (trap 3), even though this particular fragment happens
+     * to be identical across every engine today: standard ANSI {@code IS [NOT] NULL} has no
+     * per-engine variance the way {@code rowLimited}'s row-cap syntax does. A default method, not a
+     * per-dialect override, for the same reason {@link #nullsFirstAscending} is NOT: unlike that
+     * method, no engine here needs a different rendering, so there is nothing to override.
+     *
+     * @param tableName  already quoted/safe (e.g. via a caller's own identifier quoting)
+     * @param columnName already quoted/safe
+     */
+    default String countWhereNullSql(String tableName, String columnName, boolean isNull) {
+        return "SELECT COUNT(*) FROM " + tableName + " WHERE " + columnName + (isNull ? " IS NULL" : " IS NOT NULL");
+    }
+
+    /**
      * RUN-3 (R8b): a portable {@code ORDER BY} fragment (no keyword, no leading comma) that sorts
      * {@code NULL} values of {@code column} before non-null ones, then non-null values ascending --
      * {@code NULLS FIRST} is not universal SQL. Postgres and H2 accept it natively; MySQL has never

@@ -31,6 +31,29 @@
       "default": 0,
       "description": "The count verifySql must return. Defaults to 0 (e.g. \"no rows left unconverted\")."
     },
+    "verify": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["concept", "where"],
+      "description": "STOR-29 (B10 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P6): a declarative, engine-portable alternative to verifySql/verifyExpect for the common 'no rows left unconverted' shape. Compiled at load time into the equivalent SELECT COUNT(*) via SqlDialect.countWhereNullSql -- a hand-written verifySql travels only as far as the author's own dialect; this does not need to. Mutually exclusive with verifySql (verify wins if both are present on the same hook). `npdev migrate hook-verify` converts the common convertible shape automatically.",
+      "properties": {
+        "concept": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The table this hook's convert step touches -- the same physical table-name convention `claims` already uses (e.g. \"orders\"), not a separate DSL concept-name lookup."
+        },
+        "where": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\s+IS\\s+(NOT\\s+)?NULL$",
+          "description": "A single portable null-check: '<column> IS NULL' or '<column> IS NOT NULL'. Anything else is not expressible declaratively yet -- use verifySql instead."
+        },
+        "expect": {
+          "type": "integer",
+          "default": 0,
+          "description": "The count the rendered query must return. Defaults to 0 (e.g. \"no rows left unconverted\")."
+        }
+      }
+    },
     "javaHook": {
       "type": "object",
       "additionalProperties": false,
