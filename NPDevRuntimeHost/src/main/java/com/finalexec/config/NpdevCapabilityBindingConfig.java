@@ -77,24 +77,38 @@ import java.util.stream.Collectors;
 @Configuration
 public class NpdevCapabilityBindingConfig {
 
+    /**
+     * REG-208 (B28 lift): the ONE place a {@link CompiledModel} is ever built -- {@link ModelHolder}
+     * wraps it and is the ONLY bean of either type this class exposes. Every other {@code @Bean}
+     * method below takes {@code ModelHolder}, never {@code CompiledModel}, directly: a 23rd direct
+     * injection now fails to wire at startup (no such bean exists) instead of silently going stale
+     * at reload time -- the structural guarantee this lift is built around.
+     */
     @Bean
-    public CompiledModel compiledModel(NPDevModelProvider modelProvider) {
-        return modelProvider.compiledModel();
+    public ModelHolder modelHolder(NPDevModelProvider modelProvider) {
+        return new ModelHolder(modelProvider.compiledModel());
     }
 
+    /**
+     * REG-208 (B28 lift): {@code CelInvariantEngine.fromCompiledModel} builds its rule set ONCE
+     * from whatever model existed at bean-construction time, and {@code CelInvariantEngine} itself
+     * has no in-place rebuild -- a hot reload changing declared invariants is NOT observed here
+     * without a restart. Named residual (see docs/ACCEPTED_BOUNDARIES.md B28's reclassification):
+     * the MODEL DATA hot-swaps everywhere via {@link ModelHolder#get()}; a handful of engine beans
+     * built ONCE from a model snapshot (this one, {@link #kernelRunner},
+     * {@link #generatedCrudRuntimeSupport}) still need a restart to observe a structural rule change,
+     * exactly like a change requiring newly generated code does. {@link #capabilityRegistry} is NOT
+     * in this set -- it registers a {@link ModelHolder} reload listener that rebuilds its bindings
+     * in place, since every consumer already holds a reference to the same mutable registry object.
+     */
     @Bean
-    public com.finalexec.config.ModelHolder modelHolder(CompiledModel compiledModel) {
-        return new com.finalexec.config.ModelHolder(compiledModel);
-    }
-
-    @Bean
-    public InvariantEngine invariantEngine(CompiledModel compiledModel) {
-        return CelInvariantEngine.fromCompiledModel(compiledModel);
+    public InvariantEngine invariantEngine(ModelHolder modelHolder) {
+        return CelInvariantEngine.fromCompiledModel(modelHolder.get());
     }
 
     @Bean
     public ConceptGateway conceptGateway(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             ConceptStore conceptStore,
             AuditLogStore auditLogStore,
             ObjectProvider<org.springframework.transaction.PlatformTransactionManager> transactionManager,
@@ -117,12 +131,14 @@ public class NpdevCapabilityBindingConfig {
         com.npdev.kernel.ports.SequenceAllocator sequenceAllocator = dataSource == null
                 ? com.npdev.kernel.ports.SequenceAllocator.inMemory()
                 : new com.finalexec.db.JdbcSequenceAllocator(dataSource);
+        // REG-208 (B28 lift): same named residual as invariantEngine above -- the semantic policy is
+        // a snapshot built once from modelHolder.get() at construction time.
         return new DefaultConceptGateway(
                 conceptStore,
                 PermissionEvaluator.allowAll(),
                 com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
                 auditLogStore,
-                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(compiledModel, sequenceAllocator),
+                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(modelHolder.get(), sequenceAllocator),
                 new InMemoryConceptGatewayTraceSink(),
                 transactionRunner
         );
@@ -133,15 +149,26 @@ public class NpdevCapabilityBindingConfig {
      * {@code workspace::PropertyValue} through the SAME {@code conceptGateway} bean above -- tenant
      * isolation/permissions/audit for the underlying rows come from there, exactly like every other
      * consumer of this gateway.
+     *
+     * <p>REG-208 (B28 lift): same named residual as {@link #invariantEngine} -- {@code
+     * DefaultPropertyResolver} takes the model once at construction.
      */
     @Bean
     public com.npdev.kernel.properties.PropertyResolver propertyResolver(
-            ConceptGateway conceptGateway, AuditLogStore auditLogStore, CompiledModel compiledModel) {
-        return new com.npdev.kernel.properties.DefaultPropertyResolver(conceptGateway, auditLogStore, compiledModel);
+            ConceptGateway conceptGateway, AuditLogStore auditLogStore, ModelHolder modelHolder) {
+        return new com.npdev.kernel.properties.DefaultPropertyResolver(conceptGateway, auditLogStore, modelHolder.get());
     }
 
+    /**
+     * REG-208 (B28 lift): unlike {@link #invariantEngine}, this factory's {@code create(...)}
+     * methods run PER REQUEST (each call builds a fresh {@code CelInvariantEngine} bound to that
+     * call's own lookups) -- capturing {@code modelHolder} instead of a resolved {@code
+     * CompiledModel} and calling {@link ModelHolder#get()} fresh inside {@code create(...)} means
+     * every invocation after a reload genuinely observes the new model's invariants, with no
+     * listener needed.
+     */
     @Bean
-    public RuntimeInvariantEngineFactory runtimeInvariantEngineFactory(CompiledModel compiledModel) {
+    public RuntimeInvariantEngineFactory runtimeInvariantEngineFactory(ModelHolder modelHolder) {
         return new RuntimeInvariantEngineFactory() {
             @Override
             public InvariantEngine create(
@@ -158,7 +185,7 @@ public class NpdevCapabilityBindingConfig {
                     InvariantScopeProvider invariantScopeProvider
             ) {
                         return CelInvariantEngine.fromCompiledModel(
-                        compiledModel,
+                        modelHolder.get(),
                         (requestedEntity, fieldName, value, rawPayload) -> uniqueValueLookup != null
                                 && uniqueValueLookup.exists(requestedEntity, fieldName, value, rawPayload),
                         new CelInvariantEngine.ConflictChecker() {
@@ -315,14 +342,20 @@ public class NpdevCapabilityBindingConfig {
      * added to the generator's plugin manifest, the special case in {@link #capabilityRegistry} can be
      * retired in favor of the generic path -- this bean itself would not need to change.
      */
+    /**
+     * REG-208 (B28 lift): the model-gate check below is inherently a construction-time decision --
+     * Spring beans cannot be added or removed after context startup, so a reload that newly binds
+     * {@code messaging-http} still needs a restart for this bean to come into existence at all,
+     * exactly like a change requiring newly generated code would.
+     */
     @Bean(destroyMethod = "close")
     public HttpMessagingCapabilityAdapter httpMessagingCapabilityAdapter(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             IdempotencyStore idempotencyStore,
             @Value("${npdev.messaging.app-id:}") String appId,
             @Value("${npdev.messaging.http.peers:}") String peersConfig
     ) {
-        boolean modelBindsHttpMessaging = compiledModel.getBindings().stream().anyMatch(binding ->
+        boolean modelBindsHttpMessaging = modelHolder.get().getBindings().stream().anyMatch(binding ->
                 "messaging".equalsIgnoreCase(binding.getCapability())
                         && "messaging-http".equalsIgnoreCase(binding.getAdapter()));
         if (!modelBindsHttpMessaging) {
@@ -391,14 +424,38 @@ public class NpdevCapabilityBindingConfig {
                 "Unknown messaging adapter id '" + adapterId + "' (expected 'messaging-inproc' or 'messaging-http')");
     }
 
+    /**
+     * REG-208 (B28 lift): {@link CapabilityRegistry} is a mutable, thread-safe (ConcurrentHashMap-
+     * backed) registry, not an immutable snapshot -- unlike {@link #invariantEngine}/{@link
+     * #conceptGateway}, a rebuild genuinely works here: a {@link ModelHolder.ModelReloadListener}
+     * re-runs the SAME population loop against the reloaded model into the SAME registry instance
+     * (never a new one -- {@link #capabilityDispatcher} and every other consumer already hold a
+     * reference to this exact object), so re-registering a capability's binding just overwrites its
+     * adapter mapping in place.
+     */
     @Bean
     public CapabilityRegistry capabilityRegistry(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             CapabilityAdapterResolver capabilityAdapterResolver,
             InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
             ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider
     ) {
         CapabilityRegistry registry = new CapabilityRegistry();
+        populateCapabilityRegistry(registry, modelHolder.get(), capabilityAdapterResolver,
+                inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider);
+        modelHolder.addReloadListener((before, after) -> populateCapabilityRegistry(
+                registry, after, capabilityAdapterResolver,
+                inProcMessagingCapabilityAdapter, httpMessagingCapabilityAdapterProvider));
+        return registry;
+    }
+
+    private static void populateCapabilityRegistry(
+            CapabilityRegistry registry,
+            CompiledModel compiledModel,
+            CapabilityAdapterResolver capabilityAdapterResolver,
+            InProcMessagingCapabilityAdapter inProcMessagingCapabilityAdapter,
+            ObjectProvider<HttpMessagingCapabilityAdapter> httpMessagingCapabilityAdapterProvider
+    ) {
         Map<String, CompiledCapability> capabilitiesByName = compiledModel.getCapabilities().stream()
                 .collect(Collectors.toMap(
                         CompiledCapability::getName,
@@ -436,7 +493,6 @@ public class NpdevCapabilityBindingConfig {
                     resolvedAdapter.handler()
             );
         }
-        return registry;
     }
 
     @Bean
@@ -444,11 +500,13 @@ public class NpdevCapabilityBindingConfig {
         return new RegistryCapabilityDispatcher(capabilityRegistry);
     }
 
+    /** REG-208 (B28 lift): same named residual as {@link #invariantEngine} -- {@code
+     * CompiledModelFlowDefinitionProvider} snapshots the model's flow definitions once. */
     @Bean
     public KernelRunner kernelRunner(
             EventBus eventBus,
             InvariantEngine invariantEngine,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             CapabilityDispatcher capabilityDispatcher,
             ExecutionTracer executionTracer,
             EventStore eventStore,
@@ -467,7 +525,7 @@ public class NpdevCapabilityBindingConfig {
         KernelRunner kernelRunner = new KernelRunner(
                 eventBus,
                 invariantEngine,
-                new CompiledModelFlowDefinitionProvider(compiledModel),
+                new CompiledModelFlowDefinitionProvider(modelHolder.get()),
                 capabilityDispatcher,
                 executionTracer,
                 eventStore,
@@ -500,9 +558,12 @@ public class NpdevCapabilityBindingConfig {
         return kernelRunner;
     }
 
+    /** REG-208 (B28 lift): same named residual as {@link #invariantEngine} -- {@code
+     * GeneratedCrudRuntimeSupport} builds its own concept-metadata caches once from the model it is
+     * constructed with. */
     @Bean
     public GeneratedCrudRuntimeSupport generatedCrudRuntimeSupport(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             KernelRunner kernelRunner,
             ObjectProvider<EntityManager> entityManagerProvider,
             CapabilityDispatcher capabilityDispatcher,
@@ -517,7 +578,7 @@ public class NpdevCapabilityBindingConfig {
             ConceptGateway conceptGateway
     ) {
         return new GeneratedCrudRuntimeSupport(
-                compiledModel,
+                modelHolder.get(),
                 kernelRunner,
                 entityManagerProvider.getIfAvailable(),
                 capabilityDispatcher,

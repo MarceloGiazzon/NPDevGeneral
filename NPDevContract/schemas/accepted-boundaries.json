@@ -151,9 +151,9 @@
     },
     {
       "id": "B28",
-      "kind": "HITTABLE",
-      "userFacingText": "Model changes require an app restart. Hot reload is available for metadata/UI-only changes via the admin reload endpoint, but full model changes (schema, flows) still require a restart -- the endpoint that would do a full reload is disabled by default.",
-      "workaround": "Restart the app (~30s) for a schema/logic-shaped model change; use the metadata-only fast path for a label/panel-only change (no restart needed). Full model reload can be opted into (npdev.runtime.hotswap.full-model-reload-enabled=true) but only ModelHolder.get() consumers observe the new model -- anything with a directly-injected model keeps the old one, a known split-brain risk.",
+      "kind": "LIFTED",
+      "userFacingText": "A full model reload (enabled by default) applies most changes without a restart: every panel, procedure, aggregate, and anything read through the concept gateway directly observes the new model immediately, and capabilities/bindings, the in-memory concept store, sensitive-field policy, and cron schedules all rebuild themselves in place. Two things still need a restart: a change requiring newly generated Java code (a brand-new concept's generated controller), and a change to something the generated CRUD REST surface itself caches once (a new invariant rule, a new capability binding, or a new field's CRUD-write reachability).",
+      "workaround": "Use POST /api/admin/runtime/metadata-hotswap/model-reload (SUPERUSER-gated) for a live reload -- most changes take effect immediately. Restart the app (~30s) only when the change adds a new concept (needs generated code), a new invariant/capability binding, or when a newly added field needs to be CRUD-writable through the generated REST surface specifically. Opt out entirely with npdev.runtime.hotswap.full-model-reload-enabled=false.",
       "enforcingDiagnosticCodes": ["FULL_MODEL_RELOAD_DISABLED"]
     },
     {

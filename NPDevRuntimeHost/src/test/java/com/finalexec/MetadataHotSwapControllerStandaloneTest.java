@@ -116,14 +116,14 @@ class MetadataHotSwapControllerStandaloneTest {
                 .andExpect(status().isForbidden());
     }
 
-    // W2.4a (2026-08-25 remediation plan): B28's full model hot-reload is registered DO NOT SHIP
-    // (split-brain risk -- ModelHolder.get() consumers see the new model, direct CompiledModel
-    // injection does not), so it must not be reachable by accident just because a caller holds
-    // SUPERUSER. These three tests prove the gate: disabled by default even for an authorized
-    // caller, auth is still checked ahead of the flag, and the explicit opt-in genuinely works.
+    // REG-208 (B28 lift): the opt-OUT flag stays real even though the Spring property default
+    // flipped to true (@Value("...:true")) -- these three tests construct the controller directly
+    // with an explicit boolean, so they exercise the flag's own gating logic regardless of what the
+    // property resolves to, proving: the flag genuinely disables the endpoint when false, auth is
+    // still checked ahead of the flag, and the explicit opt-in genuinely works.
 
     @Test
-    void modelReloadDisabledByDefaultReturnsNotFoundEvenForSuperUser() throws Exception {
+    void modelReloadReturnsNotFoundWhenFlagIsDisabledEvenForSuperUser() throws Exception {
         when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
 
         mockMvc.perform(post("/api/admin/runtime/metadata-hotswap/model-reload")

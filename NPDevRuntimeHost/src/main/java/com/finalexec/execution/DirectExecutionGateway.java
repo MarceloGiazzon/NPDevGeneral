@@ -2,6 +2,7 @@ package com.finalexec.execution;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.config.ModelHolder;
 import com.finalexec.npdev.dto.CrossTenantGovernanceRequest;
 import com.finalexec.npdev.service.CrossTenantGovernanceService;
 import com.finalexec.npdev.service.PanelRuntime;
@@ -10,7 +11,6 @@ import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityCall;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowStep;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.KernelFacade;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.ExecutionResult;
@@ -43,7 +43,7 @@ public class DirectExecutionGateway {
 
     private final ObjectMapper objectMapper;
     private final KernelFacade kernelFacade;
-    private final CompiledModel compiledModel;
+    private final ModelHolder modelHolder;
     private final CrossTenantGovernanceService crossTenantGovernanceService;
     private final PublicationChainReferenceResolver referenceResolver;
     private final PanelRuntime panelRuntime;
@@ -51,14 +51,14 @@ public class DirectExecutionGateway {
     public DirectExecutionGateway(
             ObjectMapper objectMapper,
             KernelFacade kernelFacade,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             CrossTenantGovernanceService crossTenantGovernanceService,
             PublicationChainReferenceResolver referenceResolver,
             PanelRuntime panelRuntime
     ) {
         this.objectMapper = objectMapper;
         this.kernelFacade = kernelFacade;
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
         this.crossTenantGovernanceService = crossTenantGovernanceService;
         this.referenceResolver = referenceResolver;
         this.panelRuntime = panelRuntime;
@@ -115,7 +115,7 @@ public class DirectExecutionGateway {
         Map<String, Object> input = request.getInput() == null ? Map.of() : request.getInput();
         boolean crossTenant = !requestedTenantId.equals(requesterTenantId);
 
-        CompiledFlow flow = compiledModel.findFlow(flowName)
+        CompiledFlow flow = modelHolder.get().findFlow(flowName)
                 .orElseThrow(() -> new IllegalArgumentException("flowName is not present in the compiled model."));
 
         Map<String, Object> capabilityRoute = resolveCapabilityRoute(flow);
@@ -388,7 +388,7 @@ public class DirectExecutionGateway {
         collectCapabilityRoute(flow.getSteps(), routedCapabilities, new LinkedHashSet<>());
 
         Map<String, String> adapterByCapability = new LinkedHashMap<>();
-        for (CompiledCapabilityBinding binding : compiledModel.getBindings()) {
+        for (CompiledCapabilityBinding binding : modelHolder.get().getBindings()) {
             adapterByCapability.put(binding.getCapability(), binding.getAdapter());
         }
 

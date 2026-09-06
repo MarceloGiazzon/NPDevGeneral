@@ -18,7 +18,6 @@ import com.npdev.adapters.runtime.validation.RuntimeSettings;
 import com.npdev.adapters.tracestore.PersistentExecutionTracer;
 import com.npdev.adapters.tracestore.jdbc.JdbcTraceStore;
 import com.npdev.adapters.tracing.inproc.InProcExecutionTracer;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.finalexec.db.JdbcBusinessConceptStore;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
@@ -152,14 +151,19 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
-    public ConceptStore inMemoryConceptStore(CompiledModel compiledModel) {
-        return new InMemoryConceptStore(compiledModel);
+    public ConceptStore inMemoryConceptStore(ModelHolder modelHolder) {
+        InMemoryConceptStore store = new InMemoryConceptStore(modelHolder.get());
+        // REG-208 (B28 lift): repoints the store at the reloaded model IN PLACE -- every already-
+        // stored record survives (see InMemoryConceptStore.setModel's own javadoc); only the
+        // delete-cascade rules a later delete enforces change.
+        modelHolder.addReloadListener((before, after) -> store.setModel(after));
+        return store;
     }
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public ConceptStore jdbcConceptStore(DataSource dataSource, CompiledModel compiledModel) {
-        return new JdbcBusinessConceptStore(dataSource, compiledModel);
+    public ConceptStore jdbcConceptStore(DataSource dataSource, ModelHolder modelHolder) {
+        return new JdbcBusinessConceptStore(dataSource, modelHolder);
     }
 
     @Bean

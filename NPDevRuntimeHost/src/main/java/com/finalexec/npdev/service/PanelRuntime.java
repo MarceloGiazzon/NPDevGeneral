@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
@@ -48,7 +49,10 @@ public class PanelRuntime {
 
     private final RuntimeMetadataService runtimeMetadataService;
     private final PermissionAwareUiMetadataService permissionAwareUiMetadataService;
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): a live ModelHolder, not a directly-injected CompiledModel snapshot -- every
+    // use below (requirePanel, resolveQueryForDataSource) is a fresh per-call lookup, never a cached
+    // derivation, so modelHolder.get() alone observes a reload; no ModelReloadListener needed.
+    private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
@@ -75,7 +79,7 @@ public class PanelRuntime {
     public PanelRuntime(
             RuntimeMetadataService runtimeMetadataService,
             PermissionAwareUiMetadataService permissionAwareUiMetadataService,
-            ObjectProvider<CompiledModel> compiledModel,
+            ModelHolder modelHolder,
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<CapabilityDispatcher> capabilityDispatcher,
             ObjectProvider<EventBus> eventBus,
@@ -85,7 +89,7 @@ public class PanelRuntime {
         this(
                 runtimeMetadataService,
                 permissionAwareUiMetadataService,
-                compiledModel == null ? null : compiledModel.getIfAvailable(),
+                modelHolder,
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 capabilityDispatcher == null ? null : capabilityDispatcher.getIfAvailable(),
                 eventBus == null ? null : eventBus.getIfAvailable(),
@@ -122,7 +126,7 @@ public class PanelRuntime {
     ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.permissionAwareUiMetadataService = permissionAwareUiMetadataService;
-        this.compiledModel = compiledModel;
+        this.modelHolder = new ModelHolder(compiledModel);
         this.conceptGateway = conceptGateway;
         this.capabilityDispatcher = null;
         this.eventBus = null;
@@ -144,6 +148,9 @@ public class PanelRuntime {
                 capabilityDispatcher, eventBus, aggregateRuntime, null);
     }
 
+    /** Convenience overload for existing call sites (tests) with a plain {@link CompiledModel} and
+     * no live {@link ModelHolder} -- wraps it in a non-reloading holder. Production wiring (the
+     * {@code @Autowired} constructor above) uses a real {@link ModelHolder} directly. */
     public PanelRuntime(
             RuntimeMetadataService runtimeMetadataService,
             PermissionAwareUiMetadataService permissionAwareUiMetadataService,
@@ -154,14 +161,28 @@ public class PanelRuntime {
             AggregateRuntime aggregateRuntime,
             KernelFacade kernelFacade
     ) {
+        this(runtimeMetadataService, permissionAwareUiMetadataService, new ModelHolder(compiledModel),
+                conceptGateway, capabilityDispatcher, eventBus, aggregateRuntime, kernelFacade);
+    }
+
+    public PanelRuntime(
+            RuntimeMetadataService runtimeMetadataService,
+            PermissionAwareUiMetadataService permissionAwareUiMetadataService,
+            ModelHolder modelHolder,
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus,
+            AggregateRuntime aggregateRuntime,
+            KernelFacade kernelFacade
+    ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.permissionAwareUiMetadataService = permissionAwareUiMetadataService;
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.capabilityDispatcher = capabilityDispatcher;
         this.eventBus = eventBus;
         this.aggregateRuntime = aggregateRuntime;
-        this.procedureRunner = new ProcedureRunner(compiledModel, conceptGateway, capabilityDispatcher, eventBus);
+        this.procedureRunner = new ProcedureRunner(modelHolder, conceptGateway, capabilityDispatcher, eventBus);
         this.kernelFacade = kernelFacade;
     }
 
@@ -832,11 +853,12 @@ public class PanelRuntime {
     }
 
     private CompiledPanel requirePanel(String panelName) {
-        if (compiledModel == null) {
+        CompiledModel model = modelHolder.get();
+        if (model == null) {
             throw new IllegalStateException("Compiled model is required for executable panels.");
         }
         String requested = requirePanelName(panelName);
-        for (CompiledPanel panel : compiledModel.getPanels()) {
+        for (CompiledPanel panel : model.getPanels()) {
             if (requested.equalsIgnoreCase(panel.name()) || requested.equalsIgnoreCase(panel.route())) {
                 return panel;
             }
@@ -864,10 +886,11 @@ public class PanelRuntime {
     }
 
     private Optional<CompiledQuery> resolveDataSourceQuery(CompiledPanelDataSource dataSource) {
-        if (compiledModel == null || !hasText(dataSource.query())) {
+        CompiledModel model = modelHolder.get();
+        if (model == null || !hasText(dataSource.query())) {
             return Optional.empty();
         }
-        return compiledModel.getQueries().stream()
+        return model.getQueries().stream()
                 .filter(item -> dataSource.query().equalsIgnoreCase(item.name()))
                 .findFirst();
     }

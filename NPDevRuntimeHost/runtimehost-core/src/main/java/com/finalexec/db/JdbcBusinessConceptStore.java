@@ -1,6 +1,7 @@
 package com.finalexec.db;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -51,18 +52,35 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
 
     private final DataSource dataSource;
     private final SqlDialect dialect;
-    private final Map<String, ConceptShape> shapesByConcept;
+    // REG-208 (B28 lift): a snapshot derived from the model, not the model itself -- volatile so a
+    // ModelReloadListener (registered in the ModelHolder-taking constructors) can atomically publish
+    // a rebuilt snapshot to concurrent request threads without a lock.
+    private volatile Map<String, ConceptShape> shapesByConcept;
     private final Map<String, TableColumns> tableColumnsCache = new ConcurrentHashMap<>();
 
+    /** Convenience overload for the many call sites (mostly tests) with a plain {@link CompiledModel}
+     * and no live {@link ModelHolder} -- wraps it in a non-reloading holder. Production wiring
+     * ({@code NpdevRuntimeModeConfig}) uses the {@link ModelHolder}-taking constructor directly, so a
+     * hot model reload is observed; a caller here never reloads by construction. */
     public JdbcBusinessConceptStore(DataSource dataSource, CompiledModel compiledModel) {
-        this(dataSource, compiledModel, SqlDialects.active());
+        this(dataSource, new ModelHolder(compiledModel), SqlDialects.active());
+    }
+
+    public JdbcBusinessConceptStore(DataSource dataSource, ModelHolder modelHolder) {
+        this(dataSource, modelHolder, SqlDialects.active());
     }
 
     /** Explicit dialect, for the conformance suite and for a host that pins its engine at boot. */
     public JdbcBusinessConceptStore(DataSource dataSource, CompiledModel compiledModel, SqlDialect dialect) {
+        this(dataSource, new ModelHolder(compiledModel), dialect);
+    }
+
+    /** Explicit dialect, ModelHolder-aware: {@code shapesByConcept} rebuilds on every reload. */
+    public JdbcBusinessConceptStore(DataSource dataSource, ModelHolder modelHolder, SqlDialect dialect) {
         this.dataSource = dataSource;
-        this.shapesByConcept = shapes(compiledModel);
+        this.shapesByConcept = shapes(modelHolder.get());
         this.dialect = java.util.Objects.requireNonNull(dialect, "dialect");
+        modelHolder.addReloadListener((before, after) -> this.shapesByConcept = shapes(after));
     }
 
     /**

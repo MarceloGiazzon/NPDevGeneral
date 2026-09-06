@@ -1,5 +1,6 @@
 package com.finalexec.auth;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.kernel.ExecutionContext;
@@ -32,27 +33,40 @@ public final class IdentityAwareContextResolver implements AuthenticatedContextR
 
     private final AuthenticatedContextResolver delegate;
     private final ObjectProvider<DataSource> dataSourceProvider;
-    // REG-177: resolved ONCE at construction, not per-request -- empty when this app doesn't
-    // compose the identity pack at all (internal.tables=false is a normal, supported
+    // REG-208 (B28 lift): resolved fresh from modelHolder.get() on every request -- empty when this
+    // app doesn't compose the identity pack at all (internal.tables=false is a normal, supported
     // configuration, matching this class's own "apps that don't use the identity pack are
-    // unaffected" contract above).
-    private final Optional<IdentityPackTableNames> identityTables;
+    // unaffected" contract above). No rebuild listener needed: a plain lookup, not a snapshot.
+    private final ModelHolder modelHolder;
 
+    /** Convenience overload for existing test call sites with a plain {@link CompiledModel} and no
+     * live {@link ModelHolder} -- wraps it in a non-reloading holder. */
     public IdentityAwareContextResolver(
             AuthenticatedContextResolver delegate,
             ObjectProvider<DataSource> dataSourceProvider,
             CompiledModel compiledModel
     ) {
+        this(delegate, dataSourceProvider, new ModelHolder(compiledModel));
+    }
+
+    public IdentityAwareContextResolver(
+            AuthenticatedContextResolver delegate,
+            ObjectProvider<DataSource> dataSourceProvider,
+            ModelHolder modelHolder
+    ) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.dataSourceProvider = Objects.requireNonNull(dataSourceProvider, "dataSourceProvider");
-        this.identityTables = IdentityPackTableNames.tryResolve(
-                Objects.requireNonNull(compiledModel, "compiledModel"));
+        this.modelHolder = Objects.requireNonNull(modelHolder, "modelHolder");
     }
 
     @Override
     public ExecutionContext resolveFromPrincipal(Map<String, Object> claims, Map<String, String> headers) {
         ExecutionContext base = delegate.resolveFromPrincipal(claims, headers);
-        rejectIfTokenRevoked(claims, base);
+        // Resolved ONCE for this request (not once per helper call) -- both this method and
+        // rejectIfTokenRevoked must reason about the SAME model snapshot even if a reload swaps it
+        // mid-request.
+        Optional<IdentityPackTableNames> identityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        rejectIfTokenRevoked(claims, base, identityTables);
         if (identityTables.isEmpty()) {
             return base;
         }
@@ -69,7 +83,8 @@ public final class IdentityAwareContextResolver implements AuthenticatedContextR
      * in {@link IdentityRoleLookup#isTokenRevoked} so this path and the kernel
      * {@code GeneratedCrudRuntimeSupport} path can never diverge.
      */
-    private void rejectIfTokenRevoked(Map<String, Object> claims, ExecutionContext context) {
+    private void rejectIfTokenRevoked(
+            Map<String, Object> claims, ExecutionContext context, Optional<IdentityPackTableNames> identityTables) {
         if (identityTables.isEmpty()) {
             return;
         }

@@ -1,7 +1,7 @@
 package com.finalexec.auth;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
@@ -37,20 +37,22 @@ public class BootstrapAdminController {
     // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
     // mode without ever composing the identity pack must still boot (guarded per-request instead,
     // mirroring the ControlPanel controllers' fix for the same regression).
-    private final Optional<IdentityPackTableNames> identityTables;
+    // REG-208 (B28 lift): resolved fresh from modelHolder.get() on every request rather than cached
+    // at construction, so a hot model reload is observed without needing a rebuild listener.
+    private final ModelHolder modelHolder;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
 
     public BootstrapAdminController(
             DataSource dataSource,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
         this.dataSource = dataSource;
-        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
+        this.modelHolder = modelHolder;
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -70,10 +72,11 @@ public class BootstrapAdminController {
                 || password == null || password.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("error", "missing_required_field"));
         }
-        if (identityTables.isEmpty()) {
+        Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        if (resolvedIdentityTables.isEmpty()) {
             return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
         }
-        IdentityPackTableNames identityTables = this.identityTables.get();
+        IdentityPackTableNames identityTables = resolvedIdentityTables.get();
 
         try (Connection connection = dataSource.getConnection()) {
             connection.setAutoCommit(false);

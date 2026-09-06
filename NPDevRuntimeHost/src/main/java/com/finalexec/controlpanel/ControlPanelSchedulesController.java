@@ -2,7 +2,7 @@ package com.finalexec.controlpanel;
 
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.config.ModelHolder;
 import com.finalexec.scheduler.ScheduleOutcome;
 import com.finalexec.scheduler.ScheduleOutcomeTracker;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -32,16 +32,16 @@ import java.util.Map;
 @RequestMapping("/api/admin/cron-schedules")
 public class ControlPanelSchedulesController {
 
-    private final CompiledModel compiledModel;
+    private final ModelHolder modelHolder;
     private final ScheduleOutcomeTracker tracker;
     private final RuntimeContextService runtimeContextService;
 
     public ControlPanelSchedulesController(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             ScheduleOutcomeTracker tracker,
             RuntimeContextService runtimeContextService
     ) {
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
         this.tracker = tracker;
         this.runtimeContextService = runtimeContextService;
     }
@@ -56,7 +56,7 @@ public class ControlPanelSchedulesController {
         }
 
         List<Map<String, Object>> declared = new java.util.ArrayList<>();
-        for (CompiledFlow flow : compiledModel.getFlows()) {
+        for (CompiledFlow flow : modelHolder.get().getFlows()) {
             CompiledFlowSchedule schedule = flow.getSchedule();
             if (schedule == null) {
                 continue;

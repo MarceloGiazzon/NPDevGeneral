@@ -1,7 +1,44 @@
 id: B28
-title: "Live model reload (LC-C3) -- DO NOT SHIP; the app restarts to pick up a model change"
+title: "A model change is applied by an atomic swap; a change built once into a snapshot bean (a new invariant rule, a new CRUD-reachable field) still needs a restart"
 codeLinked: true
 codeLinkedNote: >-
+  2026-09-05 (ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P4, REG-208): the split-brain residue
+  below is closed structurally. `NpdevCapabilityBindingConfig`'s standalone `CompiledModel` bean is
+  DELETED -- `modelHolder(NPDevModelProvider)` is the only place one is ever constructed -- so a
+  reintroduced direct `CompiledModel` injection anywhere in the RuntimeHost template now fails to
+  wire at Spring startup instead of silently caching a stale model. Every remaining holder (35+
+  classes, more than the plan's own 22-file estimate) was converted one of two ways: a bean that
+  just looks things up (`PanelRuntime`, `AggregateRuntime`, `ProcedureRunner`,
+  `JdbcBusinessConceptStore`, most controllers) now calls `ModelHolder.get()` fresh per call; a bean
+  that builds something ONCE at construction got a real `ModelReloadListener` (new on `ModelHolder`,
+  notified inside the write lock) that rebuilds it in place --
+  `NpdevCapabilityBindingConfig.capabilityRegistry`, `InMemoryConceptStore` (kernel-side, wired via a
+  plain `setModel` since the kernel cannot depend on `com.finalexec.config.ModelHolder`),
+  `NpdevObservabilityConfig`'s sensitive-field registration, and `NpdevCronSchedulerService`
+  (stops and re-registers every schedule from the reloaded model). The full-reload endpoint's
+  default flipped to enabled. A second, previously-unaudited surface was found only by a failing
+  boot: `NPDevGenerator`'s own mustache templates emit PER-APP classes
+  (`com.npdev.generated.runtime.service.KernelFacade`, `...controllers.GeneratedQueryController`)
+  that also directly injected `CompiledModel` -- fixed the same way, in the generator templates
+  themselves, so every future generated app gets the fix too. See `ledger/items/REG-208.yml` for
+  the full trace, including how this was found (a `NoSuchBeanDefinitionException` four Spring
+  constructor-resolution frames deep, only visible by reading a raw JUnit XML stack trace after the
+  digest-log summarization truncated it).
+
+  **Reclassified LIFTED, PARTIAL** (was HITTABLE) -- honestly narrower than the plan's own
+  "Reclassify" text, which named only "a change requiring newly generated code" as the residual.
+  Measured reality is broader: `NpdevCapabilityBindingConfig.invariantEngine` (`CelInvariantEngine`
+  has no in-place rebuild), `conceptGateway`'s semantic-policy component, `propertyResolver`, and
+  `kernelRunner`'s flow-definition provider are ALL built once from a model snapshot with no
+  listener, same as `generatedCrudRuntimeSupport`'s own concept-metadata caches -- meaning a
+  reloaded model's new FIELD is not visible to the generated CRUD REST surface specifically (though
+  it IS visible to `PanelRuntime`/`AggregateRuntime`/`ProcedureRunner` and anything reading through
+  `ConceptGateway` directly), and a new invariant rule or capability binding still needs a restart
+  exactly like new generated code would. `RuntimeInvariantEngineFactory` proves the alternative
+  shape works (captures `modelHolder`, calls `.get()` fresh per request) -- the template a future
+  fix to `GeneratedCrudRuntimeSupport` would follow; not attempted this session, out of scope given
+  this package's size relative to the packages still ahead of it in the same plan.
+
   2026-08-25 (remediation plan W2.4a). `ModelHolder.java` (AtomicReference<CompiledModel> +
   ReadWriteLock) and `MetadataHotSwapController`'s `POST /api/admin/runtime/metadata-hotswap/
   model-reload` both exist and give only a PARTIAL swap -- only `ModelHolder.get()` consumers
@@ -21,4 +58,4 @@ codeLinkedNote: >-
   genuinely works. Completing the fix -- migrating every direct `CompiledModel` injection to
   `ModelHolder.get()` -- is real follow-up work (plan option (b)), not attempted this session.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
-classification: HITTABLE
+classification: LIFTED

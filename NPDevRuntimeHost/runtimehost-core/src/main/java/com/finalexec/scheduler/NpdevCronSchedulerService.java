@@ -1,5 +1,6 @@
 package com.finalexec.scheduler;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledFlowSchedule;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -65,7 +66,11 @@ public class NpdevCronSchedulerService {
     /** One per JVM, mirroring {@code ResumeCoordinator.RESUMER_ID} exactly. */
     private static final String CLAIMANT_ID = UUID.randomUUID().toString();
 
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): a live ModelHolder -- start() re-reads modelHolder.get().getFlows() on
+    // every (re)registration, and a ModelReloadListener (registered in both constructors below)
+    // stops and re-registers every schedule whenever the model swaps, so a reloaded flow's NEW
+    // schedule (or a removed flow's absence) takes effect without a restart.
+    private final ModelHolder modelHolder;
     private final KernelRunner kernelRunner;
     private final ScheduleOutcomeTracker tracker;
     private final int poolSize;
@@ -111,6 +116,8 @@ public class NpdevCronSchedulerService {
      * but with two and no annotation it falls back to looking for a no-arg constructor and fails
      * with "No default constructor found" -- measured, not assumed.</p>
      */
+    /** Convenience overload for existing direct callers (tests) with a plain {@link CompiledModel}
+     * and no live {@link ModelHolder} -- wraps it in a non-reloading holder. */
     public NpdevCronSchedulerService(
             CompiledModel compiledModel,
             KernelRunner kernelRunner,
@@ -118,22 +125,33 @@ public class NpdevCronSchedulerService {
             int poolSize,
             DataSource dataSource
     ) {
-        this.compiledModel = compiledModel;
+        this(new ModelHolder(compiledModel), kernelRunner, tracker, poolSize, dataSource);
+    }
+
+    public NpdevCronSchedulerService(
+            ModelHolder modelHolder,
+            KernelRunner kernelRunner,
+            ScheduleOutcomeTracker tracker,
+            int poolSize,
+            DataSource dataSource
+    ) {
+        this.modelHolder = modelHolder;
         this.kernelRunner = kernelRunner;
         this.tracker = tracker;
         this.poolSize = poolSize;
         this.claimStore = dataSource == null ? null : new CronFireClaimStore(dataSource);
+        registerReloadListener();
     }
 
     @Autowired
     public NpdevCronSchedulerService(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             KernelRunner kernelRunner,
             ScheduleOutcomeTracker tracker,
             @Value("${npdev.cronScheduler.poolSize:4}") int poolSize,
             ObjectProvider<DataSource> dataSource
     ) {
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
         this.kernelRunner = kernelRunner;
         this.tracker = tracker;
         this.poolSize = poolSize;
@@ -143,11 +161,28 @@ public class NpdevCronSchedulerService {
             LOG.info("No DataSource available -- cron fire claiming is disabled, so this instance "
                     + "fires every scheduled flow itself (single-instance behaviour).");
         }
+        registerReloadListener();
+    }
+
+    /** REG-208 (B28 lift): stop every currently-registered schedule and re-register from the newly
+     * reloaded model -- see the {@code modelHolder} field's own javadoc. Registered from both
+     * constructors (rather than once in a shared init method) since {@code modelHolder} must be
+     * assigned first; a no-op {@link ModelHolder} (the convenience constructor tests use) never
+     * calls listeners at all, so this costs nothing outside production wiring. */
+    private void registerReloadListener() {
+        if (modelHolder != null) {
+            modelHolder.addReloadListener((before, after) -> restart());
+        }
+    }
+
+    private synchronized void restart() {
+        stopScheduling();
+        start();
     }
 
     @PostConstruct
     void start() {
-        List<CompiledFlow> scheduledFlows = compiledModel.getFlows().stream()
+        List<CompiledFlow> scheduledFlows = modelHolder.get().getFlows().stream()
                 .filter(flow -> flow.getSchedule() != null)
                 .toList();
         if (scheduledFlows.isEmpty()) {
@@ -245,12 +280,19 @@ public class NpdevCronSchedulerService {
 
     @PreDestroy
     void stop() {
+        stopScheduling();
+    }
+
+    private void stopScheduling() {
         for (ScheduledFuture<?> future : scheduledFutures) {
             future.cancel(false);
         }
         scheduledFutures.clear();
+        cronExpressionsByKey.clear();
+        fireAnchorByKey.clear();
         if (taskScheduler != null) {
             taskScheduler.shutdown();
+            taskScheduler = null;
         }
     }
 }

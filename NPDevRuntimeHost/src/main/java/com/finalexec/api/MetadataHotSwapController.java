@@ -36,20 +36,24 @@ import java.util.Map;
  * ({@code :generator:classifyModelChange}, the same task {@code Update-AppMetadata.ps1} drives) can
  * push a METADATA_ONLY result into a RUNNING app's own metadata catalogs without stopping it.
  *
- * <p><b>What this does and does not swap.</b> Only the purely descriptive catalogs
- * {@code RuntimeMetadataService} already serves read-only (compiled-metadata.json, metadata/index.json,
+ * <p><b>{@code /apply} (metadata-only):</b> only the purely descriptive catalogs {@code
+ * RuntimeMetadataService} already serves read-only (compiled-metadata.json, metadata/index.json,
  * every metadata/*.manifest.json catalog) -- labels, panel/action/layout/validation-hint metadata,
  * concept/field catalogs used for introspection and UI display. It deliberately does NOT touch
- * {@code compiled-model.json}: that file backs the Spring-singleton {@code CompiledModel} bean
- * ({@code NPDevModelProvider}) wired into {@code KernelRunner}/{@code ConceptGateway}/
- * {@code PanelRuntime}/{@code CelInvariantEngine}/{@code CapabilityRegistry} and a dozen other
- * singletons at application-context startup -- every one of those beans is constructed ONCE with a
- * plain (non-reloadable) {@code CompiledModel} reference, so making THAT swappable without a restart
- * would require {@code NPDevKernel}/{@code NPDevGenerator} changes (a live/mutable model reference
- * threaded through every consumer), which is out of this module's scope. See this controller's own
- * class javadoc on {@link RuntimeMetadataService#applyMetadataOnlyReload} for the full argument that
- * this narrower scope is still safe: nothing wired from the descriptive catalogs can change what SQL a
- * panel runs or what an invariant enforces.
+ * {@code compiled-model.json}.
+ *
+ * <p><b>{@code /model-reload} (REG-208, B28 lift):</b> swaps the actual {@code CompiledModel} behind
+ * {@link ModelHolder}, atomically. Every consumer that reads {@link ModelHolder#get()} fresh per use
+ * (most controllers/services in this template -- panels, procedures, aggregates, schedules, seeds,
+ * property resolution, the capability registry's own routing table, ...) observes the new model
+ * immediately, no restart. A NAMED residual remains, real and worth stating plainly rather than
+ * hidden behind a DO-NOT-SHIP gate: a handful of engine beans built ONCE from a model snapshot at
+ * application-context startup ({@code CelInvariantEngine}-backed {@code InvariantEngine}, {@code
+ * ConceptGateway}'s semantic policy, {@code KernelRunner}'s flow-definition provider, {@code
+ * GeneratedCrudRuntimeSupport}, the kernel-side {@code DefaultExecutionAuthorizationPolicy}'s
+ * app-declared-role cache) still need a restart to observe a structural rule change -- exactly like a
+ * change requiring newly generated code does. See {@code NpdevCapabilityBindingConfig}'s own
+ * per-bean javadoc for the complete, current list.
  *
  * <p><b>Two different gates, deliberately</b> (same posture as {@link AgentProxyController}).
  * {@code /status} answers any authenticated ADMIN caller, matching {@link RuntimeMetadataController}'s
@@ -78,7 +82,7 @@ public class MetadataHotSwapController {
             RuntimeMetadataService runtimeMetadataService,
             RuntimeContextService runtimeContextService,
             ModelHolder modelHolder,
-            @Value("${npdev.runtime.hotswap.full-model-reload-enabled:false}") boolean fullModelReloadEnabled
+            @Value("${npdev.runtime.hotswap.full-model-reload-enabled:true}") boolean fullModelReloadEnabled
     ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.runtimeContextService = runtimeContextService;
@@ -160,19 +164,16 @@ public class MetadataHotSwapController {
     }
 
     /**
-     * B28: hot model reload -- parse, compile, and atomically swap the CompiledModel without restart.
-     * Requires SUPERUSER. The new model is read from a model.json file at the given path.
+     * REG-208 (B28 lift): hot model reload -- parse, compile, and atomically swap the CompiledModel
+     * without restart. Requires SUPERUSER. The new model is read from a model.json file at the given
+     * path.
      *
-     * <p><b>B28 is registered DO NOT SHIP</b> (docs/ACCEPTED_BOUNDARIES.md): {@link #modelHolder}
-     * gives only a PARTIAL swap -- consumers reading it via {@link ModelHolder#get()} observe the new
-     * model, but every singleton constructed with a directly-injected {@code CompiledModel} at
-     * application-context startup ({@code KernelRunner}, {@code ConceptGateway}, {@code PanelRuntime},
-     * {@code CelInvariantEngine}, {@code CapabilityRegistry}, and a dozen others -- see this class's own
-     * javadoc above) keeps the OLD model, which is a split-brain state, not a feature with rough edges.
-     * Disabled by default (2026-08-25 remediation plan W2.4a) behind an explicit opt-in property so a
-     * do-not-ship mechanism cannot be reached by accident just because a caller holds SUPERUSER --
-     * completing the migration to {@link ModelHolder#get()} everywhere (option (b) in the plan) is
-     * its own follow-up roadmap item, not done here.
+     * <p>Enabled by default (2026-09-05, REG-208): {@link ModelHolder#swap} now genuinely propagates
+     * to the great majority of consumers (see this class's own top javadoc), and every "structure
+     * derived once" holder that could not be made to rebuild in place was found and named, not left
+     * to silently go stale -- {@code npdev.runtime.hotswap.full-model-reload-enabled=false} remains
+     * available for an operator who wants the OLD refusal instead (e.g. while validating the residual
+     * list above is acceptable for their own app).
      */
     @PostMapping("/model-reload")
     public ResponseEntity<Map<String, Object>> modelReload(HttpServletRequest request, @RequestBody Map<String, String> body) {
@@ -180,11 +181,10 @@ public class MetadataHotSwapController {
 
         if (!fullModelReloadEnabled) {
             return failure(HttpStatus.NOT_FOUND, "FULL_MODEL_RELOAD_DISABLED",
-                    "B28 (docs/ACCEPTED_BOUNDARIES.md): full model hot-reload is DO NOT SHIP -- it "
-                            + "gives only a partial swap (ModelHolder.get() consumers see the new "
-                            + "model, direct CompiledModel injection keeps the old one). Disabled by "
-                            + "default; set npdev.runtime.hotswap.full-model-reload-enabled=true to "
-                            + "opt in with that split-brain risk understood.");
+                    "Full model hot-reload is disabled on this instance "
+                            + "(npdev.runtime.hotswap.full-model-reload-enabled=false). See "
+                            + "MetadataHotSwapController's class javadoc for what does and does not "
+                            + "observe a reload; set the property to true (the default) to opt back in.");
         }
 
         String modelPath = body.get("modelPath");

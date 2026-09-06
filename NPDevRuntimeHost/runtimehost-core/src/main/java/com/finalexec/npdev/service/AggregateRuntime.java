@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
@@ -38,7 +39,9 @@ import java.util.UUID;
 @Service
 public class AggregateRuntime {
 
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): a live ModelHolder, not a directly-injected CompiledModel snapshot -- see
+    // aggregateDefinition(), the only reader below, which does a fresh per-call lookup.
+    private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
     private final ProcedureRunner procedureRunner;
     private final TransactionTemplate transactionTemplate;
@@ -53,14 +56,14 @@ public class AggregateRuntime {
 
     @Autowired
     public AggregateRuntime(
-            ObjectProvider<CompiledModel> compiledModel,
+            ModelHolder modelHolder,
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<ProcedureRunner> procedureRunner,
             ObjectProvider<PlatformTransactionManager> transactionManager,
             ObjectProvider<InvariantEngine> invariantEngine
     ) {
         this(
-                compiledModel == null ? null : compiledModel.getIfAvailable(),
+                modelHolder,
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 procedureRunner == null ? null : procedureRunner.getIfAvailable(),
                 transactionManager == null ? null : transactionManager.getIfAvailable(),
@@ -112,6 +115,9 @@ public class AggregateRuntime {
                 () -> invariantEngine);
     }
 
+    /** Convenience overload for the existing (CompiledModel, ...) constructors -- wraps in a
+     * non-reloading holder. Production wiring (the {@code @Autowired} constructor above) uses a
+     * real {@link ModelHolder} directly. */
     private AggregateRuntime(
             CompiledModel compiledModel,
             ConceptGateway conceptGateway,
@@ -119,7 +125,17 @@ public class AggregateRuntime {
             PlatformTransactionManager transactionManager,
             Supplier<InvariantEngine> invariantEngine
     ) {
-        this.compiledModel = compiledModel;
+        this(new ModelHolder(compiledModel), conceptGateway, procedureRunner, transactionManager, invariantEngine);
+    }
+
+    private AggregateRuntime(
+            ModelHolder modelHolder,
+            ConceptGateway conceptGateway,
+            ProcedureRunner procedureRunner,
+            PlatformTransactionManager transactionManager,
+            Supplier<InvariantEngine> invariantEngine
+    ) {
+        this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.procedureRunner = procedureRunner;
         this.transactionTemplate = transactionManager == null ? null : new TransactionTemplate(transactionManager);
@@ -412,11 +428,12 @@ public class AggregateRuntime {
         if (aggregateName == null || aggregateName.isBlank()) {
             throw new IllegalArgumentException("aggregate name is required");
         }
-        if (compiledModel == null) {
+        CompiledModel model = modelHolder.get();
+        if (model == null) {
             throw new IllegalStateException("Compiled model is not configured.");
         }
         String normalized = aggregateName.trim().toLowerCase(Locale.ROOT);
-        return compiledModel.getAggregates().stream()
+        return model.getAggregates().stream()
                 .filter(aggregate -> aggregate.name() != null
                         && aggregate.name().trim().toLowerCase(Locale.ROOT).equals(normalized))
                 .findFirst()

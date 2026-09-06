@@ -1,6 +1,6 @@
 package com.finalexec.controlpanel;
 
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
@@ -26,11 +26,11 @@ import java.util.Map;
 @RequestMapping("/api/admin/roles")
 public class ControlPanelRolesController {
 
-    private final CompiledModel compiledModel;
+    private final ModelHolder modelHolder;
     private final RuntimeContextService runtimeContextService;
 
-    public ControlPanelRolesController(CompiledModel compiledModel, RuntimeContextService runtimeContextService) {
-        this.compiledModel = compiledModel;
+    public ControlPanelRolesController(ModelHolder modelHolder, RuntimeContextService runtimeContextService) {
+        this.modelHolder = modelHolder;
         this.runtimeContextService = runtimeContextService;
     }
 
@@ -38,7 +38,7 @@ public class ControlPanelRolesController {
     public List<Map<String, Object>> listDeclaredRoles(HttpServletRequest httpRequest) {
         requireSuperUser(httpRequest);
         List<Map<String, Object>> roles = new ArrayList<>();
-        for (CompiledRole role : compiledModel.getRoles()) {
+        for (CompiledRole role : modelHolder.get().getRoles()) {
             roles.add(Map.of("name", role.name(), "grants", role.grants()));
         }
         return roles;

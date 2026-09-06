@@ -1,5 +1,6 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.dsl.v1.compiled.CompiledProcedureStep;
@@ -30,33 +31,47 @@ import java.util.Map;
 @Service
 public class ProcedureRunner {
 
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): a live ModelHolder, not a directly-injected CompiledModel snapshot -- every
+    // use below is a fresh per-call lookup (buildProcedureDefinitions et al.), never a cached
+    // derivation, so no ModelReloadListener is needed: modelHolder.get() alone observes a reload.
+    private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
     private final CapabilityDispatcher capabilityDispatcher;
     private final EventBus eventBus;
 
     @Autowired
     public ProcedureRunner(
-            ObjectProvider<CompiledModel> compiledModel,
+            ModelHolder modelHolder,
             ObjectProvider<ConceptGateway> conceptGateway,
             ObjectProvider<CapabilityDispatcher> capabilityDispatcher,
             ObjectProvider<EventBus> eventBus
     ) {
         this(
-                compiledModel == null ? null : compiledModel.getIfAvailable(),
+                modelHolder,
                 conceptGateway == null ? null : conceptGateway.getIfAvailable(),
                 capabilityDispatcher == null ? null : capabilityDispatcher.getIfAvailable(),
                 eventBus == null ? null : eventBus.getIfAvailable()
         );
     }
 
+    /** Convenience overload for existing call sites (PanelRuntime, tests) with a plain {@link
+     * CompiledModel} and no live {@link ModelHolder} -- wraps it in a non-reloading holder. */
     public ProcedureRunner(
             CompiledModel compiledModel,
             ConceptGateway conceptGateway,
             CapabilityDispatcher capabilityDispatcher,
             EventBus eventBus
     ) {
-        this.compiledModel = compiledModel;
+        this(new ModelHolder(compiledModel), conceptGateway, capabilityDispatcher, eventBus);
+    }
+
+    public ProcedureRunner(
+            ModelHolder modelHolder,
+            ConceptGateway conceptGateway,
+            CapabilityDispatcher capabilityDispatcher,
+            EventBus eventBus
+    ) {
+        this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.capabilityDispatcher = capabilityDispatcher;
         this.eventBus = eventBus;
@@ -112,12 +127,13 @@ public class ProcedureRunner {
     }
 
     private Map<String, ProcedureDefinition> buildProcedureDefinitions() {
-        if (compiledModel == null) {
+        CompiledModel model = modelHolder.get();
+        if (model == null) {
             return Map.of();
         }
-        Map<String, String> adapterIdByCapability = buildAdapterIdByCapability();
+        Map<String, String> adapterIdByCapability = buildAdapterIdByCapability(model);
         Map<String, ProcedureDefinition> definitions = new LinkedHashMap<>();
-        for (CompiledProcedure procedure : compiledModel.getProcedures()) {
+        for (CompiledProcedure procedure : model.getProcedures()) {
             definitions.put(procedure.name(), toProcedureDefinition(procedure, adapterIdByCapability));
         }
         return Map.copyOf(definitions);
@@ -131,9 +147,9 @@ public class ProcedureRunner {
      * with a null adapterId and failed CAPABILITY_BINDING_MISSING regardless of a real binding
      * existing -- the flow path already did this resolution, the procedure path never did.
      */
-    private Map<String, String> buildAdapterIdByCapability() {
+    private Map<String, String> buildAdapterIdByCapability(CompiledModel model) {
         Map<String, String> byCapability = new LinkedHashMap<>();
-        for (var binding : compiledModel.getBindings()) {
+        for (var binding : model.getBindings()) {
             if (binding == null || binding.getCapability() == null || binding.getAdapter() == null) {
                 continue;
             }
@@ -149,11 +165,12 @@ public class ProcedureRunner {
     /** LIFT-QUERY-P1: lets a {@code runQuery} procedure step resolve its declared query's
      * where/orderBy/limit instead of always returning every row for the concept. */
     private Map<String, com.npdev.dsl.v1.compiled.CompiledQuery> buildQueriesByName() {
-        if (compiledModel == null) {
+        CompiledModel model = modelHolder.get();
+        if (model == null) {
             return Map.of();
         }
         Map<String, com.npdev.dsl.v1.compiled.CompiledQuery> queries = new LinkedHashMap<>();
-        for (com.npdev.dsl.v1.compiled.CompiledQuery query : compiledModel.getQueries()) {
+        for (com.npdev.dsl.v1.compiled.CompiledQuery query : model.getQueries()) {
             queries.put(query.name(), query);
         }
         return Map.copyOf(queries);

@@ -2,6 +2,7 @@ package com.finalexec.workspace;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import org.springframework.beans.factory.annotation.Value;
@@ -70,13 +71,20 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
     private final ObjectMapper objectMapper;
     private final String tenantId;
     private final String seedMode;
-    private final String menuTable;
+    // REG-208 (B28 lift): resolved fresh from modelHolder.get() at run() time (below), not cached
+    // here at construction -- the physical table name is pack-version-derived, not concept-content-
+    // derived, so a hot reload rarely changes it, but resolving it fresh costs nothing and is
+    // correct if it ever does. NOTE: re-running the seed logic itself on a reload would not surface
+    // any NEW menu content -- the seed JSON this reads is a BUILD-TIME artifact (BusinessUiEmitter),
+    // not derived from the live in-memory model -- so this class deliberately registers no
+    // ModelReloadListener; only its ApplicationRunner#run() (boot-time) entry point still applies.
+    private final ModelHolder modelHolder;
 
     public WorkspaceMenuSeeder(
             DataSource dataSource,
             ResourceLoader resourceLoader,
             ObjectMapper objectMapper,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             @Value("${npdev.workspace.menu-seed.tenant-id:dev}") String tenantId,
             @Value("${npdev.workspace.menu-seed.mode:insert-if-empty}") String seedMode
     ) {
@@ -87,7 +95,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
         this.seedMode = MODE_UPSERT_IF_FINGERPRINT_CHANGED.equals(seedMode == null ? null : seedMode.trim())
                 ? MODE_UPSERT_IF_FINGERPRINT_CHANGED
                 : MODE_INSERT_IF_EMPTY;
-        this.menuTable = resolveMenuTable(compiledModel);
+        this.modelHolder = modelHolder;
     }
 
     // REG-160: resolves the physical, pack-versioned table name the generator actually created
@@ -112,6 +120,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
+        String menuTable = resolveMenuTable(modelHolder.get());
         try (Connection connection = dataSource.getConnection()) {
             List<JsonNode> rows = new ArrayList<>();
             readSeedResource("classpath:npdev-seed/workspace-menu-seed.json", true).forEach(rows::add);
@@ -119,7 +128,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
             String fingerprint = computeFingerprint(rows);
 
             if (MODE_UPSERT_IF_FINGERPRINT_CHANGED.equals(seedMode)) {
-                String existingFingerprint = findExistingFingerprint(connection);
+                String existingFingerprint = findExistingFingerprint(connection, menuTable);
                 if (fingerprint.equals(existingFingerprint)) {
                     return; // already seeded from this exact declared menu -- nothing to do.
                 }
@@ -128,8 +137,8 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
                 // through generic CRUD since the last seed is wiped along with it. The default mode
                 // below (insert-if-empty) is what protects those edits; switching to this one is a
                 // documented, informed tradeoff (see WORKSPACE-MENU-AND-GUIDEPAGES.md).
-                deleteExistingMenus(connection);
-            } else if (countExistingMenus(connection) > 0) {
+                deleteExistingMenus(connection, menuTable);
+            } else if (countExistingMenus(connection, menuTable) > 0) {
                 return;
             }
 
@@ -153,17 +162,17 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
                 JsonNode row = rows.get(i);
                 JsonNode parentKey = row.get("parentKey");
                 UUID parentId = (parentKey == null || parentKey.isNull()) ? null : idByKey.get(parentKey.asText());
-                insertMenuRow(connection, row, idByRow.get(i), parentId);
+                insertMenuRow(connection, menuTable, row, idByRow.get(i), parentId);
             }
             if (MODE_UPSERT_IF_FINGERPRINT_CHANGED.equals(seedMode)) {
-                insertFingerprintRow(connection, fingerprint);
+                insertFingerprintRow(connection, menuTable, fingerprint);
             }
             System.out.println("WorkspaceMenuSeeder: seeded " + rows.size()
                     + " row(s) into " + menuTable + " for tenant '" + tenantId + "' (mode: " + seedMode + ").");
         }
     }
 
-    private int countExistingMenus(Connection connection) throws Exception {
+    private int countExistingMenus(Connection connection, String menuTable) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT COUNT(*) FROM " + menuTable + " WHERE tenant_id = ?")) {
             ps.setString(1, tenantId);
@@ -186,7 +195,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
         return HexFormat.of().formatHex(hash);
     }
 
-    private String findExistingFingerprint(Connection connection) throws Exception {
+    private String findExistingFingerprint(Connection connection, String menuTable) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "SELECT target FROM " + menuTable + " WHERE tenant_id = ? AND kind = 'INTERNAL' AND target LIKE ?")) {
             ps.setString(1, tenantId);
@@ -200,7 +209,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
         }
     }
 
-    private void deleteExistingMenus(Connection connection) throws Exception {
+    private void deleteExistingMenus(Connection connection, String menuTable) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "DELETE FROM " + menuTable + " WHERE tenant_id = ?")) {
             ps.setString(1, tenantId);
@@ -211,7 +220,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
     // A non-navigable marker row (kind INTERNAL, invisible) recording which declared-menu
     // fingerprint produced the current seed -- shell.js and the generic business UI both already
     // skip any row that doesn't resolve to a real link, so this is inert to every existing reader.
-    private void insertFingerprintRow(Connection connection, String fingerprint) throws Exception {
+    private void insertFingerprintRow(Connection connection, String menuTable, String fingerprint) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO " + menuTable + " (id, label, target, kind, parent_menu_id, required_role, ordinal, visible, tenant_id) "
                         + "VALUES (?, ?, ?, 'INTERNAL', NULL, NULL, ?, FALSE, ?)")) {
@@ -251,7 +260,7 @@ public final class WorkspaceMenuSeeder implements ApplicationRunner {
                         + raw.getNodeType() + ")");
     }
 
-    private void insertMenuRow(Connection connection, JsonNode row, UUID id, UUID parentId) throws Exception {
+    private void insertMenuRow(Connection connection, String menuTable, JsonNode row, UUID id, UUID parentId) throws Exception {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO " + menuTable + " (id, label, target, kind, parent_menu_id, required_role, ordinal, visible, tenant_id) "
                         + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {

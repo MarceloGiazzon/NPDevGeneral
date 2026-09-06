@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledSeed;
 import com.npdev.kernel.ExecutionContext;
@@ -55,20 +56,23 @@ public class ModelSeedRunner implements ApplicationRunner {
     private static final String RUN_ID = "model-seeds";
     private static final String KIND_SMART = "smart";
 
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): still resolved ONCE at run(), not per-reload -- ApplicationRunner.run()
+    // fires exactly once, at boot, strictly before any reload endpoint could ever fire, so there is
+    // no staleness for a rebuild listener to fix here; only the injection type changes.
+    private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
     private final SeedDataService seedDataService;
     private final ObjectMapper objectMapper;
     private final String tenantId;
 
     public ModelSeedRunner(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             ConceptGateway conceptGateway,
             SeedDataService seedDataService,
             ObjectMapper objectMapper,
             @Value("${npdev.seed.model-seed.tenant-id:dev}") String tenantId
     ) {
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.seedDataService = seedDataService;
         this.objectMapper = objectMapper;
@@ -77,7 +81,7 @@ public class ModelSeedRunner implements ApplicationRunner {
 
     @Override
     public void run(ApplicationArguments args) {
-        List<CompiledSeed> seeds = compiledModel.getSeeds();
+        List<CompiledSeed> seeds = modelHolder.get().getSeeds();
         if (seeds.isEmpty()) {
             return;
         }
