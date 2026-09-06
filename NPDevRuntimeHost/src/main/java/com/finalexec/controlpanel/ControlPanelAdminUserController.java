@@ -1,8 +1,8 @@
 package com.finalexec.controlpanel;
 
 import com.finalexec.auth.IdentityProvisioning;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -40,12 +40,14 @@ public class ControlPanelAdminUserController {
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
     // REG-177/REG-179 fix: resolved with the GRACEFUL tryResolve (not resolve), and only unwrapped
-    // per-request (see requireIdentityTables()) -- this bean is registered unconditionally in every
+    // per-request (see create() below) -- this bean is registered unconditionally in every
     // generated app regardless of whether it composes the identity pack, so the eager, throwing
     // IdentityPackTableNames.resolve(...) this used to call here crashed Spring context startup for
     // any app without one (confirmed live: BeanCreationException -> IllegalStateException on a
-    // generated sample with no identity::User concept at all).
-    private final Optional<IdentityPackTableNames> identityTables;
+    // generated sample with no identity::User concept at all). REG-208 (B28 lift): resolved fresh
+    // from modelHolder.get() on every request rather than cached at construction, so a hot model
+    // reload is observed without needing a rebuild listener.
+    private final ModelHolder modelHolder;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -53,14 +55,16 @@ public class ControlPanelAdminUserController {
     public ControlPanelAdminUserController(
             ObjectProvider<DataSource> dataSourceProvider,
             RuntimeContextService runtimeContextService,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
-        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
+        // REG-208 (B28 lift): resolved FRESH per request (below), not cached -- a bean that just
+        // looks the model up needs no reload listener, only a live ModelHolder.
+        this.modelHolder = modelHolder;
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -84,12 +88,12 @@ public class ControlPanelAdminUserController {
                     "ControlPanel unavailable in InMemory mode -- requires a physical database "
                             + "(H2Local/H2Server/Postgres).");
         }
-        if (identityTables.isEmpty()) {
+        Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        if (resolvedIdentityTables.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "ControlPanel unavailable -- this app does not compose the identity pack.");
         }
-        // Shadows the Optional field with the unwrapped value for the rest of this method.
-        IdentityPackTableNames identityTables = this.identityTables.get();
+        IdentityPackTableNames identityTables = resolvedIdentityTables.get();
 
         String tenantId = request.tenantId() == null ? null : request.tenantId().trim();
         String username = request.username() == null ? null : request.username().trim();

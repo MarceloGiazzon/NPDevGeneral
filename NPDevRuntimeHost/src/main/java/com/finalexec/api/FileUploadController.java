@@ -1,5 +1,6 @@
 package com.finalexec.api;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
 import com.npdev.dsl.v1.compiled.CompiledFileMetadata;
@@ -11,6 +12,7 @@ import com.npdev.kernel.ports.FileStoreContract;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -60,16 +62,28 @@ public class FileUploadController {
             "image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf");
 
     private final FileStoreContract fileStore;
-    private final ObjectProvider<CompiledModel> compiledModel;
+    private final ModelHolder modelHolder;
     private final RuntimeContextService runtimeContextService;
 
+    /** Convenience overload for existing test call sites with an {@code ObjectProvider<CompiledModel>}
+     * and no live {@link ModelHolder} -- wraps it in a non-reloading holder. */
     public FileUploadController(
             FileStoreContract fileStore,
-            ObjectProvider<CompiledModel> compiledModel,
+            ObjectProvider<CompiledModel> compiledModelProvider,
+            RuntimeContextService runtimeContextService
+    ) {
+        this(fileStore, new ModelHolder(compiledModelProvider == null ? null : compiledModelProvider.getIfAvailable()),
+                runtimeContextService);
+    }
+
+    @Autowired
+    public FileUploadController(
+            FileStoreContract fileStore,
+            ModelHolder modelHolder,
             RuntimeContextService runtimeContextService
     ) {
         this.fileStore = fileStore;
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
         this.runtimeContextService = runtimeContextService;
     }
 
@@ -166,7 +180,7 @@ public class FileUploadController {
     }
 
     private CompiledField requireFileField(String conceptName, String fieldName) {
-        CompiledModel model = compiledModel.getIfAvailable();
+        CompiledModel model = modelHolder.get();
         if (model == null) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Compiled model is not available");
         }

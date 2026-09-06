@@ -7,7 +7,7 @@ import com.finalexec.db.ImpactReportJson;
 import com.finalexec.db.SchemaImpactFacade;
 import com.finalexec.db.SchemaLifecycleExecutor;
 import com.finalexec.db.ExpressionBackfillPreviewJson;
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.config.ModelHolder;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -43,16 +43,16 @@ public class SchemaImpactController {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final RuntimeContextService runtimeContextService;
-    private final CompiledModel compiledModel;
+    private final ModelHolder modelHolder;
 
     public SchemaImpactController(
             ObjectProvider<DataSource> dataSourceProvider,
             RuntimeContextService runtimeContextService,
-            CompiledModel compiledModel
+            ModelHolder modelHolder
     ) {
         this.dataSourceProvider = dataSourceProvider;
         this.runtimeContextService = runtimeContextService;
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
     }
 
     @GetMapping(value = "/impact", produces = "application/json")
@@ -61,7 +61,8 @@ public class SchemaImpactController {
         DataSource dataSource = requireDataSource();
         // REG-39 layer 3: same identity-pack-drift check StartupValidator fails fast on at boot,
         // surfaced here too so it's visible without a boot (NEEDS_ATTENTION item if stale).
-        SchemaImpactFacade.Result r = SchemaImpactFacade.forLiveDatabase(dataSource, compiledModel);
+        SchemaImpactFacade.Result r = SchemaImpactFacade.forLiveDatabase(
+                dataSource, modelHolder == null ? null : modelHolder.get());
         String json = ImpactReportJson.render(r.report(), Instant.now().toString(),
                 r.fromFingerprint(), r.toFingerprint(), r.ackToken(), r.surplus(), r.renameCandidates());
         return ResponseEntity.ok().header("Content-Type", "application/json").body(json);

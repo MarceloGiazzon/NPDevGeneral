@@ -10,7 +10,6 @@ import com.npdev.adapters.authcontext.jwt.JwtAuthenticatedContextResolver;
 import com.npdev.adapters.authz.defaultpolicy.DefaultExecutionAuthorizationPolicy;
 import com.npdev.adapters.authz.defaultpolicy.DefaultTenantIsolationPolicy;
 import com.npdev.adapters.runtime.validation.RuntimeSettings;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generated.runtime.config.RuntimeApiKeyAuthFilter;
 import com.npdev.kernel.ports.AuthenticatedContextResolver;
 import com.npdev.kernel.ports.ExecutionAuthorizationPolicy;
@@ -31,9 +30,15 @@ public class NpdevAuthConfig {
         return new DefaultTenantIsolationPolicy();
     }
 
+    /**
+     * REG-208 (B28 lift): {@code DefaultExecutionAuthorizationPolicy} (a kernel adapter, which must
+     * not depend on {@code ModelHolder}) caches app-declared roles once at construction -- a named
+     * residual, same shape as {@code NpdevCapabilityBindingConfig#invariantEngine}: a hot reload
+     * that adds/removes an app-declared role still needs a restart to take effect here.
+     */
     @Bean
     public ExecutionAuthorizationPolicy executionAuthorizationPolicy(
-            TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel,
+            TenantIsolationPolicy tenantIsolationPolicy, ModelHolder modelHolder,
             org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider) {
         // Wave 3 (RC-B1): threads the app's declared roles[] (if any) through so a role that is
         // neither USER/OPERATOR/ADMIN nor an app-declared role is denied with a logged diagnostic
@@ -44,18 +49,18 @@ public class NpdevAuthConfig {
         // (no DataSource bean at all) gets null, which DefaultExecutionAuthorizationPolicy already
         // treats as "no override ever configured," identical to behavior before C2 existed.
         return new DefaultExecutionAuthorizationPolicy(
-                tenantIsolationPolicy, compiledModel, dataSourceProvider::getIfAvailable);
+                tenantIsolationPolicy, modelHolder.get(), dataSourceProvider::getIfAvailable);
     }
 
     @Bean
     @ConditionalOnMissingBean(AuthenticatedContextResolver.class)
     public AuthenticatedContextResolver authenticatedContextResolver(
             org.springframework.beans.factory.ObjectProvider<javax.sql.DataSource> dataSourceProvider,
-            CompiledModel compiledModel
+            ModelHolder modelHolder
     ) {
         // Base resolver decodes the principal (api-key / JWT) into tenant + actor + claim-roles;
         // the identity-aware wrapper lets the persistent identity pack override roles when populated.
-        return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider, compiledModel);
+        return new IdentityAwareContextResolver(new JwtAuthenticatedContextResolver(), dataSourceProvider, modelHolder);
     }
 
     @Bean

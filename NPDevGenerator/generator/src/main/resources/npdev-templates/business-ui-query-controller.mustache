@@ -1,8 +1,8 @@
 package {{controllerPackage}};
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
 import com.npdev.dsl.v1.compiled.CompiledGroupByField;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
@@ -41,13 +41,13 @@ import java.util.Map;
 @RestController
 public class GeneratedQueryController {
 
-    private final CompiledModel compiledModel;
+    private final ModelHolder modelHolder;
     private final ConceptGateway conceptGateway;
     private final RuntimeContextService runtimeContextService;
 
     public GeneratedQueryController(
-            CompiledModel compiledModel, ConceptGateway conceptGateway, RuntimeContextService runtimeContextService) {
-        this.compiledModel = compiledModel;
+            ModelHolder modelHolder, ConceptGateway conceptGateway, RuntimeContextService runtimeContextService) {
+        this.modelHolder = modelHolder;
         this.conceptGateway = conceptGateway;
         this.runtimeContextService = runtimeContextService;
     }
@@ -64,7 +64,7 @@ public class GeneratedQueryController {
     }
 
     private CompiledQuery findQuery(String queryName) {
-        for (CompiledQuery candidate : compiledModel.getQueries()) {
+        for (CompiledQuery candidate : modelHolder.get().getQueries()) {
             if (candidate.name().equalsIgnoreCase(queryName)) {
                 return candidate;
             }

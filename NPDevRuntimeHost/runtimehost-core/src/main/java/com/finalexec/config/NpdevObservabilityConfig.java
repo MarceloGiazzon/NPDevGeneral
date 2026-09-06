@@ -65,10 +65,18 @@ public class NpdevObservabilityConfig {
      * does not matter.
      */
     @Bean
-    public String sensitiveFieldModelRegistration(CompiledModel compiledModel) {
-        Set<String> fieldNames = sensitiveFieldNames(compiledModel);
-        SensitiveKeyPolicy.registerModelSensitiveFieldNames(fieldNames);
-        return "registered " + fieldNames.size() + " model-declared sensitive field name(s)";
+    public String sensitiveFieldModelRegistration(ModelHolder modelHolder) {
+        registerSensitiveFieldNames(modelHolder.get());
+        // REG-208 (B28 lift): re-registers on every reload -- SensitiveKeyPolicy's own registry is a
+        // static, replaceable set (registerModelSensitiveFieldNames OR's in, never accumulates), so
+        // re-running this after a swap keeps it correctly reflecting the CURRENT model's declared
+        // sensitive fields rather than the one this bean happened to be constructed with.
+        modelHolder.addReloadListener((before, after) -> registerSensitiveFieldNames(after));
+        return "registered " + sensitiveFieldNames(modelHolder.get()).size() + " model-declared sensitive field name(s)";
+    }
+
+    private static void registerSensitiveFieldNames(CompiledModel compiledModel) {
+        SensitiveKeyPolicy.registerModelSensitiveFieldNames(sensitiveFieldNames(compiledModel));
     }
 
     /** Extracted for direct unit testing (see {@code NpdevObservabilityConfigSensitiveFieldTest}). */
@@ -202,7 +210,7 @@ public class NpdevObservabilityConfig {
             @Value("${npdev.auth.jwt.audience:}") String jwtAudience,
             @Value("${npdev.auth.jwt.public-key-path:}") String jwtPublicKeyPath,
             @Value("${npdev.auth.jwt.private-key-path:}") String jwtPrivateKeyPath,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             CapabilityRegistry capabilityRegistry
     ) {
         return new StartupValidator(
@@ -217,7 +225,7 @@ public class NpdevObservabilityConfig {
                 jwtAudience,
                 jwtPublicKeyPath,
                 jwtPrivateKeyPath,
-                compiledModel,
+                modelHolder.get(),
                 capabilityRegistry
         );
     }

@@ -1,6 +1,6 @@
 package com.finalexec.api;
 
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledProperty;
 import com.npdev.dsl.v1.compiled.CompiledPropertyScope;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -46,13 +46,15 @@ public class PropertyResolverController {
 
     private final RuntimeContextService runtimeContextService;
     private final PropertyResolver propertyResolver;
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): a live ModelHolder -- every reader below does a fresh per-request lookup,
+    // so modelHolder.get() alone observes a reload; no ModelReloadListener needed.
+    private final ModelHolder modelHolder;
 
     public PropertyResolverController(
-            RuntimeContextService runtimeContextService, PropertyResolver propertyResolver, CompiledModel compiledModel) {
+            RuntimeContextService runtimeContextService, PropertyResolver propertyResolver, ModelHolder modelHolder) {
         this.runtimeContextService = runtimeContextService;
         this.propertyResolver = propertyResolver;
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
     }
 
     public record PropertyDeclaration(
@@ -64,7 +66,7 @@ public class PropertyResolverController {
     @GetMapping
     public List<PropertyDeclaration> list(HttpServletRequest request) {
         runtimeContextService.currentContext(request); // any authenticated caller; throws if not
-        return compiledModel.getProperties().stream()
+        return modelHolder.get().getProperties().stream()
                 .map(p -> new PropertyDeclaration(p.name(), p.type(), p.defaultValue(), p.settableAt(), p.label(), p.securityRelevant()))
                 .toList();
     }
@@ -73,7 +75,7 @@ public class PropertyResolverController {
     @GetMapping("/scopes")
     public List<CompiledPropertyScope> scopes(HttpServletRequest request) {
         runtimeContextService.currentContext(request);
-        return compiledModel.getPropertyScopes();
+        return modelHolder.get().getPropertyScopes();
     }
 
     @GetMapping("/{key}")
@@ -118,7 +120,7 @@ public class PropertyResolverController {
      * exactly what "read my own value" already means.
      */
     private String resolveOwnScopeId(String scopeType, ExecutionContext context) {
-        CompiledPropertyScope scope = compiledModel.getPropertyScopes().stream()
+        CompiledPropertyScope scope = modelHolder.get().getPropertyScopes().stream()
                 .filter(s -> s.name().equals(scopeType))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown scope '" + scopeType + "'."));
@@ -133,7 +135,7 @@ public class PropertyResolverController {
     }
 
     private CompiledProperty declaredProperty(String key) {
-        for (CompiledProperty property : compiledModel.getProperties()) {
+        for (CompiledProperty property : modelHolder.get().getProperties()) {
             if (property.name().equals(key)) {
                 return property;
             }
@@ -146,7 +148,7 @@ public class PropertyResolverController {
             requireAdmin(context, "security-relevant property '" + property.name() + "'");
             return;
         }
-        CompiledPropertyScope scope = compiledModel.getPropertyScopes().stream()
+        CompiledPropertyScope scope = modelHolder.get().getPropertyScopes().stream()
                 .filter(s -> s.name().equals(scopeType))
                 .findFirst()
                 .orElse(null);

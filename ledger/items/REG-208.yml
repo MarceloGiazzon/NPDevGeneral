@@ -1,0 +1,134 @@
+id: REG-208
+title: >-
+  Every direct CompiledModel injection converted to ModelHolder; the standalone CompiledModel bean
+  deleted so a stale-model regression now fails to wire at startup (boundary B28 -> LIFTED, PARTIAL)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P4 (Wave 2, sequenced with P5 -- both rewire bean
+  construction). B28.yml's own residue: only ModelHolder.get() consumers observed a reloaded model;
+  every singleton constructed with a directly-injected CompiledModel at application-context startup
+  kept the old one, a split-brain state the reload endpoint's own hard-stop javadoc warned against.
+  The plan estimated 22 holder classes; real code held at least 35+ (both undercounted stale-list
+  entries -- IdentityPackDriftItem/SchemaImpactFacade turned out to be pure functions needing no
+  change -- and genuinely missing ones the plan's own file list never named, including
+  SchemaLifecycleExecutor, FileUploadController, FileOrphanSweepService, and most ControlPanel/auth
+  controllers).
+surface: >-
+  runtimehost-core + NPDevRuntimeHost app tree (config/controllers/services), plus a SEPARATE and
+  previously unaudited surface: NPDevGenerator's own mustache templates for per-app GENERATED
+  classes (com.npdev.generated.runtime.service.KernelFacade,
+  com.npdev.generated.controllers.GeneratedQueryController) -- found only after the RuntimeHost
+  gate's first clean pass against the fully-converted STATIC template still failed to boot, with a
+  NoSuchBeanDefinitionException for CompiledModel four Spring constructor-resolution frames deep.
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/ModelHolder.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/MetadataHotSwapController.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevRuntimeModeConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevObservabilityConfig.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevPluginConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/ProcedureRunner.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/AggregateRuntime.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/scheduler/NpdevCronSchedulerService.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/WebhookInboundController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/FileUploadController.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/filestore/FileOrphanSweepService.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelTenantUsersController.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaImpactController.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/inproc/InMemoryConceptStore.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/npdev-runtime-kernel-facade.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-query-controller.mustache
+  - ledger/boundaries/B28.yml
+detail: |
+  **The structural guarantee, achieved:** `NpdevCapabilityBindingConfig`'s standalone `CompiledModel`
+  bean is deleted -- `modelHolder(NPDevModelProvider)` is now the ONLY place a `CompiledModel` is
+  constructed, wrapped immediately in a `ModelHolder`. A 36th direct `CompiledModel` constructor
+  injection anywhere in the RuntimeHost template now fails Spring's dependency resolution at
+  startup, not silently at reload time -- confirmed by a full `run-runtimehost-gate.ps1` pass
+  (generate + build + full test suite against the assembled `simple-contact-intake` sample) with
+  zero test failures.
+
+  **Two kinds of fix, applied to the right bean for each:** (1) beans that just LOOK THINGS UP
+  (PanelRuntime, AggregateRuntime, ProcedureRunner, JdbcBusinessConceptStore, most controllers) now
+  hold a `ModelHolder` and call `.get()` fresh on every method invocation -- a reload is observed
+  immediately, no listener needed. (2) beans that BUILD SOMETHING ONCE from the model at
+  construction time got a real `ModelReloadListener` (new interface on `ModelHolder`, notified
+  INSIDE the write lock during `swap()`) that rebuilds the derived state in place:
+  `NpdevCapabilityBindingConfig.capabilityRegistry` (rebuilds its bindings map, the SAME mutable
+  registry instance every consumer already holds a reference to -- confirmed real, not just
+  wired), `NpdevRuntimeModeConfig`'s `InMemoryConceptStore` (kernel-side; cannot depend on
+  `com.finalexec.config.ModelHolder` for module-boundary reasons, so it gained a plain
+  `setModel(CompiledModel)` instead and RuntimeHost wires the listener from its own side),
+  `NpdevObservabilityConfig`'s sensitive-field registration (confirmed via
+  `SensitiveKeyPolicy.registerModelSensitiveFieldNames`'s own semantics that re-registering REPLACES
+  rather than accumulates, so this is safe to call repeatedly), and `NpdevCronSchedulerService`
+  (stops every registered schedule and re-registers from the newly reloaded model's flows --
+  matches the existing `QUAL-22` dual-constructor/@Autowired-disambiguation pattern already used
+  elsewhere in this class).
+
+  **A second, previously-unaudited injection surface, found only by a failing boot, not by
+  grep:** the entire prior conversion pass only covered the STATIC RuntimeHost template
+  (`NPDevRuntimeHost/src/main` + `runtimehost-core/src/main`). `com.npdev.generated.runtime.service`
+  classes are emitted PER-APP by `NPDevGenerator` from its own mustache templates -- a separate
+  codebase location under `NPDevGenerator/generator/src/main/resources/npdev-templates/`. The first
+  clean-looking RuntimeHost gate run after deleting the `CompiledModel` bean still failed every
+  `@SpringBootTest`-based integration test identically, with a `NoSuchBeanDefinitionException`
+  buried inside Spring's `ConstructorResolver` that the digest-log truncation hid; found by
+  regenerating the sample app directly, running the single failing test with
+  `gradlew.bat test --tests`, and reading the raw JUnit XML stack trace, which named
+  `com.npdev.generated.runtime.service.KernelFacade` constructor parameter 16. A repo-wide grep of
+  every `*.mustache` template for `CompiledModel` (case-insensitive) found exactly two generated
+  classes with the same pattern -- `KernelFacade` (constructor field, two read sites in
+  `listFlowNames`/`listFlowDefinitions`) and `GeneratedQueryController` (one read site in
+  `findQuery`) -- both converted the same way (field/constructor -> `ModelHolder`, each read site ->
+  `modelHolder.get()`). A third template, `npdev-runtime-model-provider.mustache`
+  (`NPDevModelProvider`), also names `CompiledModel` but is the legitimate boot-time SOURCE the
+  `modelHolder` bean wraps, not a stale cache -- confirmed unchanged. Regenerating the sample app
+  and re-running the full RuntimeHost gate afterward passed clean.
+
+  **Residual, measured and broader than the plan's own "Reclassify" text anticipated:** a handful of
+  engine beans in `NpdevCapabilityBindingConfig` build DERIVED structure once from a model snapshot
+  at construction time and have no in-place rebuild mechanism of their own --
+  `invariantEngine`/`CelInvariantEngine.fromCompiledModel`, `conceptGateway`'s semantic-policy
+  component, `propertyResolver`, `kernelRunner`'s `CompiledModelFlowDefinitionProvider`, and
+  `generatedCrudRuntimeSupport`'s own concept-metadata caches -- all named honestly in their own
+  bean-method javadoc. This means the plan's own "Done when" bullet ("a model adding a field,
+  followed immediately by a CRUD write to that field, succeeds without a restart") is NOT fully
+  achieved for CRUD traffic routed through `GeneratedCrudRuntimeSupport`: a newly reloaded field is
+  visible to `PanelRuntime`/`AggregateRuntime`/`ProcedureRunner` and to anything reading through
+  `ConceptGateway`/`JdbcBusinessConceptStore` directly, but the generated CRUD REST surface itself
+  still needs a restart to see it, exactly like a genuinely new invariant rule or capability
+  binding does. Converting `GeneratedCrudRuntimeSupport` (a 158KB file, per-request model lookups
+  woven throughout) to hold a `ModelHolder` instead of a cached snapshot is real follow-up work, not
+  attempted this session -- out of scope given this package's own size relative to the three
+  packages still ahead of it in this plan. `RuntimeInvariantEngineFactory` is the one exception
+  proving the shape works: it captures `modelHolder` (not a resolved model) and calls `.get()`
+  fresh inside each `create(...)` call, so every invocation after a reload genuinely observes new
+  invariants with no listener needed at all -- the template a future fix to
+  `GeneratedCrudRuntimeSupport` would follow.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/MetadataHotSwapControllerStandaloneTest.java
+  asserts: >-
+    modelReloadSwapsTheModelWhenExplicitlyEnabled proves the atomic swap itself is observable via
+    ModelHolder.get() immediately after the endpoint returns. The full-reload endpoint's default
+    flipped to enabled (npdev.runtime.hotswap.full-model-reload-enabled=true); the disabled/opt-out
+    and SUPERUSER-gating tests are unchanged and still pass. The structural guarantee (no direct
+    CompiledModel constructor anywhere) is proven by a full run-runtimehost-gate.ps1 pass (generate
+    + build + complete test suite against the assembled simple-contact-intake sample) with zero
+    failures, run twice: once after the RuntimeHost-template conversion, again after the
+    KernelFacade/GeneratedQueryController generator-template fix. No new end-to-end test was written
+    proving "a newly reloaded schedule fires" or "a newly reloaded field is CRUD-writable" under a
+    live Spring context -- the individual reload-listener mechanisms (capabilityRegistry,
+    InMemoryConceptStore, NpdevCronSchedulerService) are each covered by their own narrower
+    unit/component test, and the CRUD-write path's residual is the honestly-documented gap above,
+    not a testing gap.
+  provenRed: false

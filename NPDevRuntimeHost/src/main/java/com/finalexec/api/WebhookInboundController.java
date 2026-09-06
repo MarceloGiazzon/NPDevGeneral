@@ -2,6 +2,7 @@ package com.finalexec.api;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledWebhook;
 import com.npdev.kernel.events.EventEnvelope;
@@ -123,7 +124,9 @@ public class WebhookInboundController {
     private static final TypeReference<LinkedHashMap<String, Object>> BODY_TYPE = new TypeReference<>() {
     };
 
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): a live ModelHolder -- receive() below does a fresh per-request lookup, so
+    // modelHolder.get() alone observes a reload; no ModelReloadListener needed.
+    private final ModelHolder modelHolder;
     private final EventStore eventStore;
     private final FlowInstanceStore flowInstanceStore;
     private final ObjectMapper objectMapper;
@@ -131,15 +134,16 @@ public class WebhookInboundController {
 
     @Autowired
     public WebhookInboundController(
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             EventStore eventStore,
             FlowInstanceStore flowInstanceStore,
             ObjectMapper objectMapper
     ) {
-        this(compiledModel, eventStore, flowInstanceStore, objectMapper, System::getenv);
+        this(modelHolder, eventStore, flowInstanceStore, objectMapper, System::getenv);
     }
 
-    /** Test-only seam: a fixed secret lookup instead of real environment variables. */
+    /** Convenience overload for existing test call sites with a plain {@link CompiledModel} and no
+     * live {@link ModelHolder} -- wraps it in a non-reloading holder. */
     WebhookInboundController(
             CompiledModel compiledModel,
             EventStore eventStore,
@@ -147,7 +151,18 @@ public class WebhookInboundController {
             ObjectMapper objectMapper,
             Function<String, String> secretLookup
     ) {
-        this.compiledModel = compiledModel;
+        this(new ModelHolder(compiledModel), eventStore, flowInstanceStore, objectMapper, secretLookup);
+    }
+
+    /** Test-only seam: a fixed secret lookup instead of real environment variables. */
+    WebhookInboundController(
+            ModelHolder modelHolder,
+            EventStore eventStore,
+            FlowInstanceStore flowInstanceStore,
+            ObjectMapper objectMapper,
+            Function<String, String> secretLookup
+    ) {
+        this.modelHolder = modelHolder;
         this.eventStore = eventStore;
         this.flowInstanceStore = flowInstanceStore;
         this.objectMapper = objectMapper;
@@ -157,7 +172,7 @@ public class WebhookInboundController {
     @PostMapping("/{source}")
     public ResponseEntity<Map<String, Object>> receive(
             @PathVariable String source, HttpServletRequest httpRequest) {
-        Optional<CompiledWebhook> webhookLookup = compiledModel.findWebhookBySource(source);
+        Optional<CompiledWebhook> webhookLookup = modelHolder.get().findWebhookBySource(source);
         if (webhookLookup.isEmpty()) {
             return failure(HttpStatus.NOT_FOUND, "WEBHOOK_SOURCE_UNKNOWN",
                     "no webhook is configured for source '" + source + "'");

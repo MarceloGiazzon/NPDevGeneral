@@ -1,10 +1,12 @@
 package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.runtime.support.IdentityRoleLookup;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.Resource;
@@ -53,7 +55,9 @@ public class LoginController {
     // REG-177 fix: graceful tryResolve, not the throwing resolve() -- this bean is only gated on
     // npdev.auth.mode=jwt, NOT on the identity pack being composed, so an app that sets jwt auth
     // mode without ever composing the identity pack must still boot (guarded per-request instead).
-    private final Optional<IdentityPackTableNames> identityTables;
+    // REG-208 (B28 lift): resolved fresh from modelHolder.get() on every request rather than cached
+    // at construction, so a hot model reload is observed without needing a rebuild listener.
+    private final ModelHolder modelHolder;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -63,11 +67,32 @@ public class LoginController {
     private final long expirySeconds;
     private final LoginThrottle throttle = new LoginThrottle();
 
+    /** Convenience overload for existing test call sites with a plain {@link CompiledModel} and no
+     * live {@link ModelHolder} -- wraps it in a non-reloading holder. */
     public LoginController(
             DataSource dataSource,
             ObjectMapper objectMapper,
             ResourceLoader resourceLoader,
             CompiledModel compiledModel,
+            String credentialTable,
+            String credentialUserIdColumn,
+            String credentialPasswordColumn,
+            String privateKeyPath,
+            String issuer,
+            String audience,
+            long expirySeconds
+    ) throws Exception {
+        this(dataSource, objectMapper, resourceLoader, new ModelHolder(compiledModel),
+                credentialTable, credentialUserIdColumn, credentialPasswordColumn,
+                privateKeyPath, issuer, audience, expirySeconds);
+    }
+
+    @Autowired
+    public LoginController(
+            DataSource dataSource,
+            ObjectMapper objectMapper,
+            ResourceLoader resourceLoader,
+            ModelHolder modelHolder,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn,
@@ -87,7 +112,7 @@ public class LoginController {
     ) throws Exception {
         this.dataSource = dataSource;
         this.objectMapper = objectMapper;
-        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
+        this.modelHolder = modelHolder;
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -134,12 +159,13 @@ public class LoginController {
             return tooManyAttempts(tenantId, username, clientIp);
         }
 
-        if (identityTables.isEmpty()) {
+        Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        if (resolvedIdentityTables.isEmpty()) {
             // This app runs npdev.auth.mode=jwt but never composed the identity pack -- there is no
             // identity_users table for this endpoint to authenticate against at all.
             return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
         }
-        IdentityPackTableNames identityTables = this.identityTables.get();
+        IdentityPackTableNames identityTables = resolvedIdentityTables.get();
 
         try (Connection connection = dataSource.getConnection()) {
             String userSql = "SELECT id, active, token_version FROM " + identityTables.usersTable()

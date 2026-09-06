@@ -1,6 +1,6 @@
 package com.finalexec.controlpanel;
 
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.kernel.dbschema.NpdevTenantTable;
 import org.springframework.beans.factory.ObjectProvider;
@@ -38,20 +38,23 @@ import java.util.Optional;
 public class TenantAutoRegistrationRunner implements ApplicationRunner {
 
     private final ObjectProvider<DataSource> dataSourceProvider;
-    // REG-177: resolved ONCE at construction from the already-available compiledModel, replacing a
+    // REG-177: resolved ONCE at construction from the already-available model, replacing a
     // previous @Value("${npdev.auth.login.user-table:identity_users}") default that (a) hardcoded
     // the pre-versioning literal and (b) was semantically wrong regardless -- this reconciles the
     // BUILT-IN identity pack's own table (the same one IdentityProvisioning writes to), not an
     // app's separately-configurable bonded credential table (LoginController's credentialTable is
     // the right place for that). Empty when this app doesn't compose the identity pack at all.
+    // REG-208 (B28 lift): still resolved ONCE, not per-reload -- ApplicationRunner.run() fires
+    // exactly once, at boot, strictly before any reload endpoint could ever fire, so there is no
+    // staleness for a rebuild listener to fix here; only the injection type changes.
     private final Optional<IdentityPackTableNames> identityTables;
 
     public TenantAutoRegistrationRunner(
             ObjectProvider<DataSource> dataSourceProvider,
-            CompiledModel compiledModel
+            ModelHolder modelHolder
     ) {
         this.dataSourceProvider = dataSourceProvider;
-        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
     }
 
     @Override

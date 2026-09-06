@@ -1,10 +1,10 @@
 package com.finalexec.filestore;
 
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.config.ModelHolder;
 import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.FileStoreContract;
 import com.npdev.runtime.support.FileOrphanSweeper;
-import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -36,18 +36,31 @@ public class FileOrphanSweepService {
     private static final Logger LOG = Logger.getLogger(FileOrphanSweepService.class.getName());
 
     private final FileStoreContract fileStore;
-    private final ObjectProvider<CompiledModel> compiledModel;
+    private final ModelHolder modelHolder;
     private final ConceptStore conceptStore;
     private final Duration graceWindow;
 
+    /** Convenience overload for existing test call sites with an {@code ObjectProvider<CompiledModel>}
+     * and no live {@link ModelHolder} -- wraps it in a non-reloading holder. */
     public FileOrphanSweepService(
             FileStoreContract fileStore,
-            ObjectProvider<CompiledModel> compiledModel,
+            org.springframework.beans.factory.ObjectProvider<com.npdev.dsl.v1.compiled.CompiledModel> compiledModelProvider,
+            ConceptStore conceptStore,
+            long graceHours
+    ) {
+        this(fileStore, new ModelHolder(compiledModelProvider == null ? null : compiledModelProvider.getIfAvailable()),
+                conceptStore, graceHours);
+    }
+
+    @Autowired
+    public FileOrphanSweepService(
+            FileStoreContract fileStore,
+            ModelHolder modelHolder,
             ConceptStore conceptStore,
             @Value("${npdev.filestore.sweep.graceHours:24}") long graceHours
     ) {
         this.fileStore = fileStore;
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
         this.conceptStore = conceptStore;
         this.graceWindow = Duration.ofHours(graceHours);
     }
@@ -69,7 +82,7 @@ public class FileOrphanSweepService {
         FileOrphanSweeper.SweepResult result = FileOrphanSweeper.sweep(
                 fileStore,
                 conceptStore,
-                compiledModel.getIfAvailable(),
+                modelHolder.get(),
                 graceWindow,
                 Instant.now(),
                 (key, exception) -> LOG.log(Level.WARNING, "Orphan sweep failed to delete key=" + key

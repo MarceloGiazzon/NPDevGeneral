@@ -25,7 +25,12 @@ import java.util.Set;
 
 public final class InMemoryConceptStore implements ConceptStore {
     private final Map<String, ConceptRecord> records = new LinkedHashMap<>();
-    private final CompiledModel model;
+    // REG-208 (B28 lift): volatile, not final -- setModel lets a RuntimeHost-level reload listener
+    // (ModelHolder lives in a module this class must not depend on) point this store at a newly
+    // reloaded model IN PLACE, preserving every already-stored record. Only the delete-cascade
+    // logic below reads this reference; nothing here validates stored data against it, so swapping
+    // it never touches or invalidates existing records.
+    private volatile CompiledModel model;
 
     public InMemoryConceptStore() {
         this(null);
@@ -39,6 +44,12 @@ public final class InMemoryConceptStore implements ConceptStore {
      *              stores. {@code null} preserves the original no-enforcement behavior.
      */
     public InMemoryConceptStore(CompiledModel model) {
+        this.model = model;
+    }
+
+    /** REG-208 (B28 lift): repoints this store at a newly reloaded model, in place -- see the field's
+     * own javadoc for why this never touches already-stored records. */
+    public void setModel(CompiledModel model) {
         this.model = model;
     }
 

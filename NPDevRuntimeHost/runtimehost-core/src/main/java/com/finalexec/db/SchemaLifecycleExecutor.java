@@ -11,6 +11,7 @@ import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.schemaevolution.TypeChangeMatrix;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
+import com.finalexec.config.ModelHolder;
 import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.finalexec.npdev.service.SupportDiagnosticsService;
@@ -248,9 +249,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * untouched. {@code null} here just means "-ImpactOnly ran with no compiled model available," and
      * {@link SchemaImpactFacade#forLiveDatabase(DataSource, CompiledModel)} already treats {@code null}
      * as "skip the identity-pack drift check," same as an app that doesn't use the identity pack.
+     *
+     * <p>REG-208 (B28 lift): {@code ModelHolder}, not a direct {@code CompiledModel} injection --
+     * this class runs at BOOT (via {@code FlywayMigrationStrategy}), strictly before any reload
+     * endpoint could fire, so there is no staleness to fix here; only the injection type changes, to
+     * satisfy the platform-wide "no direct CompiledModel injection but the ModelHolder bean itself"
+     * invariant now that the standalone {@code CompiledModel} bean is gone.
      */
     @Autowired(required = false)
-    private CompiledModel compiledModel;
+    private ModelHolder modelHolder;
 
     /**
      * B1 (REAL_LIFT_PLAN_2026-09-03, B13): the beans a {@code javaHook} conversion hook needs to run
@@ -348,7 +355,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      *  0 = NO_CHANGES/SAFE, 2 = NEEDS_ATTENTION, 3 = DESTRUCTIVE. Package-private for direct unit testing;
      *  the JVM-exit shell is the only caller in production. */
     int reportOnlyExitCode(DataSource dataSource) {
-        SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(dataSource, compiledModel);
+        SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(
+                dataSource, modelHolder == null ? null : modelHolder.get());
         System.out.println(ImpactReportText.render(result.report(), result.fromFingerprint(),
                 result.toFingerprint(), result.ackToken(), result.surplus(), result.renameCandidates()));
         return codeFor(result.report().verdict());

@@ -1,7 +1,7 @@
 package com.finalexec.npdev.service;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
-import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.ExecutionContext;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
@@ -45,16 +45,18 @@ public class SupportDiagnosticsService {
 
     private final PublicationChainReferenceResolver referenceResolver;
     private final DataSource dataSource;
-    private final CompiledModel compiledModel;
+    // REG-208 (B28 lift): a live ModelHolder -- the businessTables() reader below does a fresh
+    // per-request lookup, so modelHolder.get() alone observes a reload; no listener needed.
+    private final ModelHolder modelHolder;
 
     public SupportDiagnosticsService(
             PublicationChainReferenceResolver referenceResolver,
             ObjectProvider<DataSource> dataSourceProvider,
-            ObjectProvider<CompiledModel> compiledModelProvider
+            ModelHolder modelHolder
     ) {
         this.referenceResolver = referenceResolver;
         this.dataSource = dataSourceProvider == null ? null : dataSourceProvider.getIfAvailable();
-        this.compiledModel = compiledModelProvider == null ? null : compiledModelProvider.getIfAvailable();
+        this.modelHolder = modelHolder;
     }
 
     public Map<String, Object> diagnostics(ExecutionContext requesterContext) {
@@ -216,7 +218,8 @@ public class SupportDiagnosticsService {
             response.put("businessMigrationsApplied", flywayScripts(connection, "R__npdev_business_%"));
 
             List<Map<String, Object>> tables = new ArrayList<>();
-            for (CompiledConcept concept : compiledModel == null ? List.<CompiledConcept>of() : compiledModel.getConcepts()) {
+            com.npdev.dsl.v1.compiled.CompiledModel model = modelHolder.get();
+            for (CompiledConcept concept : model == null ? List.<CompiledConcept>of() : model.getConcepts()) {
                 String tableName = concept.getTableName() == null || concept.getTableName().isBlank()
                         ? concept.getName().toLowerCase() + "s"
                         : concept.getTableName().trim().toLowerCase();

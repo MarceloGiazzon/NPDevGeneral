@@ -1,6 +1,6 @@
 package {{servicePackage}};
 
-import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import {{dtoPackage}}.CorrelationTimelineResponse;
 import com.npdev.kernel.CorrelationOwnershipViolationException;
@@ -70,7 +70,7 @@ public class KernelFacade {
     private final IdempotencyStore idempotencyStore;
     private final CorrelationOwnershipStore correlationOwnershipStore;
     private final MetricsSink metricsSink;
-    private final CompiledModel compiledModel;
+    private final ModelHolder modelHolder;
 
     public KernelFacade(
             KernelRunner kernelRunner,
@@ -89,7 +89,7 @@ public class KernelFacade {
             IdempotencyStore idempotencyStore,
             CorrelationOwnershipStore correlationOwnershipStore,
             MetricsSink metricsSink,
-            CompiledModel compiledModel
+            ModelHolder modelHolder
     ) {
         this.kernelRunner = kernelRunner;
         this.traceStore = traceStore;
@@ -117,7 +117,7 @@ public class KernelFacade {
                 ? CorrelationOwnershipStore.noop()
                 : correlationOwnershipStore;
         this.metricsSink = metricsSink == null ? MetricsSink.noop() : metricsSink;
-        this.compiledModel = compiledModel;
+        this.modelHolder = modelHolder;
     }
 
     public ExecutionResult executeFlow(String flowName, Map<String, Object> input, ExecutionContext executionContext) {
@@ -366,14 +366,14 @@ public class KernelFacade {
     }
 
     public List<String> listFlowNames() {
-        return compiledModel.getFlows().stream()
+        return modelHolder.get().getFlows().stream()
                 .map(flow -> flow.getName())
                 .sorted()
                 .toList();
     }
 
     public List<FlowDefinitionView> listFlowDefinitions() {
-        return compiledModel.getFlows().stream()
+        return modelHolder.get().getFlows().stream()
                 .map(flow -> new FlowDefinitionView(
                         flow.getName(),
                         flow.getConcept(),

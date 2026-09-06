@@ -2,6 +2,7 @@ package com.finalexec.controlpanel;
 
 import com.finalexec.auth.IdentityPackSchemaException;
 import com.finalexec.auth.IdentityProvisioning;
+import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.finalexec.auth.PasswordHasher;
 import com.finalexec.auth.SqlSchemaErrors;
@@ -65,14 +66,14 @@ public class ControlPanelTenantUsersController {
     private final RuntimeContextService runtimeContextService;
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityDispatcher capabilityDispatcher;
-    private final CompiledModel compiledModel;
     // REG-177/REG-179 fix: resolved with the GRACEFUL tryResolve (not resolve). This bean is
     // registered unconditionally in every generated app regardless of whether it composes the
     // identity pack -- the eager, throwing IdentityPackTableNames.resolve(...) this used to call
     // here crashed Spring context startup (BeanCreationException -> IllegalStateException) for any
     // app without one. Unwrapped per-request via requireIdentityTables(), mirroring the existing
-    // requireDataSource() guard already used throughout this class.
-    private final Optional<IdentityPackTableNames> identityTables;
+    // requireDataSource() guard already used throughout this class. REG-208 (B28 lift): re-resolved
+    // from modelHolder.get() on every call (not cached), so a hot model reload is observed.
+    private final ModelHolder modelHolder;
     private final AuditLogStore auditLogStore;
     private final String userTable;
     private final String userIdColumn;
@@ -87,7 +88,7 @@ public class ControlPanelTenantUsersController {
             RuntimeContextService runtimeContextService,
             CapabilityRegistry capabilityRegistry,
             CapabilityDispatcher capabilityDispatcher,
-            CompiledModel compiledModel,
+            ModelHolder modelHolder,
             AuditLogStore auditLogStore,
             @Value("${npdev.auth.login.user-table:}") String userTable,
             @Value("${npdev.auth.login.user-id-column:id}") String userIdColumn,
@@ -101,8 +102,7 @@ public class ControlPanelTenantUsersController {
         this.runtimeContextService = runtimeContextService;
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityDispatcher = capabilityDispatcher;
-        this.compiledModel = compiledModel;
-        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
+        this.modelHolder = modelHolder;
         this.auditLogStore = auditLogStore;
         // REG-179: npdev.auth.login.user-table's literal default (formerly "identity_users") is
         // never actually set by any generator/mustache-template wiring for a real app (REG-177's own
@@ -114,8 +114,13 @@ public class ControlPanelTenantUsersController {
         // doesn't compose the identity pack at all, fall back to the same pre-REG-179 literal --
         // every endpoint that actually needs the identity tables is guarded by
         // requireIdentityTables() and never reaches SQL built from this value in that case.
+        //
+        // This ONE resolution stays construction-time (a config-default derivation, computed once,
+        // unlike requireIdentityTables()'s per-request re-resolution below) -- the @Value override
+        // is the primary source either way, and re-deriving a config DEFAULT on every reload would
+        // be surprising for an operator who already set the property explicitly.
         this.userTable = (userTable == null || userTable.isBlank())
-                ? this.identityTables.map(IdentityPackTableNames::usersTable).orElse("identity_users")
+                ? IdentityPackTableNames.tryResolve(modelHolder.get()).map(IdentityPackTableNames::usersTable).orElse("identity_users")
                 : userTable;
         this.userIdColumn = userIdColumn;
         this.usernameColumn = usernameColumn;
@@ -130,6 +135,7 @@ public class ControlPanelTenantUsersController {
     public List<Map<String, Object>> list(@PathVariable String tenantId, HttpServletRequest httpRequest) {
         requireSuperUser(httpRequest);
         DataSource dataSource = requireDataSource();
+        Optional<IdentityPackTableNames> identityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
 
         List<Map<String, Object>> users = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
@@ -277,7 +283,7 @@ public class ControlPanelTenantUsersController {
         if (declaredRole == null) {
             return ResponseEntity.badRequest().body(Map.of(
                     "error", "role_not_declared_by_model",
-                    "declaredRoles", compiledModel.getRoles().stream().map(CompiledRole::name).toList()));
+                    "declaredRoles", modelHolder.get().getRoles().stream().map(CompiledRole::name).toList()));
         }
         DataSource dataSource = requireDataSource();
         IdentityPackTableNames identityTables = requireIdentityTables();
@@ -571,7 +577,7 @@ public class ControlPanelTenantUsersController {
         if (normalized == null) {
             return null;
         }
-        for (CompiledRole role : compiledModel.getRoles()) {
+        for (CompiledRole role : modelHolder.get().getRoles()) {
             if (normalized.equals(RolePermissions.normalizeRoleName(role.name()))) {
                 return role;
             }
@@ -722,7 +728,8 @@ public class ControlPanelTenantUsersController {
      * absent is a normal, supported app configuration (internal.tables=false) -- so a request that
      * needs it gets a clear 503, not the bean-construction-time crash this class used to have. */
     private IdentityPackTableNames requireIdentityTables() {
-        return identityTables.orElseThrow(() -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
-                "ControlPanel unavailable -- this app does not compose the identity pack."));
+        return IdentityPackTableNames.tryResolve(modelHolder.get())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                        "ControlPanel unavailable -- this app does not compose the identity pack."));
     }
 }
