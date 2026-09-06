@@ -38,9 +38,18 @@ final class PluginWindowsJobObjectResourceLimiter implements PluginProcessResour
     private static final int JOB_OBJECT_CPU_RATE_CONTROL_ENABLE = 0x1;
     private static final int JOB_OBJECT_CPU_RATE_CONTROL_HARD_CAP = 0x4;
     private static final int JOBOBJECT_EXTENDED_LIMIT_INFORMATION_CLASS = 9;
+    private static final int JOBOBJECT_BASIC_UI_RESTRICTIONS_CLASS = 4;
     private static final int JOBOBJECT_CPU_RATE_CONTROL_INFORMATION_CLASS = 15;
     private static final int PROCESS_TERMINATE = 0x0001;
     private static final int PROCESS_SET_QUOTA = 0x0100;
+    /**
+     * SEC-10 (B30 lift): every {@code JOB_OBJECT_UILIMIT_*} flag combined -- a plugin child has no
+     * legitimate desktop/UI interaction of any kind, unlike the memory/CPU ceiling this predates,
+     * this is unconditional (not opt-in-sized) since there is no dimension to configure. Windows has
+     * no Job Object equivalent of Linux's network/filesystem namespace sandbox (the plan's own named
+     * residual: containment here still rests on the restricted classpath and classloader denylist).
+     */
+    private static final int JOB_OBJECT_UILIMIT_ALL = 0x000000FF;
 
     private final boolean available;
 
@@ -70,7 +79,7 @@ final class PluginWindowsJobObjectResourceLimiter implements PluginProcessResour
 
     @Override
     public ResourceLimitAttachment attachAfterStart(Process process, PluginProcessResourceLimits limits) {
-        if (!available || limits.isEmpty()) {
+        if (!available || (limits.isEmpty() && !limits.sandboxEnabled())) {
             return ResourceLimitAttachment.NONE;
         }
         long pid = process.pid();
@@ -81,6 +90,9 @@ final class PluginWindowsJobObjectResourceLimiter implements PluginProcessResour
             return ResourceLimitAttachment.NONE;
         }
         configureLimits(job, limits, pid);
+        if (limits.sandboxEnabled()) {
+            configureUiRestrictions(job, pid);
+        }
         Pointer processHandle = Kernel32.INSTANCE.OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, false, (int) pid);
         if (processHandle == null || !Kernel32.INSTANCE.AssignProcessToJobObject(job, processHandle)) {
             LOG.log(Level.WARNING, "Failed to assign plugin child process pid={0} to a resource-limited Job "
@@ -115,6 +127,17 @@ final class PluginWindowsJobObjectResourceLimiter implements PluginProcessResour
                 LOG.log(Level.WARNING, "SetInformationJobObject(cpuRate) failed for plugin child pid={0} "
                         + "(GetLastError={1})", new Object[]{pid, Kernel32.INSTANCE.GetLastError()});
             }
+        }
+    }
+
+    private static void configureUiRestrictions(Pointer job, long pid) {
+        JOBOBJECT_BASIC_UI_RESTRICTIONS restrictions = new JOBOBJECT_BASIC_UI_RESTRICTIONS();
+        restrictions.UIRestrictionsClass = JOB_OBJECT_UILIMIT_ALL;
+        restrictions.write();
+        if (!Kernel32.INSTANCE.SetInformationJobObject(
+                job, JOBOBJECT_BASIC_UI_RESTRICTIONS_CLASS, restrictions, restrictions.size())) {
+            LOG.log(Level.WARNING, "SetInformationJobObject(uiRestrictions) failed for plugin child pid={0} "
+                    + "(GetLastError={1})", new Object[]{pid, Kernel32.INSTANCE.GetLastError()});
         }
     }
 
@@ -180,5 +203,10 @@ final class PluginWindowsJobObjectResourceLimiter implements PluginProcessResour
     public static final class JOBOBJECT_CPU_RATE_CONTROL_INFORMATION extends Structure {
         public int ControlFlags;
         public int CpuRate;
+    }
+
+    @Structure.FieldOrder({"UIRestrictionsClass"})
+    public static final class JOBOBJECT_BASIC_UI_RESTRICTIONS extends Structure {
+        public int UIRestrictionsClass;
     }
 }

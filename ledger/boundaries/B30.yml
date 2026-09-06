@@ -1,7 +1,39 @@
 id: B30
-title: "Plugins are admission-checked, not sandboxed -- plugin:java-source runs OS-process-isolated with a memory/CPU ceiling; plugin:java-controller still runs in-process with the application's full privileges"
+title: "Plugins run OS-process-isolated on a restricted classpath, with a runtime class denylist and -- on Linux -- an OS-level network and filesystem sandbox"
 codeLinked: true
 codeLinkedNote: >-
+  2026-09-06 (SEC-10, `ALL_HITTABLE_LIFT_PLAN_2026-09-05.md` package P5): the residue every row
+  below narrowed to but never closed -- "a proxy class elsewhere on the app classpath that performs
+  a forbidden capability on the plugin's behalf ... is still outside what either the bytecode
+  inspector or the OS ceiling catches" -- is CLOSED. `PluginIpcChildProcessPool.java:57`'s pooled
+  worker no longer runs on the host's own full classpath: `PluginChildClasspath.compute` reduces it
+  to only the entries a marker-class scan proves the child needs (typically 40-80 entries down to a
+  handful), including a fat-jar extraction path for a real `java -jar` deployment.
+  `PluginRestrictedClassLoader` closes what the classpath reduction physically cannot -- the app's
+  own compiled output still carries `com.finalexec.*`/non-plugin `com.npdev.generated.*` classes
+  mixed in with the plugin class (one Gradle compilation unit) -- by denying both
+  `TrustedSourceBytecodeInspector`'s existing escape-class denylist (one shared copy) and any
+  generated/RuntimeHost-template class outside the plugin's own reserved package, at class-LOAD
+  time inside the child, closing the runtime-constructed-class-name gap static bytecode inspection
+  alone cannot see. On Linux, `systemd-run --scope` gained `PrivateNetwork=yes` +
+  `ProtectSystem=strict` + `ProtectHome=yes` (default on) -- a plugin attempting outbound network
+  access or writing outside its sandbox now fails at the OS layer even with the classloader
+  disabled. `PluginContainmentTierLog` names the active tier at boot, matching SEC-7's own
+  "an unenforceable limit announces itself loudly" precedent. See `ledger/items/SEC-10.yml` for the
+  full mechanism, two corrected plan premises (no `libraries[]` declaration exists; the fat-jar
+  branch needed no edit because extraction now happens upstream of it), and an unrelated H2Local
+  regression (STOR-27/B31) found and fixed along the way -- every H2Local boot was broken by
+  `AUTO_SERVER=TRUE` and `DB_CLOSE_ON_EXIT=FALSE` being minted together, invisible to this plan's
+  own P2 verification because neither its test fixture nor the RuntimeHost gate's `InMemory` sample
+  ever exercised a real H2Local boot.
+
+  **Reclassified LIFTED** (was HITTABLE) -- **residue named, not claimed away:** on Windows, network
+  egress from a plugin child is NOT blocked at the OS layer (no Job Object equivalent of Linux's
+  network/filesystem namespace sandbox exists) -- containment there rests on the restricted
+  classpath and the classloader denylist alone, same as before this package on every platform. A
+  plugin that busy-loops inside its own bounded process without exceeding the memory/CPU ceiling is
+  still outside everything built so far, on any platform -- unchanged from every earlier B30 row.
+
   2026-08-27 (SEC-3 remediation, Model A). SHIPPED the two admission gates over the shared
   constant-pool inspector `com.npdev.kernel.security.TrustedSourceBytecodeInspector` (moved into
   NPDevKernel from the generator so both sides consume one denylist; pool-resolving, boundary-safe
@@ -113,4 +145,4 @@ codeLinkedNote: >-
   not fully contained. See `ledger/items/SEC-9.yml` for the full done-when list and the real bug found
   closing it.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B30"
-classification: HITTABLE
+classification: LIFTED

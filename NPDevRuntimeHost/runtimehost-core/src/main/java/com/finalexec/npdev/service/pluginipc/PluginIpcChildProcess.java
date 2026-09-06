@@ -136,7 +136,7 @@ public final class PluginIpcChildProcess implements AutoCloseable {
      * cheap, self-contained proof that the {@code -Dloader.main} mechanism below will actually work
      * against this specific jar, not just that it LOOKS like a Boot jar).
      */
-    private static boolean isExecutableSpringBootArchive(String classpath) {
+    static boolean isExecutableSpringBootArchive(String classpath) {
         if (classpath.contains(File.pathSeparator) || !classpath.toLowerCase(Locale.ROOT).endsWith(".jar")) {
             return false;
         }

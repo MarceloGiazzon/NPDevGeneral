@@ -154,8 +154,14 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
     }
 
     @Override
+    public boolean networkFilesystemSandboxActive(PluginProcessResourceLimits limits) {
+        return mode == Mode.SYSTEMD_RUN && limits.sandboxEnabled();
+    }
+
+    @Override
     public List<String> wrapCommand(List<String> command, PluginProcessResourceLimits limits) {
-        if (mode != Mode.SYSTEMD_RUN || limits.isEmpty()) {
+        boolean sandbox = mode == Mode.SYSTEMD_RUN && limits.sandboxEnabled();
+        if (mode != Mode.SYSTEMD_RUN || (limits.isEmpty() && !sandbox)) {
             return command;
         }
         List<String> wrapped = new ArrayList<>(List.of("systemd-run", "--user", "--scope", "--quiet", "--collect"));
@@ -171,6 +177,27 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
         if (limits.cpuRatePercent() != null) {
             wrapped.add("-p");
             wrapped.add("CPUQuota=" + limits.cpuRatePercent() + "%");
+        }
+        if (sandbox) {
+            // SEC-10 (B30 lift): only systemd-run's transient scope can apply real OS-level network/
+            // filesystem containment -- the raw-cgroup fallback has no equivalent (cgroups alone do
+            // not namespace network or mounts). PrivateNetwork=yes gives the child its own network
+            // namespace with only a loopback interface -- no outbound socket can ever reach anywhere,
+            // regardless of what the classloader denylist or classpath restriction miss.
+            //
+            // Deliberately NOT PrivateTmp=yes, unlike the plan this package was built from: the
+            // non-fat-jar spawn path writes the child's OWN classpath argfile to the HOST's real
+            // /tmp (writeClasspathArgFile, java @argfile) BEFORE this wrapper runs -- PrivateTmp
+            // gives the child an independent, EMPTY tmpfs mount for /tmp, which would hide that
+            // argfile from the very process that needs to read it to start at all, turning every
+            // sandboxed invocation into an immediate "could not open @argfile" boot failure.
+            // ProtectSystem=strict alone (no PrivateTmp) still makes /tmp read-only on the shared
+            // host mount, which is enough: the child only ever READS the argfile, never writes to
+            // /tmp, so read-only containment closes the write vector without breaking the read
+            // startup depends on.
+            wrapped.add("--property=PrivateNetwork=yes");
+            wrapped.add("--property=ProtectSystem=strict");
+            wrapped.add("--property=ProtectHome=yes");
         }
         wrapped.add("--");
         wrapped.addAll(command);

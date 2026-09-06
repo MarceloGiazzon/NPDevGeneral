@@ -68,7 +68,11 @@ public final class ManifestDrivenJavaSourcePluginHandler implements CapabilityAd
             );
         }
         try {
-            Class<?> pluginClass = Class.forName(entry.mainClass());
+            // SEC-10 (B30 lift): the PLUGIN class itself loads through a restricted classloader --
+            // this handler's own reflective dispatch below is host code and stays on the normal
+            // classloader. See PluginRestrictedClassLoader's own javadoc for what this closes.
+            Class<?> pluginClass = Class.forName(
+                    entry.mainClass(), true, new PluginRestrictedClassLoader(getClass().getClassLoader()));
             Object target = pluginClass.getDeclaredConstructor().newInstance();
             Method method = pluginClass.getMethod(methodName, Map.class);
             Object output = method.invoke(target, call.input());

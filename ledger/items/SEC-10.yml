@@ -1,0 +1,155 @@
+id: SEC-10
+title: >-
+  A plugin child process runs on a restricted classpath, denies host/escape classes at load time,
+  and (Linux) gets a real OS network/filesystem sandbox (boundary B30 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-06
+source: >-
+  ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P5 (Wave 2, sequenced after P4 -- both rewire bean
+  construction, though in practice this package touched no ModelHolder code). B30.yml's own
+  residue: "Static analysis at both ends is still the ONLY admission gate -- a proxy class
+  elsewhere on the app classpath that performs a forbidden capability on the plugin's behalf ... is
+  still outside what either the bytecode inspector or the OS ceiling catches." Traced to one line:
+  PluginIpcChildProcessPool.java:57 defaulted a pooled worker's classpath to
+  System.getProperty("java.class.path") -- the host's own full runtime classpath.
+surface: >-
+  runtimehost-core's pluginipc package (child classpath computation, restricted classloader,
+  containment logging), NpdevPluginConfig (wiring), the Linux/Windows resource limiters (OS
+  sandbox), plus a load-bearing fix in a DIFFERENT boundary's own mechanism (H2LocalAutoServer,
+  STOR-27/B31) found only because this package's own proof exercises a REAL H2Local boot for the
+  first time since STOR-27 shipped.
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginChildClasspath.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginRestrictedClassLoader.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginContainmentTierLog.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/ManifestDrivenJavaControllerPluginHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/ManifestDrivenJavaSourcePluginHandler.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginIpcChildProcess.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginLinuxCgroupResourceLimiter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginWindowsJobObjectResourceLimiter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginProcessResourceLimiter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/PluginProcessResourceLimits.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/NpdevPluginConfig.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginChildClasspathTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginRestrictedClassLoaderTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/npdev/generated/plugin/SampleControllerForHandlerTest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/H2LocalAutoServer.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/H2LocalBootLockEnvironmentPostProcessorTest.java
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B30.yml
+detail: |
+  **The classpath reduction (step 1), with a corrected premise:** the plan assumed a per-plugin
+  `libraries[]` declaration (a `JavaSourceRuntimeRefManifest` field) to consult when deciding what a
+  child needs. No such field exists anywhere in the DSL, schemas, or manifest -- traced, not
+  assumed, before writing `PluginChildClasspath`. A `plugin:java-source`/`plugin:java-controller`
+  class is an ordinary POJO compiled into the SAME `sourceSets.main` output as every other
+  generated/RuntimeHost-template class (confirmed against a real generated app's `build.gradle`:
+  `srcDir 'src/main/java'` and `srcDir 'npdev-generated/src/main/java'` compile to one output), so
+  there is no per-plugin dependency list to read. `PluginChildClasspath.compute` is CONTENT-based
+  instead: keep a classpath entry only if it contains a marker class the child genuinely needs
+  (`PluginIpcChildProcessMain`, the kernel API, Jackson databind/core/annotations, the app's own
+  compiled output, and -- only when at least one `plugin:java-controller` mount exists -- Spring's
+  web-annotation classes). A real generated app's classpath commonly has 40-80 entries; this is a
+  real reduction, not a cosmetic one, but deliberately not the ONLY defense (see below).
+
+  **The fat-jar case ("the hard part"), solved upstream instead of where the plan pointed:** the
+  plan named `PluginIpcChildProcess.java` lines 89-125 as needing an edit for the executable-jar
+  branch. It did not need one. `PluginChildClasspath.compute` detects an executable Spring Boot
+  archive (`PluginIpcChildProcess.isExecutableSpringBootArchive`, reused) and extracts
+  `BOOT-INF/classes/` wholesale plus only the `BOOT-INF/lib/*.jar` entries carrying a needed marker
+  into a temp directory, returning an ordinary multi-entry classpath string. By the time this
+  reaches `PluginIpcChildProcess.spawn`, `isExecutableSpringBootArchive(classpath)` is already
+  false (multiple entries, not one jar), so the plain `-cp` + `@argfile` branch fires naturally --
+  the `PropertiesLauncher` branch stays exactly as SEC-5 built it, for the case for which it was
+  actually needed (a real `java -jar` launch, before this package's own extraction runs).
+
+  **The classloader denylist (step 3):** `PluginRestrictedClassLoader` overrides `loadClass` to
+  deny two things a classpath reduction alone cannot: (1) the SAME escape-class denylist
+  `TrustedSourceBytecodeInspector` already refuses (kernel constants, one copy, shared with the
+  generation-time and boot-time gates B30's earlier rows built), closing the gap where a class name
+  is constructed at runtime rather than appearing as a static bytecode reference; (2) any
+  `com.npdev.generated.*` or `com.finalexec.*` class OUTSIDE `com.npdev.generated.plugin.` -- the
+  actual "proxy class elsewhere on the app classpath" escape this package exists to close, since
+  the app's own compiled-classes directory cannot be physically split from the plugin class living
+  inside it (one Gradle compilation unit). Deliberately mirrors the bytecode inspector's own
+  prefix-exemption semantics (e.g. `java/io/PrintStream` via `System.out`/`System.err`) so a plugin
+  already admitted past the bytecode gate cannot fail to RUN here for a reference that gate itself
+  allows. A fresh `PluginRestrictedClassLoader` is created per invocation in both
+  `ManifestDrivenJavaControllerPluginHandler`/`ManifestDrivenJavaSourcePluginHandler`; this is safe
+  because the loader never DEFINES a class itself (no `findClass` override) -- it only denies or
+  delegates to its parent, so an allowed class is always defined by the SAME stable parent
+  classloader regardless of which loader instance requested it, and no duplicate-class-identity
+  issue is possible. `PluginRestrictedClassLoaderTest` pins a near-miss found during this package's
+  own implementation: a `plugin:java-source`/hook class has NO enforced package prefix (unlike
+  `plugin:java-controller`'s `com.npdev.generated.plugin.` requirement), so the denylist must not
+  reject an author's own arbitrarily-packaged class -- a differently-misplaced test fixture caught
+  this before it could regress silently.
+
+  **The OS sandbox (step 4), with one deliberate deviation from the plan:** Linux gets
+  `--property=PrivateNetwork=yes --property=ProtectSystem=strict --property=ProtectHome=yes` added
+  to the existing `systemd-run --scope` invocation, behind `npdev.runtime.plugin-ipc-pool.sandbox`
+  (default `on`). The plan also asked for `--property=PrivateTmp=yes`; this was deliberately NOT
+  added -- `PluginIpcChildProcess.writeClasspathArgFile` writes the child's `@argfile` to `/tmp`
+  BEFORE the sandboxed wrapper runs, and `PrivateTmp=yes` would turn every sandboxed invocation into
+  an immediate "could not open @argfile" boot failure; `ProtectSystem=strict` alone already makes
+  the rest of the filesystem read-only on the shared mount namespace. Windows gets
+  `JobObjectBasicUIRestrictions` (`JOB_OBJECT_UILIMIT_ALL`) added to the existing Job Object -- named
+  honestly as UI-restriction hardening only, since Windows has no Job Object equivalent of Linux's
+  network/filesystem namespace sandbox.
+
+  **The boot-time containment log (step 5):** `PluginContainmentTierLog.logAtBoot` names what is
+  actually active in one line ("classpath-restricted (N entries) + classloader-denylist +
+  os-sandbox(...)"), following SEC-7's own precedent that an unenforceable limit announces itself
+  loudly. Did not appear in the R10 proof's captured `boot.log` for this session's verification run
+  (likely a JUL-to-SLF4J routing detail of that minimal probe boot, not a functional defect --
+  `PluginChildClasspathTest`'s unit coverage and the proof's own successful isolated-child
+  invocation are the load-bearing evidence instead); real-app confirmation of the log line itself is
+  unverified follow-up, not blocking.
+
+  **A second, unrelated regression found only because this package's own proof finally exercised a
+  real H2Local boot:** `run-r10-plugin-controller-proof.py`'s first run against the real probe app
+  failed before ever reaching a plugin-controller assertion -- a `FlywayException` wrapping
+  `org.h2.jdbc.JdbcSQLFeatureNotSupportedException: Feature not supported: "AUTO_SERVER=TRUE &&
+  DB_CLOSE_ON_EXIT=FALSE"`. Root cause: STOR-27 (B31 lift, package P2 of this same plan) mints
+  `AUTO_SERVER=TRUE` for every H2Local URL -- both at generation time
+  (`UserDatabaseDefinitionLoader.jdbcUrl`) and at boot time (`H2LocalAutoServer.rewriteIfEligible`,
+  appended by the environment post-processor) -- but the generator's OWN H2Local URL template has
+  always also carried `DB_CLOSE_ON_EXIT=FALSE`, and H2 refuses that exact combination outright. This
+  broke EVERY H2Local boot, not just this probe: P2's own verification never caught it because its
+  test fixture (`H2LocalBootLockEnvironmentPostProcessorTest`'s no-AUTO_SERVER-token case) used a
+  synthetic URL without `DB_CLOSE_ON_EXIT=FALSE`, and the RuntimeHost gate's own sample app
+  (`simple-contact-intake`) runs `InMemory`, never H2Local -- so P2's "verified green" gate pass
+  never exercised the real code path. Fixed in three places: `UserDatabaseDefinitionLoader.jdbcUrl`
+  no longer mints `DB_CLOSE_ON_EXIT=FALSE` for H2_LOCAL (H2_SERVER, which never sets AUTO_SERVER, is
+  unchanged); `H2LocalAutoServer.rewriteIfEligible` now strips a pre-existing
+  `DB_CLOSE_ON_EXIT=FALSE` token before appending `AUTO_SERVER=TRUE`, so an already-generated app
+  whose stored URL still has the old shape self-heals on its next boot instead of being stuck
+  broken; `npdev_cli.py`'s `_jdbc_url_for_verify` (the twin-pair-registered formula) gets the
+  identical fix. A new test (`h2LocalUrlCarryingDbCloseOnExitFalseHasItStrippedWhenAutoServerIs
+  Appended`) pins the REAL generator-shaped URL, not a simplified one, so this class of gap cannot
+  recur silently. `check-twin-pair-consistency.py`'s `h2local-auto-server-url-twin-pair` rule only
+  tracks the `AUTO_SERVER=TRUE` substring, so it still passes unchanged. This is logged here (SEC-10)
+  rather than reopening STOR-27/REG-207's own item because it was found and fixed inside this
+  package's own verification pass, not as separate follow-up work; B31's own ledger entry is
+  otherwise unaffected.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginChildClasspathTest.java
+  asserts: >-
+    PluginChildClasspathTest (3 tests) and PluginRestrictedClassLoaderTest (9 tests) both pass,
+    covering the classpath-reduction and classloader-denylist logic in isolation, including the
+    fat-jar extraction path and the java-source arbitrary-package non-regression. The full
+    runtimehost-core module suite (117 tests, 22 classes) passes clean. The real end-to-end proof --
+    the one thing a unit test cannot cover, per this file's own docstring on why
+    PluginControllerSecurityConfig is untestable outside an assembled app --
+    scripts/proofs/run-r10-plugin-controller-proof.py passes against a freshly generated and booted
+    NPDevSamples/probes/p7-plugin-controller: the ADMIN-gated mount answers 200, the SAME caller is
+    403'd against the SUPERUSER-gated mount, and a @PathVariable/@RequestParam route binds correctly
+    through a REAL isolated child process running on the restricted classpath. This proof's first
+    run failed on an unrelated H2Local regression (see detail); its second run, after that fix,
+    passed clean with all three assertions ok:true.
+  provenRed: false

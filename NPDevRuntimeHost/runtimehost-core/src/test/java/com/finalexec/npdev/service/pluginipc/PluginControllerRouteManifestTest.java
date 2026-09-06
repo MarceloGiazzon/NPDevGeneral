@@ -24,7 +24,7 @@ class PluginControllerRouteManifestTest {
 
         assertFalse(manifest.isEmpty());
         PluginControllerRouteManifest.Entry entry = manifest.entryForCapability("sampleController").orElseThrow();
-        assertEquals("com.finalexec.npdev.service.pluginipc.fixtures.SampleControllerForHandlerTest", entry.controllerClassName());
+        assertEquals("com.npdev.generated.plugin.SampleControllerForHandlerTest", entry.controllerClassName());
         assertEquals(3, entry.routes().size());
     }
 
