@@ -140,14 +140,18 @@ public final class CrossEngineDataPromotion {
                 // iteration order, contradicting this class's own javadoc ("does NOT abort the remaining
                 // tables -- the caller always gets a complete, honest per-table report") and the
                 // pre-existing CrossEngineDataPromotionTest#applyReportsFailureWhenTargetTableMissing,
-                // which asserts exactly this TableCopyResult.error() shape. B10:data_only_promotion
-                // (2026-08-25 W2.3, docs/ACCEPTED_BOUNDARIES.md) is still carried as the message prefix,
-                // same convention B2/B4/B5/B9 use, even though this path no longer throws.
+                // which asserts exactly this TableCopyResult.error() shape.
+                // B10 (STOR-29, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P6): the `B10:` boundary
+                // prefix this message used to carry is RETIRED, not just reworded -- every caller now
+                // goes through PromotionArc, which realizes the target schema before ever reaching
+                // this method, so a missing target table here is a genuine bug (the realization step
+                // itself failed silently, or something deleted the table mid-run), never an operator
+                // boundary to name with `npdev why`. The per-table TableCopyResult.error() reporting
+                // QUAL-38 fixed is unchanged -- still a report, never a throw.
                 return new TableCopyResult(table, sourceCount, 0L, 0L, false,
-                        "B10:data_only_promotion:Cross-engine promotion refused for table '" + table
-                                + "': target table does not exist. Realize the schema on the target first "
-                                + "(boot the app pointed at the target database), then promote data. Schema "
-                                + "reconciliation is not supported. Run `npdev why B10` for the full explanation.");
+                        "Cross-engine promotion failed for table '" + table
+                                + "': target table does not exist even after schema realization. This is "
+                                + "unexpected -- please report it.");
             }
             Set<String> sourceColumns = SchemaLifecycleExecutor.readActualColumns(sourceConnection.getMetaData(), table);
             Set<String> targetColumns = SchemaLifecycleExecutor.readActualColumns(targetConnection.getMetaData(), table);

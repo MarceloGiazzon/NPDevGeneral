@@ -164,7 +164,7 @@ public final class PromoteMain {
             SqlDialect sourceDialect, SqlDialect targetDialect, PrintStream out, PrintStream err) {
         out.println("npdev db promote: realizing schema on the target (" + targetDialect.name() + ")...");
         try {
-            realizeTargetSchema(target, manifest, sourceDialect, targetDialect);
+            PromotionArc.realizeTargetSchema(target, manifest, sourceDialect, targetDialect);
         } catch (RuntimeException failure) {
             err.println("npdev db promote: FAILED realizing schema on the target: " + failure.getMessage());
             return EXIT_COULD_NOT_DETERMINE;
@@ -177,24 +177,27 @@ public final class PromoteMain {
      * The preview/apply/verify arc, extracted from {@link #runPromotion} so it is directly unit
      * testable against two real {@link DataSource}s with hand-built schema+data (standing in for "the
      * target's schema was already realized") -- {@code loadManifest}/real Flyway migration content is
-     * `runPromotion`'s OWN concern (via {@link #realizeTargetSchema}), not this method's, matching
-     * {@link #realizeTargetSchema}'s own extraction rationale.
+     * `runPromotion`'s OWN concern (via {@link PromotionArc#realizeTargetSchema}), not this method's.
+     * The realize/preview/apply/verify MECHANISM itself now lives in {@link PromotionArc} (B10,
+     * STOR-29 package P6), shared with the REST promotion endpoint; this method is just its
+     * console-formatting wrapper, unchanged in output content or exit codes from before that
+     * extraction.
      */
     static int runAfterSchemaRealized(
             DataSource source, DataSource target, SchemaLifecycleExecutor.SchemaManifest manifest, PrintStream out) {
-        printPreview(CrossEngineDataPromotion.preview(source, target, manifest), out);
+        PromotionArc.Result result = PromotionArc.afterSchemaRealized(source, target, manifest);
+        printPreview(result.preview(), out);
 
         out.println("npdev db promote: applying...");
-        CrossEngineDataPromotion.PromotionResult applyResult = CrossEngineDataPromotion.apply(source, target, manifest);
-        printApply(applyResult, out);
-        if (!applyResult.allMatched()) {
+        printApply(result.applyResult(), out);
+        if (!result.applyResult().allMatched()) {
             out.println("npdev db promote: PROMOTION NOT VERIFIED -- one or more tables failed to copy "
                     + "cleanly (see above). Not attempting verification against incomplete data.");
             return EXIT_NEEDS_ATTENTION;
         }
 
         out.println("npdev db promote: verifying...");
-        PromotionVerifier.VerificationResult verifyResult = PromotionVerifier.verify(source, target, manifest);
+        PromotionVerifier.VerificationResult verifyResult = result.verifyResult().orElseThrow();
         printVerify(verifyResult, out);
         if (verifyResult.allVerified()) {
             out.println("npdev db promote: PROMOTION VERIFIED");
@@ -202,32 +205,6 @@ public final class PromoteMain {
         }
         out.println("npdev db promote: PROMOTION NOT VERIFIED -- see the itemized mismatches above.");
         return EXIT_NEEDS_ATTENTION;
-    }
-
-    /**
-     * The one genuinely novel mechanism this class adds on top of already-shipped pieces --
-     * extracted so it is directly unit-testable against a real {@link DataSource} with a hand-built
-     * manifest, the same way {@link SchemaLifecycleExecutor#codeFor} and
-     * {@link SchemaVerifyMain#exitCodeFor} are split out from their own {@code System.exit}-adjacent
-     * callers. See the class javadoc's dialect section for why {@code targetDialect} pins
-     * {@code SqlDialects.active()} only for this call, restored to {@code sourceDialect} in every
-     * exit path (including a thrown failure) so a caller mid-arc is never left with the wrong
-     * dialect active for the {@link CrossEngineDataPromotion}/{@link PromotionVerifier} steps after
-     * it.
-     */
-    static void realizeTargetSchema(
-            DataSource target, SchemaLifecycleExecutor.SchemaManifest manifest,
-            SqlDialect sourceDialect, SqlDialect targetDialect) {
-        try {
-            SqlDialects.setActive(targetDialect);
-            Flyway flyway = Flyway.configure()
-                    .dataSource(target)
-                    .locations("classpath:db/schema-realization")
-                    .load();
-            new SchemaLifecycleExecutor().migrate(flyway, manifest.withEngine(targetDialect.name()));
-        } finally {
-            SqlDialects.setActive(sourceDialect);
-        }
     }
 
     private static void printPreview(CrossEngineDataPromotion.Preview preview, PrintStream out) {

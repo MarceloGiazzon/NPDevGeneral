@@ -67,10 +67,10 @@
     },
     {
       "id": "B10",
-      "kind": "HITTABLE",
-      "userFacingText": "H2 to Postgres (or any engine pair) promotion is one command: `npdev db promote --app <dir> --to <jdbcUrl>` realizes the target schema, previews, applies, and verifies deeper than row counts -- never just \"Postgres started successfully\". It still never translates H2 SQL into Postgres SQL.",
-      "workaround": "Run `npdev db promote --app <dir> --to <jdbcUrl> --dry-run` first to preview with zero writes, then without --dry-run to realize the schema, copy the data, and verify (row counts, per-column null counts, an order-independent content hash, and FK/index/shape parity). The REST endpoints (/promote/preview, /promote/apply) still assume the target schema already exists, for a running app that wants to promote without the CLI's own schema-realization step; deep verification is CLI-only for now, not yet mirrored as a REST endpoint.",
-      "enforcingDiagnosticCodes": ["B10:data_only_promotion"]
+      "kind": "LIFTED",
+      "userFacingText": "H2 to Postgres (or any engine pair) promotion is one command from either the CLI or REST: `npdev db promote --app <dir> --to <jdbcUrl>` or `POST /api/v1/admin/schema/promote` realizes the target schema (even a completely empty one), previews, applies, and verifies deeper than row counts -- never just \"Postgres started successfully\". A conversion hook's null-check verification can be authored declaratively (`verify: {concept, where, expect}`) instead of hand-written SQL, portable across engines by construction. It still never translates H2 SQL into Postgres SQL.",
+      "workaround": "Run `npdev db promote --app <dir> --to <jdbcUrl> --dry-run` (or POST with dryRun:true) first to preview with zero writes, then without --dry-run/dryRun to realize the schema, copy the data, and verify (row counts, per-column null counts, an order-independent content hash, and FK/index/shape parity). `npdev migrate hook-verify --input <dir> --write` converts an existing hook.json's verifySql to the declarative field automatically where the shape allows.",
+      "enforcingDiagnosticCodes": []
     },
     {
       "id": "B11",

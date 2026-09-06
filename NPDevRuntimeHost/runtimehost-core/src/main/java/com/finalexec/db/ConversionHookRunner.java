@@ -611,6 +611,26 @@ public final class ConversionHookRunner {
         }
         String verifySql = root.hasNonNull("verifySql") ? root.path("verifySql").asText() : null;
         int verifyExpect = root.path("verifyExpect").asInt(0);
+        if (root.hasNonNull("verify")) {
+            // STOR-29 (B10 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P6): the declarative
+            // form wins over any verifySql/verifyExpect also present on the same hook -- compiled
+            // HERE, once, into the exact same fields the rest of this class (transaction/rollback/
+            // journaling) already knows how to run, so nothing downstream needs to know a hook was
+            // authored declaratively at all. ConversionHookEmitter already schema-validates `where`
+            // at generation time (a real npdev generate cannot emit a hook.json this fails on), but
+            // loadHooks()/loadClaimIndex() both document a "never throws" contract for a ControlPanel
+            // read-only caller -- degrade to no-verify with a loud log line rather than break that,
+            // in the unlikely event a hook.json was hand-placed past generation.
+            try {
+                CompiledVerify compiled = compileDeclarativeVerify(root.path("verify"), id);
+                verifySql = compiled.sql();
+                verifyExpect = compiled.expect();
+            } catch (IllegalArgumentException malformed) {
+                System.out.println("NPDev conversion hook '" + id
+                        + "': malformed declarative verify, ignoring (no verification will run for this hook): "
+                        + malformed.getMessage());
+            }
+        }
         String commonSql = readSiblingIfPresent(hookJsonResource, "convert.sql");
         String h2Sql = readSiblingIfPresent(hookJsonResource, "convert.h2.sql");
         String postgresSql = readSiblingIfPresent(hookJsonResource, "convert.postgres.sql");
@@ -621,6 +641,41 @@ public final class ConversionHookRunner {
         String javaHookMethod = javaHookNode.hasNonNull("method") ? javaHookNode.path("method").asText() : null;
         return new Hook(id, List.copyOf(claims), verifySql, verifyExpect, commonSql, h2Sql, postgresSql,
                 javaHookClass, javaHookMethod);
+    }
+
+    private static final java.util.regex.Pattern DECLARATIVE_VERIFY_WHERE_PATTERN =
+            java.util.regex.Pattern.compile("^([A-Za-z_][A-Za-z0-9_]*)\\s+IS\\s+(NOT\\s+)?NULL$");
+
+    private record CompiledVerify(String sql, int expect) {
+    }
+
+    /**
+     * STOR-29 (B10 lift): compiles a hook.json's declarative {@code verify: {concept, where,
+     * expect}} into the equivalent {@code verifySql}/{@code verifyExpect} pair, via {@link
+     * com.npdev.kernel.storage.sql.SqlDialect#countWhereNullSql} in the dialect package (trap 3) --
+     * even though this particular fragment renders identically on every engine today, the SAME
+     * place a future per-engine divergence would need to change. {@code where} is restricted to a
+     * single portable null-check (the schema's own {@code pattern} constraint already rejects
+     * anything else at generation/authoring time); this is the runtime's own defensive re-check,
+     * since a hook.json can be hand-edited after generation.
+     */
+    private static CompiledVerify compileDeclarativeVerify(JsonNode verifyNode, String hookId) {
+        String concept = verifyNode.path("concept").asText("");
+        String where = verifyNode.path("where").asText("");
+        int expect = verifyNode.path("expect").asInt(0);
+        if (concept.isBlank()) {
+            throw new IllegalArgumentException("hook '" + hookId + "': verify.concept is required");
+        }
+        java.util.regex.Matcher matcher = DECLARATIVE_VERIFY_WHERE_PATTERN.matcher(where.trim());
+        if (!matcher.matches()) {
+            throw new IllegalArgumentException("hook '" + hookId + "': verify.where '" + where
+                    + "' is not a portable null-check -- expected '<column> IS NULL' or '<column> IS NOT NULL'");
+        }
+        String column = matcher.group(1);
+        boolean isNull = matcher.group(2) == null;
+        String sql = SqlDialects.active().countWhereNullSql(
+                SchemaLifecycleExecutor.quotedIdentifier(concept), SchemaLifecycleExecutor.quotedIdentifier(column), isNull);
+        return new CompiledVerify(sql, expect);
     }
 
     private static String readSiblingIfPresent(Resource base, String name) {

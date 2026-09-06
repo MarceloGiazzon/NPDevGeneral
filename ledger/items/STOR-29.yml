@@ -1,0 +1,124 @@
+id: STOR-29
+title: >-
+  Cross-engine promotion realizes, copies and verifies in one call from either the CLI or REST;
+  declarative hook verification is engine-portable (boundary B10 -> LIFTED)
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-06
+closed: 2026-09-06
+source: >-
+  ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P6 (Wave 2). B10.yml's own residue, two halves: (a)
+  "a target table that doesn't exist yet still refuses with B10:data_only_promotion: if you call
+  the bare REST endpoints directly, which still assume the target already exists" -- pure
+  duplication, since PromoteMain already realizes the target schema before copying and the REST
+  endpoints never learned to; (b) "H2-SQL -> Postgres-SQL translation -- deliberately out of
+  scope" -- the DSL contains no raw SQL at all; the only author-written SQL in the platform is
+  verifySql in conversion-hook.schema.json, which is the real, closeable scope.
+surface: >-
+  runtimehost-core (PromotionArc, CrossEngineDataPromotion's refusal message, ConversionHookRunner's
+  declarative verify compilation, SqlDialect.countWhereNullSql), the RuntimeHost app tree (a new
+  SchemaPromotionController), NPDevCli (the hook-verify codemod), and both conversion-hook.schema.json
+  mirrors.
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/PromotionArc.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/PromoteMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/CrossEngineDataPromotion.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/api/SchemaPromotionController.java
+  - NPDevRuntimeHost/src/main/resources/npdev/runtime-supported-controllers.json
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/PromoteMainTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerH2Test.java
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/stor29-declarative-verify/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/stor29-declarative-verify/convert.sql
+  - NPDevRuntimeHost/src/test/java/com/finalexec/api/SchemaPromotionControllerStandaloneTest.java
+  - NPDevContract/schemas/conversion-hook.schema.json
+  - NPDevGenerator/generator/src/main/resources/schema/conversion-hook.schema.json
+  - NPDevCli/npdev_cli.py
+  - ledger/boundaries/B10.yml
+detail: |
+  **Half (a), closed by extraction (step 1-3):** `PromoteMain`'s realize -> preview -> apply ->
+  verify orchestration is now `PromotionArc` (`realizeAndPromote` / `afterSchemaRealized`,
+  `com.finalexec.db`), so BOTH the CLI and a new REST endpoint (`POST /api/v1/admin/schema/promote`,
+  `SchemaPromotionController`, SUPERUSER-gated matching `SchemaAcknowledgmentController`'s pattern)
+  share one arc -- a REST caller against a completely empty target now gets the target's schema
+  realized for free, closing the "bare REST endpoint still assumes the target exists" half of the
+  residue without touching `SchemaAcknowledgmentController`'s own pre-existing `/promote/preview`/
+  `/promote/apply` (those stay as documented, narrower bare endpoints). `PromoteMainTest` proves the
+  extraction changed no behaviour: unchanged console output, unchanged exit codes, same tests
+  passing against the same H2 fixtures. `CrossEngineDataPromotion.copyTable`'s missing-target-table
+  message dropped its `B10:data_only_promotion:` prefix (still a per-table `TableCopyResult.error()`,
+  never a throw -- QUAL-38's fix is untouched) -- now that every real caller goes through
+  `PromotionArc`, a missing target table after realization is a genuine bug, not a boundary.
+
+  **Half (b), closed via a new declarative hook-verification field (steps 4-5):**
+  `conversion-hook.schema.json` (both byte-identical copies) gains `verify: {concept, where,
+  expect}` alongside the existing `verifySql`/`verifyExpect` escape hatch. `where` is restricted to
+  a single portable null-check (`<column> IS NULL` / `<column> IS NOT NULL`, schema `pattern`-
+  enforced at generation time via `ConversionHookEmitter`'s existing real JSON-schema validation) --
+  the one shape `verifySql` was ever seen to need in this platform's own corpus (`SELECT COUNT(*)
+  FROM t WHERE c IS NULL`, present in 12 of 20 real fixture hooks, confirmed by dry-running the new
+  codemod against the whole test corpus). `ConversionHookRunner.parseHook` compiles a `verify`
+  object into the exact same `verifySql`/`verifyExpect` fields the rest of the class (transaction,
+  rollback, journaling) already knows how to run, via a new `SqlDialect.countWhereNullSql` default
+  method in the dialect package (trap 3) -- even though this fragment renders identically on every
+  engine today, the SAME place a future per-engine divergence would need to change. Compilation
+  degrades to no-verify with a loud log line (never throws) if a hand-placed hook.json's `where`
+  somehow fails the runtime's own defensive re-check, preserving `loadHooks()`/`loadClaimIndex()`'s
+  documented "never throws" contract for their ControlPanel read-only caller.
+
+  **The codemod (step 5):** `npdev migrate hook-verify --input <dir> [--write] [--report <path>]`
+  converts a hook.json's `verifySql` matching the portable shape into `verify`, and explicitly
+  reports (never guesses at) anything it cannot translate. Dry-run proved against the REAL test
+  corpus (20 hook.json files): 12 converted correctly, 2 correctly refused (one multi-column
+  `OR`-combined null-check, one non-null-check `WHERE id = 4242`), 6 with no verifySql at all --
+  zero false conversions. The corpus itself was deliberately NOT bulk-converted with `--write`
+  (leaving existing, multi-test-shared fixtures untouched); a NEW, dedicated fixture
+  (`stor29-declarative-verify`) proves the declarative field end to end against real H2 instead
+  (`ConversionHookRunnerH2Test`), without risking a shared fixture's other test usages.
+
+  **Two things NOT done, deliberately out of scope:** the platform's OWN auto-generated hooks
+  (`ConversionHookEmitter`'s two `verifyNullChecks`-driven `StringBuilder` call sites, which can
+  OR-combine multiple columns) were left untouched -- they already render the same universal
+  `IS NULL` syntax my new dialect method does, so there was no real portability gap to close there,
+  only a purity nit not worth the added scope. No new twin-pair-registry rule was added for the two
+  `conversion-hook.schema.json` copies (kept in sync by hand, verified via `diff`) -- the file's own
+  header comment already names this obligation, and extending `check-twin-pair-consistency.py` with
+  a new byte-identical-files `kind` is a real tooling change this package's plan explicitly
+  de-prioritized ("few checks and gates, move fast").
+
+  **A finding along the way, closed as part of this package's own verification:**
+  `SchemaPromotionController` was a genuinely new REST surface, and two DIFFERENT gates it had to
+  clear were originally missed: (1) the "runtime surface evidence" classification/footprint check
+  (`scripts/quality/run-runtime-surface-evidence.ps1`) flagged it as `unclassified` until added to
+  `npdev/runtime-supported-controllers.json`'s `allowedControllers` (the manifest
+  `RuntimeControllerAllowlistConfig` reads at boot and `build.gradle.template` reads at compile
+  time -- one edit covers both); (2) adding ~90 substantive, previously-uncovered lines dropped
+  RuntimeHost's JaCoCo line coverage below its recorded floor (18.4504% -> 18.2861%), caught by
+  `check-coverage-ratchet.py`'s hard, never-lowered floor -- fixed with a new standalone MockMvc
+  test (`SchemaPromotionControllerStandaloneTest`) covering what does NOT need a real generated
+  app's schema-realization manifest on the classpath (the SUPERUSER gate, request-shape validation
+  ordered BEFORE any DataSource/manifest touch, the InMemory-mode and no-manifest 503 refusals) --
+  matching `SchemaAcknowledgmentController`'s own documented reasoning for why ITS promote endpoints
+  stay uncovered (the deep arc is `PromotionArc`'s own, already-tested concern).
+
+  **A brief cross-session note:** partway through this package, another Claude session
+  (`npdev-general-1c`) working the same tree messaged asking whether gates/commits were safe to run
+  -- told to hold until this package (and the plan) finish, to avoid racing mid-edit files.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerH2Test.java
+  asserts: >-
+    PromoteMainTest (unchanged assertions, now exercising PromotionArc under the hood) passes
+    against real H2 fixtures. ConversionHookRunnerH2Test's new
+    stor29_declarativeVerifyFieldResolvesTheSameWayAHandWrittenVerifySqlWould proves the declarative
+    `verify` field compiles and runs correctly end to end (HOOK_VERIFIED/HOOK_APPLIED/RESOLVED, same
+    outcomes a hand-written verifySql would produce). SchemaPromotionControllerStandaloneTest (4
+    tests, new) covers the controller's own wiring. The full run-runtimehost-gate.ps1 passed clean
+    on the second attempt -- the first failed on two real, unrelated-to-correctness gaps this
+    package's own newness surfaced (the runtime-surface-evidence controller allowlist, the coverage
+    ratchet), both fixed before the second (green) run. `npdev migrate hook-verify` dry-run against
+    the full real test corpus (20 hook.json files) converts 12 correctly and correctly refuses 2
+    untranslatable shapes, proving the codemod without needing to touch shared existing fixtures.
+  provenRed: false
