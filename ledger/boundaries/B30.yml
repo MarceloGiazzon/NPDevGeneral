@@ -156,5 +156,15 @@ codeLinkedNote: >-
   above -- restricted classpath + classloader denylist only, no OS-level network/filesystem sandbox --
   rather than the plugin child failing to start at all. See `ledger/items/SEC-10.yml`'s 2026-09-06
   entry for the full mechanism.
+
+  2026-09-06 (second finding, same E8 job): fixing the sandbox crash above unmasked a separate,
+  pre-existing functional bug in the restricted-classpath mechanism itself -- `PluginChildClasspath`'s
+  marker list only recognized PLATFORM classes, so ANY `plugin:java-source`/`plugin:java-controller`
+  mount that calls a third-party library (Guava, in E8's own probe) has been broken since this row's
+  105bc7d5 commit, with no way to declare the dependency (no `libraries[]` manifest exists). Fixed
+  with a constant-pool scan of each plugin's own compiled class (reusing
+  `TrustedSourceBytecodeInspector`'s existing reader) rather than a new DSL field or a deny-list --
+  see `ledger/items/SEC-10.yml`'s second 2026-09-06 entry for the mechanism and why this does not
+  widen what a plugin may call, only what an already-admitted plugin's calls can resolve to.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B30"
 classification: LIFTED

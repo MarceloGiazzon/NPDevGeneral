@@ -34,7 +34,7 @@ class PluginChildClasspathTest {
         String hostClasspath = String.join(
                 File.pathSeparator, neededJar.toString(), appDir.toString(), unrelatedJar.toString());
 
-        String restricted = PluginChildClasspath.compute(hostClasspath, false);
+        String restricted = PluginChildClasspath.compute(hostClasspath, false, List.of());
 
         List<String> kept = List.of(restricted.split(java.util.regex.Pattern.quote(File.pathSeparator)));
         assertTrue(kept.contains(neededJar.toString()), "the entry holding PluginIpcChildProcessMain must be kept");
@@ -48,9 +48,9 @@ class PluginChildClasspathTest {
                 "org/springframework/web/bind/annotation/PathVariable.class");
         String hostClasspath = springWebJar.toString();
 
-        assertTrue(PluginChildClasspath.compute(hostClasspath, true).contains(springWebJar.toString()),
+        assertTrue(PluginChildClasspath.compute(hostClasspath, true, List.of()).contains(springWebJar.toString()),
                 "spring-web must be kept when a plugin:java-controller mount exists");
-        assertEquals("", PluginChildClasspath.compute(hostClasspath, false),
+        assertEquals("", PluginChildClasspath.compute(hostClasspath, false, List.of()),
                 "spring-web must be dropped when no plugin:java-controller mount exists");
     }
 
@@ -63,7 +63,7 @@ class PluginChildClasspathTest {
         Path fatJar = tempDir.resolve("FinalExec.jar");
         writeFatJar(fatJar, nestedNeededJar, nestedUnneededJar);
 
-        String restricted = PluginChildClasspath.compute(fatJar.toString(), false);
+        String restricted = PluginChildClasspath.compute(fatJar.toString(), false, List.of());
         List<String> kept = List.of(restricted.split(java.util.regex.Pattern.quote(File.pathSeparator)));
 
         assertTrue(kept.size() >= 2, "expected an extracted classes dir plus at least the kept nested jar, got: " + kept);
@@ -86,6 +86,63 @@ class PluginChildClasspathTest {
             }
         });
         assertFalse(hasUnneededNestedJar, "an unneeded nested dependency jar must not be extracted, kept: " + kept);
+    }
+
+    @Test
+    void keepsAThirdPartyJarAPluginOwnClassGenuinelyReferences(@TempDir Path tempDir) throws Exception {
+        // E8 regression (2026-09-06): the fixed marker list has no way to know a plugin's own
+        // business logic calls into some OTHER library (Guava, in the real E8 probe) -- there is no
+        // libraries[] manifest declaring it. Standing in for that library here with a REAL jar
+        // already on this JVM's own classpath (org.junit.jupiter.api, deliberately NOT one of
+        // PluginChildClasspath's fixed markers) rather than a synthetic one, so the constant-pool
+        // scan runs against genuine bytecode, not a hand-rolled fixture.
+        Path pluginClassDir = tempDir.resolve("app-classes");
+        Files.createDirectories(pluginClassDir.resolve("com/finalexec"));
+        Files.createFile(pluginClassDir.resolve("com/finalexec/FinalExecApplication.class"));
+        compileInto(pluginClassDir, "com/example/plugin/UserCapability.java", """
+                package com.example.plugin;
+
+                import org.junit.jupiter.api.Assertions;
+
+                public final class UserCapability {
+                    public void run() {
+                        Assertions.assertTrue(true);
+                    }
+                }
+                """);
+
+        Path thirdPartyJar = Path.of(
+                org.junit.jupiter.api.Assertions.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        Path unrelatedJar = writeJarWithEntry(tempDir.resolve("hibernate-core.jar"), "org/hibernate/Session.class");
+
+        String hostClasspath = String.join(File.pathSeparator,
+                pluginClassDir.toString(), thirdPartyJar.toString(), unrelatedJar.toString());
+
+        String restricted = PluginChildClasspath.compute(hostClasspath, false, List.of("com.example.plugin.UserCapability"));
+        List<String> kept = List.of(restricted.split(java.util.regex.Pattern.quote(File.pathSeparator)));
+
+        assertTrue(kept.contains(thirdPartyJar.toString()),
+                "a jar the plugin's own class genuinely references, but which is not a fixed platform marker, must be kept: " + kept);
+        assertFalse(kept.contains(unrelatedJar.toString()), "a jar the plugin does not reference must still be dropped");
+    }
+
+    private static void compileInto(Path outputRoot, String relativeSource, String source) throws Exception {
+        Path sourceRoot = Files.createTempDirectory("npdev-plugin-cp-test-src-");
+        Path sourceFile = sourceRoot.resolve(relativeSource);
+        Files.createDirectories(sourceFile.getParent());
+        Files.writeString(sourceFile, source);
+        javax.tools.JavaCompiler compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+        List<String> options = List.of("-encoding", "UTF-8", "-d", outputRoot.toString(), "-proc:none",
+                "-classpath", System.getProperty("java.class.path"));
+        try (javax.tools.StandardJavaFileManager fileManager =
+                compiler.getStandardFileManager(null, null, java.nio.charset.StandardCharsets.UTF_8)) {
+            Iterable<? extends javax.tools.JavaFileObject> units =
+                    fileManager.getJavaFileObjectsFromPaths(List.of(sourceFile));
+            boolean ok = Boolean.TRUE.equals(compiler.getTask(null, fileManager, null, options, null, units).call());
+            if (!ok) {
+                throw new IllegalStateException("Test fixture failed to compile: " + relativeSource);
+            }
+        }
     }
 
     private static Path writeJarWithEntry(Path jarPath, String entryName) throws IOException {

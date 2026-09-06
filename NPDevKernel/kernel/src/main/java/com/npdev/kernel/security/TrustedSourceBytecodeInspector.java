@@ -142,6 +142,23 @@ public final class TrustedSourceBytecodeInspector {
             "java/lang/System.exit"
     );
 
+    /**
+     * Every class this class file's constant pool references (class refs + member-reference
+     * owners), in internal form (e.g. {@code com/google/common/hash/Hashing}) -- UNFILTERED by the
+     * escape denylist {@link #inspect} enforces. For a caller that needs to know what a class file
+     * DEPENDS ON rather than whether it violates policy (SEC-10: {@code PluginChildClasspath} uses
+     * this to find which third-party classpath entries a plugin's own compiled code genuinely
+     * references, since there is no {@code libraries[]} manifest declaring it up front). Reuses the
+     * SAME constant-pool reader {@link #inspect} does, so a format change to one never silently
+     * diverges from the other.
+     */
+    public Set<String> referencedClassNames(InputStream input, String displayName) throws IOException {
+        ConstantPool pool = readConstantPool(input, displayName);
+        Set<String> referenced = new LinkedHashSet<>(pool.classOwners());
+        referenced.addAll(pool.memberOwners());
+        return referenced;
+    }
+
     public BytecodeInspectionResult inspect(Path classFile) throws IOException {
         try (InputStream input = Files.newInputStream(classFile)) {
             return inspect(input, classFile.toString());
