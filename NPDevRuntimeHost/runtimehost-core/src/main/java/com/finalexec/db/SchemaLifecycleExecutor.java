@@ -13,6 +13,7 @@ import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
 import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
+import com.finalexec.npdev.service.SupportDiagnosticsService;
 import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcessPool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -522,17 +523,60 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // taken either way -- see MigrationMutex for how it avoids needing a table at all on three
         // engines, and keeps its table out of Flyway's schema on the fourth.
         boolean freshDatabase = storedAtBootStart == null || storedAtBootStart.isBlank();
-        MigrationClaimStore.Claim claim;
-        try {
-            claim = MigrationClaimStore.claim(dataSource, freshDatabase);
-        } catch (RuntimeException lockFailure) {
-            // Preserve lockFailure's own message verbatim rather than replacing it with a generic
-            // one: MigrationMutex.waitedOutMessage() names the exact wait budget and the holder
-            // instance/host/claim-time, and NPDevCli's MIGRATION_CLAIM_HELD boot-log diagnostic
-            // greps that phrase verbatim -- discarding it silently demotes a named diagnostic to
-            // "unknown boot failure" (the exact regression this comment exists to prevent).
-            throw new BoundaryBootException(new BoundaryViolation("B4", "boot",
-                    lockFailure.getMessage(), Instant.now()), lockFailure);
+        // STOR-28 (B4 lift): a boot with nothing to do (this database is already at THIS build's
+        // fingerprint, and Flyway has no failed migration outstanding) takes no lock at all -- a
+        // rolling restart where every instance runs the SAME build no longer contends on a mutex that
+        // was never going to change anything. MigrationMutex itself is UNCHANGED; this only decides
+        // whether SchemaLifecycleExecutor calls it.
+        //
+        // `!freshDatabase &&` guards EVERY call below, not just an optimization: MigrationPreflight
+        // reads npdev_schema_history, which self-bootstraps that table (CREATE TABLE IF NOT EXISTS,
+        // unqualified -- Flyway's OWN managed schema) the first time anything queries it. On a
+        // genuinely virgin database that happens BEFORE flyway.migrate() ever runs, which is exactly
+        // REG-7.2's shape ("Found non-empty schema(s) 'PUBLIC' but no schema history table") --
+        // confirmed live: MigrationLockConcurrentBootTest/SchemaLifecycleExecutorMigrationClaimTest's
+        // fresh-boot cases failed with FlywayException before this guard existed. Semantically free,
+        // not just safe: a fresh database always has real work to do (every table is missing), so
+        // nothingToDo would only ever answer false for it anyway -- skipping the CHECK loses nothing.
+        MigrationClaimStore.Claim claim = null;
+        if (!freshDatabase && MigrationPreflight.nothingToDo(dataSource, manifest)) {
+            System.out.println("NPDev schema lifecycle: no schema work for fingerprint "
+                    + manifest.schemaFingerprint() + "; skipping the migration lock entirely (STOR-28).");
+        } else {
+            try {
+                claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+            } catch (RuntimeException lockFailure) {
+                // Re-check before refusing: the holder may have finished (and this database may now
+                // be fully converged) during the very last poll of the wait this timeout closes.
+                if (!freshDatabase && MigrationPreflight.nothingToDo(dataSource, manifest)) {
+                    System.out.println("NPDev schema lifecycle: the migration lock timed out, but a "
+                            + "re-check shows this database is now at fingerprint "
+                            + manifest.schemaFingerprint() + " -- the holder finished during the wait; "
+                            + "continuing without the lock (STOR-28).");
+                } else if (schemaLockDegradesOnTimeout()
+                        && ExternalSchemaVerification.findExternalSchemaIncompatibilities(dataSource, manifest).isEmpty()) {
+                    // Schema work is still pending and the lock is still unavailable, but the LIVE
+                    // schema (whatever it is right now) already serves this build's model -- degrade
+                    // rather than refuse. This boot does not migrate; a later boot that wins the lock
+                    // still will. Only a genuinely incompatible schema still throws below.
+                    String warning = "NPDev schema lifecycle: WARNING -- migration lock timed out and "
+                            + "schema work is still pending, but the live schema is already compatible "
+                            + "with this build's model; booting WITHOUT applying it (STOR-28, "
+                            + "npdev.schema.lock.onTimeout=degrade). " + lockFailure.getMessage();
+                    System.out.println(warning);
+                    SupportDiagnosticsService.markMigrationDeferred(warning);
+                    return;
+                } else {
+                    // Preserve lockFailure's own message verbatim rather than replacing it with a
+                    // generic one: MigrationMutex.waitedOutMessage() names the exact wait budget and
+                    // the holder instance/host/claim-time, and NPDevCli's MIGRATION_CLAIM_HELD boot-log
+                    // diagnostic greps that phrase verbatim -- discarding it silently demotes a named
+                    // diagnostic to "unknown boot failure" (the exact regression this comment exists to
+                    // prevent).
+                    throw new BoundaryBootException(new BoundaryViolation("B4", "boot",
+                            lockFailure.getMessage(), Instant.now()), lockFailure);
+                }
+            }
         }
         try {
             boolean fingerprintChanged = storedAtBootStart != null && !storedAtBootStart.isBlank()
@@ -569,6 +613,18 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 MigrationClaimStore.release(dataSource, claim.instanceId());
             }
         }
+    }
+
+    /**
+     * STOR-28 (B4 lift): {@code -Dnpdev.schema.lock.onTimeout=degrade|refuse}, default {@code
+     * degrade}. {@code refuse} restores the pre-STOR-28 behavior exactly (a lock timeout with pending
+     * schema work always throws {@code B4:migration_lock_held}, regardless of live-schema
+     * compatibility) -- for an operator who would rather a boot fail loudly than ever run against a
+     * schema this instance did not itself converge.
+     */
+    private static boolean schemaLockDegradesOnTimeout() {
+        String configured = System.getProperty("npdev.schema.lock.onTimeout");
+        return configured == null || configured.isBlank() || !"refuse".equalsIgnoreCase(configured.trim());
     }
 
     /**

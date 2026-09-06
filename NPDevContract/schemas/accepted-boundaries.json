@@ -25,9 +25,9 @@
     },
     {
       "id": "B4",
-      "kind": "HITTABLE",
-      "userFacingText": "Another app instance holds the migration lock. Wait for it to finish -- the boot's own log shows progress and adapts its wait budget while real activity is observed -- or clear the claim via the admin endpoint.",
-      "workaround": "Run migration as a one-shot MIGRATE_ONLY job (Migrate-Only.ps1 / npdev.schema.lifecycle.mode=MIGRATE_ONLY) before any serving instance boots, so nothing ever contends the lock. If two instances do race, the second waits under the real lock (a session advisory lock, or H2's row-lock fallback in its own dedicated schema), extending its budget automatically while npdev_schema_history shows the holder still making progress, and refuses naming the holder plus its last recorded activity if the holder stalls; use ControlPanel's clear() only as a deliberate manual escape hatch for the display row.",
+      "kind": "LIFTED",
+      "userFacingText": "A boot with nothing to migrate (the live schema already matches this build) takes no migration lock at all and never contends another instance. A boot that DOES need to migrate and cannot obtain the lock within its budget now degrades -- rather than refusing -- when the live schema is already compatible with what this build wants, booting with a prominent warning instead of exiting. Only a boot that genuinely needs an incompatible migration and cannot obtain the lock still refuses.",
+      "workaround": "Run migration as a one-shot MIGRATE_ONLY job (Migrate-Only.ps1 / npdev.schema.lifecycle.mode=MIGRATE_ONLY) before any serving instance boots, so nothing ever contends the lock. A same-build rolling restart no longer needs this at all -- the no-op preflight already skips the lock. If two instances do race a real migration, the second waits under the real lock, extending its budget automatically while npdev_schema_history shows progress; on timeout it degrades if the live schema is already compatible (npdev.schema.lock.onTimeout=degrade, the default) or refuses if not (=refuse).",
       "enforcingDiagnosticCodes": ["B4:migration_lock_held"]
     },
     {
