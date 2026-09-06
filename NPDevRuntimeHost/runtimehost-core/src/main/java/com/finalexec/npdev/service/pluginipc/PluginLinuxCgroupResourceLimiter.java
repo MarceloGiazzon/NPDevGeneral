@@ -46,14 +46,21 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
     private enum Mode { SYSTEMD_RUN, RAW_CGROUP, UNAVAILABLE }
 
     private final Mode mode;
+    /** Whether this host's systemd actually accepts the SEC-10 sandbox properties on a --scope unit
+     *  (see {@link #probeSandboxPropertiesSupported()}) -- distinct from {@link #mode}, since a host can
+     *  perfectly well support plain systemd-run scopes (resource limits keep working) while rejecting
+     *  these specific properties on them. */
+    private final boolean sandboxSupported;
 
     PluginLinuxCgroupResourceLimiter() {
         this.mode = probe();
+        this.sandboxSupported = mode == Mode.SYSTEMD_RUN && probeSandboxPropertiesSupported();
     }
 
     /** Testable seam: force a specific mode without re-probing the real OS each time. */
     PluginLinuxCgroupResourceLimiter(boolean forceUnavailable) {
         this.mode = forceUnavailable ? Mode.UNAVAILABLE : probe();
+        this.sandboxSupported = mode == Mode.SYSTEMD_RUN && probeSandboxPropertiesSupported();
     }
 
     private static Mode probe() {
@@ -79,6 +86,49 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
             }
             LOG.log(Level.FINE, "systemd-run --user --scope probe failed -- falling back to raw cgroup v2 "
                     + "(this is the normal path on a host without a lingering user session)", probeFailure);
+            return false;
+        }
+    }
+
+    /**
+     * SEC-10 regression (found 2026-09-06 via the E8 "external library at runtime" CI job, which
+     * exercises a real {@code plugin:java-source} sandboxed invocation on an actual GitHub-hosted
+     * Ubuntu runner -- SEC-10's own closing proof never did, having verified only against
+     * {@code plugin:java-controller}/p7-plugin-controller on a different host): a bare
+     * {@code systemd-run --user --scope} succeeds ({@link #probeSystemdRunUser()} passes, so
+     * {@code MemoryMax=}/{@code CPUQuota=} keep working), but ADDING
+     * {@code --property=PrivateNetwork=yes}/{@code ProtectSystem=strict}/{@code ProtectHome=yes} to
+     * that same scope fails outright with {@code Unknown assignment: PrivateNetwork=yes} and exit
+     * code 1 -- every sandboxed plugin invocation died before its child process ever started
+     * (durationMs=1, errorCode=PLUGIN_EXECUTION_PROCESS_KILLED). Some hosts' systemd either predates
+     * full sandboxing-directive support on transient SCOPE units (historically far more limited than
+     * SERVICE units, which have long accepted these) or the user session lacks the namespace
+     * capability to honor them -- probed directly here rather than guessed, so this degrades exactly
+     * where it is genuinely unsupported and nowhere else.
+     */
+    private static boolean probeSandboxPropertiesSupported() {
+        try {
+            Process probe = new ProcessBuilder(
+                    "systemd-run", "--user", "--scope", "--quiet", "--collect",
+                    "--property=PrivateNetwork=yes", "--property=ProtectSystem=strict",
+                    "--property=ProtectHome=yes", "--", "/bin/true"
+            ).redirectErrorStream(true).start();
+            boolean exited = probe.waitFor(5, TimeUnit.SECONDS);
+            boolean supported = exited && probe.exitValue() == 0;
+            if (!supported) {
+                LOG.log(Level.WARNING, "systemd-run --user --scope on this host rejects the SEC-10 OS "
+                        + "sandbox properties (PrivateNetwork=/ProtectSystem=/ProtectHome=) -- plugin "
+                        + "children will run WITHOUT the network/filesystem sandbox. This is one layer "
+                        + "of defense-in-depth degrading, not the whole containment stack: the classpath "
+                        + "restriction and classloader denylist are unaffected and remain fully active.");
+            }
+            return supported;
+        } catch (IOException | InterruptedException probeFailure) {
+            if (probeFailure instanceof InterruptedException) {
+                Thread.currentThread().interrupt();
+            }
+            LOG.log(Level.FINE, "systemd-run sandbox-properties probe failed -- treating the OS sandbox "
+                    + "as unsupported on this host", probeFailure);
             return false;
         }
     }
@@ -155,12 +205,12 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
 
     @Override
     public boolean networkFilesystemSandboxActive(PluginProcessResourceLimits limits) {
-        return mode == Mode.SYSTEMD_RUN && limits.sandboxEnabled();
+        return mode == Mode.SYSTEMD_RUN && limits.sandboxEnabled() && sandboxSupported;
     }
 
     @Override
     public List<String> wrapCommand(List<String> command, PluginProcessResourceLimits limits) {
-        boolean sandbox = mode == Mode.SYSTEMD_RUN && limits.sandboxEnabled();
+        boolean sandbox = mode == Mode.SYSTEMD_RUN && limits.sandboxEnabled() && sandboxSupported;
         if (mode != Mode.SYSTEMD_RUN || (limits.isEmpty() && !sandbox)) {
             return command;
         }

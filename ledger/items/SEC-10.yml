@@ -136,6 +136,38 @@ detail: |
   rather than reopening STOR-27/REG-207's own item because it was found and fixed inside this
   package's own verification pass, not as separate follow-up work; B31's own ledger entry is
   otherwise unaffected.
+
+  2026-09-06 REGRESSION FOUND AND FIXED (E8 CI job, not this item's own closing proof): this item's
+  guard below proved the OS sandbox only via `run-r10-plugin-controller-proof.py` against
+  `plugin:java-controller`/p7-plugin-controller -- it never exercised a real `plugin:java-source`
+  sandboxed invocation on an actual GitHub-hosted Ubuntu CI runner, because the R10 proof script does
+  not run in any CI workflow. The `.github/workflows/engine-support.yml` "E8" job does, against a
+  DIFFERENT probe app (`NPDevSamples/probes/lib-probe`, `librarySignature`/Guava capability), and
+  started failing on this item's own commit (105bc7d5) four pushes in a row: every sandboxed
+  invocation died in ~1-18ms with `errorCode=PLUGIN_EXECUTION_PROCESS_KILLED` before the child process
+  ever started, and the boot log showed the real cause -- `systemd-run --user --scope` on that host
+  accepts a bare scope (so `probeSystemdRunUser()` passes and `MemoryMax=`/`CPUQuota=` keep working)
+  but rejects `--property=PrivateNetwork=yes` outright with `Unknown assignment: PrivateNetwork=yes`,
+  taking `ProtectSystem=strict`/`ProtectHome=yes` down with it (systemd-run treats the whole
+  `--scope` invocation as one atomic argument set; one rejected property fails the entire wrapped
+  command, not just that flag). Likely cause: some hosts' systemd predates full sandboxing-directive
+  support on transient SCOPE units (long far more limited than SERVICE units for these directives), or
+  the user session lacks the namespace capability to honor them -- not chased to a definitive systemd
+  version/capability, because the fix does not need to know which: `PluginLinuxCgroupResourceLimiter`
+  now runs a SECOND, separate probe at construction (`probeSandboxPropertiesSupported()`, alongside
+  the existing bare-scope probe) that actually launches `/bin/true` under the exact three properties;
+  `networkFilesystemSandboxActive`/`wrapCommand` both now gate the sandbox branch on that probe's
+  result, not just on `mode == SYSTEMD_RUN`. Where the properties are genuinely unsupported, the OS
+  sandbox layer degrades to inactive (logged once, loudly, at construction -- same discipline as the
+  raw-cgroup-unavailable path already had) while the classpath restriction and classloader denylist,
+  the OTHER two independent layers this item built, are completely unaffected. This is the same
+  residue shape B30 already documents for Windows ("no Job Object equivalent of Linux's network/
+  filesystem namespace sandbox exists") extended to whichever Linux hosts hit this -- not a new kind
+  of gap, a wider footprint for the one already named. No unit test covers `wrapCommand`'s sandbox
+  branch (this class's constructor probes real OS state, same reason the original OS-sandbox work
+  had no unit test either -- see this item's own guard, which relies on a real end-to-end proof
+  instead); verification is the E8 CI job itself going green again on the real GitHub-hosted runner
+  that caught this, not a new mock-based unit test.
 guard:
   kind: test
   ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/PluginChildClasspathTest.java
