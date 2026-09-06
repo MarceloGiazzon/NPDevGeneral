@@ -144,5 +144,17 @@ codeLinkedNote: >-
   wall-clock timeout by ignoring interrupt) the same way `plugin:java-source` already was -- but still
   not fully contained. See `ledger/items/SEC-9.yml` for the full done-when list and the real bug found
   closing it.
+
+  2026-09-06: the Linux OS-sandbox row above ("systemd-run --scope gained PrivateNetwork=yes +
+  ProtectSystem=strict + ProtectHome=yes") was true on the host it was verified against, but NOT
+  universally -- caught by the E8 CI job (a real `plugin:java-source` invocation on a GitHub-hosted
+  Ubuntu runner, a scenario SEC-10's own closing proof never exercised), where systemd rejected those
+  properties on a `--scope` unit outright and killed every sandboxed plugin child before it started.
+  Fixed by probing the actual properties (not just a bare scope) at construction and degrading to
+  "sandbox inactive" when unsupported, logged loudly. Net effect: on a Linux host whose systemd
+  rejects these properties, containment there is now the SAME residue already named for Windows
+  above -- restricted classpath + classloader denylist only, no OS-level network/filesystem sandbox --
+  rather than the plugin child failing to start at all. See `ledger/items/SEC-10.yml`'s 2026-09-06
+  entry for the full mechanism.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B30"
 classification: LIFTED
