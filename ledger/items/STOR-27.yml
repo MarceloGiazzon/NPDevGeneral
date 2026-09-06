@@ -1,0 +1,65 @@
+id: STOR-27
+title: >-
+  H2Local processes share the database file over H2's own AUTO_SERVER instead of racing it
+  (boundary B31 -> LIFTED)
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P2 (Wave 1, independent). B31.yml's own residue
+  (REG-207, 2026-09-05): on timeout, H2LocalBootLock throws BoundaryBootException prefixed
+  `B31:h2local_boot_lock_held:` -- a rolling restart whose old process holds the file handle longer
+  than the wait budget fails to start, even though H2 itself already has a mechanism to avoid the
+  contention entirely.
+surface: runtimehost-core (db), generator (dbconfig), NPDevCli, twin-pair registry
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/H2LocalAutoServer.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/H2LocalBootLockEnvironmentPostProcessor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/H2LocalBootLock.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java
+  - NPDevCli/npdev_cli.py
+  - scripts/policy/twin-pair-registry.json
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/H2LocalBootLockEnvironmentPostProcessorTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/H2LocalBootLockHarness.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/H2LocalBootLockCrossProcessTest.java
+  - ledger/boundaries/B31.yml
+detail: |
+  `H2LocalBootLockEnvironmentPostProcessor` -- already the correct, only seam (runs before any bean,
+  including the DataSource) -- now rewrites `spring.datasource.url` via a high-priority
+  `MapPropertySource` before the boot lock even runs: if the URL is `jdbc:h2:file:` and names no
+  `AUTO_SERVER=` token at all, it appends `;AUTO_SERVER=TRUE`. A URL that already names
+  `AUTO_SERVER` either way is never touched -- this is what keeps the four pre-existing
+  `MigrationKillMid*` tests (which pin `AUTO_SERVER=FALSE` explicitly) working unchanged, and what
+  the "trap 1" test inversion in this package targeted instead: the OLD wait-then-refuse test in
+  `H2LocalBootLockCrossProcessTest` still passes because it pins `AUTO_SERVER=FALSE` on purpose, now
+  proving the opt-out path rather than the default. `H2LocalBootLock` itself is skipped entirely
+  when AUTO_SERVER is active -- H2's own server process arbitrates access, so there is nothing left
+  for the file lock to protect. Both places that mint an H2Local JDBC URL for a generated app
+  (`UserDatabaseDefinitionLoader`'s H2_LOCAL case, `npdev_cli.py`'s `_jdbc_url_for_verify`) now mint
+  `;AUTO_SERVER=TRUE` honestly, registered as a new twin pair
+  (`h2local-auto-server-url-twin-pair`) so the two can never drift apart silently again.
+
+  **2026-09-06 addendum (found and fixed inside SEC-10's own verification, not reopened here):**
+  this package shipped with a real defect that broke EVERY H2Local boot -- both mint sites also
+  carried `DB_CLOSE_ON_EXIT=FALSE`, and H2 refuses `AUTO_SERVER=TRUE` combined with that outright
+  ("Feature not supported"). Invisible to this package's own verification because its test fixture
+  used a synthetic URL without `DB_CLOSE_ON_EXIT=FALSE`, and the RuntimeHost gate's own sample app
+  runs `InMemory`, never H2Local. Found via `run-r10-plugin-controller-proof.py` (an unrelated
+  P5/SEC-10 proof) exercising a real H2Local boot for the first time since this package shipped.
+  Fixed in the same three places, plus a new test pinning the real generator-shaped URL -- see
+  `ledger/items/SEC-10.yml` for the full trace.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/H2LocalBootLockCrossProcessTest.java
+  asserts: >-
+    New bothProcessesConnectSuccessfullyWhenAutoServerIsEnabled spawns two real OS processes against
+    the same H2Local file with AUTO_SERVER=TRUE and confirms both connect and serve -- neither logs
+    a wait, neither refuses. The pre-existing wait-then-refuse case now pins AUTO_SERVER=FALSE
+    explicitly and continues to prove the opt-out path. H2LocalBootLockEnvironmentPostProcessorTest
+    adds coverage pinning the rewrite only fires when no AUTO_SERVER token is present at all.
+    Verified via check-twin-pair-consistency.py (all 34 rules, including the new one, pass) and the
+    RuntimeHost module's own test run; full run-runtimehost-gate.ps1 passed clean as part of this
+    session's later checkpoint.
+  provenRed: true

@@ -172,9 +172,9 @@
     },
     {
       "id": "B31",
-      "kind": "HITTABLE",
-      "userFacingText": "Another process currently has this H2 (file) database open. This is expected during a rolling restart's brief overlap -- the boot waits for it to release rather than failing immediately, and normally resolves on its own once the old instance finishes exiting.",
-      "workaround": "Wait for the previous instance to finish exiting -- H2Local is inherently single-process, so this is not a misconfiguration. If restarts legitimately take longer than the default 30s budget, raise it with -Dnpdev.h2local.bootLock.waitSeconds=<seconds>. If no other instance is actually running, confirm nothing is stuck holding the database file (the boot log names the exact lock file path) before retrying.",
+      "kind": "LIFTED",
+      "userFacingText": "H2Local (embedded file) databases now default to H2's own AUTO_SERVER mode: the first process serves the file over TCP and every later process connects through it instead of racing the file, so a rolling restart's brief overlap boots both processes with no wait and no refusal. The older lock-and-wait behavior (another process holds the file, boot waits then refuses on timeout) is still available as an explicit opt-out.",
+      "workaround": "Nothing to do -- AUTO_SERVER is on by default for H2Local. To opt back into the wait-then-refuse behavior instead (e.g. to keep only one process ever serving), set npdev.h2local.autoServer=false or name AUTO_SERVER=FALSE explicitly in the JDBC URL; under that mode, raise -Dnpdev.h2local.bootLock.waitSeconds=<seconds> if restarts legitimately take longer than the default 30s budget.",
       "enforcingDiagnosticCodes": ["B31:h2local_boot_lock_held"]
     }
   ]

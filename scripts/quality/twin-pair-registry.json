@@ -555,6 +555,20 @@
         "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportText.java",
         "NPDevGenerator/generator/src/main/java/com/npdev/generator/schemaevolution/MigrationPlanEmitter.java"
       ]
+    },
+    {
+      "id": "h2local-auto-server-url-twin-pair",
+      "citedBy": "STOR-27 (ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P2, B31 lift)",
+      "description": "UserDatabaseDefinitionLoader.jdbcUrl's H2_LOCAL case (the formula a generated app's own application.properties is minted with) and NPDevCli's _jdbc_url_for_verify h2local case (npdev db verify's own connection, used to inspect a database that may belong to a currently-running app) already duplicated the SAME jdbc:h2:file: formula before AUTO_SERVER=TRUE existed (see the ast-compiled-four-place-style comment directly above _jdbc_url_for_verify) -- both must mint AUTO_SERVER=TRUE identically, or `npdev db verify` run while the real app is booted races the raw file instead of connecting through the app's own H2 auto-server the way H2LocalBootLockEnvironmentPostProcessor's boot-time rewrite intends for every OTHER H2Local connection.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "AUTO_SERVER=TRUE"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java",
+        "NPDevCli/npdev_cli.py"
+      ]
     }
   ]
 }

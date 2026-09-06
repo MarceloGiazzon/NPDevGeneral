@@ -4101,7 +4101,16 @@ def _jdbc_url_for_verify(engine_key: str, app_root: Path, database: dict) -> str
         # "./data/..." is resolved against the JVM's OWN working directory (PORT-1) -- the caller
         # below launches SchemaVerifyMain with cwd=app_root, exactly as a real boot does, so this
         # relative path names <app_root>/data/<db>, not wherever npdev itself happens to run from.
-        return f"jdbc:h2:file:./data/{db_name};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
+        # STOR-27 (B31 lift): AUTO_SERVER=TRUE, matching UserDatabaseDefinitionLoader.jdbcUrl's
+        # identical formula (twin-pair rule h2local-auto-server-url-twin-pair) -- lets this verify
+        # connect through a running app's own H2 server instead of racing the raw file, and is a
+        # no-op safe default when no app is running (this process becomes the server instead).
+        # NO DB_CLOSE_ON_EXIT=FALSE here, unlike h2server above -- H2 refuses that combined with
+        # AUTO_SERVER=TRUE outright ("Feature not supported: AUTO_SERVER=TRUE && DB_CLOSE_ON_EXIT=
+        # FALSE"); AUTO_SERVER's own TCP-server lifecycle is what DB_CLOSE_ON_EXIT=FALSE used to
+        # protect, so this reverts to H2's default (DB_CLOSE_ON_EXIT=TRUE).
+        return (f"jdbc:h2:file:./data/{db_name};MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;"
+                f"WRITE_DELAY=0;AUTO_SERVER=TRUE")
     return None
 
 

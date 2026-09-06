@@ -3,12 +3,15 @@ package com.finalexec.db;
 import com.finalexec.boundary.BoundaryBootException;
 import com.finalexec.boundary.BoundaryViolation;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.env.EnvironmentPostProcessor;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MapPropertySource;
 
 /**
  * B31: registered in {@code META-INF/spring.factories} as an {@link EnvironmentPostProcessor} --
@@ -37,6 +40,25 @@ public class H2LocalBootLockEnvironmentPostProcessor implements EnvironmentPostP
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
         String engine = environment.getProperty("npdev.database.engine", "");
         String jdbcUrl = environment.getProperty("spring.datasource.url", "");
+
+        // STOR-27 (B31 lift): rewrite the URL to AUTO_SERVER=TRUE before any bean (Hikari's DataSource
+        // included) ever reads it -- the one seam early enough for every later reader to see the
+        // rewritten value. Never touches a URL that already names AUTO_SERVER (either way).
+        boolean autoServerEnabled = H2LocalAutoServer.enabledByDefault(environment);
+        Optional<String> rewritten = H2LocalAutoServer.rewriteIfEligible(engine, jdbcUrl, autoServerEnabled);
+        if (rewritten.isPresent()) {
+            jdbcUrl = rewritten.get();
+            Map<String, Object> override = new LinkedHashMap<>();
+            override.put("spring.datasource.url", jdbcUrl);
+            environment.getPropertySources().addFirst(new MapPropertySource("npdevH2LocalAutoServer", override));
+        }
+
+        if (H2LocalAutoServer.isAutoServerActive(jdbcUrl)) {
+            // H2's own TCP server now arbitrates multi-process access to this file -- the OS-level
+            // boot lock below exists only for the opt-out/legacy AUTO_SERVER=FALSE case.
+            return;
+        }
+
         Optional<H2LocalBootLock.Held> acquired;
         try {
             acquired = H2LocalBootLock.acquireIfNeeded(engine, jdbcUrl);

@@ -47,6 +47,16 @@ import java.util.Optional;
  * against a given file for its ENTIRE run, not only during migration -- this class just makes that
  * existing constraint visible as a graceful wait with a named diagnostic instead of a crash.
  *
+ * <h2>STOR-27 (B31 lift): this class is now the OPT-OUT path, not the default one</h2>
+ *
+ * <p>{@link H2LocalAutoServer} rewrites the JDBC URL to {@code AUTO_SERVER=TRUE} before this class
+ * is ever consulted (see {@link H2LocalBootLockEnvironmentPostProcessor}) -- once active, H2's own
+ * TCP server arbitrates multi-process access, and THIS lock is skipped entirely. It still runs, and
+ * still matters, whenever {@code AUTO_SERVER=FALSE} is named explicitly (either by
+ * {@code -Dnpdev.h2local.autoServer=false}, or a URL an operator wrote by hand) -- the four
+ * {@code MigrationKillMid*} test harnesses pin exactly that, on purpose, to keep exercising this
+ * class's single-process behavior.
+ *
  * <h2>Release: OS-level, deliberately not a lease</h2>
  *
  * <p>{@link #release} is idempotent and safe to call more than once (see {@link Held#channel()}'s own

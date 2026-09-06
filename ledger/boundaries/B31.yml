@@ -1,7 +1,22 @@
 id: B31
-title: "H2Local (embedded file) boot is a real lock, not an uncaught crash"
+title: "H2Local boots share the database file over H2's own auto-server; overlapping boots coexist"
 codeLinked: true
 codeLinkedNote: >-
+  2026-09-05 (ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P2, STOR-27): the timeout refusal below
+  is now the OPT-OUT path, not the default. `H2LocalBootLockEnvironmentPostProcessor` rewrites
+  `spring.datasource.url` before any bean exists: an `H2_LOCAL` URL naming no `AUTO_SERVER=` token
+  at all gets `;AUTO_SERVER=TRUE` appended, so the first process serves the file over H2's own TCP
+  endpoint and every later process connects through it instead of racing the file -- no lock, no
+  wait, no refusal. A URL that already names `AUTO_SERVER` either way (including the four
+  pre-existing `MigrationKillMid*` tests, which pin `AUTO_SERVER=FALSE` on purpose) is never
+  touched, and `H2LocalBootLock` itself is skipped entirely once AUTO_SERVER is active -- there is
+  nothing left for a file lock to protect. Both places that mint an H2Local JDBC URL for a
+  generated app now mint `AUTO_SERVER=TRUE` honestly, registered as a twin pair. See
+  `ledger/items/STOR-27.yml` for the full trace. **Reclassified LIFTED** (was HITTABLE): a rolling
+  restart's brief overlap no longer waits or refuses at all in the default configuration; the
+  original lock-and-refuse mechanism remains, fully tested, as the explicit opt-out
+  (`npdev.h2local.autoServer=false` or a URL naming `AUTO_SERVER=FALSE`).
+
   2026-09-05 (REAL_LIFT_PLAN_2026-09-03.md package B4-closure, REG-207): B4's own multi-process
   migration lock (MigrationMutex/MigrationClaimStore) is proven safe under real two-process contention
   for Postgres/MySQL/SQL Server (session advisory locks) and H2Server (a row lock in a dedicated
@@ -30,4 +45,4 @@ codeLinkedNote: >-
   H2LocalBootLockCrossProcessTest against two REAL java processes (wait-then-succeed, and
   wait-then-refuse-with-the-named-diagnostic).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B31"
-classification: HITTABLE
+classification: LIFTED
