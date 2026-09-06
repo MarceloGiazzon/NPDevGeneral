@@ -131,6 +131,8 @@ public final class AuthoringDiffGate {
             checkAccessDeltaDeclared(submittedConcept, previousConcept, manifest, violations);
             checkSensitiveDeltaDeclared(submittedConcept, previousConcept, manifest, violations);
             checkInvariantDeltaDeclared(submittedConcept, previousConcept, manifest, violations);
+            checkConceptUidNotChanged(submittedConcept, previousConcept, violations);
+            checkFieldUidNotChanged(submittedConcept, previousConcept, violations);
         }
 
         checkPermissionRequirementsDeltaDeclared(
@@ -438,6 +440,60 @@ public final class AuthoringDiffGate {
                         "concepts[" + submittedConcept.getName() + "].fields[" + field.getName() + "]",
                         "Submit the rename alone first; change the type/required/unique flag in a follow-up "
                                 + "submission."));
+            }
+        }
+    }
+
+    /**
+     * REG-209 (B1 lift, {@code ALL_HITTABLE_LIFT_PLAN_2026-09-05.md} package P7): a {@code uid} is a
+     * stable identity, generated once and never reused -- it may be ABSENT (a model authored before
+     * uids existed, or a genuinely new concept) or STABLE (unchanged across a submission), but never
+     * EDITED. Reuses {@code AUTHORING_RENAME_NOT_BACKED}'s own severity/shape convention (a hard
+     * {@code ERROR}, a JSON-pointer-ish {@code path}, a concrete {@code suggestedFix}) for a
+     * DIFFERENT reason than that check: an edited uid does not merely lack backing evidence, it
+     * actively breaks the very mechanism ({@code SchemaLifecycleExecutor#attemptInPlaceRenames}'s
+     * identity-based rename resolution) a stable identity exists to provide.
+     */
+    private static void checkConceptUidNotChanged(ConceptAst submitted, ConceptAst previous, List<Violation> violations) {
+        String previousUid = normalize(previous.getUid());
+        String submittedUid = normalize(submitted.getUid());
+        if (previousUid != null && submittedUid != null && !previousUid.equals(submittedUid)) {
+            violations.add(Violation.error("AUTHORING_UID_CHANGED",
+                    "Concept '" + previous.getName() + "' declared uid '" + previousUid + "' before this "
+                            + "submission; the submitted model gives it a DIFFERENT uid ('" + submittedUid
+                            + "'). A uid is a stable identity, generated once and never reused -- it may be "
+                            + "absent or unchanged, but never edited.",
+                    "concepts[" + submitted.getName() + "].uid",
+                    "Restore uid:\"" + previousUid + "\" on this concept, or omit uid entirely if it was "
+                            + "never meant to carry one."));
+        }
+    }
+
+    /** Field-level counterpart of {@link #checkConceptUidNotChanged} -- matches a submitted field to
+     *  its previous incarnation the SAME way {@link #checkNoRenameShapeChange} does (by {@code
+     *  renamedFrom} when declared, else by its own unchanged name), so a field renamed AND continuing
+     *  its uid is correctly recognized as the same identity, not flagged as new. */
+    private static void checkFieldUidNotChanged(ConceptAst submittedConcept, ConceptAst previousConcept, List<Violation> violations) {
+        Map<String, FieldAst> previousFieldsByName = byName(previousConcept.getFields(), FieldAst::getName);
+        for (FieldAst field : submittedConcept.getFields()) {
+            String renamedFrom = normalize(field.getRenamedFrom());
+            String previousLookupName = renamedFrom != null ? renamedFrom : field.getName();
+            FieldAst previousField = previousFieldsByName.get(previousLookupName);
+            if (previousField == null) {
+                continue; // a genuinely new field -- nothing to compare its uid against
+            }
+            String previousUid = normalize(previousField.getUid());
+            String submittedUid = normalize(field.getUid());
+            if (previousUid != null && submittedUid != null && !previousUid.equals(submittedUid)) {
+                violations.add(Violation.error("AUTHORING_UID_CHANGED",
+                        "Field '" + previousConcept.getName() + "." + previousLookupName + "' declared uid '"
+                                + previousUid + "' before this submission; the submitted model gives it a "
+                                + "DIFFERENT uid ('" + submittedUid + "'). A uid is a stable identity, "
+                                + "generated once and never reused -- it may be absent or unchanged, but "
+                                + "never edited.",
+                        "concepts[" + submittedConcept.getName() + "].fields[" + field.getName() + "].uid",
+                        "Restore uid:\"" + previousUid + "\" on this field, or omit uid entirely if it was "
+                                + "never meant to carry one."));
             }
         }
     }

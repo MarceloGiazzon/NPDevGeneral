@@ -683,6 +683,7 @@ public final class CompiledModelCanonicalJson {
             node.put("truthLevel", safe(concept.getTruthLevel()));
             node.put("module", safe(concept.getModule()));
             node.put("renamedFrom", safe(concept.getRenamedFrom()));
+            node.put("uid", safe(concept.getUid()));
             node.put("satelliteOf", safe(concept.getSatelliteOf()));
             node.put("softDelete", concept.isSoftDelete());
             node.put("temporal", concept.isTemporal());
@@ -705,6 +706,7 @@ public final class CompiledModelCanonicalJson {
                 fieldNode.put("referenceTarget", safe(field.getReferenceTarget()));
                 fieldNode.put("connectable", safe(field.getConnectable()));
                 fieldNode.put("renamedFrom", safe(field.getRenamedFrom()));
+                fieldNode.put("uid", safe(field.getUid()));
                 fieldNode.set("referenceSemantics", toReferenceSemantics(field.getReferenceSemantics()));
                 fieldNode.put("domainType", safe(field.getDomainType()));
                 fieldNode.set("schema", toSchema(field.getSchema()));

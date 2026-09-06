@@ -87,7 +87,12 @@ final class SchemaManifestLoader {
                     // businessTableExpressionDefaultColumns names. Absent from every manifest emitted
                     // before this field existed -- stringMapMap defaults to an empty map, so a
                     // pre-existing app is unaffected (nothing to preview/backfill).
-                    stringMapMap(root.path("businessTableColumnDefaultExpressions"))
+                    stringMapMap(root.path("businessTableColumnDefaultExpressions")),
+                    // REG-209 (B1 lift, package P7): the model's own declared uid for every table/
+                    // column that has one. Absent from every manifest emitted before uids existed --
+                    // stringMapMap defaults to an empty map, so a pre-uid app behaves exactly as it
+                    // did (attemptInPlaceRenames falls back to businessTableRenamedColumns alone).
+                    stringMapMap(root.path("businessTableColumnUids"))
             );
         } catch (Exception exception) {
             throw new IllegalStateException("Failed loading schema realization manifest", exception);

@@ -5,6 +5,28 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-09-06 — `concept`/`field` gain an optional `uid` for rename-by-identity (REG-209, boundary B1)
+
+**What changes.** `model.schema.json` (all four mirrors) adds an optional `uid` property
+(`^[a-z0-9]{8,32}$`) to both `concept` and `field`. Purely additive — a model with no `uid`s
+anywhere validates, compiles, and generates identically to before. When present,
+`SchemaLifecycleExecutor#attemptInPlaceRenames` resolves a rename by identity (a live column whose
+persisted `uid` matches a model field's declared `uid`, but whose name differs) BEFORE consulting
+the model's own declared `renamedFrom` — so a hand-edited `model.json` that changes only a field's
+`name` and keeps its `uid` is now renamed in place, with no `renamedFrom` marker needed at all.
+Deleting a field's `uid` in the same edit that renames it still refuses, exactly as an undeclared
+rename always has.
+
+**Who is affected.** No existing model is affected until an author opts in. A model with `uid`s
+gets one new runtime behavior: `SchemaLifecycleExecutor#afterMigrate` now persists a
+`npdev_column_identity` table on every successful boot pass (self-created, like
+`npdev_schema_history`) — informational bookkeeping, never a refusal surface.
+
+**Codemod.** `npdev migrate assign-uids --model <path> --write` stamps a random uid (never a
+name-derived hash) on every concept/field lacking one. Idempotent — running it again on an
+already-stamped model changes nothing. Not required for any existing model to keep working; only
+needed to opt into rename-by-identity going forward.
+
 ## 2026-08-25 — generated `listBy*` reference finders return `ConceptListSlice<T>`, not `List<T>` (RUN-28)
 
 **What changes.** Every bonded field's generated `ServiceBase.listBy<Field>(Object value)` method

@@ -275,6 +275,7 @@ public final class JsonModelParser {
                 String domainType = readText(f, "domainType");
                 String connectable = readText(f, "connectable");
                 String renamedFrom = readText(f, "renamedFrom");
+                String fieldUid = readText(f, "uid");
                 boolean sensitive = f.has("sensitive") && f.get("sensitive").asBoolean(false);
                 SchemaAst fieldSchema = parseSchema(f, "concepts[" + name + "].fields[" + fname + "]");
                 PresentationMetadataAst fieldUi = parsePresentationMetadata(
@@ -304,7 +305,8 @@ public final class JsonModelParser {
                         fileMetadata,
                         sensitive,
                         picker,
-                        fieldAccess
+                        fieldAccess,
+                        fieldUid
                 ));
             }
 
@@ -409,7 +411,8 @@ public final class JsonModelParser {
             String conceptSatelliteOf = readText(ent, "satelliteOf");
             boolean conceptSoftDelete = ent.has("softDelete") && ent.get("softDelete").asBoolean(false);
             boolean conceptTemporal = ent.has("temporal") && ent.get("temporal").asBoolean(false);
-            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete, conceptTemporal);
+            String conceptUid = readText(ent, "uid");
+            ConceptAst concept = new ConceptAst(name, extendsName, specializesName, fields, invariants, conceptEvents, lifecycle, conceptUi, truthLevel, module, indexes, access, conceptRenamedFrom, conceptSatelliteOf, originFor(originByQualifiedMemberName, "concepts", name), conceptSoftDelete, conceptTemporal, conceptUid);
             concepts.add(concept);
             conceptsByLowerName.put(name.toLowerCase(Locale.ROOT), concept);
         }

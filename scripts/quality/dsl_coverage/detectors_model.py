@@ -99,6 +99,29 @@ def _has_renamed_field(model: dict) -> bool:
     return False
 
 
+def _has_concept_uid(model: dict) -> bool:
+    """REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): a concept declaring a
+    stable uid -- the mechanism that lets attemptInPlaceRenames resolve a rename by identity even
+    when the model carries no renamedFrom marker at all. Tracked separately from field.uid (below)
+    the same way concept.access/field.access are, since either level can carry one independently."""
+    for concept in (model.get("concepts", None) or []):
+        if isinstance(concept, dict) and concept.get("uid"):
+            return True
+    return False
+
+
+def _has_field_uid(model: dict) -> bool:
+    """REG-209 (B1 lift, package P7): a field declaring a stable uid -- see _has_concept_uid's own
+    docstring for the mechanism this proves reaches the corpus."""
+    for concept in (model.get("concepts", None) or []):
+        if not isinstance(concept, dict):
+            continue
+        for field in (concept.get("fields", None) or []):
+            if isinstance(field, dict) and field.get("uid"):
+                return True
+    return False
+
+
 def _has_concept_access(model: dict) -> bool:
     for concept in (model.get("concepts", None) or []):
         if not isinstance(concept, dict):

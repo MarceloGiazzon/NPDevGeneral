@@ -569,6 +569,20 @@
         "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/UserDatabaseDefinitionLoader.java",
         "NPDevCli/npdev_cli.py"
       ]
+    },
+    {
+      "id": "uid-canonical-json-writer-reader-twin-pair",
+      "citedBy": "REG-209 (ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7, B1 lift)",
+      "description": "The generator only ever reads canonical JSON (never the raw model.json again), so CompiledModelCanonicalJson (writer) emitting a concept/field's uid with no matching read in CompiledModelCanonicalJsonReader would lose the value silently -- no error anywhere, exactly REG-104's own five-place-chain warning. Both must name the \"uid\" JSON key.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "\"uid\""
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
+      ]
     }
   ]
 }

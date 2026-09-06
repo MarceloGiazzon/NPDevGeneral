@@ -1,7 +1,41 @@
 id: B1
-title: "No automatic rename inference -- a rename must be declared via renamedFrom"
+title: "A concept or field carrying a stable uid can be renamed by any editing path, including a raw hand-edit; identity is declared once, not per rename"
 codeLinked: true
 codeLinkedNote: >-
+  2026-09-06 (REG-209, `ALL_HITTABLE_LIFT_PLAN_2026-09-05.md` package P7): the row's own genuinely-
+  uncaptured case -- "a raw hand-edit of model.json through none of the above, which no journal
+  design (new or old) can capture on an edit path it never sees" -- is closed, by NOT building a
+  journal at all. Identity lives in the file the hand-editor is already editing: `concept`/`field`
+  gain an optional `uid` (mirrored into all four `model.schema.json` copies, `pack.schema.json`
+  needing no change since it `$ref`s the same `$defs/concept`/`$defs/field`), threaded through the
+  five-place parser/compiler/canonical-JSON/resolver chain (REG-104), persisted per-column in a new
+  `npdev_column_identity` table (`ColumnIdentityStore`, self-creating like `SchemaHistoryStore`,
+  written by `SchemaLifecycleExecutor#afterMigrate` on every successful pass -- including one that
+  changes nothing) and consulted by `attemptInPlaceRenames` BEFORE the model's own declared
+  `businessTableRenamedColumns()` (`ColumnIdentityStore#resolveRenamesByIdentity`, feeding an
+  identity-matched rename into the exact SAME `SchemaManifest#withRenamedColumns` ->
+  `columnFactsFor` -> `DesiredColumn.renamedFromColumn` -> `SchemaDiffEngine`'s `SAFE_RENAME`
+  pipeline a declared `renamedFrom` already flows through -- no parallel classification path). A
+  hand-edit that changes only a field's `name` and keeps its `uid` is now resolved by construction;
+  one that also deletes the `uid` still refuses, honestly, since identity was destroyed. Proven live
+  against real H2 (`SchemaLifecycleExecutorInPlaceRenameTest`): the rename applies, data survives,
+  and a model with no uids at all behaves exactly as before (`renamedFrom` unchanged). Ships with
+  `npdev migrate assign-uids` (random uids, never name-derived -- idempotent, proven by running it
+  twice on a real corpus model and diffing byte-for-byte identical), authoring-surface stamping
+  (`model-authoring.mustache`'s `newConcept`/`newField`) and protection (`AuthoringDiffGate` now
+  refuses `AUTHORING_UID_CHANGED` -- a uid may be absent or stable, never edited), and corpus
+  coverage (`concept.uid`/`field.uid`, two new tracked features in `check-dsl-coverage.py`'s
+  registry, both witnessed in `dsl-conformance-max`). See `ledger/items/REG-209.yml` for the full
+  trace and two adjacent latent bugs found and fixed along the way (a stale `SchemaManifest.withEngine`
+  and two `PackExtensionComposer` concept-rebuild sites that had silently dropped `temporal` since
+  R5.8 shipped, well before this package).
+
+  **Reclassified LIFTED** (was HITTABLE) -- **residue named, not claimed away:** a model authored
+  before uids existed, hand-edited to rename a field with no `uid` present at all, still needs a
+  declared `renamedFrom` -- one run of `npdev migrate assign-uids` leaves that mode permanently, but
+  until that run happens the OLD refusal-without-a-marker behavior is exactly what still applies,
+  unchanged.
+
   ConceptValidation.validateConceptRenamedFrom now prefixes each error with B1:<code>:, and
   ValidationDiagnosticNormalizer extracts the boundaryId and strips the prefix before pattern
   matching. REG-197 (boundary lift plan 2026-09-02, package 2.2) added
@@ -44,4 +78,4 @@ codeLinkedNote: >-
   above, which no journal design (new or old) can capture on an edit path it never sees. That is
   honest permanent residue, the same shape as B11's engine limit, not a defect.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B1"
-classification: HITTABLE
+classification: LIFTED

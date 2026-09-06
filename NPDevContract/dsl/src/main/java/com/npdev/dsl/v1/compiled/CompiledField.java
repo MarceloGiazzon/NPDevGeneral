@@ -24,6 +24,7 @@ public final class CompiledField {
     private final boolean sensitive;
     private final CompiledFieldPicker picker;
     private final CompiledFieldAccess access;
+    private final String uid;
 
     public CompiledField(String name, String dslType, String javaType, boolean id, boolean required, boolean unique) {
         this(name, dslType, javaType, id, required, unique, List.of(), null, null, null, null, List.of(), null);
@@ -227,6 +228,33 @@ public final class CompiledField {
             CompiledFieldPicker picker,
             CompiledFieldAccess access
     ) {
+        this(name, dslType, javaType, id, required, unique, enumValues, referenceTarget, referenceSemantics,
+                domainType, schema, enumOptions, ui, connectable, renamedFrom, file, sensitive, picker, access, null);
+    }
+
+    /** REG-209 (B1 lift): a stable identity for this field, generated once and never reused -- see getUid. */
+    public CompiledField(
+            String name,
+            String dslType,
+            String javaType,
+            boolean id,
+            boolean required,
+            boolean unique,
+            List<String> enumValues,
+            String referenceTarget,
+            CompiledReferenceSemantics referenceSemantics,
+            String domainType,
+            CompiledSchema schema,
+            List<CompiledEnumOption> enumOptions,
+            CompiledPresentationMetadata ui,
+            String connectable,
+            String renamedFrom,
+            CompiledFileMetadata file,
+            boolean sensitive,
+            CompiledFieldPicker picker,
+            CompiledFieldAccess access,
+            String uid
+    ) {
         this.name = name;
         this.dslType = dslType;
         this.javaType = javaType;
@@ -246,6 +274,7 @@ public final class CompiledField {
         this.sensitive = sensitive;
         this.picker = picker;
         this.access = access;
+        this.uid = uid;
     }
 
     public CompiledField(
@@ -303,4 +332,7 @@ public final class CompiledField {
     public CompiledFieldPicker getPicker() { return picker; }
     /** R5.5: this field's declared {read, write} authorization rule, or null if undeclared. */
     public CompiledFieldAccess getAccess() { return access; }
+    /** REG-209 (B1 lift): a stable identity for this field, generated once and never reused
+     *  (npdev migrate assign-uids stamps one); null if the field declares none. */
+    public String getUid() { return uid; }
 }

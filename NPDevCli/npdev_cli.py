@@ -1484,6 +1484,183 @@ def run_migrate_dsl2(args: argparse.Namespace) -> int:
     return 1 if invalid_count > 0 else 0
 
 
+_HOOK_VERIFY_SQL_PATTERN = re.compile(
+    r"^\s*SELECT\s+COUNT\(\*\)\s+FROM\s+([A-Za-z_][A-Za-z0-9_]*)\s+WHERE\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*)\s+IS\s+(NOT\s+)?NULL\s*$",
+    re.IGNORECASE,
+)
+
+
+def run_migrate_hook_verify(args: argparse.Namespace) -> int:
+    """STOR-29 (B10 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P6): converts a
+    conversion-hook's hand-written `verifySql`/`verifyExpect` into the new declarative
+    `verify: {concept, where, expect}` field wherever it matches the one shape that field can
+    express -- `SELECT COUNT(*) FROM <table> WHERE <column> IS [NOT] NULL` -- and reports every
+    hook.json it cannot translate (a different shape entirely, e.g. multiple OR'd columns, a JOIN,
+    a non-COUNT aggregate) rather than guessing at a declarative form for it. Dry-run by default;
+    pass --write to apply. A hook already carrying `verify` is left untouched (already declarative).
+    """
+    inputs = [Path(p).expanduser().resolve() for p in args.input]
+    files: list[Path] = []
+    for p in inputs:
+        if p.is_dir():
+            files.extend(sorted(p.rglob("hook.json")))
+        elif p.is_file():
+            files.append(p)
+        else:
+            print(f"npdev migrate hook-verify: input not found: {p}", file=sys.stderr)
+            return 2
+
+    converted_count = 0
+    already_declarative_count = 0
+    no_verify_sql_count = 0
+    untranslatable_count = 0
+    invalid_count = 0
+    report_entries = []
+
+    for f in files:
+        try:
+            doc = read_json(f)
+        except CliError as exc:
+            invalid_count += 1
+            print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
+            continue
+        if not isinstance(doc, dict):
+            continue
+
+        if "verify" in doc:
+            already_declarative_count += 1
+            report_entries.append({"file": str(f), "outcome": "already-declarative"})
+            continue
+        verify_sql = doc.get("verifySql")
+        if not verify_sql or not isinstance(verify_sql, str):
+            no_verify_sql_count += 1
+            report_entries.append({"file": str(f), "outcome": "no-verifySql"})
+            continue
+
+        match = _HOOK_VERIFY_SQL_PATTERN.match(verify_sql)
+        if not match:
+            untranslatable_count += 1
+            print(f"  [CANNOT TRANSLATE] {f}: verifySql does not match the single-column "
+                  f"null-check shape: {verify_sql!r}")
+            report_entries.append({"file": str(f), "outcome": "untranslatable", "verifySql": verify_sql})
+            continue
+
+        table, column, not_null = match.group(1), match.group(2), match.group(3)
+        expect = doc.get("verifyExpect", 0)
+        where = f"{column} IS {'NOT ' if not_null else ''}NULL"
+        verb = "CONVERTED" if args.write else "WOULD CONVERT"
+        print(f"  [{verb}] {f}: verifySql -> verify: {{concept: {table!r}, where: {where!r}, expect: {expect}}}")
+        report_entries.append({
+            "file": str(f), "outcome": "converted",
+            "verify": {"concept": table, "where": where, "expect": expect},
+        })
+        converted_count += 1
+        if args.write:
+            del doc["verifySql"]
+            doc.pop("verifyExpect", None)
+            doc["verify"] = {"concept": table, "where": where, "expect": expect}
+            f.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+
+    print(
+        f"\n{len(files)} hook.json file(s) scanned: {converted_count} converted, "
+        f"{already_declarative_count} already declarative, {no_verify_sql_count} with no verifySql, "
+        f"{untranslatable_count} untranslatable (left unchanged), {invalid_count} invalid JSON (skipped)"
+    )
+    if not args.write and converted_count > 0:
+        print("Dry run -- pass --write to apply.")
+
+    if args.report:
+        report_path = Path(args.report).expanduser()
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report_entries, indent=2) + "\n", encoding="utf-8")
+        print(f"Report written: {report_path}")
+
+    return 1 if invalid_count > 0 else 0
+
+
+_UID_PATTERN = re.compile(r"^[a-z0-9]{8,32}$")
+
+
+def _generate_uid() -> str:
+    """REG-209 (B1 lift, package P7): a random uid, never a name-derived hash -- a hash of the name
+    changes when the name changes, which would defeat the whole rename-by-identity mechanism.
+    secrets.token_hex(8) -> 16 lowercase hex chars, well inside the ^[a-z0-9]{8,32}$ schema pattern.
+    """
+    return secrets.token_hex(8)
+
+
+def run_migrate_assign_uids(args: argparse.Namespace) -> int:
+    """REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): stamps a random uid on
+    every concept and field in --model lacking one. Idempotent by construction -- only stamps where
+    absent, so running this twice on the same file produces byte-identical output the second time.
+    Dry-run by default (reports what would be stamped); pass --write to apply.
+    """
+    model_path = Path(args.model).expanduser().resolve()
+    try:
+        doc = read_json(model_path)
+    except CliError as exc:
+        print(f"npdev migrate assign-uids: {exc}", file=sys.stderr)
+        return 2
+    if not isinstance(doc, dict):
+        print(f"npdev migrate assign-uids: {model_path} is not a JSON object", file=sys.stderr)
+        return 2
+
+    concepts = doc.get("concepts")
+    if not isinstance(concepts, list):
+        print(f"npdev migrate assign-uids: {model_path} has no concepts[] array -- nothing to stamp")
+        return 0
+
+    stamped = []
+    already_present = 0
+    for concept in concepts:
+        if not isinstance(concept, dict):
+            continue
+        concept_name = concept.get("name", "<unnamed>")
+        existing_concept_uid = concept.get("uid")
+        if existing_concept_uid:
+            if not _UID_PATTERN.match(str(existing_concept_uid)):
+                print(f"  [WARNING] concept '{concept_name}': existing uid {existing_concept_uid!r} does not "
+                      f"match ^[a-z0-9]{{8,32}}$ -- left as-is, not re-stamped (re-stamping would break "
+                      f"identity for anything already resolved against it)")
+            already_present += 1
+        else:
+            new_uid = _generate_uid()
+            stamped.append(f"concept '{concept_name}' -> {new_uid}")
+            if args.write:
+                concept["uid"] = new_uid
+        fields = concept.get("fields")
+        if not isinstance(fields, list):
+            continue
+        for field in fields:
+            if not isinstance(field, dict):
+                continue
+            field_name = field.get("name", "<unnamed>")
+            existing_field_uid = field.get("uid")
+            if existing_field_uid:
+                if not _UID_PATTERN.match(str(existing_field_uid)):
+                    print(f"  [WARNING] field '{concept_name}.{field_name}': existing uid {existing_field_uid!r} "
+                          f"does not match ^[a-z0-9]{{8,32}}$ -- left as-is, not re-stamped")
+                already_present += 1
+            else:
+                new_uid = _generate_uid()
+                stamped.append(f"field '{concept_name}.{field_name}' -> {new_uid}")
+                if args.write:
+                    field["uid"] = new_uid
+
+    verb = "STAMPED" if args.write else "WOULD STAMP"
+    for line in stamped:
+        print(f"  [{verb}] {line}")
+    print(f"\n{len(stamped)} uid(s) {'stamped' if args.write else 'would be stamped'}, "
+          f"{already_present} already present (left unchanged)")
+    if not args.write and stamped:
+        print("Dry run -- pass --write to apply.")
+    if args.write and stamped:
+        model_path.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+        print(f"Written: {model_path}")
+    return 0
+
+
 def run_migrate_bounded_contexts(args: argparse.Namespace) -> int:
     """S3 (docs/adr/ADR-0011-bounded-contexts.md, S3_SPEC.md Section 2): wraps an existing model's
     whole content into one new bounded context. Dry-run by default (reports every relocation/change);
@@ -12546,6 +12723,29 @@ def build_parser() -> argparse.ArgumentParser:
     )
     migrate_dsl2.add_argument("--report", help="write a JSON report of every file's outcome to this path")
 
+    migrate_hook_verify = migrate_sub.add_parser(
+        "hook-verify",
+        help="Convert a conversion hook's verifySql into the declarative verify field where possible (B10).",
+    )
+    migrate_hook_verify.add_argument(
+        "--input", required=True, nargs="+",
+        help="one or more files or directories (searched recursively for hook.json) to migrate",
+    )
+    migrate_hook_verify.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place; without this flag, reports what would change and exits",
+    )
+    migrate_hook_verify.add_argument("--report", help="write a JSON report of every file's outcome to this path")
+
+    migrate_assign_uids = migrate_sub.add_parser(
+        "assign-uids", help="Stamp a stable uid on every concept/field lacking one (B1).",
+    )
+    migrate_assign_uids.add_argument("--model", required=True, help="path to the model.json to stamp")
+    migrate_assign_uids.add_argument(
+        "--write", action="store_true",
+        help="apply changes in place; without this flag, reports what would be stamped and exits",
+    )
+
     migrate_rename = migrate_sub.add_parser(
         "rename", help="Declare a field rename (stamps renamedFrom) for a hand-edited model.json."
     )
@@ -13901,6 +14101,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_migrate_rename(args)
         if args.command == "migrate" and args.migrate_command == "dsl-2":
             return run_migrate_dsl2(args)
+        if args.command == "migrate" and args.migrate_command == "hook-verify":
+            return run_migrate_hook_verify(args)
+        if args.command == "migrate" and args.migrate_command == "assign-uids":
+            return run_migrate_assign_uids(args)
         if args.command == "migrate" and args.migrate_command == "bounded-contexts":
             return run_migrate_bounded_contexts(args)
         if args.command == "migrate" and args.migrate_command == "label-locales":

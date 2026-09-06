@@ -18,7 +18,8 @@ from .detectors_model import (  # noqa: F401 - every name the table below refere
     _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
-    _has_concept_soft_delete, _has_concept_temporal, _has_field_access, _has_locale_label,
+    _has_concept_soft_delete, _has_concept_temporal, _has_concept_uid, _has_field_access,
+    _has_field_uid, _has_locale_label,
     _has_conversion_java_hook, _has_conversion_op, _has_date_field, _has_decimal_field, _has_file_field,
     _has_flow_io_schema,
     _has_flow_start_endpoint, _has_groupby_cross_context_join, _has_groupby_join,
@@ -43,6 +44,10 @@ FEATURE_DETECTORS = {
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
     # D1 (FIRST_IMPRESSION_PLAN.md I5): field.renamedFrom -- see _has_renamed_field's own docstring.
     "field.renamedFrom": _has_renamed_field,
+    # REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): a stable uid, tracked at
+    # both levels independently (same discipline as concept.access/field.access above).
+    "concept.uid": _has_concept_uid,
+    "field.uid": _has_field_uid,
     "selectors": lambda m: _nonempty(m, "selectors"),
     # Wave 3 (RC-B1, MOVE11_RUNTIME_CONFIGURATION_PLAN Part B.1): app-defined role -> permission-
     # ceiling declarations, a new top-level array sibling of settings/selectors.

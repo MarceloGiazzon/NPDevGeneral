@@ -1022,6 +1022,24 @@ public final class SchemaRealizationEmitter {
         return renames;
     }
 
+    /** REG-209 (B1 lift, package P7): every column whose field declares a {@code uid} -- mirrors
+     *  {@link #columnRenames}'s exact shape/scope (many-to-many bond columns excluded, since those are
+     *  junction-table columns with no field of their own to carry an identity). */
+    private static Map<String, String> columnUids(CompiledConcept concept, Map<String, CompiledConcept> conceptsByName) {
+        Map<String, String> uids = new LinkedHashMap<>();
+        for (CompiledField field : concept.getFields()) {
+            Optional<Bond> bond = BondModelSupport.resolveBond(concept, field, conceptsByName);
+            if (bond.isPresent() && bond.get().cardinality() == Cardinality.MANY_TO_MANY) {
+                continue;
+            }
+            String uid = field.getUid();
+            if (uid != null && !uid.isBlank()) {
+                uids.put(SqlIdentifierSupport.columnName(field), uid);
+            }
+        }
+        return uids;
+    }
+
     /**
      * LNCH-1 P5 (5.2): every column name (bond or not, id excluded implicitly since it is never
      * "missing" from an existing table) whose field is {@code required} in the model. Threaded into
@@ -1443,6 +1461,7 @@ public final class SchemaRealizationEmitter {
         Map<String, List<String>> businessTableAdditiveColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnTypes = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableRenamedColumns = new LinkedHashMap<>();
+        Map<String, Map<String, String>> businessTableColumnUids = new LinkedHashMap<>();
         Map<String, String> businessTableRenames = new LinkedHashMap<>();
         Map<String, List<String>> businessTableRequiredColumns = new LinkedHashMap<>();
         Map<String, Map<String, String>> businessTableColumnDefaultLiterals = new LinkedHashMap<>();
@@ -1465,6 +1484,10 @@ public final class SchemaRealizationEmitter {
             Map<String, String> renames = columnRenames(concept, conceptsByName);
             if (!renames.isEmpty()) {
                 businessTableRenamedColumns.put(table, renames);
+            }
+            Map<String, String> uids = columnUids(concept, conceptsByName);
+            if (!uids.isEmpty()) {
+                businessTableColumnUids.put(table, uids);
             }
             Map.Entry<String, String> tableRename = conceptTableRename(concept, model.getContexts());
             if (tableRename != null) {
@@ -1520,7 +1543,8 @@ public final class SchemaRealizationEmitter {
                 businessTableUniqueConstraints,
                 businessTableForeignKeys,
                 businessTableIndexes,
-                businessTableColumnDefaultExpressions
+                businessTableColumnDefaultExpressions,
+                businessTableColumnUids
         );
     }
 
@@ -1551,11 +1575,14 @@ public final class SchemaRealizationEmitter {
             // Move 9 B1 (docs/ACCEPTED_BOUNDARIES.md B2): added LAST, same SER-G8 convention as the FK/
             // index maps above -- absent from an older generated manifest simply means "no expression
             // defaults to preview," not a behavior change for any app built before this.
-            Map<String, Map<String, String>> businessTableColumnDefaultExpressions
+            Map<String, Map<String, String>> businessTableColumnDefaultExpressions,
+            // REG-209 (B1 lift, package P7): added LAST, same convention as the expression-defaults
+            // map above -- absent from an older generated manifest simply means "no uids declared."
+            Map<String, Map<String, String>> businessTableColumnUids
     ) {
         static BusinessTableMetadata empty() {
             return new BusinessTableMetadata(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+                    Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
         }
     }
 
@@ -1738,6 +1765,7 @@ public final class SchemaRealizationEmitter {
         manifest.put("businessTableAdditiveColumns", businessTableAdditiveColumns);
         manifest.put("businessTableColumnTypes", businessTableColumnTypes);
         manifest.put("businessTableRenamedColumns", businessTableRenamedColumns);
+        manifest.put("businessTableColumnUids", businessMetadata.businessTableColumnUids());
         manifest.put("businessTableRenames", businessTableRenames);
         // LNCH-1 Phase 5.
         manifest.put("businessTableRequiredColumns", businessTableRequiredColumns);

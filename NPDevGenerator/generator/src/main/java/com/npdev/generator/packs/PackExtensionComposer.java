@@ -212,7 +212,9 @@ public final class PackExtensionComposer {
                 baseConcept.getRenamedFrom(),
                 baseConcept.getSatelliteOf(),
                 baseConcept.getOrigin(),
-                baseConcept.isSoftDelete()
+                baseConcept.isSoftDelete(),
+                baseConcept.isTemporal(),
+                baseConcept.getUid()
         );
     }
 
@@ -516,7 +518,9 @@ public final class PackExtensionComposer {
                 concept.getRenamedFrom(),
                 concept.getSatelliteOf(),
                 concept.getOrigin(),
-                concept.isSoftDelete()
+                concept.isSoftDelete(),
+                concept.isTemporal(),
+                concept.getUid()
         );
     }
 
