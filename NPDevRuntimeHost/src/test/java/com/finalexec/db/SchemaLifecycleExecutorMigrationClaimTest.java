@@ -74,7 +74,7 @@ class SchemaLifecycleExecutorMigrationClaimTest {
     }
 
     @Test
-    @DisplayName("R9.3: a LIVE holder makes the boot wait, then time out naming the holder -- never interleave")
+    @DisplayName("R9.3: a LIVE holder makes the boot wait, then time out naming the holder -- never interleave (onTimeout=refuse)")
     void aLiveHolderMakesTheBootWaitThenTimeOut() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
@@ -89,6 +89,12 @@ class SchemaLifecycleExecutorMigrationClaimTest {
 
         String previousWait = System.getProperty("npdev.schema.lock.waitSeconds");
         System.setProperty("npdev.schema.lock.waitSeconds", "1");
+        // STOR-28 (B4 lift): this test's live schema already matches the manifest's declared columns,
+        // so the DEFAULT (degrade) posture would boot anyway once the wait times out -- explicitly
+        // pin onTimeout=refuse to keep proving the pre-STOR-28 "always refuses" behavior, which stays
+        // real and available for an operator who wants it.
+        String previousOnTimeout = System.getProperty("npdev.schema.lock.onTimeout");
+        System.setProperty("npdev.schema.lock.onTimeout", "refuse");
         try {
             BoundaryBootException exception = assertThrows(BoundaryBootException.class,
                     () -> executor.migrate(flyway, manifest));
@@ -112,11 +118,43 @@ class SchemaLifecycleExecutorMigrationClaimTest {
             } else {
                 System.setProperty("npdev.schema.lock.waitSeconds", previousWait);
             }
+            if (previousOnTimeout == null) {
+                System.clearProperty("npdev.schema.lock.onTimeout");
+            } else {
+                System.setProperty("npdev.schema.lock.onTimeout", previousOnTimeout);
+            }
         }
 
         Optional<MigrationClaimStore.Claim> stillHeld = MigrationClaimStore.current(dataSource);
         assertTrue(stillHeld.isPresent(), "a boot that gave up must never release a DIFFERENT instance's claim");
         assertEquals(otherInstance.instanceId(), stillHeld.get().instanceId());
+    }
+
+    @Test
+    @DisplayName("STOR-28 (B4 lift): a timed-out lock DEGRADES (boots without migrating) when the live schema is already compatible")
+    void aLiveHolderTimeoutDegradesWhenTheLiveSchemaIsAlreadyCompatible() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE widgets (id BIGINT PRIMARY KEY)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:same");
+        MigrationClaimStore.Claim otherInstance = MigrationClaimStore.claim(dataSource, false);
+
+        SchemaLifecycleExecutor.SchemaManifest manifest = manifestIdOnly("sha256:same");
+        Flyway flyway = Flyway.configure().dataSource(dataSource).locations(new String[0]).load();
+
+        String previousWait = System.getProperty("npdev.schema.lock.waitSeconds");
+        System.setProperty("npdev.schema.lock.waitSeconds", "1");
+        try {
+            // Default posture (degrade): does NOT throw, even though the lock never became available.
+            executor.migrate(flyway, manifest);
+        } finally {
+            if (previousWait == null) {
+                System.clearProperty("npdev.schema.lock.waitSeconds");
+            } else {
+                System.setProperty("npdev.schema.lock.waitSeconds", previousWait);
+            }
+            MigrationClaimStore.release(dataSource, otherInstance.instanceId());
+        }
     }
 
     @Test

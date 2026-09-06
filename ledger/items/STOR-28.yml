@@ -1,0 +1,64 @@
+id: STOR-28
+title: >-
+  A boot with no schema work takes no migration lock; a boot that cannot get one degrades instead
+  of refusing when the live schema is already compatible (boundary B4 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-05
+closed: 2026-09-05
+source: >-
+  ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P3 (Wave 1, independent). B4.yml's own residue:
+  `MigrationMutex.acquire` is called unconditionally by `SchemaLifecycleExecutor.beforeMigrate`, so
+  EVERY boot contends the lock -- including one with nothing to migrate at all -- and a boot that
+  cannot obtain the lock within its budget always refused, even when the live schema was already
+  fully compatible with what this build wants. The previous plan (REAL_LIFT_PLAN_2026-09-03) called
+  this "nothing left to lift" reasoning about two instances genuinely racing a migration; it did not
+  address the much more common rolling-restart case where both instances run the SAME build and
+  neither has any migration to run at all.
+surface: runtimehost-core (db)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MigrationPreflight.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaHistoryStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/SupportDiagnosticsService.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/MigrationPreflightTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorMigrationClaimTest.java
+  - ledger/boundaries/B4.yml
+detail: |
+  New `MigrationPreflight.nothingToDo(DataSource, SchemaManifest)`: a plain-read check (no lock)
+  true when the most recent APPLIED row in `npdev_schema_history` already matches this build's
+  schema fingerprint AND Flyway has no pending migration for it. `SchemaLifecycleExecutor.migrate`
+  now calls this BEFORE calling `MigrationMutex.acquire` at all, on a fresh (non-`freshDatabase`)
+  boot -- skipping the lock entirely when there is genuinely nothing to do. On a timeout it
+  re-checks the preflight once more (the holder may have finished mid-wait) before falling through
+  to `ExternalSchemaVerification.findExternalSchemaIncompatibilities` (the same check
+  `PromotionVerifier` already uses): if the live schema is compatible, the boot proceeds with a
+  loud warning and `SupportDiagnosticsService.markMigrationDeferred(...)` instead of exiting; only a
+  genuinely incompatible schema still refuses with `B4:migration_lock_held`. Configurable via
+  `npdev.schema.lock.onTimeout=degrade|refuse` (default `degrade`); `MigrationMutex` itself is
+  untouched, per the plan's own explicit instruction not to touch its progress-aware wait logic.
+
+  **Regression found and fixed during implementation, not part of the original plan:** the first
+  preflight call site self-bootstrapped `npdev_schema_history` (an unqualified
+  `CREATE TABLE IF NOT EXISTS` in the SAME schema Flyway manages) before `flyway.migrate()` ran on a
+  genuinely fresh database -- reproducing REG-7.2's exact "found non-empty schema(s) but no schema
+  history table" failure on a virgin boot. Fixed by guarding both `MigrationPreflight.nothingToDo`
+  call sites with `!freshDatabase &&` -- the preflight now never runs (and never creates its table)
+  ahead of Flyway on a fresh database, only on a boot that already has schema history to compare
+  against.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/MigrationPreflightTest.java
+  asserts: >-
+    6 tests covering nothingToDo's true/false branches (fingerprint match with no pending Flyway
+    migration; fingerprint mismatch; pending migration present; no history row at all).
+    SchemaLifecycleExecutorMigrationClaimTest keeps its pre-existing timeout case (now with an
+    explicit onTimeout=refuse property pinned to it, per the plan's trap-avoidance instruction to
+    extend rather than delete), and adds
+    aLiveHolderTimeoutDegradesWhenTheLiveSchemaIsAlreadyCompatible proving the new degrade path.
+    MigrationLockConcurrentBootTest (pre-existing) still passes unchanged, confirming the preflight
+    does not alter genuine two-instance migration-race behavior. Verified via the RuntimeHost
+    module's own test run after the REG-7.2-shaped regression was found and fixed; full
+    run-runtimehost-gate.ps1 passed clean as part of this session's later checkpoint.
+  provenRed: true

@@ -26,6 +26,23 @@ public class SupportDiagnosticsService {
     private static final Path PUBLICATION_FAILURE_RECOVERY_ROOT = Path.of("runtime-data", "publication-failure-recovery");
     private static final Path ROLLBACK_EXECUTION_ROOT = Path.of("runtime-data", "rollback-executions");
 
+    /**
+     * STOR-28 (B4 lift): set by {@code SchemaLifecycleExecutor} when a boot DEGRADES past a timed-out
+     * migration lock instead of refusing -- the live schema was verified externally compatible
+     * (no incompatibilities), so this instance boots WITHOUT applying its own pending migration.
+     * Static, not a constructor-injected dependency: {@code SchemaLifecycleExecutor} runs from a
+     * {@code FlywayMigrationStrategy} callback, well before this bean exists, against a raw
+     * {@code DataSource}/{@code Flyway} pair -- there is no bean graph to wire through at that point.
+     * {@code null} means "not deferred"; a non-null value is the operator-facing reason, surfaced by
+     * {@link #diagnostics}.
+     */
+    private static volatile String migrationDeferredReason;
+
+    /** Public: called from {@code com.finalexec.db.SchemaLifecycleExecutor}, a different package. */
+    public static void markMigrationDeferred(String reason) {
+        migrationDeferredReason = reason;
+    }
+
     private final PublicationChainReferenceResolver referenceResolver;
     private final DataSource dataSource;
     private final CompiledModel compiledModel;
@@ -69,6 +86,13 @@ public class SupportDiagnosticsService {
         response.put("diagnosticPosture", issueItems.isEmpty() && blockedItems.isEmpty()
                 ? "QUIET_RUNTIME_OR_LIGHT_EVIDENCE"
                 : "SUPPORT_DIAGNOSTICS_LINKED_TO_REAL_RECORDS");
+        // STOR-28 (B4 lift): surfaced whenever this boot degraded past a timed-out migration lock
+        // instead of refusing -- see markMigrationDeferred's own javadoc.
+        String deferredReason = migrationDeferredReason;
+        response.put("migrationDeferred", deferredReason != null);
+        if (deferredReason != null) {
+            response.put("migrationDeferredReason", deferredReason);
+        }
         return response;
     }
 

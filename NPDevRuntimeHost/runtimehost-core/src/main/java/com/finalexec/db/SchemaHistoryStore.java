@@ -96,6 +96,20 @@ final class SchemaHistoryStore {
         }
     }
 
+    /**
+     * STOR-28 (B4 lift): true when the most recent APPLIED/MANUALLY_MARKED_DONE row already targets
+     * {@code fingerprint} -- i.e. a prior boot already converged the schema-diff/backfill/rename
+     * machinery for this exact build, so {@link MigrationPreflight} can call this database's
+     * NPDev-owned schema work done without taking the migration lock to find out. Reuses {@link
+     * #latestOutcomeOverall} rather than a second query -- one read, one source of truth.
+     */
+    static boolean atOrPastFingerprint(DataSource dataSource, String fingerprint) {
+        return latestOutcomeOverall(dataSource)
+                .map(HistoryPoint::toFingerprint)
+                .filter(fingerprint::equals)
+                .isPresent();
+    }
+
     private static Optional<HistoryPoint> latestOutcomeOverall(DataSource dataSource) {
         try (Connection connection = dataSource.getConnection()) {
             ensureHistoryTable(connection);
