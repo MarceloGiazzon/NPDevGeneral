@@ -91,3 +91,40 @@ detail: |
   H2's `DB_CLOSE_DELAY=-1` keeps a named in-memory database's Engine/MVStore registered for the rest of
   the JVM's life even after every connection closes and table drops, so 400 iterations without it
   exhausted the test JVM's heap before completing a single anomaly-relevant run.
+
+  2026-09-06 EXPERIMENT (negative result, follows the DONE-WHEN's own prescribed methodology -- reproduce
+  the ORIGINAL integration test, not just extracted logic, inside the real single-JVM suite): reconstructed
+  the exact removed test (`additiveNotNullExtraColumnWithNoDefaultStillRefuses`, from the pre-removal
+  diff embedded in commit 10daaeef's own explanatory comment -- the method itself was never committed, so
+  git history has no literal copy) and re-added it TEMPORARILY to
+  `SchemaLifecycleExecutorDatabaseMigratedPastBuildTest`, plus temporarily un-swallowed both
+  `SchemaHistoryStore.latestOutcomeTimestamp`/`latestOutcomeOverall`'s `catch (SQLException)` blocks
+  (candidate A) to print instead of silently returning `Optional.empty()`, plus a direct
+  `SchemaHistoryStore.databaseMigratedPastThisBuild` call inside the test itself (captured to the JUnit
+  XML `<system-out>` either way, not just on failure) so a repro would show Trigger C's own two-query
+  read at the exact moment of the call, not just the test's outer symptom. Ran the REAL single-JVM suite
+  (the assembled `simple-contact-intake` sample app's own `:test` task, ~846 tests today) 6 times: once
+  via the full `run-runtimehost-gate.ps1` (regenerate + rebuild + test), then 5 more direct `gradlew test
+  --rerun-tasks` passes against the already-assembled app (no regeneration, so each pass is the same real
+  suite, not a narrower one). Result: 6/6 clean -- the reconstructed test passed every time, and the
+  captured diagnostic confirms `databaseMigratedPastThisBuild` returned the CORRECT
+  `Optional[HistoryPoint[...]]` on every direct call. The swallowed-SQLException print never fired once
+  across all 6 runs. RULES OUT (for today's environment, this many times running): candidate A
+  (`ensureHistoryTable`'s `CREATE TABLE IF NOT EXISTS` throwing a real, swallowed `SQLException`) as
+  something that actually happens with any regularity -- if it happened even once in these 6 runs the
+  print would have shown it, and it did not. One UNRELATED flaky failure was observed in run 1 of the 5
+  direct passes -- `H2LocalBootLockCrossProcessTest#contenderTimesOutAndRefusesWithTheNamedBoundary`, a
+  cross-process migration-lock timeout test, a different subsystem (B4 lock contention, not Trigger C) --
+  noted here only because it confirms this suite still has AT LEAST ONE genuinely timing-sensitive test
+  today, i.e. the repro attempt's conditions were realistic, not an artificially quiet JVM; not itself
+  investigated as part of this item. Temporary diagnostics and the reconstructed test were both reverted
+  before this session ended (`git diff` on both touched files is empty) -- nothing of this experiment is
+  left in the tree. Narrows the remaining search toward candidate B (`ImpactReportWriter`/`classify()`
+  leftover state from some other test) or a mechanism not yet hypothesized; does not close the item.
+  Given the effort already invested here across two sessions (40 + 200 + 6 = 246 total repeated-run data
+  points, all negative for every hypothesis tested) against a LOW-severity item with zero coverage gap
+  from the original removal, further blind repeated-run hunting has a poor effort/reward ratio -- the
+  next productive step is probably adding lightweight, PERMANENT (not throwaway) instrumentation around
+  candidate B's actual state (whatever `ImpactReportWriter`/`classify()` hold across calls) so the NEXT
+  time this fires naturally in an ordinary gate run, it is caught with a diagnosis attached instead of
+  needing another dedicated repro session.
