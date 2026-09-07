@@ -538,6 +538,13 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropConstraint(String constraintName, String tableName) {
+        // DROP CONSTRAINT IF EXISTS is native on SQL Server 2016+, the same version floor
+        // guardedDropIndexIfExists relies on.
+        return "ALTER TABLE " + tableName + " DROP CONSTRAINT IF EXISTS " + constraintName + ";";
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         // COL_LENGTH returns null for a column that does not exist -- the cheapest existence test
         // here, and it does not need the schema spelled out.

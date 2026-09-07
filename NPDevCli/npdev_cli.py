@@ -5246,6 +5246,116 @@ def run_db_adopt_ownership(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 2
 
 
+def run_db_surplus(args: argparse.Namespace) -> int:
+    """STOR-31 (docs/ACCEPTED_BOUNDARIES.md B3, LIFTED): CLI front end for
+    `SchemaAcknowledgmentController`'s surplus preview/drop endpoints on a RUNNING app -- the
+    itemized, token-gated way an operator executes their OWN decision to drop a FOREIGN-classified
+    surplus constraint (an extra index/FK the model does not declare), instead of hand-dropping it
+    in a SQL console with no record. Same discovery + SUPERUSER-auth shape as `run_db_restore`/
+    `run_db_adopt_ownership` (npdev_monitor.probe_app, then _ops/SUPER_USER_KEY.txt, then
+    X-Super-User-Key): every expected outcome is a structured ok:false result, never a traceback.
+
+    Previews by default (GET .../surplus/preview) and writes nothing. `--drop a,b --apply` fetches a
+    FRESH preview (never trusts a stale one), takes its dropToken, and POSTs .../surplus/drop --
+    the server recomputes everything against the CURRENT live database anyway: a changed surplus set
+    or a wrong token is refused there (B3:surplus_token_stale:), a non-FOREIGN or unknown name is
+    refused there too (B3:surplus_not_foreign: / B3:surplus_not_present:), and nothing is dropped on
+    a refusal. Never drops at boot, in a gate, or without this explicit command plus the token.
+    """
+    app_dir = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    result: dict = {
+        "schemaVersion": "npdev-db-surplus.v1", "command": "db surplus",
+        "ok": False, "code": None, "message": None, "appDir": str(app_dir),
+        "applied": bool(args.apply), "drop": args.drop,
+    }
+
+    def _refuse(code: str, message: str) -> int:
+        result["code"] = code
+        result["message"] = message
+        _print_result(result, args)
+        return 2
+
+    app_record = npdev_monitor.probe_app(app_dir, origin="explicit", health_timeout=min(args.timeout, 3.0))
+    if not app_record.get("isAppRoot"):
+        return _refuse("NOT_AN_APP", app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        return _refuse(
+            "APP_NOT_RUNNING",
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')} -- `db surplus` calls a RUNNING app's admin API; "
+            "start it first (_ops/Start-App.ps1, or the Monitor's Start).")
+
+    key_file = app_record.get("superUserKeyFile")
+    if not key_file:
+        return _refuse(
+            "SUPERUSER_KEY_NOT_FOUND",
+            "no SUPER_USER_KEY.txt found under this app's _ops directory -- either an app generated "
+            "before R1.7's SuperUserBootstrapper, or the key was already relocated/rotated elsewhere.")
+    try:
+        super_user_key = Path(key_file).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return _refuse("SUPERUSER_KEY_UNREADABLE", f"found {key_file} but could not read it: {exc}")
+    if not super_user_key:
+        return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
+
+    base_url = app_record.get("probeBaseUrl")
+    base_path = "/api/admin/schema-migration"
+
+    status, preview = _db_restore_admin_get(base_url, super_user_key, f"{base_path}/surplus/preview", args.timeout)
+    if status != 200:
+        return _refuse("PREVIEW_FAILED", f"GET {base_path}/surplus/preview -> HTTP {status}: {preview}")
+    surplus = preview.get("surplus") or []
+    abstentions = preview.get("abstentions") or []
+    drop_token = preview.get("dropToken")
+    result["surplus"] = surplus
+    result["abstentions"] = abstentions
+    result["dropTokenAvailable"] = drop_token is not None
+
+    if not args.apply:
+        if args.drop:
+            result["message"] = (
+                "DRY RUN (no writes) -- the names in --drop are validated SERVER-SIDE during an "
+                "actual drop (B3:surplus_not_foreign: / B3:surplus_not_present: refusals); nothing "
+                "was dropped. Re-run with --apply to execute.")
+        else:
+            result["ok"] = True
+            result["message"] = (
+                "DRY RUN (no writes) -- "
+                + (f"{len(surplus)} FOREIGN-classified surplus constraint(s) are droppable, with the "
+                   f"dropToken covering exactly these items; re-run with --drop a,b --apply to drop."
+                   if surplus else
+                   "no FOREIGN-classified surplus constraints are droppable right now.")
+                + (" The schema abstains from classifying (pre-SER-G8 or empty declared lists)."
+                   if abstentions else ""))
+        _print_result(result, args)
+        return 0
+
+    requested = [name.strip() for name in (args.drop or "").split(",") if name.strip()]
+    if not requested:
+        return _refuse("DROP_NAMES_REQUIRED", "--apply requires --drop a,b naming the constraints to drop")
+    if not drop_token:
+        return _refuse("NOTHING_DROPPABLE",
+                       "the live database has no FOREIGN-classified surplus constraints to drop "
+                       "(or the schema abstains from classifying) -- there is nothing a token could cover")
+    status, response = _db_restore_admin_post(
+        base_url, super_user_key, f"{base_path}/surplus/drop",
+        {"constraints": requested, "ackToken": drop_token}, args.timeout)
+    result["httpStatus"] = status
+    result["refused"] = response.get("refused") if isinstance(response, dict) else None
+    result["dropped"] = response.get("dropped") if isinstance(response, dict) else None
+    if status == 200:
+        result["ok"] = True
+        result["recreateHints"] = response.get("recreateHints") if isinstance(response, dict) else None
+        result["message"] = f"dropped {len(response.get('dropped') or [])} surplus constraint(s); every drop is recorded in npdev_schema_history with its re-create DDL"
+    else:
+        error = response.get("error") if isinstance(response, dict) else str(response)
+        detail = response.get("detail") if isinstance(response, dict) else ""
+        result["ok"] = False
+        result["message"] = f"HTTP {status}: {error} -- {detail}"
+    _print_result(result, args)
+    return 0 if result["ok"] else 2
+
+
 def run_admin_hash_key(args: argparse.Namespace) -> int:
     """SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): the SAME SHA-256-hex CredentialRegistryService.hash()
     computes server-side (NPDevRuntimeHost/runtimehost-core/.../CredentialRegistryService.java) --
@@ -12519,6 +12629,39 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit an npdev-db-adopt-ownership.v1 JSON object instead of the human-readable report.",
     )
 
+    # B3 (STOR-31): the itemized, token-gated surplus drop path. Preview by default; --drop names the
+    # constraints; --apply actually drops (server-side re-validation and token check, never trusting
+    # the client).
+    db_surplus = db_sub.add_parser(
+        "surplus",
+        help="Preview (or, with --drop a,b --apply, drop) the database's FOREIGN-classified surplus "
+             "constraints this app's model does not declare -- the operator's own itemized, "
+             "token-gated decision (boundary B3).",
+    )
+    db_surplus.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory. Defaults to the current directory. The app must be RUNNING -- "
+             "surplus preview/drop goes through the live app's own ControlPanel API and DataSource.",
+    )
+    db_surplus.add_argument(
+        "--drop", default=None, metavar="NAMES",
+        help="Comma-separated constraint names to drop (validated server-side). Without --apply this "
+             "only previews and writes nothing.",
+    )
+    db_surplus.add_argument(
+        "--apply", action="store_true",
+        help="Actually drop. Without it, surplus PREVIEWS and writes nothing -- the same dry-run-by-"
+             "default convention every other destructive npdev command follows.",
+    )
+    db_surplus.add_argument(
+        "--timeout", type=float, default=60.0,
+        help="HTTP timeout in seconds for each call to the running app.",
+    )
+    db_surplus.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-db-surplus.v1 JSON object instead of the human-readable report.",
+    )
+
     # M14: the five environment operations. Each RUNS the generated `_ops` script of the same name
     # rather than reimplementing it -- see _DB_OPERATIONS. D2: prefers _script (PowerShell), falls
     # back to _posix_script when no PowerShell is on PATH.
@@ -14200,6 +14343,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_restore(args)
         if args.command == "db" and args.db_command == "adopt-ownership":
             return run_db_adopt_ownership(args)
+        if args.command == "db" and args.db_command == "surplus":
+            return run_db_surplus(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
         if args.command == "admin" and args.admin_command == "hash-key":

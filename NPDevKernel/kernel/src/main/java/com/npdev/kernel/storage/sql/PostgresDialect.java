@@ -344,6 +344,11 @@ public final class PostgresDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropConstraint(String constraintName, String tableName) {
+        return "ALTER TABLE " + tableName + " DROP CONSTRAINT IF EXISTS " + constraintName + ";";
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         return SqlDdlGuards.insertAfter(alterStatement, "ADD COLUMN", "IF NOT EXISTS");
     }

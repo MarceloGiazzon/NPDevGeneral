@@ -18,10 +18,10 @@
     },
     {
       "id": "B3",
-      "kind": "POSTURAL",
-      "userFacingText": "FK/index checking only ever adds MISSING constraints; an extra constraint your database already has is reported as informational, never proposed for removal.",
-      "workaround": "Manage extra indexes outside NPDev; NPDev respects them and never drops them. The impact report (boot log, -ImpactOnly, and ControlPanel's schema-migration/impact endpoint) includes an advisory surplus section when there is one, but it never changes the verdict.",
-      "enforcingDiagnosticCodes": []
+      "kind": "LIFTED",
+      "userFacingText": "Extras in your database that your model does not declare are classified and reported as informational -- and, since STOR-31, an operator who has looked at the report can drop one explicitly, itemized and token-gated: only a constraint the platform classifies as genuine drift (FOREIGN) is droppable, by name, with a token that stops working the moment the live surplus changes. A primary-key backing index or any constraint the model or schema declares is refused by every path -- the platform never proposes a drop, and nothing is ever dropped at boot or in a gate.",
+      "workaround": "See the classified surplus list and its dropToken via GET /api/admin/schema-migration/surplus/preview (or `npdev db surplus`); a drop that names a non-FOREIGN constraint is refused with B3:surplus_not_foreign:, an unknown name with B3:surplus_not_present:, and a token issued before the live surplus changed with B3:surplus_token_stale: -- preview again and resubmit. Every executed drop is recorded in npdev_schema_history as a SURPLUS_DROPPED row carrying the re-create DDL, before the drop statement runs.",
+      "enforcingDiagnosticCodes": ["B3:surplus_not_foreign", "B3:surplus_not_present", "B3:surplus_token_stale"]
     },
     {
       "id": "B4",

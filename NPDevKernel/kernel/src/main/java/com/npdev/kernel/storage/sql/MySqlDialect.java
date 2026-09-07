@@ -447,6 +447,26 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropConstraint(String constraintName, String tableName) {
+        // MySQL 8 has no DROP CONSTRAINT IF EXISTS and no IF EXISTS form at all for constraints --
+        // same catalog-lookup + PREPARE/EXECUTE idiom as guardedDropIndexIfExists, polarity
+        // inverted (run the DROP only when the FK constraint IS found). MySQL names foreign-key
+        // constraints via the FOREIGN KEY clause, not CONSTRAINT.
+        String statement = "ALTER TABLE " + tableName + " DROP FOREIGN KEY " + constraintName + ";";
+        String constraint = escapeLiteral(constraintName);
+        String table = escapeLiteral(tableName);
+        return "SET @npdev_ddl := (SELECT IF(COUNT(*) > 0, " + quoteSqlLiteral(statement) + ", 'SELECT 1')\n"
+                + "  FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS\n"
+                + "  WHERE CONSTRAINT_NAME = '" + constraint + "'\n"
+                + "    AND TABLE_NAME = '" + table + "'\n"
+                + "    AND TABLE_SCHEMA = DATABASE()\n"
+                + "    AND CONSTRAINT_TYPE = 'FOREIGN KEY');\n"
+                + "PREPARE npdev_stmt FROM @npdev_ddl;\n"
+                + "EXECUTE npdev_stmt;\n"
+                + "DEALLOCATE PREPARE npdev_stmt;\n";
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         return preparedGuard(
                 "INFORMATION_SCHEMA.COLUMNS",

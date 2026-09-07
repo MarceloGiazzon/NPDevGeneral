@@ -711,6 +711,16 @@ public interface SqlDialect {
     String guardedDropIndexIfExists(String indexName, String tableName);
 
     /**
+     * {@code ALTER TABLE t DROP CONSTRAINT c}, made idempotent for the FOREIGN-KEY case (STOR-31 /
+     * boundary B3: an operator dropping an itemized surplus FK by name). Postgres and H2 have a
+     * native {@code DROP CONSTRAINT IF EXISTS}; SQL Server 2016+ does too; MySQL has neither for
+     * constraints, so its implementation gates the statement behind an information_schema lookup --
+     * legal ONLY here, in the dialect package, never at a call site (check-dialect-sites.py). The
+     * caller passes already-safe identifiers, matching {@link #guardedDropIndexIfExists}.
+     */
+    String guardedDropConstraint(String constraintName, String tableName);
+
+    /**
      * {@code alterStatement} ({@code ALTER TABLE t ADD COLUMN c TYPE}) made idempotent.
      *
      * <p><b>Also normalises the keyword.</b> T-SQL has no {@code COLUMN} in {@code ALTER TABLE t ADD
