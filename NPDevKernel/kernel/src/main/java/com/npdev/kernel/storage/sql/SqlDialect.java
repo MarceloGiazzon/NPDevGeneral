@@ -229,15 +229,6 @@ public interface SqlDialect {
     PaginationClause limitOnly();
 
     /**
-     * A literal row cap, for existence probes like {@code SELECT 1 FROM t WHERE c = ? LIMIT 1} where
-     * the bound is a constant rather than a caller's page size.
-     *
-     * @throws IllegalArgumentException if {@code rows} is not positive -- {@code LIMIT 0} is a
-     *         caller bug that reads as "no rows matched" at every call site that uses this
-     */
-    String rowLimit(long rows);
-
-    /**
      * Enforce conformance vector P3: a paginated statement must carry an explicit order.
      *
      * <p><b>SQL Server's {@code OFFSET..FETCH} is a syntax error without {@code ORDER BY}.</b>
@@ -298,22 +289,18 @@ public interface SqlDialect {
     }
 
     /**
-     * {@code sql} plus a literal row cap. Binds nothing -- see {@link #rowLimit(long)}.
+     * {@code sql} plus a literal row cap, built as a whole statement -- the engine decides where the
+     * cap goes (a suffix on H2/MySQL/Postgres; a {@code SELECT TOP n} PREFIX on SQL Server).
      *
      * <p><b>Deliberately NOT P3-checked.</b> The commonest use is an existence probe
      * ({@code SELECT 1 FROM t WHERE c = ? LIMIT 1}), where any matching row answers the question and
      * an order would be meaningless work. Sites that want "the FIRST row by some order" must supply
      * the ORDER BY themselves, as the event store's two do.
      *
-     * <p><b>Known S5 gap.</b> SQL Server has no suffix row cap: {@code SELECT TOP n} is a PREFIX, and
-     * its only suffix form ({@code OFFSET 0 ROWS FETCH NEXT n ROWS ONLY}) requires ORDER BY -- which
-     * an existence probe does not have. So {@code SqlServerDialect} cannot answer this as a suffix
-     * and the two probe call sites will need a dialect-built statement rather than a dialect-built
-     * suffix. Recorded here rather than discovered when SQL Server first runs.
+     * @throws IllegalArgumentException if {@code rows} is not positive -- {@code LIMIT 0} is a
+     *         caller bug that reads as "no rows matched" at every call site that uses this
      */
-    default String rowLimited(String sql, long rows) {
-        return sql + rowLimit(rows) + "\n";
-    }
+    String rowLimited(String sql, long rows);
 
     /**
      * STOR-26 (B2 lift): a complete "does at least one matching row exist" probe --
@@ -409,9 +396,9 @@ public interface SqlDialect {
      *
      * <p>Measured in CI run 31285509636 -- {@code MigrationClaimStore} spelled the suffix inline and
      * SQL Server refused the app's very first boot with "Line 1: FOR UPDATE clause allowed only for
-     * DECLARE CURSOR". This is the same shape as {@link #rowLimited(String, long)}'s known gap: an
-     * idiom that is a suffix on three engines and a different POSITION on the fourth cannot be a
-     * suffix method, so the dialect assembles the whole statement.
+     * DECLARE CURSOR". This is the same shape as {@link #rowLimited(String, long)}: an idiom that is
+     * a suffix on three engines and a different POSITION on the fourth cannot be a suffix method, so
+     * the dialect assembles the whole statement.
      *
      * @param columns    the select list, already safe (e.g. {@code "instance_id"})
      * @param table      the table name, already safe

@@ -263,24 +263,25 @@ class DialectConformanceTierATest {
     }
 
     @Test
-    @DisplayName("C1: SQL Server refuses a suffix row cap rather than returning a plausible one")
-    void sqlServerRefusesSuffixRowLimit() {
-        // SELECT TOP n is a PREFIX and the suffix form needs an ORDER BY an existence probe has no
-        // reason to carry. Returning something plausible here is the silent-answer defect in the
-        // least visible layer; the refusal names the alternative.
-        UnsupportedOperationException refusal = assertThrows(UnsupportedOperationException.class,
-                () -> SqlServerDialect.INSTANCE.rowLimit(1));
-        assertTrue(refusal.getMessage().contains("existsProbe"), refusal.getMessage());
+    @DisplayName("C1: SQL Server answers a row cap as a WHOLE statement -- SELECT TOP is the cap")
+    void sqlServerAnswersARowCapAsAWholeStatement() {
+        // The B29 lift: a dialect is asked for a statement it can BUILD, never for a suffix fragment
+        // it cannot mean. SQL Server's cap is a PREFIX (SELECT TOP n), so rowLimited rewrites the
+        // caller's SELECT rather than appending anything.
+        assertEquals("SELECT TOP 1 1 FROM t WHERE c = ?",
+                SqlServerDialect.INSTANCE.rowLimited("SELECT 1 FROM t WHERE c = ?", 1));
         assertEquals("SELECT TOP 1 1 FROM t WHERE c = ?",
                 SqlServerDialect.INSTANCE.existsProbe("t", "c = ?"));
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("dialects")
-    @DisplayName("C1: rowLimit(0) is refused -- it reads as 'no rows matched' at every call site")
-    void rowLimitRejectsZero(SqlDialect dialect) {
-        assertThrows(IllegalArgumentException.class, () -> dialect.rowLimit(0));
-        assertThrows(IllegalArgumentException.class, () -> dialect.rowLimit(-5));
+    @DisplayName("C1: rowLimited(...,0) is refused on EVERY engine -- it reads as 'no rows matched' at every call site")
+    void rowLimitedRejectsZero(SqlDialect dialect) {
+        // SQL Server is included now -- today it cannot even be asked, which was the boundary. Now
+        // every engine answers a whole statement and every engine rejects a non-positive cap.
+        assertThrows(IllegalArgumentException.class, () -> dialect.rowLimited("SELECT 1 FROM t", 0));
+        assertThrows(IllegalArgumentException.class, () -> dialect.rowLimited("SELECT 1 FROM t", -5));
     }
 
     @ParameterizedTest(name = "{0}")

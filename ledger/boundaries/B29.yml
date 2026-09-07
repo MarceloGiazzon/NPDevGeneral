@@ -1,23 +1,22 @@
 id: B29
-title: "SQL Server has no SUFFIX row cap -- SqlDialect.rowLimit() throws there; callers ask rowLimited() instead"
+title: "Every engine answers a row cap as a whole statement; no dialect method returns a fragment an engine cannot mean"
 codeLinked: false
 codeLinkedNote: >-
-  2026-08-25 (W5.5, remediation plan): corrected from codeLinked: true, the only POSTURAL boundary
-  that said so (every sibling POSTURAL entry -- B3/B6/B7/B11/B12/B14/B18 -- correctly says false).
-  SqlServerDialect.rowLimit() DOES throw a real UnsupportedOperationException naming both
-  alternatives, but per this row's own userFacingText ("nothing user-reachable: no model, no
-  request and no CLI input reaches this") and the measurement below (ZERO production call sites),
-  that throw is unreachable code, not a diagnostic anything can ever observe firing -- which is
-  exactly what makes this POSTURAL rather than HITTABLE, not evidence for codeLinked: true. A real,
-  UNREACHABLE exception is deliberately NOT a ValidationDiagnostic and NOT a StorageCapability token:
-  storage/OPEN_ITEMS_PLAN.md 6 warns that "a thrown exception with no declared capability behind it
-  is a sharp edge, not a boundary", and the measurement is what makes this one a boundary anyway --
-  ZERO production sites call rowLimit() directly. All four real sites (two existence probes in
-  PostgresPersistenceCapabilityAdapter, two first-by-order reads in JdbcEventStore) want "at most n
-  rows", which rowLimited() answers on every engine; suffix-vs-prefix is the engine's business,
-  which is what a dialect is for. Adding a capability token no caller consults would be dead code
-  wearing a safety label. The day a real site needs a bare suffix here, the fix is a dialect method
-  that builds the whole statement (existsProbe is the precedent) -- not a token, and not a plausible
-  wrong answer, which is the failure mode every one of STOR-4/5/7/9/10/12 turned out to be.
+  2026-09-07 (STOR-30, POSTURAL_LIFT_PLAN_2026-09-07.md package P1): LIFTED. The unreachable throw
+  is deleted rather than documented: `SqlDialect.rowLimit(long)` is gone from the interface, and
+  `rowLimited(String, long)` -- the whole-statement question every real caller actually asks (four
+  production sites: JdbcEventStore x2, PostgresPersistenceCapabilityAdapter x2; the only other
+  match in the tree was the test stub, now implementing `rowLimited`) -- is abstract, answered by
+  each engine in the shape IT can mean: a `LIMIT` suffix on H2/MySQL/Postgres (each engine's former
+  `rowLimit` body moved into a private `rowLimitSuffix(long)`, non-positive rejection preserved),
+  a `SELECT TOP n` prefix rewrite on SQL Server. The class-javadoc "unresolved one" section and the
+  "Known S5 gap" paragraph are gone -- there is no gap to record. codeLinked stays false honestly:
+  there is no diagnostic because the question is no longer asked at an altitude where one engine
+  cannot answer it, and adding a capability token no caller consults would be dead code wearing a
+  safety label.
+
+  Residual: a caller that genuinely needs a bare suffix has no method to call -- by design. The
+  fix for such a caller is a dialect method that builds the whole statement (`existsProbe` is the
+  precedent), never a `rowLimit` that returns something it cannot mean.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B29 -- storage/OPEN_ITEMS_PLAN.md 6, storage/FULL_SUPPORT_PLAN.md W1.3"
-classification: POSTURAL
+classification: LIFTED

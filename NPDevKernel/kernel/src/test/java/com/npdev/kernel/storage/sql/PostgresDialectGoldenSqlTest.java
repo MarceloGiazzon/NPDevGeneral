@@ -51,10 +51,12 @@ class PostgresDialectGoldenSqlTest {
         }
 
         @Test
-        @DisplayName("JdbcEventStore.findFirstByEvent / persistence exists(): LIMIT 1")
-        void rowLimitIsUnchanged() {
-            assertEquals("LIMIT 1", postgres.rowLimit(1));
-            assertEquals("LIMIT 1", h2.rowLimit(1));
+        @DisplayName("JdbcEventStore.findFirstByEvent / persistence exists(): the assembled statement still carries LIMIT 1")
+        void rowLimitedIsUnchanged() {
+            // The suffix is appended directly; the caller's statement carries the separator (a text
+            // block's trailing newline), exactly as the pre-lift default assembled it.
+            assertEquals("SELECT 1 FROM t LIMIT 1\n", postgres.rowLimited("SELECT 1 FROM t ", 1));
+            assertEquals("SELECT 1 FROM t LIMIT 1\n", h2.rowLimited("SELECT 1 FROM t ", 1));
         }
 
         @Test
@@ -83,10 +85,10 @@ class PostgresDialectGoldenSqlTest {
         }
 
         @Test
-        @DisplayName("rowLimit(0) is refused -- it reads as 'no rows matched' at every call site")
-        void rowLimitRejectsNonPositive() {
-            assertThrows(IllegalArgumentException.class, () -> postgres.rowLimit(0));
-            assertThrows(IllegalArgumentException.class, () -> postgres.rowLimit(-1));
+        @DisplayName("rowLimited(...,0) is refused -- it reads as 'no rows matched' at every call site")
+        void rowLimitedRejectsNonPositive() {
+            assertThrows(IllegalArgumentException.class, () -> postgres.rowLimited("SELECT 1 FROM t", 0));
+            assertThrows(IllegalArgumentException.class, () -> postgres.rowLimited("SELECT 1 FROM t", -1));
         }
     }
 

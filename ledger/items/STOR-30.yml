@@ -1,0 +1,99 @@
+id: STOR-30
+title: >-
+  Every engine answers a row cap as a whole statement; no dialect method returns a suffix fragment
+  an engine cannot mean (boundary B29 -> LIFTED)
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-07
+closed: 2026-09-07
+source: >-
+  POSTURAL_LIFT_PLAN_2026-09-07.md package P1 (Wave 1). B29.yml's own residue, verbatim:
+  "SqlServerDialect.rowLimit() DOES throw a real UnsupportedOperationException naming both
+  alternatives, but that throw is unreachable code, not a diagnostic anything can ever observe
+  firing -- ZERO production sites call rowLimit() directly."
+surface: >-
+  The dialect package (SqlDialect + the four engine implementations) and the three test classes
+  that pinned the old behaviour (DialectConformanceTierATest, PostgresDialectGoldenSqlTest,
+  StorageCapabilityGateTest's anonymous dialect stub).
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/PostgresDialectGoldenSqlTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/StorageCapabilityGateTest.java
+  - ledger/boundaries/B29.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **What changed.** `SqlDialect.rowLimit(long)`, the interface method that returned a bare suffix
+  fragment, is deleted. `rowLimited(String, long)` -- the whole-statement question every real caller
+  actually asks -- is now abstract on the interface, and each engine answers it in the shape IT can
+  mean: H2/MySQL/Postgres append their former `rowLimit` body via a new private
+  `rowLimitSuffix(long)` inside `sql + rowLimitSuffix(rows) + "\n"` (the exact assembly the old
+  default performed, non-positive rejection and message shape preserved, method name in the text
+  changed to `rowLimited`); SQL Server keeps the `SELECT TOP n` prefix rewrite it already had, which
+  now carries the whole row-cap contract. The `SqlServerDialect` class-javadoc "The unresolved one:
+  rowLimit(long)" section and the unreachable `rowLimit` throw are gone, along with `rowLimited`'s
+  own "Known S5 gap" paragraph -- after this package there is no gap to record. `check-dialect-
+  methods-are-asked.py` no longer needs the one-hop rule to keep `rowLimit` quiet, because the
+  method no longer exists; `rowLimited` has four production callers of its own (JdbcEventStore x2,
+  PostgresPersistenceCapabilityAdapter x2).
+
+  **What was measured, not assumed.** Grep over every *.java in the tree (excluding /build/ and the
+  stale worktree) found zero `rowLimit(` references after the change -- not one call, not one
+  javadoc `{@link}`. The plan's own premise table was re-traced at 20eec948: `rowLimit` declared at
+  SqlDialect.java:238, four real `rowLimited` call sites, one test stub overriding `rowLimit` (now
+  overriding `rowLimited`). Both dialect checkers pass unchanged
+  (check-dialect-methods-are-asked.py: 56 methods, all with a production caller or allowlisted;
+  check-dialect-sites.py: 0 dialect-bound sites outside the dialect package).
+
+  **The test inversion (plan trap 5).** `DialectConformanceTierATest#sqlServerRefusesSuffixRowLimit`
+  (asserted the unreachable throw) is now `#sqlServerAnswersARowCapAsAWholeStatement`, asserting
+  `rowLimited("SELECT 1 FROM t WHERE c = ?", 1)` yields `SELECT TOP 1 1 FROM t WHERE c = ?` and
+  `existsProbe("t", "c = ?")` still yields the same. `#rowLimitRejectsZero` is now
+  `#rowLimitedRejectsZero`, run on ALL FOUR dialects -- SQL Server included, which today cannot even
+  be asked the suffix question; that widening is the visible proof the boundary is gone.
+  `PostgresDialectGoldenSqlTest#rowLimitIsUnchanged`/`#rowLimitRejectsNonPositive` received the same
+  treatment; `#rowLimitedDoesNotRequireAnOrder` passes unchanged.
+
+  **What was deliberately NOT done, and why.** No capability token was added (the boundary row
+  already documented that a token no caller consults is dead code wearing a safety label), and no
+  call site was asked to branch on engine capabilities -- the whole point of the lift is that the
+  question is no longer asked at an altitude where one engine cannot answer it. `selectTop`,
+  `existsProbe` and the `PaginationClause` surface are untouched beyond the javadoc references that
+  named the deleted method.
+
+  **Residual statement (goes verbatim into ledger/boundaries/B29.yml too).** A caller that genuinely
+  needs a bare suffix has no method to call -- by design. The fix for such a caller is a dialect
+  method that builds the whole statement (`existsProbe` is the precedent), never a `rowLimit` that
+  returns something it cannot mean.
+
+  **provenRed honest note.** The inverted tests were not observed failing against unmodified code:
+  against 20eec948 they would either not compile (`rowLimit(` calls) or pass against SQL Server's
+  existing `rowLimited` override (`rowLimited("SELECT 1 FROM t", 0)` throws
+  IllegalArgumentException there too, whose ordering puts the non-positive check first). The red
+  state is compile-level -- the old tests cannot exist against the new interface -- and the
+  strengthened claim (all four dialects reject a non-positive cap on the whole-statement method) is
+  pinned by the new parameterized test.
+
+  **What ran.** :NPDevKernel:kernel:test (657 tests, all green) and :NPDevGenerator:generator:test
+  (green), plus both dialect checkers (check-dialect-methods-are-asked.py,
+  check-dialect-sites.py). Postgres/MySQL arms are not locally runnable (local-test-profile.json
+  enables h2 and sqlserver only); every dialect test in this package is a pure string-generation
+  test with no database, so all four engines were exercised for real.
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java#rowLimitedRejectsZero
+  asserts: >-
+    rowLimitedRejectsZero asserts on every one of the four dialects (SqlDialects.all()) that
+    rowLimited("SELECT 1 FROM t", 0) and (..., -5) throw IllegalArgumentException -- SQL Server
+    included, which today cannot even be asked the suffix question. If the lifted contract
+    regressed (a dialect answering a non-positive cap, or the whole-statement question
+    disappearing), this test breaks. sqlServerAnswersARowCapAsAWholeStatement pins the SELECT TOP
+    form of SQL Server's whole-statement answer and existsProbe's unchanged shape.
+  provenRed: false
