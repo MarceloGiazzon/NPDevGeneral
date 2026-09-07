@@ -158,9 +158,9 @@
     },
     {
       "id": "B29",
-      "kind": "POSTURAL",
-      "userFacingText": "SQL Server has no way to express a bare 'take the last N rows' suffix -- asking for one throws rather than silently returning the wrong rows. In practice nothing in NPDev asks for it: every real call site wants 'at most N rows', which every engine can answer.",
-      "workaround": "Ask for 'at most N rows' rather than a suffix-specific row cap -- that is what every real caller in NPDev already does.",
+      "kind": "LIFTED",
+      "userFacingText": "Any request for 'at most N rows' works on every supported engine: your code asks for a capped read as a whole statement, and each engine applies the cap the way it actually can (a LIMIT suffix where one exists, SELECT TOP n on SQL Server). There is no dialect question left that one engine cannot answer.",
+      "workaround": "Nothing to do -- every caller that asks for a row cap gets a whole statement every engine can run, and a non-positive cap is refused on every engine. A fragment-level row-suffix method is deliberately not offered: if you ever need a cap-shaped piece of SQL, ask the dialect for a complete statement instead of assembling one from fragments.",
       "enforcingDiagnosticCodes": []
     },
     {

@@ -117,7 +117,7 @@ class StorageCapabilityGateTest {
             @Override public PaginationClause limitOnly() {
                 throw new UnsupportedOperationException();
             }
-            @Override public String rowLimit(long rows) {
+            @Override public String rowLimited(String sql, long rows) {
                 throw new UnsupportedOperationException();
             }
             @Override public UpsertStrategy upsert() {

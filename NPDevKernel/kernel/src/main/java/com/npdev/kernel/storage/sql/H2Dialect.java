@@ -200,9 +200,13 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
-    public String rowLimit(long rows) {
+    public String rowLimited(String sql, long rows) {
+        return sql + rowLimitSuffix(rows) + "\n";
+    }
+
+    private String rowLimitSuffix(long rows) {
         if (rows <= 0) {
-            throw new IllegalArgumentException("engine 'h2': rowLimit must be positive, got " + rows);
+            throw new IllegalArgumentException("engine 'h2': rowLimited must be positive, got " + rows);
         }
         return ROW_LIMIT_PREFIX + rows;
     }

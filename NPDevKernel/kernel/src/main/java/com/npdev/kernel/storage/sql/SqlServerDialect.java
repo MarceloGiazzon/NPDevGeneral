@@ -29,19 +29,6 @@ import java.util.Set;
  *       this fact -- STOR-13 deleted the one that existed, because an unconditional rule plus a flag
  *       that reads like it gates the rule is worse than the rule alone.</li>
  * </ol>
- *
- * <h2>The unresolved one: {@link #rowLimit(long)}</h2>
- *
- * <p>SQL Server has <b>no suffix row cap.</b> {@code SELECT TOP n} is a PREFIX, and the only suffix
- * form needs an {@code ORDER BY} that an existence probe ({@code SELECT 1 FROM t WHERE c = ? LIMIT 1})
- * does not have and should not need. So {@code rowLimit} <b>throws</b> here rather than returning
- * something plausible.
- *
- * <p>That is deliberate and it is what the S1 write-up predicted. The two probe call sites in
- * {@code PostgresPersistenceCapabilityAdapter} need a dialect-BUILT statement rather than a
- * dialect-built suffix before SQL Server can run them -- see {@link #existsProbe(String, String)},
- * which is the shape that fix takes. Throwing is the honest state: a plausible wrong answer in the
- * least visible layer is the defect this whole seam exists to prevent.
  */
 public final class SqlServerDialect implements SqlDialect {
 
@@ -344,20 +331,6 @@ public final class SqlServerDialect implements SqlDialect {
         return new PaginationClause(LIMIT_ONLY_CLAUSE, List.of(PaginationClause.Parameter.LIMIT));
     }
 
-    @Override
-    public String rowLimit(long rows) {
-        if (rows <= 0) {
-            throw new IllegalArgumentException("engine 'sqlserver': rowLimit must be positive, got " + rows);
-        }
-        throw new UnsupportedOperationException(
-                "engine 'sqlserver': there is no SUFFIX row cap. SELECT TOP " + rows + " is a PREFIX, and "
-                + "the only suffix form (OFFSET 0 ROWS FETCH NEXT " + rows + " ROWS ONLY) requires an "
-                + "ORDER BY that an existence probe does not have. Use existsProbe(...) to have the "
-                + "dialect build the whole statement, or selectTop(...) for a capped SELECT. Returning "
-                + "a plausible suffix here would produce a syntax error at best and, if it happened to "
-                + "parse, the wrong rows.");
-    }
-
     /**
      * <b>The resolution of the S1/S5 open gap</b> (storage/FULL_SUPPORT_PLAN.md W1.3): a capped
      * statement, built by rewriting {@code SELECT} into {@code SELECT TOP n}.
@@ -379,9 +352,9 @@ public final class SqlServerDialect implements SqlDialect {
      * rather than removed, which the {@code SqlDialect} javadoc names as the thing this seam must
      * never become.
      *
-     * <p>{@link #rowLimit(long)} still THROWS, and that stays right: there genuinely is no suffix
-     * here, and a method that promised one would be lying about the shape. The suffix is the
-     * primitive; this is the question callers actually ask.
+     * <p>There is no suffix form on this engine at all -- {@code SELECT TOP n} is a PREFIX -- so this
+     * whole-statement method carries the entire row-cap contract here; a bare suffix would be a
+     * method that promises a shape SQL Server cannot mean.
      *
      * <h2>What it refuses</h2>
      *
