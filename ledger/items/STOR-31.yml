@@ -1,0 +1,119 @@
+id: STOR-31
+title: >-
+  Surplus constraints are classified and reported advisory-only at boot; an operator can drop a
+  FOREIGN-classified one explicitly, itemized and token-gated, and nothing else is droppable by any
+  path (boundary B3 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-07
+closed: 2026-09-07
+source: >-
+  POSTURAL_LIFT_PLAN_2026-09-07.md package P3 (Wave 1). B3.yml's own residue, verbatim: "every one
+  of them only ADDS an advisory section. There is no refusal, no ValidationDiagnostic and no drop
+  path, so there is no diagnostic identity for a boundaryId to attach to."
+surface: >-
+  the schemastate package (ConstraintSurplusDropPlan, a new classifyLiveByName on the classifier),
+  com.finalexec.db (SurplusDropSupport + ConstraintSurplusDropExecutor + a SURPLUS_DROPPED history
+  label), the dialect package (SqlDialect.guardedDropConstraint + four implementations),
+  SchemaAcknowledgmentController (surplus preview/drop endpoints), and npdev_cli.py (`db surplus`).
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/schemastate/ConstraintSurplusDropPlan.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/schemastate/ConstraintSurplusClassifier.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SurplusDropSupport.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConstraintSurplusDropExecutor.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaAcknowledgmentController.java
+  - NPDevCli/npdev_cli.py
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/SurplusDropFlowH2Test.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/schemastate/ConstraintSurplusDropPlanTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/SchemaAcknowledgmentControllerSurplusTest.java
+  - ledger/boundaries/B3.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **What changed.** The classification + advisory reporting the row already described is untouched
+  (the Impact Report's surplus section still never changes verdict and never proposes a drop). What
+  is new is the operator decision the residue demanded, in four layers. (1) Pure planning:
+  ConstraintSurplusDropPlan resolves each requested name against the CURRENT live surplus and its
+  classification -- only FOREIGN is droppable; a non-FOREIGN name is refused BY CLASSIFICATION
+  (B3:surplus_not_foreign:<name>:<classification>), never by match-list absence, and an unknown name
+  is B3:surplus_not_present:<name>. The plan's test feeds the same 15 classification vectors and
+  pins the two that exist specifically to prevent this boundary's failure -- H2's PRIMARY_KEY_5 and
+  Postgres's orders_pkey come back refused with IMPLICIT in the code, never droppable. (2) The
+  classified universe: ConstraintSurplusClassifier.classifyLiveByName adds the name->classification
+  map a refusal-by-classification needs (the surplus report itself only ever contains FOREIGN
+  items, so a primary-key backing index could otherwise only be refused as a mystery "not present").
+  (3) Token + execution: SurplusDropSupport prepares the live state and the dropToken (a hash of the
+  build fingerprint + the stable, lower-cased, sorted FOREIGN identity keys -- byte-identical across
+  calls, and any live surplus change flips it, which IS the staleness check); ConstraintSurplusDropExecutor
+  records each drop in npdev_schema_history as a SURPLUS_DROPPED row carrying the re-create DDL
+  BEFORE the statement runs (one statement per constraint, through the dialect), stops at the first
+  failure and reports what already dropped. New dialect method SqlDialect.guardedDropConstraint
+  (Postgres/H2/SQL Server: DROP CONSTRAINT IF EXISTS; MySQL: information_schema TABLE_CONSTRAINTS
+  guard + PREPARE, FOREIGN KEY clause -- legal only inside the dialect package; check-dialect-sites.py
+  and check-dialect-methods-are-asked.py both clean, the executor is the real production caller).
+  (4) Surfaces: GET /api/admin/schema-migration/surplus/preview and POST .../surplus/drop on the
+  EXISTING SUPERUSER-gated SchemaAcknowledgmentController (no new controller, no new subsystem
+  contract), and `npdev db surplus [--drop a,b] [--apply]` in npdev_cli.py (probe_app +
+  SUPER_USER_KEY.txt + X-Super-User-Key, dry-run by default, server-side validation and token check
+  never trusted client-side). B3:surplus_token_stale: is computed-and-compared against the CURRENT
+  live database -- a submitted list is never trusted.
+
+  **What was measured, not assumed.** The drop flow is proven end-to-end over real H2 with a real
+  manifest (SurplusDropFlowH2Test, in runtimehost-core's own test task): preview issues the exact
+  expected token; a live surplus change (a foreign index appears) flips every previously-issued
+  token -- the stale-token scenario, by recompute-and-compare; an IMPLICIT primary-key backing index
+  (captured by its real H2-generated name from the prepared state) is refused with
+  B3:surplus_not_foreign and NOTHING is dropped (no SURPLUS_DROPPED rows written); a real drop of
+  the FK + the DBA index removes both from the live database and leaves two SURPLUS_DROPPED rows
+  carrying "re-create by hand" DDL; the token is stale afterwards and the remaining surplus is
+  empty. ConstraintSurplusDropPlanTest pins the classification-by-name refusals with the plan's 15
+  vectors. The controller layer is covered by MockMvc for what a standalone test CAN prove: the
+  SUPERUSER gate on both endpoints, the InMemory/no-manifest preconditions (preview = honest empty,
+  drop = 503), and request-shape validation -- a real manifest is a FIXED classpath resource, so
+  exactly like the existing SchemaImpactController tests and SchemaAcknowledgmentControllerTest, the
+  plan's three scenario assertions live at the service/flow level (SurplusDropFlowH2Test) where a
+  real manifest can be constructed, and the controller tests cover gate + preconditions. This split
+  is the standing precedent in this module and is stated here so the next reader does not read it as
+  missing coverage. The bare-template `gradlew test` cannot compile in this workspace: the template
+  excludes `superUserCredentialAuthFilter`-defined sources that import com.npdev.generated.* when no
+  generated-runtime mount exists, and SuperUserClaimController references it -- a PRE-EXISTING gap
+  since B17 (2026-09-02), verified to be independent of this package (the failing files are
+  B17/SEC-10-era, my files compile fine); the real gates (run-runtimehost-gate via the assembled
+  app, where the mount exists) cover the template tests. Also note: the bare template resolves
+  runtimehost-libs by walking to the .npdev-root sibling dir, whose copy was stale since 2026-08-21;
+  local template builds need -PnpdevRuntimeHostLibsDir=D:\WorkSpace\NPDev\Build\runtimehost-libs.
+
+  **What was deliberately NOT done, and why.** No drop path for IMPLICIT/PLATFORM_DECLARED/
+  UNCLASSIFIABLE constraints -- permanent by the B3 decision, and UNCLASSIFIABLE is refused outright
+  (an abstention is never a licence). No boot/gate integration: nothing about the boot path changed,
+  so the advisory report is byte-identical when no one calls the new surfaces. No new controller
+  class and no new subsystem contract. The MySQL information_schema guard is (correctly) the only
+  dialect-bound SQL added, inside the dialect package per check-dialect-sites.py.
+
+  **Residual statement (goes verbatim into ledger/boundaries/B3.yml too).** NPDev still never
+  removes a constraint on its own. IMPLICIT and PLATFORM_DECLARED constraints are permanently
+  undroppable through the platform, and an UNCLASSIFIABLE one is refused rather than guessed at --
+  an abstention is never a licence.
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/SurplusDropFlowH2Test.java#dropRecordsHistoryBeforeEachDropAndRemovesTheLiveConstraint
+  asserts: >-
+    Over a real H2 database and a real manifest: the prepared state issues the exact expected
+    dropToken; a changed live surplus flips every earlier token (the stale-token scenario, by
+    recompute-and-compare); an IMPLICIT primary-key backing index is refused with
+    B3:surplus_not_foreign and nothing is dropped (no history rows); and a real drop of the surplus
+    FK + DBA index removes both live objects, writes two SURPLUS_DROPPED history rows carrying the
+    re-create DDL before their statements, and leaves the remaining surplus empty.
+    ConstraintSurplusDropPlanTest pins the same classification-by-name refusals with the plan's 15
+    classification vectors. The MockMvc controller wiring (superuser gate, InMemory/precondition,
+    request shape) is SchemaAcknowledgmentControllerSurplusTest -- runnable under the assembled-app
+    gates (the bare template cannot compile in this workspace for a pre-existing, unrelated reason
+    documented in the item's detail).
+  provenRed: false

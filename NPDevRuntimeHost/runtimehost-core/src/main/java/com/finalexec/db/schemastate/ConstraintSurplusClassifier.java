@@ -1,7 +1,9 @@
 package com.finalexec.db.schemastate;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /**
  * S8 Wave 2 (B3 FK/index surplus detection, roadmap deferred item #2): classifies ONE live index or
@@ -112,5 +114,50 @@ public final class ConstraintSurplusClassifier {
             }
         }
         return true;
+    }
+
+    /**
+     * STOR-31 (boundary B3): classify EVERY live constraint of every table the desired schema also
+     * declares, keyed by constraint NAME (lower-cased) -- the universe a drop request's names are
+     * resolved against, so a requested name can be refused BY ITS CLASSIFICATION (an `IMPLICIT`
+     * primary-key backing index must never be droppable) rather than merely "not in the surplus
+     * list". Same iteration and whole-schema-abstention rule as {@code SchemaDiffEngine}
+     * {@code #findSurplusConstraints}: a schema that declares zero constraints anywhere yields an
+     * empty map (nothing is droppable by construction then), and a table live-but-not-desired is
+     * skipped -- its disposal is the ordinary diff's business, not surplus.
+     *
+     * <p>A name shared by constraints with DIFFERENT classifications across tables (rare; constraint
+     * names are usually per-schema-unique) is resolved conservatively: the map keeps the LAST
+     * classification, and {@code ConstraintSurplusDropPlan} treats any non-FOREIGN entry as a
+     * refusal -- a name the operator can prove is a DBA index on one specific table can still be
+     * dropped there by naming it while it is in the surplus list, which is table-scoped.
+     */
+    public static Map<String, Classification> classifyLiveByName(DesiredSchema desired, CurrentSchema current) {
+        Map<String, Classification> byName = new LinkedHashMap<>();
+        if (!desiredExpressesConstraints(desired)) {
+            return byName;
+        }
+        for (CurrentTable ct : current.tables().values()) {
+            DesiredTable dt = desired.tables().get(ct.name());
+            if (dt == null) {
+                continue;
+            }
+            for (CurrentIndex live : ct.indexes()) {
+                byName.put(nameKey(live.name()), classifyIndex(live, dt, ct, true));
+            }
+            for (CurrentForeignKey live : ct.foreignKeys()) {
+                byName.put(nameKey(live.name()), classifyForeignKey(live, dt, true));
+            }
+        }
+        return byName;
+    }
+
+    private static boolean desiredExpressesConstraints(DesiredSchema desired) {
+        return desired.tables().values().stream()
+                .anyMatch(dt -> !dt.foreignKeys().isEmpty() || !dt.indexes().isEmpty());
+    }
+
+    private static String nameKey(String name) {
+        return name == null ? "" : name.toLowerCase(Locale.ROOT);
     }
 }

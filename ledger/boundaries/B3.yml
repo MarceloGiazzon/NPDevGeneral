@@ -1,16 +1,27 @@
 id: B3
-title: "FK/index checking is missing-only for DDL purposes -- surplus is now REPORTED (advisory-only), never acted on"
-codeLinked: false
+title: "Surplus constraints are classified and reported advisory-only at boot; an operator can drop a FOREIGN-classified one explicitly, itemized and token-gated, and nothing else is droppable by any path"
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. Real code exists -- classification
-  (ConstraintSurplusClassifier, 15/15 vectors from b3-classification-vectors.json), the diff hook
-  (SchemaDiffEngine#findSurplusConstraints, reusing the desired/current pair the ordinary diff already
-  computes) and both ImpactReportText/ImpactReportJson renderers -- but every one of them only ADDS an
-  advisory section. There is no refusal, no ValidationDiagnostic and no drop path, so there is no
-  diagnostic identity for a boundaryId to attach to. The row's own text records the choice
-  deliberately: a gate that failed a build on surplus would turn a DBA's performance index into a
-  build failure, a materially larger decision than reporting it, and reporting extras as something to
-  fix would propose dropping primary-key indexes -- which is the failure this boundary exists to
-  prevent.
-ref: "docs/ACCEPTED_BOUNDARIES.md#B3 -- DATABASES_AND_MIGRATIONS.md §15, SER-G8, REG-129, REG-145, NPDevRuntimeHost/.../db/schemastate/ConstraintSurplusClassifier.java, .../SchemaDiffEngine.java#findSurplusConstraints, .../SchemaImpactFacade.java, NPDevGenerator/.../dbconfig/SchemaRealizationEmitter.java#collectIndexes"
-classification: POSTURAL
+  2026-09-07 (STOR-31, POSTURAL_LIFT_PLAN_2026-09-07.md package P3): LIFTED. The classification and
+  advisory reporting the row already described are unchanged (ConstraintSurplusClassifier, 15/15
+  vectors; the Impact Report's surplus section still never changes verdict and never proposes a
+  drop). What is new is the operator decision the residue demanded: `npdev db surplus` / the
+  ControlPanel endpoints preview the classified droppable set (FOREIGN-classified only) with a
+  dropToken, and a drop executes ONLY a FOREIGN-classified constraint the operator explicitly names,
+  with a token that is recomputed-and-compared against the CURRENT live surplus (a changed set
+  refuses with B3:surplus_token_stale:). A non-FOREIGN name (a primary-key backing index, an
+  IMPLICIT/PLATFORM_DECLARED/UNCLASSIFIABLE constraint) is refused by its CLASSIFICATION, never by
+  name, with B3:surplus_not_foreign:<name>:<classification>; an unknown name refuses with
+  B3:surplus_not_present:<name>. Every executed drop is recorded in npdev_schema_history as a
+  SURPLUS_DROPPED row (with the re-create DDL) BEFORE the drop statement runs, one statement per
+  constraint, stopping at the first failure and reporting what already dropped. Nothing ever drops
+  at boot, in a gate, or without the explicit request plus a matching token. New dialect method
+  SqlDialect.guardedDropConstraint (Postgres/H2/SQL Server IF EXISTS; MySQL information_schema
+  guard, legal only inside the dialect package).
+
+  Residual: NPDev still never removes a constraint on its own. IMPLICIT and PLATFORM_DECLARED
+  constraints are permanently undroppable through the platform, and an UNCLASSIFIABLE one is refused
+  rather than guessed at -- an abstention is never a licence. The advisory report remains
+  byte-identical when nobody calls the new endpoints.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B3 -- DATABASES_AND_MIGRATIONS.md §15, SER-G8, REG-129, REG-145, NPDevRuntimeHost/.../db/schemastate/ConstraintSurplusClassifier.java, .../SchemaDiffEngine.java#findSurplusConstraints, .../SchemaImpactFacade.java, NPDevRuntimeHost/runtimehost-core/.../db/{SurplusDropSupport,ConstraintSurplusDropExecutor}.java, NPDevKernel/kernel/.../storage/sql/SqlDialect.java#guardedDropConstraint"
+classification: LIFTED

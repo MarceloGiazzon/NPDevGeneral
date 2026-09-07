@@ -1,5 +1,6 @@
 package com.finalexec.controlpanel;
 
+import com.finalexec.db.ConstraintSurplusDropExecutor;
 import com.finalexec.db.CrossEngineDataPromotion;
 import com.finalexec.db.MigrationClaimStore;
 import com.finalexec.db.MigrationMarkStore;
@@ -8,6 +9,9 @@ import com.finalexec.db.PendingSchemaAcknowledgmentStore;
 import com.finalexec.db.SchemaDropSnapshotRestorePlan;
 import com.finalexec.db.SchemaDropSnapshotRestorer;
 import com.finalexec.db.SchemaLifecycleExecutor;
+import com.finalexec.db.SurplusDropSupport;
+import com.finalexec.db.schemastate.ConstraintSurplusDropPlan;
+import com.finalexec.db.schemastate.SurplusConstraint;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
@@ -447,6 +451,112 @@ public class SchemaAcknowledgmentController {
                     "Promotion requires a physical database source -- this app is running InMemory.");
         }
         return manifest;
+    }
+
+    /**
+     * STOR-31 (boundary B3): the classified, droppable surplus list plus the {@code dropToken} that
+     * binds it -- the operator's itemized decision, previewed BEFORE anything is touched. Read-only,
+     * writes nothing. The surplus section of the impact report is unchanged; this is the droppable
+     * (FOREIGN-classified-only) version of the same computation, and the token covers exactly these
+     * items: a database that gains or loses a surplus constraint changes the token, so a drop with a
+     * stale token is refused rather than executed against a different database than the one previewed.
+     */
+    @GetMapping("/surplus/preview")
+    public Map<String, Object> surplusPreview(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        if (manifest == null || !manifest.physicalDatabase()) {
+            return Map.of("surplus", List.of(), "abstentions", List.of(), "dropToken", null,
+                    "detail", "no physical-database manifest -- nothing to classify");
+        }
+        SurplusDropSupport.State state = SurplusDropSupport.prepare(dataSource, manifest);
+        List<Map<String, Object>> items = new ArrayList<>();
+        for (SurplusConstraint surplus : state.report().surplus()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("table", surplus.table());
+            item.put("kind", surplus.kind());
+            item.put("name", surplus.liveName());
+            item.put("columns", surplus.columns());
+            item.put("unique", surplus.unique());
+            item.put("referencedTable", surplus.referencedTable());
+            items.add(item);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("surplus", items);
+        body.put("abstentions", state.report().abstentions());
+        body.put("fingerprint", state.fingerprint());
+        body.put("dropToken", state.dropToken());
+        return body;
+    }
+
+    /**
+     * STOR-31 (boundary B3): executes an operator's itemized, token-gated surplus drop. Every input
+     * is re-derived from the CURRENT live database -- never a submitted list: the token is recomputed
+     * and compared (changed surplus set since preview => {@code B3:surplus_token_stale:}), each
+     * requested name is planned against the live surplus and its classification (non-FOREIGN =>
+     * {@code B3:surplus_not_foreign:} refusal; absent => {@code B3:surplus_not_present:}), and only
+     * then are the drops executed, one statement per constraint, each recorded in
+     * {@code npdev_schema_history} as a SURPLUS_DROPPED row BEFORE its statement runs. Nothing drops
+     * at boot, in a gate, or without this explicit request plus a matching token.
+     */
+    @PostMapping("/surplus/drop")
+    public ResponseEntity<Map<String, Object>> surplusDrop(
+            @RequestBody(required = false) SurplusDropRequest request, HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        if (manifest == null || !manifest.physicalDatabase()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Surplus drop requires a physical database source -- this app is running InMemory.");
+        }
+        if (request == null || request.constraints() == null || request.constraints().isEmpty()
+                || request.ackToken() == null || request.ackToken().isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "missing_required_field",
+                    "detail", "both 'constraints' (a non-empty list of constraint names) and 'ackToken' are required"));
+        }
+        SurplusDropSupport.State state = SurplusDropSupport.prepare(dataSource, manifest);
+        if (!state.hasDroppable()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", "B3:surplus_token_stale:",
+                    "detail", "the live database has no FOREIGN-classified surplus constraints to drop "
+                            + "(or the schema abstains from classifying) -- there is nothing a token could cover"));
+        }
+        if (!state.dropToken().equals(request.ackToken().trim())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "B3:surplus_token_stale:",
+                    "detail", "the live surplus set changed since this token was issued (recomputed and "
+                            + "compared -- a submitted list is never trusted). Preview again and resubmit "
+                            + "with the fresh dropToken."));
+        }
+        ConstraintSurplusDropPlan.Plan plan =
+                ConstraintSurplusDropPlan.plan(state.report(), state.liveByName(), request.constraints());
+        if (plan.hasRefusals()) {
+            List<String> codes = plan.refused().stream().map(ConstraintSurplusDropPlan.Refusal::code).toList();
+            return ResponseEntity.badRequest().body(Map.of(
+                    "error", String.join(", ", codes),
+                    "detail", "nothing was dropped -- only FOREIGN-classified surplus constraints are "
+                            + "droppable, by explicit itemized request plus a matching token",
+                    "refused", codes));
+        }
+        ConstraintSurplusDropExecutor.DropOutcome outcome =
+                ConstraintSurplusDropExecutor.execute(dataSource, plan);
+        if (outcome.hadFailure()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of(
+                    "error", "surplus_drop_failed",
+                    "detail", outcome.failure(),
+                    "dropped", outcome.dropped()));
+        }
+        return ResponseEntity.ok(Map.of(
+                "dropped", outcome.dropped(),
+                "recreateHints", outcome.recreateHints(),
+                "ackTokenUsed", request.ackToken().trim()));
+    }
+
+    /** STOR-31: body of {@code POST /surplus/drop} -- an itemized list of constraint names and the
+     *  {@code dropToken} from {@code GET /surplus/preview}. */
+    private record SurplusDropRequest(List<String> constraints, String ackToken) {
     }
 
     private static Map<String, Object> toResponseBody(CrossEngineDataPromotion.Preview preview) {
