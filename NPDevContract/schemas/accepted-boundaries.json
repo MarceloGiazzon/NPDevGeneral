@@ -123,9 +123,9 @@
     },
     {
       "id": "B18",
-      "kind": "POSTURAL",
-      "userFacingText": "Row-level write authorization's check-then-act window is closed by a real database lock (SELECT ... FOR UPDATE inside a transaction), not by a message you'd see -- a concurrent writer simply blocks.",
-      "workaround": "Nothing to do in the normal (transactional) case. In a degraded deployment with no real transaction manager wired (e.g. in-memory mode with no DataSource), this guarantee does not hold.",
+      "kind": "LIFTED",
+      "userFacingText": "Concurrent writes to the same row that both pass row-level write authorization can no longer silently overwrite each other: with a real transaction manager, both writes (create and delete alike) run inside a transaction and take a real row lock, so a concurrent writer blocks; without one, both write paths compare-and-swap against the row version they just read and the loser gets an optimistic-lock conflict it can retry.",
+      "workaround": "Nothing to do -- both write paths are now safe by default in both modes (real transaction manager, or the degraded no-transaction-manager default). The only rows left unprotected are on tables created before the platform tracked row versions, where there is no version to compare against; an explicit expectedRowVersion on a write request still gives the stronger stale-authorization check.",
       "enforcingDiagnosticCodes": []
     },
     {

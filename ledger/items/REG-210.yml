@@ -1,0 +1,97 @@
+id: REG-210
+title: >-
+  The check-then-act write-write window is closed on delete() too -- and in degraded (no
+  transaction-manager) mode via compare-and-swap (boundary B18 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-07
+closed: 2026-09-07
+source: >-
+  POSTURAL_LIFT_PLAN_2026-09-07.md package P2 (Wave 1). B18.yml's own residue, verbatim:
+  "expectedRowVersion was deliberately NOT defaulted on (no caller holds a version to compare
+  against). Revisit trigger: a degraded, no-transaction-manager deployment still wants this
+  guarantee -- which would need a different mechanism entirely, since there is no transactional
+  resource to lock in that mode."
+surface: >-
+  kernel ports (TransactionRunner.isTransactional, ConceptStore 4-arg deleteById) and the gateway
+  (DefaultConceptGateway: delete now wrapped and read-for-update, degraded-mode CAS on both write
+  paths), both writes' stores (InMemoryConceptStore, JdbcBusinessConceptStore), and the three prose
+  claims that described delete code which did not exist.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/TransactionRunner.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/ports/ConceptStore.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/DefaultConceptGateway.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/inproc/InMemoryConceptStore.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/JdbcBusinessConceptStore.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayDegradedConcurrencyTest.java
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayTest.java
+  - ledger/boundaries/B18.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/reference/ROW_LEVEL_AUTHORIZATION.md
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **PREMISE DEFECT, worth more than the package (found by opening the file, not the note).** B18's
+  row, the ACCOUNT_BOUNDARIES.md row, AND DefaultConceptGateway's class javadoc all claimed
+  "save()/delete() run their whole check-then-act body ... inside a TransactionRunner, using
+  findByIdForUpdate". Grep at 20eec948 showed that was true of save() (runInTransaction at :389,
+  findByIdForUpdate at :411) and FALSE of delete(): no runInTransaction wrapper at all, plain
+  store.findById at :460, store.deleteById at :485. The doc, the row and the javadoc all described
+  code that did not exist -- the exact stale-premise shape this repo's own recurring failure mode
+  names. Both halves of the package were implemented: delete now matches its documentation, AND the
+  degraded-mode mechanism the row said "would need a different mechanism entirely" turned out to be
+  already-built-and-unused machinery (ConceptRecord.rowVersion + both stores' CAS), so the residue
+  sentence itself was false too.
+
+  **What changed.** (a) delete() is refactored into deleteWithinTransaction, the public method runs
+  the whole body via transactionRunner.runInTransaction, and the read is findByIdForUpdate -- a
+  concurrent writer now blocks the way save already did. The REG-48 ordering (enforcePermission /
+  enforceRowWritable / evaluateRuleProfiles) is byte-identical, preserved verbatim for its
+  information-leak reason. (b) TransactionRunner gains isTransactional() (false ONLY on none()),
+  and both write paths compare-and-swap in degraded mode: save supplies the version its read just
+  returned (guarded by: no explicit expectedRowVersion, not force(), degraded, row exists WITH a
+  version -- an explicit caller version still wins, force() still opts out, a real transaction
+  manager still uses the lock only, and a row with no version is untouched); delete uses a new
+  4-arg ConceptStore.deleteById(..., expectedRowVersion) default (preserving every store's current
+  behavior), implemented for real in JdbcBusinessConceptStore (WHERE ... AND row_version = ?; 0
+  rows -> ConceptStoreOptimisticLockException, mirroring saveVersioned's shape; the soft-delete
+  branch gets the same guard) and InMemoryConceptStore (synchronized CAS, version checked BEFORE
+  referential-integrity cascades so a loser triggers no side effects). The 3-arg JDBC delete
+  delegates to the 4-arg with null and is byte-for-byte today's behavior (0-rows no-op, no throw).
+
+  **What was measured, not assumed.** RED-first: the three new tests ran against unmodified code and
+  failed exactly as designed (660 tests, 3 failed: deleteReadsForUpdateInsideTheTransaction, and
+  the save- and delete-side degraded races -- today the second writer silently wins both). The
+  degraded-race tests force the window deterministically with a read barrier that holds both caller
+  threads at read-for-update until both have read the same version, the kernel-level analogue of
+  DefaultConceptGatewayRowAuthzRaceTest's ReassigningAfterReadStore technique. The existing LNCH-16
+  explicit-CAS tests pass UNCHANGED (an explicit expectedRowVersion still wins, force() still
+  opts out). A real TransactionRunner path was asserted by a recording runner + deleting spy store
+  (findByIdForUpdate called, findById not, one runInTransaction saw the whole body).
+
+  **What was deliberately NOT done, and why.** The JDBC VERIFIED side (real H2, real threads, real
+  SELECT ... FOR UPDATE) is RuntimeHost's DefaultConceptGatewayRowAuthzRaceTest's business and was
+  not rebuilt here. Delete's CAS conflict is surfaced as ConceptStoreOptimisticLockException
+  unwrapped (the plan's stated shape), unlike save's which the gateway wraps into
+  ConceptGatewayOptimisticLockException as before -- both are the same underlying conflict. No
+  capability token and no diagnostic were added: this is a safety behaviour, not a refusal, so
+  codeLinked stays false honestly.
+
+  **Residual statement (goes verbatim into ledger/boundaries/B18.yml too).** A table generated
+  before LNCH-16 has no row_version column, so the degraded-mode guard cannot engage there and the
+  window stays open until the column exists. A degraded-mode loser gets an exception to retry, not
+  a block -- the outcome is safe, not transparent.
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayDegradedConcurrencyTest.java#degradedModeSaveRaceIsLoudNotSilent
+  asserts: >-
+    Two threads race to save the same row under TransactionRunner.none() with a read barrier holding
+    both at their read-for-update: exactly one wins, the loser gets
+    ConceptGatewayOptimisticLockException and the row keeps the winner's data. Its delete-side twin
+    (degradedModeDeleteRaceIsLoudNotSilent) asserts the same against the 4-arg deleteById, and
+    DefaultConceptGatewayTest#deleteReadsForUpdateInsideTheTransaction asserts the delete body runs
+    inside the transaction reading through findByIdForUpdate. All three were observed RED against
+    unmodified code (the second writer silently won), then green after the fix; the LNCH-16
+    explicit-CAS tests pass unchanged.
+  provenRed: true

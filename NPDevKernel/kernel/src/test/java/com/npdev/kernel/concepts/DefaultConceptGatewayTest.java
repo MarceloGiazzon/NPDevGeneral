@@ -5,8 +5,10 @@ import com.npdev.kernel.audit.AuditRecord;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.AuditQuery;
+import com.npdev.kernel.ports.ConceptStore;
 import com.npdev.kernel.ports.PermissionEvaluator;
 import com.npdev.kernel.ports.TenantIsolationPolicy;
+import com.npdev.kernel.ports.TransactionRunner;
 import com.npdev.kernel.security.PermissionDecision;
 import org.junit.jupiter.api.Test;
 
@@ -16,6 +18,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -368,6 +371,83 @@ class DefaultConceptGatewayTest {
 
         assertEquals(1, slice.records().size());
         assertFalse(slice.truncated());
+    }
+
+    /**
+     * REG-210 (boundary B18, POSTURAL_LIFT_PLAN_2026-09-07.md package P2 half (a)): {@code delete}
+     * must match its own documentation -- the whole check-then-act body inside the
+     * {@link TransactionRunner}'s transaction, reading through {@code findByIdForUpdate} rather
+     * than the plain locked-free {@code findById}. Today the delete path wraps nothing and reads
+     * unlocked, so a concurrent writer does not block the way save already does.
+     */
+    @Test
+    void deleteReadsForUpdateInsideTheTransaction() {
+        DeleteSpyStore store = new DeleteSpyStore();
+        store.save(new ConceptRecord("UserAccount", "user-1", "tenant-a", Map.of("email", "a@example.test"), null));
+        RecordingTransactionRunner runner = new RecordingTransactionRunner();
+        DefaultConceptGateway gateway = new DefaultConceptGateway(
+                store,
+                PermissionEvaluator.allowAll(),
+                (left, right) -> left.equals(right),
+                new CapturingAuditLogStore(),
+                new SemanticPolicy(false),
+                new CapturingTraceSink(),
+                runner
+        );
+        ExecutionContext context = ExecutionContext.of("tenant-a", "actor-a");
+
+        gateway.delete(new ConceptReadRequest("UserAccount", "user-1", "tenant-a"), context);
+
+        assertTrue(store.calls.contains("findByIdForUpdate"),
+                "delete must read through findByIdForUpdate: " + store.calls);
+        assertFalse(store.calls.contains("findById"),
+                "delete must not read through the unlocked findById: " + store.calls);
+        assertTrue(store.calls.contains("deleteById"), store.calls.toString());
+        assertEquals(List.of("runInTransaction"), runner.calls,
+                "the whole delete body must run inside the transaction");
+    }
+
+    private static final class DeleteSpyStore implements ConceptStore {
+        private final InMemoryConceptStore delegate = new InMemoryConceptStore();
+        private final List<String> calls = new ArrayList<>();
+
+        @Override
+        public Optional<ConceptRecord> findById(String tenantId, String conceptName, String id) {
+            calls.add("findById");
+            return delegate.findById(tenantId, conceptName, id);
+        }
+
+        @Override
+        public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
+            calls.add("findByIdForUpdate");
+            return delegate.findById(tenantId, conceptName, id);
+        }
+
+        @Override
+        public List<ConceptRecord> findAll(String tenantId, String conceptName) {
+            return delegate.findAll(tenantId, conceptName);
+        }
+
+        @Override
+        public ConceptRecord save(ConceptRecord record) {
+            return delegate.save(record);
+        }
+
+        @Override
+        public void deleteById(String tenantId, String conceptName, String id) {
+            calls.add("deleteById");
+            delegate.deleteById(tenantId, conceptName, id);
+        }
+    }
+
+    private static final class RecordingTransactionRunner implements TransactionRunner {
+        private final List<String> calls = new ArrayList<>();
+
+        @Override
+        public <T> T runInTransaction(Supplier<T> action) {
+            calls.add("runInTransaction");
+            return action.get();
+        }
     }
 
     private static final class CapturingAuditLogStore implements AuditLogStore {

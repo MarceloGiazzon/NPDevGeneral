@@ -1048,34 +1048,69 @@ public final class JdbcBusinessConceptStore implements ConceptStore {
      */
     @Override
     public void deleteById(String tenantId, String conceptName, String id) {
+        deleteById(tenantId, conceptName, id, null);
+    }
+
+    /**
+     * REG-210: the same delete, but with a compare-and-swap guard. When {@code expectedRowVersion}
+     * is non-null, the statement also requires the stored {@code row_version} to still match (the
+     * concatenated guard binds nothing, mirroring {@link #saveVersioned}'s shape), and zero rows
+     * affected means someone else won the race (or the row is gone) -- the caller gets a
+     * {@link ConceptStoreOptimisticLockException} carrying whatever is currently stored, exactly
+     * like a lost {@code save}. A null {@code expectedRowVersion} is byte-for-byte today's
+     * behavior: no version predicate, no throw (a double soft-delete or a missing row is a silent
+     * 0-rows no-op, unchanged).
+     */
+    @Override
+    public void deleteById(String tenantId, String conceptName, String id, Long expectedRowVersion) {
         ConceptShape shape = shape(conceptName);
+        int affected;
         if (shape.softDelete()) {
             String sql = "UPDATE " + sqlId(shape.tableName()) + " SET deleted_at = ? WHERE "
-                    + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND deleted_at IS NULL";
+                    + sqlId(shape.idColumn()) + " = ? AND tenant_id = ? AND deleted_at IS NULL"
+                    + rowVersionGuard(expectedRowVersion);
             Connection connection = openConnection();
             try (PreparedStatement statement = connection.prepareStatement(sql)) {
-                bindObject(statement, 1, java.sql.Timestamp.from(java.time.Instant.now()));
-                bindObject(statement, 2, coerceId(id));
-                bindObject(statement, 3, tenantId);
-                statement.executeUpdate();
+                int index = 1;
+                bindObject(statement, index++, java.sql.Timestamp.from(java.time.Instant.now()));
+                bindObject(statement, index++, coerceId(id));
+                bindObject(statement, index++, tenantId);
+                if (expectedRowVersion != null) {
+                    bindObject(statement, index, expectedRowVersion);
+                }
+                affected = statement.executeUpdate();
             } catch (SQLException exception) {
                 throw new IllegalStateException("Failed soft-deleting concept " + conceptName + " from JDBC store", exception);
             } finally {
                 releaseConnection(connection);
             }
-            return;
+        } else {
+            String sql = "DELETE FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn())
+                    + " = ? AND tenant_id = ?" + rowVersionGuard(expectedRowVersion);
+            Connection connection = openConnection();
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                int index = 1;
+                bindObject(statement, index++, coerceId(id));
+                bindObject(statement, index++, tenantId);
+                if (expectedRowVersion != null) {
+                    bindObject(statement, index, expectedRowVersion);
+                }
+                affected = statement.executeUpdate();
+            } catch (SQLException exception) {
+                throw new IllegalStateException("Failed deleting concept " + conceptName + " from JDBC store", exception);
+            } finally {
+                releaseConnection(connection);
+            }
         }
-        String sql = "DELETE FROM " + sqlId(shape.tableName()) + " WHERE " + sqlId(shape.idColumn()) + " = ? AND tenant_id = ?";
-        Connection connection = openConnection();
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            bindObject(statement, 1, coerceId(id));
-            bindObject(statement, 2, tenantId);
-            statement.executeUpdate();
-        } catch (SQLException exception) {
-            throw new IllegalStateException("Failed deleting concept " + conceptName + " from JDBC store", exception);
-        } finally {
-            releaseConnection(connection);
+        if (expectedRowVersion != null && affected == 0) {
+            Optional<ConceptRecord> current = findById(tenantId, conceptName, id);
+            throw new ConceptStoreOptimisticLockException(conceptName, id, tenantId, current);
         }
+    }
+
+    /** REG-210: the version predicate for a CAS delete -- empty (no-op) when no version is supplied. */
+    private static String rowVersionGuard(Long expectedRowVersion) {
+        return expectedRowVersion == null ? "" : " AND row_version = ?";
     }
 
     /**

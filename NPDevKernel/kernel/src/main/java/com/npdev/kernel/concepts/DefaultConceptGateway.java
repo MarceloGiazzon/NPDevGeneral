@@ -99,12 +99,14 @@ public final class DefaultConceptGateway implements ConceptGateway {
     }
 
     /**
-     * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}): {@code transactionRunner} wraps {@link #save}/
-     * {@link #delete}'s check-then-act critical section (read-for-update through persist) in one
-     * transaction when a real one is supplied, closing the race window between evaluating
-     * {@code isRowWritable} and persisting a write based on it. {@link TransactionRunner#none()} (what
-     * every OTHER constructor above still defaults to) preserves today's behavior exactly -- no
-     * caller signature changes, no existing test needed modifying.
+     * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}) / REG-210: {@code transactionRunner}
+     * wraps {@link #save}/{@link #delete}'s check-then-act critical section (read-for-update through
+     * persist) in one transaction when a real one is supplied, closing the race window between
+     * evaluating {@code isRowWritable} and persisting a write based on it. {@link TransactionRunner#none()}
+     * (what every OTHER constructor above still defaults to) is the degraded mode: no transaction
+     * manager, so no lock to hold -- both write paths then compare-and-swap against the row version
+     * the read-for-update just returned, turning a lost race into a loud
+     * {@link ConceptStoreOptimisticLockException} instead of a silent overwrite.
      */
     public DefaultConceptGateway(
             ConceptStore store,
@@ -434,6 +436,12 @@ public final class DefaultConceptGateway implements ConceptGateway {
         // else -- no expectedRowVersion, the common case for every caller that predates this
         // feature -- is an unconditional write, unchanged from today.
         Long rowVersion = request.force() ? null : request.expectedRowVersion();
+        if (rowVersion == null && !request.force()
+                && !transactionRunner.isTransactional()
+                && previous.isPresent() && previous.get().rowVersion() != null) {
+            // REG-210: degraded mode has no lock to take, so compare against the version we just read.
+            rowVersion = previous.get().rowVersion();
+        }
         ConceptRecord record = new ConceptRecord(request.conceptName(), request.id(), tenantId, decision.data(), rowVersion);
         ConceptRecord saved;
         try {
@@ -457,7 +465,25 @@ public final class DefaultConceptGateway implements ConceptGateway {
     public void delete(ConceptReadRequest request, ExecutionContext context) {
         ExecutionContext effectiveContext = normalizeContext(context);
         String tenantId = enforceTenant(request.tenantId(), effectiveContext, "CONCEPT_DELETE", request.conceptName(), request.id());
-        Optional<ConceptRecord> previous = store.findById(tenantId, request.conceptName(), request.id());
+        transactionRunner.runInTransaction(() -> {
+            deleteWithinTransaction(request, effectiveContext, tenantId);
+            return null;
+        });
+    }
+
+    /**
+     * REG-210 (boundary B18, half (a)): the whole check-then-act body -- reading the row through
+     * {@link ConceptStore#findByIdForUpdate} (a real {@code SELECT ... FOR UPDATE} on a JDBC
+     * store, inside a real transaction when the host wired one), evaluating {@code isRowWritable},
+     * then persisting the delete -- inside {@link #transactionRunner}, exactly matching save's
+     * shape, so a concurrent writer against the same row blocks the way save already blocks. Half
+     * (b): in degraded mode ({@code TransactionRunner.none()}), the lock cannot hold anything, so
+     * the row version this read returns is passed back to the store as a compare-and-swap instead
+     * (see {@link ConceptStore#deleteById(String, String, String, Long)}) -- a lost race becomes a
+     * loud {@link ConceptStoreOptimisticLockException}, never a silent overwrite.
+     */
+    private void deleteWithinTransaction(ConceptReadRequest request, ExecutionContext effectiveContext, String tenantId) {
+        Optional<ConceptRecord> previous = store.findByIdForUpdate(tenantId, request.conceptName(), request.id());
         ConceptGatewayRequestContext requestContext = requestContext(
                 ConceptGatewayOperation.DELETE,
                 request.conceptName(),
@@ -482,7 +508,18 @@ public final class DefaultConceptGateway implements ConceptGateway {
                 ruleProfilesForWriteBeforeCommit(effectiveContext)
         );
 
-        store.deleteById(tenantId, request.conceptName(), request.id());
+        // REG-210: same four guard conditions as save's degraded-mode CAS -- degraded mode, a real
+        // row with a version. (There is no force()/expectedRowVersion on a delete request; those
+        // two conditions collapse.) Under a real transaction manager the lock holds instead and the
+        // plain 3-arg delete is used, exactly as before.
+        Long expectedRowVersion = (!transactionRunner.isTransactional()
+                && previous.isPresent() && previous.get().rowVersion() != null)
+                ? previous.get().rowVersion() : null;
+        if (expectedRowVersion != null) {
+            store.deleteById(tenantId, request.conceptName(), request.id(), expectedRowVersion);
+        } else {
+            store.deleteById(tenantId, request.conceptName(), request.id());
+        }
         audit(effectiveContext, "CONCEPT_DELETE", request.conceptName(), request.id(), "SUCCESS", "allowed", tenantId);
         trace(requestContext, "SUCCESS", "allowed", decision);
     }

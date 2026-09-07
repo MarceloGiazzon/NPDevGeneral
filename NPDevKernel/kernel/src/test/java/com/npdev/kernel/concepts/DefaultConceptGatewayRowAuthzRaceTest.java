@@ -14,22 +14,29 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
- * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}): {@code DefaultConceptGateway.save}/
- * {@code delete} snapshot a row, evaluate {@code isRowWritable}, then persist later -- a race window
- * where a concurrent actor who ALREADY has legitimate write access could reassign ownership
- * mid-window. This documents the vulnerability with a deterministic, single-threaded simulation (a
+ * B18 (Move 9 A2, {@code docs/ACCEPTED_BOUNDARIES.md}) / REG-210 (POSTURAL_LIFT_PLAN_2026-09-07.md
+ * package P2): {@code DefaultConceptGateway.save}/{@code delete} snapshot a row, evaluate
+ * {@code isRowWritable}, then persist later -- a race window where a concurrent actor who ALREADY
+ * has legitimate write access could reassign ownership mid-window. This documents what REG-210 did
+ * to that scenario in degraded mode with a deterministic, single-threaded simulation (a
  * {@link ConceptStore} decorator that performs the "reassign" write DIRECTLY after this save's own
  * read-for-update returns, before the gateway acts on it -- the same technique
  * {@code AggregateRuntimeCommitTransactionalTest}'s {@code FailingOnSaveGateway} already establishes
  * for deterministically forcing an otherwise timing-dependent scenario).
  *
- * <p>Proving the FIX (a real transaction + a real row lock closing this) needs a genuinely
- * concurrent, database-backed test -- kernel's in-memory store has no real locking primitive to
- * prove that against (its own {@code findByIdForUpdate} is the interface's plain, unlocked default).
- * See RuntimeHost's {@code DefaultConceptGatewayRowAuthzRaceTest} (real {@code JdbcBusinessConceptStore}
- * + a real H2 database + two real threads) for that half.
+ * <p>Before REG-210, the stale write LANDED silently (alice's now-stale decision persisted over
+ * bob's reassignment). After REG-210, `TransactionRunner.none()` (degraded mode -- no lock to
+ * take) makes the gateway compare-and-swap against the row version its read-for-update returned:
+ * bob's reassignment bumped the version, so alice's write is refused loudly with a
+ * {@link ConceptGatewayOptimisticLockException} carrying the winner's current row, and the
+ * authorization decision made from the stale read never reaches storage. Under a real transaction
+ * manager the lock serializes instead (a concurrent writer blocks until the first commits). What
+ * remains true in every mode: the gateway cannot tell that the AUTHORIZATION BASIS itself went
+ * stale -- it refuses the write, but it cannot re-run the authorization decision against the row's
+ * final state; it simply never lets a stale write persist silently.
  */
 class DefaultConceptGatewayRowAuthzRaceTest {
 
@@ -96,7 +103,7 @@ class DefaultConceptGatewayRowAuthzRaceTest {
     }
 
     @Test
-    void todaysRaceLetsAStaleWriterActEvenAfterOwnershipWasReassignedMidWindow() {
+    void staleWriterIsRefusedLoudlyAfterOwnershipWasReassignedMidWindow() {
         InMemoryConceptStore backing = new InMemoryConceptStore();
         backing.save(new ConceptRecord("Ticket", "T1", "tenant-a", Map.of("ownerId", "alice", "status", "Open")));
 
@@ -106,18 +113,21 @@ class DefaultConceptGatewayRowAuthzRaceTest {
         DefaultConceptGateway gateway = DefaultConceptGateway.governedBy(store, ticketModel());
         ExecutionContext asAlice = ExecutionContext.of("tenant-a", "alice");
 
-        // Alice's own save reads (sees herself as owner, decides isRowWritable=true); the
-        // reassignment to bob happens in the simulated gap above; alice's write STILL lands today,
-        // using her now-stale authorization decision -- this is the documented, unfixed-at-this-layer
-        // race. (TransactionRunner.none(), governedBy's default, changes nothing here: an in-memory
-        // store has no lock for a transaction wrapper to hold in the first place.)
-        ConceptRecord saved = gateway.save(
-                new ConceptWriteRequest("Ticket", "T1", "tenant-a",
-                        Map.of("id", "T1", "ownerId", "alice", "status", "InProgress"), null, false),
-                asAlice);
+        // Alice's save reads (sees herself as owner, decides isRowWritable=true); bob's
+        // reassignment happens in the simulated gap (bumping the row version); alice's write is
+        // REFUSED loudly -- REG-210's degraded-mode CAS keeps the stale decision from ever
+        // reaching storage. Before REG-210 this write LANDED silently, persisting alice's stale
+        // decision over bob's reassignment. (TransactionRunner.none(), governedBy's default, is
+        // exactly the degraded mode: no lock exists, so the gateway compares the version it read
+        // against the row's current one and loses.)
+        ConceptGatewayOptimisticLockException conflict = assertThrows(
+                ConceptGatewayOptimisticLockException.class,
+                () -> gateway.save(
+                        new ConceptWriteRequest("Ticket", "T1", "tenant-a",
+                                Map.of("id", "T1", "ownerId", "alice", "status", "InProgress"), null, false),
+                        asAlice));
 
-        assertEquals("InProgress", saved.data().get("status"),
-                "documents today's race: alice's write lands using her now-stale isRowWritable decision, "
-                        + "even though bob was reassigned ownership before her write persisted");
+        assertEquals("bob", conflict.currentRecord().orElseThrow().data().get("ownerId"),
+                "the refusal carries the winner's current row, so the caller can retry against reality");
     }
 }

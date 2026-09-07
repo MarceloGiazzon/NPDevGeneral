@@ -94,21 +94,26 @@ REG-42 row.
 
 ## Check-then-act, not atomic against a concurrent ownership change (LNCH13-F4, accepted boundary B18)
 
-`DefaultConceptGateway.save()`/`delete()` snapshot the previous row (`store.findById`) before
-evaluating `isRowWritable`, then persist later. A concurrent actor who *already has* legitimate write
-access to the row could reassign its ownership inside that window, making the authorization decision
-stale by the time the write commits. This is **not** a way for an unauthorized actor to gain access —
-it requires a second actor who already passed the same `access.write` check — and it is accepted as a
-documented boundary (`docs/ACCEPTED_BOUNDARIES.md` B18; disposition recorded 2026-07-27, F8,
-`docs/DECISION_BRIEFS_2026-07.md`), with a named revisit trigger: if any concept's `access.write` rule
-ever becomes reassignable by a role other than the row's own owner/admin, revisit this.
+`DefaultConceptGateway.save()`/`delete()` snapshot the previous row through `findByIdForUpdate`
+(read-for-update under a real transaction; the write-write race is closed on both paths — see
+REG-210 and `ledger/boundaries/B18.yml`) before evaluating `isRowWritable`, then persist later.
+What remains after REG-210 is the *decision* half: the gateway computes `isRowWritable` from a
+snapshot, and if a concurrent actor who *already has* legitimate write access reassigns ownership
+inside that window, the *decision* is stale even though the *write* cannot persist based on it (it
+serializes behind the reassignment under a lock, or is refused loudly by the version CAS in a
+degraded deployment). This is **not** a way for an unauthorized actor to gain access — it requires a
+second actor who already passed the same `access.write` check, and the stale writer is refused, never
+silently applied — and the original disposition is recorded 2026-07-27, F8,
+`docs/DECISION_BRIEFS_2026-07.md`.
 
 **If you need the stronger guarantee today:** pass `ConceptWriteRequest.expectedRowVersion`. This is
 an existing, opt-in optimistic-CAS mechanism (`NPDevKernel/kernel/.../concepts/`,
 `ConceptGatewayOptimisticLockException` thrown on a stale version) already used for concurrent-*edit*
-conflicts — it is not wired to also gate the row-level authorization re-check specifically, but a
-caller who supplies it gets a hard failure instead of a silent stale-authorization write whenever the
-row changed underneath them, which closes the practical risk for any concept where it matters.
+conflicts. Since REG-210, a deployment with no transaction manager gets this same CAS for free:
+`TransactionRunner.none()` reports `isTransactional() == false`, and save/delete compare-and-swap
+against the row version their read-for-update just returned, so even an *unversioned* request loses a
+race loudly instead of overwriting silently — a caller who supplies an explicit version gets the
+stronger stale-authorization guarantee whenever the row changed underneath them.
 
 ## What's deliberately out of scope
 

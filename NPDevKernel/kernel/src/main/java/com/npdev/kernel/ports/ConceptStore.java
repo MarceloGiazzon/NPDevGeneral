@@ -58,6 +58,20 @@ public interface ConceptStore {
     void deleteById(String tenantId, String conceptName, String id);
 
     /**
+     * REG-210: delete only if the row still carries {@code expectedRowVersion} -- a compare-and-
+     * swap on the delete, closing the check-then-act window in a deployment with NO transaction
+     * manager to hold a lock (see {@link TransactionRunner#isTransactional()}, false only for
+     * {@code none()}). The default ignores the version and delegates, preserving today's behaviour
+     * for every store that has not implemented it; the two stores that know what a row version IS
+     * ({@code InMemoryConceptStore}, {@code JdbcBusinessConceptStore}) override it with a real
+     * guard that throws {@link ConceptStoreOptimisticLockException} when the row no longer carries
+     * the version the caller read.
+     */
+    default void deleteById(String tenantId, String conceptName, String id, Long expectedRowVersion) {
+        deleteById(tenantId, conceptName, id);
+    }
+
+    /**
      * R5.4: the restore half of soft delete -- clears whatever {@link #deleteById} set, making the
      * row visible to every read method again. Default {@code false} (a no-op) is deliberately the
      * answer for any store with no schema knowledge of which concepts declare {@code softDelete} --
