@@ -1,15 +1,30 @@
 id: B18
-title: "Row-level write authorization's check-then-act window is closed under a real transaction manager (Move 9 A2)"
+title: "Row-level write authorization's check-then-act window is closed on save AND delete -- by locking under a real transaction manager, by compare-and-swap without one"
 codeLinked: false
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. The check-then-act window is closed
-  by real database behaviour, not by a refusal: DefaultConceptGateway.save()/delete() run their whole
-  body (read the row, evaluate isRowWritable, persist) inside a TransactionRunner, using
-  ConceptStore.findByIdForUpdate (a real SELECT ... FOR UPDATE on JdbcBusinessConceptStore), so a
-  concurrent writer BLOCKS rather than being told anything. There is no ValidationDiagnostic, no error
-  code and no message, so no boundaryId applies. expectedRowVersion was deliberately NOT defaulted on
-  (no caller holds a version to compare against). Revisit trigger: a degraded, no-transaction-manager
-  deployment still wants this guarantee -- which would need a different mechanism entirely, since
-  there is no transactional resource to lock in that mode.
+  2026-09-07 (REG-210, POSTURAL_LIFT_PLAN_2026-09-07.md package P2): LIFTED. The check-then-act
+  window was only ever half-closed: save() already wrapped its whole body in the TransactionRunner
+  and read via ConceptStore.findByIdForUpdate, but delete() had NO runInTransaction wrapper at all
+  and read through the plain, unlocked findById -- the doc, the JavaDoc and this row's old text all
+  described delete code that did not exist. Half (a) makes delete match its documentation: the whole
+  body now runs inside transactionRunner and reads through findByIdForUpdate, so a concurrent writer
+  blocks the way save already blocks. Half (b) closes the degraded mode: TransactionRunner.none()
+  now answers isTransactional() == false, and both write paths compare-and-swap against the row
+  version the read just returned instead of relying on a lock that does not exist -- an update goes
+  through the version-carrying ConceptStore.save, a delete through a new 4-arg
+  ConceptStore.deleteById(..., expectedRowVersion) (real WHERE ... AND row_version = ? in
+  JdbcBusinessConceptStore, synchronized CAS in InMemoryConceptStore), and a lost race becomes a
+  loud ConceptStoreOptimisticLockException instead of a silent overwrite. The authorization-reassignment
+  scenario (a second actor who already holds write access reassigning ownership mid-window) is closed AT
+  THE WRITE level by the same two mechanisms: under a lock the writes serialize, in degraded mode the
+  reassignment bumped the version so the stale write is refused loudly and never persists. What no
+  mechanism can do is re-run the authorization decision against the row's FINAL state on the loser's
+  behalf -- the gateway refuses the write, it cannot prove the decision itself was still right; that is
+  inherent to any snapshot-then-decide shape, not a window that lets a stale write land.
+
+  Residual: a table generated before LNCH-16 has no row_version column, so the degraded-mode guard
+  cannot engage there and the window stays open until the column exists (the read returns no
+  version, so nothing to compare). A degraded-mode loser gets an exception to retry, not a block --
+  the outcome is safe, not transparent.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B18 -- F8 docs/archive/programme-history/DECISION_BRIEFS_2026-07.md, LNCH13-F4 docs/archive/programme-history/REG16_LNCH13_ROWLEVEL_AUTHZ_ADVERSARIAL_REVIEW.md, docs/reference/ROW_LEVEL_AUTHORIZATION.md, Move 9 A2"
-classification: POSTURAL
+classification: LIFTED

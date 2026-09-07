@@ -17,11 +17,27 @@ public interface TransactionRunner {
 
     <T> T runInTransaction(Supplier<T> action);
 
+    /**
+     * REG-210: whether this runner actually provides a transaction manager. {@code false} ONLY for
+     * {@link #none()} -- the degraded, no-transaction-manager mode, where there is no transactional
+     * resource to lock and the callee must fall back to optimistic compare-and-swap. A real
+     * implementation (a {@code TransactionTemplate} wrapper) inherits {@code true}, so existing
+     * hosts that wire one in get the pessimistic-lock path without change.
+     */
+    default boolean isTransactional() {
+        return true;
+    }
+
     static TransactionRunner none() {
         return new TransactionRunner() {
             @Override
             public <T> T runInTransaction(Supplier<T> action) {
                 return action.get();
+            }
+
+            @Override
+            public boolean isTransactional() {
+                return false;
             }
         };
     }

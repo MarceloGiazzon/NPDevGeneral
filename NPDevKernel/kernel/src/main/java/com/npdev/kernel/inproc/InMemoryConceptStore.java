@@ -230,6 +230,21 @@ public final class InMemoryConceptStore implements ConceptStore {
     }
 
     @Override
+    public synchronized void deleteById(String tenantId, String conceptName, String id, Long expectedRowVersion) {
+        // REG-210: compare-and-swap on the delete -- the version is checked BEFORE any side effect
+        // (referential-integrity cascades in the 3-arg form below), so a CAS loser never triggers a
+        // cascade on a row it did not actually delete.
+        if (expectedRowVersion != null) {
+            ConceptRecord current = records.get(key(tenantId, conceptName, id));
+            if (current == null || !expectedRowVersion.equals(current.rowVersion())) {
+                throw new ConceptStoreOptimisticLockException(
+                        conceptName, id, tenantId, Optional.ofNullable(current));
+            }
+        }
+        deleteById(tenantId, conceptName, id);
+    }
+
+    @Override
     public synchronized void deleteById(String tenantId, String conceptName, String id) {
         if (model != null) {
             enforceReferentialIntegrity(tenantId, conceptName, id);
