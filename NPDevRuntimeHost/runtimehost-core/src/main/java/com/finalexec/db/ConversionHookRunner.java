@@ -643,11 +643,21 @@ public final class ConversionHookRunner {
         try {
             Resource[] resources = new PathMatchingResourcePatternResolver()
                     .getResources("classpath*:db/conversion-hooks/*/hook.json");
-            List<Hook> hooks = new ArrayList<>();
+            // QUAL-57: classpath*: is DESIGNED to return a match from every classpath root that has
+            // one, not just the first -- a build/classpath composition can legitimately place the
+            // SAME fixture directory on more than one root at once (e.g. NPDevRuntimeHost's
+            // integrationTest sourceSet, whose own unfiltered `resources { srcDir 'src/test/resources' }`
+            // sits alongside sourceSets.test.output's independent copy of that same tree on the same
+            // classpath). De-duplicate by hook id -- first occurrence wins -- rather than trust
+            // resource-count == hook-count; a hook loaded twice with a non-idempotent, unguarded
+            // convert.sql previously ran twice inside one collective transaction and failed on its
+            // own second ADD COLUMN.
+            Map<String, Hook> byId = new LinkedHashMap<>();
             for (Resource resource : resources) {
-                hooks.add(parseHook(resource));
+                Hook hook = parseHook(resource);
+                byId.putIfAbsent(hook.id(), hook);
             }
-            return hooks;
+            return List.copyOf(byId.values());
         } catch (IOException exception) {
             System.out.println("NPDev schema lifecycle: failed listing conversion hooks (continuing with none): "
                     + exception.getMessage());
