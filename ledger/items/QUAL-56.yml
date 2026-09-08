@@ -1,0 +1,84 @@
+id: QUAL-56
+title: >-
+  ConversionHookRunnerCollectiveRollbackTest (STOR-34's Postgres collective-rollback proof) crashed
+  the windows-latest ci-validation job's plain `test` task with ExceptionInInitializerError, because
+  it landed without the same test/integrationTest routing its sibling Postgres-Testcontainers test
+  already carries
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-09-08
+closed: 2026-09-08
+source: >-
+  "NPDev CI Validation" (windows-latest ci-validation job, RuntimeHost gate step) failed on the
+  QUAL-55 closure push (commit 5138321e) with a 1-test failure. Confirmed pre-existing and unrelated
+  to that push by checking the two prior main commits (5248e3ab, 5644627a): both failed identically,
+  and `git log 20eec948..5644627a` shows the failure started exactly at STOR-34's own commit
+  (bea2ba01, 2026-09-08 00:33), the first commit after the last green CI Validation run (20eec948,
+  2026-09-07 08:10).
+surface: NPDevRuntimeHost/build.gradle, NPDevRuntimeHost/build.gradle.template, ConversionHookRunnerCollectiveRollbackTest
+files:
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerCollectiveRollbackTest.java
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/build.gradle.template
+detail: |
+  ROOT CAUSE. `ConversionHookRunnerCollectiveRollbackTest` (STOR-34, boundary B12) calls
+  `PostgresTestSupport.dataSource()` in an instance field initializer. That method calls
+  `Assumptions.assumeTrue(postgresEnabled(), ...)` BEFORE touching the lazy `DataSourceHolder` --
+  intended to skip cleanly wherever Postgres isn't real. But `postgresEnabled()` is itself a static
+  method of `PostgresTestSupport`, so calling it forces the class's OWN static initializer to run
+  first, which constructs `POSTGRES = createContainer()` -- a `new PostgreSQLContainer<>(...)` that
+  Testcontainers resolves a real Docker environment for immediately. On windows-latest GitHub
+  runners (no Linux-container Docker), that construction throws, so the class fails to load and
+  EVERY caller -- including ones that would otherwise have hit the graceful `assumeTrue` skip --
+  gets `ExceptionInInitializerError` instead. The `Assumptions` check never gets a chance to fire;
+  it is downstream of a failure that already happened.
+
+  This exact hazard already has an established, working answer in the same file
+  (`SchemaLifecycleExecutorPostgresProofMatrixTest`, LNCH-1 Phase 7): `@Tag("integration")`,
+  excluded from the plain `test` task's sourceSet (compile-time, not merely runtime-skipped), and
+  routed to `integrationTest` via `generatedRuntimeIntegrationTestSources` so it actually runs where
+  Postgres is real (the Linux CI job's `integrationTest -Dspring.profiles.active=test,postgres`
+  step). `ConversionHookRunnerPostgresTest` uses the narrower half of the same pattern (compile-time
+  exclusion only, on-demand via `-PincludePostgresMatrix`, no integrationTest routing). STOR-34's
+  test (bea2ba01) landed with NEITHER protection -- no tag, no exclude-list entry, no
+  integrationTest inclusion -- so it compiled and ran under the plain `test` task everywhere,
+  including the Windows job where it cannot possibly succeed. STOR-34's own ledger item explicitly
+  intended CI coverage ("Postgres collective-rollback arm only runs in CI"), so plain exclusion
+  alone (matching only `ConversionHookRunnerPostgresTest`) would have silently dropped that intended
+  coverage -- the same gap QUAL-38/B10 already flagged for that exact on-demand-only pattern. Fixed
+  by mirroring the FULLER pattern instead.
+
+  FIX. (1) `@Tag("integration")` added to `ConversionHookRunnerCollectiveRollbackTest`. (2) Both
+  `NPDevRuntimeHost/build.gradle` and its twin `build.gradle.template` (the file every generated app
+  actually gets) gain the same two edits, kept byte-identical between the two files: the test's path
+  added to `generatedRuntimeIntegrationTestSources` (routes it to `integrationTest`, alongside
+  `SchemaLifecycleExecutorPostgresProofMatrixTest`) and added to the `test` sourceSet's
+  `-PincludePostgresMatrix`-gated exclude block (alongside `ConversionHookRunnerPostgresTest` et
+  al.), so it never compiles into the plain `test` task's classpath at all -- no live class ever
+  attempts `PostgresTestSupport.dataSource()` there, so the eager-Docker-probe hazard above cannot
+  reach the Windows job regardless of what `Assumptions.assumeTrue` would have decided.
+
+  DELIBERATELY NOT DONE: did not touch `PostgresTestSupport` itself (the shared
+  `postgres-test-support` module 6+ kernel adapters also depend on). Its eager
+  `POSTGRES = createContainer()` field initializer racing ahead of the `Assumptions` check is a real
+  latent hazard for ANY future caller on a Docker-less host with `CI=true` set, but every existing
+  caller today only ever runs where Docker really is available (the Linux CI job, or
+  `NPDEV_TEST_PROFILE_ENGINES=postgres` opted in locally) -- reordering shared, cross-module
+  infrastructure carries real risk for zero present benefit, and is out of scope for a
+  Windows-CI-crash fix. Left as a named residual risk, not filed as a separate item -- revisit if a
+  future Windows-CI Postgres-Testcontainers test is added without the test/integrationTest routing
+  this fix used.
+guard:
+  kind: manual
+  ref: NPDevRuntimeHost/build.gradle (test sourceSet Postgres-exclude block), .github/workflows/npdev-ci-validation.yml (ci-validation job)
+  asserts: >-
+    `run-runtimehost-gate.ps1` (the exact script the failing CI job's "RuntimeHost gate" step runs)
+    passes locally after the fix, with `ConversionHookRunnerCollectiveRollbackTest` no longer
+    appearing in the plain `test` task's compiled/run classes -- confirming the class that crashed
+    the Windows job can no longer be loaded there. The Postgres arm itself is not locally
+    re-provable (SQLEXPRESS is damaged, Postgres is off in local-test-profile.json per this repo's
+    own policy) -- CI is the intended, and only, place it runs; watch the next push's "NPDev CI
+    Validation" run (both jobs) to confirm the class now loads and passes for real on Linux via
+    `integrationTest`, having never even compiled into Windows's `test` task.
+  provenRed: true

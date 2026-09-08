@@ -279,7 +279,12 @@ def generatedRuntimeIntegrationTestSources = [
         // proof matrix -- Docker-dependent (a real postgres:15-alpine container), so it belongs in
         // integrationTest (nightly, `-Dspring.profiles.active=test,postgres`), not the plain `test`
         // task the fast PR gate runs. Excluded from `test`'s sourceSet below for the same reason.
-        'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java'
+        'com/finalexec/db/SchemaLifecycleExecutorPostgresProofMatrixTest.java',
+        // QUAL-56 (2026-09-08): STOR-34's collective-rollback proof -- same Docker-dependent shape
+        // as the sibling above. Landed without this routing, so it ran (and failed to even load,
+        // ExceptionInInitializerError) under the plain `test` task on the windows-latest ci-validation
+        // job, which cannot run Linux Testcontainers images. Excluded from `test`'s sourceSet below.
+        'com/finalexec/db/ConversionHookRunnerCollectiveRollbackTest.java'
 ]
 
 def runtimeSurfaceManifest = new JsonSlurper().parse(file('src/main/resources/npdev/runtime-supported-controllers.json'))
@@ -487,6 +492,10 @@ sourceSets {
                 exclude 'com/finalexec/db/schemastate/CurrentSchemaReaderPostgresTest.java'
                 // SER-P7.5: the conversion-hook Postgres twin (Testcontainers) -- same rule.
                 exclude 'com/finalexec/db/ConversionHookRunnerPostgresTest.java'
+                // QUAL-56: STOR-34's collective-rollback proof -- same rule (real Testcontainers
+                // Postgres container, routed to integrationTest instead; see
+                // generatedRuntimeIntegrationTestSources above).
+                exclude 'com/finalexec/db/ConversionHookRunnerCollectiveRollbackTest.java'
                 // Move 9 A4: the H2->Postgres data-promotion proof -- same rule (real Testcontainers
                 // Postgres container, must not run or compile as part of the plain `test` task).
                 exclude 'com/finalexec/db/CrossEngineDataPromotionTest.java'
