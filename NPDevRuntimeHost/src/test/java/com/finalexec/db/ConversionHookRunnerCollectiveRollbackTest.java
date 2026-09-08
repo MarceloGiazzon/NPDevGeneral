@@ -3,6 +3,7 @@ package com.finalexec.db;
 import com.npdev.kernel.storage.sql.PostgresDialect;
 import com.npdev.kernel.storage.sql.SqlDialects;
 import com.npdev.test.postgres.PostgresTestSupport;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
@@ -25,7 +26,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * SKIPS cleanly on machines with Postgres disabled (scripts/policy/local-test-profile.json has
  * enabledEngines [h2, sqlserver]) and only runs where Postgres is real (CI, or
  * NPDEV_TEST_PROFILE_ENGINES=postgres) -- the ledger item's verification says exactly that.
+ *
+ * <p>{@code @Tag("integration")}, excluded from the plain {@code test} task and routed to
+ * {@code integrationTest} instead (build.gradle / build.gradle.template, same pattern as
+ * {@link SchemaLifecycleExecutorPostgresProofMatrixTest}) -- {@code PostgresTestSupport}'s
+ * {@code Assumptions.assumeTrue} skip never fires on Windows CI, because merely loading the
+ * {@code PostgresTestSupport} class already constructs a {@code PostgreSQLContainer} (a field
+ * initializer, not gated by the assumption check), which fails outright where Docker cannot run
+ * Linux containers -- windows-latest GitHub runners. Compile-time exclusion, not the runtime
+ * assumption, is what actually keeps this off that job.
  */
+@Tag("integration")
 class ConversionHookRunnerCollectiveRollbackTest {
 
     private final DataSource dataSource = PostgresTestSupport.dataSource();
