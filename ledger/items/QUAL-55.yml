@@ -7,8 +7,18 @@ title: >-
   still unidentified. The flaky test was removed; its two claims are each covered reliably elsewhere.
 type: GAP
 severity: LOW
-status: OPEN
+status: WONTFIX
 opened: 2026-09-03
+closed: 2026-09-08
+decision: >-
+  Owner (Marcelo, this session) accepted the mechanism as unconfirmed-but-monitored rather than
+  spending further session time on dedicated repro attempts: 246+ repeated-run data points across
+  three sessions already ruled out every hypothesis tried, severity is LOW, and the original test's
+  two claims are each already covered reliably elsewhere (zero coverage gap). The 2026-09-08
+  permanent `[QUAL-55-DIAG-TRIGGERC]` diagnostic in `SchemaHistoryStore.databaseMigratedPastThisBuild`
+  stays in place and will surface a `TIE-DETECTED` marker the next time the leading hypothesis
+  (a millisecond-timestamp collision) actually occurs in an ordinary gate run. Reopen if that fires,
+  or if any other concrete evidence of the true mechanism turns up.
 source: >-
   Found while verifying REAL_LIFT_PLAN_2026-09-03.md package A3 (STOR-24, B5): a new test
   (SchemaLifecycleExecutorDatabaseMigratedPastBuildTest#additiveNotNullExtraColumnWithNoDefaultStillRefuses)
@@ -184,3 +194,32 @@ detail: |
   DESC, id DESC` and compare by id when timestamps tie, or switch to `>=` plus an explicit "same
   fingerprint" exclusion) -- but per this item's own severity (LOW, zero coverage gap from the original
   test's removal) that fix should wait for confirmation, not be applied speculatively.
+
+  2026-09-08 INSTRUMENTATION (permanent, implements the analysis's action (a) above): added a
+  never-throws diagnostic directly in `SchemaHistoryStore.databaseMigratedPastThisBuild`, tagged
+  `[QUAL-55-DIAG-TRIGGERC]` (deliberately distinct from the existing `[QUAL-55-DIAG]` tag on the
+  verdict branch, since the 2026-09-08 analysis itself notes the two symptoms may not share one root
+  cause). Fires every time `lastReachedByThisBuild` is present -- i.e. on every ordinary boot/test that
+  has previously reached its own fingerprint, not only when Trigger C actually returns non-empty -- and
+  logs thread name, timestamp, this build's fingerprint, both raw millisecond values
+  (`thisBuildLastReachedMillis` / `overallLatestMillis`), the overall-latest row's fingerprint, and an
+  explicit `TIE-DETECTED` marker when the two millisecond values are equal (the exact silent-miss
+  condition the hypothesis describes). Same pattern as the existing verdict-branch diagnostic: wrapped
+  in `try { } catch (RuntimeException ignored)`, cannot affect the boot or the method's return value.
+  Verified: `compileJava` clean; `security-pattern-sweep.py --fail-on-new` unchanged (672 hits, 0 new);
+  full `run-runtimehost-gate.ps1` (regenerate + rebuild + assembled `simple-contact-intake` suite)
+  green, exit 0, 522s. Does not change status -- root cause still unconfirmed; this only ensures the
+  next natural tie, whenever it occurs, is caught with `TIE-DETECTED` attached instead of the silent
+  `Optional.empty()` this item was originally opened over.
+
+  2026-09-08 CLOSED AS WONTFIX (see `decision:` above): 246+ repeated-run data points across three
+  sessions (40 direct-unit repeats, 200 synthetic-contention iterations, 6 real-suite passes with
+  temporary un-swallowed diagnostics) ruled out every hypothesis chased -- a SchemaCompatibilityVerdict
+  logic bug, a stale SqlDialects.active() singleton, plain concurrent-H2 contention, and a swallowed
+  SQLException in ensureHistoryTable. The one remaining, plausible-but-unconfirmed hypothesis (a
+  millisecond-timestamp collision in databaseMigratedPastThisBuild's strict `>` comparison) now has a
+  permanent, always-on diagnostic watching for it. Given LOW severity and zero coverage gap from the
+  original flaky test's removal, further dedicated repro sessions are not worth the session time this
+  item's own 2026-09-06 note already flagged as a poor effort/reward ratio -- closing as WONTFIX (not
+  DONE: the mechanism is still unconfirmed, so no guard: block could honestly claim resolution) and
+  switching from active investigation to passive monitoring via `[QUAL-55-DIAG-TRIGGERC]`.
