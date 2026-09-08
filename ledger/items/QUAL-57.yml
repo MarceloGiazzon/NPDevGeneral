@@ -9,8 +9,30 @@ title: >-
   against real Postgres) surfaced this pre-existing double-load as a real test failure
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-08
+closed: 2026-09-08
+resolution: >-
+  Fixed at the consuming end: `ConversionHookRunner.loadHooks()` now de-duplicates the
+  `PathMatchingResourcePatternResolver` results by `Hook::id` (first occurrence wins) before
+  returning, via a `LinkedHashMap<String, Hook>` instead of a plain `ArrayList`. `classpath*:`
+  legitimately returning more than one match per logical resource across overlapping classpath
+  roots is expected Spring behavior -- not something the sourceSet wiring itself needed to prevent
+  -- so this is the more targeted fix of the two candidates the OPEN write-up named, with zero
+  changes to `integrationTest`'s classpath/resources composition (no regression surface across the
+  other ~49 integrationTest scenarios). VERIFIED FOR REAL: pushed (commit fb218aad) and watched the
+  next CI run (34281980149, both jobs green). Downloaded that run's uploaded JUnit XML
+  (npdev-linux-maturity-validation-evidence artifact,
+  TEST-com.finalexec.db.ConversionHookRunnerCollectiveRollbackTest.xml) directly -- `failures="0"`,
+  the hook-selection skip-listing now prints ONCE (not twice), and the console reads "running 2
+  conversion hooks in ONE collective transaction" (not 4), exactly matching the test's own intent.
+  STOR-34's collective-rollback proof passes against real Postgres for the first time since it was
+  written. `run-runtimehost-gate.ps1` also re-run locally post-fix (H2 path): clean, confirming the
+  dedup is a no-op where there was never duplication. NOT DONE HERE, left as the "open question" the
+  original write-up flagged: whether `SchemaLifecycleExecutorPostgresProofMatrixTest` (the corpus's
+  only other integrationTest resident) was ALSO silently affected by the pre-fix duplication in some
+  subtler, non-failing way -- this fix protects it going forward regardless, but its PRE-fix
+  behavior was never specifically audited.
 source: >-
   Immediate follow-on from QUAL-56 (commit 99f9cc08, pushed to main): once
   ConversionHookRunnerCollectiveRollbackTest actually ran on Linux CI's `integrationTest` task
@@ -18,11 +40,9 @@ source: >-
   but with a genuine assertion failure, confirmed via the run's uploaded JUnit XML
   (TEST-com.finalexec.db.ConversionHookRunnerCollectiveRollbackTest.xml, run 34277642866, job
   "Linux post-Beta0 maturity validation").
-surface: NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java (loadHooks), NPDevRuntimeHost/build.gradle & build.gradle.template (integrationTest sourceSet)
+surface: NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java (loadHooks)
 files:
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
-  - NPDevRuntimeHost/build.gradle
-  - NPDevRuntimeHost/build.gradle.template
 detail: |
   OBSERVED (from the JUnit XML, not speculation): the test's own console output shows the
   hook-selection skip-listing (all 20 non-matching corpus hooks, "claims nothing in the current
@@ -84,3 +104,21 @@ detail: |
   surface, needs the full RuntimeHost integrationTest suite re-verified on real Postgres (Linux CI;
   this repo's local machine has Postgres disabled per local-test-profile.json) before landing either
   way.
+
+  FIX (2026-09-08): direction (a) taken. `loadHooks()` builds a `LinkedHashMap<String, Hook>` keyed
+  by `Hook::id` from the resolver's results (`byId.putIfAbsent(hook.id(), hook)`, first occurrence
+  wins) and returns `List.copyOf(byId.values())` instead of the raw, possibly-duplicated list. See
+  `resolution:` above for the real-Postgres CI proof.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerCollectiveRollbackTest.java#twoHookSetRollsBackAsOneUnitWhenTheSecondHooksVerifyFails
+  asserts: >-
+    NOT locally re-runnable (Postgres is CI-only for this repo). Pre-fix, this test's own real CI
+    run (34277642866) failed with `failures="1"` and the "already exists" collision described above
+    -- the exact JUnit XML was downloaded and inspected, not summarized secondhand. Post-fix, the
+    immediate next CI run (34281980149, pushed as commit fb218aad) was watched to completion and its
+    JUnit XML re-downloaded and re-inspected: `failures="0"`, single (not doubled) hook-selection
+    skip-listing, "running 2 conversion hooks" (not 4). Both the red and the green state were
+    observed directly from CI-produced evidence in this same session, not assumed from either
+    commit's intent.
+  provenRed: true
