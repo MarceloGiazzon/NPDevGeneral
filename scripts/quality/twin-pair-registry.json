@@ -583,6 +583,26 @@
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
         "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java"
       ]
+    },
+    {
+      "id": "schema-history-seq-column-eight-seams",
+      "citedBy": "QUAL-55 (ledger/items/QUAL-55.yml, millisecond-tie root cause fix)",
+      "description": "npdev_schema_history's seq column (a nullable, application-assigned monotonic ordering signal added to fix Trigger C's millisecond-tie non-determinism) is declared once in production (SchemaHistoryStore.ensureHistoryTable) but hand-rolled again in seven test files that each bootstrap their own inline CREATE TABLE for the same table, rather than going through the production method. A test file missing the seq column does not fail loudly: production's own guardedAddColumn upgrade path adds it the first time SchemaHistoryStore itself touches the table, so the table ends up with the column either way -- but rows THAT TEST seeds directly (bypassing SchemaHistoryStore's INSERT) land with seq NULL and silently take the legacy timestamp-fallback comparison path, meaning the test believes it is exercising the seq-based fix while actually exercising the pre-fix behaviour. Each of the eight files carries the marker token below, either as a real `seq BIGINT` column (the six test files that seed rows on a path exercising Trigger C's comparison) or as an explanatory comment (SchemaDeltaReportTest's single-column shape-only table, which never goes through the insert/read machinery at all).",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-schema-history-seq"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaHistoryStore.java",
+        "NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/MigrationPreflightTest.java",
+        "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaDeltaReportTest.java",
+        "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorDatabaseMigratedPastBuildTest.java",
+        "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorMigrationClaimTest.java",
+        "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorProofMatrixTest.java",
+        "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorReverseMigrationTest.java",
+        "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorSchemaAheadDiagnosisTest.java"
+      ]
     }
   ]
 }

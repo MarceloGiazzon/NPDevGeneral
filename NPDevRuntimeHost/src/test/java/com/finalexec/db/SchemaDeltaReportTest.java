@@ -188,6 +188,10 @@ class SchemaDeltaReportTest {
     void doesNotItemizeNpdevOwnedHistoryOrFlywayTablesAsDropTable() throws SQLException {
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY)");
+            // npdev-schema-history-seq (twin-pair token): this shape-only table never goes through
+            // SchemaHistoryStore's insert/read machinery -- it only needs to exist and be named
+            // correctly for the DROP_TABLE-itemization check below, so it deliberately does not
+            // mirror production's seq column. See scripts/quality/twin-pair-registry.json.
             statement.execute("CREATE TABLE npdev_schema_history (id VARCHAR(64) PRIMARY KEY)");
             statement.execute("CREATE TABLE flyway_schema_history (installed_rank INT PRIMARY KEY)");
         }
