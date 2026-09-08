@@ -466,6 +466,106 @@ class ConversionHookRunnerH2Test {
         assertEquals(before, after, "an item no hook claims must be completely unaffected by the run");
     }
 
+    // ---- STOR-34 (boundary B12, POSTURAL_LIFT_PLAN_2026-09-07.md package P6): collective atomicity.
+    // The mode is opt-in; on H2 it is REFUSED before anything runs, and the split-vs-collective
+    // contradiction is refused before that. The per-hook default is pinned unchanged by every other
+    // test above (none of them set the property) plus #perHookModeIsUnchangedByDefault below.
+
+    @Test
+    void collectiveModeRefusesOnAnEngineWithoutTransactionalDdl() throws SQLException {
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.atomicity", "collective");
+        try {
+            // The live-only legacy_flag column makes the diff non-empty, so p76-drop-legacy IS
+            // selected -- and the capability refusal must still fire before any of it executes.
+            exec("CREATE TABLE p76_widgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p76_widgets", Map.of("id", "BIGINT"), List.of("id"), List.of("id"));
+
+            IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                    () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+            assertTrue(refusal.getMessage().contains("B12:collective_atomicity_unavailable:"), refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("mixedDdlVerify=split"),
+                    "the refusal must point at the resumable alternative this engine CAN honour: "
+                            + refusal.getMessage());
+            assertTrue(history.stream().noneMatch(row -> "HOOK_STARTED".equals(row[1])),
+                    "nothing may have run when the capability refusal fires: " + history);
+            assertTrue(hasColumn("p76_widgets", "legacy_flag"),
+                    "the hook must not have dropped anything -- the refusal precedes all execution");
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.atomicity");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void perHookModeIsUnchangedByDefault() throws SQLException {
+        // The plan's "unchanged by default" proof has two halves: every OTHER test above runs with no
+        // atomicity property set (the default), and this one pins the EXPLICIT perHook value giving
+        // the byte-identical multi-hook behaviour rule3 already asserts for the default -- both hooks
+        // applied in ascending-id order, RESOLVED, and never a collective row.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.atomicity", "perHook");
+        try {
+            exec("CREATE TABLE p75_order (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_order", Map.of("id", "BIGINT", "col_a", "VARCHAR(20)", "col_b", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "col_a", "col_b"));
+
+            ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+            List<String> startedOrder = history.stream()
+                    .filter(row -> "HOOK_STARTED".equals(row[1]))
+                    .map(row -> row[0])
+                    .toList();
+            assertEquals(List.of("CONVERSION_HOOK:p75-order-1-a", "CONVERSION_HOOK:p75-order-2-b"), startedOrder,
+                    "explicit perHook must execute in the same ascending-id order as the default");
+            List<String> outcomes = history.stream().map(row -> row[1]).toList();
+            assertTrue(outcomes.contains("HOOK_APPLIED"), outcomes.toString());
+            assertTrue(outcomes.contains("RESOLVED"), outcomes.toString());
+            assertFalse(outcomes.contains("COLLECTIVE_ROLLED_BACK"), outcomes.toString());
+            assertTrue(unresolvedKeys(manifest).isEmpty(), unresolvedKeys(manifest).toString());
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.atomicity");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void collectiveAndSplitTogetherRefuse() throws SQLException {
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.atomicity", "collective");
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "split");
+        try {
+            exec("CREATE TABLE p76_widgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p76_widgets", Map.of("id", "BIGINT"), List.of("id"), List.of("id"));
+
+            IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                    () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
+            assertTrue(refusal.getMessage().contains("B12:collective_incompatible_with_split:"), refusal.getMessage());
+            assertTrue(history.stream().noneMatch(row -> "HOOK_STARTED".equals(row[1])),
+                    "nothing may have run when the split+collective contradiction refuses: " + history);
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.atomicity");
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    private boolean hasColumn(String table, String column) throws SQLException {
+        try (Connection connection = dataSource.getConnection()) {
+            var resultSet = connection.getMetaData()
+                    .getColumns(null, null, table.toUpperCase(java.util.Locale.ROOT), null);
+            while (resultSet.next()) {
+                if (column.equalsIgnoreCase(resultSet.getString("COLUMN_NAME"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     // ---- helpers ----
 
     private void exec(String sql) throws SQLException {

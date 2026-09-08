@@ -1,0 +1,111 @@
+id: STOR-34
+title: >-
+  Conversion hooks are individually atomic by default (unchanged) and collectively atomic on request,
+  on engines that can honour it: -Dnpdev.schema.conversionHooks.atomicity=collective runs every
+  selected hook's convert + verify on one connection with a single commit at the end, rolling the
+  whole set back (B12:collective_rollback:) on any failure; the mode is refused outright, never
+  silently degraded, where the engine lacks transactional DDL (B12:collective_atomicity_unavailable:,
+  before anything runs), when combined with an explicit mixedDdlVerify=split
+  (B12:collective_incompatible_with_split:), or when a selected hook is a javaHook
+  (B12:collective_java_hook_unavailable:) -- and per-hook refusal messages now name the hooks that
+  already committed when a later hook fails (boundary B12 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-07
+closed: 2026-09-08
+source: >-
+  POSTURAL_LIFT_PLAN_2026-09-07.md package P6 (Wave 2). B12.yml's own residue, verbatim: "Each hook
+  running in its own transaction is the deliberate design ... and nothing refuses, warns or validates
+  on the collective-atomicity question, so there is no code path for a boundaryId to attach to.
+  Revisit trigger: a single-transaction multi-hook mode, if operators ask for it."
+surface: >-
+  ConversionHookRunner (new atomicity resolver, pre-execution collective refusal block, per-hook
+  loop extracted untouched into runPerHookLoop, new one-connection runCollectiveHookSet +
+  collectRollback, executeAndVerify split into a caller-connection body executeAndVerifyOn, and the
+  alreadyCommittedPhrase honesty addition to per-hook refusals), docs/SCHEMA_EVOLUTION.md, and the
+  new ConversionHookRunnerCollectiveRollbackTest (Postgres-guarded).
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - docs/SCHEMA_EVOLUTION.md
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerH2Test.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerCollectiveRollbackTest.java
+  - ledger/boundaries/B12.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **What changed.** The plan's five steps, in order. (1) executeAndVerify split into
+  executeAndVerifyOn(Connection, ...) (the convert+verify body, neither opens, commits nor rolls
+  back) plus a thin DataSource wrapper that keeps today's open/commit/rollback behavior by
+  delegating -- the per-hook path is therefore byte-identical in effect, and the existing
+  ConversionHookRunnerH2Test suite (which never sets the property) is the proof. (2) The mode
+  resolver copies resolveMixedDdlVerifyMode's exact shape, typo branch included:
+  -Dnpdev.schema.conversionHooks.atomicity=perHook|collective, default perHook. (3) The capability
+  refusal sits immediately after hook selection, before any HOOK_STARTED row or the boots-residue
+  step: on an engine without DDL_IN_TRANSACTION the collective mode refuses with
+  B12:collective_atomicity_unavailable: naming the engine and pointing at mixedDdlVerify=split +
+  MigrationPhaseJournal as the resumable alternative that engine CAN honour -- never silently
+  degraded to perHook. (4) The collective loop: one connection, autocommit off, executeAndVerifyOn
+  per hook, ONE commit at the end; any failure rolls back and rethrows with B12:collective_rollback:
+  naming the failing hook and the rolled-back count; HOOK_STARTED/HOOK_VERIFIED/HOOK_APPLIED rows as
+  today plus one COLLECTIVE_ROLLED_BACK row on failure; the history rows are written through the
+  caller's historyWriter (its own connection) and therefore SURVIVE the rollback -- deliberate and
+  commented in the code as such, because it looks like a bug to the next reader. (5) The
+  split-interaction is decided explicitly AND PRE-P7-SAFE: the split-vs-collective refusal fires only
+  when split was configured EXPLICITLY (splitConfiguredExplicitly reads the property directly; P7
+  replaces it with the resolved-mode explicit flag), because before P7 the default is warn and after
+  P7 the default is split-non-explicit -- a non-explicit default split must never trigger the
+  incompatibility (on a transactional engine split is never consulted anyway; on H2/MySQL the
+  capability refusal is the honest primary answer). (6) perHook honesty: every per-hook refusal now
+  appends which hooks already committed and remain applied when a later hook fails
+  (alreadyCommittedPhrase) -- empty for a first-hook failure, so every pre-P6 message reads
+  byte-identically there.
+
+  **Measured deviations from the plan, recorded honestly.** (a) The plan names exactly three B12
+  diagnostic codes; a fourth, B12:collective_java_hook_unavailable, was added because a javaHook
+  manages its own commits (each batch commits with its own journal row, B1) and therefore can never
+  join a collective transaction -- running one out-of-band under a collective promise would be the
+  exact "silently degrade" defect the plan forbids, so a selected javaHook under collective refuses
+  with its own named code. (b) The H2 capability-refusal test asserts the refusal message points at
+  mixedDdlVerify=split (the plan's step-3 wording), which after P7's default flip reads as "the
+  default" rather than "set =split" -- the P7 package updates that phrasing.
+
+  **What was measured, not assumed.** The H2 refusals (capability BEFORE anything runs: history has
+  zero HOOK_STARTED rows and the targeted column survives; split+collective contradiction refuses
+  with B12:collective_incompatible_with_split:; explicit perHook gives the same ascending-order
+  multi-hook behavior rule3 already pins for the default) run in the runtimehost gate's assembled-app
+  suite on real H2. The Postgres arm -- ConversionHookRunnerCollectiveRollbackTest, two hooks, the
+  second's verify fails, the first's ADD COLUMN is asserted GONE and the refusal names the hook and
+  the rolled-back count -- is guarded by PostgresTestSupport.dataSource()'s profile check and skips
+  cleanly locally (enabledEngines [h2, sqlserver]).
+
+  **What was deliberately NOT done, and why.** Collective mode on H2/MySQL stays a hard refusal --
+  the strongest guarantee those engines can actually keep is per-hook + resumable phases, never one
+  transaction. No attempt to extend collective to javaHooks (deferred to a future DataMigrationHook
+  design, ADR-0003). The per-hook loop was moved verbatim rather than re-architected, so the
+  pre-P6 behavior contract holds by construction, not by review.
+
+  **Residual statement (goes verbatim into ledger/boundaries/B12.yml too).** Collective atomicity
+  needs transactional DDL, so it is available on Postgres and SQL Server only. On H2/MySQL hooks stay
+  individually atomic and resumable through the phase journal -- which is the strongest guarantee
+  those engines can actually keep.
+verification: >-
+  runtimehost gate (assembled simple-contact-intake app + runtimehost-core test task): the H2 paths
+  (collectiveModeRefusesOnAnEngineWithoutTransactionalDdl, collectiveAndSplitTogetherRefuse,
+  perHookModeIsUnchangedByDefault, plus the whole untouched pre-P6 H2 suite proving the extraction)
+  ran for real locally, and the per-hook honesty phrase was exercised by the existing verify-mismatch
+  tests. Postgres collective-rollback arm only runs in CI; local run used the H2 refusal path.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerCollectiveRollbackTest.java#twoHookSetRollsBackAsOneUnitWhenTheSecondHooksVerifyFails
+  asserts: >-
+    On Postgres (guarded by PostgresTestSupport.dataSource() so it skips cleanly where Postgres is
+    disabled): p75-order-1-a succeeds and p75-verifyfail's un-matchable verify then fails, the boot
+    refuses with B12:collective_rollback: naming p75-verifyfail and "2 hook(s)", the first hook's
+    ADD COLUMN is asserted GONE (the set rolled back as one unit), the failing hook's own column is
+    gone too, and the history carries HOOK_APPLIED + COLLECTIVE_ROLLED_BACK (history survives the
+    rollback by design). The H2 side of the guard is ConversionHookRunnerH2Test's
+    collectiveModeRefusesOnAnEngineWithoutTransactionalDdl (# itself proves the mode refuses before
+    anything runs on an engine without transactional DDL -- real H2, zero HOOK_STARTED rows, the
+    targeted column survives) and collectiveAndSplitTogetherRefuse.
+  provenRed: false

@@ -1,13 +1,31 @@
 id: B12
-title: "Conversion hooks are individually atomic, not collectively atomic"
-codeLinked: false
+title: "Conversion hooks are individually atomic by default and collectively atomic on request, on engines that can honour it -- and refused, never silently degraded, where they cannot"
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. Each hook running in its own
-  transaction is the deliberate design -- so a later failure does not silently undo verified earlier
-  work -- and nothing refuses, warns or validates on the collective-atomicity question, so there is no
-  code path for a boundaryId to attach to. The idempotency discipline the workaround names is an
-  authoring convention on the raw-SQL path; on B13's declarative conversions[] path the generator
-  makes it a compiler guarantee by construction instead. Revisit trigger: a single-transaction
-  multi-hook mode, if operators ask for it.
+  LIFTED 2026-09-08 by POSTURAL_LIFT_PLAN_2026-09-07.md package P6 (ledger/items/STOR-34.yml): the
+  per-hook default is unchanged -- each selected hook still runs in its own transaction (rule 3), and
+  the idempotency discipline the workaround names is still an authoring convention on the raw-SQL
+  path. What the package adds is the opt-in the row's revisit trigger named ("a single-transaction
+  multi-hook mode, if operators ask for it"):
+  -Dnpdev.schema.conversionHooks.atomicity=perHook|collective (default perHook). Under collective,
+  every selected hook's convert + verify runs on ONE connection with a single commit at the end; any
+  failure rolls the whole set back and refuses with B12:collective_rollback: naming the failing hook
+  and how many hooks were rolled back (the set's HOOK_STARTED/HOOK_APPLIED history rows survive the
+  rollback by design -- they are written on their own connection so the audit trail says what the
+  rolled-back set attempted). The mode is refused outright, never silently degraded, wherever the
+  promise cannot be kept: on an engine without transactional DDL (H2/MySQL) with
+  B12:collective_atomicity_unavailable: BEFORE anything runs (pointing at mixedDdlVerify=split +
+  MigrationPhaseJournal as that engine's resumable alternative); when combined with an explicitly
+  configured mixedDdlVerify=split with B12:collective_incompatible_with_split: (split commits each
+  phase individually, the opposite promise); and when a selected hook is a javaHook (which manages
+  its own commits) with B12:collective_java_hook_unavailable: -- the fourth code is a measured
+  deviation, documented in STOR-34's detail. The per-hook executor was extracted without changing its
+  effect (the whole pre-P6 ConversionHookRunnerH2Test suite passes untouched), and per-hook refusal
+  messages now name the hooks that already committed when a later hook fails. Enforcing codes:
+  B12:collective_atomicity_unavailable, B12:collective_rollback, B12:collective_incompatible_with_split,
+  B12:collective_java_hook_unavailable.
+  Residual: collective atomicity needs transactional DDL, so it is available on Postgres and SQL
+  Server only. On H2/MySQL hooks stay individually atomic and resumable through the phase journal --
+  which is the strongest guarantee those engines can actually keep.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B12 -- docs/archive/programme-history/IMPACT_REPORTS.md"
-classification: POSTURAL
+classification: LIFTED
