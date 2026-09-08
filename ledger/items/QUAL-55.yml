@@ -223,3 +223,55 @@ detail: |
   item's own 2026-09-06 note already flagged as a poor effort/reward ratio -- closing as WONTFIX (not
   DONE: the mechanism is still unconfirmed, so no guard: block could honestly claim resolution) and
   switching from active investigation to passive monitoring via `[QUAL-55-DIAG-TRIGGERC]`.
+
+  2026-09-08 REAL-FIX ATTEMPT (negative result, root-caused precisely -- do not retry this exact
+  approach). Prompted by a direct question ("what would it cost to actually solve this instead of
+  WONTFIX") that turned out to have a cheaper-than-expected confirmation path: `SchemaHistoryStore`'s
+  own test file already has a `seedHistoryRow(dataSource, fingerprint, outcome, appliedAtUtc)` helper
+  taking an EXPLICIT timestamp, so the timestamp-collision hypothesis can be confirmed deterministically
+  (seed two rows at an identical millisecond) with no need to chase a real wall-clock race. Also found
+  the earlier 2026-09-08 analysis's proposed fix was factually wrong: `npdev_schema_history.id` is
+  `SqlDialects.active().keyableTextColumnType()` populated by `UUID.randomUUID().toString()` (see
+  `SchemaHistoryStore.insertHistoryRowCore`/`insertRawHistoryRow`) -- a random UUID, NOT an
+  auto-increment sequence, so "ORDER BY applied_at_utc DESC, id DESC" carries no real temporal signal.
+
+  Implemented instead: replaced the two-separate-queries-then-compare shape with one query asking the
+  direct question ("does a row for a DIFFERENT fingerprint, at or after the millisecond this build last
+  reached, exist") via `to_fingerprint <> ? AND applied_at_utc >= ?`, deliberately inclusive on ties
+  (reasoning: Trigger C's whole purpose is catching a rollback before it silently re-adds a dropped
+  column empty, so an ambiguous tie should err toward firing, not toward silence). Added a permanent
+  regression test seeding two rows at an identical timestamp with different fingerprints, asserting
+  Trigger C still fires. Full `run-runtimehost-gate.ps1`: FAILED both times run (6 failures, then 5,
+  overlapping but not identical sets -- `SchemaLifecycleExecutorProofMatrixTest` scenarios 24b, 25, 26,
+  27, 28b, 29), none of them Trigger-C-subject tests. A controlled A/B (same narrow `--tests
+  '*ProofMatrixTest*'` filter, same JVM/gradle invocation, ONLY the production file swapped between the
+  restructured query and the committed diagnostic-only version) proved conclusively that the
+  restructured query caused the regression: reverted code passed all 47 tests clean; restructured code
+  failed multiple. The `[QUAL-55-DIAG-TRIGGERC]` diagnostic (already permanent, see above) then named
+  the exact mechanism directly from its own captured output: `thisFp=sha256:new
+  thisBuildLastReachedMillis=1788852998535 overallLatestMillis=1788852998535 overallLatestFp=sha256:old
+  TIE-DETECTED` -- an in-place pass (rename/relax/tighten, via `SchemaHistoryStore.recordStepPass`)
+  writes an intra-boot APPLIED row using THIS build's own target fingerprint (e.g. "sha256:new") BEFORE
+  Trigger C's own check runs later in the SAME `beforeMigrateDecision` call; when that just-written row
+  lands in the same millisecond as an EARLIER, chronologically-PRIOR build's row (e.g. "sha256:old",
+  written earlier in the same fast in-memory test), the inclusive `>=` + different-fingerprint query
+  cannot tell "an older row that happens to tie" from "a genuinely later row that ties" and wrongly
+  reports the OLDER fingerprint as evidence the database moved past this build. This is not a rare
+  contrived case -- it reproduced in 5-6 of ~47 ProofMatrixTest scenarios on ordinary, deterministic
+  in-memory test execution, meaning intra-boot ties are common in this codebase's actual usage pattern,
+  not the rare edge case the original symptom-1 framing assumed.
+
+  CONCLUSION: any tie-inclusive fix is unsound against the CURRENT schema, because there is no genuine
+  monotonic ordering signal to disambiguate a tie's direction (id is a random UUID, not a sequence -- see
+  above). A real fix needs an actual monotonic column (an auto-increment/sequence added to
+  `npdev_schema_history`, separate from the UUID primary key used for identity), which is a schema
+  migration on a self-bootstrapped table this framework creates inside every deployed FinalApp database
+  -- needing a dialect-aware `ALTER TABLE ADD COLUMN` path across H2/Postgres/SQL Server/MySQL (STOR-1's
+  package), backward compatibility for already-deployed tables missing the column, and a write-path
+  change to populate it -- a materially bigger and riskier undertaking than the ~1-1.5 hour estimate
+  this same day's earlier analysis gave before this attempt. The restructured query and its regression
+  test were both reverted in full (`git stash` on the production file, `git checkout` on the test file);
+  the tree is back to the committed diagnostic-only WONTFIX state, verified clean via the same A/B
+  narrow-test run. Status stays WONTFIX. DONE-WHEN for any future attempt: do not repeat the
+  `to_fingerprint <> ? AND applied_at_utc >= ?` shape without first adding a real monotonic
+  tie-breaker column -- confirmed unsound above, not merely untested.
