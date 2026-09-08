@@ -706,6 +706,15 @@ final class BackfillPass {
      */
     static void refuseIfRequiredBondColumnMissing(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest, String stored,
             SchemaLifecycleExecutor.SchemaChangeClassification classification) {
+        refuseIfRequiredBondColumnMissing(dataSource, manifest, stored, classification, null);
+    }
+
+    /** STOR-32 (boundary B7, POSTURAL_LIFT_PLAN_2026-09-07.md package P4): the production overload --
+     *  {@code bootId} keys the boot's {@link BootResidueJournal} rows so this refusal's message can
+     *  carry the platform-computed residue block ({@link SchemaRefusal#withResidue}). A {@code null}
+     *  bootId keeps the legacy overload byte-identical to pre-P4 behavior. */
+    static void refuseIfRequiredBondColumnMissing(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest, String stored,
+            SchemaLifecycleExecutor.SchemaChangeClassification classification, String bootId) {
         List<String> violations = new ArrayList<>();
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metadata = connection.getMetaData();
@@ -746,10 +755,14 @@ final class BackfillPass {
             return;
         }
         SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classification, null, null, "REFUSED");
-        throw new IllegalStateException("Schema change adds new required bond/reference field(s) to table(s) with "
+        // STOR-32 (boundary B7): the residue block attaches to every lifecycle refusal -- this one
+        // fires inside beforeMigrateDecision, after the in-place passes committed, so it can name them.
+        throw new IllegalStateException(SchemaRefusal.withResidue(
+                "Schema change adds new required bond/reference field(s) to table(s) with "
                 + "existing data: " + violations + ". A required bond has no automatic literal-default backfill in "
                 + "v1 (its value would need to reference an existing row's actual key) -- make the field optional, "
                 + "or use the itemized destructive-acknowledgment path (LNCH-1 Phase 4) to recreate the table -- see "
-                + "docs/SCHEMA_EVOLUTION.md#new-required-fields.");
+                + "docs/SCHEMA_EVOLUTION.md#new-required-fields.",
+                dataSource, bootId));
     }
 }

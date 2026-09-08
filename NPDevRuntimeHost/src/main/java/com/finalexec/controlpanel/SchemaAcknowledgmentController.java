@@ -6,9 +6,11 @@ import com.finalexec.db.MigrationClaimStore;
 import com.finalexec.db.MigrationMarkStore;
 import com.finalexec.db.OwnershipAdoption;
 import com.finalexec.db.PendingSchemaAcknowledgmentStore;
+import com.finalexec.db.RefusalResidue;
 import com.finalexec.db.SchemaDropSnapshotRestorePlan;
 import com.finalexec.db.SchemaDropSnapshotRestorer;
 import com.finalexec.db.SchemaLifecycleExecutor;
+import com.finalexec.db.SchemaRefusal;
 import com.finalexec.db.SurplusDropSupport;
 import com.finalexec.db.schemastate.ConstraintSurplusDropPlan;
 import com.finalexec.db.schemastate.SurplusConstraint;
@@ -467,8 +469,16 @@ public class SchemaAcknowledgmentController {
         DataSource dataSource = requireDataSource();
         SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
         if (manifest == null || !manifest.physicalDatabase()) {
-            return Map.of("surplus", List.of(), "abstentions", List.of(), "dropToken", null,
-                    "detail", "no physical-database manifest -- nothing to classify");
+            // HashMap, not Map.of(...): the honest empty answer carries a NULL dropToken, and
+            // Map.of rejects null values with an NPE -- the branch was never exercised in the
+            // manifest-carrying canary P3 verified against, and firing it (a manifest-less
+            // assembly, or an InMemory app) 500'd instead of answering (STOR-32 finding).
+            Map<String, Object> empty = new LinkedHashMap<>();
+            empty.put("surplus", List.of());
+            empty.put("abstentions", List.of());
+            empty.put("dropToken", null);
+            empty.put("detail", "no physical-database manifest -- nothing to classify");
+            return empty;
         }
         SurplusDropSupport.State state = SurplusDropSupport.prepare(dataSource, manifest);
         List<Map<String, Object>> items = new ArrayList<>();
@@ -557,6 +567,45 @@ public class SchemaAcknowledgmentController {
     /** STOR-31: body of {@code POST /surplus/drop} -- an itemized list of constraint names and the
      *  {@code dropToken} from {@code GET /surplus/preview}. */
     private record SurplusDropRequest(List<String> constraints, String ackToken) {
+    }
+
+    // ---- STOR-32 (boundary B7, POSTURAL_LIFT_PLAN_2026-09-07.md package P4): last-refusal readback ----
+
+    /**
+     * STOR-32 (boundary B7): the platform-computed answer to the row's old workaround ("treat a
+     * refused boot as 'inspect before retrying'") -- WHAT the most recently refused boot already
+     * committed, whether each step is idempotent, and whether a retry is safe, plus the step that
+     * was in flight when it refused. Read-only; reads {@code npdev_boot_residue_journal} directly.
+     * The refused boot left no server behind, so the CLI's {@code npdev db explain-refusal} is the
+     * more important surface -- this endpoint serves the running-app case (an operator checking
+     * before the next boot, or diagnosing an older refusal that a later successful boot did not
+     * overwrite). Empty response when no boot has ever refused.
+     */
+    @GetMapping("/last-refusal")
+    public Map<String, Object> lastRefusal(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+
+        Optional<String> bootId = RefusalResidue.latestRefusedBootId(dataSource);
+        if (bootId.isEmpty()) {
+            return Map.of("recorded", false);
+        }
+        RefusalResidue.Residue residue = RefusalResidue.forBoot(dataSource, bootId.get());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("recorded", true);
+        body.put("bootId", bootId.get());
+        body.put("refusingStep", RefusalResidue.refusingStepName(dataSource, bootId.get()).orElse(null));
+        body.put("committedSteps", RefusalResidue.stepViews(residue).stream().map(step -> {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("ordinal", step.ordinal());
+            item.put("stepName", step.stepName());
+            item.put("idempotent", step.idempotent());
+            item.put("detail", step.detail() == null ? "" : step.detail());
+            return item;
+        }).toList());
+        body.put("verdict", residue.verdict().name());
+        body.put("message", SchemaRefusal.render(residue));
+        return body;
     }
 
     private static Map<String, Object> toResponseBody(CrossEngineDataPromotion.Preview preview) {

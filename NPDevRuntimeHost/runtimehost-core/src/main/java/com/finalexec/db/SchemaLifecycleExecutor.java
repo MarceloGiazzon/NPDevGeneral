@@ -260,6 +260,27 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     private ModelHolder modelHolder;
 
     /**
+     * STOR-32 (boundary B7): the PER-BOOT id keying {@link BootResidueJournal} rows. Generated ONCE
+     * per boot, at the first lifecycle entry point that runs (see {@link #ensureBootId}), so a single
+     * production boot's claim, Flyway, beforeMigrate and afterMigrate steps all share one residue key
+     * -- and a retried boot, being a new key, can never read a previous attempt's committed steps as
+     * its own.
+     */
+    private String bootId;
+
+    /** STOR-32: generate the per-boot residue key exactly once per boot, at whichever lifecycle entry
+     *  point actually runs. Production boots enter through {@link #migrate(Flyway, SchemaManifest)}
+     *  (claim + Flyway + beforeMigrate + afterMigrate all share this one key); the direct-call tests
+     *  that drive {@link #beforeMigrate}/{@link #afterMigrate} without {@code migrate} generate their
+     *  own key at that entry. A retried boot is a NEW key, so it can never read a previous attempt's
+     *  committed steps as its own, and its journal rows never collide with the failed attempt's. */
+    private void ensureBootId() {
+        if (bootId == null) {
+            bootId = java.util.UUID.randomUUID().toString();
+        }
+    }
+
+    /**
      * B1 (REAL_LIFT_PLAN_2026-09-03, B13): the beans a {@code javaHook} conversion hook needs to run
      * in the isolated plugin pool. Same optionality shape as {@link #compiledModel} above and for the
      * same reason (dozens of {@code new SchemaLifecycleExecutor()} test call sites with no Spring
@@ -411,6 +432,10 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     void migrate(Flyway flyway, SchemaManifest manifest) {
+        // STOR-32 (boundary B7): the per-boot residue key -- every journal row this boot writes (the
+        // migration claim, Flyway's migrate, the beforeMigrate/afterMigrate steps) shares it, so a
+        // refusal anywhere in the boot can name exactly what already committed.
+        ensureBootId();
         // PIN THE DIALECT HERE, not only in StorageDialectInitializer.
         //
         // That class's @PostConstruct says it runs "before anything", and nothing enforced it:
@@ -552,7 +577,25 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + manifest.schemaFingerprint() + "; skipping the migration lock entirely (STOR-28).");
         } else {
             try {
+                // STOR-32 (boundary B7): record the migration claim as the boot's first lifecycle
+                // step, BEFORE the lock is taken. GUARDED with !freshDatabase, mirroring
+                // MigrationClaimStore.claim's own discipline for its bookkeeping row: started()'s
+                // ensureTable would CREATE npdev_boot_residue_journal in Flyway's schema, and on a
+                // genuinely virgin database that happens BEFORE flyway.migrate() runs, which is
+                // exactly REG-7.2's shape ("Found non-empty schema(s) but no schema history table").
+                // A fresh boot has no stored fingerprint and cannot refuse at any of the four named
+                // sites (schema-ahead, bond, token), so nothing is lost by not journaling it. A boot
+                // that times out holding no claim stays started-not-committed -- a slot that was never
+                // won is not "committed work" a retry would re-execute.
+                if (!freshDatabase) {
+                    BootResidueJournal.started(dataSource, bootId, null,
+                            BootResidueJournal.LifecycleStep.MIGRATION_CLAIM, null);
+                }
                 claim = MigrationClaimStore.claim(dataSource, freshDatabase);
+                if (!freshDatabase) {
+                    BootResidueJournal.committed(dataSource, bootId,
+                            BootResidueJournal.LifecycleStep.MIGRATION_CLAIM);
+                }
             } catch (RuntimeException lockFailure) {
                 // Re-check before refusing: the holder may have finished (and this database may now
                 // be fully converged) during the very last poll of the wait this timeout closes.
@@ -614,7 +657,22 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 System.out.println("NPDev schema lifecycle: flyway.repair() reconciled schema-realization checksums"
                         + (recreation.safeAdditive() ? " for the additive change." : " (no structural change detected)."));
             }
+            // STOR-32 (boundary B7): Flyway's own migrate is the last structural step before
+            // afterMigrate. Versioned/checksummed, re-running converges by design -- so it is declared
+            // idempotent, and a boot that refuses anywhere AFTER it (afterMigrate's backfill,
+            // unique-constraint, ownership) can hand the operator a complete picture. GUARDED with
+            // !freshDatabase for the SAME REG-7.2 reason as the claim row above: on a first-ever boot
+            // flyway_schema_history does not exist yet, so creating the journal table here would make
+            // Flyway see a non-empty "public" schema with no history table and refuse outright.
+            if (!freshDatabase) {
+                BootResidueJournal.started(dataSource, bootId, null,
+                        BootResidueJournal.LifecycleStep.FLYWAY_MIGRATE, null);
+            }
             flyway.migrate();
+            if (!freshDatabase) {
+                BootResidueJournal.committed(dataSource, bootId,
+                        BootResidueJournal.LifecycleStep.FLYWAY_MIGRATE);
+            }
             afterMigrate(dataSource, manifest, storedAtBootStart, fingerprintChanged);
         } finally {
             if (claim != null) {
@@ -706,6 +764,7 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
      * before, compare the shadow's verdict after (on success OR refusal). The probe is log-only and
      * swallows everything, so this CANNOT change behavior; a refusal is always rethrown unchanged. */
     DestructiveRecreation beforeMigrate(DataSource dataSource, SchemaManifest manifest) {
+        ensureBootId();
         com.finalexec.db.schemastate.CurrentSchema shadowPre = ShadowParityProbe.snapshot(dataSource);
         boolean shadowFingerprintChanged = shadowFingerprintChanged(dataSource, manifest);
         conversionHooksAppliedLastDecision = false;
@@ -779,11 +838,16 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             List<String> missing = findSchemaAheadMissingColumns(dataSource, manifest);
             if (!missing.isEmpty()) {
                 SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), null, null, null, "REFUSED");
-                throw new IllegalStateException("Stored schema fingerprint matches this build, but the live "
+                // STOR-32 (boundary B7): B7:refusal_residue appended when the journal can answer it --
+                // a refusal must never fail because its residue could not be read (withResidue degrades
+                // to the bare message, exactly as before this package).
+                throw new IllegalStateException(SchemaRefusal.withResidue(
+                        "Stored schema fingerprint matches this build, but the live "
                         + "database is missing column(s) this build requires: " + missing + ". This usually means "
                         + "a NEWER build already migrated this database (e.g. an upgrade was attempted and then "
                         + "rolled back to this older jar). Roll forward to the newer build, or restore from "
-                        + "backup/snapshot -- see docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.");
+                        + "backup/snapshot -- see docs/SCHEMA_EVOLUTION.md#refusals-and-rollback.",
+                        dataSource, bootId));
             }
             System.out.println("NPDev schema lifecycle: stored schema fingerprint matches generated schema fingerprint; no destructive recreation required.");
             return DestructiveRecreation.none();
@@ -811,6 +875,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                     + "does not fully describe. Postgres and SQL Server roll back fully. Run `npdev why "
                     + "B11` for the full explanation and workaround.");
         }
+        // STOR-32 (boundary B7): the in-place rename/widening pass family (table renames, column
+        // renames, nullability relaxation, platform-column tightening -- and the RENAME/TYPE branches'
+        // re-attempts further down) is ONE journalled lifecycle step: write-before-execute, committed
+        // once the top group completes (the branch re-runs re-read the LIVE DatabaseMetaData and no-op
+        // when already converged, so the marker stays true across them, and every refusal point below
+        // -- schema-ahead, bond-column, token -- sits AFTER this group).
+        BootResidueJournal.started(dataSource, bootId, null,
+                BootResidueJournal.LifecycleStep.IN_PLACE_RENAME_WIDEN, null);
         attemptInPlaceTableRenames(dataSource, manifest);
         // LNCH-1 Phase 7 rehearsal fix: field-level renames MUST also be attempted before classify()
         // for the same reason table renames are (above) -- see attemptInPlaceRenames' own javadoc for
@@ -840,6 +912,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // damage; this is what repairs the apps an earlier build already loosened. No-op -- and writes
         // no history row -- once every platform column is strict. Proven by scenarios 28 and 28b.
         tightenPlatformColumns(dataSource, manifest);
+        // STOR-32 (boundary B7): the in-place family above completed -- committed BEFORE the
+        // schema-ahead / bond-column / conversion-hook / token checks below, so each of those
+        // refusals can enumerate it. (The RENAME/TYPE branches re-attempt later; their re-runs are
+        // the same step, already marked.)
+        BootResidueJournal.committed(dataSource, bootId,
+                BootResidueJournal.LifecycleStep.IN_PLACE_RENAME_WIDEN);
 
         // REG-8 Trigger C (D4): closes the schema-ahead detector's known blind spot -- a newer build
         // that PURELY dropped a column leaves no live residue for Trigger A/B to see, so an older jar
@@ -928,19 +1006,21 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
             // prefix, the same convention B2/B4 use, so it survives into both the boot log and the
             // 503 JSON body BoundaryViolationResponse writes (BoundaryViolation.toJson()'s "message").
             throw new BoundaryBootException(new BoundaryViolation("B5", "boot",
-                    "B5:schema_ahead_detected:This database was migrated PAST this build: it is already at fingerprint "
-                    + aheadOfBuild.get().toFingerprint() + ", a later state than this build's own "
-                    + manifest.schemaFingerprint() + ". Downgrade is not supported. Two ways forward, "
-                    + "both deliberate: (1) forward-fix this build's model.json to match the database "
-                    + "(the usual case -- you checked out an older model.json, e.g. `git checkout "
-                    + "HEAD~3 -- model.json`, and the database was never rolled back with it), or "
-                    + "(2) restore a database snapshot from before the later change, if you have one, "
-                    + "then boot this build again. NPDev will not reconstruct the older schema shape "
-                    + "for you -- if this ahead state is intentional, record an operator mark to "
-                    + "fast-forward past this check. Run `npdev why B5` for the full explanation.\n"
-                    + "Exactly what differs from this build's own schema (same `npdev db verify` "
-                    + "vocabulary; `npdev db schema-ahead --report` renders this without booting):\n"
-                    + SchemaAheadAnalysis.render(dataSource, manifest, aheadOfBuild.get().toFingerprint()),
+                    SchemaRefusal.withResidue(
+                            "B5:schema_ahead_detected:This database was migrated PAST this build: it is already at fingerprint "
+                            + aheadOfBuild.get().toFingerprint() + ", a later state than this build's own "
+                            + manifest.schemaFingerprint() + ". Downgrade is not supported. Two ways forward, "
+                            + "both deliberate: (1) forward-fix this build's model.json to match the database "
+                            + "(the usual case -- you checked out an older model.json, e.g. `git checkout "
+                            + "HEAD~3 -- model.json`, and the database was never rolled back with it), or "
+                            + "(2) restore a database snapshot from before the later change, if you have one, "
+                            + "then boot this build again. NPDev will not reconstruct the older schema shape "
+                            + "for you -- if this ahead state is intentional, record an operator mark to "
+                            + "fast-forward past this check. Run `npdev why B5` for the full explanation.\n"
+                            + "Exactly what differs from this build's own schema (same `npdev db verify` "
+                            + "vocabulary; `npdev db schema-ahead --report` renders this without booting):\n"
+                            + SchemaAheadAnalysis.render(dataSource, manifest, aheadOfBuild.get().toFingerprint()),
+                            dataSource, bootId),
                     Instant.now()));
         }
 
@@ -1061,14 +1141,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 (label, outcome, details) ->
                         SchemaHistoryStore.insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(), label, details, outcome),
                 new ConversionHookRunner.JavaHookRuntimeContext(
-                        pluginIpcChildProcessPool, runtimePluginAdapterRegistry, pluginExecutionPolicyEvaluator));
+                        pluginIpcChildProcessPool, runtimePluginAdapterRegistry, pluginExecutionPolicyEvaluator),
+                bootId);
 
         // LNCH-1 P5 (5.3): a required bond/FK field missing from an existing, populated table is
         // intercepted HERE, before SchemaDeltaReport ever runs -- independently re-derived per
         // table (not relying on classify()'s short-circuit-to-DESTRUCTIVE aggregate value), so it
         // is caught with a dedicated, itemized refusal instead of falling into SchemaDeltaReport's
         // generic UNKNOWN item kind.
-        BackfillPass.refuseIfRequiredBondColumnMissing(dataSource, manifest, stored, classificationForFallthrough);
+        BackfillPass.refuseIfRequiredBondColumnMissing(dataSource, manifest, stored, classificationForFallthrough, bootId);
 
         // LNCH-1 Phase 4 (task 4.3): everything below replaces the old blanket whole-schema-wipe
         // fallback with itemized, surgical destruction wherever the residual diff cleanly supports
@@ -1114,15 +1195,20 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         if (!tokenMatches && !blanketAuthorized) {
             SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(), classificationForFallthrough,
                     report, providedToken.isBlank() ? null : providedToken, "REFUSED");
-            throw new IllegalStateException((impactReportText != null ? impactReportText + "\n" : "")
-                    + "Schema fingerprint changed from " + stored + " to "
-                    + manifest.schemaFingerprint() + " and includes destructive change(s) requiring an explicit, "
-                    + "itemized acknowledgment (LNCH-1 Phase 4). Itemized destructive report: "
-                    + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
-                    + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
-                    + "the ControlPanel schema-migration screen on the currently running app (LNCH-1 Phase 6), to "
-                    + "proceed -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
-                    + DestructiveRecreationPass.agreementCheckSuffix(manifest, report));
+            // STOR-32 (boundary B7): B7:refusal_residue appended -- this is the refusal that happens
+            // AFTER the in-place and conversion-hook steps committed, so the residue it names is the
+            // exact answer to "what did the boot that just refused already commit?".
+            throw new IllegalStateException(SchemaRefusal.withResidue(
+                    (impactReportText != null ? impactReportText + "\n" : "")
+                            + "Schema fingerprint changed from " + stored + " to "
+                            + manifest.schemaFingerprint() + " and includes destructive change(s) requiring an explicit, "
+                            + "itemized acknowledgment (LNCH-1 Phase 4). Itemized destructive report: "
+                            + report.stableStrings() + ". Expected acknowledgment token: " + expectedToken
+                            + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
+                            + "the ControlPanel schema-migration screen on the currently running app (LNCH-1 Phase 6), to "
+                            + "proceed -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
+                            + DestructiveRecreationPass.agreementCheckSuffix(manifest, report),
+                    dataSource, bootId));
         }
 
         // LNCH-1 hardening X4.4 (ratified 2026-07-20). Dropping a CONCEPT destroys an entire table's
@@ -1172,19 +1258,21 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                             .append(". Proceeding would therefore DROP AND RECREATE EVERY TABLE IN THIS APP, "
                                     + "destroying ALL of its data (LNCH-1 closeout C1).");
                 }
-                throw new IllegalStateException("Schema fingerprint changed from " + stored + " to "
-                        + manifest.schemaFingerprint() + ", and this change would destroy at least one whole "
-                        + "table's worth of data, which requires an explicit, itemized acknowledgment token."
-                        + reasons
-                        + " The deprecated blanket 'destructiveAllowed' flag does NOT authorize this -- it is set "
-                        + "once at authoring time and would then silently authorize every future whole-table "
-                        + "destruction for the life of the app. It authorizes only surgical column drops and type "
-                        + "narrowings. Itemized destructive report: " + report.stableStrings()
-                        + ". Expected acknowledgment token: " + expectedToken
-                        + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
-                        + "the ControlPanel schema-migration screen on the currently running app, to proceed -- see "
-                        + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
-                        + DestructiveRecreationPass.agreementCheckSuffix(manifest, report));
+                throw new IllegalStateException(SchemaRefusal.withResidue(
+                        "Schema fingerprint changed from " + stored + " to "
+                                + manifest.schemaFingerprint() + ", and this change would destroy at least one whole "
+                                + "table's worth of data, which requires an explicit, itemized acknowledgment token."
+                                + reasons
+                                + " The deprecated blanket 'destructiveAllowed' flag does NOT authorize this -- it is set "
+                                + "once at authoring time and would then silently authorize every future whole-table "
+                                + "destruction for the life of the app. It authorizes only surgical column drops and type "
+                                + "narrowings. Itemized destructive report: " + report.stableStrings()
+                                + ". Expected acknowledgment token: " + expectedToken
+                                + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit it via "
+                                + "the ControlPanel schema-migration screen on the currently running app, to proceed -- see "
+                                + "docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes."
+                                + DestructiveRecreationPass.agreementCheckSuffix(manifest, report),
+                        dataSource, bootId));
             }
         }
 
@@ -1219,8 +1307,15 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                         + "deprecated; switch to the itemized acknowledgment token (expected: " + expectedToken
                         + ") -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes.");
             }
+            // STOR-32 (boundary B7): the destructive execution is its own journalled step -- the
+            // least idempotent one there is, so a boot that refuses AFTER it (or whose retry re-runs
+            // it) must be named by the residue. Started before, committed only on return.
+            BootResidueJournal.started(dataSource, bootId, null,
+                    BootResidueJournal.LifecycleStep.DESTRUCTIVE_RECREATION, null);
             DestructiveRecreation result = DestructiveRecreationPass.executeSurgicalDestruction(dataSource, manifest, stored,
                     classificationForFallthrough, report, tokenMatches ? effectiveToken : null);
+            BootResidueJournal.committed(dataSource, bootId,
+                    BootResidueJournal.LifecycleStep.DESTRUCTIVE_RECREATION);
             // Only a token-authorized pass may consume somebody's pending acknowledgment row -- a
             // blanket-authorized pass did not use it and must leave it available.
             if (tokenMatches) {
@@ -1246,8 +1341,14 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
                 + "dropped and recreated: ALL DATA IN THIS APP'S TABLES WILL BE LOST (a pre-drop snapshot is written "
                 + "first -- see runtime-data/schema-snapshot-before-drop/). Authorized by an itemized acknowledgment "
                 + "token. Full report: " + report.stableStrings());
+        // STOR-32 (boundary B7): same journalled destructive step around the whole-schema wipe -- the
+        // most destructive pass in the system, explicitly named NOT idempotent in the residue.
+        BootResidueJournal.started(dataSource, bootId, null,
+                BootResidueJournal.LifecycleStep.DESTRUCTIVE_RECREATION, null);
         DestructiveRecreation result = DestructiveRecreationPass.executeWholeSchemaWipe(dataSource, manifest, stored,
                 classificationForFallthrough, report, effectiveToken);
+        BootResidueJournal.committed(dataSource, bootId,
+                BootResidueJournal.LifecycleStep.DESTRUCTIVE_RECREATION);
         DestructiveRecreationPass.consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
         return result;
     }
@@ -2200,6 +2301,9 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
     }
 
     void afterMigrate(DataSource dataSource, SchemaManifest manifest, String storedAtBootStart, boolean fingerprintChanged) {
+        // STOR-32 (boundary B7): direct-call tests that never run {@code migrate}/{@code beforeMigrate}
+        // still journal their steps under a key of their own (production boots already have one).
+        ensureBootId();
         // B8 (Wave 2 package 2.1, boundary-lift 2026-09-02): record ownership of every manifest-
         // declared, now-live business table IMMEDIATELY -- before BackfillPass/UniqueConstraintPass
         // below run, either of which can still refuse and fail this boot. A table this boot's
@@ -2212,6 +2316,12 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // record at all -- a table without a record, which is exactly the bug B8 exists to prevent
         // (a record without a table, the reverse case, is harmless and self-corrects -- see
         // ownedTablesJson's live-table intersection).
+        // STOR-32 (boundary B7): the ownership-recording family -- ownership, column-identity, and
+        // (below) the metadata/fingerprint/snapshot writes -- is ONE journalled step. Committed right
+        // after the first write group so a backfill/unique refusal later in the SAME boot can already
+        // enumerate it; the metadata block re-confirms it.
+        BootResidueJournal.started(dataSource, bootId, null,
+                BootResidueJournal.LifecycleStep.OWNERSHIP_RECORDING, null);
         recordOwnershipForLiveManifestTables(dataSource, manifest);
         // REG-209 (B1 lift, package P7): persist this boot's model-declared uids against the columns
         // they are currently bound to -- on EVERY successful pass, including one that changed nothing,
@@ -2219,6 +2329,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // resolved against. A model with no uids declared is a no-op (ColumnIdentityStore.record
         // checks this itself before touching the database at all).
         ColumnIdentityStore.record(dataSource, manifest);
+        BootResidueJournal.committed(dataSource, bootId,
+                BootResidueJournal.LifecycleStep.OWNERSHIP_RECORDING);
         // LNCH-1 remediation R2 (F1): required-field backfill/refusal enforcement lives HERE, at the
         // single call site every boot path crosses, gated on a fingerprint mismatch. Before R2 it was
         // scattered across five beforeMigrate branches (safe-additive/rename-resolved only) and was
@@ -2234,14 +2346,26 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // fingerprint-MATCH boot: a legacy app that converged with an old-bug nullable-but-required
         // column must not suddenly refuse on a routine restart (healing legacy drift is out of scope).
         if (fingerprintChanged) {
+            // STOR-32 (boundary B7): the required-field backfill pass, journalled only when it
+            // actually runs (a fingerprint-match boot must not journal a step that never started).
+            BootResidueJournal.started(dataSource, bootId, null,
+                    BootResidueJournal.LifecycleStep.REQUIRED_FIELD_BACKFILL, null);
             BackfillPass.applyRequiredFieldBackfills(dataSource, manifest, storedAtBootStart, null);
+            BootResidueJournal.committed(dataSource, bootId,
+                    BootResidueJournal.LifecycleStep.REQUIRED_FIELD_BACKFILL);
         }
         // LNCH-1 P5 (5.1): runs on every boot, after flyway.migrate() has already applied the R__
         // additive-columns migration, so a unique constraint declared alongside a brand-new column
         // always finds that column already present. Deliberately BEFORE the fingerprint write below
         // -- a refusal here (dirty data violating a newly-declared constraint) must leave the stored
         // fingerprint stale, so the next boot re-attempts instead of silently accepting the drift.
+        // STOR-32 (boundary B7): the unique-constraint tightening pass, journalled on every boot (it
+        // always runs -- it is only the backfill that is fingerprint-gated).
+        BootResidueJournal.started(dataSource, bootId, null,
+                BootResidueJournal.LifecycleStep.UNIQUE_TIGHTENING, null);
         UniqueConstraintPass.applyUniqueConstraints(dataSource, manifest);
+        BootResidueJournal.committed(dataSource, bootId,
+                BootResidueJournal.LifecycleStep.UNIQUE_TIGHTENING);
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement statement = connection.prepareStatement(
                     SqlDialects.active().guardedCreateTable(METADATA_TABLE,
@@ -2271,6 +2395,11 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed storing schema fingerprint", exception);
         }
+        // STOR-32 (boundary B7): the ownership-recording family's metadata/fingerprint/snapshot half
+        // finished -- re-confirming the step (idempotent; the earlier write already covered a
+        // backfill/unique refusal mid-boot).
+        BootResidueJournal.committed(dataSource, bootId,
+                BootResidueJournal.LifecycleStep.OWNERSHIP_RECORDING);
         // REG-27 (fixes REG-8 Trigger C's fresh-install false-negative). A genuinely fresh install
         // records its fingerprint ONLY in npdev_schema_metadata above -- beforeMigrate's blank-
         // fingerprint branch returns without writing history, and no other pass runs. That left a

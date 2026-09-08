@@ -46,10 +46,10 @@
     },
     {
       "id": "B7",
-      "kind": "POSTURAL",
-      "userFacingText": "A refused boot can happen AFTER an earlier step already ran (e.g. an idempotent Flyway migration) -- a refusal is not guaranteed to leave the database exactly as it found it.",
-      "workaround": "Treat a refused boot as \"inspect before retrying\"; the schema history table records what already ran. `npdev db verify` can tell you the database's actual current state without booting.",
-      "enforcingDiagnosticCodes": []
+      "kind": "LIFTED",
+      "userFacingText": "When a schema-lifecycle boot refuses, it may have already committed some steps (H2/MySQL cannot roll back DDL) -- and now the platform tells you exactly which. Every mutating lifecycle step is journalled as it runs (npdev_boot_residue_journal), each marked idempotent or not, and each refusal message appends B7:refusal_residue: -- the committed steps and a verdict: retry is safe when every committed step is idempotent, otherwise inspect the named step(s) first. The same answer is available without booting the app at all.",
+      "workaround": "Read the refusal's own B7:refusal_residue: block, or run `npdev db explain-refusal` (no app boot required -- a refused boot left no server) or GET /api/admin/schema-migration/last-refusal. Retry when the verdict says RETRY_SAFE; inspect the named non-idempotent step(s) before retrying when it says INSPECT_FIRST.",
+      "enforcingDiagnosticCodes": ["B7:refusal_residue"]
     },
     {
       "id": "B8",
