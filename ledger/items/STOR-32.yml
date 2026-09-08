@@ -1,0 +1,166 @@
+id: STOR-32
+title: >-
+  A refusal's residue is now an enumerated record with a retry verdict: every lifecycle step is
+  journalled write-before-execute with idempotency as a declared step property, every refusal
+  message carries the committed-steps block (B7:refusal_residue:), and the same answer is readable
+  without booting via `npdev db explain-refusal` and GET .../last-refusal (boundary B7 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-07
+closed: 2026-09-07
+source: >-
+  POSTURAL_LIFT_PLAN_2026-09-07.md package P4 (Wave 2). B7.yml's own residue, verbatim: "This row
+  describes a property of every OTHER refusal -- a refusal can happen after an idempotent Flyway
+  step already ran -- rather than a refusal of its own, so there is no dedicated code path, no
+  ValidationDiagnostic and nothing for a boundaryId to attach to."
+surface: >-
+  com.finalexec.db (new BootResidueJournal + RefusalResidue + SchemaRefusal + ExplainRefusalMain,
+  step-journal wrapping and refusal decoration in SchemaLifecycleExecutor, bootId threading into
+  BackfillPass + ConversionHookRunner), the controlpanel package (GET .../last-refusal), and
+  npdev_cli.py (`db explain-refusal`).
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/BootResidueJournal.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/RefusalResidue.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaRefusal.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ExplainRefusalMain.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/BackfillPass.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaAcknowledgmentController.java
+  - NPDevCli/npdev_cli.py
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/BootResidueJournalTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/RefusalResidueVerdictTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRefusalResidueIntegrationTest.java
+  - ledger/boundaries/B7.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **What changed.** The honest scope the plan set: the boot is still NOT transactional (H2/MySQL
+  commit DDL implicitly -- the revisit trigger "only if every supported engine gains transactional
+  DDL" will never fire), so the lift is not "make the refusal side-effect-free" but "turn 'inspect
+  before retrying' from advice into an answer the platform computes and hands over". Three new
+  pieces carry it. (1) BootResidueJournal -- table npdev_boot_residue_journal, keyed
+  (boot_id, step_ordinal), same connection discipline as MigrationPhaseJournal (never commits or
+  rolls back; a residue that cannot be recorded must not block the step it records). Each lifecycle
+  step is declared ONCE in the LifecycleStep enum with idempotency as a property of the step, set by
+  reading each pass's code, NOT copied from the plan's starter list -- the one measured deviation:
+  IN_PLACE_RENAME_WIDEN is true, because every in-place pass re-reads live DatabaseMetaData and
+  no-ops when converged (a wrong flag would produce a confidently wrong retry verdict, the exact
+  failure mode the plan's X0 rule exists to forbid). (2) The wrapping: MIGRATION_CLAIM/FLYWAY_MIGRATE
+  around migrate()'s claim and flyway.migrate(); IN_PLACE_RENAME_WIDEN around the in-place family in
+  beforeMigrateDecision (committed before the schema-ahead/bond/token checks, so each can enumerate
+  it); CONVERSION_HOOKS inside ConversionHookRunner.run, started only once hooks are SELECTED and
+  committed once their execution completes (before the rule-5 re-diff, so a rule-5 refusal still
+  counts them as having run); DESTRUCTIVE_RECREATION around the surgical and whole-wipe executions;
+  and REQUIRED_FIELD_BACKFILL / UNIQUE_TIGHTENING / OWNERSHIP_RECORDING in afterMigrate. A step that
+  started but whose pass threw stays started-not-committed and never counts as committed. (3) The
+  readback: RefusalResidue computes RETRY_SAFE (every committed step declared idempotent) vs
+  INSPECT_FIRST (naming the non-idempotent step(s)); SchemaRefusal.withResidue appends the rendered
+  block to a refusal's message and NEVER fails that refusal -- an unreadable journal degrades to the
+  bare message with one logged line (the negative test pins it). The refused boot also stays
+  readable forever: its rows are never deleted, and latestRefusedBootId finds it past a later
+  successful boot.
+
+  The four named refusal sites are all decorated: the schema-ahead refusals (both the missing-columns
+  refusal and the B5:schema_ahead_detected BoundaryBootException), the two token refusals (the
+  plain-destructive one and the whole-table-destruction one), BackfillPass's bond-column refusal
+  (bootId threaded through a new 5-arg overload; the legacy 4-arg overload is byte-identical), and
+  every IllegalStateException ConversionHookRunner.run throws -- one try/catch around the production
+  5-arg overload (bootId-threaded) rethrows the SAME exception type with the same cause and the
+  residue appended, so the B11:mixed_ddl_verify_refused and hook-execution refusals all carry it. A
+  refusal's own exception type and primary message text never change; the residue is appended.
+
+  Two readback surfaces print the SAME block a refusal would have carried: GET
+  /api/admin/schema-migration/last-refusal (SUPERUSER-gated, on the existing
+  SchemaAcknowledgmentController -- P3's precedent) and `npdev db explain-refusal`, which shells to
+  ExplainRefusalMain (a plain-JDBC main in runtimehost-core, no Spring) -- the CLI form is the
+  important one, because after a refused boot there is no app left serving HTTP; the case the
+  ControlPanel pre-authorization flow exists for.
+
+  **What was measured, not assumed.** The idempotency flags were set by reading each pass (all three
+  in-place passes re-read live metadata and no-op when converged => IN_PLACE_RENAME_WIDEN true;
+  hook execution depends on the operator-authored idempotency contract => CONVERSION_HOOKS false;
+  destructive execution is data-destroying and token-gated => DESTRUCTIVE_RECREATION false). Two real
+  defects were found by RUNNING the code, not by reading it. (1) H2 folds unquoted identifiers to
+  UPPERCASE, so DatabaseMetaData.getTables(null,null,"npdev_boot_residue_journal",null) matched
+  nothing and the readback silently degraded to empty -- tableExists now matches returned names
+  case-insensitively (Postgres preserves case, so a case-sensitive pattern would lose three of four
+  engines). (2) A premise in the plan's step-3 wiring proved false, caught live by the canary gate:
+  journaling MIGRATION_CLAIM/FLYWAY_MIGRATE unconditionally in migrate() means started()'s
+  ensureTable creates npdev_boot_residue_journal in Flyway's schema BEFORE flyway.migrate() -- and
+  on a first-ever (or freshly-recreated) database that is exactly REG-7.2's shape ("Found non-empty
+  schema(s) but no schema history table"), refusing the boot before a single real step ran. The fix
+  mirrors MigrationClaimStore.claim's own discipline (its bookkeeping row is itself gated on
+  !freshDatabase): both journal writes are now guarded on !freshDatabase -- a fresh boot has no
+  stored fingerprint and cannot refuse at any of the four named sites, so nothing is lost, and the
+  journal table still first appears on a non-virgin boot (after flyway_schema_history exists, so the
+  baseline check is moot). Verified: BootResidueJournalTest (7 tests:
+  order, started-not-committed, replay-overwrite, latest-refused-boot + step-in-flight, refusal
+  survives a later successful boot) and RefusalResidueVerdictTest (4 tests: RETRY_SAFE,
+  INSPECT_FIRST, bare message when the journal never answered, bare message after the table is
+  dropped mid-flight) are green under runtimehost-core's own test task, and the full runtimehost-core
+  suite passes unchanged. The end-to-end proof (a fixture hook genuinely commits, then the token
+  refusal's message carries B7:refusal_residue: + INSPECT_FIRST, plus the negative journal-dropped
+  twin) lives in SchemaLifecycleExecutorRefusalResidueIntegrationTest under the assembled-app
+  runtimehost gate -- the fixture hooks and the executor's Spring-free path only exist there; the
+  bare template cannot compile in this workspace for the pre-existing B17/SEC-10 reason documented
+  in STOR-31's detail. Running those assembled-app tests also inverted one pinned-test as trap 5
+  demands: the crash-recovery test SchemaLifecycleExecutorRequiredFieldBackfillCrashRecoveryTest pinned
+  the backfill fault at DDL/DML
+  index 2, and afterMigrate's NEW boot-residue journal committed-UPDATE (an "UPDATE
+  npdev_boot_residue_journal..." on the injector's ^(ALTER TABLE|UPDATE) pattern) took index 1 --
+  the fault moved onto the ADD COLUMN itself. The test's own B8 comment documents the same precedent
+  (a new pre-backfill write shifting the indices once); the fault now targets index 3 with the
+  accounting written into the comment. Also while here, a P3-era premise proved false by actually
+  running the assembled-app tests: several controller tests assert a "no schema-realization-manifest
+  on the classpath -> 503" precondition, but whether the assembled sample apps expose the generated
+  physical manifest on the TEST classpath flips between assemblies (measured directly: two
+  runtimehost-gate runs of the SAME gate gave opposite manifest presence on the surplus/ownership/
+  promotion controller tests). The two surplus controller tests (P3's own) were rewritten to resolve
+  each manifest-conditional assertion against the SAME SchemaLifecycleExecutor.loadManifest() the
+  controller consults, asserting the documented behavior in whichever world the assembly is -- a
+  fixed 503/400 expectation would fail half the environments. The two sibling tests with the same
+  premise (SchemaAcknowledgmentControllerTest#superUserWithNoManifest...,
+  SchemaPromotionControllerStandaloneTest#promoteRefusesWhenNoManifest...) assert 503 and therefore
+  only fail in a manifest-present assembly; the second gate run's own suite (manifest-absent) passed
+  them, so they were left untouched -- they are environment-dependent, not P4 regressions, and this
+  finding is recorded here for whoever makes that premise deterministic. Running the manifest-absent
+  branch also exposed a REAL dormant P3 defect: SchemaAcknowledgmentController.surplusPreview's
+  no-manifest branch returned Map.of("surplus", ..., "dropToken", null, ...) -- and Map.of rejects
+  null values with an NPE, so firing that branch (a manifest-less assembly, or an InMemory app)
+  500'd instead of answering the "honest empty preview" P3's own test intended. The branch was never
+  exercised in the manifest-carrying canary P3 verified against. Fixed by building the map with a
+  LinkedHashMap, restoring the intended behavior: preview = 200 with empty surplus, null dropToken,
+  and a detail line.
+
+  **What was deliberately NOT done, and why.** The boot is still not transactional -- that is the
+  boundary's permanent residual, not a scope cut. The ephemeral-wipe and ExternallyManaged boot
+  paths are not journalled (they refuse nothing this package's four named sites cover, and the
+  plan's wrap mandate names beforeMigrateDecision + afterMigrate + claim/Flyway only). Unique-pass
+  and backfill-pass refusals inside afterMigrate are not individually decorated -- the plan names
+  the four sites; the journal's started-not-committed discipline still leaves their steps visible to
+  the readback surfaces. B11's verdict-in-warn and the split-mode machinery are untouched (P6/P7's
+  packages).
+
+  **Residual statement (goes verbatim into ledger/boundaries/B7.yml too).** The boot is still not
+  transactional and cannot be on H2/MySQL. A refusal is not side-effect-free; it is now
+  side-effect-LEGIBLE -- the platform enumerates exactly what committed, whether each step was
+  idempotent, and whether a retry is safe.
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorRefusalResidueIntegrationTest.java#tokenRefusalAfterAConversionHookCommittedCarriesTheResidueAndInspectFirstVerdict
+  asserts: >-
+    Over real H2 with real fixture hooks: one destructive item is resolved by the p76-drop-legacy
+    hook (which genuinely commits the non-idempotent CONVERSION_HOOKS step) and one is unclaimed, so
+    the token refusal fires AFTER the hook ran -- and the thrown message, while keeping its original
+    exception type and text ("Expected acknowledgment token:"), now also carries B7:refusal_residue:
+    enumerating IN_PLACE_RENAME_WIDEN and CONVERSION_HOOKS as committed, CONVERSION_HOOKS marked NOT
+    idempotent, and "Verdict: INSPECT_FIRST", and the hook's column drop is verified live. The
+    negative twin (refusalStillThrowsItsOriginalMessageWhenTheJournalTableIsDroppedBeforeTheBoot)
+    pins that the journal machinery can never change a refusal's exception or primary message.
+    BootResidueJournalTest + RefusalResidueVerdictTest (runtimehost-core's own test task) pin the
+    journal contract and verdict computation directly, including the started-not-committed
+    discipline and the dropped-table degrade to the bare message.
+  provenRed: false

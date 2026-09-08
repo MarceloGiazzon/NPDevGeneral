@@ -1,12 +1,24 @@
 id: B7
-title: "Refusals are not side-effect-free"
-codeLinked: false
+title: "Refusals are not side-effect-free -- but the residue is now legible"
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. This row describes a property of
-  every OTHER refusal -- a refusal can happen after an idempotent Flyway step already ran -- rather
-  than a refusal of its own, so there is no dedicated code path, no ValidationDiagnostic and nothing
-  for a boundaryId to attach to. Making the whole boot transactional is impossible across engines
-  (H2 has no transactional DDL), which is why the revisit trigger is "only if every supported engine
-  gains transactional DDL".
+  LIFTED 2026-09-07 by STOR-32 (POSTURAL_LIFT_PLAN_2026-09-07.md package P4): the boot is still not
+  transactional and cannot be on H2/MySQL (the revisit trigger "only if every supported engine gains
+  transactional DDL" is permanent), so the lift is not "make a refusal side-effect-free" but "turn
+  'inspect before retrying' from advice into an answer the platform computes and hands over".
+  npdev_boot_residue_journal records every mutating lifecycle step write-before-execute -- the
+  migration claim, Flyway's migrate, the in-place rename/widening family, conversion hooks,
+  destructive recreation, required-field backfill, unique-constraint tightening, ownership recording
+  -- each with idempotency as a DECLARED property of the step (set by reading each pass, never a
+  runtime guess; a wrong flag would produce a confidently wrong retry verdict). Every lifecycle
+  refusal now appends B7:refusal_residue: -- the enumerated committed steps, each marked idempotent
+  or not, plus a verdict: RETRY_SAFE when every committed step is declared idempotent, INSPECT_FIRST
+  naming the non-idempotent step(s). A step that STARTED but whose pass threw never counts as
+  committed. The same answer is readable with no app boot required -- essential, because a refused
+  boot left no server: `npdev db explain-refusal` (ExplainRefusalMain, plain JDBC) and GET
+  /api/admin/schema-migration/last-refusal. A refusal's own exception type and primary message text
+  never change; the residue is appended, and never fails the refusal it decorates (an unreadable
+  journal degrades to the bare message with one logged line). Residual: a refusal is not
+  side-effect-free -- it is now side-effect-LEGIBLE.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B7 -- DATABASES_AND_MIGRATIONS.md §13, §15"
-classification: POSTURAL
+classification: LIFTED

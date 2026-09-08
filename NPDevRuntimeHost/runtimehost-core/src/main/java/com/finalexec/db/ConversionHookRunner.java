@@ -196,6 +196,29 @@ public final class ConversionHookRunner {
      *  JavaHookRuntimeContext}'s own javadoc for why {@code javaHookContext} is nullable. */
     public static boolean run(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest,
             HistoryWriter historyWriter, JavaHookRuntimeContext javaHookContext) {
+        return run(dataSource, manifest, historyWriter, javaHookContext, null);
+    }
+
+    /** STOR-32 (boundary B7, POSTURAL_LIFT_PLAN_2026-09-07.md package P4): the production overload.
+     *  {@code bootId} keys this call's {@link BootResidueJournal.LifecycleStep#CONVERSION_HOOKS} rows
+     *  (started once hooks are SELECTED -- never when the unresolved diff has nothing for them --
+     *  committed once every selected hook's execution completed, BEFORE the rule-5 residual re-diff
+     *  so a rule-5 refusal still counts the hooks as having run). Every {@link IllegalStateException}
+     *  this call throws is a schema-lifecycle refusal, so each is decorated with the boot's
+     *  {@link SchemaRefusal#withResidue} block (same exception type, same cause, residue appended to
+     *  the message -- never a different exception). A {@code null} bootId (the non-production
+     *  overloads) is byte-identical to pre-P4 behavior: no journal rows, no decoration. */
+    public static boolean run(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest,
+            HistoryWriter historyWriter, JavaHookRuntimeContext javaHookContext, String bootId) {
+        try {
+            return runInternal(dataSource, manifest, historyWriter, javaHookContext, bootId);
+        } catch (RuntimeException refusal) {
+            throw decorateWithResidue(refusal, dataSource, bootId);
+        }
+    }
+
+    private static boolean runInternal(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest,
+            HistoryWriter historyWriter, JavaHookRuntimeContext javaHookContext, String bootId) {
         Set<String> unresolvedKeys = unresolvedItemKeys(dataSource, manifest);
         if (unresolvedKeys.isEmpty()) {
             return false;
@@ -239,6 +262,15 @@ public final class ConversionHookRunner {
             System.out.println("NPDev schema lifecycle: running " + selected.size() + " conversion hooks "
                     + "in separate transactions -- each hook must be idempotent (a later hook failing does "
                     + "not roll back an earlier one).");
+        }
+
+        // STOR-32 (boundary B7): the hooks step of this boot begins once selection is definite. A boot
+        // whose diff selects nothing never journals the step (there is nothing for a retry to re-run);
+        // a refusal anywhere below leaves it started-not-committed, so the residue never counts a hook
+        // step that did not complete.
+        if (bootId != null) {
+            BootResidueJournal.started(dataSource, bootId, null,
+                    BootResidueJournal.LifecycleStep.CONVERSION_HOOKS, null);
         }
 
         String engine = detectEngine(dataSource, manifest);
@@ -395,6 +427,15 @@ public final class ConversionHookRunner {
             applied.add(hook);
         }
 
+        // STOR-32 (boundary B7): every selected hook's execution completed -- committed BEFORE the
+        // rule-5 re-diff, so a "claims still required" refusal still counts the hooks as having run
+        // (their execution did; only the claim verification failed). A failure INSIDE the loop left
+        // the step started-not-committed above, as it should.
+        if (bootId != null) {
+            BootResidueJournal.committed(dataSource, bootId,
+                    BootResidueJournal.LifecycleStep.CONVERSION_HOOKS);
+        }
+
         // Rule 5: re-diff against the live DB, once, after every selected hook has succeeded. A claim
         // is a promise the engine verifies, never trusts.
         Set<String> residualKeys = unresolvedItemKeys(dataSource, manifest);
@@ -415,6 +456,26 @@ public final class ConversionHookRunner {
                 List.of("appliedHooks=" + applied.stream().map(Hook::id).toList(),
                         "residualUnresolvedCount=" + residualKeys.size()));
         return true;
+    }
+
+    /** STOR-32 (boundary B7): every lifecycle refusal this class throws is an {@link
+     *  IllegalStateException} -- rethrow one of the SAME type and cause with the boot's residue
+     *  block appended to the message, or the ORIGINAL exception when there is nothing to append
+     *  ({@code bootId == null} -- the test overloads -- or a residue that could not be read). A
+     *  refusal's own exception type and primary message text never change. */
+    private static RuntimeException decorateWithResidue(RuntimeException refusal, DataSource dataSource, String bootId) {
+        if (bootId == null || !(refusal instanceof IllegalStateException)) {
+            return refusal;
+        }
+        String message = SchemaRefusal.withResidue(refusal.getMessage(), dataSource, bootId);
+        if (message.equals(refusal.getMessage())) {
+            return refusal;
+        }
+        IllegalStateException copy = refusal.getCause() == null
+                ? new IllegalStateException(message)
+                : new IllegalStateException(message, refusal.getCause());
+        copy.setStackTrace(refusal.getStackTrace());
+        return copy;
     }
 
     /**
