@@ -84,6 +84,11 @@ public final class DockerDeploymentEmitter {
                 && profile.restoreCommand() != null && !profile.restoreCommand().isBlank();
 
         write(root.resolve("Dockerfile"), dockerfile(jarName, serverPort));
+        // Hosting (P6): additive, self-building variant for platforms whose onboarding is "connect
+        // your repository and we will build it" (Render, Koyeb, Fly) rather than accepting a
+        // pre-built image. The plain Dockerfile above stays the default -- building outside Docker
+        // is faster and matches every other NPDev build step.
+        write(root.resolve("Dockerfile.build"), dockerfileSelfBuilding(jarName, serverPort));
         String compose = serverEngine ? dockerComposeServer(appId, serverPort, profile) : dockerComposeStandalone(appId, serverPort);
         // R9.9/R9.10: both the scheduled-backup profile (server-engine apps only -- there is no
         // `database` service to back up on a standalone/embedded engine) and the observability
@@ -227,8 +232,65 @@ public final class DockerDeploymentEmitter {
                 # Hosting (P3): the JVM reads JAVA_TOOL_OPTIONS itself, so this works with the
                 # exec-form ENTRYPOINT below. A JAVA_OPTS variable would NOT -- there is no shell in
                 # the entrypoint to expand it, which is why the usual hosting advice silently
-                # does nothing here. 65% of the container beats the 25% default and fits a
+                # does nothing here. 65%% of the container beats the 25%% default and fits a
                 # 512 MB free tier; override by setting JAVA_TOOL_OPTIONS in the environment.
+                ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError -Xss256k"
+
+                # Config is entirely environment-variable-driven (see .env.example) -- nothing
+                # environment-specific is baked into the image, so the same image promotes across
+                # environments unchanged.
+                ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+                """.formatted(jarName, serverPort, serverPort);
+    }
+
+    /**
+     * Hosting (P6): additive self-building variant of {@link #dockerfile}, for platforms whose
+     * onboarding is "connect your repository and we will build it" (Render, Koyeb, Fly) rather than
+     * accepting a pre-built image. The original reason this never worked -- generated apps depended
+     * on locally-staged platform jars -- is historical: {@code FinalAppAssembler} now stages the
+     * platform jars inside the app at {@code libs/npdev-runtime/} and bakes an app-relative
+     * {@code npdevRuntimeHostLibsDir=libs/npdev-runtime} into {@code gradle.properties}, so a
+     * Docker-internal {@code ./gradlew bootJar} needs nothing outside the copied source tree.
+     */
+    private static String dockerfileSelfBuilding(String jarName, int serverPort) {
+        return """
+                # Hosting (P6): self-building variant of ../Dockerfile, for platforms that build from
+                # your repository (Render, Koyeb, Fly "connect your repo" onboarding) rather than
+                # accepting a pre-built image. Keep BOTH files -- the plain Dockerfile stays the
+                # default because building outside Docker is faster and matches every other NPDev
+                # build step; this one is additive, only for platforms that require it.
+                FROM eclipse-temurin:21-jdk-alpine AS build
+                WORKDIR /src
+                COPY . .
+                RUN ./gradlew --no-daemon bootJar
+
+                FROM eclipse-temurin:21-jre-alpine
+
+                # A non-root runtime user: the image never needs root once the jar is copied in.
+                RUN addgroup -S npdev && adduser -S npdev -G npdev
+                WORKDIR /app
+                COPY --from=build /src/build/libs/%s app.jar
+                # StrictExecutionValidator (governed-mode integrity guard) needs the actual
+                # npdev-generated/ source tree present on disk at runtime -- see ../Dockerfile's
+                # comment on the identical COPY. Copied from the build stage here since there is no
+                # local checkout in the runtime stage to copy it from directly.
+                COPY --from=build /src/npdev-generated ./npdev-generated
+                # Chown the WHOLE directory, not just the jar: docker-compose.yml mounts a named
+                # volume over /app to persist SUPER_USER_KEY.txt, and Docker seeds a fresh named
+                # volume from the image's existing directory content INCLUDING ownership. WORKDIR
+                # creates /app as root before this RUN runs, so without this line the seeded volume
+                # root stays root-owned and the non-root npdev user can't create npdev-files/ or
+                # data/ under it (confirmed live: AccessDeniedException: /app/npdev-files).
+                RUN chown -R npdev:npdev /app
+                USER npdev
+
+                EXPOSE %d
+                ENV SERVER_PORT=%d
+                # Hosting (P3): the JVM reads JAVA_TOOL_OPTIONS itself, so this works with the
+                # exec-form ENTRYPOINT below. A JAVA_OPTS variable would NOT -- there is no shell in
+                # the entrypoint to expand it, which is why the usual hosting advice silently does
+                # nothing here. 65%% of the container beats the 25%% default and fits a 512 MB free
+                # tier; override by setting JAVA_TOOL_OPTIONS in the environment.
                 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError -Xss256k"
 
                 # Config is entirely environment-variable-driven (see .env.example) -- nothing
