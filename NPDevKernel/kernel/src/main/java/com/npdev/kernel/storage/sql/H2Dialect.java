@@ -319,6 +319,12 @@ public final class H2Dialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropColumn(String tableName, String columnName, String alterStatement) {
+        // H2 supports DROP COLUMN IF EXISTS natively (STOR-35/P7) -- the plain statement, guarded.
+        return SqlDdlGuards.insertAfter(alterStatement, "DROP COLUMN", "IF EXISTS");
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         return SqlDdlGuards.insertAfter(alterStatement, "ADD COLUMN", "IF NOT EXISTS");
     }

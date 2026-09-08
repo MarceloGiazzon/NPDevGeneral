@@ -381,6 +381,25 @@ default. STOR-34 adds an opt-in for engines that can honour more:
   written on their own connection and therefore survive a collective rollback — deliberate, so the
   audit trail says what the rolled-back set attempted.
 
+### Mixed-DDL conversion hooks are split and journalled by default (STOR-35 / B11)
+
+`npdev.schema.conversionHooks.mixedDdlVerify` now defaults to `split` instead of `warn`: a conversion
+hook that mixes DDL with a `verifySql`, running on an engine without transactional DDL (H2, MySQL),
+is decomposed into single-statement phases, each rewritten to its dialect-guarded idempotent form
+(`ADD COLUMN`, `CREATE TABLE`, `CREATE [UNIQUE] INDEX`, `DROP INDEX`, `DROP COLUMN`, and
+`ALTER COLUMN SET|DROP NOT NULL` are recognized; an in-place type change or `RENAME COLUMN` is not —
+the splitter cannot know the column's current live shape) and journalled in
+`npdev_migration_phase_journal` before the next one starts, so a boot that crashes mid-hook resumes
+at the first incomplete phase instead of leaving DDL applied with DML rolled back.
+
+- `warn`, `refuse` and `split` set **explicitly** behave exactly as before — in particular, an
+  explicit `=split` still refuses with `B11:mixed_ddl_verify_refused:` (naming the exact statement)
+  when the splitter cannot render a statement idempotent.
+- The **default** (property unset) is `split` but non-explicit: when the splitter blocks, the boot
+  falls back to the previous warn-and-proceed behavior and logs
+  `B11:split_blocked_fell_back_to_warn:` — **no app that boots today stops booting.**
+- `-Dnpdev.schema.conversionHooks.mixedDdlVerify=warn` restores the previous behaviour byte-for-byte.
+
 ### Worked example: an ordinary additive upgrade repairing an already-loosened database
 
 Verbatim capture from a real run, 2026-07-21, against **real Postgres 15** (container

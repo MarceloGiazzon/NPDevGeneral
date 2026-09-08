@@ -86,12 +86,16 @@ public final class ConversionHookRunner {
             java.util.regex.Pattern.compile("(?is).*\\b(ALTER|DROP|CREATE)\\s+TABLE\\b.*");
 
     /**
-     * BOUNDARY_LIFT_PLAN_2026-09-02 package 3.4 (B11): whether the {@link #MIXES_DDL_PATTERN} shape on
-     * a non-{@link StorageCapability#DDL_IN_TRANSACTION} engine only warns (today's unchanged behavior,
-     * the default -- no existing app breaks without notice on upgrade) or refuses the boot outright
-     * BEFORE running the hook, so the mixed state can never be authored into existence rather than only
-     * be warned about after the fact. Overridable with
-     * {@code -Dnpdev.schema.conversionHooks.mixedDdlVerify=warn|refuse}.
+     * BOUNDARY_LIFT_PLAN_2026-09-02 package 3.4 (B11), default flipped by STOR-35 (POSTURAL_LIFT_PLAN
+     * 2026-09-07.md package P7): whether the {@link #MIXES_DDL_PATTERN} shape on a non-{@link
+     * StorageCapability#DDL_IN_TRANSACTION} engine only warns, refuses the boot outright BEFORE
+     * running the hook (so the mixed state can never be authored into existence rather than only be
+     * warned about after the fact), or is decomposed into guarded, journaled, resumable phases.
+     * Default is now {@code split} (the safe mode is the one you get by not thinking about it); a
+     * mode that was not chosen explicitly falls back to warn when the splitter cannot render a
+     * statement idempotent, so no app that boots today stops booting. Overridable with
+     * {@code -Dnpdev.schema.conversionHooks.mixedDdlVerify=warn|refuse|split};
+     * {@code =warn} restores the previous behaviour byte-for-byte.
      */
     private static final String MIXED_DDL_VERIFY_PROPERTY = "npdev.schema.conversionHooks.mixedDdlVerify";
 
@@ -104,30 +108,36 @@ public final class ConversionHookRunner {
         WARN, REFUSE, SPLIT
     }
 
-    private static MixedDdlVerifyMode resolveMixedDdlVerifyMode() {
+    /** STOR-35 (boundary B11, package P7): the resolved mode plus whether the operator chose it
+     *  explicitly -- tracked as a REAL field (never by re-reading the system property at the decision
+     *  point), because the split-blocked fallback depends on it: an EXPLICIT split refuses when the
+     *  splitter blocks; the DEFAULT split falls back to warn with a named log line. */
+    record ResolvedMixedDdlVerify(MixedDdlVerifyMode mode, boolean explicit) {
+    }
+
+    private static ResolvedMixedDdlVerify resolveMixedDdlVerifyMode() {
         String configured = System.getProperty(MIXED_DDL_VERIFY_PROPERTY);
         if (configured == null || configured.isBlank()) {
-            return MixedDdlVerifyMode.WARN;
+            // STOR-35 (P7): the default flipped from warn to split -- see the property javadoc. The
+            // non-explicit flag is what lets a splitter-blocked hook fall back to warn instead of
+            // refusing on upgrade.
+            return new ResolvedMixedDdlVerify(MixedDdlVerifyMode.SPLIT, false);
         }
         String trimmed = configured.trim();
         if ("refuse".equalsIgnoreCase(trimmed)) {
-            return MixedDdlVerifyMode.REFUSE;
+            return new ResolvedMixedDdlVerify(MixedDdlVerifyMode.REFUSE, true);
         }
         if ("warn".equalsIgnoreCase(trimmed)) {
-            return MixedDdlVerifyMode.WARN;
+            return new ResolvedMixedDdlVerify(MixedDdlVerifyMode.WARN, true);
         }
-        // A1 (REAL_LIFT_PLAN_2026-09-03, B11 "real lift"): opt-in automatic phase-split-and-journal --
-        // see ConversionHookPhaseSplitter/ConversionHookPhaseRunner. Kept opt-in rather than made the
-        // new default, for the same reason STOR-20 kept 'refuse' opt-in: no existing app should change
-        // behavior on upgrade with no release cycle to notice via. Flipping the default is a
-        // deliberately deferred follow-up, same as 'refuse' before it.
         if ("split".equalsIgnoreCase(trimmed)) {
-            return MixedDdlVerifyMode.SPLIT;
+            return new ResolvedMixedDdlVerify(MixedDdlVerifyMode.SPLIT, true);
         }
-        // A typo in an operator-set property must not silently widen or narrow what refuses.
+        // A typo in an operator-set property must not silently widen or narrow what refuses -- log,
+        // and fall back to the new default, non-explicit, so even a typo'd boot gets the safe default.
         System.out.println("NPDev schema lifecycle: ignoring unrecognized " + MIXED_DDL_VERIFY_PROPERTY
-                + "='" + configured + "' (expected warn|refuse|split); using the default 'warn'.");
-        return MixedDdlVerifyMode.WARN;
+                + "='" + configured + "' (expected warn|refuse|split); using the default 'split'.");
+        return new ResolvedMixedDdlVerify(MixedDdlVerifyMode.SPLIT, false);
     }
 
     // STOR-34 (boundary B12, POSTURAL_LIFT_PLAN_2026-09-07.md package P6): hook atomicity. Default
@@ -157,15 +167,6 @@ public final class ConversionHookRunner {
         System.out.println("NPDev schema lifecycle: ignoring unrecognized " + ATOMICITY_PROPERTY
                 + "='" + configured + "' (expected perHook|collective); using the default 'perHook'.");
         return AtomicityMode.PER_HOOK;
-    }
-
-    /** STOR-34 (package P6): true only when the operator EXPLICITLY set {@code mixedDdlVerify=split}.
-     *  P7 replaces this with the explicit flag on the resolved-mode record; until then this reads the
-     *  property directly so the split-vs-collective refusal cannot fire on a default that does not
-     *  exist yet, and P7's flip is a one-line change here instead of a behavior surprise. */
-    private static boolean splitConfiguredExplicitly() {
-        String configured = System.getProperty(MIXED_DDL_VERIFY_PROPERTY);
-        return configured != null && !configured.isBlank() && "split".equalsIgnoreCase(configured.trim());
     }
 
     private ConversionHookRunner() {
@@ -318,10 +319,17 @@ public final class ConversionHookRunner {
             }
         }
 
+        // STOR-35 (boundary B11, package P7): the mixed-DDL mode is resolved ONCE per boot run and carried
+        // through the flow as a record -- the split-blocked fallback and the collective refusal both
+        // key on its `explicit` field, never by re-reading the property at a decision point.
+        ResolvedMixedDdlVerify mixedDdl = resolveMixedDdlVerifyMode();
+
         // STOR-34 (boundary B12, package P6): collective atomicity opt-in. NOTHING has run when these
         // refusals fire -- they sit immediately after selection, before the first HOOK_STARTED row or
         // the boots-residue step. Order matters: the explicit split+collective contradiction is
-        // refused FIRST (an operator who set both asked for mutually exclusive semantics); then the
+        // refused FIRST (an operator who set both asked for mutually exclusive semantics; a NON-
+        // explicit default split must not refuse -- on a transactional engine split is never consulted
+        // anyway, and on H2/MySQL the capability refusal below is the honest primary answer); then the
         // engine capability (H2/MySQL commit DDL implicitly, so one collective transaction is not
         // honourable -- the mode is refused outright, never silently degraded to perHook); then the
         // javaHook carve-out (a javaHook manages its own commits, so it can never join a collective
@@ -329,7 +337,7 @@ public final class ConversionHookRunner {
         // above; recorded in STOR-34's detail).
         AtomicityMode atomicity = resolveAtomicityMode();
         if (atomicity == AtomicityMode.COLLECTIVE) {
-            if (splitConfiguredExplicitly()) {
+            if (mixedDdl.mode() == MixedDdlVerifyMode.SPLIT && mixedDdl.explicit()) {
                 throw new IllegalStateException("B12:collective_incompatible_with_split: conversion hooks cannot "
                         + "be BOTH collectively atomic (-D" + ATOMICITY_PROPERTY + "=collective) AND "
                         + "phase-split-and-journaled (-D" + MIXED_DDL_VERIFY_PROPERTY + "=split): split commits "
@@ -341,8 +349,8 @@ public final class ConversionHookRunner {
                 throw new IllegalStateException("B12:collective_atomicity_unavailable: engine '" + engineName
                         + "' has no transactional DDL (it commits DDL implicitly), so conversion hooks cannot be "
                         + "collectively atomic here -- refused BEFORE anything ran, never silently degraded to "
-                        + "per-hook. Use individual hooks (the default) with -D" + MIXED_DDL_VERIFY_PROPERTY
-                        + "=split as the resumable alternative this engine CAN honour: each phase is journaled "
+                        + "per-hook. Use individual hooks (the default) -- the DEFAULT " + MIXED_DDL_VERIFY_PROPERTY
+                        + "=split is the resumable alternative this engine CAN honour: each phase is journaled "
                         + "in npdev_migration_phase_journal before the next one starts, and a boot that crashes "
                         + "mid-hook resumes at the first incomplete phase.");
             }
@@ -390,7 +398,8 @@ public final class ConversionHookRunner {
             // failure rolls the whole set back (see runCollectiveHookSet).
             applied = runCollectiveHookSet(dataSource, historyWriter, selected, engine);
         } else {
-            applied = runPerHookLoop(dataSource, migrationId, historyWriter, selected, engine, javaHookContext);
+            applied = runPerHookLoop(dataSource, migrationId, historyWriter, selected, engine, javaHookContext,
+                    mixedDdl);
         }
 
         // STOR-32 (boundary B7): every selected hook's execution completed -- committed BEFORE the
@@ -454,26 +463,46 @@ public final class ConversionHookRunner {
      *
      * @param migrationId precomputed once by the caller ({@code run}'s own selection step already
      *                     needs it for {@link #hasIncompletePhaseActivity}) rather than re-derived here
+     * @param resolved     STOR-35 (P7): the resolved mode WITH its explicit flag -- an explicitly
+     *                     chosen split refuses when the splitter blocks (as before); the DEFAULT split
+     *                     falls back to warn with a named log line instead, so an app whose hook the
+     *                     splitter cannot parse keeps booting exactly as it did before the flip.
      * @return {@code true} always (a boolean, not void, so the call site reads as setting a flag);
-     *         every failure path throws instead of returning {@code false}
+     *         every failure path throws instead of returning {@code false} -- EXCEPT a splitter-blocked
+     *         DEFAULT mode, which returns {@code false} so the caller runs the hook raw (warn behavior)
      */
     private static boolean runSplitPhases(DataSource dataSource, String migrationId,
-            HistoryWriter historyWriter, Hook hook, String sql, String activeEngineName) {
+            HistoryWriter historyWriter, Hook hook, String sql, String activeEngineName,
+            ResolvedMixedDdlVerify resolved) {
         ConversionHookPhaseSplitter.SplitResult splitResult =
                 ConversionHookPhaseSplitter.split(sql, SqlDialects.active());
         if (!splitResult.isSplittable()) {
             ConversionHookPhaseSplitter.Blocked blocked = splitResult.blocked();
-            historyWriter.write(historyLabel(hook), "HOOK_FAILED",
-                    List.of("B11:mixed_ddl_verify_refused:" + hook.id() + " on " + activeEngineName,
-                            "blockedStatement=" + blocked.statement()));
-            throw new IllegalStateException("B11:mixed_ddl_verify_refused: conversion hook '" + hook.id()
-                    + "' mixes DDL with a verifySql on '" + activeEngineName + "', and statement #"
-                    + blocked.ordinal() + " (" + blocked.statement() + ") " + blocked.reason() + " -- refused "
-                    + "before running, rather than risking a half-applied state no automatic split could make "
-                    + "safe. Split it into two hooks by hand (rule 3): one with the DDL alone and no verifySql, "
-                    + "one with the data movement and this verifySql. Set -D" + MIXED_DDL_VERIFY_PROPERTY
-                    + "=warn to keep the prior warn-and-proceed behavior. Run `npdev why B11` for the full "
-                    + "explanation.");
+            if (resolved.explicit()) {
+                historyWriter.write(historyLabel(hook), "HOOK_FAILED",
+                        List.of("B11:mixed_ddl_verify_refused:" + hook.id() + " on " + activeEngineName,
+                                "blockedStatement=" + blocked.statement()));
+                throw new IllegalStateException("B11:mixed_ddl_verify_refused: conversion hook '" + hook.id()
+                        + "' mixes DDL with a verifySql on '" + activeEngineName + "', and statement #"
+                        + blocked.ordinal() + " (" + blocked.statement() + ") " + blocked.reason() + " -- refused "
+                        + "before running, rather than risking a half-applied state no automatic split could make "
+                        + "safe. Split it into two hooks by hand (rule 3): one with the DDL alone and no verifySql, "
+                        + "one with the data movement and this verifySql. "
+                        + "-D" + MIXED_DDL_VERIFY_PROPERTY + "=warn restores the previous behaviour byte-for-byte. "
+                        + "Run `npdev why B11` for the full explanation.");
+            }
+            // STOR-35 (P7): the mode is the DEFAULT, not an explicit choice -- splitter-blocked falls
+            // back to the previous warn-and-proceed behavior so the flip cannot turn a booting app into
+            // a refusing one. Named log line, never silent: the fallback IS the difference between this
+            // default and a hypothetical default-refuse.
+            System.out.println("NPDev schema lifecycle: B11:split_blocked_fell_back_to_warn: conversion hook '"
+                    + hook.id() + "' mixes DDL with a verifySql on '" + activeEngineName + "', and statement #"
+                    + blocked.ordinal() + " (" + blocked.statement() + ") " + blocked.reason()
+                    + " -- " + MIXED_DDL_VERIFY_PROPERTY + " was NOT set explicitly, so this boot falls back to "
+                    + "the previous warn-and-proceed behavior and runs the hook raw. Set -D"
+                    + MIXED_DDL_VERIFY_PROPERTY + "=split explicitly to make this a hard refusal instead, or "
+                    + "=warn to restore the previous behavior byte-for-byte.");
+            return false;
         }
         try {
             ConversionHookPhaseRunner.PhaseOutcome outcome =
@@ -784,7 +813,7 @@ public final class ConversionHookRunner {
      *  untouched wherever nothing had committed yet. */
     private static List<Hook> runPerHookLoop(DataSource dataSource, String migrationId,
             HistoryWriter historyWriter, List<Hook> selected, String engine,
-            JavaHookRuntimeContext javaHookContext) {
+            JavaHookRuntimeContext javaHookContext, ResolvedMixedDdlVerify mixedDdl) {
         List<Hook> applied = new ArrayList<>();
         for (Hook hook : selected) {
             historyWriter.write(historyLabel(hook), "HOOK_STARTED", List.of("claims=" + hook.claims()));
@@ -823,9 +852,10 @@ public final class ConversionHookRunner {
                         && hook.verifySql() != null && !hook.verifySql().isBlank()
                         && MIXES_DDL_PATTERN.matcher(sql).matches()) {
                     String activeEngineName = SqlDialects.active().name();
-                    MixedDdlVerifyMode mode = resolveMixedDdlVerifyMode();
+                    MixedDdlVerifyMode mode = mixedDdl.mode();
                     if (mode == MixedDdlVerifyMode.SPLIT) {
-                        usedPhaseSplit = runSplitPhases(dataSource, migrationId, historyWriter, hook, sql, activeEngineName);
+                        usedPhaseSplit = runSplitPhases(dataSource, migrationId, historyWriter, hook, sql,
+                                activeEngineName, mixedDdl);
                     } else if (mode == MixedDdlVerifyMode.REFUSE) {
                         // Refused BEFORE executeAndVerify runs -- the mixed state (DDL already committed,
                         // DML rolled back) is never authored into existence at all, not merely warned about
@@ -843,20 +873,21 @@ public final class ConversionHookRunner {
                                 + "risking that half-applied state. Split it into two hooks that run in the "
                                 + "existing ascending-id order, each in its own transaction (rule 3): one with the "
                                 + "DDL alone and no verifySql (e.g. id '" + hook.id() + "-1-ddl'), one with the "
-                                + "data movement and this verifySql (e.g. id '" + hook.id() + "-2-verify'). Set "
-                                + "-D" + MIXED_DDL_VERIFY_PROPERTY + "=warn to keep the prior warn-and-proceed "
-                                + "behavior for one more boot while you migrate. Run `npdev why B11` for the full "
-                                + "explanation." + alreadyCommittedPhrase(applied));
+                                + "data movement and this verifySql (e.g. id '" + hook.id() + "-2-verify'). "
+                                + "-D" + MIXED_DDL_VERIFY_PROPERTY + "=warn restores the previous behaviour "
+                                + "byte-for-byte. Run `npdev why B11` for the full explanation."
+                                + alreadyCommittedPhrase(applied));
                     } else {
                         System.out.println("NPDev schema lifecycle: WARNING -- conversion hook '" + hook.id()
                                 + "' mixes DDL with a verifySql on '" + activeEngineName + "'. That engine COMMITS "
                                 + "IMPLICITLY ON DDL, so if the verify fails the DDL will NOT be rolled back (data "
                                 + "changes made after it will be). Split destructive DDL and data movement into "
                                 + "separate hooks/boots, or run this conversion on an engine with transactional DDL "
-                                + "(Postgres, SQL Server), or set -D" + MIXED_DDL_VERIFY_PROPERTY + "=split to have "
-                                + "the platform do that automatically and resume safely on a crash. Set -D"
+                                + "(Postgres, SQL Server). Leave the property unset -- split is the default and now "
+                                + "does the decomposition automatically, resuming safely on a crash. Set -D"
                                 + MIXED_DDL_VERIFY_PROPERTY + "=refuse to refuse this shape outright instead of only "
-                                + "warning. Run `npdev why B11` for the full explanation.");
+                                + "warning, or =warn to restore the previous behavior byte-for-byte. Run `npdev why "
+                                + "B11` for the full explanation.");
                     }
                 }
 

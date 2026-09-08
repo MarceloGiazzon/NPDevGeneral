@@ -62,6 +62,33 @@ class DialectConformanceTierATest {
         }
     }
 
+    // ------------------------------------------------------------------ STOR-35/P7: guarded DROP COLUMN
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dialects")
+    @DisplayName("STOR-35/P7: guardedDropColumn renders a bare DROP COLUMN idempotent on every engine, per engine idiom")
+    void guardedDropColumnProducesAnIdempotentGuard(SqlDialect dialect) {
+        String guarded = dialect.guardedDropColumn("widgets", "legacy_total",
+                "ALTER TABLE widgets DROP COLUMN legacy_total");
+        String upper = guarded.toUpperCase(java.util.Locale.ROOT);
+        assertTrue(upper.contains("DROP COLUMN"), dialect.name() + ": " + guarded);
+        switch (dialect.name()) {
+            case "h2", "postgres", "sqlserver" ->
+                // native DROP COLUMN IF EXISTS -- the whole point of the guard is that a re-run is a no-op
+                assertTrue(upper.contains("DROP COLUMN IF EXISTS"), dialect.name() + ": " + guarded);
+            case "mysql" -> {
+                // MySQL 8 has NO "DROP COLUMN IF EXISTS" (error 1064) -- the guard must be the
+                // catalog-lookup + PREPARE/EXECUTE idiom, and must never emit an IF EXISTS MySQL rejects.
+                assertFalse(upper.contains("IF EXISTS"), dialect.name() + ": " + guarded);
+                assertTrue(upper.contains("INFORMATION_SCHEMA.COLUMNS"), dialect.name() + ": " + guarded);
+                assertTrue(upper.contains("PREPARE"), dialect.name() + ": " + guarded);
+                assertTrue(upper.contains("ALTER TABLE WIDGETS DROP COLUMN LEGACY_TOTAL"),
+                        dialect.name() + ": " + guarded);
+            }
+            default -> throw new AssertionError("unexpected dialect " + dialect.name());
+        }
+    }
+
     @Test
     @DisplayName("P2: SQL Server REVERSES the parameters -- the reason this is a type and not a String")
     void sqlServerReversesPaginationParameters() {

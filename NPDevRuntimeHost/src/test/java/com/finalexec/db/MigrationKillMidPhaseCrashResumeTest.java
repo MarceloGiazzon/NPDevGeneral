@@ -15,6 +15,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -72,6 +73,39 @@ class MigrationKillMidPhaseCrashResumeTest {
             assertEquals(3L, singleLongQuery(connection, "SELECT COUNT(*) FROM p75_multi WHERE status = 'unknown'"));
             assertEquals(3L, singleLongQuery(connection, "SELECT COUNT(*) FROM p75_multi"),
                     "no row was lost or duplicated across the crash/resume boundary");
+        }
+    }
+
+    @Test
+    void aKilledMigrationResumesThroughTheDefaultSplitModeWithNoPropertySet(@TempDir Path tempDir) throws Exception {
+        // STOR-35 (POSTURAL_LIFT_PLAN_2026-09-07.md package P7, safety item 3): the crash-resume claim
+        // must hold for the NEW DEFAULT -- reached with no mixedDdlVerify property set AT ALL -- not
+        // only for the explicit opt-in the original test proves. The harness's resume-default mode
+        // asserts the property is null in the CHILD, so a future change that reintroduces it fails
+        // loudly instead of silently reverting this test to the opt-in path.
+        assertNull(System.getProperty("npdev.schema.conversionHooks.mixedDdlVerify"),
+                "the test JVM must not carry the property either -- the default is the point");
+
+        String dbPath = tempDir.resolve("kill-mid-phase-db-default").toAbsolutePath().toString();
+
+        HarnessResult crashResult = runHarness(tempDir, "crash-run-default", "crash", dbPath, "0");
+        assertEquals(137, crashResult.exitCode(), crashResult.output());
+        assertTrue(crashResult.output().contains("CRASH_HARNESS: completed phases 0..0"), crashResult.output());
+
+        // no-property resume through the REAL boot path, reaching split purely through the new default
+        HarnessResult resumeResult = runHarness(tempDir, "resume-run-default", "resume-default", dbPath);
+        assertEquals(0, resumeResult.exitCode(), "the resumed boot must complete cleanly: " + resumeResult.output());
+        assertTrue(resumeResult.output().contains("RESUME_HARNESS: DONE"), resumeResult.output());
+        assertTrue(resumeResult.output().contains("HOOK_PHASES_APPLIED") && resumeResult.output().contains("ran=2")
+                        && resumeResult.output().contains("resumedSkipped=1"),
+                "the default-split resume must run exactly the 2 unfinished phases and skip the completed one: "
+                        + resumeResult.output());
+
+        String jdbcUrl = "jdbc:h2:file:" + dbPath + ";AUTO_SERVER=FALSE";
+        try (Connection connection = DriverManager.getConnection(jdbcUrl)) {
+            assertEquals(0L, singleLongQuery(connection, "SELECT COUNT(*) FROM p75_multi WHERE status IS NULL"),
+                    "every row must be backfilled across the crash/default-resume boundary");
+            assertEquals(3L, singleLongQuery(connection, "SELECT COUNT(*) FROM p75_multi"));
         }
     }
 

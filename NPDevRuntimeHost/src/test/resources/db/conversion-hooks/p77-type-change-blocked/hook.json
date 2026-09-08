@@ -1,0 +1,7 @@
+{
+  "id": "p77-type-change-blocked",
+  "claims": ["ADD_REQUIRED_COLUMN:p77_type_change:status"],
+  "description": "STOR-35 fixture (POSTURAL_LIFT_PLAN_2026-09-07.md package P7): a hand-written hook whose second statement is an in-place type change (ALTER COLUMN ... SET DATA TYPE) -- a DDL shape ConversionHookPhaseSplitter deliberately still does not know how to render idempotent (the column's current live shape is unknowable to the splitter), so split must refuse it (naming the statement) when chosen explicitly, and fall back to warn when it is the default.",
+  "verifySql": "SELECT COUNT(*) FROM p77_type_change WHERE status IS NULL",
+  "verifyExpect": 0
+}

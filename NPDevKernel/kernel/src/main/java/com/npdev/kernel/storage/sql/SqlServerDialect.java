@@ -545,6 +545,13 @@ public final class SqlServerDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropColumn(String tableName, String columnName, String alterStatement) {
+        // DROP COLUMN IF EXISTS is native on SQL Server 2016+ (STOR-35/P7) -- the plain statement,
+        // guarded. T-SQL keeps the COLUMN keyword for DROP (unlike ADD, see guardedAddColumn).
+        return SqlDdlGuards.insertAfter(alterStatement, "DROP COLUMN", "IF EXISTS");
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         // COL_LENGTH returns null for a column that does not exist -- the cheapest existence test
         // here, and it does not need the schema spelled out.
