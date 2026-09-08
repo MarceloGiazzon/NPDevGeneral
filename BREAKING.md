@@ -5,6 +5,35 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-09-07 — mixed-DDL conversion hooks are split and journalled by default (STOR-35, boundary B11)
+
+**What changes.** `npdev.schema.conversionHooks.mixedDdlVerify` now defaults to `split` instead of
+`warn`. A conversion hook that mixes DDL with a `verifySql`, running on an engine without
+transactional DDL (H2, MySQL), is decomposed into single-statement phases through
+`ConversionHookPhaseSplitter`, each rewritten to its dialect-guarded idempotent form and journalled
+in `npdev_migration_phase_journal` before the next one starts — so a boot that crashes mid-hook
+resumes at the first incomplete phase instead of leaving DDL applied with DML rolled back. `warn`,
+`refuse` and `split` set explicitly all behave exactly as before.
+
+**Who is affected.** Only an app that actually has a conversion hook mixing DDL with a `verifySql`,
+on H2 or MySQL. Every other app — no such hook, or an engine with transactional DDL (Postgres, SQL
+Server) — takes an identical code path to before. Of the affected apps: a hook the splitter
+recognizes is now applied resumably rather than raw, which is strictly safer. A hook the splitter
+CANNOT render idempotent (a `RENAME COLUMN`, an in-place type change) does NOT begin refusing —
+because the mode was not chosen explicitly, it falls back to the previous `warn` behaviour and logs
+`B11:split_blocked_fell_back_to_warn:`. An operator who sets `=split` explicitly still gets the hard
+refusal, unchanged. **No app that boots today stops booting.**
+
+**Codemod.** None, and none is possible: no model file changes shape and no generated code changes.
+The migration is a single property. `-Dnpdev.schema.conversionHooks.mixedDdlVerify=warn` restores the
+previous behaviour byte-for-byte.
+
+**Why a no-op codemod would be wrong here.** The stability policy requires a breaking change to ship
+its `npdev migrate` codemod in the same commit. That rule exists for changes that make an existing
+*model file* invalid. This change touches no model file — there is nothing to rewrite, and a codemod
+that rewrites nothing is a false claim of migration coverage. Say that in the entry (the text above
+does) rather than shipping a stub.
+
 ## 2026-09-06 — `concept`/`field` gain an optional `uid` for rename-by-identity (REG-209, boundary B1)
 
 **What changes.** `model.schema.json` (all four mirrors) adds an optional `uid` property

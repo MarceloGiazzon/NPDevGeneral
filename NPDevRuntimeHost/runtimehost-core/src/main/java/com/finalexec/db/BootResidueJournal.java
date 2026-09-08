@@ -199,8 +199,9 @@ final class BootResidueJournal {
                 return Optional.empty();
             }
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT boot_id FROM " + TABLE + " WHERE outcome IS NULL "
-                            + "GROUP BY boot_id ORDER BY MAX(started_at_utc) DESC LIMIT 1")) {
+                    SqlDialects.forConnection(connection).rowLimited(
+                            "SELECT boot_id FROM " + TABLE + " WHERE outcome IS NULL "
+                                    + "GROUP BY boot_id ORDER BY MAX(started_at_utc) DESC ", 1))) {
                 try (ResultSet resultSet = statement.executeQuery()) {
                     if (resultSet.next()) {
                         return Optional.of(resultSet.getString(1));
@@ -223,8 +224,9 @@ final class BootResidueJournal {
                 return Optional.empty();
             }
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT step_name FROM " + TABLE
-                            + " WHERE boot_id = ? AND outcome IS NULL ORDER BY step_ordinal DESC LIMIT 1")) {
+                    SqlDialects.forConnection(connection).rowLimited(
+                            "SELECT step_name FROM " + TABLE
+                                    + " WHERE boot_id = ? AND outcome IS NULL ORDER BY step_ordinal DESC ", 1))) {
                 statement.setString(1, bootId);
                 try (ResultSet resultSet = statement.executeQuery()) {
                     if (resultSet.next()) {

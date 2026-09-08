@@ -721,6 +721,17 @@ public interface SqlDialect {
     String guardedDropConstraint(String constraintName, String tableName);
 
     /**
+     * {@code alterStatement} ({@code ALTER TABLE t DROP COLUMN c [CASCADE]}) made idempotent
+     * (STOR-35 / boundary B11, POSTURAL_LIFT_PLAN_2026-09-07.md package P7: the phase-splitter's new
+     * DROP COLUMN vocabulary). Postgres and H2 have a native {@code DROP COLUMN IF EXISTS}; SQL
+     * Server 2016+ does too (same version floor {@link #guardedDropConstraint} relies on); MySQL 8
+     * has neither, so its implementation gates the statement behind an information_schema lookup --
+     * legal ONLY here, in the dialect package, never at a call site (check-dialect-sites.py). The
+     * caller passes already-safe identifiers, matching {@link #guardedDropConstraint}.
+     */
+    String guardedDropColumn(String tableName, String columnName, String alterStatement);
+
+    /**
      * {@code alterStatement} ({@code ALTER TABLE t ADD COLUMN c TYPE}) made idempotent.
      *
      * <p><b>Also normalises the keyword.</b> T-SQL has no {@code COLUMN} in {@code ALTER TABLE t ADD

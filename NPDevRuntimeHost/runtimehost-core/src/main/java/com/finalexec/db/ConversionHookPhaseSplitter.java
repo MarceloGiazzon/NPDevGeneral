@@ -52,14 +52,18 @@ final class ConversionHookPhaseSplitter {
 
     private static final Pattern ADD_COLUMN =
             Pattern.compile("(?is)^\\s*ALTER\\s+TABLE\\s+(\\S+)\\s+ADD\\s+COLUMN\\s+(\\S+)\\s+.*");
+    private static final Pattern DROP_COLUMN = Pattern.compile(
+            "(?is)^\\s*ALTER\\s+TABLE\\s+(\\S+)\\s+DROP\\s+COLUMN\\s+(\\S+)\\s*;?\\s*$");
     private static final Pattern CREATE_TABLE =
             Pattern.compile("(?is)^\\s*CREATE\\s+TABLE\\s+(\\S+)\\s*\\(.*");
     private static final Pattern CREATE_INDEX =
             Pattern.compile("(?is)^\\s*CREATE\\s+(?:UNIQUE\\s+)?INDEX\\s+(\\S+)\\s+ON\\s+(\\S+)\\s*\\(.*");
+    private static final Pattern DROP_INDEX = Pattern.compile(
+            "(?is)^\\s*DROP\\s+INDEX\\s+(\\S+)(?:\\s+ON\\s+(\\S+))?\\s*;?\\s*$");
     private static final Pattern NOT_NULL_TOGGLE = Pattern.compile(
             "(?is)^\\s*ALTER\\s+TABLE\\s+\\S+\\s+ALTER\\s+COLUMN\\s+\\S+\\s+(SET|DROP)\\s+NOT\\s+NULL\\s*;?\\s*$");
     private static final Pattern ANY_DDL_KEYWORD = Pattern.compile(
-            "(?is).*\\b(ALTER\\s+TABLE|DROP\\s+TABLE|CREATE\\s+TABLE|CREATE\\s+(?:UNIQUE\\s+)?INDEX|DROP\\s+INDEX)\\b.*");
+            "(?is).*\\b(ALTER\\s+TABLE|DROP\\s+TABLE|CREATE\\s+TABLE|CREATE\\s+(?:UNIQUE\\s+)?INDEX|DROP\\s+INDEX|DROP\\s+CONSTRAINT)\\b.*");
 
     /** Splits and classifies {@code convertSql} against {@code dialect}. Never partially returns a
      *  splittable prefix: the FIRST unrecognized DDL shape blocks the whole result, so a caller never
@@ -72,9 +76,9 @@ final class ConversionHookPhaseSplitter {
             Classified classified = classify(original, dialect);
             if (classified == null) {
                 return new SplitResult(List.of(), new Blocked(i, original,
-                        "matches no recognized idempotent-DDL shape (ADD COLUMN / CREATE TABLE / "
-                        + "CREATE [UNIQUE] INDEX / ALTER COLUMN SET|DROP NOT NULL) that this platform "
-                        + "knows how to render safe-to-retry"));
+                        "matches no recognized idempotent-DDL shape (ADD COLUMN / DROP COLUMN / "
+                        + "CREATE TABLE / CREATE [UNIQUE] INDEX / DROP INDEX / ALTER COLUMN SET|DROP "
+                        + "NOT NULL) that this platform knows how to render safe-to-retry"));
             }
             phases.add(new Phase(i, classified.kind(), classified.sql(), sha256Hex(original)));
         }
@@ -90,6 +94,14 @@ final class ConversionHookPhaseSplitter {
             return new Classified(PhaseKind.DDL,
                     dialect.guardedAddColumn(addColumn.group(1), addColumn.group(2), statement));
         }
+        Matcher dropColumn = DROP_COLUMN.matcher(statement);
+        if (dropColumn.matches()) {
+            // STOR-35 (boundary B11, POSTURAL_LIFT_PLAN_2026-09-07.md package P7): DROP COLUMN was
+            // previously BLOCKING; the new SqlDialect.guardedDropColumn makes it idempotent (an
+            // already-dropped column is a no-op), so the splitter can render it safe-to-retry.
+            return new Classified(PhaseKind.DDL,
+                    dialect.guardedDropColumn(dropColumn.group(1), dropColumn.group(2), statement));
+        }
         Matcher createTable = CREATE_TABLE.matcher(statement);
         if (createTable.matches()) {
             return new Classified(PhaseKind.DDL, dialect.guardedCreateTable(createTable.group(1), statement));
@@ -98,6 +110,16 @@ final class ConversionHookPhaseSplitter {
         if (createIndex.matches()) {
             return new Classified(PhaseKind.DDL,
                     dialect.guardedCreateIndex(createIndex.group(1), createIndex.group(2), statement));
+        }
+        Matcher dropIndex = DROP_INDEX.matcher(statement);
+        if (dropIndex.matches()) {
+            // STOR-35 (P7): DROP INDEX was previously BLOCKING; it routes through the EXISTING
+            // SqlDialect.guardedDropIndexIfExists -- no new dialect method. The optional "ON table"
+            // tail is the MySQL/SQL-Server spelling; Postgres and H2 ignore the table (their index
+            // names are schema-scoped) so a missing tail is fine.
+            String indexName = dropIndex.group(1);
+            String tableName = dropIndex.group(2) == null ? "" : dropIndex.group(2);
+            return new Classified(PhaseKind.DDL, dialect.guardedDropIndexIfExists(indexName, tableName));
         }
         if (NOT_NULL_TOGGLE.matcher(statement).matches()) {
             // Re-applying SET/DROP NOT NULL on a column already in that state is a no-op on every

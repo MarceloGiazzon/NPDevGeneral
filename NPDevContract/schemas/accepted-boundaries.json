@@ -74,10 +74,10 @@
     },
     {
       "id": "B11",
-      "kind": "POSTURAL",
-      "userFacingText": "H2 and MySQL commit DDL implicitly, so if a migration hook fails partway, its data changes roll back but any schema change it already made stays applied -- the database can end up in a state your model doesn't fully describe.",
-      "workaround": "Set -Dnpdev.schema.conversionHooks.mixedDdlVerify=split (REAL_LIFT_PLAN_2026-09-03 package A1, STOR-21) to have the platform automatically decompose a mixing hook into idempotent, journaled phases and run them, resuming safely past a real process crash on the next boot -- no human repair step. Or set =refuse to refuse the boot outright before running such a hook instead, so the mixed state can never be authored into existence; split and refuse both still refuse a statement neither can render idempotent (e.g. a bare DROP COLUMN), naming it. By default NPDev prints a warning naming the active engine before running a hook that mixes DDL with a verifySql (=warn, unchanged). Postgres and SQL Server roll back fully, so none of this is needed there.",
-      "enforcingDiagnosticCodes": ["B11:mixed_ddl_verify_refused"]
+      "kind": "LIFTED",
+      "userFacingText": "H2 and MySQL commit DDL implicitly, so a failed conversion hook can leave DDL applied with DML rolled back -- and the platform now defaults to the safe handling: a hook that mixes DDL with a verifySql on such an engine is automatically decomposed into guarded, journalled, resumable phases (split is the default; no property to set). A statement the splitter cannot render idempotent falls back to the previous warn-and-proceed behavior instead of refusing, so no app that boots today stops booting.",
+      "workaround": "Nothing to do -- split is the default: mixed-DDL hooks are decomposed, journalled, and resume safely past a crash. -Dnpdev.schema.conversionHooks.mixedDdlVerify=warn restores the previous behaviour byte-for-byte. An operator who sets =split EXPLICITLY still gets the hard refusal (B11:mixed_ddl_verify_refused:) when the splitter cannot render a statement idempotent (an in-place type change, a RENAME COLUMN), or =refuse for the hard stop on every mixing hook. The splitter recognizes ADD COLUMN, DROP COLUMN, CREATE TABLE, CREATE [UNIQUE] INDEX, DROP INDEX, and ALTER COLUMN SET|DROP NOT NULL; Postgres and SQL Server roll back fully and need none of this.",
+      "enforcingDiagnosticCodes": ["B11:mixed_ddl_verify_refused", "B11:split_blocked_fell_back_to_warn"]
     },
     {
       "id": "B12",

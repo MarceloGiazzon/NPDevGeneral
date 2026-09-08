@@ -467,6 +467,24 @@ public final class MySqlDialect implements SqlDialect {
     }
 
     @Override
+    public String guardedDropColumn(String tableName, String columnName, String alterStatement) {
+        // MySQL 8 has no DROP COLUMN IF EXISTS (STOR-35/P7; MariaDB does, MySQL does not) and no IF
+        // EXISTS form for any ALTER DROP -- same catalog-lookup + PREPARE/EXECUTE idiom as
+        // guardedDropConstraint, polarity inverted (run the DROP only when the column IS found),
+        // against INFORMATION_SCHEMA.COLUMNS.
+        String table = escapeLiteral(tableName);
+        String column = escapeLiteral(columnName);
+        return "SET @npdev_ddl := (SELECT IF(COUNT(*) > 0, " + quoteSqlLiteral(alterStatement + ";") + ", 'SELECT 1')\n"
+                + "  FROM INFORMATION_SCHEMA.COLUMNS\n"
+                + "  WHERE COLUMN_NAME = '" + column + "'\n"
+                + "    AND TABLE_NAME = '" + table + "'\n"
+                + "    AND TABLE_SCHEMA = DATABASE());\n"
+                + "PREPARE npdev_stmt FROM @npdev_ddl;\n"
+                + "EXECUTE npdev_stmt;\n"
+                + "DEALLOCATE PREPARE npdev_stmt;\n";
+    }
+
+    @Override
     public String guardedAddColumn(String tableName, String columnName, String alterStatement) {
         return preparedGuard(
                 "INFORMATION_SCHEMA.COLUMNS",

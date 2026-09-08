@@ -136,11 +136,15 @@ class ConversionHookRunnerH2Test {
     }
 
     @Test
-    void b11_1_hookMixingDdlWithVerifySqlOnAnImplicitCommitEngineWarnsBeforeRunning() throws SQLException {
-        // docs/ACCEPTED_BOUNDARIES.md B11.1: the warning must fire BEFORE the hook runs, asking the
-        // dialect's DDL_IN_TRANSACTION capability (not a hardcoded "h2" string -- STOR-2's own
-        // precedent) rather than hoping an operator reads a javadoc.
+    void b11_1_warnModeExplicitlyRestoredStillWarnsBeforeRunning() throws SQLException {
+        // docs/ACCEPTED_BOUNDARIES.md B11.1, pinned EXPLICITLY after STOR-35 (P7) flipped the default
+        // to split: the warning must fire BEFORE the hook runs when the operator set =warn explicitly,
+        // asking the dialect's DDL_IN_TRANSACTION capability (not a hardcoded "h2" string -- STOR-2's
+        // own precedent) rather than hoping an operator reads a javadoc. This test doubles as the
+        // escape-hatch regression: `-Dnpdev.schema.conversionHooks.mixedDdlVerify=warn` restores the
+        // previous behaviour byte-for-byte.
         SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "warn");
         try {
             exec("CREATE TABLE p75_resolve (id BIGINT PRIMARY KEY)");
             SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
@@ -163,6 +167,7 @@ class ConversionHookRunnerH2Test {
             assertTrue(logged.contains("'" + H2Dialect.INSTANCE.name() + "'"),
                     "must name the actual active engine (SqlDialect.name() is lower-case by convention): " + logged);
         } finally {
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
             SqlDialects.resetActiveForTesting();
         }
     }
@@ -330,30 +335,127 @@ class ConversionHookRunnerH2Test {
     }
 
     @Test
-    void splitMode_unguardableStatementRefusesNamingItBeforeRunningAnything() throws SQLException {
-        // A1: a hook whose second statement is a bare DROP COLUMN has no recognized idempotent-DDL
-        // shape -- SPLIT mode must refuse it (naming the exact statement), and BEFORE running anything
-        // at all, matching STOR-20's own "refuse before running, never a partial apply" discipline.
+    void splitMode_dropColumnIsNowRenderedIdempotentAndSplits() throws SQLException {
+        // STOR-35 (boundary B11, package P7) -- trap 5 inversion of the pre-P7
+        // splitMode_unguardableStatementRefusesNamingItBeforeRunningAnything: a bare DROP COLUMN was
+        // the splitter's canonical BLOCKING shape, and the new SqlDialect.guardedDropColumn renders it
+        // idempotent (an already-dropped column is a no-op), so the hook now splits and runs instead
+        // of refusing. Everything the old refusal protected still holds -- the whole split is
+        // journaled before any phase runs, so a crash mid-hook resumes at the first incomplete phase.
         SqlDialects.setActive(H2Dialect.INSTANCE);
         System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "split");
         try {
             exec("CREATE TABLE p75_unguardable (id BIGINT PRIMARY KEY, legacy VARCHAR(10))");
+            exec("INSERT INTO p75_unguardable (id, legacy) VALUES (1, 'x')");
             SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
                     "p75_unguardable", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
                     List.of("id", "legacy"), List.of("id", "status"));
 
+            ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+            List<String> outcomes = history.stream().map(row -> row[1]).toList();
+            assertTrue(outcomes.contains("HOOK_PHASES_APPLIED"), outcomes.toString());
+            assertFalse(outcomes.contains("HOOK_FAILED"), outcomes.toString());
+            assertTrue(unresolvedKeys(manifest).isEmpty(),
+                    "both the ADD (status) and the DROP (legacy) are resolved by the split run: "
+                            + unresolvedKeys(manifest));
+            try (Connection connection = dataSource.getConnection()) {
+                assertTrue(hasColumn("p75_unguardable", "status"),
+                        "the ADD COLUMN phase must have applied");
+                assertFalse(hasColumn("p75_unguardable", "legacy"),
+                        "the guarded DROP COLUMN phase must have dropped legacy");
+            }
+            assertEquals(0L, singleLongQuery(
+                    "SELECT COUNT(*) FROM p75_unguardable WHERE status IS NULL"),
+                    "the closing verify must pass after the split run");
+        } finally {
+            System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void defaultModeIsSplitAndJournalsPhases() throws SQLException {
+        // STOR-35 (P7): the DEFAULT flipped from warn to split. The same p75-multi scenario the
+        // explicit-split tests run, reached with NO property set at all: the mixing hook is decomposed
+        // into journaled phases, exactly as an explicit =split would do.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        try {
+            exec("CREATE TABLE p75_multi (id BIGINT PRIMARY KEY)");
+            exec("INSERT INTO p75_multi (id) VALUES (1), (2), (3)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p75_multi", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            ConversionHookRunner.run(dataSource, manifest, historyWriter);
+
+            List<String> phasesApplied = history.stream()
+                    .filter(row -> "HOOK_PHASES_APPLIED".equals(row[1]))
+                    .map(row -> row[2])
+                    .toList();
+            assertEquals(1, phasesApplied.size(), history.toString());
+            assertTrue(phasesApplied.get(0).contains("ran=3"), phasesApplied.get(0));
+            assertTrue(unresolvedKeys(manifest).isEmpty(), unresolvedKeys(manifest).toString());
+            assertEquals(0L, singleLongQuery("SELECT COUNT(*) FROM p75_multi WHERE status IS NULL"));
+        } finally {
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void defaultModeFallsBackToWarnWhenTheSplitterBlocks() throws SQLException {
+        // STOR-35 (P7): the split-blocked fallback -- a hook the splitter cannot render idempotent (an
+        // in-place type change) does NOT begin refusing under the new default; it falls back to the
+        // previous warn-and-proceed behavior with a named log line, so no app that boots today stops
+        // booting.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        try {
+            exec("CREATE TABLE p77_type_change (id BIGINT PRIMARY KEY)");
+            exec("INSERT INTO p77_type_change (id) VALUES (1)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p77_type_change", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
+            ByteArrayOutputStream capturedOut = new ByteArrayOutputStream();
+            PrintStream originalOut = System.out;
+            try {
+                System.setOut(new PrintStream(capturedOut, true, StandardCharsets.UTF_8));
+                ConversionHookRunner.run(dataSource, manifest, historyWriter);
+            } finally {
+                System.setOut(originalOut);
+            }
+            String logged = capturedOut.toString(StandardCharsets.UTF_8);
+            assertTrue(logged.contains("B11:split_blocked_fell_back_to_warn:"), logged);
+            assertTrue(logged.contains("SET DATA TYPE"), logged);
+            // The hook ran RAW (warn behavior) and succeeded: status was added and backfilled.
+            List<String> outcomes = history.stream().map(row -> row[1]).toList();
+            assertTrue(outcomes.contains("HOOK_APPLIED"), outcomes.toString());
+            assertEquals(0L, singleLongQuery(
+                    "SELECT COUNT(*) FROM p77_type_change WHERE status IS NULL"));
+        } finally {
+            SqlDialects.resetActiveForTesting();
+        }
+    }
+
+    @Test
+    void explicitSplitStillRefusesWhenTheSplitterBlocks() throws SQLException {
+        // STOR-35 (P7): the SAME hook, with =split chosen EXPLICITLY, refuses -- naming the exact
+        // statement -- before anything runs. This pair with #defaultModeFallsBackToWarnWhenTheSplitterBlocks
+        // is the whole design: explicit means refuse, default means fall back, never silently either way.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
+        System.setProperty("npdev.schema.conversionHooks.mixedDdlVerify", "split");
+        try {
+            exec("CREATE TABLE p77_type_change (id BIGINT PRIMARY KEY)");
+            SchemaLifecycleExecutor.SchemaManifest manifest = manifestFor(
+                    "p77_type_change", Map.of("id", "BIGINT", "status", "VARCHAR(20)"),
+                    List.of("id"), List.of("id", "status"));
+
             IllegalStateException refusal = assertThrows(IllegalStateException.class,
                     () -> ConversionHookRunner.run(dataSource, manifest, historyWriter));
             assertTrue(refusal.getMessage().contains("B11:mixed_ddl_verify_refused:"), refusal.getMessage());
-            assertTrue(refusal.getMessage().contains("DROP COLUMN legacy"), refusal.getMessage());
-
-            List<String> outcomes = history.stream().map(row -> row[1]).toList();
-            assertTrue(outcomes.contains("HOOK_FAILED"), outcomes.toString());
-            assertFalse(outcomes.contains("HOOK_PHASES_APPLIED"), outcomes.toString());
-            assertEquals(0L, singleLongQuery(
-                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'P75_UNGUARDABLE' "
-                            + "AND COLUMN_NAME = 'STATUS'"),
-                    "refused before running -- the ADD COLUMN in phase 0 must never have executed either");
+            assertTrue(refusal.getMessage().contains("SET DATA TYPE"), refusal.getMessage());
+            assertFalse(hasColumn("p77_type_change", "status"),
+                    "refused before running -- nothing of the hook's may have executed");
         } finally {
             System.clearProperty("npdev.schema.conversionHooks.mixedDdlVerify");
             SqlDialects.resetActiveForTesting();

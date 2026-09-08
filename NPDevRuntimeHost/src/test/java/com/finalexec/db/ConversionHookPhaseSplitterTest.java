@@ -65,14 +65,44 @@ class ConversionHookPhaseSplitterTest {
 
     @Test
     void anUnrecognizedDdlShapeBlocksRatherThanGuesses() {
+        // STOR-35 (P7) update: DROP COLUMN is no longer the blocking example (it is now rendered
+        // idempotent); the canonical still-blocking shape is an in-place type change / RENAME -- the
+        // splitter cannot know the column's current live shape, so it blocks rather than guesses.
         ConversionHookPhaseSplitter.SplitResult result = ConversionHookPhaseSplitter.split(
-                "ALTER TABLE t ADD COLUMN c VARCHAR(20); ALTER TABLE t DROP COLUMN legacy",
+                "ALTER TABLE t ADD COLUMN c VARCHAR(20); ALTER TABLE t RENAME COLUMN legacy TO legacy_old",
                 H2Dialect.INSTANCE);
         assertFalse(result.isSplittable());
         assertNotNull(result.blocked());
         assertEquals(1, result.blocked().ordinal());
-        assertTrue(result.blocked().statement().contains("DROP COLUMN legacy"), result.blocked().statement());
+        assertTrue(result.blocked().statement().contains("RENAME COLUMN"), result.blocked().statement());
         assertTrue(result.phases().isEmpty(), "a blocked split must return no phases at all");
+    }
+
+    @Test
+    void dropColumnIsRewrittenToItsGuardedIdempotentForm() {
+        // STOR-35 (P7): a bare DROP COLUMN was the splitter's canonical BLOCKING shape; the new
+        // SqlDialect.guardedDropColumn renders it idempotent (an already-dropped column is a no-op).
+        ConversionHookPhaseSplitter.SplitResult result = ConversionHookPhaseSplitter.split(
+                "ALTER TABLE t DROP COLUMN legacy", H2Dialect.INSTANCE);
+        assertTrue(result.isSplittable(), () -> String.valueOf(result.blocked()));
+        assertEquals(1, result.phases().size());
+        ConversionHookPhaseSplitter.Phase phase = result.phases().get(0);
+        assertEquals(ConversionHookPhaseSplitter.PhaseKind.DDL, phase.kind());
+        assertTrue(phase.executableSql().toUpperCase(java.util.Locale.ROOT).contains("IF EXISTS"),
+                phase.executableSql());
+    }
+
+    @Test
+    void dropIndexIsRewrittenToItsGuardedIdempotentForm() {
+        // STOR-35 (P7): DROP INDEX routes through the EXISTING guardedDropIndexIfExists -- free.
+        // The MySQL/SQL-Server "ON table" tail is optional; Postgres/H2 accept the bare form.
+        ConversionHookPhaseSplitter.SplitResult result = ConversionHookPhaseSplitter.split(
+                "DROP INDEX ix_t_c", H2Dialect.INSTANCE);
+        assertTrue(result.isSplittable(), () -> String.valueOf(result.blocked()));
+        ConversionHookPhaseSplitter.Phase phase = result.phases().get(0);
+        assertEquals(ConversionHookPhaseSplitter.PhaseKind.DDL, phase.kind());
+        assertTrue(phase.executableSql().toUpperCase(java.util.Locale.ROOT).contains("IF EXISTS"),
+                phase.executableSql());
     }
 
     @Test

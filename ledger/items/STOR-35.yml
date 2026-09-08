@@ -1,0 +1,156 @@
+id: STOR-35
+title: >-
+  Mixed-DDL conversion hooks are split and journalled BY DEFAULT: npdev.schema.conversionHooks.
+  mixedDdlVerify defaults to split (the splitter's vocabulary grew to DROP INDEX and DROP COLUMN via
+  a new SqlDialect.guardedDropColumn), a splitter-blocked statement under the NON-explicit default
+  falls back to the previous warn-and-proceed behavior with the named line B11:split_blocked_fell_
+  back_to_warn: while an explicit =split still refuses (B11:mixed_ddl_verify_refused:), the
+  crash-resume proof now runs with NO property set, the escape hatch
+  -Dnpdev.schema.conversionHooks.mixedDdlVerify=warn restores the previous behaviour byte-for-byte
+  (BREAKING.md entry shiped), and B11.4 was asked and answered by the owner (boundary B11 -> LIFTED)
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-09-07
+closed: 2026-09-08
+source: >-
+  POSTURAL_LIFT_PLAN_2026-09-07.md package P7 (Wave 2). B11.yml's own residue, verbatim: "`split`
+  ... (a third opt-in value beside `warn`/`refuse`, default stays `warn`, unchanged ... and flipping
+  the DEFAULT to `split` is likewise a deliberately deferred follow-up) ... A statement the splitter
+  does not recognize (a bare `DROP COLUMN`, an exotic `ALTER`) still BLOCKS the whole split and
+  refuses before running anything."
+surface: >-
+  ConversionHookPhaseSplitter (DROP INDEX / DROP COLUMN vocabulary), SqlDialect + four dialects
+  (new guardedDropColumn), ConversionHookRunner (ResolvedMixedDdlVerify record carrying the explicit
+  flag, default flipped to split, split-blocked fallback in runSplitPhases, warn/refuse messages
+  updated to the new default), BREAKING.md, docs/SCHEMA_EVOLUTION.md, MigrationKillMidPhaseHarness +
+  MigrationKillMidPhaseCrashResumeTest (property-less resume-default mode), ConversionHookRunnerH2Test
+  + ConversionHookPhaseSplitterTest + DialectConformanceTierATest, and the new p77-type-change-blocked
+  fixture.
+files:
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/MySqlDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/PostgresDialect.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/SqlServerDialect.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookPhaseSplitter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/BootResidueJournal.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerH2Test.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookPhaseSplitterTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidPhaseHarness.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidPhaseCrashResumeTest.java
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/p77-type-change-blocked/hook.json
+  - NPDevRuntimeHost/src/test/resources/db/conversion-hooks/p77-type-change-blocked/convert.sql
+  - NPDevKernel/kernel/src/test/java/com/npdev/kernel/storage/sql/DialectConformanceTierATest.java
+  - BREAKING.md
+  - docs/SCHEMA_EVOLUTION.md
+  - ledger/boundaries/B11.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **What changed.** The plan's four steps. (1) The splitter's vocabulary widened: DROP INDEX routes
+  through the existing SqlDialect.guardedDropIndexIfExists (free -- the optional "ON table" tail is
+  the MySQL/SQL-Server spelling, absent on Postgres/H2 whose index names are schema-scoped), and
+  ALTER TABLE ... DROP COLUMN is rendered idempotent by a NEW SqlDialect.guardedDropColumn: native
+  DROP COLUMN IF EXISTS on H2/Postgres/SQL Server 2016+; MySQL 8 has no IF EXISTS form at all
+  (MariaDB does, MySQL does not -- verified against the dialect idioms this file already uses for
+  guardedDropIndexIfExists/guardedDropConstraint), so its implementation is the same
+  information_schema-lookup + PREPARE/EXECUTE, polarity inverted, against INFORMATION_SCHEMA.COLUMNS,
+  legal only inside the dialect package. An in-place type change and RENAME COLUMN stay BLOCKED --
+  the splitter cannot know the column's current live shape, so blocking is the honest answer and it
+  stays. (2) The fallback: SPLIT_BLOCKED refuses when the mode was chosen EXPLICITLY (unchanged),
+  and falls back to warn with the named log line B11:split_blocked_fell_back_to_warn: when it is the
+  DEFAULT; explicit-vs-default is tracked as a REAL field on the new ResolvedMixedDdlVerify
+  (mode, explicit) record, never by re-reading the property at the decision point -- the record is
+  resolved ONCE per run in runInternal and threaded into runPerHookLoop/runSplitPhases, and the P6
+  collective refusal's split-incompat check now keys on `mode == SPLIT && explicit`. (3) The DEFAULT
+  flipped to SPLIT (non-explicit); the typo branch now logs and falls back to the new default. (4)
+  Every place that stated the old default was updated: the property javadoc, the warn and refuse
+  messages (the warn message now says "Leave the property unset -- split is the default"; the refuse
+  message carries the escape-hatch sentence), docs/SCHEMA_EVOLUTION.md (a new
+  "Mixed-DDL conversion hooks are split and journalled by default" section), and the BREAKING.md
+  entry using the plan's prescribed text verbatim, including the "why a no-op codemod would be wrong
+  here" paragraph. The escape-hatch sentence "-Dnpdev.schema.conversionHooks.mixedDdlVerify=warn
+  restores the previous behaviour byte-for-byte." now lives, identically worded, in the BREAKING.md
+  entry, the class javadoc, SCHEMA_EVOLUTION.md, the refuse message, and (bookkeeping) the B11
+  accepted-boundaries workaround. The one deliberate nuance recorded: the warn branch's LOGIC is
+  byte-identical (same branch, same raw execution) -- its advisory TEXT was updated because it
+  previously told the operator to "set =split", which is now the default and would be misleading.
+
+  **The default-flip safety package (all four items).** (1) Escape hatch in exactly one form,
+  verified across the four mandated places (the javadoc renders it as {@code ...} but the wording is
+  identical). (2) BREAKING.md entry, prescribed text, at the top of the list. (3) Crash proof with
+  NO property set: the harness gained a `resume-default` mode that does NOT set the property and
+  asserts in the CHILD that it is null (a future reintroduction fails loudly), and
+  MigrationKillMidPhaseCrashResumeTest gained
+  aKilledMigrationResumesThroughTheDefaultSplitModeWithNoPropertySet -- real killed child JVM via
+  Runtime.halt(137), resume reaches split purely through the new default, runs exactly the 2
+  unfinished phases and skips the completed one. STOR-35's guard cites THAT method. (4) Rollback
+  rehearsal: two real boots of the affected path (dsl-conformance-max's assembled app, which carries
+  generated mixed-DDL hooks with verifySql on H2) -- one with no property (new default: split +
+  journal rows), one with =warn (previous behavior) -- boot logs saved to
+  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\postural-lift-2026-09-07\p7-rollback-rehearsal\
+  and cited in verification.
+
+  **Measured findings, worth more than the package.** (a) trap-5 inversion, HARD: the pre-P7 fixture
+  p75-unguardable existed to prove "a bare DROP COLUMN blocks the split"; with DROP COLUMN now
+  rendered idempotent that premise is false, so the test was inverted to
+  splitMode_dropColumnIsNowRenderedIdempotentAndSplits (the hook splits, both the ADD and the guarded
+  DROP execute, the verify passes) and a NEW fixture p77-type-change-blocked (an in-place type
+  change) carries the still-blocking pair: defaultModeFallsBackToWarnWhenTheSplitterBlocks vs
+  explicitSplitStillRefusesWhenTheSplitterBlocks -- the whole design in one pair. The pre-P7
+  b11_1_...WarnsBeforeRunning was repinned to b11_1_warnModeExplicitlyRestoredStillWarnsBeforeRunning
+  (explicit =warn), doubling as the escape-hatch regression. (b) A P4 defect found by the dialect
+  checker during this package: BootResidueJournal read the latest refused boot / in-flight step with
+  two inline "LIMIT 1" sites (check-dialect-sites.py FAIL) -- P4's per-package gates do not run that
+  checker, which only fires in the wave-gate; both queries now route through
+  SqlDialects.forConnection(...).rowLimited(sql, 1) (the P1-built whole-statement row-cap form), and
+  the fix's own quirk is recorded here: the engines' ROW_LIMIT_PREFIX carries no leading space, so
+  callers must end the SQL with a separator (the live callers' text-block trick) -- the first attempt
+  produced "DESCLIMIT 1" and the two BootResidueJournalTest cases caught it live. (c) The P6
+  capability refusal's wording ("set mixedDdlVerify=split as the alternative") was updated because
+  split is now the default. (d) The splitter's INSERTED statement vocabulary is verified per engine
+  in DialectConformanceTierATest#guardedDropColumnProducesAnIdempotentGuard (H2/Postgres/SQL Server:
+  native IF EXISTS; MySQL: information_schema PREPARE/EXECUTE and NEVER an IF EXISTS clause MySQL
+  would reject).
+
+  **What was deliberately NOT done, and why.** The default engine was NOT changed, and B11.4 was
+  asked once and answered: the owner decided H2 (file) REMAINS the zero-prerequisite default engine
+  despite being the one engine where a failed conversion hook can leave DDL applied and DML rolled
+  back -- recorded here as of 2026-09-08; the question is a product tradeoff, not engineering, and
+  the lift does not depend on it. RENAME COLUMN and in-place type changes stay BLOCKED (honest: the
+  splitter cannot know the current live shape). The warn branch's behavior was not reconstructed --
+  only its advisory text was updated.
+
+  **Residual statement (goes verbatim into ledger/boundaries/B11.yml too).** H2 and MySQL still have
+  no transactional DDL -- upstream behaviour, not a choice, and no platform code changes it. A
+  statement the splitter still cannot render idempotent falls back to warn, where a failed verify
+  can leave DDL applied with DML rolled back.
+verification: >-
+  runtimehost gate (assembled simple-contact-intake app + runtimehost-core test task): all new P7
+  tests run for real on H2 (the splitter/drop-column/default-fallback/explicit-refuse pairs, the
+  inverted p75-unguardable case, the default-split journal test, and the crash-resume property-less
+  fork via a real killed child JVM) plus the whole untouched pre-P7 suite -- the default flip changes
+  meaning, not status, for the two repinned tests (b11_1 now pins explicit warn; unguardable now
+  proves DROP COLUMN splits). kernel:test green including DialectConformanceTierATest's
+  guardedDropColumn vectors on all four dialects; check-dialect-sites.py and
+  check-dialect-methods-are-asked.py PASS. Rollback rehearsal (safety item 4): two real boots of a
+  generated H2 app carrying mixed-DDL hooks, no property vs =warn; both logs saved to
+  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\postural-lift-2026-09-07\p7-rollback-rehearsal\
+  (default.log = split + journal rows, warn.log = the pre-change warn path).
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidPhaseCrashResumeTest.java#aKilledMigrationResumesThroughTheDefaultSplitModeWithNoPropertySet
+  asserts: >-
+    A real child JVM is killed with Runtime.halt(137) mid-migration (phase 0 of the p75-multi mixed
+    hook committed, the DML backfill never ran), and the next boot -- with NO mixedDdlVerify property
+    set at all, asserted null both in the test JVM and in the forked child -- reaches split mode
+    purely through the new default, runs exactly the 2 unfinished phases, skips the completed one
+    (ran=2, resumedSkipped=1), and leaves every row backfilled with no data loss. This is the
+    default-flip safety proof: the crash-resume claim holds for the default, not just the opt-in.
+    The sibling H2Test pair #defaultModeFallsBackToWarnWhenTheSplitterBlocks /
+    #explicitSplitStillRefusesWhenTheSplitterBlocks pins the fallback-vs-refusal design, and
+    DialectConformanceTierATest#guardedDropColumnProducesAnIdempotentGuard pins the four engine
+    syntaxes.
+  provenRed: true
