@@ -137,13 +137,23 @@ own schema, override only if you're bonding to a differently-named concept — s
 
 ### ControlPanel Super User key
 
-The Super User key is **issued, not supplied**: `SuperUserBootstrapper` generates it on first boot
-(when none is active), persists it hashed, and writes the raw value once to `SUPER_USER_KEY.txt` in
-the working directory. There is deliberately **no** env var to seed a known key at boot (REG-9 /
-Q1 default 2026-07-21 — a WONTFIX preserving the issued-not-supplied trust model; revisit if an
-operator-supplied key is ever wanted). Retrieve the issued key from the file / mounted volume after
-first boot; see `docs/DEPLOYMENT.md`.
+The Super User key is **issued by default, and supplied by configuration when a deployment needs
+that instead**: with nothing set, `SuperUserBootstrapper` generates it on first boot (when none is
+active), persists it hashed, and writes the raw value once to `SUPER_USER_KEY.txt` in the working
+directory. Retrieve the issued key from the file / mounted volume after first boot; see
+`docs/DEPLOYMENT.md`. This is the right default for a persistent-disk deployment.
 
+For a host with no persistent disk (most PaaS free tiers), supply the key instead:
+
+- **`npdev.superuser.bootstrap-key-hash`** — supply the **SHA-256 hash** of a key you already hold;
+  the app never sees or prints the raw value. Mint the hash with `npdev admin hash-key`. Prefer this
+  over `-raw` so the raw key never has to sit in an environment variable. Env var:
+  `NPDEV_SUPERUSER_BOOTSTRAPKEYHASH` (hyphens stripped — no underscore before `KEYHASH`).
+- **`npdev.superuser.bootstrap-key-raw`** — supply the raw key directly; length-validated. Env var:
+  `NPDEV_SUPERUSER_BOOTSTRAPKEYRAW`.
+- **`npdev.superuser.key-file-dir`** (default `.`, the working directory) — relocate
+  `SUPER_USER_KEY.txt`, e.g. to a volume that does persist. The emitted `docker-compose.yml` already
+  sets this to `/app/secrets`. Env var: `NPDEV_SUPERUSER_KEYFILEDIR`.
 - **`npdev.superuser.force-reissue`** (default `false`) — set `true` for one boot to revoke the
   current key and issue a fresh one (see `Reissue-SuperUserKey.ps1`). **Relaxed-binding gotcha,
   same as the JWT/apikey ones above:** the environment variable is `NPDEV_SUPERUSER_FORCEREISSUE`
