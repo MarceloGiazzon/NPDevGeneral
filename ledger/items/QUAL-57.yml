@@ -1,0 +1,86 @@
+id: QUAL-57
+title: >-
+  ConversionHookRunner.loadHooks() loads every hook.json TWICE under the RuntimeHost integrationTest
+  task, because its Spring `classpath*:` resource scan matches the SAME db/conversion-hooks/ fixture
+  tree on two separate classpath roots (sourceSets.test.output and sourceSets.integrationTest.output,
+  both built from the same unfiltered src/test/resources); STOR-34's
+  ConversionHookRunnerCollectiveRollbackTest is the first scenario to select a hook whose convert.sql
+  is not idempotent, so QUAL-56's fix (routing that test to integrationTest, where it can finally run
+  against real Postgres) surfaced this pre-existing double-load as a real test failure
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-08
+source: >-
+  Immediate follow-on from QUAL-56 (commit 99f9cc08, pushed to main): once
+  ConversionHookRunnerCollectiveRollbackTest actually ran on Linux CI's `integrationTest` task
+  against real Postgres for the first time ever, it failed -- not with the CI-crash QUAL-56 fixed,
+  but with a genuine assertion failure, confirmed via the run's uploaded JUnit XML
+  (TEST-com.finalexec.db.ConversionHookRunnerCollectiveRollbackTest.xml, run 34277642866, job
+  "Linux post-Beta0 maturity validation").
+surface: NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java (loadHooks), NPDevRuntimeHost/build.gradle & build.gradle.template (integrationTest sourceSet)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/build.gradle
+  - NPDevRuntimeHost/build.gradle.template
+detail: |
+  OBSERVED (from the JUnit XML, not speculation): the test's own console output shows the
+  hook-selection skip-listing (all 20 non-matching corpus hooks, "claims nothing in the current
+  unresolved diff; skipping") printed TWICE, back-to-back, identically -- followed by exactly ONE
+  "NPDev schema lifecycle: running 4 conversion hooks in ONE collective transaction" line. The test's
+  own manifest declares exactly 2 unresolved columns (p75_order.col_a, p75_verifyfail.status), which
+  match exactly 2 corpus hooks by claim (p75-order-1-a, p75-verifyfail) -- so a correct run should
+  select and log 2, not 4. The test then failed with:
+
+    AssertionFailedError: the refusal names the hook that failed: B12:collective_rollback: Conversion
+    hook 'p75-order-1-a' failed executing its convert SQL: ERROR: column "col_a" of relation
+    "p75_order" already exists -- refusing the boot. Collective set of 2 hook(s) failed ...
+
+  i.e. p75-order-1-a's OWN convert.sql (a plain, non-idempotent `ALTER TABLE ... ADD COLUMN col_a`,
+  no verify) failed because col_a already existed -- which only happens if p75-order-1-a itself ran
+  TWICE inside the one collective transaction, the second attempt colliding with the first's own
+  successful ADD COLUMN. This is a completely different failure mode than the test's INTENDED
+  scenario (p75-verifyfail's verifySql/verifyExpect mismatch causing the rollback), so it is a defect
+  in the harness the test runs under, not evidence the test's own scenario doesn't hold.
+
+  ROOT CAUSE, confirmed by reading the code (not guessed):
+  `ConversionHookRunner.loadHooks()` (runtimehost-core, ~line 644) scans hooks via
+  `new PathMatchingResourcePatternResolver().getResources("classpath*:db/conversion-hooks/*/hook.json")`.
+  Spring's `classpath*:` prefix deliberately enumerates EVERY classpath root that contains a
+  matching path, not just the first -- by design, for finding fragments contributed by multiple
+  jars/dirs. `NPDevRuntimeHost/build.gradle`'s (and its `build.gradle.template` twin's)
+  `integrationTest` sourceSet declares `resources { srcDir 'src/test/resources' }` with NO
+  file-level filter (unlike its sibling `java { ... generatedRuntimeIntegrationTestSources.each
+  { include it } }`, which DOES allowlist-filter which .java sources compile into that sourceSet).
+  So `sourceSets.integrationTest.output` gets its OWN full, unfiltered copy of
+  `src/test/resources/db/conversion-hooks/` under `build/resources/integrationTest/`. Separately,
+  `integrationTest`'s own `compileClasspath += sourceSets.main.output + sourceSets.test.output + ...`
+  and `runtimeClasspath += output + compileClasspath` put `sourceSets.test.output`'s OWN,
+  independently-built copy of the SAME unfiltered `src/test/resources` tree
+  (`build/resources/test/db/conversion-hooks/`) on the SAME runtime classpath too. Two classpath
+  roots, same resource path, `classpath*:` finds both -- every one of the 22 corpus hooks loads
+  twice under `integrationTest`, not just the two this test happens to select.
+
+  WHY THIS WENT UNNOTICED UNTIL NOW: this is the first `integrationTest`-tagged scenario that (a)
+  calls a hook-selecting code path (`ConversionHookRunner.run`, directly or via
+  `SchemaLifecycleExecutor.beforeMigrate`) AND (b) selects a hook whose `convert.sql` is a plain,
+  non-idempotent DDL statement with no verify guard, in a way that makes a second identical
+  execution visibly fail rather than silently no-op. `SchemaLifecycleExecutorPostgresProofMatrixTest`
+  (the sourceSet's only other integrationTest resident that touches this corpus) has been running
+  under this same doubled-hook-loading the whole time -- unconfirmed whether its own scenarios
+  happen to tolerate the duplication (idempotent-shaped convert.sql, or verify-guarded hooks where a
+  second run's verify simply re-passes) or whether it has a latent, so-far-unobserved exposure to
+  the same defect. NOT YET AUDITED -- flagged here as an open question for whoever fixes this, not
+  claimed either way.
+
+  NOT YET FIXED. Two candidate directions, neither attempted: (a) de-duplicate `loadHooks()`'s
+  result by hook `id` (defensive, fixes the symptom wherever `classpath*:` legitimately returns
+  duplicates, but treats a real build-wiring redundancy as normal); (b) narrow
+  `integrationTest`'s `resources` block the same way its `java` block is already narrowed (remove
+  `sourceSets.test.output` from its classpath, or give `resources` its own `include` filter mirroring
+  `generatedRuntimeIntegrationTestSources`), which is the more architecturally honest fix but touches
+  a sourceSet wired the same way in the generated-app `build.gradle.template` twin, and changes
+  what's on the classpath for all ~50 integrationTest scenarios, not just this one -- real regression
+  surface, needs the full RuntimeHost integrationTest suite re-verified on real Postgres (Linux CI;
+  this repo's local machine has Postgres disabled per local-test-profile.json) before landing either
+  way.
