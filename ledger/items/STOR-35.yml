@@ -127,18 +127,20 @@ detail: |
   no transactional DDL -- upstream behaviour, not a choice, and no platform code changes it. A
   statement the splitter still cannot render idempotent falls back to warn, where a failed verify
   can leave DDL applied with DML rolled back.
-verification: >-
-  runtimehost gate (assembled simple-contact-intake app + runtimehost-core test task): all new P7
-  tests run for real on H2 (the splitter/drop-column/default-fallback/explicit-refuse pairs, the
-  inverted p75-unguardable case, the default-split journal test, and the crash-resume property-less
-  fork via a real killed child JVM) plus the whole untouched pre-P7 suite -- the default flip changes
-  meaning, not status, for the two repinned tests (b11_1 now pins explicit warn; unguardable now
-  proves DROP COLUMN splits). kernel:test green including DialectConformanceTierATest's
-  guardedDropColumn vectors on all four dialects; check-dialect-sites.py and
-  check-dialect-methods-are-asked.py PASS. Rollback rehearsal (safety item 4): two real boots of a
-  generated H2 app carrying mixed-DDL hooks, no property vs =warn; both logs saved to
-  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\postural-lift-2026-09-07\p7-rollback-rehearsal\
+
+  **Verification narrative** (the `verification:` field below is the schema's controlled enum, not
+  free text -- this is where the evidence actually lives): runtimehost gate (assembled
+  simple-contact-intake app + runtimehost-core test task): all new P7 tests run for real on H2 (the
+  splitter/drop-column/default-fallback/explicit-refuse pairs, the inverted p75-unguardable case, the
+  default-split journal test, and the crash-resume property-less fork via a real killed child JVM)
+  plus the whole untouched pre-P7 suite -- the default flip changes meaning, not status, for the two
+  repinned tests (b11_1 now pins explicit warn; unguardable now proves DROP COLUMN splits). kernel:test
+  green including DialectConformanceTierATest's guardedDropColumn vectors on all four dialects;
+  check-dialect-sites.py and check-dialect-methods-are-asked.py PASS. Rollback rehearsal (safety item
+  4): two real boots of a generated H2 app carrying mixed-DDL hooks, no property vs =warn; both logs
+  saved to D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\postural-lift-2026-09-07\p7-rollback-rehearsal\
   (default.log = split + journal rows, warn.log = the pre-change warn path).
+verification: UNIT_TESTED
 guard:
   kind: test
   ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/MigrationKillMidPhaseCrashResumeTest.java#aKilledMigrationResumesThroughTheDefaultSplitModeWithNoPropertySet

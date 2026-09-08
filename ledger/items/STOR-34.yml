@@ -89,12 +89,15 @@ detail: |
   needs transactional DDL, so it is available on Postgres and SQL Server only. On H2/MySQL hooks stay
   individually atomic and resumable through the phase journal -- which is the strongest guarantee
   those engines can actually keep.
-verification: >-
-  runtimehost gate (assembled simple-contact-intake app + runtimehost-core test task): the H2 paths
+
+  **Verification narrative** (the `verification:` field below is the schema's controlled enum, not
+  free text -- this is where the evidence actually lives): runtimehost gate (assembled
+  simple-contact-intake app + runtimehost-core test task): the H2 paths
   (collectiveModeRefusesOnAnEngineWithoutTransactionalDdl, collectiveAndSplitTogetherRefuse,
   perHookModeIsUnchangedByDefault, plus the whole untouched pre-P6 H2 suite proving the extraction)
   ran for real locally, and the per-hook honesty phrase was exercised by the existing verify-mismatch
   tests. Postgres collective-rollback arm only runs in CI; local run used the H2 refusal path.
+verification: UNIT_TESTED
 guard:
   kind: test
   ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/ConversionHookRunnerCollectiveRollbackTest.java#twoHookSetRollsBackAsOneUnitWhenTheSecondHooksVerifyFails

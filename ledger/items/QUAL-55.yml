@@ -152,3 +152,35 @@ detail: |
   the diagnosis this item has otherwise needed a dedicated repro session to get. Verified via
   `run-runtimehost-gate.ps1` (regenerates + rebuilds + runs the assembled sample app's full suite).
   Does not change status: root cause is still unidentified, and this is a detector, not a fix.
+
+  2026-09-08 ANALYSIS (a new, testable hypothesis found by reading the code, not by re-running it --
+  the effort-economics note above says further BLIND repeated-run hunting has a poor ratio; this is not
+  that). `SchemaHistoryStore.databaseMigratedPastThisBuild` (the Trigger C detector itself, not the
+  verdict logic the 2026-09-06 instrumentation covers) makes TWO separate, non-atomic queries:
+  `latestOutcomeTimestamp(dataSource, thisBuildFingerprint)` and `latestOutcomeOverall(dataSource)`, then
+  compares their `applied_at_utc` values with a STRICT `>`:
+  `latestOverall.get().appliedAtUtc() > lastReachedByThisBuild.get()`. Both timestamps are written via
+  plain `System.currentTimeMillis()` (`SchemaHistoryStore.java`, both INSERT sites, `statement.setLong(2,
+  System.currentTimeMillis())`) -- millisecond resolution, no monotonic tie-breaker, no sequence column.
+  On a fast H2 in-memory suite it is entirely plausible for two `npdev_schema_history` rows (this
+  build's own APPLIED row and a LATER row from a different fingerprint, e.g. the next test's boot) to
+  land in the SAME millisecond. When that happens, `latestOverall.appliedAtUtc() > lastReachedByThisBuild`
+  is FALSE even though the later row is real and later by insertion order -- so `databaseMigratedPastThisBuild`
+  returns `Optional.empty()` and Trigger C silently does not fire. This reproduces SYMPTOM 1 exactly
+  (`aheadOfBuildPresent=false` right after other invocations of the identical fingerprint pair correctly
+  returned `true` -- consistent with a coin-flip timestamp collision on an otherwise-identical repeated
+  scenario, not a logic error in the comparison itself). It does NOT explain symptom 2 (a genuine verdict
+  flip on `SchemaCompatibilityVerdict.assess`), so if true this is only HALF of QUAL-55's mechanism --
+  the two original symptoms may not share one root cause after all, contrary to this item's own
+  2026-09-03 framing ("Both symptoms are consistent with the SAME underlying mechanism").
+  NOT YET VALIDATED: no repro was attempted this session (time was spent on POSTURAL_LIFT_PLAN_2026-09-07
+  instead). The `[QUAL-55-DIAG]` instrumentation does not currently catch this, because it only logs
+  INSIDE the `aheadOfBuild.isPresent()` branch -- a tie causes Trigger C to skip that branch entirely, so
+  a future occurrence of symptom 1 will STILL be invisible to today's diagnostic. Concrete next actions,
+  cheapest first: (a) add a temporary/permanent log line in `databaseMigratedPastThisBuild` printing both
+  raw millisecond values whenever `lastReachedByThisBuild` is present, so a tie is visible on the next
+  ordinary gate run even without reproducing the original test; (b) if confirmed, the real fix is a
+  monotonic tie-breaker (an auto-increment `id` column already exists per row -- ORDER BY `applied_at_utc
+  DESC, id DESC` and compare by id when timestamps tie, or switch to `>=` plus an explicit "same
+  fingerprint" exclusion) -- but per this item's own severity (LOW, zero coverage gap from the original
+  test's removal) that fix should wait for confirmation, not be applied speculatively.
