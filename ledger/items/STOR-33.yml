@@ -95,14 +95,17 @@ detail: |
   ADR-0008 stands unchanged -- authoring the hook is the acknowledgment. What changed is that it is
   no longer invisible, and no longer the only option: the sanctioned set is previewed before the
   boot, itemized in history after it, and an operator can require the itemized token instead.
-verification: >-
-  runtimehost-core compile + runtimehost-core test task in the full runtimehost gate: 854 tests
-  total on the first (red) run -- the one failure was the newly-added
+
+  **Verification narrative** (the `verification:` field below is the schema's controlled enum, not
+  free text -- this is where the evidence actually lives): runtimehost-core compile + runtimehost-core
+  test task in the full runtimehost gate: 854 tests total on the first (red) run -- the one failure was
+  the newly-added
   SchemaLifecycleExecutorConversionHookIntegrationTest#tokenRequiredModeGatesAHookResolvedDestructiveItem,
   which is the measured premise defect above, fixed by moving the gate pre-hook; the re-run after
   the fix is the green evidence for this package. ImpactReportRenderersTest's two new sanctioned
   section tests (empty list adds nothing; advisory section never changes verdict) run in the same
   suite. Postgres arm: none needed -- P5 has no engine-shaped claim.
+verification: UNIT_TESTED
 guard:
   kind: test
   ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorConversionHookIntegrationTest.java#hookResolvedDestructiveDropIsRecordedAsSanctionedDestruction

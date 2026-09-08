@@ -1056,12 +1056,12 @@ public final class ConversionHookRunner {
                 collectRollback(connection, historyWriter, failedHookId, attempted);
                 if (failure instanceof IllegalStateException refusal) {
                     throw new IllegalStateException("B12:collective_rollback: " + refusal.getMessage()
-                            + " The whole collective set was rolled back (" + attempted + " hook(s)); nothing "
-                            + "this boot's hooks did has been committed.", refusal);
+                            + " Collective set of " + attempted + " hook(s) failed (" + rollbackTruth() + ").",
+                            refusal);
                 }
                 throw new IllegalStateException("B12:collective_rollback: the collective hook set failed: "
-                        + failure.getMessage() + " -- rolled back " + attempted + " hook(s); nothing this "
-                        + "boot's hooks did has been committed.", failure);
+                        + failure.getMessage() + " -- " + attempted + " hook(s) attempted ("
+                        + rollbackTruth() + ").", failure);
             } finally {
                 try {
                     connection.setAutoCommit(previousAutoCommit);

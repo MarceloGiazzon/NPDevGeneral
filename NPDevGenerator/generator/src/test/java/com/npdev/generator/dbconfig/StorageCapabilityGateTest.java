@@ -90,6 +90,12 @@ class StorageCapabilityGateTest {
             @Override public String guardedDropIndexIfExists(String index, String table) {
                 throw new UnsupportedOperationException();
             }
+            @Override public String guardedDropConstraint(String constraintName, String tableName) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public String guardedDropColumn(String tableName, String columnName, String alterStatement) {
+                throw new UnsupportedOperationException();
+            }
             @Override public String guardedAddColumn(String table, String column, String statement) {
                 throw new UnsupportedOperationException();
             }
