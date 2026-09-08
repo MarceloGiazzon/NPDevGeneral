@@ -81,10 +81,10 @@
     },
     {
       "id": "B12",
-      "kind": "POSTURAL",
-      "userFacingText": "Each conversion hook runs in its own transaction; a later hook failing does not undo an earlier hook that already succeeded.",
-      "workaround": "Write every hook idempotent (ADD COLUMN IF NOT EXISTS, UPDATE ... WHERE <not-yet-converted>) so it is safe to re-run after a partial failure.",
-      "enforcingDiagnosticCodes": []
+      "kind": "LIFTED",
+      "userFacingText": "Conversion hooks are individually atomic by default: each hook runs in its own transaction, so a later hook failing never undoes an earlier one, and every hook must be written idempotent. What is new is the opt-in for engines that can honour more: -Dnpdev.schema.conversionHooks.atomicity=collective runs every selected hook's convert and verify on ONE connection with a single commit at the end, rolling the whole set back on any failure (Postgres and SQL Server only). The mode is refused outright, never silently degraded, where it cannot be honoured.",
+      "workaround": "Write every hook idempotent (ADD COLUMN IF NOT EXISTS, UPDATE ... WHERE <not-yet-converted>) -- still the rule for the default per-hook mode. To get all-or-nothing across a set on Postgres/SQL Server, set -Dnpdev.schema.conversionHooks.atomicity=collective; a failure names the hook and how many hooks were rolled back. On H2/MySQL the collective request refuses before anything runs (B12:collective_atomicity_unavailable:) with mixedDdlVerify=split + the phase journal as the resumable alternative those engines can actually honour; collective combined with an explicit mixedDdlVerify=split refuses (B12:collective_incompatible_with_split:), and a javaHook can never join a collective transaction (B12:collective_java_hook_unavailable:).",
+      "enforcingDiagnosticCodes": ["B12:collective_atomicity_unavailable", "B12:collective_rollback", "B12:collective_incompatible_with_split", "B12:collective_java_hook_unavailable"]
     },
     {
       "id": "B13",
