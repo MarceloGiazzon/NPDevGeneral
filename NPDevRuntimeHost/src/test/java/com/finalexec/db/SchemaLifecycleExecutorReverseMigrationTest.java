@@ -174,12 +174,15 @@ class SchemaLifecycleExecutorReverseMigrationTest {
         }
     }
 
+    // npdev-schema-history-seq (twin-pair token: this inline CREATE TABLE must stay in step with
+    // SchemaHistoryStore.ensureHistoryTable -- see scripts/quality/twin-pair-registry.json).
     private static void seedHistoryRow(DataSource dataSource, String toFingerprint, long appliedAtUtc) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_history "
                         + "(id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
-                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, outcome TEXT NOT NULL)");
+                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, "
+                        + "outcome TEXT NOT NULL, seq BIGINT)");
             }
             try (var statement = connection.prepareStatement(
                     "INSERT INTO npdev_schema_history (id, applied_at_utc, from_fingerprint, to_fingerprint, "

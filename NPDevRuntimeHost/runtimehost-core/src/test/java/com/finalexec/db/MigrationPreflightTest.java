@@ -83,13 +83,15 @@ class MigrationPreflightTest {
                 "", "", Map.of(), Map.of(), Map.of(), Map.of());
     }
 
+    // npdev-schema-history-seq (twin-pair token: this inline CREATE TABLE must stay in step with
+    // SchemaHistoryStore.ensureHistoryTable -- see scripts/quality/twin-pair-registry.json).
     private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_history "
                         + "(id VARCHAR(64) PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint VARCHAR(128), "
                         + "to_fingerprint VARCHAR(128), classification VARCHAR(64), items_json VARCHAR(4000), "
-                        + "ack_token_used VARCHAR(256), outcome VARCHAR(32) NOT NULL)");
+                        + "ack_token_used VARCHAR(256), outcome VARCHAR(32) NOT NULL, seq BIGINT)");
             }
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO npdev_schema_history (id, applied_at_utc, from_fingerprint, to_fingerprint, "

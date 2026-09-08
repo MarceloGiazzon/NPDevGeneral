@@ -2365,13 +2365,20 @@ class SchemaLifecycleExecutorProofMatrixTest {
 
     /** REG-8 (P4): seeds a raw {@code npdev_schema_history} row with an explicit, caller-controlled
      * {@code applied_at_utc} -- Trigger C's temporal ordering must be deterministic in a test, not
-     * dependent on wall-clock resolution between two inserts made milliseconds apart. */
+     * dependent on wall-clock resolution between two inserts made milliseconds apart.
+     *
+     * <p>npdev-schema-history-seq (twin-pair token: this inline CREATE TABLE must stay in step with
+     * SchemaHistoryStore.ensureHistoryTable -- see scripts/quality/twin-pair-registry.json). This
+     * helper deliberately does not set seq -- these scenarios (including the 24b/25/26/27/28b/29
+     * intra-boot canaries the 2026-09-08 tie-inclusive attempt broke) exercise the timestamp-fallback
+     * path, which is the exact path a legacy/upgraded row takes. */
     private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome, long appliedAtUtc) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_history "
                         + "(id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
-                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, outcome TEXT NOT NULL)");
+                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, "
+                        + "outcome TEXT NOT NULL, seq BIGINT)");
             }
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO npdev_schema_history (id, applied_at_utc, from_fingerprint, to_fingerprint, "
