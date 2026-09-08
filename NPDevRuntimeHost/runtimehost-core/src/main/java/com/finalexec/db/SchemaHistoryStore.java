@@ -6,12 +6,15 @@ import com.npdev.kernel.storage.sql.PartialApplicationTruth;
 
 import com.npdev.kernel.storage.sql.SqlDialects;
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -41,10 +44,10 @@ final class SchemaHistoryStore {
     private SchemaHistoryStore() {
     }
 
-    /** REG-8 Trigger C: {@code npdev_schema_history}'s {@code (to_fingerprint, applied_at_utc)} pair
-     * for the most recent row matching a query -- either a specific target fingerprint or the whole
-     * table. */
-    record HistoryPoint(String toFingerprint, long appliedAtUtc) {
+    /** REG-8 Trigger C: {@code npdev_schema_history}'s most recent row for a query -- either a
+     *  specific target fingerprint or the whole table. QUAL-55 added {@code seq}: nullable, because a
+     *  row written before the column existed (or by an older jar) has none. */
+    record HistoryPoint(String toFingerprint, long appliedAtUtc, Long seq) {
     }
 
     /**
@@ -62,55 +65,81 @@ final class SchemaHistoryStore {
      * before, but a LATER row exists whose {@code to_fingerprint} differs, some other build has since
      * moved this exact database past the point this build itself last owned it.
      */
-    static Optional<HistoryPoint> databaseMigratedPastThisBuild(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
-        Optional<Long> lastReachedByThisBuild = latestOutcomeTimestamp(dataSource, manifest.schemaFingerprint());
+    static Optional<HistoryPoint> databaseMigratedPastThisBuild(
+            DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
+        Optional<HistoryPoint> lastReachedByThisBuild = latestOutcomeFor(dataSource, manifest.schemaFingerprint());
         if (lastReachedByThisBuild.isEmpty()) {
             return Optional.empty();
         }
         Optional<HistoryPoint> latestOverall = latestOutcomeOverall(dataSource);
-        // QUAL-55 (permanent, never-throws diagnostic): the 2026-09-08 analysis found that this method's
-        // strict `>` comparison, over millisecond-resolution System.currentTimeMillis() timestamps with no
-        // monotonic tie-breaker, could silently miss Trigger C when this build's own row and a later row
-        // (different fingerprint) land in the SAME millisecond -- a plausible explanation for QUAL-55's
-        // originally-observed symptom 1 (see ledger/items/QUAL-55.yml), NOT YET confirmed to happen in
-        // practice. Logs both raw millisecond values every time this build's own fingerprint has a recorded
-        // outcome, so the next NATURAL occurrence of a tie is caught with a diagnosis attached instead of
-        // needing a dedicated repro session.
+        HistoryPoint mine = lastReachedByThisBuild.get();
+        HistoryPoint other = latestOverall.orElse(null);
+
+        // QUAL-55 (permanent, never-throws diagnostic -- do not remove). The originally-observed
+        // symptom was Trigger C silently not firing; this line is what finally named the mechanism,
+        // printing TIE-DETECTED for two rows sharing a millisecond. It stays on after the fix: a tie
+        // is now EXPECTED and HANDLED, and a tie line carrying seqDecision=SEQ in a green gate run is
+        // the positive evidence that the seq column is doing real work. See ledger/items/QUAL-55.yml.
+        String decisionSource = (mine.seq() != null && other != null && other.seq() != null)
+                ? "SEQ" : "TIMESTAMP-FALLBACK";
         try {
-            boolean tie = latestOverall.isPresent()
-                    && latestOverall.get().appliedAtUtc() == lastReachedByThisBuild.get();
+            boolean tie = other != null && other.appliedAtUtc() == mine.appliedAtUtc();
             System.out.println("[QUAL-55-DIAG-TRIGGERC] thread=" + Thread.currentThread().getName()
                     + " at=" + Instant.now()
                     + " thisFp=" + manifest.schemaFingerprint()
-                    + " thisBuildLastReachedMillis=" + lastReachedByThisBuild.get()
-                    + " overallLatestMillis=" + latestOverall.map(point -> Long.toString(point.appliedAtUtc())).orElse("none")
-                    + " overallLatestFp=" + latestOverall.map(HistoryPoint::toFingerprint).orElse("none")
+                    + " thisBuildLastReachedMillis=" + mine.appliedAtUtc()
+                    + " overallLatestMillis=" + (other == null ? "none" : Long.toString(other.appliedAtUtc()))
+                    + " overallLatestFp=" + (other == null ? "none" : other.toFingerprint())
+                    + " thisSeq=" + (mine.seq() == null ? "none" : mine.seq())
+                    + " overallSeq=" + (other == null || other.seq() == null ? "none" : other.seq())
+                    + " seqDecision=" + decisionSource
                     + (tie ? " TIE-DETECTED" : ""));
         } catch (RuntimeException ignored) {
             // diagnostic only -- must never affect the boot
         }
-        if (latestOverall.isPresent()
-                && latestOverall.get().appliedAtUtc() > lastReachedByThisBuild.get()
-                && !manifest.schemaFingerprint().equals(latestOverall.get().toFingerprint())) {
-            return latestOverall;
+
+        if (other == null) {
+            return Optional.empty();
         }
-        return Optional.empty();
+        // Hoisted ahead of the comparison (same condition as before, clearer position): if the newest
+        // row IS this build's own, nothing moved past it. This is the intra-boot case -- an in-place
+        // rename/relax/widen pass writes an APPLIED row for THIS fingerprint via recordStepPass
+        // earlier in the same beforeMigrateDecision call, so the newest row is very often our own.
+        if (manifest.schemaFingerprint().equals(other.toFingerprint())) {
+            return Optional.empty();
+        }
+        // Strict > on the sequence when both rows have one -- the real ordering signal. A tie on
+        // applied_at_utc is no longer ambiguous, and a tie-INCLUSIVE comparison is NOT an acceptable
+        // substitute: `applied_at_utc >= ?` was implemented on 2026-09-08 and broke 5-6 of ~47
+        // SchemaLifecycleExecutorProofMatrixTest scenarios, because it cannot tell an older row that
+        // happens to tie from a genuinely later one. Falls back to the pre-QUAL-55 timestamp
+        // comparison when either row predates the seq column (an upgraded database, or a row written
+        // by an older jar) -- identical behaviour to before, for exactly the rows that had it.
+        boolean movedPast = "SEQ".equals(decisionSource)
+                ? other.seq() > mine.seq()
+                : other.appliedAtUtc() > mine.appliedAtUtc();
+        return movedPast ? Optional.of(other) : Optional.empty();
     }
 
     /** {@code APPLIED}/{@code MANUALLY_MARKED_DONE} are the outcomes that represent a REAL, recorded
      * advance of this database's schema state -- as opposed to {@code REFUSED}/{@code PARTIAL-CRASH}
      * (nothing durably changed) or the {@code EXTERNAL_*} outcomes (REG-7.1's read-only ownership
      * mode, which never writes {@code npdev_schema_metadata} and is not part of this fingerprint-
-     * pointer lifecycle at all). */
-    private static Optional<Long> latestOutcomeTimestamp(DataSource dataSource, String toFingerprint) {
+     * pointer lifecycle at all).
+     *
+     * <p>QUAL-55: returns the whole point, not just the timestamp, and sorts by {@code seq} as well.
+     * Two rows in one millisecond used to make BOTH the selected row and the later comparison
+     * arbitrary. Renamed from {@code latestOutcomeTimestamp} because it no longer returns one. */
+    private static Optional<HistoryPoint> latestOutcomeFor(DataSource dataSource, String toFingerprint) {
         try (Connection connection = dataSource.getConnection()) {
             ensureHistoryTable(connection);
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT applied_at_utc FROM " + HISTORY_TABLE + " WHERE to_fingerprint = ? AND outcome IN ("
-                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC")) {
+                    "SELECT to_fingerprint, applied_at_utc, seq FROM " + HISTORY_TABLE
+                            + " WHERE to_fingerprint = ? AND outcome IN ("
+                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC, COALESCE(seq, 0) DESC")) {
                 statement.setString(1, toFingerprint);
                 try (ResultSet resultSet = statement.executeQuery()) {
-                    return resultSet.next() ? Optional.of(resultSet.getLong(1)) : Optional.empty();
+                    return resultSet.next() ? Optional.of(readHistoryPoint(resultSet)) : Optional.empty();
                 }
             }
         } catch (SQLException exception) {
@@ -136,17 +165,27 @@ final class SchemaHistoryStore {
         try (Connection connection = dataSource.getConnection()) {
             ensureHistoryTable(connection);
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT to_fingerprint, applied_at_utc FROM " + HISTORY_TABLE + " WHERE outcome IN ("
-                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC")) {
+                    "SELECT to_fingerprint, applied_at_utc, seq FROM " + HISTORY_TABLE + " WHERE outcome IN ("
+                            + "'APPLIED', 'MANUALLY_MARKED_DONE') ORDER BY applied_at_utc DESC, COALESCE(seq, 0) DESC")) {
                 try (ResultSet resultSet = statement.executeQuery()) {
-                    return resultSet.next()
-                            ? Optional.of(new HistoryPoint(resultSet.getString(1), resultSet.getLong(2)))
-                            : Optional.empty();
+                    return resultSet.next() ? Optional.of(readHistoryPoint(resultSet)) : Optional.empty();
                 }
             }
         } catch (SQLException exception) {
             return Optional.empty();
         }
+    }
+
+    /** Reads the (to_fingerprint, applied_at_utc, seq) triple both queries above select, in that
+     *  column order. {@code getLong} returns 0 for a SQL NULL, so {@code wasNull()} -- called
+     *  IMMEDIATELY after the getLong for that column, which is the contract -- is the only way to
+     *  tell a real seq of 0 from an absent one. */
+    private static HistoryPoint readHistoryPoint(ResultSet resultSet) throws SQLException {
+        String toFingerprint = resultSet.getString(1);
+        long appliedAtUtc = resultSet.getLong(2);
+        long rawSeq = resultSet.getLong(3);
+        Long seq = resultSet.wasNull() ? null : rawSeq;
+        return new HistoryPoint(toFingerprint, appliedAtUtc, seq);
     }
 
     /** 3.2 (B4 migrate-only + progress-aware waiting): the most recent row in {@code npdev_schema_history},
@@ -175,7 +214,7 @@ final class SchemaHistoryStore {
             }
             try (PreparedStatement statement = connection.prepareStatement(
                     "SELECT classification, outcome, applied_at_utc FROM " + HISTORY_TABLE
-                            + " ORDER BY applied_at_utc DESC")) {
+                            + " ORDER BY applied_at_utc DESC, COALESCE(seq, 0) DESC")) {
                 try (ResultSet resultSet = statement.executeQuery()) {
                     return resultSet.next()
                             ? Optional.of(new RecentActivity(
@@ -202,6 +241,16 @@ final class SchemaHistoryStore {
      * LNCH-1 Phase 4 (task 4.4). Idempotent, self-bootstrapped exactly like {@code METADATA_TABLE}
      * -- called at the top of every history write so a fresh app (no prior destructive/rename/
      * widening pass) still gets the table before its first row.
+     *
+     * <p>QUAL-55: {@code seq} is a monotonic ordering signal, assigned application-side as
+     * {@code MAX(seq)+1}. It exists because {@code applied_at_utc} is millisecond wall-clock and
+     * {@code id} is a random UUID, so two rows written in the same millisecond had NO way to be
+     * ordered -- which silently disabled Trigger C. Deliberately nullable: rows predating the column,
+     * and rows written by an older jar (a real case here -- this subsystem exists for rollbacks),
+     * both carry NULL and fall back to the timestamp comparison.
+     *
+     * <p>npdev-schema-history-seq (twin-pair token -- see scripts/quality/twin-pair-registry.json;
+     * seven test files hand-roll their own CREATE TABLE for this table and must stay in step).
      */
     private static void ensureHistoryTable(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
@@ -214,9 +263,76 @@ final class SchemaHistoryStore {
                         + "classification " + InternalDdlTypes.text() + ", "
                         + "items_json " + InternalDdlTypes.text() + ", "
                         + "ack_token_used " + InternalDdlTypes.text() + ", "
-                        + "outcome " + InternalDdlTypes.text() + " NOT NULL)")
+                        + "outcome " + InternalDdlTypes.text() + " NOT NULL, "
+                        + "seq BIGINT)")
         )) {
             statement.executeUpdate();
+        }
+        // Upgrade path for a table that predates the seq column. Guarded by an explicit metadata
+        // check even though guardedAddColumn already yields an idempotent statement: this method runs
+        // on EVERY history write, so firing the ALTER unconditionally would issue that DDL forever
+        // rather than once. Measured on the identical from_fingerprint precedent in MigrationMarkStore
+        // -- it shifted DDL-call indices in SchemaLifecycleExecutorDestructiveCrashRecoveryTest's
+        // fault-injection harness, which counts ALTER TABLE statements. A brand new install already
+        // has the column from the CREATE above, so this branch never fires there.
+        if (!hasSeqColumn(connection)) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    SqlDialects.active().guardedAddColumn(HISTORY_TABLE, "seq",
+                            "ALTER TABLE " + HISTORY_TABLE + " ADD COLUMN seq BIGINT"))) {
+                statement.executeUpdate();
+            }
+            backfillSeq(connection);
+        }
+    }
+
+    /** Copied from {@link MigrationMarkStore}'s {@code hasFromFingerprintColumn}: probes both the
+     *  lower- and upper-case spellings of the table name, because engines fold unquoted identifiers
+     *  differently and {@code DatabaseMetaData.getColumns} matches literally. */
+    private static boolean hasSeqColumn(Connection connection) throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        for (String candidate : List.of(HISTORY_TABLE.toLowerCase(Locale.ROOT), HISTORY_TABLE.toUpperCase(Locale.ROOT))) {
+            try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
+                while (resultSet.next()) {
+                    if ("seq".equalsIgnoreCase(resultSet.getString("COLUMN_NAME"))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Assigns a sequence to rows written before the column existed, ordered by the best signal those
+     * rows have ({@code applied_at_utc}, then {@code id} for a stable tie order). A Java-side loop
+     * rather than a window function on purpose: {@code UPDATE ... FROM (SELECT ROW_NUMBER() ...)} has
+     * four different spellings across this project's four engines, and this table holds one row per
+     * migration pass -- it is tiny. Resumable: the base is the current MAX, so a partially completed
+     * backfill continues correctly rather than colliding.
+     */
+    private static void backfillSeq(Connection connection) throws SQLException {
+        long next;
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COALESCE(MAX(seq), 0) FROM " + HISTORY_TABLE);
+                ResultSet resultSet = statement.executeQuery()) {
+            next = resultSet.next() ? resultSet.getLong(1) + 1L : 1L;
+        }
+        List<String> ids = new ArrayList<>();
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT id FROM " + HISTORY_TABLE + " WHERE seq IS NULL ORDER BY applied_at_utc ASC, id ASC");
+                ResultSet resultSet = statement.executeQuery()) {
+            while (resultSet.next()) {
+                ids.add(resultSet.getString(1));
+            }
+        }
+        try (PreparedStatement statement = connection.prepareStatement(
+                "UPDATE " + HISTORY_TABLE + " SET seq = ? WHERE id = ?")) {
+            for (String id : ids) {
+                statement.setLong(1, next++);
+                statement.setString(2, id);
+                statement.addBatch();
+            }
+            statement.executeBatch();
         }
     }
 
@@ -290,7 +406,7 @@ final class SchemaHistoryStore {
             ensureHistoryTable(connection);
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO " + HISTORY_TABLE + " (id, applied_at_utc, from_fingerprint, to_fingerprint, "
-                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                            + "classification, items_json, ack_token_used, outcome, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )) {
                 statement.setString(1, id);
                 statement.setLong(2, System.currentTimeMillis());
@@ -304,6 +420,7 @@ final class SchemaHistoryStore {
                     statement.setString(7, ackTokenUsed);
                 }
                 statement.setString(8, outcome);
+                statement.setLong(9, nextSeq(connection));
                 statement.executeUpdate();
             }
             return id;
@@ -312,6 +429,28 @@ final class SchemaHistoryStore {
                     + "a broken history write must never block or mask the actual migration outcome): "
                     + exception.getMessage());
             return null;
+        }
+    }
+
+    /**
+     * The next monotonic sequence value. Read on the SAME connection as the insert that consumes it,
+     * inside the migration lock, which is what makes read-then-write safe here.
+     *
+     * <p><b>Deliberately a separate statement, not a subquery in the INSERT's VALUES clause.</b>
+     * MySQL rejects a subquery in VALUES that references the target table (error 1093, "You can't
+     * specify target table for update in FROM clause"). Two statements are portable on all four
+     * engines.
+     *
+     * <p><b>No UNIQUE index on seq, on purpose.</b> Two concurrent writers outside the lock could
+     * produce a duplicate; a duplicate makes the strict {@code >} comparison false, so Trigger C
+     * stays silent -- exactly the pre-fix behaviour, never a false refusal. A unique constraint would
+     * turn that benign degradation into a failed insert during a migration, i.e. a boot failure.
+     */
+    private static long nextSeq(Connection connection) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM " + HISTORY_TABLE);
+                ResultSet resultSet = statement.executeQuery()) {
+            return resultSet.next() ? resultSet.getLong(1) : 1L;
         }
     }
 
@@ -511,7 +650,7 @@ final class SchemaHistoryStore {
             ensureHistoryTable(connection);
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO " + HISTORY_TABLE + " (id, applied_at_utc, from_fingerprint, to_fingerprint, "
-                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                            + "classification, items_json, ack_token_used, outcome, seq) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )) {
                 statement.setString(1, id);
                 statement.setLong(2, System.currentTimeMillis());
@@ -521,6 +660,7 @@ final class SchemaHistoryStore {
                 statement.setString(6, itemsJson(itemDetails));
                 statement.setNull(7, Types.VARCHAR);
                 statement.setString(8, outcome);
+                statement.setLong(9, nextSeq(connection));
                 statement.executeUpdate();
             }
             return id;

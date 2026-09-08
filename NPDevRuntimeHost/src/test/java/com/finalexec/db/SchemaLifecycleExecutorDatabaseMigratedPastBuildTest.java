@@ -283,20 +283,139 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
         assertEquals("PROCEED_SCHEMA_AHEAD_COMPATIBLE", latestNonStepOutcome(dataSource));
     }
 
-    private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome, long appliedAtUtc) throws SQLException {
+    // ---- QUAL-55: millisecond-tie determinism (ledger/items/QUAL-55.yml) ----
+
+    @Test
+    @DisplayName("QUAL-55: Trigger C fires when a LATER different-fingerprint row ties on the millisecond")
+    void triggerCFiresWhenALaterDifferentFingerprintRowTiesOnTheMillisecond() throws SQLException {
+        // The register's own rollback example, with ONE difference from the headline test above: the
+        // two history rows share an applied_at_utc. On a fast in-memory suite that is not contrived --
+        // System.currentTimeMillis() has millisecond resolution and this codebase writes several rows
+        // per boot, so two rows landing in one millisecond is ordinary. Before QUAL-55's fix the
+        // comparison was a strict `>` on that millisecond value with no tie-breaker, so a tie made
+        // Trigger C silently not fire and the older jar went on to re-add the dropped column empty --
+        // the exact data-loss the trigger exists to prevent.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50))");
+            statement.execute("INSERT INTO users (id, name) VALUES (1, 'Alpha')");
+        }
+        // Both rows at 5_000L. seq is the ONLY thing that says which came first, and it says the
+        // N+1 row did not: build N reached the database at seq 1, build N+1 moved it on at seq 2.
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 5_000L, 1L);
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 5_000L, 2L);
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name", "nickname")),
+                Map.of("users", List.of("nickname")));
+
+        BoundaryBootException exception = assertThrows(BoundaryBootException.class,
+                () -> executor.beforeMigrate(dataSource, manifestBuildN),
+                "a tie on applied_at_utc must not be able to silence Trigger C -- seq resolves the order");
+        assertTrue(exception.getMessage().contains("migrated PAST this build"), exception.getMessage());
+        assertEquals("B5", exception.getViolation().boundaryId());
+
+        try (Connection connection = dataSource.getConnection()) {
+            assertFalse(hasColumn(connection.getMetaData(), "users", "nickname"),
+                    "nickname must NOT be silently re-added -- that is the data loss this trigger prevents");
+        }
+    }
+
+    @Test
+    @DisplayName("QUAL-55: Trigger C stays silent when an OLDER different-fingerprint row ties on the millisecond")
+    void triggerCStaysSilentWhenAnOlderDifferentFingerprintRowTiesOnTheMillisecond() throws SQLException {
+        // The mirror image of the test above, and the reason a tie-INCLUSIVE fix (`>=`) is unsound.
+        // An in-place pass writes an APPLIED row for THIS build's own fingerprint earlier in the same
+        // beforeMigrateDecision call, before Trigger C's check runs. When that just-written row ties
+        // with an EARLIER, chronologically-prior build's row, a comparison that cannot see direction
+        // reports the OLDER fingerprint as evidence the database moved past this build -- a false B5
+        // refusal. That is what broke 5-6 of ~47 SchemaLifecycleExecutorProofMatrixTest scenarios on
+        // 2026-09-08; this test pins the behaviour so it cannot be reintroduced.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50), nickname VARCHAR(50))");
+        }
+        // Same millisecond, opposite order: the OLD fingerprint is FIRST (seq 1), this build's own
+        // row is the later one (seq 2). Nothing has moved past this build.
+        seedHistoryRow(dataSource, "sha256:old", "APPLIED", 5_000L, 1L);
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 5_000L, 2L);
+        seedStoredFingerprint(dataSource, "sha256:N");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name", "nickname")), Map.of());
+
+        // Must NOT throw. A refusal here is a false positive that would refuse an ordinary boot.
+        SchemaLifecycleExecutor.DestructiveRecreation result = executor.beforeMigrate(dataSource, manifestBuildN);
+
+        assertFalse(result.performed(),
+                "an older row that merely ties on the millisecond is not evidence of a rollback");
+    }
+
+    @Test
+    @DisplayName("QUAL-55: atOrPastFingerprint is deterministic when two outcome rows tie on the millisecond")
+    void atOrPastFingerprintIsDeterministicWhenTwoOutcomeRowsTie() throws SQLException {
+        // atOrPastFingerprint reads latestOutcomeOverall and asks "is the newest row already at this
+        // fingerprint". MigrationPreflight uses that answer to decide whether to SKIP the migration
+        // entirely. With two rows tied on applied_at_utc and no secondary sort key, which row the
+        // engine returns is arbitrary -- so that skip decision was a coin flip. This is the leading
+        // hypothesis for QUAL-55's symptom 2 (beforeMigrate returning normally when it should have
+        // refused): a wrong "already converged" makes the whole migration a no-op.
+        //
+        // The newest row (seq 2) is sha256:other, so this build's fingerprint is NOT the newest.
+        seedHistoryRow(dataSource, "sha256:this", "APPLIED", 5_000L, 1L);
+        seedHistoryRow(dataSource, "sha256:other", "APPLIED", 5_000L, 2L);
+
+        for (int attempt = 0; attempt < 25; attempt++) {
+            assertFalse(SchemaHistoryStore.atOrPastFingerprint(dataSource, "sha256:this"),
+                    "attempt " + attempt + ": the newest row is sha256:other, so this build is NOT at or past "
+                            + "the current point -- a millisecond tie must not make this answer vary");
+            assertTrue(SchemaHistoryStore.atOrPastFingerprint(dataSource, "sha256:other"),
+                    "attempt " + attempt + ": sha256:other IS the newest row");
+        }
+    }
+
+    /** Backwards-compatible overload: no explicit sequence, matching a row written by a jar that
+     *  predates QUAL-55's seq column. Every pre-existing caller in this file uses this form. */
+    private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome,
+            long appliedAtUtc) throws SQLException {
+        seedHistoryRow(dataSource, toFingerprint, outcome, appliedAtUtc, null);
+    }
+
+    /**
+     * QUAL-55: seeds a history row with an EXPLICIT monotonic sequence, so a test can manufacture a
+     * millisecond tie whose direction is nevertheless unambiguous -- two rows sharing one
+     * {@code appliedAtUtc}, ordered only by {@code seq}. That is the exact condition
+     * {@code SchemaHistoryStore.databaseMigratedPastThisBuild} used to get wrong: its strict
+     * {@code >} on millisecond timestamps could not see the ordering, so Trigger C silently did not
+     * fire (see ledger/items/QUAL-55.yml).
+     *
+     * <p>{@code seq} is deliberately nullable: a NULL models a row written by an older jar, which is
+     * a real scenario here -- this whole subsystem exists to handle a rollback to an older build.
+     *
+     * <p>npdev-schema-history-seq (twin-pair token: this inline CREATE TABLE must stay in step with
+     * SchemaHistoryStore.ensureHistoryTable -- see scripts/quality/twin-pair-registry.json).
+     */
+    private static void seedHistoryRow(DataSource dataSource, String toFingerprint, String outcome,
+            long appliedAtUtc, Long seq) throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             try (Statement statement = connection.createStatement()) {
                 statement.execute("CREATE TABLE IF NOT EXISTS npdev_schema_history "
                         + "(id TEXT PRIMARY KEY, applied_at_utc BIGINT NOT NULL, from_fingerprint TEXT, "
-                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, outcome TEXT NOT NULL)");
+                        + "to_fingerprint TEXT, classification TEXT, items_json TEXT, ack_token_used TEXT, "
+                        + "outcome TEXT NOT NULL, seq BIGINT)");
             }
             try (PreparedStatement statement = connection.prepareStatement(
                     "INSERT INTO npdev_schema_history (id, applied_at_utc, from_fingerprint, to_fingerprint, "
-                            + "classification, items_json, ack_token_used, outcome) VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?)")) {
+                            + "classification, items_json, ack_token_used, outcome, seq) "
+                            + "VALUES (?, ?, NULL, ?, NULL, NULL, NULL, ?, ?)")) {
                 statement.setString(1, UUID.randomUUID().toString());
                 statement.setLong(2, appliedAtUtc);
                 statement.setString(3, toFingerprint);
                 statement.setString(4, outcome);
+                if (seq == null) {
+                    statement.setNull(5, java.sql.Types.BIGINT);
+                } else {
+                    statement.setLong(5, seq);
+                }
                 statement.executeUpdate();
             }
         }
@@ -344,7 +463,7 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
     private static String latestNonStepOutcome(DataSource dataSource) throws SQLException {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "SELECT outcome FROM npdev_schema_history ORDER BY applied_at_utc DESC")) {
+                     "SELECT outcome FROM npdev_schema_history ORDER BY applied_at_utc DESC, COALESCE(seq, 0) DESC")) {
             try (ResultSet resultSet = statement.executeQuery()) {
                 assertTrue(resultSet.next(), "expected at least one npdev_schema_history row");
                 return resultSet.getString(1);
