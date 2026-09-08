@@ -1,0 +1,120 @@
+id: STOR-33
+title: >-
+  Sanctioned destruction is now visible and gateable by choice: the pre-hook destructive items a
+  conversion hook will resolve are previewed before any boot (-ImpactOnly / impact report
+  sanctionedDestruction section), recorded per item in npdev_schema_history after it
+  (SANCTIONED_DESTRUCTION rows naming item + hook), and -Dnpdev.schema.destructive.sanctioned=
+  token-required gates them with the itemized token before the hooks run (B14:sanctioned_
+  destruction_requires_token:) while the default audit-only keeps ADR-0008 byte-for-byte (boundary
+  B14 -> LIFTED)
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-07
+closed: 2026-09-08
+source: >-
+  POSTURAL_LIFT_PLAN_2026-09-07.md package P5 (Wave 2). B14.yml's own residue, verbatim: "This row
+  records the ABSENCE of a gate rather than a refusal -- a destructive item already claimed by a
+  conversion hook is not token-gated, because authoring the hook is the acknowledgment (owner-
+  approved, ADR-0008, 2026-07-25, no conditions)."
+surface: >-
+  SchemaLifecycleExecutor.beforeMigrateDecision (pre-hook SchemaDeltaReport + mode resolver +
+  pre-run B14 gate + SANCTIONED_DESTRUCTION audit rows), ConversionHookRunner (run now returns
+  HookRunOutcome carrying preRunUnresolvedKeys + claimedItemToHookId), SchemaImpactFacade / impact
+  report (new sanctionedOf() + renderers' sanctionedDestruction section), SchemaImpactController /
+  SchemaVerifyMain / ImpactReportWriter wired to it, and the new SanctionedDestruction record.
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ConversionHookRunner.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SanctionedDestruction.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaImpactFacade.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportText.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportJson.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/ImpactReportWriter.java
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaVerifyMain.java
+  - NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/SchemaImpactController.java
+  - NPDevContract/schemas/impact-report.schema.json
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorConversionHookIntegrationTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/ImpactReportRenderersTest.java
+  - docs/SCHEMA_EVOLUTION.md
+  - ledger/boundaries/B14.yml
+  - NPDevContract/schemas/accepted-boundaries.json
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **What changed.** ADR-0008 is owner-approved with no conditions and its revisit trigger has not
+  fired, so the DEFAULT did not change: authoring the conversion hook remains the acknowledgment.
+  What the package changed is that the policy no longer operates invisibly, in the plan's three
+  parts. (a) BEFORE it happens: the pre-hook destructive report (SchemaDeltaReport.generate on the
+  live state, before ConversionHookRunner.run) feeds a sanctioned-destruction preview -- every
+  destructive item a hook on the classpath claims, with the claiming hook id -- rendered as a
+  sanctionedDestruction section by both renderers (text + JSON), wired into every pre-boot surface
+  (-ImpactOnly / REPORT_ONLY, npdev db verify, GET .../impact) via a shared
+  SchemaImpactFacade.sanctionedOf(ImpactReport). Never affects verdict, exactly like the surplus
+  section. (b) AFTER it happens: the boot writes one SANCTIONED_DESTRUCTION history row per
+  sanctioned item (via SchemaHistoryStore.insertRawHistoryRow), naming the item's stable string and
+  the hook -- so history can now distinguish "a hook dropped orders.legacy_total under sanction"
+  from "an acknowledged surgical drop". (c) GATEABLE BY CHOICE:
+  -Dnpdev.schema.destructive.sanctioned=audit-only|token-required (default audit-only, resolved with
+  the same typo-to-default shape as resolveMixedDdlVerifyMode). Under token-required the plan's
+  step-4 ordering was implemented with a MEASURED CORRECTION (see below): the gate fires BEFORE
+  ConversionHookRunner.run, not after the report re-introspection.
+
+  **What was measured, not assumed.** The sanctioned set is computed as the plan's formula (pre-run
+  unresolved keys, intersected with the destructive kinds, minus what the post-hook report still
+  contains) but over the pre-hook REPORT rather than the raw key set, because the token is computed
+  over preHookReport.stableStrings() and a reconstructed key set cannot reproduce a pre-hook
+  Unknown item -- an unsatisfiable token is worse than an extra introspection, so the plan's cheaper
+  "reuse run()'s keys" fallback was rejected and the reason recorded. The plan directed SANCTIONED
+  rows to be written at the report.isEmpty() branch; they are written for the sanctioned set in BOTH
+  flows (all-resolved and mixed), since "minus whatever report still contains" applies to both, and
+  a mixed boot (some items sanctioned, others still unclaimed) legitimately needs its audit rows too.
+
+  **Premise that proved FALSE, found by running, worth more than the package.** The plan's step-4
+  placement -- refuse with B14: at the post-hook report branch -- was wrong in a way the first gate
+  run caught live: the token-required integration test failed because the hook had ALREADY dropped
+  the sanctioned column by the time the refusal fired. A gate that fires after the sanctioned item
+  vanished is a gate that gates nothing, which is exactly the "plausible wrong answer" failure mode
+  the plan itself names. The gate now fires BEFORE ConversionHookRunner.run: pending sanctions are
+  computed from the same claims index the runner selects against (loadClaimIndex) intersected with
+  the pre-hook report's destructive items, the token is checked through the SAME two channels (static
+  manifest field / PendingSchemaAcknowledgmentStore), and the refusal truthfully states "Refused
+  BEFORE the hooks ran -- nothing has been executed or applied." The plan's token-required test
+  ("asserting the refusal ... and that supplying the token lets it through") is satisfied under the
+  corrected ordering; the test additionally asserts the column survives the refusal, which is what
+  makes the correction observable.
+
+  **What was deliberately NOT done, and why.** ADR-0008 stands unchanged under the default -- no
+  attempt to condition it (the plan forbids that). The mixed-case behavior (post-hook report still
+  non-empty after sanctions) is documented, not engineered further: after the pre-hook token is
+  accepted, the normal post-hook refusal applies to what remains, and the two itemizations are each
+  named in their own refusal. The pre-hook report is one extra live introspection on every boot
+  reaching the hook section (the plan accepted this; the sanctioned set / token / audit rows all
+  describe the report an operator actually saw).
+
+  **Residual statement (goes verbatim into ledger/boundaries/B14.yml too).** Under the default,
+  ADR-0008 stands unchanged -- authoring the hook is the acknowledgment. What changed is that it is
+  no longer invisible, and no longer the only option: the sanctioned set is previewed before the
+  boot, itemized in history after it, and an operator can require the itemized token instead.
+verification: >-
+  runtimehost-core compile + runtimehost-core test task in the full runtimehost gate: 854 tests
+  total on the first (red) run -- the one failure was the newly-added
+  SchemaLifecycleExecutorConversionHookIntegrationTest#tokenRequiredModeGatesAHookResolvedDestructiveItem,
+  which is the measured premise defect above, fixed by moving the gate pre-hook; the re-run after
+  the fix is the green evidence for this package. ImpactReportRenderersTest's two new sanctioned
+  section tests (empty list adds nothing; advisory section never changes verdict) run in the same
+  suite. Postgres arm: none needed -- P5 has no engine-shaped claim.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorConversionHookIntegrationTest.java#hookResolvedDestructiveDropIsRecordedAsSanctionedDestruction
+  asserts: >-
+    The p76-drop-legacy scenario (a destructive column drop fully resolved by a hook under the
+    default audit-only mode) boots safe-additive AS BEFORE -- the pinned test
+    hookResolvedDestructiveDropNeedsNoAcknowledgmentTokenAndBootSucceeds passes unchanged -- AND now
+    leaves exactly one npdev_schema_history row with classification SANCTIONED_DESTRUCTION, outcome
+    APPLIED, items_json naming the item's stable string (DROP_COLUMN:p76_widgets:legacy_flag...) and
+    the claiming hook id (p76-drop-legacy). The sibling tokenRequiredModeGatesAHookResolvedDestructiveItem
+    pins the corrected gate: under token-required, a boot with no token refuses with
+    B14:sanctioned_destruction_requires_token: BEFORE any hook runs (the column survives the
+    refusal), and booting with the pre-hook token through the static manifest field proceeds and
+    drops the column.
+  provenRed: true

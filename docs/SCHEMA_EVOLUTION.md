@@ -322,6 +322,65 @@ Postgres); the pending acknowledgment row was consumed; and a second boot was a 
 > leaving it in a block labelled "verbatim capture" would ship a fixed bug as documentation. It is
 > quoted here rather than silently deleted so the capture stays honest about what it originally read.
 
+### Sanctioned destruction by conversion hooks (STOR-33 / B14)
+
+A destructive item **claimed by a conversion hook** is resolved by that hook's own `convert.sql` —
+authoring the hook *is* the acknowledgment (ADR-0008), so no token is demanded for it. That has been
+the policy since Phase 7; what STOR-33 adds is that the policy is no longer **invisible**:
+
+- **Before it happens** — the impact report (`-ImpactOnly`, `REPORT_ONLY`, `npdev db verify`, and
+  `GET /api/admin/schema-migration/impact`) gains a `sanctionedDestruction` section listing every
+  destructive item a hook on the classpath claims, and which hook claims each. Advisory only, exactly
+  like the surplus-FK/index section: it never changes the report's `verdict`.
+- **After it happens** — the boot writes one `SANCTIONED_DESTRUCTION` row per item to
+  `npdev_schema_history`, naming the item's stable string and the claiming hook id, so an operator
+  reading history after the fact can tell "a hook dropped `orders.legacy_total` under sanction" from
+  "an acknowledged surgical drop".
+
+**Gating by choice, default unchanged:**
+
+```
+-Dnpdev.schema.destructive.sanctioned=audit-only|token-required     (default: audit-only)
+```
+
+- `audit-only` (the default) is **exactly** today's behaviour plus the audit row and the impact
+  section: authoring the hook remains the acknowledgment.
+- `token-required` additionally demands the **itemized acknowledgment token — computed over the
+  PRE-HOOK report** (the same itemization an `-ImpactOnly` preview would have shown, including any
+  pre-hook `UNKNOWN` item) — through the same two channels as every other destructive refusal (the
+  manifest's `destructiveAcknowledgment` field or a ControlPanel pending acknowledgment). The check
+  fires **before any hook runs**, refusing with `B14:sanctioned_destruction_requires_token:` when the
+  token is missing — a gate that fired after the sanctioned item had already been dropped would be a
+  gate that gates nothing. Once the pre-hook token is accepted, a boot whose post-hook report still
+  contains unclaimed destructive items demands the normal post-hook refusal's token for those —
+  two itemizations, each named in its own refusal. An unrecognized property value logs and falls back
+  to `audit-only`, so a typo can never silently widen or narrow what refuses.
+
+### Conversion hook atomicity (STOR-34 / B12)
+
+Each conversion hook runs in its own transaction by default — a later hook failing does **not** roll
+back an earlier one, so every hook must be written idempotent. That is unchanged and remains the
+default. STOR-34 adds an opt-in for engines that can honour more:
+
+```
+-Dnpdev.schema.conversionHooks.atomicity=perHook|collective     (default: perHook)
+```
+
+- `perHook` (the default) is exactly today's behaviour: every selected hook's convert + verify runs
+  in its own transaction.
+- `collective` promises **one transaction across every selected hook** — all converts + verifies run
+  on a single connection and commit exactly once at the end; any failure rolls the whole set back
+  and refuses with `B12:collective_rollback:`, naming the hook that failed and how many hooks were
+  rolled back. This is only honourable on an engine with transactional DDL (Postgres, SQL Server);
+  on H2/MySQL (which commit DDL implicitly) the mode is **refused before anything runs** with
+  `B12:collective_atomicity_unavailable:` — never silently degraded to per-hook. Combining
+  `collective` with an explicit `mixedDdlVerify=split` is a contradiction (split commits each phase
+  individually by design) and refuses with `B12:collective_incompatible_with_split:`. A `javaHook`
+  manages its own commits and can never join a collective transaction, so a selected javaHook under
+  `collective` refuses with `B12:collective_java_hook_unavailable:`. The per-hook history rows are
+  written on their own connection and therefore survive a collective rollback — deliberate, so the
+  audit trail says what the rolled-back set attempted.
+
 ### Worked example: an ordinary additive upgrade repairing an already-loosened database
 
 Verbatim capture from a real run, 2026-07-21, against **real Postgres 15** (container

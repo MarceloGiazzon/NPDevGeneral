@@ -64,7 +64,8 @@ public class SchemaImpactController {
         SchemaImpactFacade.Result r = SchemaImpactFacade.forLiveDatabase(
                 dataSource, modelHolder == null ? null : modelHolder.get());
         String json = ImpactReportJson.render(r.report(), Instant.now().toString(),
-                r.fromFingerprint(), r.toFingerprint(), r.ackToken(), r.surplus(), r.renameCandidates());
+                r.fromFingerprint(), r.toFingerprint(), r.ackToken(), r.surplus(), r.renameCandidates(),
+                r.sanctioned());
         return ResponseEntity.ok().header("Content-Type", "application/json").body(json);
     }
 

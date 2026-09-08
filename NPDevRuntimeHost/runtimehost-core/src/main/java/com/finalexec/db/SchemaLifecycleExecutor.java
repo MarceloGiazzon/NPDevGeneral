@@ -362,6 +362,86 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         return "MIGRATE_ONLY".equalsIgnoreCase(System.getProperty("npdev.schema.lifecycle.mode", "APPLY"));
     }
 
+    // STOR-33 (boundary B14, POSTURAL_LIFT_PLAN_2026-09-07.md package P5): the sanctioned-destruction
+    // mode. Default 'audit-only' is EXACTLY today's behaviour -- authoring the conversion hook remains
+    // the acknowledgment (ADR-0008, no conditions); the audit rows and impact section are additive.
+    // 'token-required' additionally demands the itemized token (over the pre-hook report) for every
+    // destructive item a hook claims, through the same two channels as every other destructive refusal.
+    private static final String SANCTIONED_MODE_PROPERTY = "npdev.schema.destructive.sanctioned";
+
+    private enum SanctionedDestructiveMode {
+        AUDIT_ONLY, TOKEN_REQUIRED
+    }
+
+    /** Resolver shaped exactly like {@code ConversionHookRunner.resolveMixedDdlVerifyMode}: an
+     *  unrecognized operator-set value logs and falls back to the default -- a typo must not silently
+     *  widen or narrow what refuses. */
+    private static SanctionedDestructiveMode resolveSanctionedDestructiveMode() {
+        String configured = System.getProperty(SANCTIONED_MODE_PROPERTY);
+        if (configured == null || configured.isBlank()) {
+            return SanctionedDestructiveMode.AUDIT_ONLY;
+        }
+        String trimmed = configured.trim();
+        if ("audit-only".equalsIgnoreCase(trimmed)) {
+            return SanctionedDestructiveMode.AUDIT_ONLY;
+        }
+        if ("token-required".equalsIgnoreCase(trimmed)) {
+            return SanctionedDestructiveMode.TOKEN_REQUIRED;
+        }
+        System.out.println("NPDev schema lifecycle: ignoring unrecognized " + SANCTIONED_MODE_PROPERTY
+                + "='" + configured + "' (expected audit-only|token-required); using the default 'audit-only'.");
+        return SanctionedDestructiveMode.AUDIT_ONLY;
+    }
+
+    /** STOR-33 (package P5): the three named, surgically-executable destructive kinds are the only
+     *  items a hook can sanction -- {@link SchemaDeltaItem.Unknown} has no item key a hook could
+     *  claim, and a NEEDS_HOOK backfill add is not destructive. Mirrors {@link SchemaDeltaReport}'s
+     *  four-kind vocabulary rather than a magic prefix list. */
+    private static boolean isSanctionableDestructiveItem(SchemaDeltaItem item) {
+        return item instanceof SchemaDeltaItem.DropColumn
+                || item instanceof SchemaDeltaItem.DropTable
+                || item instanceof SchemaDeltaItem.NarrowType;
+    }
+
+    /** STOR-33 (package P5): "{@code <stable string>} (hook '{@code id}')" per sanctioned item, joined
+     *  with ", " -- shared by the refusal and the boot log so they can never disagree. */
+    private static String describeSanctioned(List<SanctionedDestruction> sanctioned) {
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < sanctioned.size(); i++) {
+            if (i > 0) {
+                out.append(", ");
+            }
+            SanctionedDestruction s = sanctioned.get(i);
+            out.append(s.stableString()).append(" (hook '").append(s.hookId()).append("')");
+        }
+        return out.toString();
+    }
+
+    /** STOR-33 (package P5): the sanctions a token-required boot WOULD have executed, computed BEFORE
+     *  any hook runs -- every destructive item of the pre-hook report claimed by a hook on the
+     *  classpath (the same claims index {@code ConversionHookRunner} selects against). This is what
+     *  the pre-run B14 gate gates; a classpath-scan failure degrades to "nothing pending" (the
+     *  post-run audit + rows still stand, only the optional gate is skipped). */
+    private static List<SanctionedDestruction> pendingSanctions(SchemaDeltaReport preHookReport) {
+        Map<String, String> claims;
+        try {
+            claims = ConversionHookRunner.loadClaimIndex();
+        } catch (Throwable ignored) {
+            claims = Map.of();
+        }
+        List<SanctionedDestruction> out = new ArrayList<>();
+        for (SchemaDeltaItem item : preHookReport.items()) {
+            if (!isSanctionableDestructiveItem(item)) {
+                continue;
+            }
+            String hookId = claims.get(item.stableString());
+            if (hookId != null) {
+                out.add(new SanctionedDestruction(item.stableString(), hookId));
+            }
+        }
+        return out;
+    }
+
     /**
      * LNCH-1 Phase 7 (row 16 of the proof matrix: an InMemory-storage app's model change must
      * no-op the executor entirely, unless forcePhysicalSchema opts back in -- row 18).
@@ -379,7 +459,8 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         SchemaImpactFacade.Result result = SchemaImpactFacade.forLiveDatabase(
                 dataSource, modelHolder == null ? null : modelHolder.get());
         System.out.println(ImpactReportText.render(result.report(), result.fromFingerprint(),
-                result.toFingerprint(), result.ackToken(), result.surplus(), result.renameCandidates()));
+                result.toFingerprint(), result.ackToken(), result.surplus(), result.renameCandidates(),
+                result.sanctioned()));
         return codeFor(result.report().verdict());
     }
 
@@ -1137,12 +1218,69 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // vanished from the residual diff and needs no acknowledgment token (rule 6; see
         // ConversionHookRunner's class javadoc for why no special-casing is needed downstream).
         // Idempotent no-op (and writes no history) when nothing is currently unresolved.
-        conversionHooksAppliedLastDecision = ConversionHookRunner.run(dataSource, manifest,
+        //
+        // STOR-33 (boundary B14, package P5): the PRE-HOOK report is captured before the run, exactly
+        // as SchemaDeltaReport.generate would have itemized the live state before the hooks changed
+        // it -- the same report the -ImpactOnly / GET .../impact preview computes, so the sanctioned
+        // set, the audit rows and the token-required refusal all describe what an operator actually
+        // saw before this boot. One extra live introspection on the opt-in hook path (rare). The
+        // plan's cheaper "reuse run()'s unresolved keys" fallback was deliberately not taken, because
+        // the TOKEN is computed over this report's stable strings and a reconstructed key set cannot
+        // reproduce a pre-hook Unknown item -- an unsatisfiable token is worse than the diff.
+        SchemaDeltaReport preHookReport = SchemaDeltaReport.generate(dataSource, manifest);
+
+        // STOR-33 (boundary B14, package P5), measured correction to the plan's step-4 placement: the
+        // token-required gate fires HERE, BEFORE the hooks run, not after them. A refusal that fires
+        // after the sanctioned item already vanished (the hook already dropped the column) is a gate
+        // that gates nothing -- the "plausible wrong answer" failure mode this repo exists to refuse.
+        // The pending sanctions are computable pre-run from the SAME claims index the runner selects
+        // against and the pre-hook report, so nothing executes before the authorization question is
+        // settled. Under audit-only (the default) this whole block is skipped and the plan's step-4
+        // ordering is moot: hooks run, then the audit rows are written.
+        if (resolveSanctionedDestructiveMode() == SanctionedDestructiveMode.TOKEN_REQUIRED) {
+            List<SanctionedDestruction> pendingSanctions = pendingSanctions(preHookReport);
+            if (!pendingSanctions.isEmpty()) {
+                // B14:sanctioned_destruction_requires_token: computed over the PRE-HOOK report -- the
+                // exact itemization an -ImpactOnly preview shows. Same two channels as every other
+                // destructive refusal: the static manifest field or a ControlPanel pending
+                // acknowledgment.
+                String sanctionedToken = DestructiveAckToken.compute(manifest.schemaFingerprint(),
+                        preHookReport.stableStrings());
+                String providedToken = manifest.destructiveAcknowledgment() == null
+                        ? "" : manifest.destructiveAcknowledgment().trim();
+                boolean staticMatches = !providedToken.isBlank() && providedToken.equals(sanctionedToken);
+                PendingSchemaAcknowledgmentStore.PendingAcknowledgment pendingAcknowledgment =
+                        PendingSchemaAcknowledgmentStore.findMatching(dataSource, manifest.schemaFingerprint(), sanctionedToken)
+                                .orElse(null);
+                if (!staticMatches && pendingAcknowledgment == null) {
+                    SchemaHistoryStore.writeHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
+                            classificationForFallthrough, preHookReport,
+                            providedToken.isBlank() ? null : providedToken, "REFUSED");
+                    throw new IllegalStateException(SchemaRefusal.withResidue(
+                            "B14:sanctioned_destruction_requires_token: this boot's conversion hook(s) would sanction "
+                                    + pendingSanctions.size() + " destructive item(s) that still require an explicit, itemized "
+                                    + "acknowledgment token under -D" + SANCTIONED_MODE_PROPERTY + "=token-required: "
+                                    + describeSanctioned(pendingSanctions)
+                                    + ". Expected acknowledgment token: " + sanctionedToken
+                                    + ". Set the generated manifest's destructiveAcknowledgment to this token, or submit "
+                                    + "it via the ControlPanel schema-migration screen on the currently running app, to "
+                                    + "proceed -- see docs/SCHEMA_EVOLUTION.md#acknowledging-destructive-changes. Refused "
+                                    + "BEFORE the hooks ran -- nothing has been executed or applied.",
+                            dataSource, bootId));
+                }
+                if (pendingAcknowledgment != null) {
+                    DestructiveRecreationPass.consumePendingAcknowledgmentIfAny(dataSource, pendingAcknowledgment);
+                }
+            }
+        }
+
+        ConversionHookRunner.HookRunOutcome hookOutcome = ConversionHookRunner.run(dataSource, manifest,
                 (label, outcome, details) ->
                         SchemaHistoryStore.insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(), label, details, outcome),
                 new ConversionHookRunner.JavaHookRuntimeContext(
                         pluginIpcChildProcessPool, runtimePluginAdapterRegistry, pluginExecutionPolicyEvaluator),
                 bootId);
+        conversionHooksAppliedLastDecision = hookOutcome.applied();
 
         // LNCH-1 P5 (5.3): a required bond/FK field missing from an existing, populated table is
         // intercepted HERE, before SchemaDeltaReport ever runs -- independently re-derived per
@@ -1156,6 +1294,55 @@ public final class SchemaLifecycleExecutor implements FlywayMigrationStrategy {
         // it. SchemaDeltaReport independently re-introspects the live database (it does not trust
         // classify()'s classification value beyond what is used here for logging/history purposes).
         SchemaDeltaReport report = SchemaDeltaReport.generate(dataSource, manifest);
+
+        // STOR-33 (boundary B14, package P5): the sanctioned set -- every PRE-HOOK destructive item a
+        // selected hook claimed AND that the post-hook report no longer contains. Those are the items
+        // authoring the hook sanctioned (ADR-0008: authoring IS the acknowledgment) that used to
+        // vanish invisibly. Only the three named destructive kinds qualify: an Unknown can never be
+        // claimed (it has no item key a hook could claim), and a NEEDS_HOOK backfill add is not
+        // destructive, so neither is ever gated. Equivalent to the plan's own formula (pre-run
+        // unresolved keys, intersected with the destructive kinds, minus whatever the post-hook report
+        // still contains) but computed over the pre-hook REPORT, which is the population the operator
+        // saw and the token is computed over.
+        List<SanctionedDestruction> sanctioned = new ArrayList<>();
+        if (!hookOutcome.claimedItemToHookId().isEmpty()) {
+            Set<String> postHookStableStrings = new LinkedHashSet<>(report.stableStrings());
+            for (SchemaDeltaItem item : preHookReport.items()) {
+                if (!isSanctionableDestructiveItem(item)) {
+                    continue;
+                }
+                String stable = item.stableString();
+                if (postHookStableStrings.contains(stable)) {
+                    continue;
+                }
+                String hookId = hookOutcome.claimedItemToHookId().get(stable);
+                if (hookId != null) {
+                    sanctioned.add(new SanctionedDestruction(stable, hookId));
+                }
+            }
+        }
+        if (!sanctioned.isEmpty()) {
+            // STOR-33 (B14), measured correction: the token-required gate no longer lives here. It
+            // fired AFTER the hooks ran, by which point the sanctioned item had already vanished --
+            // a gate that gates nothing. It now fires BEFORE {@code ConversionHookRunner.run}, where
+            // the pending sanctions are computed from the claims index and the pre-hook report and
+            // the refusal can truthfully say "nothing has been executed or applied". By the time this
+            // block is reached, a token-required boot has either already passed that gate or is
+            // audit-only by default -- so what remains is the audit only.
+            // The audit row per sanctioned item -- the post-boot face of "what was destroyed under
+            // sanction, and which hook claimed it" (part (b) of the lift). Written in BOTH modes;
+            // a broken history write never blocks.
+            for (SanctionedDestruction sanctionedItem : sanctioned) {
+                SchemaHistoryStore.insertRawHistoryRow(dataSource, stored, manifest.schemaFingerprint(),
+                        "SANCTIONED_DESTRUCTION",
+                        List.of("item=" + sanctionedItem.stableString(), "hook=" + sanctionedItem.hookId()), "APPLIED");
+            }
+            System.out.println("NPDev schema lifecycle: " + sanctioned.size() + " destructive item(s) sanctioned by "
+                    + "conversion hook(s) (authoring the hook is the acknowledgment; audit row written; "
+                    + hookOutcome.preRunUnresolvedKeys().size() + " unresolved item(s) existed pre-hook): "
+                    + describeSanctioned(sanctioned));
+        }
+
         // SER-P7.3 (rule 6): a conversion hook can fully resolve every residual destructive item
         // between classify() above and this fresh re-introspection -- when that happens there is
         // nothing left requiring an acknowledgment token, exactly as if the diff had been SAFE_ADDITIVE

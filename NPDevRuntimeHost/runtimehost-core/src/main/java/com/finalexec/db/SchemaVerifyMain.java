@@ -134,13 +134,16 @@ public final class SchemaVerifyMain {
             storedFingerprint = null;
         }
         String toFingerprint = manifest.schemaFingerprint();
+        // STOR-33 (boundary B14, package P5): the same sanctioned-destruction preview every other
+        // read-only surface renders, from the same report.
+        List<SanctionedDestruction> sanctioned = SchemaImpactFacade.sanctionedOf(report);
 
         if (json) {
             out.println(ImpactReportJson.render(report, Instant.now().toString(), storedFingerprint, toFingerprint,
-                    null, surplus, renameCandidates));
+                    null, surplus, renameCandidates, sanctioned));
         } else {
             out.println(ImpactReportText.render(report, storedFingerprint, toFingerprint, null, surplus,
-                    renameCandidates));
+                    renameCandidates, sanctioned));
         }
 
         return exitCodeFor(report.verdict());

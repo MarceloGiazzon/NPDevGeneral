@@ -46,6 +46,16 @@ public final class ImpactReportText {
      *                          suggestion the boot refusal still fires alongside. */
     public static String render(ImpactReport report, String fromFp, String toFp, String ackToken,
             ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates) {
+        return render(report, fromFp, toFp, ackToken, surplus, renameCandidates, List.of());
+    }
+
+    /** @param sanctioned STOR-33 (boundary B14, package P5): every destructive item a conversion hook
+     *                    on the classpath claims, rendered as its own advisory section -- "what the
+     *                    next boot WILL sanction, before it happens". Never changes {@code verdict};
+     *                    exactly the same never-affecting posture as the surplus section (B3.2). */
+    public static String render(ImpactReport report, String fromFp, String toFp, String ackToken,
+            ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates,
+            List<SanctionedDestruction> sanctioned) {
         StringBuilder out = new StringBuilder();
         out.append("NPDev schema impact report\n");
         out.append("  fingerprint: ").append(nullSafe(fromFp)).append(" -> ").append(nullSafe(toFp)).append('\n');
@@ -96,10 +106,27 @@ public final class ImpactReportText {
         if (report.verdict() == ImpactReport.Verdict.DESTRUCTIVE && ackToken != null && !ackToken.isBlank()) {
             out.append("  acknowledgment token: ").append(ackToken).append('\n');
         }
+        appendSanctionedDestruction(out, sanctioned);
         appendProposedConversions(out, report);
         appendPossibleRenames(out, renameCandidates);
         appendSurplusConstraints(out, surplus);
         return out.toString();
+    }
+
+    /** STOR-33 (boundary B14, package P5): the sanctioned-destruction preview section. Pure advisory,
+     *  like the surplus section -- never influences {@code verdict}, never proposes anything; it only
+     *  makes visible (BEFORE the boot) which destructive items a conversion hook is about to resolve
+     *  under sanction, and which hook claims each. */
+    private static void appendSanctionedDestruction(StringBuilder out, List<SanctionedDestruction> sanctioned) {
+        if (sanctioned == null || sanctioned.isEmpty()) {
+            return;
+        }
+        out.append("  destructive item(s) sanctioned by conversion hook(s) -- resolved WITHOUT an acknowledgment "
+                + "token under the default audit-only mode (authoring the hook is the acknowledgment, ADR-0008; "
+                + "set -Dnpdev.schema.destructive.sanctioned=token-required to gate these):\n");
+        for (SanctionedDestruction s : sanctioned) {
+            out.append("    ").append(s.stableString()).append(" (hook ").append(s.hookId()).append(")\n");
+        }
     }
 
     /** SER-P8.1: a ready-to-paste hook body (convert.sql + suggested verifySql) for every convertible
