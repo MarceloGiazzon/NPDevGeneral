@@ -252,15 +252,33 @@ class SchemaLifecycleExecutorDatabaseMigratedPastBuildTest {
         assertEquals("PROCEED_SCHEMA_AHEAD_COMPATIBLE", latestNonStepOutcome(dataSource));
     }
 
-    // A3's "extra column is NOT NULL with no default still refuses" case is deliberately NOT an
-    // integration test here (QUAL-55: an earlier version of this test showed intermittent, unexplained
-    // failures across full-gate runs, unrelated to SchemaCompatibilityVerdict's own correctness --
-    // proven by SchemaCompatibilityVerdictTest#anExtraNotNullColumnWithNoDefaultIsAlwaysIncompatible,
-    // 20 repeated runs, all reliably INCOMPATIBLE). The "verdict says incompatible -> the EXISTING B5
-    // throw still fires" WIRING this test would have covered is already exercised, reliably, by
-    // pureColumnDropRollbackRefusesInsteadOfSilentlyReAddingTheColumnEmpty and its FRESH-INSTALLED
-    // sibling below (both hit an INCOMPATIBLE verdict via the missing-desired-column direction) --
-    // logic and wiring are each proven elsewhere, without this test's own flakiness.
+    @Test
+    @DisplayName("A3: an extra column that is NOT NULL with NO default still refuses (QUAL-55: restored)")
+    void additiveNotNullExtraColumnWithNoDefaultStillRefuses() throws SQLException {
+        // Removed in 10daaeef as intermittently failing; the mechanism is now identified and fixed
+        // (QUAL-55 -- a millisecond tie in npdev_schema_history silenced Trigger C). Restored because
+        // it is the ONLY test covering this shape end-to-end: SchemaCompatibilityVerdictTest proves
+        // assess() classifies it INCOMPATIBLE, and the pure-column-drop tests prove an INCOMPATIBLE
+        // verdict still throws -- but nothing else joins the two through a real boot on THIS shape.
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            // Build N+1 added a NOT NULL column with no default. This build (N) cannot write a row to
+            // this table at all without supplying it, so booting past it is not tolerable.
+            statement.execute("CREATE TABLE users (id BIGINT PRIMARY KEY, name VARCHAR(50), "
+                    + "bonus_column VARCHAR(50) NOT NULL)");
+        }
+        seedHistoryRow(dataSource, "sha256:N", "APPLIED", 1_000L);
+        seedHistoryRow(dataSource, "sha256:N+1", "APPLIED", 2_000L);
+        seedStoredFingerprint(dataSource, "sha256:N+1");
+
+        SchemaLifecycleExecutor.SchemaManifest manifestBuildN = manifest(
+                "sha256:N", Map.of("users", List.of("id", "name")), Map.of());
+
+        BoundaryBootException exception = assertThrows(BoundaryBootException.class,
+                () -> executor.beforeMigrate(dataSource, manifestBuildN),
+                "a NOT NULL column with no default is not something this build can boot past");
+        assertEquals("B5", exception.getViolation().boundaryId());
+        assertEquals("REFUSED", latestNonStepOutcome(dataSource));
+    }
 
     @Test
     @DisplayName("A3: a whole extra table this build's manifest never names is tolerable")
