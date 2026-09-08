@@ -10,6 +10,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Types;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -67,6 +68,27 @@ final class SchemaHistoryStore {
             return Optional.empty();
         }
         Optional<HistoryPoint> latestOverall = latestOutcomeOverall(dataSource);
+        // QUAL-55 (permanent, never-throws diagnostic): the 2026-09-08 analysis found that this method's
+        // strict `>` comparison, over millisecond-resolution System.currentTimeMillis() timestamps with no
+        // monotonic tie-breaker, could silently miss Trigger C when this build's own row and a later row
+        // (different fingerprint) land in the SAME millisecond -- a plausible explanation for QUAL-55's
+        // originally-observed symptom 1 (see ledger/items/QUAL-55.yml), NOT YET confirmed to happen in
+        // practice. Logs both raw millisecond values every time this build's own fingerprint has a recorded
+        // outcome, so the next NATURAL occurrence of a tie is caught with a diagnosis attached instead of
+        // needing a dedicated repro session.
+        try {
+            boolean tie = latestOverall.isPresent()
+                    && latestOverall.get().appliedAtUtc() == lastReachedByThisBuild.get();
+            System.out.println("[QUAL-55-DIAG-TRIGGERC] thread=" + Thread.currentThread().getName()
+                    + " at=" + Instant.now()
+                    + " thisFp=" + manifest.schemaFingerprint()
+                    + " thisBuildLastReachedMillis=" + lastReachedByThisBuild.get()
+                    + " overallLatestMillis=" + latestOverall.map(point -> Long.toString(point.appliedAtUtc())).orElse("none")
+                    + " overallLatestFp=" + latestOverall.map(HistoryPoint::toFingerprint).orElse("none")
+                    + (tie ? " TIE-DETECTED" : ""));
+        } catch (RuntimeException ignored) {
+            // diagnostic only -- must never affect the boot
+        }
         if (latestOverall.isPresent()
                 && latestOverall.get().appliedAtUtc() > lastReachedByThisBuild.get()
                 && !manifest.schemaFingerprint().equals(latestOverall.get().toFingerprint())) {
