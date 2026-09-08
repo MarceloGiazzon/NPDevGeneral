@@ -1,24 +1,31 @@
 id: QUAL-55
 title: >-
-  An integration test exercising Trigger C (databaseMigratedPastThisBuild) + SchemaCompatibilityVerdict
-  together showed intermittent, unexplained failures across full ~800-test gate runs; DISPROVEN as a
-  SchemaCompatibilityVerdict logic bug (40 repeated direct-unit runs all passed reliably) and DISPROVEN
-  as a stale SqlDialects.active() singleton (explicit pinning did not fix it either) -- true mechanism
-  still unidentified. The flaky test was removed; its two claims are each covered reliably elsewhere.
+  Trigger C (databaseMigratedPastThisBuild) could silently fail to fire when two npdev_schema_history
+  rows landed in the same millisecond: applied_at_utc is millisecond wall-clock, id is a random UUID,
+  and the comparison was a strict > with no tie-breaker, so a tie was indistinguishable from "nothing
+  came after". Fixed by giving the table a monotonic seq column and comparing by it, with a timestamp
+  fallback for rows that predate the column.
 type: GAP
 severity: LOW
-status: WONTFIX
+status: DONE
 opened: 2026-09-03
 closed: 2026-09-08
-decision: >-
-  Owner (Marcelo, this session) accepted the mechanism as unconfirmed-but-monitored rather than
-  spending further session time on dedicated repro attempts: 246+ repeated-run data points across
-  three sessions already ruled out every hypothesis tried, severity is LOW, and the original test's
-  two claims are each already covered reliably elsewhere (zero coverage gap). The 2026-09-08
-  permanent `[QUAL-55-DIAG-TRIGGERC]` diagnostic in `SchemaHistoryStore.databaseMigratedPastThisBuild`
-  stays in place and will surface a `TIE-DETECTED` marker the next time the leading hypothesis
-  (a millisecond-timestamp collision) actually occurs in an ordinary gate run. Reopen if that fires,
-  or if any other concrete evidence of the true mechanism turns up.
+resolution: >-
+  Root-caused and fixed. npdev_schema_history rows are timestamped with plain
+  System.currentTimeMillis() and keyed by a random UUID, so two rows written in the same millisecond
+  had no ordering signal at all. databaseMigratedPastThisBuild compared two separate, non-atomic
+  queries' timestamps with a strict `>`, which a tie made false even when the later row was genuinely
+  later by insertion order -- Trigger C then silently did not fire, which is symptom 1 exactly. The
+  permanent [QUAL-55-DIAG-TRIGGERC] diagnostic added on 2026-09-08 captured the tie verbatim
+  (TIE-DETECTED, both millisecond values identical, different fingerprints), which is what made the
+  mechanism confirmable rather than hypothetical. The fix adds a nullable, application-assigned
+  monotonic `seq` column (MAX(seq)+1, read on the insert's own connection inside the migration lock),
+  orders all three history readers by `applied_at_utc DESC, COALESCE(seq, 0) DESC`, and compares by
+  seq when both rows carry one -- falling back to the pre-fix timestamp comparison for rows that
+  predate the column, which is exactly the behaviour those rows had before. A tie-inclusive
+  comparison was NOT used and must never be: `applied_at_utc >= ?` was implemented and measured on
+  2026-09-08 and broke 5-6 of ~47 SchemaLifecycleExecutorProofMatrixTest scenarios, because it cannot
+  distinguish an older row that happens to tie from a genuinely later one.
 source: >-
   Found while verifying REAL_LIFT_PLAN_2026-09-03.md package A3 (STOR-24, B5): a new test
   (SchemaLifecycleExecutorDatabaseMigratedPastBuildTest#additiveNotNullExtraColumnWithNoDefaultStillRefuses)
@@ -275,3 +282,109 @@ detail: |
   narrow-test run. Status stays WONTFIX. DONE-WHEN for any future attempt: do not repeat the
   `to_fingerprint <> ? AND applied_at_utc >= ?` shape without first adding a real monotonic
   tie-breaker column -- confirmed unsound above, not merely untested.
+
+  2026-09-08 RESOLVED. Implemented per QUAL55_CLOSURE_PLAN_2026-09-08 (evidence directory:
+  D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\). Production change is confined to one file,
+  SchemaHistoryStore.java: `seq BIGINT` added to ensureHistoryTable's CREATE TABLE plus a
+  metadata-guarded guardedAddColumn upgrade path and a one-shot Java-side backfill (the
+  MigrationMarkStore.from_fingerprint pattern, including its explicit column-existence check --
+  firing the ALTER unconditionally shifts DDL-call indices in
+  SchemaLifecycleExecutorDestructiveCrashRecoveryTest's fault-injection harness, which counts ALTER
+  TABLE statements); both INSERT sites bind nextSeq(connection); HistoryPoint carries a nullable seq;
+  latestOutcomeTimestamp became latestOutcomeFor returning the whole point; all three readers
+  (latestOutcomeFor, latestOutcomeOverall, mostRecentActivity) sort by
+  `applied_at_utc DESC, COALESCE(seq, 0) DESC`.
+
+  WHY MAX(seq)+1 RATHER THAN A DATABASE IDENTITY COLUMN, given SqlDialect.autoIncrementColumn exists
+  and all four dialects implement it: MySQL refuses an AUTO_INCREMENT column that is not indexed as a
+  key, and the primary key here is already the UUID id; retrofitting IDENTITY onto an existing table
+  backfills existing rows in engine-defined order, which differs per engine; and it would leave a
+  freshly created table structurally different from an upgraded one. MAX(seq)+1 is one portable
+  expression on all four engines with no dialect branching, and is safe because every write to this
+  table happens inside the migration lock. NO UNIQUE INDEX ON seq, deliberately: a duplicate makes the
+  strict `>` false, so Trigger C stays silent -- the pre-fix behaviour, never a false refusal --
+  whereas a unique constraint would turn that benign degradation into a failed insert during a
+  migration, i.e. a boot failure.
+
+  The nextSeq read is a separate statement, not a subquery in the INSERT's VALUES clause: MySQL
+  rejects a subquery in VALUES referencing the target table (error 1093).
+
+  PROOF. Two deterministic tie tests were added to
+  SchemaLifecycleExecutorDatabaseMigratedPastBuildTest, seeding two rows at an identical
+  applied_at_utc with explicit, opposite seq values -- which is what makes a tie's DIRECTION
+  unambiguous, and is why this was confirmable without chasing a wall-clock race:
+  #triggerCFiresWhenALaterDifferentFingerprintRowTiesOnTheMillisecond was RED before the fix and
+  GREEN after (the RED proof), and
+  #triggerCStaysSilentWhenAnOlderDifferentFingerprintRowTiesOnTheMillisecond was GREEN throughout,
+  pinning the case the 2026-09-08 tie-inclusive attempt got wrong so it cannot be reintroduced.
+  #additiveNotNullExtraColumnWithNoDefaultStillRefuses -- removed in 10daaeef as the original flaky
+  test, and the only end-to-end coverage of that shape -- was restored and passed 20 consecutive
+  narrow runs.
+
+  SYMPTOM 2. The same tie also made row SELECTION arbitrary, not just the comparison: all three
+  readers sorted by applied_at_utc alone, and atOrPastFingerprint (which MigrationPreflight uses to
+  decide whether to skip the migration entirely) reads latestOutcomeOverall. A tie could therefore
+  make preflight report "already converged", skip the migration, and let beforeMigrate return
+  normally -- which is symptom 2's exact observable shape.
+  #atOrPastFingerprintIsDeterministicWhenTwoOutcomeRowsTie was non-deterministic before the ordering
+  fix (RED in the P1 baseline run) and stable after (GREEN in the P5 regression run and every run
+  since) -- confirmed twice, not once. This is CONSISTENT WITH, and now prevented; symptom 2 itself
+  was never re-observed, so this is not claimed as a confirmed root cause.
+
+  Both permanent diagnostics are RETAINED and extended: [QUAL-55-DIAG-TRIGGERC] now also prints
+  thisSeq, overallSeq and seqDecision (SEQ or TIMESTAMP-FALLBACK), so a future gate run shows not
+  only that a tie happened but that it was resolved by the real ordering signal. Confirmed live: a
+  narrow run against the assembled sample app captured `thisSeq=1 overallSeq=2 seqDecision=SEQ
+  TIE-DETECTED` on the RED-proof scenario, and `seqDecision=TIMESTAMP-FALLBACK` on every row pair
+  where either side predates the seq column -- exactly the designed fallback behaviour.
+
+  TWIN-PAIR. Eight places create or insert into npdev_schema_history -- the production
+  ensureHistoryTable plus seven test files that hand-roll their own inline CREATE TABLE. A test file
+  missing the seq column does not fail: production's guardedAddColumn adds it, the seeded rows land
+  with seq NULL, and the test then silently exercises the legacy timestamp fallback while believing it
+  exercises the fix. Pinned by twin-pair rule `schema-history-seq-column-eight-seams` in
+  scripts/quality/twin-pair-registry.json.
+
+  ENGINE COVERAGE. Verified locally on H2 only -- scripts/policy/local-test-profile.json declares
+  enabledEngines [h2, sqlserver] on this machine and the local SQLEXPRESS instance is damaged.
+  Postgres/MySQL/SQL Server are carried by the CI matrix; the three cross-engine surfaces to watch are
+  guardedAddColumn's per-engine ALTER spelling, COALESCE(MAX(seq), 0) + 1, and COALESCE(seq, 0) in an
+  ORDER BY.
+
+  VERIFICATION. Full T2 four-gate suite (generator -> runtimehost -> kernel -> ai-knowledge) run
+  TWICE, both ALL GATES GREEN (this is an intermittency item; one green run proves nothing on its
+  own). SchemaLifecycleExecutorProofMatrixTest 47/47 green both times -- the exact canary set the
+  2026-09-08 tie-inclusive attempt broke. security-pattern-sweep.py, check-dialect-sites.py,
+  check-twin-pair-consistency.py and check-done-item-guards.py all pass. Six new
+  read-without-tenant-predicate hits from the seq column's new SELECT statements were triaged into
+  scripts/quality/security-pattern-sweep-allowlist.json (frozenCount 560 -> 566), same trust boundary
+  as every other SchemaHistoryStore entry already in that file.
+
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaHistoryStore.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorDatabaseMigratedPastBuildTest.java
+  - scripts/quality/twin-pair-registry.json
+verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorDatabaseMigratedPastBuildTest.java#triggerCFiresWhenALaterDifferentFingerprintRowTiesOnTheMillisecond
+  provenRed: true
+  provenRedNote: >-
+    A genuine RED before the fix, not a simulated one: run against the committed pre-fix
+    SchemaHistoryStore.java (still the strict `>` millisecond comparison, no seq column at all), this
+    test failed with `AssertionFailedError: ... Expected com.finalexec.boundary.BoundaryBootException
+    to be thrown, but nothing was thrown` -- Trigger C silently did not fire on the manufactured tie,
+    exactly QUAL-55's originally-observed symptom 1. After the P2-P5 production fix, the same test
+    (same file, same seeded rows) went GREEN with no other change. The mirror test
+    (#triggerCStaysSilentWhenAnOlderDifferentFingerprintRowTiesOnTheMillisecond) was GREEN both
+    before and after, ruling out the possibility that the fix merely flipped the assertion direction.
+  asserts: >-
+    Two npdev_schema_history rows are seeded at an identical applied_at_utc with explicit, opposite
+    seq values -- build N at seq 1, build N+1 at seq 2 -- so the tie's direction is unambiguous while
+    the millisecond comparison alone cannot see it. Trigger C must still fire: BoundaryBootException,
+    boundary B5, message naming "migrated PAST this build", and users.nickname must NOT have been
+    silently re-added, which is the data loss this trigger exists to prevent. This test was RED before
+    the seq column existed and is the RED proof for QUAL-55's mechanism. Its mirror,
+    #triggerCStaysSilentWhenAnOlderDifferentFingerprintRowTiesOnTheMillisecond, pins the opposite
+    direction (an OLDER row that merely ties must not trigger a refusal) -- the case a tie-inclusive
+    `>=` comparison got wrong on 2026-09-08, breaking 5-6 of ~47 ProofMatrixTest scenarios.
