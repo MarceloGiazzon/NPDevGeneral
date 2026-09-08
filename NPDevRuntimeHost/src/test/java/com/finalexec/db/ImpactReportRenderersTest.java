@@ -178,4 +178,46 @@ class ImpactReportRenderersTest {
 
         assertFalse(text.contains("possible rename"), text);
     }
+
+    // ---- STOR-33 / B14 (POSTURAL_LIFT_PLAN_2026-09-07.md package P5): sanctioned destruction
+    // (the "will be sanctioned on the next boot" preview). Advisory like the surplus section --
+    // rendered from the caller-supplied list, never from the diff, so it cannot move verdict.
+
+    @Test
+    void emptySanctionedListAddsNoSectionToEitherRenderer() {
+        ImpactReport safe = ImpactReport.ofProbedItems(List.of(new ImpactReport.Item(
+                SchemaDiffItem.of("ADD_COLUMN:widgets:note", "widgets", "note", SafetyClass.SAFE_ADDITIVE, null,
+                        "VARCHAR(20)"), 0L, "")));
+        String text = ImpactReportText.render(safe, "a", "b", null, ConstraintSurplusReport.EMPTY, List.of(), List.of());
+        String json = ImpactReportJson.render(safe, "2026-07-24T00:00:00Z", "a", "b", null,
+                ConstraintSurplusReport.EMPTY, List.of(), List.of());
+        assertFalse(text.contains("sanctioned"), text);
+        assertFalse(json.contains("sanctionedDestruction"), json);
+    }
+
+    @Test
+    void sanctionedDestructionRendersAsAdvisorySectionAndNeverChangesVerdict() {
+        // A hook-claimed destructive item already renders its claim in the table (HOOK mark + note);
+        // the sanctioned section adds the aggregate "what the next boot WILL sanction" preview.
+        ImpactReport report = ImpactReport.ofProbedItems(List.of(new ImpactReport.Item(
+                SchemaDiffItem.of("DROP_COLUMN:orders:legacy_total:BOOLEAN", "orders", "legacy_total",
+                        SafetyClass.DESTRUCTIVE_DROP_COLUMN, "BOOLEAN", null)
+                        .withResolution(com.finalexec.db.schemastate.Resolution.HOOK_CLAIMED), 0L, "")));
+        List<SanctionedDestruction> sanctioned = List.of(
+                new SanctionedDestruction("DROP_COLUMN:orders:legacy_total:BOOLEAN", "0004-split-name"));
+
+        String text = ImpactReportText.render(report, "a", "b", null,
+                ConstraintSurplusReport.EMPTY, List.of(), sanctioned);
+        assertEquals(ImpactReport.Verdict.SAFE, report.verdict(),
+                "the sanctioned section must never change the report's own verdict");
+        assertTrue(text.contains("sanctioned by conversion hook"), text);
+        assertTrue(text.contains("DROP_COLUMN:orders:legacy_total:BOOLEAN"), text);
+        assertTrue(text.contains("hook 0004-split-name"), text);
+
+        String json = ImpactReportJson.render(report, "2026-07-24T00:00:00Z", "a", "b", null,
+                ConstraintSurplusReport.EMPTY, List.of(), sanctioned);
+        assertTrue(json.contains("\"sanctionedDestruction\""), json);
+        assertTrue(json.contains("\"itemKey\": \"DROP_COLUMN:orders:legacy_total:BOOLEAN\""), json);
+        assertTrue(json.contains("\"hookId\": \"0004-split-name\""), json);
+    }
 }

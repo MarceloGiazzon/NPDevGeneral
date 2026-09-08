@@ -67,10 +67,13 @@ final class ImpactReportWriter {
 
             String generatedAt = Instant.now().toString();
             String toFingerprint = manifest.schemaFingerprint();
+            // STOR-33 (boundary B14, package P5): the sanctioned-destruction preview rides on the same
+            // report, same source pair -- what the next boot's hooks WILL resolve under sanction.
+            List<SanctionedDestruction> sanctioned = SchemaImpactFacade.sanctionedOf(report);
             String json = ImpactReportJson.render(report, generatedAt, fromFingerprint, toFingerprint, ackToken,
-                    surplus, renameCandidates);
+                    surplus, renameCandidates, sanctioned);
             String text = ImpactReportText.render(report, fromFingerprint, toFingerprint, ackToken, surplus,
-                    renameCandidates);
+                    renameCandidates, sanctioned);
 
             System.out.println(text);
             persist(json, fromFingerprint, toFingerprint);

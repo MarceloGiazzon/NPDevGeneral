@@ -41,6 +41,17 @@ public final class ImpactReportJson {
      *                          affects {@code verdict}. */
     public static String render(ImpactReport report, String generatedAt, String fromFp, String toFp, String ackToken,
             ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates) {
+        return render(report, generatedAt, fromFp, toFp, ackToken, surplus, renameCandidates, List.of());
+    }
+
+    /** @param sanctioned STOR-33 (boundary B14, package P5): every destructive item a conversion hook
+     *                    on the classpath claims, emitted as {@code sanctionedDestruction} only when
+     *                    non-empty -- the "will be sanctioned on the next boot" preview. Never affects
+     *                    {@code verdict}; same presence rule as {@code renameCandidates} so an
+     *                    ordinary converged app's JSON stays byte-identical to before this shipped. */
+    public static String render(ImpactReport report, String generatedAt, String fromFp, String toFp, String ackToken,
+            ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates,
+            List<SanctionedDestruction> sanctioned) {
         StringBuilder out = new StringBuilder();
         out.append("{\n");
         out.append("  \"generatedAt\": ").append(str(generatedAt)).append(",\n");
@@ -73,7 +84,19 @@ public final class ImpactReportJson {
         out.append(report.items().isEmpty() ? "]" : "\n  ]");
         boolean hasRenameCandidates = renameCandidates != null && !renameCandidates.isEmpty();
         boolean hasSurplus = surplus != null && !surplus.isEmpty();
-        out.append(hasRenameCandidates || hasSurplus ? ",\n" : "\n");
+        boolean hasSanctioned = sanctioned != null && !sanctioned.isEmpty();
+        // Comma handling: sanctioned is emitted whenever present, between items and the trailing sections.
+        if (hasSanctioned) {
+            out.append(",\n");
+            appendSanctionedDestruction(out, sanctioned);
+            if (hasRenameCandidates || hasSurplus) {
+                out.append(",\n");
+            }
+        } else if (hasRenameCandidates || hasSurplus) {
+            out.append(",\n");
+        } else {
+            out.append("\n");
+        }
         appendRenameCandidates(out, renameCandidates);
         if (hasRenameCandidates && hasSurplus) {
             out.append(",\n");
@@ -81,6 +104,22 @@ public final class ImpactReportJson {
         appendSurplusConstraints(out, surplus);
         out.append("}\n");
         return out.toString();
+    }
+
+    /** STOR-33 (boundary B14, package P5): {@code sanctionedDestruction}, conforming to
+     *  {@code impact-report.schema.json}'s own optional property of the same name. Omitted entirely
+     *  when there is nothing to report, mirroring {@code surplusConstraints}' presence rule. */
+    private static void appendSanctionedDestruction(StringBuilder out, List<SanctionedDestruction> sanctioned) {
+        out.append("  \"sanctionedDestruction\": [");
+        for (int i = 0; i < sanctioned.size(); i++) {
+            SanctionedDestruction s = sanctioned.get(i);
+            out.append(i == 0 ? "\n" : ",\n");
+            out.append("    {\n");
+            out.append("      \"itemKey\": ").append(str(s.stableString())).append(",\n");
+            out.append("      \"hookId\": ").append(str(s.hookId())).append('\n');
+            out.append("    }");
+        }
+        out.append("\n  ]");
     }
 
     /** Boundary lift plan 2026-09-02, package 2.2 (B1): emitted as {@code renameCandidates} only when

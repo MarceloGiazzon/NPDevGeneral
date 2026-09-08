@@ -1,12 +1,27 @@
 id: B14
-title: "Sanctioned destruction: a hook-resolved destructive item needs no token (rule 6)"
-codeLinked: false
+title: "Sanctioned destruction is visible before the boot, itemized in history after it, and gateable by choice"
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. This row records the ABSENCE of a
-  gate rather than a refusal -- a destructive item already claimed by a conversion hook is not
-  token-gated, because authoring the hook is the acknowledgment (owner-approved, ADR-0008,
-  2026-07-25, no conditions). The gates that DO exist belong to the surrounding rules, not to this
-  boundary: unclaimed destructive items stay fully token-gated, and rule 5 re-diffs to verify every
-  claim. Revisit trigger: the owner revokes or conditions the ADR.
+  LIFTED 2026-09-08 by POSTURAL_LIFT_PLAN_2026-09-07.md package P5 (ledger/items/STOR-33.yml): a
+  destructive item a conversion hook claims is STILL resolved without a token under the
+  default mode (authoring the hook remains the acknowledgment, ADR-0008, unchanged -- the ADR was
+  never conditioned, its revisit trigger has not fired). What changed is that the policy no longer
+  operates invisibly: (1) the pre-hook destructive items a hook claims are previewed before any boot
+  as the impact report's sanctionedDestruction section (-ImpactOnly / npdev db verify /
+  GET .../impact), naming the claiming hook per item -- the same pre-hook report the operator's
+  token is computed over; (2) each item the boot sanctioned under a hook is recorded in
+  npdev_schema_history as a SANCTIONED_DESTRUCTION row naming item + hook, so history can tell a
+  hook-sanctioned drop from an acknowledged surgical drop; (3) an operator can opt into
+  -Dnpdev.schema.destructive.sanctioned=token-required, under which hook-claimed destructive items
+  demand the itemized token -- computed over the pre-hook report -- through the same two channels as
+  every other destructive refusal, refused with B14:sanctioned_destruction_requires_token: BEFORE
+  the hooks run (a gate that fired after the sanctioned item had already vanished would gate
+  nothing). A mixed boot that passes the pre-hook gate still demands the normal post-hook token for
+  whatever remains unclaimed. An unrecognized property value logs and falls back to audit-only.
+  Enforcing code: B14:sanctioned_destruction_requires_token.
+  Residual: under the default, ADR-0008 stands unchanged -- authoring the hook is the
+  acknowledgment. What changed is that it is no longer invisible, and no longer the only option:
+  the sanctioned set is previewed before the boot, itemized in history after it, and an operator can
+  require the itemized token instead.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B14 -- docs/adr/ADR-0008-sanctioned-destruction-conversion-hooks.md"
-classification: POSTURAL
+classification: LIFTED

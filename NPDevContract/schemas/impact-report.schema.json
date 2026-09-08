@@ -128,6 +128,19 @@
           }
         }
       }
+    },
+    "sanctionedDestruction": {
+      "type": "array",
+      "description": "STOR-33 / B14 (POSTURAL_LIFT_PLAN_2026-09-07.md package P5): every destructive item a conversion hook on the classpath claims, mapped to its hook id -- what the next boot WILL sanction, made visible before it happens. Advisory only (authoring the hook is the acknowledgment, ADR-0008); never affects verdict. Present only when non-empty.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["itemKey", "hookId"],
+        "properties": {
+          "itemKey": { "type": "string", "description": "The destructive item's stable string (byte-identical to its diff item key)." },
+          "hookId": { "type": "string", "description": "The id of the conversion hook claiming this item." }
+        }
+      }
     }
   }
 }

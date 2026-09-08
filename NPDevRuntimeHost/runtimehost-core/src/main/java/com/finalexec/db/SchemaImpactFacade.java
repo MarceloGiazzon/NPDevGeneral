@@ -4,6 +4,7 @@ import com.finalexec.db.schemastate.ConstraintSurplusReport;
 import com.finalexec.db.schemastate.CurrentSchema;
 import com.finalexec.db.schemastate.CurrentSchemaReader;
 import com.finalexec.db.schemastate.DesiredSchema;
+import com.finalexec.db.schemastate.Resolution;
 import com.finalexec.db.schemastate.SchemaDiff;
 import com.finalexec.db.schemastate.SchemaDiffEngine;
 import com.finalexec.db.schemastate.SchemaDiffItem;
@@ -14,6 +15,7 @@ import com.npdev.dsl.v1.schemaevolution.RenameCandidateScorer;
 import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /** Public facade (SER-P6.0): compute the live-database impact of the current model in one call, for the
  *  CLI (REPORT_ONLY) and ControlPanel surfaces. Read-only; never throws for a missing manifest (returns
@@ -25,12 +27,43 @@ public final class SchemaImpactFacade {
      *  advisory, never-verdict-affecting FK/index surplus classification — {@link ConstraintSurplusReport#EMPTY}
      *  whenever there is no physical database to classify against. {@code renameCandidates} (boundary
      *  lift plan 2026-09-02, package 2.2 / B1) is the same kind of advisory value, empty whenever there
-     *  is no physical database. */
+     *  is no physical database. {@code sanctioned} (STOR-33 / B14) is the same kind of advisory value:
+     *  every destructive item a conversion hook on the classpath claims, mapped to its hook id --
+     *  "what the next boot WILL sanction", visible before it happens; empty whenever there is no
+     *  physical database or nothing is claimed. Like surplus and rename candidates it never affects
+     *  {@code verdict}. */
     public record Result(ImpactReport report, String fromFingerprint, String toFingerprint, String ackToken,
-            ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates) {
+            ConstraintSurplusReport surplus, List<RenameCandidateScorer.Candidate> renameCandidates,
+            List<SanctionedDestruction> sanctioned) {
     }
 
     private SchemaImpactFacade() {
+    }
+
+    /** STOR-33 (boundary B14, package P5): the sanctioned-destruction preview -- every item of
+     *  {@code report} that a conversion hook on the classpath claims ({@link Resolution#HOOK_CLAIMED})
+     *  and that is destructive ({@link SchemaDiffItem#isDestructive()}), as {@code (stableString,
+     *  hookId)} pairs, in report order. Shared by the facade, {@code ImpactReportWriter} (REPORT_ONLY)
+     *  and {@code SchemaVerifyMain} so every pre-boot surface renders the identical list. Never
+     *  throws: a classpath-scan failure degrades to an empty list. */
+    public static List<SanctionedDestruction> sanctionedOf(ImpactReport report) {
+        Map<String, String> claims;
+        try {
+            claims = ConversionHookRunner.loadClaimIndex();
+        } catch (Throwable ignored) {
+            claims = Map.of();
+        }
+        List<SanctionedDestruction> out = new ArrayList<>();
+        for (ImpactReport.Item item : report.items()) {
+            SchemaDiffItem di = item.diffItem();
+            if (di.resolution() == Resolution.HOOK_CLAIMED && di.isDestructive()) {
+                String hookId = claims.get(di.itemKey());
+                if (hookId != null) {
+                    out.add(new SanctionedDestruction(di.itemKey(), hookId));
+                }
+            }
+        }
+        return out;
     }
 
     /** Convenience overload for callers with no {@link CompiledModel} available (e.g. tests) --
@@ -51,7 +84,7 @@ public final class SchemaImpactFacade {
             List<SchemaDiffItem> items = driftItem == null ? List.of() : List.of(driftItem);
             return new Result(ImpactReport.generate(new SchemaDiff(items), dataSource),
                     null, manifest == null ? null : manifest.schemaFingerprint(), null, ConstraintSurplusReport.EMPTY,
-                    List.of());
+                    List.of(), List.of());
         }
         CurrentSchema current = new CurrentSchemaReader().read(dataSource);
         CurrentSchema scopedCurrent = ShadowParityProbe.scopeToOwnedBusinessTables(current, manifest);
@@ -74,7 +107,9 @@ public final class SchemaImpactFacade {
             SchemaDeltaReport deltaReport = SchemaDeltaReport.generate(dataSource, manifest);
             ackToken = DestructiveAckToken.compute(to, deltaReport.stableStrings());
         }
-        return new Result(report, from, to, ackToken, surplus, renameCandidates);
+        // STOR-33 (B14): what conversion hooks on the classpath would sanction on the next boot.
+        List<SanctionedDestruction> sanctioned = sanctionedOf(report);
+        return new Result(report, from, to, ackToken, surplus, renameCandidates, sanctioned);
     }
 
     private static SchemaDiff withItem(SchemaDiff diff, SchemaDiffItem extra) {

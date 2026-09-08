@@ -95,10 +95,10 @@
     },
     {
       "id": "B14",
-      "kind": "POSTURAL",
-      "userFacingText": "A destructive schema change already claimed by a conversion hook needs no separate acknowledgment token -- authoring the hook is itself the acknowledgment.",
-      "workaround": "None needed for a hook-claimed item. An unclaimed destructive item still requires the normal acknowledgment token.",
-      "enforcingDiagnosticCodes": []
+      "kind": "LIFTED",
+      "userFacingText": "A destructive schema change already claimed by a conversion hook needs no separate acknowledgment token -- authoring the hook is itself the acknowledgment (default, unchanged). What is new is that the policy is no longer invisible: the impact report shows which destructive items your conversion hooks WILL sanction and which hook claims each, before any boot; each item a boot sanctions is recorded in schema history naming the item and the hook; and you can opt into -Dnpdev.schema.destructive.sanctioned=token-required, under which a hook-claimed destructive item still demands the itemized token (computed over the pre-hook report) before any hook runs.",
+      "workaround": "For the default audit-only mode: nothing to do -- preview the sanctionedDestruction section of -ImpactOnly / `npdev db verify` / GET /api/admin/schema-migration/impact to see what the next boot's hooks will resolve and which hook claims each, and read the SANCTIONED_DESTRUCTION history rows after each boot. To gate hook-sanctioned destruction: set -Dnpdev.schema.destructive.sanctioned=token-required and submit the itemized token (from the refusal message or an -ImpactOnly preview) through the manifest's destructiveAcknowledgment field or the ControlPanel acknowledge endpoint, exactly like any other destructive item. An unclaimed destructive item always requires the normal acknowledgment token regardless of mode.",
+      "enforcingDiagnosticCodes": ["B14:sanctioned_destruction_requires_token"]
     },
     {
       "id": "B15",

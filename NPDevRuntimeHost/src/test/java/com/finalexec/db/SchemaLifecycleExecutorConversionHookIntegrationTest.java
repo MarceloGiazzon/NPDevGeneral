@@ -10,11 +10,14 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Logger;
+
+import com.npdev.dsl.v1.schemaevolution.DestructiveAckToken;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -151,6 +154,94 @@ class SchemaLifecycleExecutorConversionHookIntegrationTest {
             assertTrue(hasColumn(metadata, "p76_untouched", "mystery_column"),
                     "a refusal must leave the database completely untouched");
         }
+    }
+
+    // ---- STOR-33 (boundary B14, POSTURAL_LIFT_PLAN_2026-09-07.md package P5): sanctioned
+    // destruction -- "authoring the hook is the acknowledgment" (ADR-0008) now leaves a visible
+    // audit trail (part b of the lift), and an operator can opt into gating it with the itemized
+    // token computed over the pre-hook report (part c). Under the default audit-only mode the two
+    // pinned tests above pass UNCHANGED; these two prove the new visibility and the gate.
+
+    @Test
+    void hookResolvedDestructiveDropIsRecordedAsSanctionedDestruction() throws SQLException {
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE p76_widgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+            statement.execute("INSERT INTO p76_widgets (id, legacy_flag) VALUES (1, TRUE)");
+        }
+        seedStoredFingerprint(dataSource, "sha256:old");
+
+        SchemaLifecycleExecutor.DestructiveRecreation result =
+                executor.beforeMigrate(dataSource, p76Manifest(""));
+
+        assertTrue(result.safeAdditive(), "fully hook-resolved is reported the same way a SAFE_ADDITIVE boot is");
+        try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+            try (ResultSet resultSet = statement.executeQuery(
+                    "SELECT classification, items_json, outcome FROM npdev_schema_history "
+                            + "WHERE classification = 'SANCTIONED_DESTRUCTION'")) {
+                assertTrue(resultSet.next(),
+                        "the boot must record the sanctioned destructive item in npdev_schema_history");
+                assertEquals("SANCTIONED_DESTRUCTION", resultSet.getString(1));
+                String itemsJson = resultSet.getString(2);
+                assertTrue(itemsJson.contains("DROP_COLUMN:p76_widgets:legacy_flag"),
+                        "the history row must name the item the hook destroyed under sanction: " + itemsJson);
+                assertTrue(itemsJson.contains("p76-drop-legacy"),
+                        "the history row must name the hook that claimed it: " + itemsJson);
+                assertEquals("APPLIED", resultSet.getString(3));
+                assertFalse(resultSet.next(), "exactly one sanctioned row for exactly one item");
+            }
+        }
+    }
+
+    @Test
+    void tokenRequiredModeGatesAHookResolvedDestructiveItem() throws SQLException {
+        System.setProperty("npdev.schema.destructive.sanctioned", "token-required");
+        try {
+            try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
+                statement.execute("CREATE TABLE p76_widgets (id BIGINT PRIMARY KEY, legacy_flag BOOLEAN)");
+                statement.execute("INSERT INTO p76_widgets (id, legacy_flag) VALUES (1, TRUE)");
+            }
+            seedStoredFingerprint(dataSource, "sha256:old");
+
+            // No token anywhere: the hook still runs and resolves the item, but the boot refuses with
+            // B14's diagnostic prefix, naming the sanctioned item and the expected pre-hook token.
+            IllegalStateException refusal = assertThrows(IllegalStateException.class,
+                    () -> executor.beforeMigrate(dataSource, p76Manifest("")));
+            assertTrue(refusal.getMessage().contains("B14:sanctioned_destruction_requires_token:"),
+                    refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("DROP_COLUMN:p76_widgets:legacy_flag"), refusal.getMessage());
+            assertTrue(refusal.getMessage().contains("Expected acknowledgment token:"), refusal.getMessage());
+            try (Connection connection = dataSource.getConnection()) {
+                assertTrue(hasColumn(connection.getMetaData(), "p76_widgets", "legacy_flag"),
+                        "the token-required refusal must leave the database untouched");
+            }
+
+            // The token the refusal names is computed over the PRE-HOOK report -- the same
+            // itemization -ImpactOnly / GET .../impact computes on the current live state.
+            String expectedToken = DestructiveAckToken.compute("sha256:new",
+                    SchemaDeltaReport.generate(dataSource, p76Manifest("")).stableStrings());
+            SchemaLifecycleExecutor.DestructiveRecreation result =
+                    executor.beforeMigrate(dataSource, p76Manifest(expectedToken));
+            assertTrue(result.safeAdditive(),
+                    "supplying the pre-hook token through the static manifest field lets the boot proceed");
+            try (Connection connection = dataSource.getConnection()) {
+                assertFalse(hasColumn(connection.getMetaData(), "p76_widgets", "legacy_flag"),
+                        "the hook's convert.sql must have actually dropped the column");
+            }
+        } finally {
+            System.clearProperty("npdev.schema.destructive.sanctioned");
+        }
+    }
+
+    private static SchemaLifecycleExecutor.SchemaManifest p76Manifest(String destructiveAcknowledgment) {
+        return new SchemaLifecycleExecutor.SchemaManifest(
+                "H2Local", "jdbc", true, "sha256:new", List.of(), List.of("p76_widgets"),
+                Map.of("p76_widgets", List.of("id")),
+                Map.of("p76_widgets", List.of("id")),
+                Map.of("p76_widgets", Map.of("id", "BIGINT")),
+                Map.of(), Map.of(),
+                false, "KeepExistingIfCompatible", "NpdevOwnedTablesOnly",
+                "", destructiveAcknowledgment,
+                Map.of(), Map.of(), Map.of(), Map.of());
     }
 
     private static void seedStoredFingerprint(DataSource dataSource, String fingerprint) throws SQLException {
