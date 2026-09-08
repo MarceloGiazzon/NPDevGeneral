@@ -224,6 +224,12 @@ public final class DockerDeploymentEmitter {
 
                 EXPOSE %d
                 ENV SERVER_PORT=%d
+                # Hosting (P3): the JVM reads JAVA_TOOL_OPTIONS itself, so this works with the
+                # exec-form ENTRYPOINT below. A JAVA_OPTS variable would NOT -- there is no shell in
+                # the entrypoint to expand it, which is why the usual hosting advice silently
+                # does nothing here. 65% of the container beats the 25% default and fits a
+                # 512 MB free tier; override by setting JAVA_TOOL_OPTIONS in the environment.
+                ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=65 -XX:+ExitOnOutOfMemoryError -Xss256k"
 
                 # Config is entirely environment-variable-driven (see .env.example) -- nothing
                 # environment-specific is baked into the image, so the same image promotes across
