@@ -11908,10 +11908,156 @@ def run_host_explain(args: argparse.Namespace) -> int:
     return 0
 
 
+def _local_cache_root() -> Path:
+    """Same precedence PowerShell's Get-NPDevLocalCacheRoot uses (scripts/npdev-common.ps1):
+    NPDEV_LOCAL_CACHE_ROOT, then LOCALAPPDATA, then XDG_CACHE_HOME, then ~/.cache -- so a Python
+    and a PowerShell command on the same machine land on the same directory."""
+    override = os.environ.get("NPDEV_LOCAL_CACHE_ROOT")
+    if override:
+        return Path(override)
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    if local_app_data:
+        return Path(local_app_data) / "NPDev"
+    xdg = os.environ.get("XDG_CACHE_HOME")
+    if xdg:
+        return Path(xdg) / "npdev"
+    return Path.home() / ".cache" / "npdev"
+
+
+def _shared_ingress_caddyfile_path() -> Path:
+    # Box-wide, not per-app: the shared ingress fronts EVERY app on this machine, so its Caddyfile
+    # cannot live inside any one app's _ops (which is wiped and re-emitted on every regeneration).
+    return _local_cache_root() / "shared-ingress" / "Caddyfile"
+
+
+def _print_host_blocking(blocking: list, *, app: str, as_json: bool) -> dict:
+    """Renders preflight's blocking findings. Never 'preflight failed' -- H10's own rule: name
+    the failed fact and its fix. Returns the JSON-mode payload so callers share one shape."""
+    result = {
+        "schemaVersion": "npdev-cli-result.v1", "ok": False,
+        "blocking": blocking,
+    }
+    if as_json:
+        return result
+    for finding in blocking:
+        print(f"BLOCKED: {finding['title']}", file=sys.stderr)
+        print(f"  {finding['detail']}", file=sys.stderr)
+        if finding.get("fix"):
+            print(f"  fix: {finding['fix']}", file=sys.stderr)
+    print(f"Resolve the above, or run `npdev host check --app {app} --fix` to repair what can be "
+          "repaired automatically.", file=sys.stderr)
+    return result
+
+
+def run_host_share(args: argparse.Namespace) -> int:
+    """`npdev host share` (H11): preflight, refresh the shared ingress, start a tunnel pointed at
+    the ingress (NOT at this one app -- one tunnel then fronts every healthy app on the box),
+    record state in `data/host-state.json` (spared by regeneration, so `down` still works after
+    one)."""
+    import npdev_host
+    import npdev_tunnel
+
+    app_dir = Path(args.app).expanduser().resolve()
+    plan = _load_or_resolve_host_plan(app_dir)
+    as_json = bool(getattr(args, "json", False))
+
+    blocking = npdev_host.preflight(app_dir, plan)
+    if blocking:
+        result = _print_host_blocking(blocking, app=args.app, as_json=as_json)
+        if as_json:
+            result["command"] = "host share"
+            print(json.dumps(result, indent=2))
+        return 1
+
+    scan_paths = _split_paths(args.paths) if getattr(args, "paths", None) else [str(app_dir.parent)]
+    ingress_out = _shared_ingress_caddyfile_path()
+    ingress_result = npdev_monitor.write_shared_ingress(scan_paths, ingress_out, upstream_host="127.0.0.1")
+
+    provider = getattr(args, "provider", None) or "cloudflared"
+    try:
+        state = npdev_tunnel.start(provider, 443, scheme="https")
+    except (RuntimeError, ValueError) as exc:
+        raise CliError(str(exc))
+
+    state["ingressCaddyfile"] = str(ingress_out)
+    state["routedApps"] = len(ingress_result.get("routed", []))
+    npdev_host.write_state(app_dir, state)
+
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host share", "ok": True, "state": state,
+        }, indent=2))
+        return 0
+
+    print(f"Shared ingress refreshed: {ingress_out} ({state['routedApps']} app(s) routed)")
+    print(f"URL: {state['url']}")
+    print("Anyone with this link reaches EVERY app currently routed by the shared ingress.")
+    print(f"Stop with: npdev host down --app {args.app}")
+    return 0
+
+
+def run_host_down(args: argparse.Namespace) -> int:
+    """`npdev host down` (H11): stop whatever tunnel `share` opened and clear the state. Safe to
+    call when nothing is up -- state lives in `data/host-state.json`, one of the three directories
+    a regeneration spares, so this works even after one happened while the tunnel was open."""
+    import npdev_host
+    import npdev_tunnel
+
+    app_dir = Path(args.app).expanduser().resolve()
+    as_json = bool(getattr(args, "json", False))
+    state = npdev_host.read_state(app_dir)
+
+    if not state:
+        message = "Nothing is up."
+        if as_json:
+            print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "host down",
+                               "ok": True, "detail": message}, indent=2))
+        else:
+            print(message)
+        return 0
+
+    stopped = npdev_tunnel.stop(state)
+    npdev_host.write_state(app_dir, {})
+
+    if as_json:
+        print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "host down", "ok": stopped},
+                          indent=2))
+    else:
+        print("Stopped." if stopped else "Could not confirm the tunnel process stopped -- check it manually.")
+    return 0 if stopped else 1
+
+
+def run_host_status(args: argparse.Namespace) -> int:
+    """`npdev host status` (H11): what is live right now, from state plus a liveness check --
+    never trusts a stale state file at face value."""
+    import npdev_host
+    import npdev_tunnel
+
+    app_dir = Path(args.app).expanduser().resolve()
+    as_json = bool(getattr(args, "json", False))
+    state = npdev_host.read_state(app_dir)
+    up = bool(state) and npdev_tunnel.is_alive(state)
+
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host status", "ok": True,
+            "up": up, "state": state if up else {},
+        }, indent=2))
+        return 0
+
+    if not up:
+        print("Nothing is up.")
+        return 0
+    print(f"Up since {state.get('startedAt')}")
+    print(f"URL: {state.get('url')}")
+    print(f"Provider: {state.get('provider')} (pid {state.get('pid')})")
+    return 0
+
+
 def _run_host(args: argparse.Namespace) -> int:
-    """Dispatch for `npdev host <verb>` (H4). `plan` and `check` have real handlers -- H7/H11/H12/
-    H14/H15 replace the remaining placeholders, each in its own task, without another pass over
-    this dispatcher."""
+    """Dispatch for `npdev host <verb>` (H4). `plan`/`check`/`explain`/`share`/`down`/`status`
+    have real handlers -- H12/H14/H15 replace the remaining placeholders, each in its own task,
+    without another pass over this dispatcher."""
     command = getattr(args, "host_command", None)
     if command == "plan":
         return run_host_plan(args)
@@ -11919,7 +12065,13 @@ def _run_host(args: argparse.Namespace) -> int:
         return run_host_check(args)
     if command == "explain":
         return run_host_explain(args)
-    if command in {"share", "down", "status", "deploy", "keys"}:
+    if command == "share":
+        return run_host_share(args)
+    if command == "down":
+        return run_host_down(args)
+    if command == "status":
+        return run_host_status(args)
+    if command in {"deploy", "keys"}:
         raise CliError(f"`npdev host {command}` is not implemented yet (see NPDEV_HOST_IMPLEMENTATION_PLAN.md)")
     print("usage: npdev host {plan,check,share,down,status,deploy,keys,explain} ...", file=sys.stderr)
     return 2
@@ -14084,6 +14236,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     host_share.add_argument("--app", required=True)
     host_share.add_argument("--provider", default=None, help="cloudflared (default) or ngrok")
+    host_share.add_argument("--paths", default=None,
+                            help="comma-separated roots to scan for the shared ingress (default: "
+                                 "--app's parent directory, so sibling apps on this box are found)")
     host_share.add_argument("--json", action="store_true")
 
     host_down = host_sub.add_parser("down", help="Stop the tunnel `host share` opened and clear its state.")
