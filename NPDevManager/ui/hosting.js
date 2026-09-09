@@ -17,6 +17,8 @@ const hostingState = {
   status: null,     // host status
   check: null,      // host check
   targets: null,    // hosting-targets.json, via host_targets
+  keys: null,       // host_keys (list)
+  mintedKey: null,  // the raw value, only right after host_keys --new -- never persisted
   pickedRung: null,
   pickedTarget: null,   // only meaningful at rung >= 3
   pickedProvider: null, // only meaningful at rung 1 (cloudflared/ngrok)
@@ -62,6 +64,7 @@ document.getElementById("hosting-app-picker").addEventListener("change", () => {
   hostingState.pickedRung = null;
   hostingState.pickedTarget = null;
   hostingState.pickedProvider = null;
+  hostingState.mintedKey = null;
   loadHosting();
 });
 
@@ -85,14 +88,16 @@ async function loadHosting() {
   }
   stateEl.textContent = "Loading…";
   try {
-    const [status, check, targets] = await Promise.all([
+    const [status, check, targets, keys] = await Promise.all([
       hInvoke("host_status", { appDir: hostingState.appDir }),
       hInvoke("host_check", { appDir: hostingState.appDir, fix: false, remote: null }),
       hInvoke("host_targets", { appDir: hostingState.appDir }),
+      hInvoke("host_keys", { appDir: hostingState.appDir, new: false }),
     ]);
     hostingState.status = status;
     hostingState.check = check;
     hostingState.targets = targets;
+    hostingState.keys = keys;
     stateEl.textContent = "";
     // Pre-select whatever this app is already planned for, so a returning visit shows its real
     // configuration rather than resetting to a default every time. Falls back to "shared by link"
@@ -125,15 +130,151 @@ function renderReach() {
     return;
   }
   const up = hostingState.status && hostingState.status.up;
-  if (up) {
-    const url = hostingState.status.state.url || "";
-    el.innerHTML = `
-      <p class="reach-line reach-live">Anyone with this link can reach your app.</p>
-      <p class="reach-url">${escapeHtml(url)}</p>
-    `;
-  } else {
-    el.innerHTML = `<p class="reach-line">Only you can reach this app.</p>`;
+  el.innerHTML = up
+    ? `<p class="reach-line reach-live">Anyone with this link can reach your app.</p>`
+    : `<p class="reach-line">Only you can reach this app.</p>`;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Artboard 4 -- the live state. The address is the largest element on the screen: it is what the
+// user came for. "Stop sharing" sits beside it, never in a menu -- easy exposure without easy
+// un-exposure is a trap. `state.routedApps` is the array `run_host_share` fixed to carry (name,
+// slug, port), not a bare count -- see npdev_cli.py's `run_host_share` for why that mattered.
+// ---------------------------------------------------------------------------------------------
+
+const HOP_LABELS = ["Browser", "Tunnel", "Shared ingress", "This machine", "Your app"];
+
+async function copyShareUrl(url) {
+  const btn = document.getElementById("hosting-copy-btn");
+  try {
+    await navigator.clipboard.writeText(url);
+    if (btn) {
+      const original = btn.textContent;
+      btn.textContent = "Copied";
+      setTimeout(() => { btn.textContent = original; }, 1500);
+    }
+  } catch (err) {
+    if (btn) btn.textContent = `Could not copy -- ${escapeHtml(String(err))}`;
   }
+}
+
+async function stopSharing() {
+  if (!hostingState.appDir) return;
+  const btn = document.getElementById("hosting-stop-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Stopping…"; }
+  try {
+    await hInvoke("host_down", { appDir: hostingState.appDir });
+    hostingState.status = await hInvoke("host_status", { appDir: hostingState.appDir });
+  } catch (err) {
+    document.getElementById("hosting-app-state").textContent = `Could not stop sharing -- ${escapeHtml(String(err))}`;
+  }
+  renderHosting();
+}
+
+function renderLive() {
+  const el = document.getElementById("hosting-live");
+  const up = hostingState.appDir && hostingState.status && hostingState.status.up;
+  if (!up) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  el.hidden = false;
+  const state = hostingState.status.state || {};
+  const url = state.url || "";
+  const keyCount = hostingState.keys && Array.isArray(hostingState.keys.keys) ? hostingState.keys.keys.length : null;
+  const keyLine = keyCount === null
+    ? ""
+    : keyCount === 0
+      ? `<p class="status-line key-warning">No API keys exist yet -- visitors cannot get in. <a href="#" class="keys-link">Mint one</a>.</p>`
+      : `<p class="status-line">Visitors still need one of your ${keyCount} key${keyCount === 1 ? "" : "s"}. <a href="#" class="keys-link">Manage keys</a>.</p>`;
+  const hops = HOP_LABELS.map((label) => `<span class="hop">${escapeHtml(label)}</span>`).join(`<span class="hop-arrow">&rarr;</span>`);
+  const routed = Array.isArray(state.routedApps) ? state.routedApps : [];
+  const routedRows = routed.length
+    ? routed.map((a) => `
+        <div class="routed-row">
+          <span class="name">${escapeHtml(a.name)}</span>
+          <span class="found">:${escapeHtml(String(a.port))} -- /${escapeHtml(a.slug)}/</span>
+        </div>
+      `).join("")
+    : `<p class="status-line">No apps are currently routed.</p>`;
+
+  el.innerHTML = `
+    <p class="reach-url">${escapeHtml(url)}</p>
+    <div class="live-actions">
+      <button type="button" id="hosting-copy-btn">Copy link</button>
+      <button type="button" id="hosting-open-btn">Open it</button>
+      <button type="button" id="hosting-stop-btn" class="destructive">Stop sharing</button>
+    </div>
+    ${keyLine}
+    <div class="hop-strip">${hops}</div>
+    <h2>Routed apps</h2>
+    <div class="routed-list">${routedRows}</div>
+  `;
+  document.getElementById("hosting-copy-btn").addEventListener("click", () => copyShareUrl(url));
+  document.getElementById("hosting-open-btn").addEventListener("click", () => hInvoke("open_url", { url }));
+  document.getElementById("hosting-stop-btn").addEventListener("click", stopSharing);
+  const keysLink = el.querySelector(".keys-link");
+  if (keysLink) keysLink.addEventListener("click", (ev) => { ev.preventDefault(); scrollToKeys(); });
+}
+
+// ---------------------------------------------------------------------------------------------
+// M9 -- keys. Listed masked; `--new` mints one and its raw value comes back exactly once, in that
+// one response. It is never re-displayed after this render cycle -- not stored, not logged, gone
+// the moment the user picks another rung or reloads.
+// ---------------------------------------------------------------------------------------------
+
+function scrollToKeys() {
+  const el = document.getElementById("hosting-detail");
+  if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function mintHostKey() {
+  if (!hostingState.appDir) return;
+  const btn = document.getElementById("hosting-new-key-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Minting…"; }
+  try {
+    const minted = await hInvoke("host_keys", { appDir: hostingState.appDir, new: true });
+    hostingState.mintedKey = minted.key || null;
+    hostingState.keys = await hInvoke("host_keys", { appDir: hostingState.appDir, new: false });
+  } catch (err) {
+    document.getElementById("hosting-app-state").textContent = `Could not mint a key -- ${escapeHtml(String(err))}`;
+  }
+  renderHosting();
+}
+
+function renderKeys() {
+  const el = document.getElementById("hosting-detail");
+  if (!hostingState.appDir) {
+    el.innerHTML = "";
+    return;
+  }
+  const keys = hostingState.keys && Array.isArray(hostingState.keys.keys) ? hostingState.keys.keys : [];
+  const mintedBanner = hostingState.mintedKey
+    ? `
+      <div class="minted-key">
+        <p><strong>New key:</strong> <code>${escapeHtml(hostingState.mintedKey)}</code></p>
+        <p class="status-line">This is the only time it is shown. Copy it now -- NPDev cannot show it again.</p>
+      </div>
+    `
+    : "";
+  const rows = keys.length
+    ? keys.map((k) => `
+        <div class="check-row ok">
+          <span class="mark">•</span>
+          <span class="name">${escapeHtml(k.tenant)} / ${escapeHtml(k.actor)}</span>
+          <span class="detail">${escapeHtml(k.role)}</span>
+          <span class="found">${escapeHtml(k.masked)}</span>
+        </div>
+      `).join("")
+    : `<p class="status-line">No keys yet.</p>`;
+  el.innerHTML = `
+    <h2>Keys</h2>
+    ${mintedBanner}
+    <div class="check-list">${rows}</div>
+    <button type="button" id="hosting-new-key-btn">New key</button>
+  `;
+  document.getElementById("hosting-new-key-btn").addEventListener("click", mintHostKey);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -255,7 +396,12 @@ function renderChecks() {
   }
   const rows = check.findings.map((finding) => {
     const cls = hostRowClass(finding.status);
-    const fixNote = finding.status === "fix" && finding.fix && !finding.fixable
+    // The one check row this screen points somewhere else: a key is minted from the Keys panel
+    // (M9), not from a fix this row could apply itself.
+    const keysBtn = finding.id === "auth-fail-closed"
+      ? `<button type="button" class="keys-jump-btn">Manage keys</button>`
+      : "";
+    const fixNote = !keysBtn && finding.status === "fix" && finding.fix && !finding.fixable
       ? `<span class="found">${escapeHtml(finding.fix)}</span>`
       : "";
     return `
@@ -263,11 +409,13 @@ function renderChecks() {
         <span class="mark">${hostMarkFor(finding.status)}</span>
         <span class="name">${escapeHtml(finding.title)}</span>
         <span class="detail" title="${escapeHtml(finding.detail)}">${escapeHtml(finding.detail)}</span>
-        ${fixNote}
+        ${keysBtn || fixNote}
       </div>
     `;
   });
   el.innerHTML = `<div class="check-list">${rows.join("")}</div>`;
+  const jump = el.querySelector(".keys-jump-btn");
+  if (jump) jump.addEventListener("click", scrollToKeys);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -394,13 +542,16 @@ function renderActions() {
 
 function renderHosting() {
   renderReach();
+  renderLive();
   renderLadder();
+  renderKeys();
   renderChecks();
   renderActions();
   renderProgress();
 }
 
 async function initHosting() {
+  hostingState.mintedKey = null;
   await refreshHostingAppPicker();
   await loadHosting();
 }
