@@ -12118,9 +12118,88 @@ def run_host_keys(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_host_deploy(args: argparse.Namespace) -> int:
+    """`npdev host deploy` (H14) -- the refusal matters more than the success path. On an
+    engine/target mismatch: write NOTHING, exit non-zero, name the three fix steps. On success:
+    write the manifest(s) (if a regeneration has not already, via HostDeploymentEmitter/H13), then
+    print the split -- what NPDev already resolved vs. what the operator must supply."""
+    import npdev_host
+
+    app_dir = Path(args.app).expanduser().resolve()
+    as_json = bool(getattr(args, "json", False))
+
+    definition = npdev_host.read_definition(app_dir)
+    if definition is None:
+        raise CliError(f"no host.definition.json for {app_dir} -- run `npdev host plan` first. "
+                        "nothing was written.")
+
+    resolved_db_plan_path = app_dir / "_ops" / "resolved-db-plan.json"
+    if not resolved_db_plan_path.is_file():
+        raise CliError(f"{app_dir} has not been generated yet (no _ops/resolved-db-plan.json). "
+                        "nothing was written.")
+    engine = read_json(resolved_db_plan_path).get("engine")
+
+    target_id = definition.get("target")
+    if not target_id:
+        raise CliError("host.definition.json names no target -- run `npdev host plan --target "
+                        "<id>` first. nothing was written.")
+
+    target = next((t for t in npdev_host.load_targets().get("targets", []) if t.get("id") == target_id), None)
+    if target is None:
+        raise CliError(f"unknown target {target_id!r} -- nothing was written.")
+
+    requires = target.get("requiresEngine")
+    if requires and requires != engine:
+        message = (
+            f"refusing -- engine mismatch.\n\n"
+            f"This app was generated with database.engine={engine!r}. The engine is chosen at "
+            f"generation time; no environment variable, deploy flag, or hosting-platform setting "
+            f"changes it after the fact.\n\n"
+            f"To deploy to {target_id!r} (requires {requires!r}):\n"
+            f"  1. Set database.engine to {requires!r} in db.definition.json.\n"
+            f"  2. Set database.databaseName explicitly -- otherwise every regeneration expects a "
+            f"fresh database and DatabaseIdentityStartupValidator refuses to start.\n"
+            f"  3. Regenerate this app, then run `npdev host deploy` again.\n\n"
+            f"nothing was written."
+        )
+        if as_json:
+            print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "host deploy",
+                               "ok": False, "code": "ENGINE_MISMATCH", "detail": message}, indent=2))
+        else:
+            print(f"npdev host deploy: {message}", file=sys.stderr)
+        return 1
+
+    plan = _load_or_resolve_host_plan(app_dir)
+    written = [str(p) for p in npdev_host.write_deployment_manifests(app_dir, plan)]
+    env = plan.get("requiredEnv") or npdev_host.required_env(plan)
+    npdev_vars = {k: v for k, v in env.items() if v.get("source") == "npdev"}
+    you_vars = {k: v for k, v in env.items() if v.get("source") == "you"}
+
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host deploy", "ok": True,
+            "target": target_id, "written": written, "requiredEnv": env,
+        }, indent=2))
+        return 0
+
+    if written:
+        print(f"Wrote for target {target_id}:")
+        for path in written:
+            print(f"  {path}")
+    else:
+        print(f"Target {target_id} needs no deployment manifest (docker-compose.yml already covers it).")
+    print()
+    print(f"NPDev already resolved {len(npdev_vars)} of {len(env)} variable(s):")
+    for name, info in npdev_vars.items():
+        print(f"  {name}={info.get('value')}  -- {info.get('why')}")
+    print(f"You must supply {len(you_vars)}:")
+    for name, info in you_vars.items():
+        print(f"  {name}  -- {info.get('why')}")
+    return 0
+
+
 def _run_host(args: argparse.Namespace) -> int:
-    """Dispatch for `npdev host <verb>` (H4). Only `deploy` (H14/Wave 4, needs HostDeploymentEmitter)
-    remains a placeholder."""
+    """Dispatch for `npdev host <verb>` (H4). Every subcommand now has a real handler."""
     command = getattr(args, "host_command", None)
     if command == "plan":
         return run_host_plan(args)
@@ -12137,7 +12216,7 @@ def _run_host(args: argparse.Namespace) -> int:
     if command == "keys":
         return run_host_keys(args)
     if command == "deploy":
-        raise CliError(f"`npdev host {command}` is not implemented yet (see NPDEV_HOST_IMPLEMENTATION_PLAN.md)")
+        return run_host_deploy(args)
     print("usage: npdev host {plan,check,share,down,status,deploy,keys,explain} ...", file=sys.stderr)
     return 2
 

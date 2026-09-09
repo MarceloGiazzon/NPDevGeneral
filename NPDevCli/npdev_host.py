@@ -693,3 +693,114 @@ def preflight(app_dir: Path, plan: dict) -> list[Finding]:
         elif finding["id"] == "data-durability" and finding["status"] == "warn":
             blocking.append(finding)
     return blocking
+
+
+# ---------------------------------------------------------------------------------------------
+# H14: `npdev host deploy`. Mirrors HostDeploymentEmitter.java's own manifest content (H13) so
+# `deploy` works right after `npdev host plan --target ...`, without forcing a regeneration first
+# -- the Java emitter writes the SAME files at generation time; this is the CLI-side twin for the
+# common case where the user has not regenerated yet. Writes NOTHING for a local-machine target
+# (cloudflared/ngrok/shared-ingress) or "vps" (docker-compose.yml already IS that deployment).
+# ---------------------------------------------------------------------------------------------
+
+_NO_MANIFEST_TARGETS = frozenset({"cloudflared", "ngrok", "shared-ingress", "vps"})
+
+
+def _render_yaml(app_id: str, target: dict, env: dict) -> str:
+    lines = [
+        f"# Hosting (H14): generated for target '{target['id']}' by `npdev host deploy`.",
+        "# Connect this repository at https://dashboard.render.com/ -- Render builds",
+        "# Dockerfile.build (P6's self-building variant) and deploys the result. The engine this",
+        "# app was generated with is BAKED IN; changing it here does nothing (see the",
+        "# 'engine-matches-target' check in `npdev host check`).",
+        "services:",
+        "  - type: web",
+        f"    name: {app_id}",
+        "    runtime: docker",
+        "    dockerfilePath: ./Dockerfile.build",
+        "    plan: starter",
+        "    envVars:",
+    ]
+    for name, info in env.items():
+        lines.append(f"        - key: {name}")
+        if info.get("value") is not None:
+            lines.append(f'          value: "{info["value"]}"')
+        else:
+            lines.append("          sync: false")
+    return "\n".join(lines) + "\n"
+
+
+def _koyeb_yaml(app_id: str, port: int, target: dict, env: dict) -> str:
+    lines = [
+        f"# Hosting (H14): generated for target '{target['id']}' by `npdev host deploy`.",
+        "# Deploy with the Koyeb CLI (`koyeb app init` / `koyeb deploy`) or by connecting this",
+        "# repository at https://app.koyeb.com/ -- Koyeb builds Dockerfile.build (P6's",
+        "# self-building variant). Entries with an empty value must be filled in on the Koyeb",
+        "# dashboard/CLI before the first deploy -- they are never baked in here.",
+        f"name: {app_id}",
+        "services:",
+        "  - name: web",
+        "    type: web",
+        "    ports:",
+        f"      - port: {port}",
+        "        protocol: http",
+        "    env:",
+    ]
+    for name, info in env.items():
+        value = info.get("value") if info.get("value") is not None else ""
+        lines.append(f"      - name: {name}")
+        lines.append(f'        value: "{value}"')
+    return "\n".join(lines) + "\n"
+
+
+def _env_example(target_id: str, env: dict) -> str:
+    lines = [
+        f"# Hosting (H14): the complete environment contract for target '{target_id}'.",
+        f"# Copy this file to .env.{target_id} and fill in every line NOT already given a value below.",
+        "",
+    ]
+    for name, info in env.items():
+        lines.append(f"# {info.get('why', '')}")
+        value = info.get("value")
+        lines.append(f"{name}={value if value is not None else ''}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def write_deployment_manifests(app_dir: Path, plan: dict) -> list[Path]:
+    """Writes the target's deployment manifest(s) -- render.yaml/koyeb.yaml + .env.<target>.example
+    -- for a target that needs one. Returns the paths written (empty list for a local-machine
+    target or "vps", which need none). Raises `ValueError` when the plan names no target or an
+    unknown one -- the caller (`npdev host deploy`) is expected to have already refused on an
+    engine mismatch before calling this.
+    """
+    target_id = plan.get("target")
+    if not target_id:
+        raise ValueError("plan names no target -- nothing to deploy")
+    target = _target_by_id(target_id)
+    if target is None:
+        raise ValueError(f"unknown target {target_id!r}")
+    if target_id in _NO_MANIFEST_TARGETS:
+        return []
+
+    app_dir = Path(app_dir)
+    env = plan.get("requiredEnv") or required_env(plan)
+    app_id = plan.get("appId") or app_dir.name
+    port = (plan.get("runsOn") or {}).get("port", 8080)
+
+    written: list[Path] = []
+    if target_id in ("render-neon", "render-h2"):
+        path = app_dir / "render.yaml"
+        path.write_bytes(_render_yaml(app_id, target, env).encode("utf-8"))
+        written.append(path)
+    elif target_id == "koyeb-tidb":
+        path = app_dir / "koyeb.yaml"
+        path.write_bytes(_koyeb_yaml(app_id, port, target, env).encode("utf-8"))
+        written.append(path)
+    else:
+        return []
+
+    env_path = app_dir / f".env.{target_id}.example"
+    env_path.write_bytes(_env_example(target_id, env).encode("utf-8"))
+    written.append(env_path)
+    return written
