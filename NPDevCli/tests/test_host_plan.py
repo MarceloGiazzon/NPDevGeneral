@@ -359,5 +359,90 @@ class HostExplainCliTest(unittest.TestCase):
             self.assertEqual(env["SPRING_DATASOURCE_URL"]["source"], "you")
 
 
+class HostKeysCliTest(unittest.TestCase):
+    """H12: `npdev host keys` -- lists (masked), mints, and surfaces the super-user key. Reuses
+    secrets/api-key.env, the SAME file/format Ensure-NpdevApiKey already writes -- never a second
+    key store."""
+
+    def _flat_app(self, tmp: str) -> Path:
+        app_dir = Path(tmp)
+        _write_json(app_dir / "_ops" / "resolved-db-plan.json", _minimal_resolved_db_plan())
+        return app_dir
+
+    def test_list_is_empty_before_any_key_exists(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = self._flat_app(tmp)
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "keys", "--app", str(app_dir), "--json"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(buffer.getvalue())["keys"], [])
+
+    def test_new_mints_a_key_the_env_var_name_is_npdev_auth_apikeys(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = self._flat_app(tmp)
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "keys", "--app", str(app_dir), "--new", "--json"])
+            self.assertEqual(code, 0)
+            result = json.loads(buffer.getvalue())
+            # LANDMINES #4: no underscore before APIKEYS -- Spring's relaxed binding strips the
+            # hyphen in npdev.auth.api-keys, it does not turn it into an underscore.
+            self.assertEqual(result["envVar"], "NPDEV_AUTH_APIKEYS")
+            self.assertTrue(result["key"])
+
+            env_text = (app_dir / "secrets" / "api-key.env").read_text(encoding="utf-8")
+            self.assertIn("NPDEV_AUTH_APIKEYS=", env_text)
+            self.assertIn(result["key"], env_text)
+
+    def test_list_after_new_shows_a_masked_key_never_the_raw_value(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = self._flat_app(tmp)
+            npdev_cli.main(["host", "keys", "--app", str(app_dir), "--new",
+                             "--tenant", "acme", "--actor", "alice", "--role", "ADMIN"])
+
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "keys", "--app", str(app_dir), "--json"])
+            self.assertEqual(code, 0)
+            keys = json.loads(buffer.getvalue())["keys"]
+            self.assertEqual(1, len(keys))
+            self.assertEqual(keys[0]["tenant"], "acme")
+            self.assertEqual(keys[0]["actor"], "alice")
+            self.assertEqual(keys[0]["role"], "ADMIN")
+            self.assertIn("…", keys[0]["masked"])
+
+    def test_superuser_reports_a_clear_failure_when_no_key_file_exists(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = self._flat_app(tmp)
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "keys", "--app", str(app_dir), "--superuser", "--json"])
+            self.assertEqual(code, 1)
+            self.assertFalse(json.loads(buffer.getvalue())["ok"])
+
+    def test_superuser_surfaces_the_key_when_the_file_exists(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = self._flat_app(tmp)
+            (app_dir / "_ops" / "SUPER_USER_KEY.txt").write_text("issued-raw-key-123", encoding="utf-8")
+
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "keys", "--app", str(app_dir), "--superuser", "--json"])
+            self.assertEqual(code, 0)
+            result = json.loads(buffer.getvalue())
+            self.assertEqual(result["key"], "issued-raw-key-123")
+
+
 if __name__ == "__main__":
     unittest.main()

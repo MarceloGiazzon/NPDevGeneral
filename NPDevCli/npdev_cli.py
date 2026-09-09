@@ -12054,10 +12054,73 @@ def run_host_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_host_keys(args: argparse.Namespace) -> int:
+    """`npdev host keys` (H12): list the active API keys (masked), `--new` mints one, `--superuser`
+    surfaces the ControlPanel key (P5's properties). Reuses `secrets/api-key.env` and
+    `Ensure-NpdevApiKey`'s own conventions -- does not invent a second key store."""
+    import npdev_host
+    import npdev_monitor
+
+    app_dir = Path(args.app).expanduser().resolve()
+    as_json = bool(getattr(args, "json", False))
+    probe = npdev_monitor.probe_app(app_dir)
+    final_app_root = Path(probe.get("finalAppRoot") or app_dir)
+
+    if getattr(args, "superuser", False):
+        key_file = probe.get("superUserKeyFile")
+        if key_file and Path(key_file).is_file():
+            raw = Path(key_file).read_text(encoding="utf-8").strip()
+            if as_json:
+                print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "host keys",
+                                   "ok": True, "superUserKeyFile": key_file, "key": raw}, indent=2))
+            else:
+                print(f"Super-user key file: {key_file}")
+                print(f"X-Super-User-Key: {raw}")
+            return 0
+        message = ("No SUPER_USER_KEY.txt found. Either the app has never booted, or it was "
+                   "generated with npdev.superuser.bootstrap-key-hash/-raw set (see "
+                   "docs/CONFIGURATION.md, 'ControlPanel Super User key') -- the key never "
+                   "touches disk in that mode.")
+        if as_json:
+            print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "host keys",
+                               "ok": False, "detail": message}, indent=2))
+        else:
+            print(message)
+        return 1
+
+    if getattr(args, "new", False):
+        key, path = npdev_host.mint_api_key(
+            final_app_root,
+            tenant=getattr(args, "tenant", None) or "dev",
+            actor=getattr(args, "actor", None) or "developer",
+            role=getattr(args, "role", None) or "admin",
+        )
+        if as_json:
+            print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "host keys",
+                               "ok": True, "path": str(path), "key": key,
+                               "envVar": "NPDEV_AUTH_APIKEYS"}, indent=2))
+        else:
+            print(f"Minted a new API key into {path}")
+            print(f"X-Api-Key: {key}")
+        return 0
+
+    entries = npdev_host.list_api_keys(final_app_root)
+    if as_json:
+        print(json.dumps({"schemaVersion": "npdev-cli-result.v1", "command": "host keys",
+                           "ok": True, "keys": entries}, indent=2))
+        return 0
+    if not entries:
+        print("No API keys configured yet. Mint one with `npdev host keys --new`.")
+        return 0
+    print(f"{'MASKED':<14} {'TENANT':<10} {'ACTOR':<12} ROLE")
+    for entry in entries:
+        print(f"{entry['masked']:<14} {str(entry['tenant']):<10} {str(entry['actor']):<12} {entry['role']}")
+    return 0
+
+
 def _run_host(args: argparse.Namespace) -> int:
-    """Dispatch for `npdev host <verb>` (H4). `plan`/`check`/`explain`/`share`/`down`/`status`
-    have real handlers -- H12/H14/H15 replace the remaining placeholders, each in its own task,
-    without another pass over this dispatcher."""
+    """Dispatch for `npdev host <verb>` (H4). Only `deploy` (H14/Wave 4, needs HostDeploymentEmitter)
+    remains a placeholder."""
     command = getattr(args, "host_command", None)
     if command == "plan":
         return run_host_plan(args)
@@ -12071,7 +12134,9 @@ def _run_host(args: argparse.Namespace) -> int:
         return run_host_down(args)
     if command == "status":
         return run_host_status(args)
-    if command in {"deploy", "keys"}:
+    if command == "keys":
+        return run_host_keys(args)
+    if command == "deploy":
         raise CliError(f"`npdev host {command}` is not implemented yet (see NPDEV_HOST_IMPLEMENTATION_PLAN.md)")
     print("usage: npdev host {plan,check,share,down,status,deploy,keys,explain} ...", file=sys.stderr)
     return 2
@@ -14260,6 +14325,9 @@ def build_parser() -> argparse.ArgumentParser:
     host_keys = host_sub.add_parser("keys", help="List, mint or surface the API keys this app accepts.")
     host_keys.add_argument("--app", required=True)
     host_keys.add_argument("--new", action="store_true")
+    host_keys.add_argument("--tenant", default=None, help="--new only (default: dev)")
+    host_keys.add_argument("--actor", default=None, help="--new only (default: developer)")
+    host_keys.add_argument("--role", default=None, help="--new only (default: admin)")
     host_keys.add_argument("--superuser", action="store_true")
     host_keys.add_argument("--json", action="store_true")
 
