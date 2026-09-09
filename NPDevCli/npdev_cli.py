@@ -11689,6 +11689,242 @@ def _app_datasource_summary(final_app_root: Path) -> dict:
     }
 
 
+_HOST_RUNG_LABELS = {
+    0: "private (nobody but you can reach it)",
+    1: "shared by link (a tunnel; the address changes each time you open one)",
+    2: "permanent address, your own box (a domain you point at this machine)",
+    3: "external free tier (Render/Koyeb-style managed platform)",
+    4: "external paid host (VPS/Oracle Cloud, or a paid platform tier)",
+}
+
+
+def _prompt_host_rung() -> int:
+    print("How should this app be reachable?")
+    for rung, label in _HOST_RUNG_LABELS.items():
+        print(f"  {rung}. {label}")
+    while True:
+        raw = input("rung [0-4]: ").strip()
+        if raw.isdigit() and 0 <= int(raw) <= 4:
+            return int(raw)
+        print("Please enter a number from 0 to 4.")
+
+
+def _prompt_host_target(targets: list, engine: str | None) -> str | None:
+    print("Which hosting target?")
+    for target in targets:
+        requires = target.get("requiresEngine")
+        if requires and requires != engine:
+            print(f"  {target['id']} -- {target['label']} "
+                  f"(needs regeneration: this app's engine is baked in as {engine}, not {requires})")
+        else:
+            print(f"  {target['id']} -- {target['label']} ({target.get('fit')})")
+    raw = input("target id (blank for none): ").strip()
+    return raw or None
+
+
+def run_host_plan(args: argparse.Namespace) -> int:
+    """`npdev host plan` (H4) -- author host.definition.json: which rung, which target, who may
+    reach it. Interactive by default; --yes/--rung/--target/--json make it scriptable. Reads
+    `_ops/resolved-db-plan.json` first and never guesses the engine or port when it is missing --
+    it stops instead (LANDMINES #14/H4 warning).
+    """
+    import npdev_host
+
+    app_dir = Path(args.app).expanduser().resolve()
+    resolved_db_plan_path = app_dir / "_ops" / "resolved-db-plan.json"
+    if not resolved_db_plan_path.is_file():
+        raise CliError(
+            f"{app_dir} has not been generated yet (no _ops/resolved-db-plan.json). Generate this "
+            "app first, then run `npdev host plan` again -- nothing was written."
+        )
+    db_plan = read_json(resolved_db_plan_path)
+
+    engine = db_plan.get("engine")
+    port = db_plan.get("serverPort")
+    db_name = db_plan.get("resolvedDatabaseName")
+    non_interactive = bool(getattr(args, "yes", False))
+    as_json = bool(getattr(args, "json", False))
+
+    if not as_json:
+        print(f"npdev host plan: {app_dir.name} -- engine {engine}, port {port}, database {db_name}")
+
+    rung = args.rung
+    if rung is None:
+        if non_interactive:
+            raise CliError("--yes requires --rung (0-4) -- nothing was written")
+        rung = _prompt_host_rung()
+
+    targets = npdev_host.load_targets().get("targets", [])
+    target_id = args.target
+    if rung >= 3 and target_id is None and not non_interactive:
+        target_id = _prompt_host_target(targets, engine)
+    if target_id is not None:
+        chosen = next((t for t in targets if t.get("id") == target_id), None)
+        if chosen is None:
+            raise CliError(f"unknown target {target_id!r} -- see scripts/policy/hosting-targets.json")
+        requires = chosen.get("requiresEngine")
+        if requires and requires != engine:
+            raise CliError(
+                f"target {target_id!r} needs regeneration: this app's engine is baked in as "
+                f"{engine!r}, but {target_id!r} requires {requires!r}. Set database.engine to "
+                f"{requires!r} in db.definition.json and regenerate -- nothing was written."
+            )
+
+    if rung == 0:
+        reachable_by = {"kind": "nobody"}
+    elif rung == 1:
+        provider = getattr(args, "provider", None) or "cloudflared"
+        reachable_by = {"kind": "tunnel", "provider": provider, "through": "shared-ingress"}
+    elif rung == 2:
+        reachable_by = {"kind": "domain", "provider": "caddy", "through": "shared-ingress"}
+    else:
+        reachable_by = {"kind": "platform-edge", "through": "direct"}
+
+    definition = {
+        "schemaVersion": "npdev-host-definition.v1",
+        "rung": rung,
+        "target": target_id,
+        "reachableBy": reachable_by,
+        "authMode": getattr(args, "auth_mode", None) or "apikey",
+    }
+
+    written_path = npdev_host.write_definition(app_dir, definition)
+
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host plan",
+            "ok": True, "path": str(written_path), "definition": definition,
+        }, indent=2))
+        return 0
+
+    print(f"Wrote {written_path}")
+    print("Next:")
+    print(f"  npdev host check --app {args.app}")
+    if rung >= 3:
+        print(f"  npdev host deploy --app {args.app}")
+    else:
+        print(f"  npdev host share --app {args.app}")
+    return 0
+
+
+def _load_or_resolve_host_plan(app_dir: Path):
+    """Prefer the GENERATED `_ops/host-plan.json` (HostPlanEmitter, H13) once an app has been
+    regenerated after `npdev host plan`; fall back to resolving a preview from `host.definition.json`
+    -- the same merge `resolve_plan` does, just not yet baked into the app. Shared by every `host`
+    subcommand that needs the plan (H6/H7/H10/H11)."""
+    import npdev_host
+
+    app_dir = Path(app_dir)
+    plan = npdev_host.read_plan(app_dir)
+    if plan is not None:
+        return plan
+    definition = npdev_host.read_definition(app_dir)
+    if definition is None:
+        raise CliError(f"no host.definition.json for {app_dir} -- run `npdev host plan` first.")
+    return npdev_host.resolve_plan(app_dir, definition)
+
+
+_HOST_CHECK_STATUS_LABEL = {"ok": "OK", "warn": "WARN", "fix": "FIX"}
+
+
+def run_host_check(args: argparse.Namespace) -> int:
+    """`npdev host check` (H6): render the 12-check catalogue (H5); `--fix` applies whatever can
+    be repaired unattended and re-runs the checks so the printed output is the NEW state, never
+    the old one."""
+    import npdev_host
+
+    app_dir = Path(args.app).expanduser().resolve()
+    plan = _load_or_resolve_host_plan(app_dir)
+    as_json = bool(getattr(args, "json", False))
+
+    if getattr(args, "fix", False):
+        changes, findings = npdev_host.apply_fixes(app_dir, plan=plan)
+    else:
+        changes, findings = [], npdev_host.run_checks(app_dir, plan=plan)
+
+    counts = {"ok": 0, "warn": 0, "fix": 0}
+    for finding in findings:
+        counts[finding["status"]] = counts.get(finding["status"], 0) + 1
+    all_clear = counts["fix"] == 0
+
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host check",
+            "ok": all_clear, "rung": plan.get("rung"), "target": plan.get("target"),
+            "changes": changes, "findings": findings, "counts": counts,
+        }, indent=2))
+        return 0 if all_clear else 1
+
+    target_suffix = f" -> {plan['target']}" if plan.get("target") else ""
+    print(f"plan: rung {plan.get('rung')}{target_suffix}")
+    if changes:
+        print("Applied fixes:")
+        for change in changes:
+            print(f"  - {change}")
+    for finding in findings:
+        print(f"  [{_HOST_CHECK_STATUS_LABEL[finding['status']]}] {finding['title']}")
+        if finding["status"] != "ok":
+            print(f"        {finding['detail']}")
+            if finding.get("fix"):
+                print(f"        fix: {finding['fix']}")
+    print(f"{counts['ok']} ok, {counts['warn']} warn, {counts['fix']} fix")
+    if not all_clear:
+        print(f"Resolve the FIX rows above, or run `npdev host check --app {args.app} --fix` "
+              "to repair what can be repaired automatically.")
+    return 0 if all_clear else 1
+
+
+def run_host_explain(args: argparse.Namespace) -> int:
+    """`npdev host explain` (H7): terminal-only twin of the hosting screen's provenance table --
+    every setting this hosting shape needs, its value now, where it came from, and what breaks if
+    it is wrong. Every "where it came from" is DERIVED from required_env()'s own `source` field,
+    never a hardcoded string per row -- there is exactly one place that decides `npdev` vs `you`
+    per variable (npdev_host.required_env), and this command just renders it."""
+    import npdev_host
+
+    app_dir = Path(args.app).expanduser().resolve()
+    plan = _load_or_resolve_host_plan(app_dir)
+    env = plan.get("requiredEnv") or npdev_host.required_env(plan)
+    as_json = bool(getattr(args, "json", False))
+
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host explain",
+            "ok": True, "rung": plan.get("rung"), "target": plan.get("target"), "requiredEnv": env,
+        }, indent=2))
+        return 0
+
+    target_suffix = f" -> {plan['target']}" if plan.get("target") else ""
+    print(f"plan: rung {plan.get('rung')}{target_suffix}")
+    if not env:
+        print("No environment variables are required for this plan.")
+        return 0
+    print(f"{'VARIABLE':<34} {'VALUE NOW':<26} {'FROM':<6} WHAT BREAKS IF WRONG")
+    for name, info in env.items():
+        value = info.get("value")
+        value_display = value if value is not None else "(you must supply this)"
+        source_display = "npdev" if info.get("source") == "npdev" else "you"
+        print(f"{name:<34} {str(value_display):<26} {source_display:<6} {info.get('why', '')}")
+    return 0
+
+
+def _run_host(args: argparse.Namespace) -> int:
+    """Dispatch for `npdev host <verb>` (H4). `plan` and `check` have real handlers -- H7/H11/H12/
+    H14/H15 replace the remaining placeholders, each in its own task, without another pass over
+    this dispatcher."""
+    command = getattr(args, "host_command", None)
+    if command == "plan":
+        return run_host_plan(args)
+    if command == "check":
+        return run_host_check(args)
+    if command == "explain":
+        return run_host_explain(args)
+    if command in {"share", "down", "status", "deploy", "keys"}:
+        raise CliError(f"`npdev host {command}` is not implemented yet (see NPDEV_HOST_IMPLEMENTATION_PLAN.md)")
+    print("usage: npdev host {plan,check,share,down,status,deploy,keys,explain} ...", file=sys.stderr)
+    return 2
+
+
 def run_package(args: argparse.Namespace) -> int:
     """R9.5: bundle an ALREADY-BUILT FinalApp's runnable jar + the minimal `_ops` launcher into a
     self-contained artifact -- no Gradle wrapper, no JDK, no source, no source-machine data. See
@@ -13807,6 +14043,78 @@ def build_parser() -> argparse.ArgumentParser:
              "of running it.")
     service_uninstall.add_argument("--json", action="store_true")
 
+    # Hosting (H4): `npdev host <verb>` -- takes a generated app from private (rung 0) to hosted
+    # for real users (rung 4). All eight subcommands are declared now even though only `plan` has
+    # a handler this wave (see NPDEV_HOST_IMPLEMENTATION_PLAN.md) -- later waves fill the rest in
+    # without a second pass over this parser.
+    host_parser = subparsers.add_parser(
+        "host",
+        help="Take a generated app from private to hosted for real users -- plan the hosting "
+             "decisions, check what a real deployment needs, share it locally via a tunnel, or "
+             "deploy it to an external platform.",
+    )
+    host_sub = host_parser.add_subparsers(dest="host_command")
+
+    host_plan = host_sub.add_parser("plan",
+        help="Author host.definition.json: which rung, which target, who may reach it. "
+             "Interactive by default; --yes/--rung/--target/--json make it scriptable.",
+    )
+    host_plan.add_argument("--app", required=True, help="a generated NPDev app directory")
+    host_plan.add_argument("--rung", type=int, choices=[0, 1, 2, 3, 4], default=None,
+                            help="0 private | 1 shared by link | 2 permanent address, own box | "
+                                 "3 external free tier | 4 external paid host")
+    host_plan.add_argument("--target", default=None, help="target id from hosting-targets.json")
+    host_plan.add_argument("--provider", default=None, help="tunnel provider for rung 1 (default cloudflared)")
+    host_plan.add_argument("--auth-mode", dest="auth_mode", default=None, choices=["apikey", "jwt"])
+    host_plan.add_argument("--yes", action="store_true", help="skip interactive prompts; requires --rung")
+    host_plan.add_argument("--json", action="store_true")
+
+    host_check = host_sub.add_parser("check",
+        help="What would a real user hit right now? Every finding states the consequence before "
+             "the property, and --fix repairs whatever it safely can.",
+    )
+    host_check.add_argument("--app", required=True)
+    host_check.add_argument("--fix", action="store_true")
+    host_check.add_argument("--target", default=None, help="check a deployed URL instead of the local app")
+    host_check.add_argument("--json", action="store_true")
+
+    host_share = host_sub.add_parser("share",
+        help="Open this app to the world through a tunnel, fronted by the shared ingress so one "
+             "tunnel serves every app on this box.",
+    )
+    host_share.add_argument("--app", required=True)
+    host_share.add_argument("--provider", default=None, help="cloudflared (default) or ngrok")
+    host_share.add_argument("--json", action="store_true")
+
+    host_down = host_sub.add_parser("down", help="Stop the tunnel `host share` opened and clear its state.")
+    host_down.add_argument("--app", required=True)
+    host_down.add_argument("--json", action="store_true")
+
+    host_status = host_sub.add_parser("status", help="What is live right now: URL, provider, since when.")
+    host_status.add_argument("--app", required=True)
+    host_status.add_argument("--json", action="store_true")
+
+    host_deploy = host_sub.add_parser("deploy",
+        help="Write the deployment manifest for this app's target (render.yaml/fly.toml/koyeb.yaml "
+             "+ Dockerfile.build + .env.<target>.example). Refuses -- writing nothing -- on an "
+             "engine/target mismatch.",
+    )
+    host_deploy.add_argument("--app", required=True)
+    host_deploy.add_argument("--json", action="store_true")
+
+    host_keys = host_sub.add_parser("keys", help="List, mint or surface the API keys this app accepts.")
+    host_keys.add_argument("--app", required=True)
+    host_keys.add_argument("--new", action="store_true")
+    host_keys.add_argument("--superuser", action="store_true")
+    host_keys.add_argument("--json", action="store_true")
+
+    host_explain = host_sub.add_parser("explain",
+        help="Terminal-only provenance table: every hosting-relevant setting, its value now, "
+             "where it came from, and what breaks if it is wrong.",
+    )
+    host_explain.add_argument("--app", required=True)
+    host_explain.add_argument("--json", action="store_true")
+
     # R9.5: deploy without the toolchain. `package` bundles an already-built app's runnable jar +
     # minimal `_ops` launcher; `upgrade` installs (or in-place upgrades) that bundle onto a target,
     # never touching data/logs/secrets. See `run_package`/`run_upgrade`'s own module doc for the
@@ -14408,6 +14716,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_service_install(args)
         if args.command == "service" and args.service_command == "uninstall":
             return run_service_uninstall(args)
+        if args.command == "host":
+            return _run_host(args)
         if args.command == "package":
             return run_package(args)
         if args.command == "upgrade":
