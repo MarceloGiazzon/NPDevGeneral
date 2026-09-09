@@ -12,7 +12,7 @@ you to open a terminal.
 > version history — with git absent, `npdev init` says so and creates the app anyway, and the Ready
 > screen's `git-present` check warns rather than fails.
 
-**Windows · Linux · 7 screens · 44 actions · Private runtimes**
+**Windows · Linux · 8 screens · 55 actions · Private runtimes**
 
 ## Contents
 
@@ -22,9 +22,10 @@ you to open a terminal.
 - [2 · Install](#2--install)
 - [3 · Apps](#3--apps)
 - [4 · Run](#4--run)
-- [5 · Versions](#5--versions)
-- [6 · The Monitor](#6--the-monitor)
-- [7 · Scrap Manager](#7--scrap-manager)
+- [5 · Share](#5--share)
+- [6 · Versions](#6--versions)
+- [7 · The Monitor](#7--the-monitor)
+- [8 · Scrap Manager](#8--scrap-manager)
 - [Files & folders](#files-and-folders)
 - [The eleven checks](#the-eleven-checks)
 - [Commands it runs](#commands-it-runs-for-you)
@@ -118,11 +119,12 @@ understated for the other three. Pick an embedded engine and you can ignore Dock
 **First run creates one folder and touches nothing else.** Windows: `%LOCALAPPDATA%\NPDev`.
 Linux: `~/.local/share/npdev`. Everything the Manager downloads lives there.
 
-### The seven screens, in the order you will use them
+### The eight screens, in the order you will use them
 
-The window has seven tabs across the top. A first run uses the first four, left to right: check the
-machine, install NPDev, create an app, run it. **Versions** is for later, when you want to update;
-**The Monitor** and **Scrap Manager** are for once you have apps to watch.
+The window has eight tabs across the top. A first run uses the first four, left to right: check the
+machine, install NPDev, create an app, run it. **Share** comes right after Run — you run an app,
+then you give it an address other people can open. **Versions** is for later, when you want to
+update; **The Monitor** and **Scrap Manager** are for once you have apps to watch.
 
 ## 1 · Ready
 
@@ -276,7 +278,46 @@ your app keeps running on the last version that worked. Fix it and save again.
 | `structural change` | The database changed too — a full rebuild. |
 | `ready in 45.2s` | Running again. Refresh your browser. |
 
-## 5 · Versions
+## 5 · Share
+
+Give a generated app an address other people can open. Every panel here is a thin render of what
+`npdev host status|check|share|deploy` already returns — the Manager and a terminal can never reach
+different conclusions about the same machine.
+
+### The ladder
+
+Five rungs, from private to an external paid host. Rungs 3-4 group the targets in
+`scripts/policy/hosting-targets.json`; a target that needs an engine this app was not generated with
+is greyed out with the reason inline (**"Needs a Postgres app — this one uses H2Server"**), never a
+bare disabled control. Picking a rung only updates what this screen shows — nothing is written until
+you press the button below it.
+
+### Fix N things, then share
+
+The primary button is never disabled. If sharing would be blocked, it reads **"Fix 2 things, then
+share"** — pressing it fixes what can be fixed automatically, shows what cannot be (usually: the app
+itself is not running, or its database is not reachable), and opens a tunnel the moment everything
+that can be fixed is fixed. Progress ticks through five steps as it goes; watch the log
+(`~/.local/share/npdev/manager.log` / `%LOCALAPPDATA%\NPDev\manager.log`) if a step reports an error.
+
+### Once it is live
+
+The address is the largest thing on the screen. **Copy link** and **Open it** sit beside it, and so
+does **Stop sharing** — easy exposure without an equally easy way to stop it would be a trap. A line
+underneath always says how many API keys exist; visitors need one of them, minted from the **Keys**
+panel below. A key's full value is shown exactly once, right when you mint it — copy it then, because
+NPDev does not show it again.
+
+### External targets (rungs 3-4)
+
+Picking an external target (Render, Koyeb, a VPS) shows a **Deploy** button instead. If the app was
+generated with a different database engine than the target requires, deploying offers to **rebuild
+this app on the engine the target needs** — the honest line is on that screen too: the app's current
+records do not come with the rebuild. Once deployed, the required environment variables split into
+what NPDev already resolved and what you must still supply yourself (each with a reason and a Copy
+button), and **Check it again** runs the same check catalogue against the live URL.
+
+## 6 · Versions
 
 Which NPDev versions you have, which one is in use, and how to add or remove one.
 
@@ -294,7 +335,7 @@ Your apps are stored separately and are never touched by any of this.
 that happens the release notes say so, and NPDev ships an automatic converter for existing
 models — but keep your model in git before updating.
 
-## 6 · The Monitor
+## 7 · The Monitor
 
 Every generated app on this machine, on one wall of screens. Full reference: [MONITOR.md](MONITOR.md).
 
@@ -318,7 +359,7 @@ seconds runs it, and the Manager passes the same acknowledgement token the termi
 **"Port taken" is its own state.** If a *different* app is already serving on this app's port, the
 card says so and names the other jar, rather than showing green because something healthy answered.
 
-## 7 · Scrap Manager
+## 8 · Scrap Manager
 
 Does this app still work in a real browser, and did that change? Full reference:
 [MONITOR.md](MONITOR.md).
@@ -442,6 +483,25 @@ The complete internal surface — useful when reporting a problem or reading the
 | `open_folder` | Open in the file manager |
 | `open_url` | Open in the browser |
 
+#### Share
+
+Every one of these is a pipe to `npdev host ...`. Which rung is available, whether a finding blocks,
+and what a target requires are all decided by the CLI, never in the window.
+
+| Action | Purpose |
+|---|---|
+| `host_status` | What is live right now: URL, provider, since when |
+| `host_check` | The check catalogue; `fix: true` repairs what can be repaired |
+| `host_explain` | Terminal-only provenance table (not rendered here; kept for parity with the CLI) |
+| `host_targets` | The ladder's targets, annotated `compatible`/`incompatibleReason` against this app's engine |
+| `host_plan` | Write the picked rung (and target, at rung 3-4) to `host.definition.json` |
+| `host_share` / `host_share_streaming` | Open a tunnel; the streaming form emits `host-event` progress |
+| `host_down` | Stop sharing |
+| `host_deploy` | Write an external target's deployment manifest, or refuse on an engine mismatch |
+| `host_keys` | List keys masked, or mint one (`new: true`) |
+| `rebuild_app_engine` | Regenerate this app on the engine an external target requires |
+| `fake_host_scenarios` / `set_fake_host_scenario` | Preview-mode scenario switch (needs-fixing / clean / live / engine-mismatch / deploy-written) |
+
 #### Versions and preview mode
 
 | Action | Purpose |
@@ -505,6 +565,7 @@ Long operations stream progress rather than freezing. These names appear in the 
 | `version-install-progress` | Downloading an NPDev version |
 | `setup-event` | Each phase of setup |
 | `dev-event` | Every line of the run log |
+| `host-event` | Each step of "Fix N things, then share" (check, fix, ingress, tunnel, confirm) |
 
 **If a progress bar never moves, that is worth reporting.** These events are how the window
 knows anything is happening; silence means something upstream stopped, not that the operation is
@@ -516,6 +577,7 @@ merely slow.
 |---|---|---|
 | `NPDEV_MANAGER_HOME` | Where everything is stored | `%LOCALAPPDATA%\NPDev` / `~/.local/share/npdev` |
 | `NPDEV_MANAGER_FAKE` | Preview mode — set to `1` | off |
+| `NPDEV_MANAGER_FAKE_HOST` | Preview mode's Share scenario before the window has set one at runtime | `needs-fixing` |
 
 Set `NPDEV_MANAGER_HOME` to keep everything on a different drive, or to run two independent
 installations side by side.
@@ -542,6 +604,17 @@ screen can be switched between prepared situations:
 | `wrong-java` | An older Java than 17 installed |
 | `acceptable-newer-java` | A newer Java than 17 installed (warns, does not fail) |
 | `no-jars` | Setup has not been run yet |
+
+The Share screen has its own set, switched the same way (`fake_host_scenarios` /
+`set_fake_host_scenario`, or `NPDEV_MANAGER_FAKE_HOST` before launch):
+
+| Scenario | Shows |
+|---|---|
+| `needs-fixing` | Two things to fix before sharing (the default) |
+| `clean` | Every check passing, ready to share |
+| `live` | A tunnel already open, with routed apps and hops |
+| `engine-mismatch` | An external target refused for the wrong database engine |
+| `deploy-written` | A successful deploy hand-off, with required environment variables |
 
 Useful for a demonstration, for learning the screens before committing to a download, or for
 seeing what a failure looks like on a machine where nothing is wrong.
