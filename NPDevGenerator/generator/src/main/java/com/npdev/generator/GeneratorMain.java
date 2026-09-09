@@ -24,6 +24,8 @@ import com.npdev.generator.packs.BuiltinPackComposer;
 import com.npdev.generator.packs.PackExtensionComposer;
 import com.npdev.generator.settings.ConfigSettingsReader;
 import com.npdev.generator.dbconfig.DockerDeploymentEmitter;
+import com.npdev.generator.dbconfig.HostDeploymentEmitter;
+import com.npdev.generator.dbconfig.HostPlanEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.OperationalRunbookEmitter;
 import com.npdev.generator.dbconfig.UserDatabaseDefinitionLoader;
@@ -269,9 +271,14 @@ public final class GeneratorMain {
             System.out.println("Generated build-info: " + assemblyResult.finalAppRoot()
                     .resolve(BuildInfoEmitter.RELATIVE_PATH).toAbsolutePath().normalize());
 
+            Path hostPlanPath = new HostPlanEmitter().emit(compiled, config, assemblyResult.finalAppRoot(), databasePlan);
+            System.out.println("Generated host plan: " + hostPlanPath);
+
             new DockerDeploymentEmitter().emit(config, assemblyResult.finalAppRoot(), databasePlan);
             System.out.println("Generated Docker deployment: "
                     + assemblyResult.finalAppRoot().resolve("docker-compose.yml").toAbsolutePath().normalize());
+
+            new HostDeploymentEmitter().emit(config, assemblyResult.finalAppRoot(), databasePlan, hostPlanPath);
 
             AppDependenciesEmitter dependenciesEmitter = new AppDependenciesEmitter();
             AppDependenciesEmitter.EmitResult dependenciesResult = dependenciesEmitter.emit(
