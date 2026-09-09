@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host keys",
+  "ok": true,
+  "keys": [
+    {
+      "masked": "Z2F4\u2026t5Ls",
+      "tenant": "dev",
+      "actor": "developer",
+      "role": "admin"
+    }
+  ]
+}

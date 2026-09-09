@@ -68,6 +68,8 @@ const FIXTURE_HOST_CHECK_NEEDS_FIXING: &str = include_str!("../fixtures/host-che
 const FIXTURE_HOST_DEPLOY_MISMATCH: &str = include_str!("../fixtures/host-deploy-mismatch.json");
 const FIXTURE_HOST_DEPLOY_WRITTEN: &str = include_str!("../fixtures/host-deploy-written.json");
 const FIXTURE_HOST_TARGETS: &str = include_str!("../fixtures/host-targets.json");
+const FIXTURE_HOST_KEYS_LIST: &str = include_str!("../fixtures/host-keys-list.json");
+const FIXTURE_HOST_KEYS_NEW: &str = include_str!("../fixtures/host-keys-new.json");
 /// Phase F. The one fixture here that is hand-authored rather than captured, and the file says why
 /// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
 /// Same documented-exception shape as the two doctor fixtures above.
@@ -765,16 +767,23 @@ pub async fn run_monitor_engine(
 // NPDevCli/npdev_host.py, not here.
 // ---------------------------------------------------------------------------------------------
 
-/// Which fake state the Share screen shows in stub mode -- same shape as `fake_doctor_scenario`,
-/// for the same reason: a screen with six states cannot be reviewed if stub mode can only ever
-/// produce one of them. Default is the state a user most often lands on first: nothing shared yet,
-/// and two things to fix.
+/// Which fake state the Share screen shows in stub mode -- same runtime-switchable Mutex shape as
+/// `FAKE_DOCTOR_SCENARIO` above, for the same reason: a screen with six states cannot be reviewed
+/// if stub mode can only ever produce one of them without restarting the Manager. Default is the
+/// state a user most often lands on first: nothing shared yet, and two things to fix.
+pub static FAKE_HOST_SCENARIO: Mutex<String> = Mutex::new(String::new());
+
 pub fn fake_host_scenario_names() -> Vec<&'static str> {
     vec!["needs-fixing", "clean", "live", "engine-mismatch", "deploy-written"]
 }
 
 fn fake_host_scenario() -> String {
-    std::env::var("NPDEV_MANAGER_FAKE_HOST").unwrap_or_else(|_| "needs-fixing".to_string())
+    let guard = FAKE_HOST_SCENARIO.lock().expect("lock poisoned");
+    if guard.is_empty() {
+        std::env::var("NPDEV_MANAGER_FAKE_HOST").unwrap_or_else(|_| "needs-fixing".to_string())
+    } else {
+        guard.clone()
+    }
 }
 
 pub async fn run_host_status(
@@ -877,6 +886,146 @@ pub async fn run_host_targets(
         "--list-targets".to_string(), "--json".to_string(),
     ];
     run_json(python_exe, npdev_cli, &args, java_home, "host targets").await
+}
+
+/// The ladder's PICK action: writes host.definition.json for the rung (and, at rung >=3, target)
+/// the user selected. `host check`/`host share` both refuse with "run `npdev host plan` first" if
+/// this has never run for the app -- so the very first visit to this screen needs it before any
+/// other host verb will do anything.
+pub async fn run_host_plan(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    rung: u8,
+    target: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host plan", "ok": true,
+            "path": format!("{app_dir}/host.definition.json"),
+            "definition": {
+                "schemaVersion": "npdev-host-definition.v1", "rung": rung, "target": target,
+                "reachableBy": {"kind": if rung == 0 { "nobody" } else { "tunnel" }},
+                "authMode": "apikey",
+            },
+        }));
+    }
+    let mut args = vec![
+        "host".to_string(), "plan".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--rung".to_string(), rung.to_string(),
+        "--yes".to_string(), "--json".to_string(),
+    ];
+    if let Some(t) = target {
+        args.push("--target".to_string());
+        args.push(t.to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "host plan").await
+}
+
+/// Artboard 3/4: open the tunnel. `npdev host share` already runs preflight, refreshes the shared
+/// ingress and starts the tunnel in the right order and writes `data/host-state.json` itself --
+/// this wrapper does not repeat any of that, only shells out and returns what the CLI decided.
+pub async fn run_host_share(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    provider: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        // No fake-host scenario represents a still-blocked share (none of the five demo the
+        // preflight-refusal shape), so stub mode always reports the live state here -- reusing
+        // host-status-up.json's own `state` object rather than a second hand-authored copy of it.
+        let status: Value = serde_json::from_str(FIXTURE_HOST_STATUS_UP)
+            .map_err(|e| format!("fixture did not parse: {e}"))?;
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host share", "ok": true,
+            "state": status["state"],
+        }));
+    }
+    let mut args = vec![
+        "host".to_string(), "share".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--json".to_string(),
+    ];
+    if let Some(p) = provider {
+        args.push("--provider".to_string());
+        args.push(p.to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "host share").await
+}
+
+/// Artboard 4's "Stop sharing", beside the address rather than in a menu.
+pub async fn run_host_down(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host down", "ok": true,
+        }));
+    }
+    let args = vec![
+        "host".to_string(), "down".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--json".to_string(),
+    ];
+    run_json(python_exe, npdev_cli, &args, java_home, "host down").await
+}
+
+/// Artboards 5/6. On an engine/target mismatch this refuses and writes nothing (`code:
+/// "ENGINE_MISMATCH"`); on success it writes the deployment manifest(s) and returns the
+/// `requiredEnv` split this screen renders by its own `source` field. Which target is used comes
+/// from host.definition.json (set by `run_host_plan` above), not a parameter here -- the CLI has
+/// no `--target` flag on `deploy` itself, by design: the target is chosen once, at plan time.
+pub async fn run_host_deploy(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = if fake_host_scenario() == "deploy-written" {
+            FIXTURE_HOST_DEPLOY_WRITTEN
+        } else {
+            FIXTURE_HOST_DEPLOY_MISMATCH
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec![
+        "host".to_string(), "deploy".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--json".to_string(),
+    ];
+    run_json(python_exe, npdev_cli, &args, java_home, "host deploy").await
+}
+
+/// M9: list/mint API keys. `new` mirrors `--new`; the minted key's raw value comes back exactly
+/// once, in this one response -- the screen must never re-display it after this call returns.
+pub async fn run_host_keys(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    new: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = if new { FIXTURE_HOST_KEYS_NEW } else { FIXTURE_HOST_KEYS_LIST };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec![
+        "host".to_string(), "keys".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--json".to_string(),
+    ];
+    if new {
+        args.push("--new".to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "host keys").await
 }
 
 // ---------------------------------------------------------------------------------------------
