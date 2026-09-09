@@ -1,0 +1,82 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://npdev.dev/schemas/ai/host-plan.schema.json",
+  "title": "NPDev resolved host plan",
+  "description": "GENERATED, never hand-edited. Written to _ops/host-plan.json on every generation by HostPlanEmitter: the authored host.definition.json merged with resolved facts from the compiled model and _ops/resolved-db-plan.json. Analogue of resolved-db-plan.json. Every hosting artifact and `npdev host check` reads this and nothing else.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "appId", "rung", "runsOn", "dataLivesOn", "authMode", "requiredEnv"],
+  "properties": {
+    "schemaVersion": { "const": "npdev-host-plan.v1" },
+    "appId": { "type": "string" },
+    "generatedAt": {
+      "type": "string",
+      "description": "OMIT unless the determinism checker is taught to exclude this file. check-deterministic-generation.ps1 SHA-256s every emitted file across two runs; a timestamp fails it."
+    },
+    "rung": { "type": "integer", "minimum": 0, "maximum": 4 },
+    "target": { "type": ["string", "null"] },
+    "runsOn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "port"],
+      "properties": {
+        "kind": { "enum": ["this-machine", "container", "platform"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "portFromEnv": {
+          "type": "string",
+          "description": "PORT on Render/Koyeb/Fly, SERVER_PORT elsewhere. See task P1."
+        },
+        "memoryMb": { "type": ["integer", "null"] }
+      }
+    },
+    "dataLivesOn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "engine", "survivesRestart"],
+      "properties": {
+        "kind": { "enum": ["this-machine", "managed", "ephemeral"] },
+        "engine": {
+          "enum": ["InMemory", "H2Local", "H2Server", "Postgres", "MySQL", "SqlServer"],
+          "description": "Copied from resolved-db-plan.json. BAKED IN AT GENERATION TIME -- not switchable by env var."
+        },
+        "databaseName": { "type": ["string", "null"] },
+        "survivesRestart": { "type": "boolean" },
+        "survivesThisMachineDying": { "type": "boolean" }
+      }
+    },
+    "reachableBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "enum": ["nobody", "tunnel", "domain", "platform-edge"] },
+        "provider": { "type": ["string", "null"] },
+        "through": { "enum": ["shared-ingress", "direct"] },
+        "domain": { "type": ["string", "null"] },
+        "terminatesTlsElsewhere": {
+          "type": "boolean",
+          "description": "True for every kind but 'nobody'. When true, forward-headers-strategy is mandatory -- see check `forwarded-headers`."
+        }
+      }
+    },
+    "authMode": { "enum": ["apikey", "jwt"] },
+    "springProfiles": {
+      "type": "string",
+      "description": "e.g. 'prod,postgres'. BOTH halves or StartupValidator refuses to boot, naming the missing one."
+    },
+    "requiredEnv": {
+      "type": "object",
+      "description": "The complete environment contract for this plan. Pinned across four seams by twin-pair rule host-plan-required-env-seams.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source", "why"],
+        "properties": {
+          "value": { "type": ["string", "null"], "description": "Null means the operator must supply it." },
+          "source": { "enum": ["npdev", "you"], "description": "'npdev' = resolved by the platform. 'you' = a secret only the operator has." },
+          "why": { "type": "string", "description": "One sentence: what breaks if this is wrong." }
+        }
+      }
+    },
+    "acknowledged": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://npdev.dev/schemas/ai/host-definition.schema.json",
+  "title": "NPDev host definition",
+  "description": "AUTHORED hosting decisions for one app. Lives beside db.definition.json in the app DEFINITION directory, NOT inside the generated app -- regeneration deletes and re-emits _ops/ wholesale, so anything the user chose must live outside it. Analogue of db.definition.json. Written by `npdev host plan`.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "rung"],
+  "properties": {
+    "schemaVersion": { "const": "npdev-host-definition.v1" },
+    "rung": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4,
+      "description": "0 private | 1 shared by link | 2 permanent address, own box | 3 external free tier | 4 external paid host"
+    },
+    "target": {
+      "type": ["string", "null"],
+      "description": "Target id from scripts/policy/hosting-targets.json. Null for rung 0."
+    },
+    "reachableBy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "enum": ["nobody", "tunnel", "domain", "platform-edge"] },
+        "provider": {
+          "enum": ["cloudflared", "ngrok", "tailscale", "caddy", null],
+          "description": "Tunnel or proxy provider. Null when the platform owns the edge."
+        },
+        "through": {
+          "enum": ["shared-ingress", "direct"],
+          "default": "shared-ingress",
+          "description": "shared-ingress routes through `npdev monitor ingress` so ONE tunnel fronts every app on the box. Prefer it."
+        },
+        "domain": { "type": ["string", "null"] }
+      }
+    },
+    "authMode": {
+      "enum": ["apikey", "jwt"],
+      "default": "apikey",
+      "description": "Mirrors npdev.auth.mode. Fail-closed in every profile -- an app with no key refuses to boot."
+    },
+    "acknowledged": {
+      "type": "array",
+      "items": { "enum": ["data-does-not-leave-this-machine", "data-disappears-on-restart", "app-sleeps-when-idle"] },
+      "uniqueItems": true,
+      "description": "Consequences the user accepted in words. The publish gate blocks until the relevant one is present, and never asks twice."
+    },
+    "notes": { "type": "string", "maxLength": 2000 }
+  }
+}

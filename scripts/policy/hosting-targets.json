@@ -1,0 +1,150 @@
+{
+  "schemaVersion": "npdev-hosting-targets.v1",
+  "_comment": "Facts about each hosting target, as data. The CLI states these verbatim at the moment of choosing, so the user learns the trade-off before committing rather than discovering it as a mystery timeout. Never restate any of this in prose -- scripts in this repo may not read Markdown, and a second copy would drift. `caveats` are shown to the user word-for-word.",
+  "targets": [
+    {
+      "id": "cloudflared",
+      "label": "Cloudflare quick tunnel",
+      "rung": 1,
+      "requiresEngine": null,
+      "appMemoryMb": null,
+      "sleepsAfterMin": null,
+      "databaseKind": "this-machine",
+      "persistentDisk": true,
+      "injectsPortVar": null,
+      "terminatesTls": true,
+      "needsAccount": false,
+      "needsBinary": "cloudflared",
+      "fit": "good",
+      "caveats": [
+        "The link is public the moment it opens -- anyone who has it can reach the app, so the API key is the only thing between a stranger and your data.",
+        "The address changes every time you run it. For a stable one you need a Cloudflare account and a named tunnel.",
+        "It ends when you stop it or the machine sleeps."
+      ]
+    },
+    {
+      "id": "ngrok",
+      "label": "ngrok",
+      "rung": 1,
+      "requiresEngine": null,
+      "appMemoryMb": null,
+      "sleepsAfterMin": null,
+      "databaseKind": "this-machine",
+      "persistentDisk": true,
+      "injectsPortVar": null,
+      "terminatesTls": true,
+      "needsAccount": true,
+      "needsBinary": "ngrok",
+      "fit": "good",
+      "caveats": [
+        "Needs a free account and an auth token before the first run.",
+        "Inspect every request that arrives at http://127.0.0.1:4040 -- useful when a webhook is not behaving.",
+        "The free plan shows an interstitial page to first-time visitors."
+      ]
+    },
+    {
+      "id": "shared-ingress",
+      "label": "Own domain via the shared ingress",
+      "rung": 2,
+      "requiresEngine": null,
+      "appMemoryMb": null,
+      "sleepsAfterMin": null,
+      "databaseKind": "this-machine",
+      "persistentDisk": true,
+      "injectsPortVar": null,
+      "terminatesTls": true,
+      "needsAccount": false,
+      "needsBinary": "caddy",
+      "fit": "good",
+      "caveats": [
+        "You need a domain whose DNS points at this machine, and ports 80 and 443 reachable from outside.",
+        "Caddy obtains a real certificate automatically once a real hostname replaces ':443'. Until then it issues its own, which browsers will warn about.",
+        "Uptime and backups are yours. Nothing restarts this app if the machine reboots unless you installed the service (_ops/Install-Service.ps1)."
+      ]
+    },
+    {
+      "id": "render-neon",
+      "label": "Render + Neon Postgres",
+      "rung": 3,
+      "requiresEngine": "Postgres",
+      "appMemoryMb": 512,
+      "sleepsAfterMin": 15,
+      "databaseKind": "managed",
+      "databaseFreeStorageGb": 0.5,
+      "persistentDisk": false,
+      "injectsPortVar": "PORT",
+      "terminatesTls": true,
+      "needsAccount": true,
+      "needsBinary": null,
+      "fit": "workable",
+      "caveats": [
+        "The app must have been generated with db.engine: Postgres. The engine is baked in at generation time and no environment variable changes it.",
+        "The container sleeps after 15 minutes idle. Waking it costs a cold start, and this app runs schema lifecycle on every boot -- budget noticeably longer than a plain Spring app.",
+        "There is no persistent disk. Set NPDEV_SUPERUSER_BOOTSTRAPKEYHASH so the ControlPanel key does not depend on a file surviving.",
+        "Set database.databaseName explicitly in db.definition.json, or every regeneration expects a brand-new database and startup refuses."
+      ]
+    },
+    {
+      "id": "koyeb-tidb",
+      "label": "Koyeb + TiDB MySQL",
+      "rung": 3,
+      "requiresEngine": "MySQL",
+      "appMemoryMb": 512,
+      "sleepsAfterMin": 15,
+      "databaseKind": "managed",
+      "databaseFreeStorageGb": 5,
+      "persistentDisk": false,
+      "injectsPortVar": "PORT",
+      "terminatesTls": true,
+      "needsAccount": true,
+      "needsBinary": null,
+      "fit": "workable",
+      "caveats": [
+        "The app must have been generated with db.engine: MySQL.",
+        "More database storage than Render + Neon, less CPU (0.1 vCPU) -- boot is slower, steady-state is fine.",
+        "utf8mb4 is not optional on MySQL. The emitted .env already carries this; do not override the charset.",
+        "No persistent disk -- same super-user key caveat as Render."
+      ]
+    },
+    {
+      "id": "render-h2",
+      "label": "Render, embedded H2",
+      "rung": 3,
+      "requiresEngine": null,
+      "appMemoryMb": 512,
+      "sleepsAfterMin": 15,
+      "databaseKind": "ephemeral",
+      "persistentDisk": false,
+      "injectsPortVar": "PORT",
+      "terminatesTls": true,
+      "needsAccount": true,
+      "needsBinary": null,
+      "fit": "demo-only",
+      "caveats": [
+        "Everything written to this app is erased when the container restarts or wakes from sleep. Not some of it -- all of it.",
+        "The ControlPanel super-user key is erased with it, so set NPDEV_SUPERUSER_BOOTSTRAPKEYHASH or you will be locked out.",
+        "Fine for showing someone the shape of an app. Never for anything a person will type real work into."
+      ]
+    },
+    {
+      "id": "vps",
+      "label": "VPS or Oracle Cloud ARM",
+      "rung": 4,
+      "requiresEngine": null,
+      "appMemoryMb": null,
+      "sleepsAfterMin": null,
+      "databaseKind": "managed",
+      "persistentDisk": true,
+      "injectsPortVar": null,
+      "terminatesTls": true,
+      "needsAccount": true,
+      "needsBinary": "docker",
+      "fit": "good",
+      "caveats": [
+        "The docker-compose.yml NPDev already emits IS this deployment -- app, database, healthchecks, log caps, optional backup and observability profiles.",
+        "No sleep and no cold starts, so the per-boot schema lifecycle stops mattering.",
+        "You administer the machine: updates, certificates and backups are yours. The emitted backup profile handles the database; nothing handles the host."
+      ]
+    }
+  ]
+}
