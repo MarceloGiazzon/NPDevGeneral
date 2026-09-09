@@ -167,6 +167,49 @@ def emit_control_panel_page(static_dir: Path, app_id: str, port: int, out_root: 
 
 
 # ---------------------------------------------------------------------------------------------
+# hosting.html + host-plan.json (H8) -- the generated screen for `npdev host`. Client-side only:
+# the template's JS fetches host-plan.json at load, the same way app-tree.html fetches
+# app-tree.json. The page shows the live topology, the H5 check catalogue, the H7 provenance
+# table, and a "what changes if I..." panel driven by scripts/policy/hosting-targets.json.
+# ---------------------------------------------------------------------------------------------
+
+def emit_hosting_page(app_dir: Path, static_dir: Path, app_id: str = "") -> Path:
+    import npdev_host  # local import: npdev_host imports _detect_definition_dir from this module
+
+    app_dir = Path(app_dir)
+    static_dir.mkdir(parents=True, exist_ok=True)
+
+    definition = npdev_host.read_definition(app_dir)
+    plan: dict = {"schemaVersion": "npdev-host-plan.v1", "rung": 0, "target": None, "requiredEnv": {}}
+    if definition is not None:
+        plan = npdev_host.read_plan(app_dir) or definition
+        if "requiredEnv" not in plan:
+            try:
+                plan = npdev_host.resolve_plan(app_dir, definition)
+            except FileNotFoundError:
+                pass
+
+    try:
+        findings = npdev_host.run_checks(app_dir, plan=plan)
+    except Exception:
+        findings = []
+
+    payload = {
+        "schemaVersion": "npdev-hosting-page.v1",
+        "plan": plan,
+        "findings": findings,
+        "targets": npdev_host.load_targets().get("targets", []),
+    }
+    (static_dir / "host-plan.json").write_bytes(
+        (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"))
+
+    html = _load_template("hosting.html.tpl").replace("__APP__", app_id)
+    dest = static_dir / "hosting.html"
+    dest.write_text(html, encoding="utf-8", newline="")
+    return dest
+
+
+# ---------------------------------------------------------------------------------------------
 # agent-prompter.html / properties.html -- static templates, __APP__ only, no data-gathering
 # ---------------------------------------------------------------------------------------------
 

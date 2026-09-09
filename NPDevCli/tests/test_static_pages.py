@@ -136,6 +136,42 @@ class StaticPagesFixtureTest(unittest.TestCase):
         for item in check_scripts:
             self.assertFalse(item["runnable"], "verification.html is READ-ONLY (S5.3)")
 
+    def test_hosting_page_writes_html_and_a_host_plan_json_sibling(self):
+        app_dir = self.tmp_path / "hosted-app"
+        (app_dir / "_ops").mkdir(parents=True)
+        (app_dir / "_ops" / "resolved-db-plan.json").write_text(json.dumps({
+            "appId": "myapp", "engine": "Postgres", "serverPort": 1,
+            "resolvedDatabaseName": "npdev_myapp", "physicalDatabase": True,
+        }), encoding="utf-8")
+
+        import npdev_host
+        npdev_host.write_definition(app_dir, {
+            "schemaVersion": "npdev-host-definition.v1", "rung": 3, "target": "render-neon",
+            "reachableBy": {"kind": "platform-edge"},
+        })
+
+        hosting_static_dir = app_dir / "static"
+        dest = sp.emit_hosting_page(app_dir, hosting_static_dir, "myapp")
+
+        self.assertEqual("hosting.html", dest.name)
+        html = dest.read_text(encoding="utf-8")
+        self.assertNotIn("__APP__", html)
+        self.assertIn("myapp", html)
+
+        doc = json.loads((hosting_static_dir / "host-plan.json").read_bytes().decode("utf-8"))
+        self.assertEqual("npdev-hosting-page.v1", doc["schemaVersion"])
+        self.assertEqual("render-neon", doc["plan"]["target"])
+        self.assertEqual(12, len(doc["findings"]))
+        self.assertTrue(any(t["id"] == "render-neon" for t in doc["targets"]))
+
+    def test_hosting_page_degrades_gracefully_with_no_definition_yet(self):
+        app_dir = self.tmp_path / "unplanned-app"
+        app_dir.mkdir(parents=True)
+        dest = sp.emit_hosting_page(app_dir, app_dir / "static", "myapp")
+        self.assertTrue(dest.is_file())
+        doc = json.loads((app_dir / "static" / "host-plan.json").read_bytes().decode("utf-8"))
+        self.assertEqual(0, doc["plan"]["rung"])
+
     def test_resolve_refs_inlines_a_ref_and_keeps_sibling_keys(self):
         with TemporaryDirectory(prefix="npdev-refs-") as tmp:
             base = Path(tmp)
