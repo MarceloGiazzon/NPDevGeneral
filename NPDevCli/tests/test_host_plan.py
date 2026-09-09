@@ -332,6 +332,28 @@ class HostPlanCliTest(unittest.TestCase):
             written = npdev_host.read_definition(app_dir)
             self.assertEqual(written["target"], "render-neon")
 
+    def test_list_targets_writes_nothing_and_annotates_by_engine(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            app_dir = self._generated_app(tmp, engine="H2Server")
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "plan", "--app", str(app_dir), "--list-targets", "--json"])
+
+            self.assertEqual(code, 0)
+            result = json.loads(buffer.getvalue())
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["engine"], "H2Server")
+            self.assertIsNone(npdev_host.read_definition(app_dir))
+
+            by_id = {t["id"]: t for t in result["targets"]}
+            self.assertTrue(by_id["cloudflared"]["compatible"])
+            self.assertIsNone(by_id["cloudflared"]["incompatibleReason"])
+            self.assertFalse(by_id["render-neon"]["compatible"])
+            self.assertEqual(by_id["render-neon"]["incompatibleReason"],
+                              "Needs a Postgres app -- this one uses H2Server")
+
 
 class HostExplainCliTest(unittest.TestCase):
     """H7: `npdev host explain` -- every 'FROM' column value must come from required_env's own
