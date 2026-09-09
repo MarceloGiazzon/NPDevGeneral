@@ -11722,6 +11722,43 @@ def _prompt_host_target(targets: list, engine: str | None) -> str | None:
     return raw or None
 
 
+def _run_host_plan_list_targets(engine: str | None, as_json: bool) -> int:
+    """`npdev host plan --list-targets` -- the ladder's content (M5 of the Manager's Share screen).
+    Reads nothing but `scripts/policy/hosting-targets.json`, annotates each target against THIS
+    app's own engine, and writes nothing. `incompatibleReason` mirrors `_prompt_host_target`'s
+    interactive wording so a terminal and the Manager can never disagree about why a rung is greyed
+    out -- the Manager renders it verbatim rather than deciding hosting rules itself."""
+    import npdev_host
+
+    targets = npdev_host.load_targets().get("targets", [])
+    annotated = []
+    for target in targets:
+        requires = target.get("requiresEngine")
+        mismatch = bool(requires) and requires != engine
+        annotated.append({
+            **target,
+            "compatible": not mismatch,
+            "incompatibleReason": (
+                f"Needs a {requires} app -- this one uses {engine}" if mismatch else None
+            ),
+        })
+
+    if as_json:
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "host plan", "ok": True,
+            "engine": engine, "targets": annotated,
+        }, indent=2))
+        return 0
+
+    print(f"Targets for engine {engine}:")
+    for target in annotated:
+        if target["incompatibleReason"]:
+            print(f"  {target['id']} -- {target['label']} ({target['incompatibleReason']})")
+        else:
+            print(f"  {target['id']} -- {target['label']} ({target.get('fit')})")
+    return 0
+
+
 def run_host_plan(args: argparse.Namespace) -> int:
     """`npdev host plan` (H4) -- author host.definition.json: which rung, which target, who may
     reach it. Interactive by default; --yes/--rung/--target/--json make it scriptable. Reads
@@ -11744,6 +11781,9 @@ def run_host_plan(args: argparse.Namespace) -> int:
     db_name = db_plan.get("resolvedDatabaseName")
     non_interactive = bool(getattr(args, "yes", False))
     as_json = bool(getattr(args, "json", False))
+
+    if getattr(args, "list_targets", False):
+        return _run_host_plan_list_targets(engine, as_json)
 
     if not as_json:
         print(f"npdev host plan: {app_dir.name} -- engine {engine}, port {port}, database {db_name}")
@@ -14377,6 +14417,9 @@ def build_parser() -> argparse.ArgumentParser:
     host_plan.add_argument("--provider", default=None, help="tunnel provider for rung 1 (default cloudflared)")
     host_plan.add_argument("--auth-mode", dest="auth_mode", default=None, choices=["apikey", "jwt"])
     host_plan.add_argument("--yes", action="store_true", help="skip interactive prompts; requires --rung")
+    host_plan.add_argument("--list-targets", dest="list_targets", action="store_true",
+                            help="print scripts/policy/hosting-targets.json's targets, each annotated "
+                                 "against this app's own engine, and exit -- writes nothing")
     host_plan.add_argument("--json", action="store_true")
 
     host_check = host_sub.add_parser("check",
