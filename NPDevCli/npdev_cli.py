@@ -11992,7 +11992,9 @@ def run_host_share(args: argparse.Namespace) -> int:
         raise CliError(str(exc))
 
     state["ingressCaddyfile"] = str(ingress_out)
-    state["routedApps"] = len(ingress_result.get("routed", []))
+    # The list, not a count: the Share screen renders one row per routed app (name + path), and a
+    # count alone would force it to guess at names it has no other way to learn.
+    state["routedApps"] = ingress_result.get("routed", [])
     npdev_host.write_state(app_dir, state)
 
     if as_json:
@@ -12001,7 +12003,7 @@ def run_host_share(args: argparse.Namespace) -> int:
         }, indent=2))
         return 0
 
-    print(f"Shared ingress refreshed: {ingress_out} ({state['routedApps']} app(s) routed)")
+    print(f"Shared ingress refreshed: {ingress_out} ({len(state['routedApps'])} app(s) routed)")
     print(f"URL: {state['url']}")
     print("Anyone with this link reaches EVERY app currently routed by the shared ingress.")
     print(f"Stop with: npdev host down --app {args.app}")

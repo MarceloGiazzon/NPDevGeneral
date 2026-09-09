@@ -54,6 +54,30 @@ All from real routine runs against a live generated app, driven by a real ScrapF
 The red run is genuinely red: the routine waits for `#this-element-does-not-exist`. Nothing was
 edited to make it fail.
 
+## The Share screen (NPDEV_MANAGER_SHARE_IMPLEMENTATION_PLAN M2), captured 2026-09-09
+
+All against `D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\App`, an H2Server-engine app.
+`cloudflared` was installed for this capture (`scoop install cloudflared`) so the live state could be
+captured honestly rather than left "not covered".
+
+| File | Captured from | Covers |
+|---|---|---|
+| `host-check-needs-fixing.json` | `npdev host check --app <app> --json`, before any `--fix` ran | 6 `fix` findings, 1 `warn`, 5 `ok` — the state "Fix N things, then share" is built on |
+| `host-check-clean.json` | the same command after `host check --fix`, with the app and its H2 TCP server both running | every finding `ok`, `counts.fix: 0` |
+| `host-status-down.json` | `npdev host status --app <app> --json` with no tunnel running | `up: false`, `state: {}` |
+| `host-status-up.json` | the same command while `npdev host share` had a real cloudflared quick tunnel open | `up: true`, `state.routedApps` as the array of `{name, slug, port}` (not a count — see the `host share` fix this fixture drove, npdev_cli.py `run_host_share`) |
+| `host-deploy-mismatch.json` | `npdev host deploy --app <app> --json` with `host.definition.json` hand-set to `target: render-neon` (Postgres-only) against this H2 app | `ok: false`, `code: "ENGINE_MISMATCH"`, the three-step fix `detail` |
+| `host-deploy-written.json` | `npdev host plan --target render-h2 --rung 3 --yes` (render-h2 requires no particular engine) then `npdev host deploy --json` | `written[]` (two file chips), `requiredEnv` with two `"you"`-sourced vars |
+
+**Not covered:** an `npdev host deploy` success carrying an `"npdev"`-sourced `requiredEnv` entry.
+Those only appear for a Postgres/MySQL/SqlServer-profiled deployment (`npdev_host.py`'s
+`_ENGINE_RUNTIME_PROFILES`), and this machine's local test profile keeps Postgres/MySQL disabled
+(`scripts/policy/local-test-profile.json`). The M11 rendering code still reads the split from the
+`source` field generically — it does not assume either group is non-empty.
+
+`host.definition.json` on the source app was reset to `rung: 1, target: null` after capture so the
+app is left in the same state `host-check-clean.json` was captured from.
+
 ## Re-capturing
 
 Fixtures go stale when a CLI contract changes; that is what they are for. Re-capture by running the

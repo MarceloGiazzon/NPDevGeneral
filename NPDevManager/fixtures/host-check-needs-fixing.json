@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host check",
+  "ok": false,
+  "remote": null,
+  "rung": 1,
+  "target": null,
+  "changes": [],
+  "findings": [
+    {
+      "id": "app-running",
+      "status": "fix",
+      "title": "App is running",
+      "detail": "Nothing is listening on :8100. Start it with `_ops/Start-App.ps1`.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "auth-fail-closed",
+      "status": "ok",
+      "title": "Auth is fail-closed",
+      "detail": "1 API key(s) configured, none a known default.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "db-reachable",
+      "status": "fix",
+      "title": "Database reachable",
+      "detail": "The app will boot and then fail every request. Could not reach localhost:9200 (timed out).",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "schema-current",
+      "status": "warn",
+      "title": "Schema is current",
+      "detail": "The app has not booted since its last change -- schema drift cannot be confirmed until it does. Requests could hit columns that do not exist yet.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "forwarded-headers",
+      "status": "fix",
+      "title": "Forwarded headers handled",
+      "detail": "Behind a tunnel this app thinks it lives at http://localhost:8080 and will send your users there. Sign-in redirects break for everyone but you.",
+      "fix": "Add server.forward-headers-strategy=framework to application-prod.properties",
+      "fixable": true
+    },
+    {
+      "id": "health-details",
+      "status": "fix",
+      "title": "Health endpoint is detailed",
+      "detail": "/actuator/health returns your JDBC URL and disk figures to anyone holding the link, with no key.",
+      "fix": "Set management.endpoint.health.show-details=when-authorized in application-prod.properties",
+      "fixable": true
+    },
+    {
+      "id": "port-binding",
+      "status": "fix",
+      "title": "Port binding",
+      "detail": "The host cannot route to you. Users get 502 and there is no log line.",
+      "fix": "Set server.port=${PORT:${SERVER_PORT:8080}} in application.properties",
+      "fixable": true
+    },
+    {
+      "id": "memory-posture",
+      "status": "ok",
+      "title": "Memory posture set",
+      "detail": "No tight memory ceiling on this target.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "data-durability",
+      "status": "ok",
+      "title": "Data survives a restart",
+      "detail": "This deployment's data survives an app restart.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "key-retrievable",
+      "status": "ok",
+      "title": "Super-user key retrievable",
+      "detail": "This target has a persistent disk -- SUPER_USER_KEY.txt survives a restart.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "engine-matches-target",
+      "status": "ok",
+      "title": "Engine matches target",
+      "detail": "No external target selected.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "tunnel-binary",
+      "status": "fix",
+      "title": "Tunnel provider present",
+      "detail": "Install cloudflared, or pass --provider ngrok.",
+      "fix": null,
+      "fixable": false
+    }
+  ],
+  "counts": {
+    "ok": 5,
+    "warn": 1,
+    "fix": 6,
+    "unknown": 0
+  }
+}

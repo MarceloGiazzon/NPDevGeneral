@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host status",
+  "ok": true,
+  "up": true,
+  "state": {
+    "ingressCaddyfile": "C:\\Users\\Marcelo\\AppData\\Local\\NPDev\\shared-ingress\\Caddyfile",
+    "pid": 31560,
+    "provider": "cloudflared",
+    "routedApps": [
+      {
+        "name": "wmsoffice",
+        "port": 8100,
+        "slug": "wmsoffice"
+      }
+    ],
+    "startedAt": "2026-09-09T03:56:54.571734+00:00",
+    "url": "https://graduated-flyer-pete-idle.trycloudflare.com"
+  }
+}
