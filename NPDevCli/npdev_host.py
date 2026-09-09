@@ -576,13 +576,50 @@ def _fix_memory_posture(final_app_root: Path) -> str:
     return f"Could not find an anchor to insert JAVA_TOOL_OPTIONS in {path} -- regenerate this app instead"
 
 
-def _fix_auth_fail_closed(final_app_root: Path) -> str:
+def mint_api_key(final_app_root: Path, *, tenant: str = "dev", actor: str = "developer",
+                  role: str = "admin") -> tuple[str, Path]:
+    """Mints a fresh API key into `secrets/api-key.env`, in the SAME format
+    OperationalRunbookEmitter's `Ensure-NpdevApiKey`/`ensure_npdev_api_key` already use --
+    `NPDEV_AUTH_APIKEYS=<key>=<tenant>:<actor>:<role>` (do not invent a second key store, H12
+    warning). Returns `(raw_key, path)`. Overwrites any existing content -- the caller decides
+    when that is wanted: `npdev host keys --new` is an explicit request; the `auth-fail-closed`
+    `--fix` only calls this when no usable key exists yet.
+    """
     import secrets as _secrets
 
-    path = final_app_root / "secrets" / "api-key.env"
     key = _secrets.token_urlsafe(24).replace("-", "").replace("_", "")
+    path = Path(final_app_root) / "secrets" / "api-key.env"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(f"NPDEV_AUTH_APIKEYS={key}=dev:developer:admin\n".encode("utf-8"))
+    path.write_bytes(f"NPDEV_AUTH_APIKEYS={key}={tenant}:{actor}:{role}\n".encode("utf-8"))
+    return key, path
+
+
+def list_api_keys(final_app_root: Path) -> list[dict]:
+    """Every key currently in `secrets/api-key.env`, MASKED -- never the raw value."""
+    text = _read_text(Path(final_app_root) / "secrets" / "api-key.env")
+    entries: list[dict] = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        _, _, value = line.partition("=")
+        for item in value.split(";"):
+            if not item or "=" not in item:
+                continue
+            key, _, rest = item.partition("=")
+            parts = rest.split(":")
+            masked = (key[:4] + "…" + key[-4:]) if len(key) > 10 else "…"
+            entries.append({
+                "masked": masked,
+                "tenant": parts[0] if len(parts) > 0 else None,
+                "actor": parts[1] if len(parts) > 1 else None,
+                "role": parts[2] if len(parts) > 2 else None,
+            })
+    return entries
+
+
+def _fix_auth_fail_closed(final_app_root: Path) -> str:
+    key, path = mint_api_key(final_app_root)
     return f"Minted a new API key into {path} (X-Api-Key: {key})"
 
 
