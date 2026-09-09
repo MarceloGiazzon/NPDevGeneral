@@ -1647,6 +1647,43 @@ async fn generate_app_from_model(state: State<'_, AppState>, app_dir: String) ->
     npdev::run_generate_app(&python, &cli, java_home.as_deref(), &model, &config, &app_dir).await
 }
 
+/// M10: the engine-mismatch offer's "Rebuild on <engine>" button. Only works for an app this
+/// Manager can regenerate (`model_dir_of_app` -- an `npdev init`-created `<name>-app`, same
+/// requirement `generate_app_from_model` already has); an app generated some other way gets a
+/// named refusal rather than a silent no-op. Sets `database.databaseName` explicitly alongside the
+/// engine -- the plan's own warning: without it, every regeneration expects a fresh database and
+/// `DatabaseIdentityStartupValidator` refuses to start.
+#[tauri::command]
+async fn rebuild_app_engine(
+    state: State<'_, AppState>,
+    app_dir: String,
+    engine: String,
+) -> Result<(), String> {
+    let model_dir = model_dir_of_app(&app_dir)
+        .ok_or_else(|| "this app was not created from a model this Manager can regenerate -- \
+            edit db.definition.json by hand and regenerate it yourself, then run `npdev host deploy` \
+            again".to_string())?;
+    let db_def_path = PathBuf::from(&model_dir).join("db.definition.json");
+    let text = std::fs::read_to_string(&db_def_path)
+        .map_err(|e| format!("could not read {}: {e}", db_def_path.display()))?;
+    let mut db_def: Value = serde_json::from_str(&text)
+        .map_err(|e| format!("{} is not valid JSON: {e}", db_def_path.display()))?;
+    let database = db_def.get_mut("database").ok_or_else(|| {
+        format!("{} has no \"database\" object -- refusing to guess its shape", db_def_path.display())
+    })?;
+    database["engine"] = Value::String(engine);
+    if database.get("databaseName").and_then(|v| v.as_str()).unwrap_or("").is_empty() {
+        let name = PathBuf::from(&model_dir).file_name().map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "npdev_app".to_string());
+        database["databaseName"] = Value::String(name.replace('-', "_"));
+    }
+    let written = serde_json::to_string_pretty(&db_def).map_err(|e| e.to_string())?;
+    std::fs::write(&db_def_path, written + "\n")
+        .map_err(|e| format!("could not write {}: {e}", db_def_path.display()))?;
+
+    generate_app_from_model(state, app_dir).await
+}
+
 async fn prompter_generate_via_command(
     profile: &state::PrompterProfile,
     prompt: &str,
@@ -1933,6 +1970,7 @@ fn main() {
             host_keys,
             fake_host_scenarios,
             set_fake_host_scenario,
+            rebuild_app_engine,
             // The Scrap Manager (Phase D) + the engine (D9)
             engine_status,
             remember_engine_root,

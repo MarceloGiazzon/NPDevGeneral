@@ -19,6 +19,8 @@ const hostingState = {
   targets: null,    // hosting-targets.json, via host_targets
   keys: null,       // host_keys (list)
   mintedKey: null,  // the raw value, only right after host_keys --new -- never persisted
+  deployResult: null,   // host_deploy's response -- ENGINE_MISMATCH (M10) or written (M11)
+  remoteCheck: null,    // M11 "Check it again" -- host_check --target <url>
   pickedRung: null,
   pickedTarget: null,   // only meaningful at rung >= 3
   pickedProvider: null, // only meaningful at rung 1 (cloudflared/ngrok)
@@ -65,6 +67,8 @@ document.getElementById("hosting-app-picker").addEventListener("change", () => {
   hostingState.pickedTarget = null;
   hostingState.pickedProvider = null;
   hostingState.mintedKey = null;
+  hostingState.deployResult = null;
+  hostingState.remoteCheck = null;
   loadHosting();
 });
 
@@ -296,6 +300,8 @@ function pickRung(rung, targetId, provider) {
   hostingState.pickedRung = rung;
   hostingState.pickedTarget = rung >= 3 ? targetId : null;
   hostingState.pickedProvider = rung === 1 ? provider : null;
+  hostingState.deployResult = null;
+  hostingState.remoteCheck = null;
   renderHosting();
 }
 window.__hostingPickRung = pickRung;
@@ -526,13 +532,179 @@ async function runPrimaryAction() {
 
 function renderActions() {
   const el = document.getElementById("hosting-actions");
-  if (!hostingState.appDir || hostingState.pickedRung === null || hostingState.pickedRung >= 3) {
-    // Rung >= 3 shares nothing from this button -- M10/M11 render their own deploy action instead.
+  if (!hostingState.appDir || hostingState.pickedRung === null) {
     el.innerHTML = "";
+    return;
+  }
+  if (hostingState.pickedRung >= 3) {
+    // External hosting: `host deploy` (artboards 5/6), not `host share`. Needs a compatible target
+    // picked first -- an incompatible one is disabled in the ladder and cannot reach this button.
+    const disabled = !hostingState.pickedTarget;
+    el.innerHTML = `<button type="button" id="hosting-deploy-btn" class="primary"${disabled ? " disabled" : ""}>Deploy</button>`;
+    if (!disabled) document.getElementById("hosting-deploy-btn").addEventListener("click", runDeployAction);
     return;
   }
   el.innerHTML = `<button type="button" id="hosting-primary-btn" class="primary">${escapeHtml(primaryLabel())}</button>`;
   document.getElementById("hosting-primary-btn").addEventListener("click", runPrimaryAction);
+}
+
+// ---------------------------------------------------------------------------------------------
+// M10/M11 -- external hosting. `host deploy` reads its target from host.definition.json (there is
+// no `--target` flag on deploy itself -- the target is chosen once, at plan time), so this action
+// plans first if the pick changed, exactly like runPrimaryAction does for share.
+// ---------------------------------------------------------------------------------------------
+
+async function runDeployAction() {
+  if (hostingState.busy || !hostingState.appDir || !hostingState.pickedTarget) return;
+  hostingState.busy = true;
+  hostingState.deployResult = null;
+  hostingState.remoteCheck = null;
+  renderActions();
+  renderOffer();
+  renderDeploy();
+  try {
+    const check = hostingState.check;
+    const planned = check && typeof check.rung === "number";
+    const needsPlan = !planned || check.rung !== hostingState.pickedRung || check.target !== hostingState.pickedTarget;
+    if (needsPlan) {
+      await hInvoke("host_plan", {
+        appDir: hostingState.appDir, rung: hostingState.pickedRung, target: hostingState.pickedTarget,
+      });
+    }
+    hostingState.deployResult = await hInvoke("host_deploy", { appDir: hostingState.appDir });
+  } catch (err) {
+    document.getElementById("hosting-app-state").textContent = `Could not deploy this app -- ${escapeHtml(String(err))}`;
+  } finally {
+    hostingState.busy = false;
+    renderHosting();
+  }
+}
+
+// Artboard 5: the CLI's best refusal turned into an action. Nothing is written until the button is
+// pressed -- the offer only READS the mismatch host_deploy already reported.
+async function rebuildOnRequiredEngine() {
+  const result = hostingState.deployResult;
+  if (!result || result.ok !== false || !hostingState.appDir) return;
+  const target = (hostingState.targets && hostingState.targets.targets || [])
+    .find((t) => t.id === hostingState.pickedTarget);
+  const requiredEngine = target && target.requiresEngine;
+  if (!requiredEngine) return;
+  const btn = document.getElementById("hosting-rebuild-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Rebuilding…"; }
+  try {
+    await hInvoke("rebuild_app_engine", { appDir: hostingState.appDir, engine: requiredEngine });
+    // The engine just changed underneath the existing plan/checks -- read everything fresh rather
+    // than patching hostingState piecemeal.
+    await loadHosting();
+    await runDeployAction();
+  } catch (err) {
+    document.getElementById("hosting-app-state").textContent = `Rebuild failed -- ${escapeHtml(String(err))}`;
+    if (btn) { btn.disabled = false; btn.textContent = "Rebuild"; }
+  }
+}
+
+function renderOffer() {
+  const el = document.getElementById("hosting-offer");
+  const result = hostingState.deployResult;
+  const isMismatch = result && result.ok === false && result.code === "ENGINE_MISMATCH";
+  if (!isMismatch) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  el.hidden = false;
+  const target = (hostingState.targets && hostingState.targets.targets || [])
+    .find((t) => t.id === hostingState.pickedTarget);
+  const requiredEngine = target ? target.requiresEngine : null;
+  el.innerHTML = `
+    <h2>This app cannot deploy to ${escapeHtml(target ? target.label : hostingState.pickedTarget)} as it is</h2>
+    <p class="detail">${escapeHtml(result.detail || "").replace(/\n/g, "<br>")}</p>
+    <p class="status-line key-warning">The records currently in the app do not come with it -- a rebuild starts this app's data over.</p>
+    <p class="status-line">Nothing happens until you press the button below.</p>
+    ${requiredEngine
+      ? `<button type="button" id="hosting-rebuild-btn">Rebuild on ${escapeHtml(requiredEngine)}</button>`
+      : ""}
+  `;
+  const rebuildBtn = document.getElementById("hosting-rebuild-btn");
+  if (rebuildBtn) rebuildBtn.addEventListener("click", rebuildOnRequiredEngine);
+}
+
+// Artboard 6: the hand-off. `requiredEnv[VAR].source` is data, not a hardcoded list -- "you" is the
+// actionable checklist, "npdev" collapses into one line naming how many were already resolved.
+async function runRemoteCheck() {
+  const url = document.getElementById("hosting-remote-url").value.trim();
+  if (!url || !hostingState.appDir) return;
+  const btn = document.getElementById("hosting-remote-check-btn");
+  if (btn) { btn.disabled = true; btn.textContent = "Checking…"; }
+  try {
+    hostingState.remoteCheck = await hInvoke("host_check", { appDir: hostingState.appDir, fix: false, remote: url });
+  } catch (err) {
+    document.getElementById("hosting-app-state").textContent = `Could not check the remote deployment -- ${escapeHtml(String(err))}`;
+  }
+  renderDeploy();
+}
+
+function renderRemoteCheckRows() {
+  if (!hostingState.remoteCheck || !Array.isArray(hostingState.remoteCheck.findings)) return "";
+  const rows = hostingState.remoteCheck.findings.map((finding) => {
+    // A remote check that could not see something says so -- rendered as its own muted state,
+    // never as a green tick standing in for "we don't know".
+    const cls = finding.status === "unknown" ? "na" : hostRowClass(finding.status);
+    const mark = finding.status === "unknown" ? "?" : hostMarkFor(finding.status);
+    return `
+      <div class="check-row ${cls}">
+        <span class="mark">${mark}</span>
+        <span class="name">${escapeHtml(finding.title)}</span>
+        <span class="detail" title="${escapeHtml(finding.detail)}">${escapeHtml(finding.detail)}</span>
+      </div>
+    `;
+  });
+  return `<h3>Remote check</h3><div class="check-list">${rows.join("")}</div>`;
+}
+
+function renderDeploy() {
+  const el = document.getElementById("hosting-deploy");
+  const result = hostingState.deployResult;
+  if (!result || result.ok !== true) {
+    el.hidden = true;
+    el.innerHTML = "";
+    return;
+  }
+  el.hidden = false;
+  const written = Array.isArray(result.written) ? result.written : [];
+  const env = result.requiredEnv || {};
+  const youVars = Object.entries(env).filter(([, v]) => v.source === "you");
+  const npdevVars = Object.entries(env).filter(([, v]) => v.source === "npdev");
+
+  const writtenChips = written.length
+    ? written.map((path) => `<span class="hop">${escapeHtml(folderLeaf(path))}</span>`).join("")
+    : `<p class="status-line">This target needs no deployment manifest.</p>`;
+
+  const youRows = youVars.map(([name, info]) => `
+    <div class="check-row fail">
+      <span class="mark">✗</span>
+      <span class="name">${escapeHtml(name)}</span>
+      <span class="detail" title="${escapeHtml(info.why || "")}">${escapeHtml(info.why || "")}</span>
+      <button type="button" class="env-copy-btn" data-name="${escapeHtml(name)}">Copy name</button>
+    </div>
+  `).join("");
+
+  el.innerHTML = `
+    <h2>Deploying to ${escapeHtml(result.target)}</h2>
+    <div class="hop-strip">${writtenChips}</div>
+    <h3>You must supply ${youVars.length}</h3>
+    <div class="check-list">${youRows || `<p class="status-line">Nothing -- NPDev resolved everything this target needs.</p>`}</div>
+    ${npdevVars.length ? `<p class="status-line">NPDev already filled in the other ${npdevVars.length}.</p>` : ""}
+    <div class="picker-row">
+      <input type="text" id="hosting-remote-url" placeholder="https://your-app.onrender.com" />
+      <button type="button" id="hosting-remote-check-btn">Check it again</button>
+    </div>
+    ${renderRemoteCheckRows()}
+  `;
+  el.querySelectorAll(".env-copy-btn").forEach((btn) => {
+    btn.addEventListener("click", () => navigator.clipboard.writeText(btn.dataset.name));
+  });
+  document.getElementById("hosting-remote-check-btn").addEventListener("click", runRemoteCheck);
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -548,6 +720,8 @@ function renderHosting() {
   renderChecks();
   renderActions();
   renderProgress();
+  renderOffer();
+  renderDeploy();
 }
 
 async function initHosting() {
