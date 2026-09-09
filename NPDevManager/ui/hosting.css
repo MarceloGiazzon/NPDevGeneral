@@ -16,12 +16,57 @@
   margin: 0 0 4px;
 }
 #screen-hosting .reach-live { color: var(--pass); font-weight: 600; }
+
+/* Artboard 4: the live state. The address is the largest element on the screen -- it is what the
+   user came for. */
 #screen-hosting .reach-url {
   font-family: monospace;
-  font-size: 18px;
-  margin: 0 0 16px;
+  font-size: 26px;
+  font-weight: 600;
+  margin: 4px 0 14px;
   word-break: break-all;
 }
+#screen-hosting .live-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+#screen-hosting .key-warning { color: var(--fail); }
+#screen-hosting .hop-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 10px 0 18px;
+  font-size: 12px;
+  color: var(--muted);
+}
+#screen-hosting .hop {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+#screen-hosting .hop-arrow { color: var(--border); }
+#screen-hosting .routed-list { display: flex; flex-direction: column; gap: 4px; }
+#screen-hosting .routed-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+/* M9: keys. The raw value is shown exactly once, right after minting -- styled to stand out
+   because it will not appear again. */
+#screen-hosting .minted-key {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+#screen-hosting .minted-key code { font-size: 14px; }
 
 #screen-hosting .ladder {
   display: flex;
