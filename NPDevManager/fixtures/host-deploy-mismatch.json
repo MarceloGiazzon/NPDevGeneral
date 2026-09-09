@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host deploy",
+  "ok": false,
+  "code": "ENGINE_MISMATCH",
+  "detail": "refusing -- engine mismatch.\n\nThis app was generated with database.engine='H2Server'. The engine is chosen at generation time; no environment variable, deploy flag, or hosting-platform setting changes it after the fact.\n\nTo deploy to 'render-neon' (requires 'Postgres'):\n  1. Set database.engine to 'Postgres' in db.definition.json.\n  2. Set database.databaseName explicitly -- otherwise every regeneration expects a fresh database and DatabaseIdentityStartupValidator refuses to start.\n  3. Regenerate this app, then run `npdev host deploy` again.\n\nnothing was written."
+}

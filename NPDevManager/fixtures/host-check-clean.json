@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host check",
+  "ok": true,
+  "remote": null,
+  "rung": 1,
+  "target": null,
+  "changes": [],
+  "findings": [
+    {
+      "id": "app-running",
+      "status": "ok",
+      "title": "App is running",
+      "detail": "The app is up and answering health checks.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "auth-fail-closed",
+      "status": "ok",
+      "title": "Auth is fail-closed",
+      "detail": "1 API key(s) configured, none a known default.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "db-reachable",
+      "status": "ok",
+      "title": "Database reachable",
+      "detail": "Connected to localhost:9200.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "schema-current",
+      "status": "ok",
+      "title": "Schema is current",
+      "detail": "The app booted successfully against this schema, already running its configured schema-lifecycle guard.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "forwarded-headers",
+      "status": "ok",
+      "title": "Forwarded headers handled",
+      "detail": "server.forward-headers-strategy=framework is set in the prod profile.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "health-details",
+      "status": "ok",
+      "title": "Health endpoint is detailed",
+      "detail": "show-details=when-authorized -- an anonymous caller sees only {\"status\":\"UP\"}.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "port-binding",
+      "status": "ok",
+      "title": "Port binding",
+      "detail": "server.port honours $PORT, so a PaaS-injected port is routable.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "memory-posture",
+      "status": "ok",
+      "title": "Memory posture set",
+      "detail": "No tight memory ceiling on this target.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "data-durability",
+      "status": "ok",
+      "title": "Data survives a restart",
+      "detail": "This deployment's data survives an app restart.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "key-retrievable",
+      "status": "ok",
+      "title": "Super-user key retrievable",
+      "detail": "This target has a persistent disk -- SUPER_USER_KEY.txt survives a restart.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "engine-matches-target",
+      "status": "ok",
+      "title": "Engine matches target",
+      "detail": "No external target selected.",
+      "fix": null,
+      "fixable": false
+    },
+    {
+      "id": "tunnel-binary",
+      "status": "ok",
+      "title": "Tunnel provider present",
+      "detail": "cloudflared is on PATH.",
+      "fix": null,
+      "fixable": false
+    }
+  ],
+  "counts": {
+    "ok": 12,
+    "warn": 0,
+    "fix": 0,
+    "unknown": 0
+  }
+}

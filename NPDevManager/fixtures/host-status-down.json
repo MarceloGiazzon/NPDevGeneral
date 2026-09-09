@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host status",
+  "ok": true,
+  "up": false,
+  "state": {}
+}

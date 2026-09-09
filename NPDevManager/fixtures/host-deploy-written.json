@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host deploy",
+  "ok": true,
+  "target": "render-h2",
+  "written": [
+    "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\wmsoffice\\App\\render.yaml",
+    "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\wmsoffice\\App\\.env.render-h2.example"
+  ],
+  "requiredEnv": {
+    "NPDEV_AUTH_APIKEYS": {
+      "value": null,
+      "source": "you",
+      "why": "An app with no key refuses to boot (fail-closed by design) -- anyone with the link reaches your data without one. Mint with `npdev host keys --new`."
+    },
+    "NPDEV_SUPERUSER_BOOTSTRAPKEYHASH": {
+      "value": null,
+      "source": "you",
+      "why": "No persistent disk on this target -- SUPER_USER_KEY.txt does not survive a restart. Without this you are locked out of ControlPanel after the first one. Mint the hash with `npdev admin hash-key`."
+    }
+  }
+}
