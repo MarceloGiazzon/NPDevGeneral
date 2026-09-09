@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "host keys",
+  "ok": true,
+  "path": "D:\\WorkSpace\\NPDev\\Build\\generated-finalapps\\wmsoffice\\App\\secrets\\api-key.env",
+  "key": "Z2F4PdpxxXSivlsirQpz81PblKEnt5Ls",
+  "envVar": "NPDEV_AUTH_APIKEYS"
+}

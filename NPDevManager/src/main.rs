@@ -85,6 +85,16 @@ fn set_fake_doctor_scenario(name: String) {
     *npdev::FAKE_DOCTOR_SCENARIO.lock().expect("lock poisoned") = name;
 }
 
+#[tauri::command]
+fn fake_host_scenarios() -> Vec<&'static str> {
+    npdev::fake_host_scenario_names()
+}
+
+#[tauri::command]
+fn set_fake_host_scenario(name: String) {
+    *npdev::FAKE_HOST_SCENARIO.lock().expect("lock poisoned") = name;
+}
+
 // -------------------------------------------------------------------------------------------
 // M2: Ready screen
 // -------------------------------------------------------------------------------------------
@@ -556,6 +566,137 @@ async fn monitor_probe(state: State<'_, AppState>, app_dir: String, include_info
 #[tauri::command]
 async fn read_info_json(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
     monitor_probe(state, app_dir, Some(true)).await
+}
+
+// ---------------------------------------------------------------------------------------------
+// The Share screen (NPDEV_MANAGER_SHARE_IMPLEMENTATION_PLAN). Every command here is the same thin
+// shape as monitor_probe above: fake_mode returns BEFORE resolve_python_exe/resolve_npdev_cli (the
+// branch that lets stub mode run with no NPDev installed at all), otherwise it resolves the real
+// interpreter/CLI and delegates straight to npdev::run_host_*. No hosting decision is made here.
+// ---------------------------------------------------------------------------------------------
+
+#[tauri::command]
+async fn host_status(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_host_status(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                      java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_status(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+#[tauri::command]
+async fn host_check(
+    state: State<'_, AppState>,
+    app_dir: String,
+    fix: Option<bool>,
+    remote: Option<String>,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let fix = fix.unwrap_or(false);
+    if npdev::fake_mode() {
+        return npdev::run_host_check(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                     java_home.as_deref(), &app_dir, fix, remote.as_deref()).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_check(&python, &cli, java_home.as_deref(), &app_dir, fix, remote.as_deref()).await
+}
+
+#[tauri::command]
+async fn host_explain(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_host_explain(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                       java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_explain(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+#[tauri::command]
+async fn host_targets(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_host_targets(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                       java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_targets(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+#[tauri::command]
+async fn host_plan(
+    state: State<'_, AppState>,
+    app_dir: String,
+    rung: u8,
+    target: Option<String>,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_host_plan(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                    java_home.as_deref(), &app_dir, rung, target.as_deref()).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_plan(&python, &cli, java_home.as_deref(), &app_dir, rung, target.as_deref()).await
+}
+
+#[tauri::command]
+async fn host_share(
+    state: State<'_, AppState>,
+    app_dir: String,
+    provider: Option<String>,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_host_share(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                     java_home.as_deref(), &app_dir, provider.as_deref()).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_share(&python, &cli, java_home.as_deref(), &app_dir, provider.as_deref()).await
+}
+
+#[tauri::command]
+async fn host_down(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_host_down(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                    java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_down(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+#[tauri::command]
+async fn host_deploy(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_host_deploy(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                      java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_deploy(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+#[tauri::command]
+async fn host_keys(state: State<'_, AppState>, app_dir: String, new: Option<bool>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let new = new.unwrap_or(false);
+    if npdev::fake_mode() {
+        return npdev::run_host_keys(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                    java_home.as_deref(), &app_dir, new).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_host_keys(&python, &cli, java_home.as_deref(), &app_dir, new).await
 }
 
 /// VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 3: the Verification tab reads one
@@ -1752,6 +1893,18 @@ fn main() {
             monitor_logs,
             export_logs,
             manager_log_path,
+            // The Share screen (NPDEV_MANAGER_SHARE_IMPLEMENTATION_PLAN)
+            host_status,
+            host_check,
+            host_explain,
+            host_targets,
+            host_plan,
+            host_share,
+            host_down,
+            host_deploy,
+            host_keys,
+            fake_host_scenarios,
+            set_fake_host_scenario,
             // The Scrap Manager (Phase D) + the engine (D9)
             engine_status,
             remember_engine_root,

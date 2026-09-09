@@ -69,6 +69,8 @@ captured honestly rather than left "not covered".
 | `host-deploy-mismatch.json` | `npdev host deploy --app <app> --json` with `host.definition.json` hand-set to `target: render-neon` (Postgres-only) against this H2 app | `ok: false`, `code: "ENGINE_MISMATCH"`, the three-step fix `detail` |
 | `host-deploy-written.json` | `npdev host plan --target render-h2 --rung 3 --yes` (render-h2 requires no particular engine) then `npdev host deploy --json` | `written[]` (two file chips), `requiredEnv` with two `"you"`-sourced vars |
 | `host-targets.json` | `npdev host plan --app <app> --list-targets --json` | the ladder's 7 targets, each annotated `compatible`/`incompatibleReason` against this app's H2Server engine -- see the `--list-targets` flag this fixture drove, npdev_cli.py `_run_host_plan_list_targets` |
+| `host-keys-list.json` | `npdev host keys --app <app> --json` | one masked key, `{masked, tenant, actor, role}` -- never the raw value |
+| `host-keys-new.json` | `npdev host keys --app <app> --new --json` | the raw key exactly once, immediately after minting (M9's one exception to "never render a key in full") |
 
 **Not covered:** an `npdev host deploy` success carrying an `"npdev"`-sourced `requiredEnv` entry.
 Those only appear for a Postgres/MySQL/SqlServer-profiled deployment (`npdev_host.py`'s
