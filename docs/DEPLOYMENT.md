@@ -1,5 +1,10 @@
 # Deploying a generated FinalApp (LNCH-7)
 
+**Sharing a running app with someone else, or hosting it on a platform (Render, Koyeb, a VPS)
+instead of your own infrastructure?** See [`HOSTING.md`](HOSTING.md) — `npdev host` builds on the
+same Docker artifacts this document describes. This document stays the reference for running a
+FinalApp yourself, on infrastructure you operate.
+
 Every generated FinalApp ships with a `Dockerfile`, `docker-compose.yml`, `.env.example`, and
 `deploy/Caddyfile` at its root (emitted by `DockerDeploymentEmitter`). This is the "run this
 outside a Windows dev machine" answer: containerized packaging + orchestration, config entirely
