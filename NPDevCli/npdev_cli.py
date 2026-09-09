@@ -11824,25 +11824,31 @@ def _load_or_resolve_host_plan(app_dir: Path):
     return npdev_host.resolve_plan(app_dir, definition)
 
 
-_HOST_CHECK_STATUS_LABEL = {"ok": "OK", "warn": "WARN", "fix": "FIX"}
+_HOST_CHECK_STATUS_LABEL = {"ok": "OK", "warn": "WARN", "fix": "FIX", "unknown": "UNKNOWN"}
 
 
 def run_host_check(args: argparse.Namespace) -> int:
     """`npdev host check` (H6): render the 12-check catalogue (H5); `--fix` applies whatever can
     be repaired unattended and re-runs the checks so the printed output is the NEW state, never
-    the old one."""
+    the old one. `--target <url>` (H15) runs the separate remote-URL catalogue instead -- a
+    deployed app has no local files this process can read."""
     import npdev_host
 
     app_dir = Path(args.app).expanduser().resolve()
-    plan = _load_or_resolve_host_plan(app_dir)
     as_json = bool(getattr(args, "json", False))
+    remote = getattr(args, "target", None)
 
-    if getattr(args, "fix", False):
+    if remote:
+        changes, findings = [], npdev_host.run_checks(app_dir, plan={}, remote=remote)
+        plan = {"rung": None, "target": None}
+    elif getattr(args, "fix", False):
+        plan = _load_or_resolve_host_plan(app_dir)
         changes, findings = npdev_host.apply_fixes(app_dir, plan=plan)
     else:
+        plan = _load_or_resolve_host_plan(app_dir)
         changes, findings = [], npdev_host.run_checks(app_dir, plan=plan)
 
-    counts = {"ok": 0, "warn": 0, "fix": 0}
+    counts = {"ok": 0, "warn": 0, "fix": 0, "unknown": 0}
     for finding in findings:
         counts[finding["status"]] = counts.get(finding["status"], 0) + 1
     all_clear = counts["fix"] == 0
@@ -11850,13 +11856,16 @@ def run_host_check(args: argparse.Namespace) -> int:
     if as_json:
         print(json.dumps({
             "schemaVersion": "npdev-cli-result.v1", "command": "host check",
-            "ok": all_clear, "rung": plan.get("rung"), "target": plan.get("target"),
+            "ok": all_clear, "remote": remote, "rung": plan.get("rung"), "target": plan.get("target"),
             "changes": changes, "findings": findings, "counts": counts,
         }, indent=2))
         return 0 if all_clear else 1
 
-    target_suffix = f" -> {plan['target']}" if plan.get("target") else ""
-    print(f"plan: rung {plan.get('rung')}{target_suffix}")
+    if remote:
+        print(f"remote: {remote}")
+    else:
+        target_suffix = f" -> {plan['target']}" if plan.get("target") else ""
+        print(f"plan: rung {plan.get('rung')}{target_suffix}")
     if changes:
         print("Applied fixes:")
         for change in changes:
@@ -11867,10 +11876,13 @@ def run_host_check(args: argparse.Namespace) -> int:
             print(f"        {finding['detail']}")
             if finding.get("fix"):
                 print(f"        fix: {finding['fix']}")
-    print(f"{counts['ok']} ok, {counts['warn']} warn, {counts['fix']} fix")
-    if not all_clear:
+    print(f"{counts['ok']} ok, {counts['warn']} warn, {counts['fix']} fix, {counts['unknown']} unknown")
+    if not all_clear and not remote:
         print(f"Resolve the FIX rows above, or run `npdev host check --app {args.app} --fix` "
               "to repair what can be repaired automatically.")
+    elif not all_clear:
+        print("Resolve the FIX rows above -- a remote check has no --fix; apply the fix locally, "
+              "redeploy, then check again.")
     return 0 if all_clear else 1
 
 
