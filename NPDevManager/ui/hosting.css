@@ -1,0 +1,4 @@
+/* The Share screen. Every rule here is scoped under #screen-hosting -- monitor.css carries rules
+   that are NOT scoped under #screen-monitor (.chip is the documented case), and reusing one of its
+   class names drops a dark CRT-styled element into this light screen. Do not reuse a class name
+   that exists in monitor.css. */

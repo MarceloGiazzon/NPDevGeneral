@@ -5,6 +5,7 @@
 <title>NPDev Manager</title>
 <link rel="stylesheet" href="app.css" />
 <link rel="stylesheet" href="monitor.css" />
+<link rel="stylesheet" href="hosting.css" />
 <link rel="stylesheet" href="verification.css" />
 </head>
 <body>
@@ -27,6 +28,7 @@
     <button class="tab" data-screen="monitor">The Monitor</button>
     <button class="tab" data-screen="apps">Apps</button>
     <button class="tab" data-screen="run">Run</button>
+    <button class="tab" data-screen="hosting">Share</button>
     <button class="tab" data-screen="versions">Versions</button>
     <button class="tab" data-screen="scrap">Scrap Manager</button>
     <button class="tab" data-screen="prompter">Prompter</button>
@@ -245,6 +247,30 @@
         App: <a id="run-link" href="#" target="_blank" rel="noopener">not started</a>
       </p>
       <div id="run-log" class="log-view"></div>
+    </section>
+
+    <!-- Share -->
+    <section id="screen-hosting" class="screen" hidden>
+      <h1>Share</h1>
+      <p class="subtitle">Give this app an address other people can open.</p>
+
+      <div class="picker-row">
+        <span>App</span>
+        <select id="hosting-app-picker"></select>
+        <span id="hosting-app-state" class="status-line"></span>
+      </div>
+
+      <!-- Filled by hosting.js. Every one starts hidden; renderHosting() decides which is shown,
+           from what the CLI returned -- never from a flag this file keeps. -->
+      <div id="hosting-reach"></div>
+      <div id="hosting-ladder"></div>
+      <div id="hosting-detail"></div>
+      <div id="hosting-checks"></div>
+      <div id="hosting-progress" hidden></div>
+      <div id="hosting-live" hidden></div>
+      <div id="hosting-offer" hidden></div>
+      <div id="hosting-deploy" hidden></div>
+      <div id="hosting-actions"></div>
     </section>
 
     <!-- Versions -->
@@ -607,6 +633,7 @@
 
   <script src="app.js"></script>
   <script src="monitor.js"></script>
+  <script src="hosting.js"></script>
   <script src="scrap.js"></script>
   <script src="prompter.js"></script>
   <script src="verification.js"></script>
