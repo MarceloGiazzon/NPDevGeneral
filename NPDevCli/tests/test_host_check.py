@@ -451,5 +451,106 @@ class HostCheckCliTest(unittest.TestCase):
             self.assertTrue(result["ok"])
 
 
+class _FakeRemoteApp:
+    """A tiny real HTTP server standing in for a deployed app -- H15's remote checks are tested
+    against genuine sockets/responses, never mocked HTTP internals."""
+
+    def __enter__(self):
+        state = {"health": {"status": "UP"}, "login_location": None, "login_body": "sign in"}
+        self.state = state
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                if self.path.startswith("/actuator/health"):
+                    body = json.dumps(state["health"]).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
+                    self.wfile.write(body)
+                elif self.path.startswith("/login"):
+                    if state["login_location"]:
+                        self.send_response(302)
+                        self.send_header("Location", state["login_location"])
+                        self.end_headers()
+                    else:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "text/html")
+                        self.end_headers()
+                        self.wfile.write(state["login_body"].encode("utf-8"))
+                else:
+                    self.send_response(200)
+                    self.end_headers()
+                    self.wfile.write(b"ok")
+
+            def log_message(self, *a):
+                pass
+
+        self._server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.port = self._server.server_address[1]
+        self.url = f"http://127.0.0.1:{self.port}"
+        import threading
+
+        self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self._server.shutdown()
+        self._server.server_close()
+        return False
+
+
+class RemoteCheckTest(unittest.TestCase):
+    """H15: `npdev host check --target <remote>` -- a remote check must never require credentials
+    it cannot have; anything unknowable from outside reports `unknown`, never a false `ok`."""
+
+    def test_reachable_ok_when_the_app_answers(self):
+        with _FakeRemoteApp() as app:
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-reachable"]["status"], "ok")
+
+    def test_reachable_fix_when_nothing_answers(self):
+        findings = _findings_by_id(npdev_host.run_remote_checks("http://127.0.0.1:1/"))
+        self.assertEqual(findings["remote-reachable"]["status"], "fix")
+
+    def test_tls_fix_for_a_plain_http_url(self):
+        with _FakeRemoteApp() as app:
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-tls"]["status"], "fix")
+
+    def test_forwarded_headers_ok_when_no_internal_origin_leaks(self):
+        with _FakeRemoteApp() as app:
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-forwarded-headers"]["status"], "ok")
+
+    def test_forwarded_headers_fix_when_a_localhost_redirect_leaks(self):
+        with _FakeRemoteApp() as app:
+            app.state["login_location"] = "http://localhost:8080/dashboard"
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-forwarded-headers"]["status"], "fix")
+
+    def test_health_details_ok_when_only_status_is_shown(self):
+        with _FakeRemoteApp() as app:
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-health-details"]["status"], "ok")
+
+    def test_health_details_fix_when_components_leak(self):
+        with _FakeRemoteApp() as app:
+            app.state["health"] = {"status": "UP", "components": {"db": {"status": "UP"}}}
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-health-details"]["status"], "fix")
+
+    def test_auth_fail_closed_is_always_unknown_from_outside(self):
+        with _FakeRemoteApp() as app:
+            findings = _findings_by_id(npdev_host.run_remote_checks(app.url))
+            self.assertEqual(findings["remote-auth-fail-closed"]["status"], "unknown")
+
+    def test_run_checks_dispatches_to_remote_when_remote_is_given(self):
+        with _FakeRemoteApp() as app:
+            findings = _findings_by_id(npdev_host.run_checks(Path("."), plan={}, remote=app.url))
+            self.assertIn("remote-reachable", findings)
+            self.assertNotIn("app-running", findings)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -487,13 +487,18 @@ def _check_tunnel_binary(plan: dict) -> Finding:
 
 
 def run_checks(app_dir: Path, *, plan: dict, remote: str | None = None) -> list[Finding]:
-    """The 12-check catalogue (Appendix A), in a stable order. `remote` is accepted for
-    forward-compatibility with H15's `npdev host check --target <remote>` -- these local checks
-    ignore it; H15 adds the remote-URL variants alongside these, never inside them.
+    """The 12-check catalogue (Appendix A) against the LOCAL app, in a stable order -- unless
+    `remote` names a deployed URL (H15's `npdev host check --target <remote>`), in which case this
+    runs the entirely separate remote-URL catalogue instead (`run_remote_checks`): most of the 12
+    local checks read files on this machine, which is meaningless for a URL the CLI has no
+    filesystem access to.
 
     Reuses `npdev_monitor.probe_app` for health/port/ops-location/db-plan resolution rather than
     writing a second health prober (H5 warning).
     """
+    if remote:
+        return run_remote_checks(remote)
+
     import npdev_monitor
 
     app_dir = Path(app_dir)
@@ -804,3 +809,124 @@ def write_deployment_manifests(app_dir: Path, plan: dict) -> list[Path]:
     env_path.write_bytes(_env_example(target_id, env).encode("utf-8"))
     written.append(env_path)
     return written
+
+
+# ---------------------------------------------------------------------------------------------
+# H15: `npdev host check --target <remote>` -- the same finding shape (Finding), a wholly separate
+# catalogue: a remote check must never require credentials it cannot have. Anything unknowable
+# from outside reports `unknown` with the reason, never a false `ok` (H15 warning).
+# ---------------------------------------------------------------------------------------------
+
+
+def _http_get(url: str, *, timeout: float = 5.0, headers: dict | None = None):
+    """Returns (status, body_bytes, headers_dict, final_url); status is None when the request
+    could not even reach the server (DNS/connect/timeout failure) -- distinct from a real HTTP
+    error status, which DOES mean the server was reached."""
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.getcode(), resp.read(), dict(resp.getheaders()), resp.geturl()
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(), dict(exc.headers or {}), exc.geturl()
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        return None, str(exc).encode("utf-8"), {}, None
+
+
+def _check_remote_reachable(url: str) -> Finding:
+    status, body, _headers, _final = _http_get(url)
+    if status is None:
+        return _finding("remote-reachable", "fix", "App is reachable",
+                         f"Could not reach {url}: {body.decode('utf-8', 'replace')}. Users get a "
+                         "connection error, not your app.")
+    return _finding("remote-reachable", "ok", "App is reachable", f"{url} answered with HTTP {status}.")
+
+
+def _check_remote_tls(url: str) -> Finding:
+    if not url.startswith("https://"):
+        return _finding("remote-tls", "fix", "TLS terminated",
+                         f"{url} is not HTTPS -- browsers warn, and some clients refuse to send "
+                         "credentials over a plain connection at all.")
+    status, _body, _headers, _final = _http_get(url)
+    if status is None:
+        return _finding("remote-tls", "unknown", "TLS terminated",
+                         "Could not connect to verify -- see the reachability check.")
+    return _finding("remote-tls", "ok", "TLS terminated", f"{url} answered over HTTPS.")
+
+
+def _http_get_no_redirect(url: str, *, timeout: float = 5.0):
+    """Like `_http_get`, but does not follow a 3xx -- inspecting the redirect's OWN Location
+    header is the whole point of the forwarded-headers check; urllib's default redirect handling
+    would silently chase it (and fail to connect wherever it leaked to) before this ever saw it."""
+    import urllib.error
+    import urllib.request
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+            return None
+
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(url, timeout=timeout) as resp:
+            return resp.getcode(), resp.read(), dict(resp.getheaders())
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(), dict(exc.headers or {})
+    except (urllib.error.URLError, OSError, TimeoutError) as exc:
+        return None, str(exc).encode("utf-8"), {}
+
+
+def _check_remote_forwarded_headers(url: str) -> Finding:
+    # No app-specific endpoint is known from outside, so this probes a login-style path (present
+    # on every NPDev app) and inspects any redirect/body for a leaked internal origin.
+    status, body, headers = _http_get_no_redirect(url.rstrip("/") + "/login")
+    if status is None:
+        return _finding("remote-forwarded-headers", "unknown", "Forwarded headers honoured end to end",
+                         "Could not reach the app to check -- see the reachability check.")
+    location = headers.get("Location") or headers.get("location") or ""
+    text = body.decode("utf-8", "replace")[:2000]
+    if "localhost" in location or "127.0.0.1" in location or "localhost" in text:
+        return _finding("remote-forwarded-headers", "fix", "Forwarded headers honoured end to end",
+                         "A URL this app generated points at localhost/127.0.0.1 -- sign-in "
+                         "redirects and any absolute link send real users to the wrong place. Set "
+                         "server.forward-headers-strategy=framework (see the local check).")
+    return _finding("remote-forwarded-headers", "ok", "Forwarded headers honoured end to end",
+                     "No localhost/127.0.0.1 URL found in the probed response.")
+
+
+def _check_remote_health_details(url: str) -> Finding:
+    status, body, _headers, _final = _http_get(url.rstrip("/") + "/actuator/health")
+    if status is None:
+        return _finding("remote-health-details", "unknown", "Health endpoint is not detailed",
+                         "Could not reach /actuator/health -- see the reachability check.")
+    try:
+        data = json.loads(body.decode("utf-8", "replace"))
+    except ValueError:
+        return _finding("remote-health-details", "unknown", "Health endpoint is not detailed",
+                         "/actuator/health did not return JSON -- cannot determine.")
+    if isinstance(data, dict) and (data.get("components") or len(data.keys()) > 1):
+        return _finding("remote-health-details", "fix", "Health endpoint is not detailed",
+                         "/actuator/health returns component/detail data to an anonymous caller -- "
+                         "set management.endpoint.health.show-details=when-authorized.")
+    return _finding("remote-health-details", "ok", "Health endpoint is not detailed",
+                     "An anonymous caller sees only the top-level status.")
+
+
+def _check_remote_auth_fail_closed(url: str) -> Finding:
+    # Cannot be determined without knowing one of this app's own API routes -- reporting a guessed
+    # ok/fix here would be exactly the false confidence H15's own warning forbids.
+    return _finding("remote-auth-fail-closed", "unknown", "Auth rejects an unkeyed call",
+                     "Cannot verify from outside without knowing one of this app's API routes -- "
+                     "run `npdev host check` locally, or call a known endpoint by hand with no key "
+                     "and confirm it is rejected.")
+
+
+def run_remote_checks(url: str) -> list[Finding]:
+    return [
+        _check_remote_reachable(url),
+        _check_remote_tls(url),
+        _check_remote_forwarded_headers(url),
+        _check_remote_health_details(url),
+        _check_remote_auth_fail_closed(url),
+    ]
