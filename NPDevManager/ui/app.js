@@ -366,6 +366,68 @@ async function refreshTagList(forceRefresh) {
 
 document.getElementById("tag-refresh-btn").addEventListener("click", () => refreshTagList(true));
 
+// Reflects `manager.json`'s `use_local_repo`/`local_repo_path` in step 3, and dims the
+// download-a-tag controls while a local checkout is active -- the two sources are mutually
+// exclusive, so letting both look equally live invites picking a tag that then does nothing.
+async function refreshLocalRepoConfig() {
+  const cfg = await invoke("local_repo_config");
+  const toggle = document.getElementById("local-repo-toggle");
+  const pathRow = document.getElementById("local-repo-path-row");
+  const pathDisplay = document.getElementById("local-repo-path-display");
+  toggle.checked = !!cfg.active;
+  pathRow.hidden = !cfg.active;
+  pathDisplay.textContent = cfg.path || "(no folder selected)";
+  document.getElementById("tag-picker").disabled = cfg.active;
+  document.getElementById("tag-refresh-btn").disabled = cfg.active;
+  document.getElementById("version-install-btn").disabled = cfg.active;
+}
+
+document.getElementById("local-repo-pick-btn").addEventListener("click", async () => {
+  const path = await invoke("pick_local_repo_folder");
+  if (!path) {
+    // Cancelled the dialog -- re-sync the toggle to whatever is actually persisted, in case it was
+    // just flipped on by the checkbox handler below with no folder on record yet.
+    await refreshLocalRepoConfig();
+    return;
+  }
+  try {
+    await invoke("set_local_repo_path", { path });
+  } catch (err) {
+    alert(`could not use ${path}: ${err}`);
+    return;
+  } finally {
+    await refreshLocalRepoConfig();
+  }
+  await refreshSetupStatus();
+  await refreshEngineMatrix();
+});
+
+document.getElementById("local-repo-toggle").addEventListener("change", async (e) => {
+  if (e.target.checked) {
+    // Re-showing the picker row before the folder pick resolves so the toggle doesn't flash back
+    // off in between -- `refreshLocalRepoConfig()` below is what actually settles its state.
+    document.getElementById("local-repo-path-row").hidden = false;
+    const cfg = await invoke("local_repo_config");
+    if (cfg.path) {
+      // A path is already on record -- re-activating the toggle alone is enough, no need to make
+      // the user re-pick the same folder every time they flip it back on.
+      try {
+        await invoke("set_local_repo_path", { path: cfg.path });
+      } catch (err) {
+        alert(`could not use ${cfg.path}: ${err}`);
+      }
+    } else {
+      document.getElementById("local-repo-pick-btn").click();
+      return; // the click handler above already calls refreshLocalRepoConfig() when it settles
+    }
+  } else {
+    await invoke("use_downloaded_npdev_version");
+  }
+  await refreshLocalRepoConfig();
+  await refreshSetupStatus();
+  await refreshEngineMatrix();
+});
+
 // The last tag this window downloaded, so the step-3 line can say whether it became the current
 // one. Deliberately not persisted: it is about what just happened in front of the user.
 let lastDownloadedTag = null;
@@ -1134,4 +1196,5 @@ async function loadManagerVersion() {
   await prefillRunAppDir();
   await refreshTagList(false);
   await refreshVersionsScreen();
+  await refreshLocalRepoConfig();
 })();

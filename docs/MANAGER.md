@@ -179,6 +179,7 @@ Gets Java, Python, and NPDev itself. Run once per version.
 | **Install private Python** | Only if your machine has no Python 3.9+. Otherwise it uses the one you have. | `<home>/python` |
 | **Refresh list** | Fetches available NPDev versions from GitHub. | — |
 | **Download this version** | Downloads the selected version as a zip and unpacks it. | `<home>/versions/<tag>` |
+| **Use a local NPDev repo checkout&hellip;** | Runs every Manager action against a repo folder on disk instead of a downloaded version. | wherever you point it |
 | **Run setup** | Prepares NPDev's internal build files. Progress appears line by line. | `<home>/runtimehost-libs` |
 
 ### Order
@@ -191,6 +192,18 @@ Gets Java, Python, and NPDev itself. Run once per version.
 **Setup takes either about a minute or about ten.** Released versions include prebuilt files it
 can download; anything else has to be built on your machine. The log says which happened — look
 for `Jars source: download` or `Jars source: build`. Both end in a working install.
+
+### Running NPDev straight from a repo checkout
+
+If you're developing NPDev itself, step 3 has a second mode: **Use a local NPDev repo checkout
+instead of a downloaded version**. Check it, pick the folder (the one holding `NPDevContract`,
+`NPDevGenerator`, `NPDevKernel`, and `NPDevCli`), and every Manager action — Run setup, Doctor,
+create/build/run an app, host/share — runs against that checkout instead of a downloaded tag. It's
+the same source you'd already be building from in a terminal, so there's no separate build step to
+keep in sync: edit the repo, and the next action the Manager runs picks it up.
+
+The remembered path survives unchecking the box — flipping it back on later doesn't ask you to
+re-pick the folder. Uncheck it to go back to whichever downloaded version was current before.
 
 When setup finishes, return to **Ready** and press **Re-check**. **NPDev jars** should now pass.
 
@@ -470,6 +483,10 @@ The complete internal surface — useful when reporting a problem or reading the
 | `install_python` | Download and extract Python |
 | `list_tags` | Available NPDev versions from GitHub |
 | `install_npdev_version` | Download and unpack a version |
+| `pick_local_repo_folder` | Native folder picker for a local NPDev repo checkout |
+| `set_local_repo_path` | Validate and switch to running from a local checkout |
+| `use_downloaded_npdev_version` | Switch back to the selected downloaded tag |
+| `local_repo_config` | The remembered local-repo path and whether it's active |
 | `run_setup` | Prepare NPDev's build files |
 
 #### Apps and running

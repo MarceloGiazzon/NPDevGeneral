@@ -104,6 +104,19 @@
           owns switching; this line's whole job is to stop that difference being silent.
         -->
         <div id="version-status" class="status-line"></div>
+
+        <!-- Points the Manager at an NPDev repo checkout on disk instead of a downloaded tag --
+             the same source a platform developer already builds from in a terminal. -->
+        <div class="local-repo-row">
+          <label>
+            <input type="checkbox" id="local-repo-toggle" />
+            Use a local NPDev repo checkout instead of a downloaded version
+          </label>
+          <div id="local-repo-path-row" hidden>
+            <span id="local-repo-path-display">(no folder selected)</span>
+            <button id="local-repo-pick-btn">Choose folder&hellip;</button>
+          </div>
+        </div>
       </div>
 
       <div class="install-step">

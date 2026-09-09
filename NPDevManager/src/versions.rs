@@ -131,6 +131,18 @@ pub async fn list_tags(force_refresh: bool) -> Result<Vec<TagInfo>, String> {
         .await
         .map_err(|e| format!("tag list response did not parse: {e}"))?;
 
+    // This monorepo's /tags endpoint returns every tag, including the Manager's OWN release tags
+    // (`manager-vX.Y.Z`) -- those are not an NPDev platform version at all, and because they can be
+    // newer than the last platform beta, they sorted straight to the top of "pick a version to
+    // install" (found live: `manager-v0.3.0` outranking `beta1.20` in the step-3 picker on
+    // 2026-09-09). Filtered here, once, so every caller of `list_tags` gets a clean list -- and so
+    // excluded tags don't burn a commit-date lookup each, out of the 60/hour unauthenticated budget.
+    const NON_PLATFORM_TAG_PREFIXES: &[&str] = &["manager-v"];
+    let tags: Vec<GhTag> = tags
+        .into_iter()
+        .filter(|t| !NON_PLATFORM_TAG_PREFIXES.iter().any(|p| t.name.starts_with(p)))
+        .collect();
+
     let mut infos = Vec::with_capacity(tags.len());
     for tag in tags {
         // One request PER TAG on top of the list request -- 12 tags is 13 calls against a 60/hour
