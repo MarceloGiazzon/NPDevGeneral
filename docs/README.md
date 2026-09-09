@@ -23,6 +23,7 @@ release-governance material (still live, just not what a newcomer needs) lives i
 [FEATURES.md](FEATURES.md) ·
 [CONFIGURATION.md](CONFIGURATION.md) ·
 [DEPLOYMENT.md](DEPLOYMENT.md) ·
+[HOSTING.md](HOSTING.md) ·
 [DATABASES_AND_MIGRATIONS.md](DATABASES_AND_MIGRATIONS.md) ·
 [FLOWS.md](FLOWS.md) ·
 [EXPRESSIONS.md](EXPRESSIONS.md) ·
