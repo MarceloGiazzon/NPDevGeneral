@@ -603,6 +603,21 @@
         "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorReverseMigrationTest.java",
         "NPDevRuntimeHost/src/test/java/com/finalexec/db/SchemaLifecycleExecutorSchemaAheadDiagnosisTest.java"
       ]
+    },
+    {
+      "id": "host-plan-required-env-seams",
+      "citedBy": "HOST-1 (NPDEV_HOST_IMPLEMENTATION_PLAN.md)",
+      "description": "The environment-variable contract for a hosted app is stated in FOUR places that must agree, and a variable added to one and forgotten in the others produces exactly the failure this registry exists to catch: an app that boots locally and refuses on the host, with the missing variable named nowhere. (1) npdev_host.required_env() is what `npdev host deploy`/`explain`/`check` print and what `npdev_host.write_deployment_manifests` renders; (2) HostPlanEmitter (Java) populates the SAME set into _ops/host-plan.json at generation time -- not HostDeploymentEmitter, which only renders whatever HostPlanEmitter already decided, so HostPlanEmitter is this seam's actual Java side; (3) docs/HOSTING.md is what a human reads when none of the above is in front of them. The mode-and-profile pair is the specific trap: SPRING_PROFILES_ACTIVE and npdev.runtime.mode must BOTH be present and must agree, or StartupValidator refuses to boot -- and it is the pair, not either half, that has to be threaded through every seam together.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "SPRING_PROFILES_ACTIVE"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevCli/npdev_host.py",
+        "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/HostPlanEmitter.java",
+        "docs/HOSTING.md"
+      ]
     }
   ]
 }
