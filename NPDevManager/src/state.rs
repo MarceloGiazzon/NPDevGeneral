@@ -122,6 +122,16 @@ pub struct ManagerState {
     /// store under service "NPDev Manager", account "prompter/<id>" -- never here. See `secrets.rs`.
     #[serde(default)]
     pub prompter_profiles: Vec<PrompterProfile>,
+    /// A local NPDev repo checkout to run directly from -- the same source a platform developer
+    /// already builds from in a terminal, no download/tag round-trip. Remembered independently of
+    /// `use_local_repo` so toggling back on later does not require re-picking the folder.
+    #[serde(default)]
+    pub local_repo_path: Option<String>,
+    /// The switch between the two NPDev sources: a downloaded tag (`current_version`) or
+    /// `local_repo_path`. Kept as its own flag rather than a sentinel value in `current_version` so
+    /// neither field has to lie about what it means.
+    #[serde(default)]
+    pub use_local_repo: bool,
 }
 
 /// One configured way to reach a model, for the Prompter tab.
@@ -258,6 +268,17 @@ pub fn current_version_dir(state: &ManagerState) -> Option<PathBuf> {
         .current_version
         .as_ref()
         .map(|tag| versions_dir().join(tag))
+}
+
+/// The single place that decides which NPDev copy the Manager runs against: a local repo checkout
+/// when the user has opted into one, otherwise the currently selected downloaded tag. Every command
+/// that shells out to `npdev_cli.py` (`main.rs::resolve_npdev_cli`) goes through this, so a platform
+/// developer's local checkout and a downloaded tag behave identically everywhere else.
+pub fn resolve_npdev_dir(state: &ManagerState) -> Option<PathBuf> {
+    if state.use_local_repo {
+        return state.local_repo_path.as_ref().map(PathBuf::from);
+    }
+    current_version_dir(state)
 }
 
 #[cfg(test)]

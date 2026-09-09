@@ -10,7 +10,7 @@ mod selftest;
 mod state;
 mod versions;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
@@ -57,13 +57,29 @@ fn resolve_npdev_cli(app_state: &AppState) -> Result<PathBuf, String> {
         return Ok(PathBuf::from("npdev_cli.py"));
     }
     let manager = app_state.manager.lock().expect("lock poisoned");
-    let dir = state::current_version_dir(&manager)
-        .ok_or_else(|| "no NPDev version installed -- install one first".to_string())?;
+    let use_local_repo = manager.use_local_repo;
+    let dir = state::resolve_npdev_dir(&manager).ok_or_else(|| {
+        if use_local_repo {
+            "no local NPDev repo folder set -- pick one in the Install tab first".to_string()
+        } else {
+            "no NPDev version installed -- install one first".to_string()
+        }
+    })?;
     let cli = npdev::npdev_cli_path(&dir);
     if !cli.exists() {
         return Err(format!("npdev_cli.py not found at {}", cli.display()));
     }
     Ok(cli)
+}
+
+/// The same three-directory signature `WorkspaceRootLocator` uses to find the repo root by
+/// CONTENTS rather than by directory name (CLAUDE.md, REG-144) -- a quick, cheap sanity check
+/// before committing to a path, so a wrong folder fails immediately with a clear reason instead of
+/// surfacing as "npdev_cli.py not found" three clicks later.
+fn looks_like_npdev_repo(dir: &Path) -> bool {
+    ["NPDevContract", "NPDevGenerator", "NPDevKernel", "NPDevCli"]
+        .iter()
+        .all(|name| dir.join(name).is_dir())
 }
 
 // -------------------------------------------------------------------------------------------
@@ -313,11 +329,24 @@ fn setup_status(state: State<'_, AppState>) -> Value {
             "libsDir": state::runtimehost_libs_dir().to_string_lossy().to_string(),
             "aiIndexPresent": true,
             "currentVersion": "beta1.17",
+            "useLocalRepo": false,
+            "localRepoPath": Value::Null,
         });
     }
     let libs_dir = state::runtimehost_libs_dir();
     let jar_count = state::count_jars_in(&libs_dir);
-    let current_version = state.manager.lock().expect("lock poisoned").current_version.clone();
+    let manager = state.manager.lock().expect("lock poisoned");
+    let use_local_repo = manager.use_local_repo;
+    let local_repo_path = manager.local_repo_path.clone();
+    // Step 4's gate ("do step 3 first") and its "for {currentVersion}" messages just interpolate
+    // this string -- so a local checkout reports a label here rather than needing its own branch
+    // in every place that reads `currentVersion`.
+    let current_version = if use_local_repo {
+        local_repo_path.clone().map(|p| format!("local checkout ({p})"))
+    } else {
+        manager.current_version.clone()
+    };
+    drop(manager);
     serde_json::json!({
         // Directory existence is doctor's own bar for `runtimehost-jars`, so this agrees with the
         // Ready screen by construction. The count is reported beside it rather than substituted for
@@ -327,6 +356,8 @@ fn setup_status(state: State<'_, AppState>) -> Value {
         "libsDir": libs_dir.to_string_lossy().to_string(),
         "aiIndexPresent": state::ai_knowledge_index_path().exists(),
         "currentVersion": current_version,
+        "useLocalRepo": use_local_repo,
+        "localRepoPath": local_repo_path,
     })
 }
 
@@ -1177,6 +1208,51 @@ fn remove_installed_version(state: State<'_, AppState>, tag: String) -> Result<(
     versions::remove_version(&state, &tag)
 }
 
+/// Lets someone developing NPDev itself point the Manager straight at a repo checkout on disk --
+/// their own working tree, no download/tag round-trip -- instead of requiring a version already
+/// published as a GitHub tag. Same native-picker pattern as `pick_inspect_folders`.
+#[tauri::command]
+async fn pick_local_repo_folder() -> Option<String> {
+    let handle = rfd::AsyncFileDialog::new()
+        .set_title("Select an NPDev repo checkout")
+        .pick_folder()
+        .await?;
+    Some(handle.path().to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn set_local_repo_path(state: State<'_, AppState>, path: String) -> Result<(), String> {
+    let dir = PathBuf::from(&path);
+    if !looks_like_npdev_repo(&dir) {
+        return Err(format!(
+            "{path} does not look like an NPDev repo checkout -- expected NPDevContract, \
+             NPDevGenerator, NPDevKernel and NPDevCli folders alongside each other"
+        ));
+    }
+    let mut manager = state.manager.lock().expect("lock poisoned");
+    manager.local_repo_path = Some(path);
+    manager.use_local_repo = true;
+    manager.save().map_err(|e| e.to_string())
+}
+
+/// Switches back to whatever downloaded tag was selected before. `local_repo_path` is left in
+/// place so flipping the toggle back on later does not require re-picking the folder.
+#[tauri::command]
+fn use_downloaded_npdev_version(state: State<'_, AppState>) -> Result<(), String> {
+    let mut manager = state.manager.lock().expect("lock poisoned");
+    manager.use_local_repo = false;
+    manager.save().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn local_repo_config(state: State<'_, AppState>) -> Value {
+    let manager = state.manager.lock().expect("lock poisoned");
+    serde_json::json!({
+        "path": manager.local_repo_path,
+        "active": manager.use_local_repo,
+    })
+}
+
 #[tauri::command]
 fn manager_home_path() -> String {
     state::manager_home().to_string_lossy().to_string()
@@ -1938,6 +2014,10 @@ fn main() {
             current_version,
             set_current_version,
             remove_installed_version,
+            pick_local_repo_folder,
+            set_local_repo_path,
+            use_downloaded_npdev_version,
+            local_repo_config,
             manager_home_path,
             manager_version,
             manager_version_description,
