@@ -7,6 +7,7 @@ is_alive/stop are exercised against a genuine PID, not a mocked one.
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -17,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import npdev_cli  # noqa: E402
 import npdev_host  # noqa: E402
 import npdev_tunnel  # noqa: E402
 
@@ -199,6 +201,103 @@ class PreflightTest(unittest.TestCase):
 
             ids = {f["id"] for f in blocking}
             self.assertNotIn("data-durability", ids)
+
+
+class HostShareCliTest(unittest.TestCase):
+    """H11: `npdev host share`/`down`/`status`, end to end against a fake provider (registered
+    under a name the CLI is told to use via --provider) -- no real tunnel binary required."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory(prefix="npdev-host-share-cli-")
+        self.scratch = Path(self._tmp.name)
+        self._spawned: list = []
+        npdev_tunnel.register_provider("fake", _fake_provider_factory(self.scratch, self._spawned))
+
+    def tearDown(self):
+        for proc in self._spawned:
+            if proc.poll() is None:
+                proc.kill()
+            proc.wait(timeout=5)
+        self._tmp.cleanup()
+
+    def test_share_then_status_then_down_round_trips(self):
+        import io
+        from contextlib import redirect_stdout
+
+        # preflight re-probes liveness at SHARE time (not just once during setup), so the health
+        # server must stay up through the whole share call, not just while apply_fixes runs.
+        with _HealthServer() as server:
+            app_dir = self.scratch / "app"
+            plan = _app_and_plan(app_dir, reachable_kind="nobody", server_port=server.port)
+            npdev_host.write_definition(app_dir, {"schemaVersion": "npdev-host-definition.v1", "rung": 1})
+            npdev_host.apply_fixes(app_dir, plan=plan)
+
+            empty_scan_root = self.scratch / "empty-scan-root"
+            empty_scan_root.mkdir()
+
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                code = npdev_cli.main(["host", "share", "--app", str(app_dir), "--provider", "fake",
+                                        "--paths", str(empty_scan_root), "--json"])
+            self.assertEqual(code, 0)
+            share_result = json.loads(buffer.getvalue())
+            self.assertTrue(share_result["ok"])
+            self.assertIn("url", share_result["state"])
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = npdev_cli.main(["host", "status", "--app", str(app_dir), "--json"])
+        self.assertEqual(code, 0)
+        status_result = json.loads(buffer.getvalue())
+        self.assertTrue(status_result["up"])
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = npdev_cli.main(["host", "down", "--app", str(app_dir), "--json"])
+        self.assertEqual(code, 0)
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = npdev_cli.main(["host", "status", "--app", str(app_dir), "--json"])
+        self.assertEqual(code, 0)
+        status_after_down = json.loads(buffer.getvalue())
+        self.assertFalse(status_after_down["up"])
+
+    def test_down_is_safe_when_nothing_is_up(self):
+        import io
+        from contextlib import redirect_stdout
+
+        app_dir = self.scratch / "never-shared"
+        app_dir.mkdir()
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = npdev_cli.main(["host", "down", "--app", str(app_dir), "--json"])
+        self.assertEqual(code, 0)
+        result = json.loads(buffer.getvalue())
+        self.assertTrue(result["ok"])
+
+    def test_share_blocks_and_writes_no_state_when_preflight_fails(self):
+        import io
+        import json as _json
+        from contextlib import redirect_stdout
+
+        app_dir = self.scratch / "unfixed-app"
+        (app_dir / "_ops").mkdir(parents=True)
+        (app_dir / "_ops" / "resolved-db-plan.json").write_text(_json.dumps({
+            "appId": "myapp", "engine": "H2Server", "serverPort": 1,
+            "resolvedDatabaseName": "npdev_myapp", "physicalDatabase": True,
+        }), encoding="utf-8")
+        npdev_host.write_definition(app_dir, {
+            "schemaVersion": "npdev-host-definition.v1", "rung": 1,
+            "reachableBy": {"kind": "tunnel", "provider": "cloudflared"},
+        })
+
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = npdev_cli.main(["host", "share", "--app", str(app_dir), "--provider", "fake", "--json"])
+
+        self.assertEqual(code, 1)
+        self.assertEqual(npdev_host.read_state(app_dir), {})
 
 
 if __name__ == "__main__":
