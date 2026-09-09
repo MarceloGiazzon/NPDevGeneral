@@ -662,6 +662,33 @@ async fn host_share(
     npdev::run_host_share(&python, &cli, java_home.as_deref(), &app_dir, provider.as_deref()).await
 }
 
+/// M7: the "Fix N things, then share" sequence with visible progress. Fire-and-forget, like
+/// `run_ops_script` above -- there is no single child process to hand back, only a sequence of
+/// already-thin CLI calls `run_host_share_streaming` makes and reports on via `host-event`. The
+/// event NAME landing in the same commit as this command (capabilities/default.json) is R1's own
+/// rule: forgetting it is a silent empty progress panel, not an error anyone can read.
+#[tauri::command]
+async fn host_share_streaming(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    app_dir: String,
+    rung: u8,
+    target: Option<String>,
+    needs_plan: bool,
+    provider: Option<String>,
+) -> Result<(), String> {
+    let java_home = resolve_java_home(&state);
+    let (python, cli) = if npdev::fake_mode() {
+        (PathBuf::from("python"), PathBuf::from("npdev_cli.py"))
+    } else {
+        (resolve_python_exe(&state).await?, resolve_npdev_cli(&state)?)
+    };
+    tauri::async_runtime::spawn(npdev::run_host_share_streaming(
+        app, python, cli, java_home, app_dir, rung, target, needs_plan, provider,
+    ));
+    Ok(())
+}
+
 #[tauri::command]
 async fn host_down(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
     let java_home = resolve_java_home(&state);
@@ -1900,6 +1927,7 @@ fn main() {
             host_targets,
             host_plan,
             host_share,
+            host_share_streaming,
             host_down,
             host_deploy,
             host_keys,

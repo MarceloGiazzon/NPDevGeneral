@@ -30,6 +30,10 @@ function showScreen(name) {
   // switch, a new monitored path), so they re-ask on entry like the three newer screens do.
   if (name === "install" && window.__npdevRefreshInstall) window.__npdevRefreshInstall();
   if (name === "run" && window.__npdevRefreshRun) window.__npdevRefreshRun();
+  // The Share screen: a tunnel started from a terminal, or another Manager window, can go up or
+  // down while this tab is not the one showing -- re-asking `host status` on entry is the same
+  // reasoning as install/run above.
+  if (name === "hosting" && window.__npdevRefreshHosting) window.__npdevRefreshHosting();
 }
 
 // The Monitor's "Explore this app" button crosses screens, which is the one affordance that turns

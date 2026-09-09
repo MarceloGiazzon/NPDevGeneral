@@ -957,6 +957,107 @@ pub async fn run_host_share(
     run_json(python_exe, npdev_cli, &args, java_home, "host share").await
 }
 
+/// Artboard 3: "Fix N things, then share" as a sequence the user can watch. Every step here is a
+/// REAL, separate CLI invocation except the last three: `npdev host share` itself does the
+/// ingress-refresh-then-tunnel-start work as one blocking call (its own docstring says so, in that
+/// order), and the CLI has no incremental progress output for it -- there is no intermediate state
+/// to observe honestly, so "ingress"/"tunnel"/"confirm" tick from running to done together around
+/// that one call rather than pretending to see inside it. `host plan` (writing the picked rung, if
+/// it changed) happens silently before the first emitted step -- it is not one of the five the
+/// artboard names.
+pub async fn run_host_share_streaming(
+    app: AppHandle,
+    python_exe: PathBuf,
+    npdev_cli: PathBuf,
+    java_home: Option<String>,
+    app_dir: String,
+    rung: u8,
+    target: Option<String>,
+    needs_plan: bool,
+    provider: Option<String>,
+) {
+    let jh = java_home.as_deref();
+    let emit = |id: &str, status: &str, detail: Option<String>| {
+        let _ = app.emit("host-event", serde_json::json!({
+            "kind": "step", "id": id, "status": status, "detail": detail,
+        }));
+    };
+
+    if fake_mode() {
+        for (id, delay_ms) in [("check", 250), ("fix", 250), ("ingress", 200), ("tunnel", 300), ("confirm", 150)] {
+            emit(id, "running", None);
+            tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            emit(id, "done", None);
+        }
+        let share = run_host_share(&python_exe, &npdev_cli, jh, &app_dir, provider.as_deref()).await;
+        let check = run_host_check(&python_exe, &npdev_cli, jh, &app_dir, false, None).await;
+        let _ = app.emit("host-event", serde_json::json!({
+            "kind": "done", "share": share.ok(), "check": check.ok(),
+        }));
+        return;
+    }
+
+    if needs_plan {
+        if let Err(e) = run_host_plan(&python_exe, &npdev_cli, jh, &app_dir, rung, target.as_deref()).await {
+            emit("check", "error", Some(e));
+            let _ = app.emit("host-event", serde_json::json!({"kind": "done", "share": null, "check": null}));
+            return;
+        }
+    }
+
+    emit("check", "running", None);
+    let mut check = match run_host_check(&python_exe, &npdev_cli, jh, &app_dir, false, None).await {
+        Ok(v) => v,
+        Err(e) => {
+            emit("check", "error", Some(e));
+            let _ = app.emit("host-event", serde_json::json!({"kind": "done", "share": null, "check": null}));
+            return;
+        }
+    };
+    emit("check", "done", None);
+
+    let fix_count = check.get("counts").and_then(|c| c.get("fix")).and_then(|v| v.as_i64()).unwrap_or(0);
+    if fix_count > 0 {
+        emit("fix", "running", None);
+        match run_host_check(&python_exe, &npdev_cli, jh, &app_dir, true, None).await {
+            Ok(v) => { check = v; emit("fix", "done", None); }
+            Err(e) => { emit("fix", "error", Some(e)); }
+        }
+    } else {
+        emit("fix", "skipped", Some("Nothing needed fixing.".to_string()));
+    }
+
+    let remaining_fix = check.get("counts").and_then(|c| c.get("fix")).and_then(|v| v.as_i64()).unwrap_or(0);
+    if remaining_fix > 0 {
+        // What is left cannot be auto-fixed (app-running/db-reachable are the common case) -- the
+        // check rows already say what; sharing would only repeat the CLI's own preflight refusal.
+        emit("ingress", "skipped", Some("Blocked by the checks above.".to_string()));
+        emit("tunnel", "skipped", None);
+        emit("confirm", "skipped", None);
+        let _ = app.emit("host-event", serde_json::json!({"kind": "done", "share": null, "check": check}));
+        return;
+    }
+
+    emit("ingress", "running", None);
+    emit("tunnel", "running", None);
+    let share = run_host_share(&python_exe, &npdev_cli, jh, &app_dir, provider.as_deref()).await;
+    match &share {
+        Ok(_) => {
+            emit("ingress", "done", None);
+            emit("tunnel", "done", None);
+            emit("confirm", "done", None);
+        }
+        Err(e) => {
+            emit("ingress", "error", Some(e.clone()));
+            emit("tunnel", "skipped", None);
+            emit("confirm", "skipped", None);
+        }
+    }
+    let _ = app.emit("host-event", serde_json::json!({
+        "kind": "done", "share": share.ok(), "check": check,
+    }));
+}
+
 /// Artboard 4's "Stop sharing", beside the address rather than in a menu.
 pub async fn run_host_down(
     python_exe: &Path,

@@ -1,4 +1,74 @@
 /* The Share screen. Every rule here is scoped under #screen-hosting -- monitor.css carries rules
    that are NOT scoped under #screen-monitor (.chip is the documented case), and reusing one of its
    class names drops a dark CRT-styled element into this light screen. Do not reuse a class name
-   that exists in monitor.css. */
+   that exists in monitor.css. .check-row/.check-list/button.primary/button.fix-btn/.status-line
+   come from app.css unchanged -- only genuinely new components get rules here. */
+
+#screen-hosting .picker-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+#screen-hosting .reach-line {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+#screen-hosting .reach-live { color: var(--pass); font-weight: 600; }
+#screen-hosting .reach-url {
+  font-family: monospace;
+  font-size: 18px;
+  margin: 0 0 16px;
+  word-break: break-all;
+}
+
+#screen-hosting .ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+#screen-hosting .rung-group h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 0 0 6px;
+}
+#screen-hosting .rung {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--fg);
+  cursor: pointer;
+  font: inherit;
+}
+#screen-hosting .rung:hover:not(.disabled) { border-color: var(--accent); }
+#screen-hosting .rung.picked { border-color: var(--accent); border-width: 2px; }
+#screen-hosting .rung.disabled { opacity: 0.5; cursor: not-allowed; }
+#screen-hosting .rung-label { font-weight: 600; display: block; }
+#screen-hosting .rung-reason { margin: 4px 0 0; font-size: 12px; color: var(--fail); }
+#screen-hosting .rung-reason.muted { color: var(--muted); }
+
+/* Artboard 3: progress. Reuses .check-row's grid rhythm loosely but is its own class -- a running
+   step and a check finding are different kinds of row (one is a live status, one is a verdict). */
+#screen-hosting .progress-step {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+#screen-hosting .progress-step .mark { font-weight: 700; text-align: center; color: var(--muted); }
+#screen-hosting .progress-step.done .mark { color: var(--pass); }
+#screen-hosting .progress-step.error .mark { color: var(--fail); }
+#screen-hosting .progress-step.running .name { font-weight: 600; }
+#screen-hosting .progress-step.skipped { opacity: 0.55; }
+#screen-hosting .progress-step .detail { color: var(--muted); font-size: 12px; }
