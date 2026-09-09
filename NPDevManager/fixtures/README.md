@@ -68,6 +68,7 @@ captured honestly rather than left "not covered".
 | `host-status-up.json` | the same command while `npdev host share` had a real cloudflared quick tunnel open | `up: true`, `state.routedApps` as the array of `{name, slug, port}` (not a count — see the `host share` fix this fixture drove, npdev_cli.py `run_host_share`) |
 | `host-deploy-mismatch.json` | `npdev host deploy --app <app> --json` with `host.definition.json` hand-set to `target: render-neon` (Postgres-only) against this H2 app | `ok: false`, `code: "ENGINE_MISMATCH"`, the three-step fix `detail` |
 | `host-deploy-written.json` | `npdev host plan --target render-h2 --rung 3 --yes` (render-h2 requires no particular engine) then `npdev host deploy --json` | `written[]` (two file chips), `requiredEnv` with two `"you"`-sourced vars |
+| `host-targets.json` | `npdev host plan --app <app> --list-targets --json` | the ladder's 7 targets, each annotated `compatible`/`incompatibleReason` against this app's H2Server engine -- see the `--list-targets` flag this fixture drove, npdev_cli.py `_run_host_plan_list_targets` |
 
 **Not covered:** an `npdev host deploy` success carrying an `"npdev"`-sourced `requiredEnv` entry.
 Those only appear for a Postgres/MySQL/SqlServer-profiled deployment (`npdev_host.py`'s

@@ -58,6 +58,16 @@ const FIXTURE_MONITOR_ENGINE_RUNNING: &str = include_str!("../fixtures/monitor-e
 const FIXTURE_MONITOR_ENGINE_STOPPED: &str = include_str!("../fixtures/monitor-engine-stopped.json");
 const FIXTURE_MONITOR_ENGINE_MISSING: &str = include_str!("../fixtures/monitor-engine-missing.json");
 const FIXTURE_MONITOR_LOGS: &str = include_str!("../fixtures/monitor-logs.json");
+// NPDEV_MANAGER_SHARE_IMPLEMENTATION_PLAN M2. Captured live on 2026-09-09 against a real generated
+// app (see fixtures/README.md's own "The Share screen" section for the exact command behind each
+// one) -- never hand-written, for the same reason as every fixture above.
+const FIXTURE_HOST_STATUS_DOWN: &str = include_str!("../fixtures/host-status-down.json");
+const FIXTURE_HOST_STATUS_UP: &str = include_str!("../fixtures/host-status-up.json");
+const FIXTURE_HOST_CHECK_CLEAN: &str = include_str!("../fixtures/host-check-clean.json");
+const FIXTURE_HOST_CHECK_NEEDS_FIXING: &str = include_str!("../fixtures/host-check-needs-fixing.json");
+const FIXTURE_HOST_DEPLOY_MISMATCH: &str = include_str!("../fixtures/host-deploy-mismatch.json");
+const FIXTURE_HOST_DEPLOY_WRITTEN: &str = include_str!("../fixtures/host-deploy-written.json");
+const FIXTURE_HOST_TARGETS: &str = include_str!("../fixtures/host-targets.json");
 /// Phase F. The one fixture here that is hand-authored rather than captured, and the file says why
 /// in its own `_captured` header: capturing it means paying a third-party provider with a real key.
 /// Same documented-exception shape as the two doctor fixtures above.
@@ -745,6 +755,128 @@ pub async fn run_monitor_engine(
         args.push(root.to_string());
     }
     run_json(python_exe, npdev_cli, &args, java_home, "monitor engine").await
+}
+
+// ---------------------------------------------------------------------------------------------
+// The Share screen (NPDEV_MANAGER_SHARE_IMPLEMENTATION_PLAN). Every function here builds an argv
+// for `npdev host <verb>` and returns the parsed JSON -- no hosting decision (what is safe to
+// share, which rung is available, whether a finding blocks, what a target requires) is made in
+// this file. If a screen needs a decision the CLI does not already make, that belongs in
+// NPDevCli/npdev_host.py, not here.
+// ---------------------------------------------------------------------------------------------
+
+/// Which fake state the Share screen shows in stub mode -- same shape as `fake_doctor_scenario`,
+/// for the same reason: a screen with six states cannot be reviewed if stub mode can only ever
+/// produce one of them. Default is the state a user most often lands on first: nothing shared yet,
+/// and two things to fix.
+pub fn fake_host_scenario_names() -> Vec<&'static str> {
+    vec!["needs-fixing", "clean", "live", "engine-mismatch", "deploy-written"]
+}
+
+fn fake_host_scenario() -> String {
+    std::env::var("NPDEV_MANAGER_FAKE_HOST").unwrap_or_else(|_| "needs-fixing".to_string())
+}
+
+pub async fn run_host_status(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = if fake_host_scenario() == "live" { FIXTURE_HOST_STATUS_UP } else { FIXTURE_HOST_STATUS_DOWN };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec![
+        "host".to_string(), "status".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--json".to_string(),
+    ];
+    run_json(python_exe, npdev_cli, &args, java_home, "host status").await
+}
+
+/// `fix` is a parameter from this first commit even though M3/M4 always pass `false`: M6 turns it
+/// on, and threading it in later would mean reopening this file and its command in main.rs a
+/// second time.
+///
+/// `remote` is `npdev host check --target <url>` (M11) -- the same catalogue of checks run against
+/// a deployed URL instead of this machine. A different question, not a different command, which is
+/// why it is one flag here rather than a second wrapper.
+pub async fn run_host_check(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    fix: bool,
+    remote: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        // A --fix run reports the CLEAN state, because that is what applying the fixes produces.
+        let text = if fix || fake_host_scenario() == "clean" {
+            FIXTURE_HOST_CHECK_CLEAN
+        } else {
+            FIXTURE_HOST_CHECK_NEEDS_FIXING
+        };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec![
+        "host".to_string(), "check".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--json".to_string(),
+    ];
+    if fix {
+        args.push("--fix".to_string());
+    }
+    if let Some(url) = remote {
+        args.push("--target".to_string());
+        args.push(url.to_string());
+    }
+    // `host check` exits 1 when findings need fixing, and `host deploy` exits 1 on ENGINE_MISMATCH
+    // (see run_host_deploy below). Both are STATES this screen renders, not transport failures --
+    // run_json/parse_single_json already parse stdout regardless of exit code, so no exit-code
+    // check belongs here.
+    run_json(python_exe, npdev_cli, &args, java_home, "host check").await
+}
+
+pub async fn run_host_explain(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_HOST_CHECK_CLEAN)
+            .map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec![
+        "host".to_string(), "explain".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--json".to_string(),
+    ];
+    run_json(python_exe, npdev_cli, &args, java_home, "host explain").await
+}
+
+/// The ladder's content (artboard 2). Reads scripts/policy/hosting-targets.json THROUGH the CLI
+/// (`host plan --list-targets`) rather than from disk directly: the Manager must not learn a
+/// second way to find the repo, and the CLI already resolves it and annotates each target against
+/// this app's own engine (`compatible`/`incompatibleReason`) -- that decision belongs there, not
+/// in this file or in JS.
+pub async fn run_host_targets(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_HOST_TARGETS)
+            .map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec![
+        "host".to_string(), "plan".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--list-targets".to_string(), "--json".to_string(),
+    ];
+    run_json(python_exe, npdev_cli, &args, java_home, "host targets").await
 }
 
 // ---------------------------------------------------------------------------------------------
