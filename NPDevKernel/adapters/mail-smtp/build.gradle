@@ -4,9 +4,9 @@ dependencies {
     // LNCH-11: the first mail-sending SDK in a kernel adapter -- deliberately isolated to this
     // module only (kernel core and the other adapters stay dependency-free on it), same pattern
     // as file-store-objectstore's isolated AWS SDK dependency.
-    implementation 'org.eclipse.angus:angus-mail:2.0.3'
+    implementation 'org.eclipse.angus:angus-mail:2.0.5'
 
-    testImplementation 'com.icegreen:greenmail-junit5:2.1.0'
+    testImplementation 'com.icegreen:greenmail-junit5:2.1.13'
 
     // R6.3 (RUN-18): the scheduled-report end-to-end proof compiles a real model.json (capabilities
     // + bindings + a cron-scheduled flow) through the SAME parser/validator/compiler/flow-definition
@@ -19,5 +19,5 @@ dependencies {
     // dsl exposes Jackson (JsonNode) on its public JsonModelParser.parse(...) API as implementation,
     // so a test that calls it directly needs Jackson on its own compile classpath (same note as
     // flow-compiled's build.gradle).
-    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.17.2'
+    testImplementation 'com.fasterxml.jackson.core:jackson-databind:2.22.2'
 }
