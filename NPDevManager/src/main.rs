@@ -1269,9 +1269,9 @@ fn manager_version() -> String {
 /// the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.2.0: Prompter can validate an AI-proposed model.json against the real DSL validator, apply \
-     it to the app's model.json (with an automatic timestamped backup), and optionally regenerate \
-     + build the app afterward."
+    "0.4.0: Share a running app over the internet from the window (tunnel, host check, keys, \
+     deploy hand-off); Monitor + Scrap Manager; verification panel; Prompter validate/apply with \
+     automatic backup."
         .to_string()
 }
 
