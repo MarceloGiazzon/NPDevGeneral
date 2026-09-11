@@ -21,6 +21,7 @@ import com.npdev.generator.emitters.PluginRequirementAssetEmitter;
 import com.npdev.generator.emitters.RuntimeApiEmitter;
 import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
 import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
+import com.npdev.generator.emitters.SemanticGraphEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.emitters.XrefEmitter;
@@ -343,6 +344,10 @@ public final class GeneratorFacade {
         // model source the two emitters above read, so an app carries the answer to "what
         // references this field?" without a rebuild.
         new XrefEmitter(writer).emit(resolvedModelSource, modelSourcePath);
+
+        // P2.2 (Path A Phase 2): the semantic relationship graph, npdev/semantic-graph.json --
+        // XrefEmitter's own edges relabeled with a semantic verb, not a second traversal.
+        new SemanticGraphEmitter(writer).emit(resolvedModelSource, modelSourcePath);
 
         // Auth: when the model personalizes auth.mode, emit the runtime auth properties that drive it.
         ResolvedSetting<String> authMode = settingResolver.resolve(NpdevSettings.AUTH_MODE, SettingTarget.app());

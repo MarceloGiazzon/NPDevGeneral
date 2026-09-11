@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/ai/semantic-graph.schema.json",
+  "title": "NPDev semantic relationship graph (npdev-semantic-graph.v1)",
+  "version": "1.0.0",
+  "description": "Path A Phase 2 (P2.2). The model's reference edges relabeled with a semantic verb (Panel reads Concept, Flow calls Procedure, Procedure emits Event, ...) instead of the structural `site` key alone. Produced by com.npdev.dsl.v1.xref.SemanticGraphJson, which relabels com.npdev.dsl.v1.xref.ReferenceIndex's edges rather than computing a second, parallel graph (Decision D1: the semantic layer is a vocabulary and a graph over the existing model, never a parallel model). The generator emits it into each app as npdev/semantic-graph.json. Only RESOLVED edges (see model-xref.schema.json) become graph edges -- an edge naming something that may not exist is model-xref.json's diagnostic concern, not this graph's. Consumers: the Box Inspector (P6.4) and the AI authoring path (P2.4, P7.1), both answering 'what would I reuse for this intent' and 'why does this element exist' from the graph alone.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "model", "summary", "nodes", "edges"],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-semantic-graph.v1"
+    },
+    "model": {
+      "type": "string",
+      "description": "How this document names the model it describes -- the model file path for a CLI run, the namespace for a generated app. Free text; nothing parses it."
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nodes", "edges"],
+      "description": "Counts, so a consumer can size the graph without walking it.",
+      "properties": {
+        "nodes": { "type": "integer", "minimum": 0 },
+        "edges": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "description": "Every distinct (kind, name) pair appearing as an edge endpoint, sorted lexicographically by \"kind name\". The order is part of the contract: this file is emitted into every generated app and hashed across two generator runs by scripts/hygiene/check-deterministic-generation.ps1.",
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Same edges as model-xref.json's `edges` (RESOLVED only), in the same stable order, each carrying a semantic verb instead of (or alongside) the bare structural `site`.",
+      "items": { "$ref": "#/$defs/semanticEdge" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "name"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "examples": ["concept", "field", "panel", "query", "procedure", "flow", "event", "capability", "aggregate", "guidePage", "dataSource", "domainType", "invariant", "autoPanel", "selector", "document", "conversion", "orchestration"]
+        },
+        "name": {
+          "type": "string",
+          "description": "Qualified name exactly as the composed model spells it. For a `field` node, `Concept.field`."
+        }
+      }
+    },
+    "semanticEdge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["from", "verb", "to", "site", "path"],
+      "properties": {
+        "from": { "$ref": "#/$defs/node" },
+        "verb": {
+          "type": "string",
+          "description": "The human-readable relationship: `<from.kind> <verb> <to.kind>` reads as a sentence (\"Flow calls Procedure\"). One verb per `site` key, defined in SemanticGraphJson.VERBS_BY_SITE; a site with no entry there falls back to the generic \"references\" so an edge is never silently dropped.",
+          "examples": ["reads", "calls", "emits", "starts", "contains", "rootsAt", "operatesOn", "publishes", "schedules", "references"]
+        },
+        "to": { "$ref": "#/$defs/node" },
+        "site": {
+          "type": "string",
+          "description": "The structural site this edge came from, carried through unchanged from model-xref.json -- lets a consumer cross-reference the two documents for the same edge.",
+          "examples": ["flow.steps.procedure", "panel.dataSources.concept", "aggregate.collections.concept"]
+        },
+        "path": {
+          "type": "string",
+          "description": "Structural pointer to this exact occurrence, carried through unchanged from model-xref.json.",
+          "examples": ["flows[OnboardWidget].steps[0].flow", "panels[WidgetPanel].dataSources[0].concept"]
+        }
+      }
+    }
+  }
+}

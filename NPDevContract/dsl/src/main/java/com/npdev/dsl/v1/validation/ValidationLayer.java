@@ -4,7 +4,8 @@ public enum ValidationLayer {
     STRUCTURAL("structural"),
     SEMANTIC("semantic"),
     UX_METADATA("ux-metadata"),
-    RELEASE_GATE("release-gate");
+    RELEASE_GATE("release-gate"),
+    SEMANTIC_GRAPH("semantic-graph");
 
     private final String externalName;
 

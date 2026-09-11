@@ -86,11 +86,20 @@ final class ReferenceIntegrityValidation {
             // PanelValidation.validateGuidePages -> gadget query + axis (PanelValidation.java:692).
             ReferenceIndex.SITE_GUIDE_PAGE_GADGET_QUERY,
             ReferenceIndex.SITE_GUIDE_PAGE_GADGET_AXIS,
-            // PackValidation.validateProcedures -> patchConcept.set keys and step targets.
+            // PackValidation.validateProcedures -> patchConcept.set keys and step targets, PLUS
+            // (P2.3 fix) validateProcedureCapabilityCall's "capability not found" -- this site was
+            // the one procedure-step site missing from this list; every sibling site above it was
+            // already excluded, so an unknown capability on a procedure step was reported TWICE
+            // (PackValidation's specific message, then this class's generic one) until this line.
             ReferenceIndex.SITE_PROCEDURE_STEP_SET_FIELD,
             ReferenceIndex.SITE_PROCEDURE_STEP_CONCEPT,
             ReferenceIndex.SITE_PROCEDURE_STEP_QUERY,
-            ReferenceIndex.SITE_PROCEDURE_STEP_PROCEDURE
+            ReferenceIndex.SITE_PROCEDURE_STEP_PROCEDURE,
+            ReferenceIndex.SITE_PROCEDURE_STEP_CAPABILITY,
+            // OrchestrationValidation -> a scheduleEvent action's event ("schedule event not
+            // found"), the same reference ReferenceIndex now also indexes (P2.3 follow-up) so
+            // SemanticGraphValidation's producer query can see it.
+            ReferenceIndex.SITE_ORCHESTRATION_ACTION_EVENT
     );
 
     /**
