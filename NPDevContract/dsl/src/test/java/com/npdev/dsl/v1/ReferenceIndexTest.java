@@ -2,6 +2,7 @@ package com.npdev.dsl.v1;
 
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.parser.JsonModelParser;
+import com.npdev.dsl.v1.resolution.ModelResolver;
 import com.npdev.dsl.v1.xref.ReferenceEdge;
 import com.npdev.dsl.v1.xref.ReferenceIndex;
 import com.npdev.dsl.v1.xref.Resolution;
@@ -27,8 +28,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * switched off, so this is not a nicety.
  *
  * <p>The second is {@link #inheritedFieldsAreNotReportedAsMissing()}. Fields arrive through
- * {@code extends}; checking a reference against the concept's OWN field list alone would flag
- * every correct reference to an inherited field in the corpus.
+ * {@code extends}/{@code specializes}; checking a reference against the concept's OWN field list
+ * alone would flag every correct reference to an inherited field in the corpus. P3.1: inheritance
+ * is flattened by {@code ModelResolver} before {@link ReferenceIndex#build} ever runs (both real
+ * call sites resolve first) -- this test resolves explicitly too, so it exercises the real contract
+ * instead of ReferenceIndex's own (now-removed) redundant inheritance walk.
  */
 class ReferenceIndexTest {
 
@@ -36,6 +40,10 @@ class ReferenceIndexTest {
         Path modelPath = Files.createTempFile("npdev-xref-", ".json");
         Files.writeString(modelPath, json);
         return new JsonModelParser().parse(modelPath);
+    }
+
+    private static ModelAst resolve(ModelAst modelAst) {
+        return new ModelResolver().resolve(modelAst).modelAst();
     }
 
     private static List<ReferenceEdge> unresolvedOf(ReferenceIndex index) {
@@ -338,7 +346,7 @@ class ReferenceIndexTest {
 
     @Test
     void inheritedFieldsAreNotReportedAsMissing() throws Exception {
-        ReferenceIndex index = ReferenceIndex.build(parse("""
+        ReferenceIndex index = ReferenceIndex.build(resolve(parse("""
                 {
                   "namespace": "xref.inheritance",
                   "dslVersion": "1.0.0",
@@ -356,7 +364,7 @@ class ReferenceIndexTest {
                     { "name": "RecentInvoices", "concept": "Invoice", "orderBy": ["createdAt desc"] }
                   ]
                 }
-                """));
+                """)));
 
         assertEquals(List.of(), unresolvedOf(index),
                 "createdAt is inherited from BaseDoc: " + describe(unresolvedOf(index)));

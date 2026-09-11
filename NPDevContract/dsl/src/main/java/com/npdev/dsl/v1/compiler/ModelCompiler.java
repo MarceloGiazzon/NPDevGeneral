@@ -376,7 +376,7 @@ public final class ModelCompiler {
             }
             operations.sort(Comparator.comparing(operation -> normalize(operation.getName())));
             capabilities.add(new CompiledCapability(capabilityAst.getName(), capabilityAst.getType(), operations,
-                    toCompiledOrigin(capabilityAst.getOrigin())));
+                    toCompiledOrigin(capabilityAst.getOrigin()), capabilityAst.getUid()));
             capabilityTypesByName.put(normalize(capabilityAst.getName()), capabilityAst.getType());
             Map<String, CompiledCapabilityOperation> operationMap = new LinkedHashMap<>();
             for (CompiledCapabilityOperation operation : operations) {
@@ -402,7 +402,7 @@ public final class ModelCompiler {
             }
             payloadFields.sort(Comparator.comparing(field -> normalize(field.getName())));
             events.add(new CompiledEvent(eventAst.getName(), eventAst.getConceptName(), payloadFields, eventAst.getTriggerMode(),
-                    toCompiledOrigin(eventAst.getOrigin())));
+                    toCompiledOrigin(eventAst.getOrigin()), eventAst.getUid()));
         }
 
         List<FlowAst> orderedFlows = new ArrayList<>(modelAst.getFlows());
@@ -426,7 +426,8 @@ public final class ModelCompiler {
                     toCompiledActionMetadata(flowAst.getAction()),
                     flowAst.isStartEndpoint(),
                     toCompiledFlowSchedule(flowAst.getSchedule()),
-                    toCompiledOrigin(flowAst.getOrigin())
+                    toCompiledOrigin(flowAst.getOrigin()),
+                    flowAst.getUid()
             ));
         }
 
@@ -481,7 +482,8 @@ public final class ModelCompiler {
                     toCompiledGroupByFields(queryAst.groupBy()),
                     toCompiledAggregateFunctions(queryAst.aggregates()),
                     queryAst.having(),
-                    toCompiledOrigin(queryAst.origin())
+                    toCompiledOrigin(queryAst.origin()),
+                    queryAst.uid()
             ));
         }
 
@@ -510,7 +512,8 @@ public final class ModelCompiler {
                     sortedStrings(procedureAst.permissionRequirements()),
                     procedureAst.tracePolicy(),
                     compileGeneratedActionDescriptor(procedureAst),
-                    sortObjectMap(procedureAst.metadata())
+                    sortObjectMap(procedureAst.metadata()),
+                    procedureAst.uid()
             ));
         }
 
@@ -1138,7 +1141,8 @@ public final class ModelCompiler {
                 sortObjectMap(aggregateAst.metadata()),
                 onValidate,
                 // npdev-aggregate-invariant-four-place (R4.4): parser -> HERE -> canonical writer+reader.
-                compileAggregateInvariants(aggregateAst.invariants())
+                compileAggregateInvariants(aggregateAst.invariants()),
+                aggregateAst.uid()
         );
     }
 
@@ -1268,6 +1272,14 @@ public final class ModelCompiler {
         return out;
     }
 
+    // P3.1 (Path A realignment, duplicate-lanes.yml lane 2): this used to walk `extends` itself
+    // (specializes was invisible here) to merge parent+child fields, with override silently winning
+    // -- the opposite policy from ModelResolver.mergeConcept's ILLEGAL_OVERRIDE refusal. That walk is
+    // now dead code: compile(modelAst) always resolves via ModelResolver first (see above) and passes
+    // its ALREADY-FLATTENED concepts into compileResolved -- every concept reaching here has its
+    // parent reference nulled out by the merge, so the walk below always terminated immediately in
+    // practice. ModelResolver is now the sole inheritance-walking lane; this is just a cache-backed
+    // repackaging of an already-resolved concept's own fields/invariants/lifecycle.
     private static EffectiveEntityDef resolveEffective(
             ConceptAst entity,
             Map<String, ? extends ConceptAst> entitiesByLower,
@@ -1277,43 +1289,12 @@ public final class ModelCompiler {
         String key = normalize(entity.getName());
         EffectiveEntityDef cached = cache.get(key);
         if (cached != null) return cached;
-
-        if (!stack.add(key)) {
-            return new EffectiveEntityDef(entity.getFields(), entity.getInvariants(), entity.getLifecycle());
-        }
-
-        LinkedHashMap<String, FieldAst> fieldsByLower = new LinkedHashMap<>();
-        List<InvariantAst> invariants = new ArrayList<>();
-        LifecycleAst lifecycle = null;
-
-        String parentName = entity.getExtendsName();
-        if (parentName != null && !parentName.isBlank()) {
-            ConceptAst parent = entitiesByLower.get(normalize(parentName));
-            if (parent != null) {
-                EffectiveEntityDef parentEffective = resolveEffective(parent, entitiesByLower, cache, stack);
-                for (FieldAst pf : parentEffective.fields()) {
-                    fieldsByLower.put(normalize(pf.getName()), pf);
-                }
-                invariants.addAll(parentEffective.invariants());
-                lifecycle = parentEffective.lifecycle();
-            }
-        }
-
-        for (FieldAst localField : entity.getFields()) {
-            fieldsByLower.put(normalize(localField.getName()), localField);
-        }
-        invariants.addAll(entity.getInvariants());
-        if (entity.getLifecycle() != null) {
-            lifecycle = entity.getLifecycle();
-        }
-
         EffectiveEntityDef effective = new EffectiveEntityDef(
-                new ArrayList<>(fieldsByLower.values()),
-                invariants,
-                lifecycle
+                new ArrayList<>(entity.getFields()),
+                new ArrayList<>(entity.getInvariants()),
+                entity.getLifecycle()
         );
         cache.put(key, effective);
-        stack.remove(key);
         return effective;
     }
 
@@ -1957,7 +1938,8 @@ public final class ModelCompiler {
                 sortObjectMap(panelAst.explainability()),
                 sortObjectMap(panelAst.metadata()),
                 panelAst.guidePage(),
-                toCompiledOrigin(panelAst.origin())
+                toCompiledOrigin(panelAst.origin()),
+                panelAst.uid()
         );
     }
 

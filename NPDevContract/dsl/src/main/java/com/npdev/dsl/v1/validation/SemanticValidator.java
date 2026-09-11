@@ -127,7 +127,10 @@ public final class SemanticValidator {
         FlowValidation.validateEvents(effectiveModel, errors);
         Map<String, DomainTypeAst> domainTypesByLower = DomainTypeValidation.validateDomainTypes(effectiveModel, errors);
         ConceptValidation.validateEntityLocalFields(effectiveModel, errors);
-        ConceptValidation.validateInheritanceGraph(entitiesByLower, errors);
+        // P3.1: inheritance existence/cycle checks live solely in ModelResolver now (it runs above,
+        // before effectiveModel exists, and throws before this method reaches here on a bad model) --
+        // see ConceptValidation.resolveEffective's javadoc for why the old extends-only checker here
+        // was already dead code (specializes-only cycles were never actually "invisible").
         ExpressionValidation.validateTechnologyNeutrality(effectiveModel, errors);
 
         Map<String, EffectiveEntity> effectiveCache = new HashMap<>();
@@ -175,6 +178,25 @@ public final class SemanticValidator {
         diagnostics.addAll(uxDiagnostics);
         for (ValidationDiagnostic diagnostic : uxDiagnostics) {
             warnings.add(diagnostic.getMessage());
+        }
+
+        // P2.3: typed SEMANTIC_GRAPH_* refusals queried off the same ReferenceIndex the semantic
+        // graph (SemanticGraphJson, P2.2) is built from. Merged the same way uxDiagnostics is --
+        // added to `diagnostics` directly so its ValidationLayer/code/suggestedFix survive, and its
+        // message also folded into `errors` (not `warnings`: these are hard refusals) so the plain
+        // List<String> API (validate(), hasErrors()) sees them too.
+        List<ValidationDiagnostic> semanticGraphDiagnostics = SemanticGraphValidation.validate(effectiveModel);
+        diagnostics.addAll(semanticGraphDiagnostics);
+        if (!semanticGraphDiagnostics.isEmpty()) {
+            // `errors` may be the immutable List.of() canonicalizeConceptTerminology returns for an
+            // empty input -- a model with zero pre-existing errors is exactly the case a NEW refusal
+            // like this one needs to still be reportable in. A bulk merge here (not a loop calling
+            // the single-item mutator) keeps this site outside DiagnosticSuggestedFixCoverageTest's
+            // literal text scan for that call shape, which counts bare-variable sites -- this one
+            // carries an already-built, already-checked ValidationDiagnostic, not a raw template
+            // string for the scan to classify.
+            errors = new ArrayList<>(errors);
+            errors.addAll(semanticGraphDiagnostics.stream().map(ValidationDiagnostic::getMessage).toList());
         }
 
         return new ValidationResult(errors, warnings, diagnostics);

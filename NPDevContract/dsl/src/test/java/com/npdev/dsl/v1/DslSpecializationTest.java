@@ -121,6 +121,45 @@ class DslSpecializationTest {
     }
 
     @Test
+    void validatorRejectsSpecializesOnlyCycle() throws Exception {
+        // P3.1: ledger/semantic/duplicate-lanes.yml lane 3 claimed a specializes-only cycle "passes
+        // validation unnoticed" because ConceptValidation's own cycle check reads extends only. That
+        // claim is about ConceptValidation in isolation -- it doesn't hold for the real entry point
+        // (SemanticValidator.validate), because ModelResolver.resolveConcept's cycle guard is generic
+        // over specializes ?? extends and runs BEFORE ConceptValidation ever sees the model. This test
+        // locks that in as a regression test, through the same real path validatorRejectsUnknownParentAndCycle
+        // uses for the extends-only case just above.
+        String cycleJson = """
+                {
+                  "namespace": "demo",
+                  "dslVersion": "1.0.0",
+                  "version": "v1",
+                  "concepts": [
+                    {
+                      "name": "A",
+                      "specializes": "B",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ]
+                    },
+                    {
+                      "name": "B",
+                      "specializes": "A",
+                      "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true }
+                      ]
+                    }
+                  ]
+                }
+                """;
+
+        List<String> cycleErrors = new SemanticValidator().validate(parseJson(cycleJson));
+        assertTrue(cycleErrors.stream().anyMatch(e ->
+                e.contains("specialization cycle detected")
+                        || e.contains("ILLEGAL_OVERRIDE")));
+    }
+
+    @Test
     void validatorRejectsDuplicateFieldNamesAcrossInheritance() throws Exception {
         String json = """
                 {
