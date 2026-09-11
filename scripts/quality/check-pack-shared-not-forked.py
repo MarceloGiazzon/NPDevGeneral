@@ -3,8 +3,11 @@
 
 P4.1 gave packs a public/private boundary; the remaining Phase 4 exit criterion is that pack reuse
 across applications is a *gate result*, not an assertion in a plan document. This script is that
-gate: it walks the in-repo corpus (NPDevSamples) for pack.json files, groups them by their declared
-(pack name, version), and for every group consumed by more than one application:
+gate: it walks the in-repo corpus (NPDevSamples, plus the first-party pack registry at
+NPDevContract/packs -- ModelSourceResolver forbids a `$ref` from escaping an app's own model root,
+so NPDevContract/packs is never imported directly; it is the canonical copy every consuming app's
+own local copy is supposed to mirror byte-for-byte) for pack.json files, groups them by their
+declared (pack name, version), and for every group consumed by more than one application:
 
   - if every app's pack content hashes identically -> genuine reuse, reported as SHARED.
   - if the content differs while name+version claim to be the same -> FORKED: the pack was copied
@@ -12,9 +15,10 @@ gate: it walks the in-repo corpus (NPDevSamples) for pack.json files, groups the
     failure mode the plan's cross-app reuse proof exists to catch, so it is a hard failure.
 
 With --strict, zero SHARED groups is also a failure: the reuse proof itself must have at least one
-live witness, or the gate is checking nothing. The current witness is NPDevSamples/dsl-conformance-max
-+ NPDevSamples/pack9-role-binding-a + NPDevSamples/pack9-role-binding-b, all three importing the
-identical in-git `labeling` pack (see those apps' model.json `purpose` fields).
+live witness, or the gate is checking nothing. The current witnesses are (1) NPDevSamples/dsl-
+conformance-max + pack9-role-binding-a + pack9-role-binding-b, all three importing the identical
+in-git `labeling` pack (see those apps' model.json `purpose` fields), and (2) NPDevContract/packs/
+identity mirrored into NPDevSamples/probes/p6-satellite-extension.
 
 Unlike check-pack-coverage.py, the external AppGen apps tree is NOT scanned by default: it is layer
 2 (app definitions), lives outside this repo, is not version-controlled with it, and its content
@@ -35,21 +39,27 @@ from pathlib import Path
 
 
 def _app_label(root: Path, pack_json: Path) -> str:
-    """The application a pack.json belongs to: everything before the packs/<name>/ segment."""
+    """The application a pack.json belongs to: everything before the packs/<name>/ segment. A root
+    that IS itself a packs registry (e.g. NPDevContract/packs) has no such segment -- label it by
+    the pack's own directory instead of repeating the full 'pack.json' filename."""
     rel = pack_json.relative_to(root).as_posix()
     idx = rel.find("/packs/")
-    prefix = rel[:idx] if idx != -1 else rel
+    if idx != -1:
+        prefix = rel[:idx]
+    else:
+        prefix = pack_json.parent.name
     return f"{root.name}/{prefix}" if prefix else root.name
 
 
-def _digest(pack_json: Path) -> str | None:
-    try:
-        data = json.loads(pack_json.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    canonical = json.dumps(data, sort_keys=True, separators=(",", ":"))
+def _digest(data: dict) -> str:
+    """Content digest, excluding `$schema`: that pointer is relative to each pack's own directory
+    depth (e.g. an app three levels deeper than another needs a longer `../..` chain to the same
+    schema file), so two byte-for-byte-identical packs consumed at different nesting depths would
+    otherwise report a false fork on that field alone -- confirmed live comparing
+    NPDevContract/packs/identity against NPDevSamples/probes/p6-satellite-extension's copy, which
+    differ ONLY in `$schema` and are identical in every field that actually matters."""
+    content = {k: v for k, v in data.items() if k != "$schema"}
+    canonical = json.dumps(content, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
@@ -75,9 +85,7 @@ def scan(roots: list[Path], include_probes: bool) -> dict[tuple[str, str], list[
             version = data.get("version")
             if not name or not version:
                 continue
-            digest = _digest(pack_json)
-            if digest is None:
-                continue
+            digest = _digest(data)
             key = (name, version)
             groups.setdefault(key, []).append((_app_label(root, pack_json), rel, digest))
     return groups
@@ -86,12 +94,13 @@ def scan(roots: list[Path], include_probes: bool) -> dict[tuple[str, str], list[
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--samples-root", default=str(Path(__file__).resolve().parents[2] / "NPDevSamples"))
+    ap.add_argument("--packs-root", default=str(Path(__file__).resolve().parents[2] / "NPDevContract" / "packs"))
     ap.add_argument("--appgen-root", default=None, help="opt-in only -- layer 2, outside the repo, not scanned by default")
     ap.add_argument("--probes", action="store_true", help="include NPDevSamples/probes as witnesses")
     ap.add_argument("--strict", action="store_true", help="exit 1 if there is no live cross-app reuse witness")
     args = ap.parse_args(argv[1:])
 
-    roots = [Path(args.samples_root)]
+    roots = [Path(args.samples_root), Path(args.packs_root)]
     if args.appgen_root:
         roots.append(Path(args.appgen_root))
     groups = scan(roots, include_probes=args.probes)
