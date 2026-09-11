@@ -142,7 +142,7 @@ class TrustedSourceSecurityHardeningTest {
                   <body><script>window.NPDev.callProcedure("create-users", {});</script></body>
                 </html>
                 """);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), panelManifest(sha256(panel)));
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), panelManifest(sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-source-csp-out-");
         new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath);
@@ -173,7 +173,7 @@ class TrustedSourceSecurityHardeningTest {
                     }
                 }
                 """);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), generatedProcedureManifest(sha256(procedure)));
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), generatedProcedureManifest(sha256(procedure)));
 
         Path out = Files.createTempDirectory("npdev-trusted-bytecode-out-");
         new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(generatedProcedureModel(), modelPath);
@@ -244,7 +244,7 @@ class TrustedSourceSecurityHardeningTest {
         Path procedure = modelRoot.resolve("procedure/EscapeProcedure.java");
         Files.createDirectories(procedure.getParent());
         Files.writeString(procedure, source);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), procedureManifest(sha256(procedure)));
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), procedureManifest(sha256(procedure)));
 
         Path out = Files.createTempDirectory("npdev-trusted-source-out-" + caseName + "-");
         IllegalStateException error = assertThrows(IllegalStateException.class,
@@ -259,7 +259,7 @@ class TrustedSourceSecurityHardeningTest {
         Path panel = modelRoot.resolve("panel/user-admin-panel.html");
         Files.createDirectories(panel.getParent());
         Files.writeString(panel, source);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), panelManifest(sha256(panel)));
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), panelManifest(sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-panel-out-" + caseName + "-");
         IllegalStateException error = assertThrows(IllegalStateException.class,
@@ -274,7 +274,7 @@ class TrustedSourceSecurityHardeningTest {
         Path panel = modelRoot.resolve("panel/user-admin-panel.html");
         Files.createDirectories(panel.getParent());
         Files.writeString(panel, source);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), panelManifest(sha256(panel)));
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), panelManifest(sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-panel-sanitize-out-" + caseName + "-");
         new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath);
@@ -295,7 +295,7 @@ class TrustedSourceSecurityHardeningTest {
                 null,
                 List.of("admin"),
                 "summary",
-                Map.of("trustedSourceEntrypoint", "procedure/EscapeProcedure.java")
+                Map.of("untrustedExtensionEntrypoint", "procedure/EscapeProcedure.java")
         );
         return new CompiledModel(
                 "trusted.source.security.procedure",
@@ -325,7 +325,7 @@ class TrustedSourceSecurityHardeningTest {
                 null,
                 List.of("admin"),
                 "summary",
-                Map.of("trustedSourceEntrypoint", "procedure/CreateUsersProcedure.java")
+                Map.of("untrustedExtensionEntrypoint", "procedure/CreateUsersProcedure.java")
         );
         return new CompiledModel(
                 "trusted.source.security.bytecode",
@@ -357,7 +357,7 @@ class TrustedSourceSecurityHardeningTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/user-admin-panel.html"),
+                Map.of("untrustedExtensionEntrypoint", "panel/user-admin-panel.html"),
                 null
         );
         return new CompiledModel(
@@ -381,7 +381,7 @@ class TrustedSourceSecurityHardeningTest {
     private static String procedureManifest(String procedureHash) {
         return """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "scenarioId": "trusted-source-security",
                   "policyVersion": "cp10",
                   "expectedOutcome": "fail",
@@ -406,7 +406,7 @@ class TrustedSourceSecurityHardeningTest {
     private static String generatedProcedureManifest(String procedureHash) {
         return """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "scenarioId": "trusted-source-security-bytecode",
                   "policyVersion": "cp10",
                   "expectedOutcome": "pass",
@@ -431,7 +431,7 @@ class TrustedSourceSecurityHardeningTest {
     private static String panelManifest(String panelHash) {
         return """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "scenarioId": "trusted-source-security",
                   "policyVersion": "cp10",
                   "expectedOutcome": "fail",

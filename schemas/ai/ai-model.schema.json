@@ -467,7 +467,7 @@
       ],
       "properties": {
         "mode": {
-          "const": "trustedSource"
+          "const": "untrustedExtension"
         },
         "language": {
           "enum": [
@@ -638,7 +638,7 @@
       ],
       "properties": {
         "mode": {
-          "const": "trustedSource"
+          "const": "untrustedExtension"
         },
         "language": {
           "const": "java"

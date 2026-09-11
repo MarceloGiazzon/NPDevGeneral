@@ -239,7 +239,7 @@ def plan_cascade(edges: list[dict], concept: str, old_field: str) -> tuple[list[
 
 
 def trusted_source_refusals(model: dict, edges: list[dict]) -> list[str]:
-    """Trusted-source panels/procedures are hash-pinned external assets. Rewriting the manifest
+    """Untrusted-extension panels/procedures are hash-pinned external assets. Rewriting the manifest
     entry would invalidate the hash and the app would refuse to load the asset at boot -- so name
     the entry and stop, rather than producing a model that generates and then fails to run."""
     pinned = set()
@@ -248,15 +248,15 @@ def trusted_source_refusals(model: dict, edges: list[dict]) -> list[str]:
             if not isinstance(member, dict):
                 continue
             metadata = member.get("metadata") or {}
-            if isinstance(metadata, dict) and metadata.get("trustedSourceEntrypoint"):
+            if isinstance(metadata, dict) and metadata.get("untrustedExtensionEntrypoint"):
                 pinned.add((key, member.get("name")))
     refusals = []
     for edge in edges:
         owner = (edge.get("fromKind", "") + "s", edge.get("fromName"))
         if owner in pinned:
             refusals.append(
-                f"{edge.get('fromKind')} {edge.get('fromName')} is a trusted-source asset "
-                f"(metadata.trustedSourceEntrypoint) -- its content is hash-pinned, so rewriting "
+                f"{edge.get('fromKind')} {edge.get('fromName')} is an untrusted extension asset "
+                f"(metadata.untrustedExtensionEntrypoint) -- its content is hash-pinned, so rewriting "
                 f"the reference at {edge.get('path')} would invalidate the manifest entry")
     return refusals
 

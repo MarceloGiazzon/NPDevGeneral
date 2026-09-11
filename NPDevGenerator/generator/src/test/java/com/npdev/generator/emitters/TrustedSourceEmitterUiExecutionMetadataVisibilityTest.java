@@ -61,7 +61,7 @@ final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
                 </html>
                 """);
 
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), manifest(sha256(procedure), sha256(panel)));
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), manifest(sha256(procedure), sha256(panel)));
 
         Path out = tempDir.resolve("out");
         new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
@@ -151,7 +151,7 @@ final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
                         "claim",
                         true
                 ),
-                Map.of("trustedSourceEntrypoint", "trusted/CreateItem13UserProcedure.java")
+                Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem13UserProcedure.java")
         );
         CompiledPanel panel = new CompiledPanel(
                 "item13-panel",
@@ -164,7 +164,7 @@ final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/item13-panel.html"),
+                Map.of("untrustedExtensionEntrypoint", "panel/item13-panel.html"),
                 null
         );
         return new CompiledModel(
@@ -188,7 +188,7 @@ final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
     private static String manifest(String procedureHash, String panelHash) {
         return """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "entries": [
                     {
                       "entryId": "procedure-create-item13-user",

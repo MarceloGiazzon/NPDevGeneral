@@ -498,6 +498,22 @@ def _migrate_transaction_band_pickers(transaction: dict, where: str, result: Mig
     result.changes.append(message)
 
 
+def _migrate_untrusted_extension_entrypoint(entries, kind: str, result: MigrationResult) -> None:
+    """Path A P0.4 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): the escape-hatch vocabulary the platform
+    branded 'trusted' -- the word that means safe -- inverts to 'untrusted extension', the safety
+    posture the platform actually treats it with. `metadata.trustedSourceEntrypoint` is the one
+    author-typed spelling of this on a panel/procedure; renamed with no alias window, per the
+    stability policy's codemod-in-the-same-commit rule rather than a lingering deprecated key."""
+    for i, entry in enumerate(entries or []):
+        if not isinstance(entry, dict):
+            continue
+        metadata = entry.get("metadata")
+        if not isinstance(metadata, dict):
+            continue
+        where = f"{kind}[{i}] ({entry.get('name', '?')}).metadata"
+        _rewrite_field_aliases(metadata, [("trustedSourceEntrypoint", "untrustedExtensionEntrypoint")], where, result)
+
+
 def _migrate_query_or_procedure_audit_policy(entries, kind: str, result: MigrationResult) -> None:
     """R5.1 (roadmap 2026-08-18, "retire the inert auditPolicy knob"): `queries[].auditPolicy` and
     `procedures[].auditPolicy` were schema-declared (none|read|write) but consumed by nothing at
@@ -715,6 +731,9 @@ def migrate_document(doc: dict) -> MigrationResult:
     _migrate_query_or_procedure_audit_policy(doc.get("queries", None) or [], "queries", result)
     _migrate_query_or_procedure_audit_policy(doc.get("procedures", None) or [], "procedures", result)
 
+    _migrate_untrusted_extension_entrypoint(doc.get("panels", None) or [], "panels", result)
+    _migrate_untrusted_extension_entrypoint(doc.get("procedures", None) or [], "procedures", result)
+
     return result
 
 # =================================================================================================
@@ -808,4 +827,42 @@ def migrate_db_definition(doc: dict) -> MigrationResult:
             f"refuses this file until you say. Add \"externallyProvisioned\": true by hand if NPDev "
             f"did NOT create this database (Start/Stop/Reset will then refuse to touch it), or "
             f"false if NPDev should manage its lifecycle. (F3, STOR-14)")
+    return result
+
+
+# =================================================================================================
+# Path A P0.4 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): trusted-source-manifest.json -> untrusted-
+# extension-manifest.json. A THIRD different document from either of the two kinds above (not
+# model.json, not db.definition.json) -- checked structurally, same reason as looks_like_db_definition:
+# the file this concerns is the one a `panels[]`/`procedures[].metadata.untrustedExtensionEntrypoint`
+# reference points at by content, not by a filename the platform enforces. No alias window ships for
+# the schemaVersion string itself (per the same decision as the metadata key rename above): an
+# unmigrated manifest fails TrustedSourceEmitter's schemaVersion check with a clear message rather
+# than silently being accepted under two names forever.
+# =================================================================================================
+
+_OLD_MANIFEST_SCHEMA_VERSION = "npdev-trusted-source-manifest.v1"
+_NEW_MANIFEST_SCHEMA_VERSION = "npdev-untrusted-extension-manifest.v1"
+OLD_MANIFEST_FILENAME = "trusted-source-manifest.json"
+NEW_MANIFEST_FILENAME = "untrusted-extension-manifest.json"
+
+
+def looks_like_untrusted_extension_manifest(doc: dict) -> bool:
+    """Matches the OLD schemaVersion only -- once migrated, a manifest already carries the new
+    schemaVersion and `migrate_document`/`looks_like_db_definition` both already ignore it (neither
+    structural check matches), so idempotence falls out for free rather than needing a special case."""
+    return isinstance(doc, dict) and doc.get("schemaVersion") == _OLD_MANIFEST_SCHEMA_VERSION
+
+
+def migrate_untrusted_extension_manifest(doc: dict) -> MigrationResult:
+    """Rewrites `doc` IN PLACE: only the schemaVersion string changes, every entry is untouched.
+    The caller (`npdev migrate dsl-2`) is responsible for renaming the file itself alongside this --
+    a manifest's identity is `trusted-source-manifest.json` living next to `model.json`, and renaming
+    the file without also rewriting the model's own `untrustedExtensionEntrypoint`-bearing references
+    (or vice versa) would leave the pair inconsistent."""
+    result = MigrationResult()
+    if doc.get("schemaVersion") == _OLD_MANIFEST_SCHEMA_VERSION:
+        doc["schemaVersion"] = _NEW_MANIFEST_SCHEMA_VERSION
+        result.changed = True
+        result.changes.append(f"schemaVersion: renamed '{_OLD_MANIFEST_SCHEMA_VERSION}' -> '{_NEW_MANIFEST_SCHEMA_VERSION}'")
     return result

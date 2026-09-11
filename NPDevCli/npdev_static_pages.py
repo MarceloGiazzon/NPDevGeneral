@@ -304,9 +304,9 @@ def emit_app_tree_page(app_folder: Path, static_dir: Path, app_id: str = "") -> 
     db = _load_optional_json(definition_dir, "db.definition.json")
     if db is not None:
         sections["Database"] = db
-    trusted_sources = _load_optional_json(definition_dir, "trusted-source-manifest.json")
+    trusted_sources = _load_optional_json(definition_dir, "untrusted-extension-manifest.json")
     if trusted_sources is not None:
-        sections["TrustedSources"] = trusted_sources
+        sections["UntrustedExtensions"] = trusted_sources
 
     seeds_dir = definition_dir / "seeds"
     if seeds_dir.is_dir():
@@ -387,7 +387,7 @@ def emit_app_tree_v2_page(app_folder: Path, static_dir: Path, app_id: str = "") 
 
     trusted_proc_src: dict[str, str] = {}
     trusted_panel_src: dict[str, str] = {}
-    trusted_dir = definition_dir / "trusted-source"
+    trusted_dir = definition_dir / "untrusted-extension"
     proc_dir = trusted_dir / "procedure"
     panel_dir = trusted_dir / "panel"
     if proc_dir.is_dir():
@@ -402,7 +402,7 @@ def emit_app_tree_v2_page(app_folder: Path, static_dir: Path, app_id: str = "") 
     pages = _load_optional_json(definition_dir, "pages.json")
     menu = _load_optional_json(definition_dir, "menu.json")
     db = _load_optional_json(definition_dir, "db.definition.json")
-    trusted_sources = _load_optional_json(definition_dir, "trusted-source-manifest.json")
+    trusted_sources = _load_optional_json(definition_dir, "untrusted-extension-manifest.json")
     smoke_plan = _load_optional_json(definition_dir, "smoke-plan.json")
 
     seed_obj: dict[str, object] = {}
@@ -441,12 +441,12 @@ def emit_app_tree_v2_page(app_folder: Path, static_dir: Path, app_id: str = "") 
     if web_sources:
         obj_panels["Web page source"] = web_sources
     if trusted_panel_src:
-        obj_panels["Trusted panel source"] = trusted_panel_src
+        obj_panels["Untrusted extension panel source"] = trusted_panel_src
 
     if cap_sources:
         obj_procs["Capability source"] = cap_sources
     if trusted_proc_src:
-        obj_procs["Trusted procedure source"] = trusted_proc_src
+        obj_procs["Untrusted extension procedure source"] = trusted_proc_src
 
     objects: dict[str, object] = {}
     if obj_concepts:

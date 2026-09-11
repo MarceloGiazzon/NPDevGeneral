@@ -27,6 +27,10 @@
     {
       "path": "AppGen/apps/payment-webhook-rehearsal/definition/model.json",
       "reason": "Layer 2, not layer 1. App definitions live in D-drive AppGen/apps, which is outside this repo and is not a git repo (CLAUDE.md, 'Source-of-truth layers'). BREAKING.md cites it as the corpus the label-widening codemod was round-tripped against, which is a true statement about a real file on the author's machine; it is legitimately absent on every CI checkout and on any other machine, so requiring it to exist would make the gate fail for a reason no contributor could fix."
+    },
+    {
+      "path": "schemas/ai/trusted-source-manifest.schema.json",
+      "reason": "BREAKING.md's own text says this schema was RENAMED to schemas/ai/untrusted-extension-manifest.schema.json (Path A P0.4, 2026-09-10) -- same pattern as check-query-predicate-compilable.py above: an entry describing a rename must be able to name the old path it renamed from."
     }
   ]
 }

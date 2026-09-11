@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "npdev-trusted-source-manifest.v1",
+  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
   "scenarioId": "create-users-panel-procedure",
   "policyVersion": "trusted-source-beta0.2026-05-07",
   "expectedOutcome": "pass",

@@ -75,7 +75,7 @@ class ExtensionInventoryEmitterTest {
 
         JsonNode counts = inventory.path("counts");
         assertEquals(1, counts.path("javaHook").asInt());
-        assertEquals(0, counts.path("trustedSourceAsset").asInt());
+        assertEquals(0, counts.path("untrustedExtensionAsset").asInt());
         assertEquals(0, counts.path("inProcessController").asInt());
         assertEquals(0, counts.path("pluginPackage").asInt());
 

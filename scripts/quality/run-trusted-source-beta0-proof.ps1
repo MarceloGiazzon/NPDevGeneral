@@ -60,11 +60,11 @@ function Get-TrustedReferencesFromJson {
     param([string]$JsonPath)
     if (-not (Test-Path -LiteralPath $JsonPath -PathType Leaf)) { return @() }
     $text = Get-Content -Raw -LiteralPath $JsonPath
-    if ($text -notmatch '"trustedSource"') { return @() }
+    if ($text -notmatch '"untrustedExtension"') { return @() }
     $json = $text | ConvertFrom-Json
     $refs = @()
     foreach ($procedure in @($json.procedures)) {
-        if ($null -ne $procedure.implementation -and [string]$procedure.implementation.mode -eq "trustedSource") {
+        if ($null -ne $procedure.implementation -and [string]$procedure.implementation.mode -eq "untrustedExtension") {
             $refs += [pscustomobject]@{
                 kind = "procedure"
                 id = [string]$procedure.procedureId
@@ -77,7 +77,7 @@ function Get-TrustedReferencesFromJson {
         }
     }
     foreach ($panel in @($json.panels)) {
-        if ($null -ne $panel.implementation -and [string]$panel.implementation.mode -eq "trustedSource") {
+        if ($null -ne $panel.implementation -and [string]$panel.implementation.mode -eq "untrustedExtension") {
             $refs += [pscustomobject]@{
                 kind = "panel"
                 id = [string]$panel.panelId
@@ -87,7 +87,7 @@ function Get-TrustedReferencesFromJson {
             }
         }
     }
-    if ($null -ne $json.implementation -and [string]$json.implementation.mode -eq "trustedSource") {
+    if ($null -ne $json.implementation -and [string]$json.implementation.mode -eq "untrustedExtension") {
         $kind = if ($JsonPath -like "*custom-panel*") { "panel" } else { "procedure" }
         $refs += [pscustomobject]@{
             kind = $kind
@@ -617,7 +617,7 @@ function Write-GeneratedRuntimeModel {
                 permissionRequirements = @("admin")
                 tracePolicy = "summary"
                 # R5.1: auditPolicy retired -- schema-declared but consumed by nothing at runtime.
-                metadata = [ordered]@{ beta0Surface = "trusted-source"; trustedSourceEntrypoint = "procedure/CreateUsersProcedure.java" }
+                metadata = [ordered]@{ beta0Surface = "trusted-source"; untrustedExtensionEntrypoint = "procedure/CreateUsersProcedure.java" }
             }
         )
         panels = @(
@@ -634,7 +634,7 @@ function Write-GeneratedRuntimeModel {
                 actions = @(
                     [ordered]@{ name = "create-users"; label = "create users"; binding = "procedure"; procedure = "create-users"; permissionRequirements = @("admin") }
                 )
-                metadata = [ordered]@{ beta0Surface = "trusted-source-panel"; trustedSourceEntrypoint = "panel/user-admin-panel.html" }
+                metadata = [ordered]@{ beta0Surface = "trusted-source-panel"; untrustedExtensionEntrypoint = "panel/user-admin-panel.html" }
             }
         )
         metadata = [ordered]@{
@@ -734,8 +734,8 @@ function Copy-TrustedSourceInputsForGeneratedRuntime {
         [object]$Manifest,
         [string]$InputRoot
     )
-    $manifestSource = Join-Path $ScenarioDir "trusted-source-manifest.json"
-    Copy-Item -LiteralPath $manifestSource -Destination (Join-Path $InputRoot "trusted-source-manifest.json") -Force
+    $manifestSource = Join-Path $ScenarioDir "untrusted-extension-manifest.json"
+    Copy-Item -LiteralPath $manifestSource -Destination (Join-Path $InputRoot "untrusted-extension-manifest.json") -Force
     foreach ($entry in @($Manifest.entries)) {
         $relative = [string]$entry.relativePath
         if (-not (Test-RelativeSafePath $relative)) {
@@ -843,7 +843,7 @@ function Invoke-GeneratedRuntimeIntegrationProof {
     Copy-TrustedSourceInputsForGeneratedRuntime -ScenarioDir $ScenarioDir -Manifest $Manifest -InputRoot $inputRoot
     Write-GeneratedRuntimeConfig -ConfigPath $configPath -OutputRoot $outputRoot -RuntimeHostRoot $runtimeHostRoot
     Write-GeneratedRuntimeDbDefinition -DbDefinitionPath $dbDefinitionPath
-    $artifacts += [pscustomobject]@{ path = (Join-Path $inputRoot "trusted-source-manifest.json"); kind = "trusted-source-manifest-copy" }
+    $artifacts += [pscustomobject]@{ path = (Join-Path $inputRoot "untrusted-extension-manifest.json"); kind = "trusted-source-manifest-copy" }
     $artifacts += [pscustomobject]@{ path = (Join-Path $inputRoot "procedure/CreateUsersProcedure.java"); kind = "trusted-procedure-source-copy" }
     $artifacts += [pscustomobject]@{ path = (Join-Path $inputRoot "panel/user-admin-panel.html"); kind = "trusted-panel-source-copy" }
 
@@ -1391,7 +1391,7 @@ $artifacts = @()
 $globalFailures = [System.Collections.Generic.List[string]]::new()
 
 foreach ($scenarioDir in @(Get-ChildItem -LiteralPath $scenarioRootFull -Directory)) {
-    $manifestPath = Join-Path $scenarioDir.FullName "trusted-source-manifest.json"
+    $manifestPath = Join-Path $scenarioDir.FullName "untrusted-extension-manifest.json"
     $contracts = @("ai-model.json", "custom-procedure.json", "custom-panel.json") | ForEach-Object { Join-Path $scenarioDir.FullName $_ }
     $refs = @()
     foreach ($contract in $contracts) { $refs += Get-TrustedReferencesFromJson $contract }
@@ -1405,7 +1405,7 @@ foreach ($scenarioDir in @(Get-ChildItem -LiteralPath $scenarioRootFull -Directo
         $expectedOutcome = [string]$manifest.expectedOutcome
         $manifestValidationPath = Join-Path $tmpRoot ($scenarioDir.Name + "-manifest-schema.json")
         $ErrorActionPreference = "Continue"
-        pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 -SchemaPath "schemas/ai/trusted-source-manifest.schema.json" -InstancePath $manifestPath -ReportPath $manifestValidationPath 2>$null | Out-Null
+        pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 -SchemaPath "schemas/ai/untrusted-extension-manifest.schema.json" -InstancePath $manifestPath -ReportPath $manifestValidationPath 2>$null | Out-Null
         $manifestExit = $LASTEXITCODE
         $ErrorActionPreference = "Stop"
         $checks += New-Check "manifest-schema" ($manifestExit -eq 0) "report" $manifestValidationPath ([pscustomobject]@{ exitCode = $manifestExit }) $(if ($manifestExit -eq 0) { @() } else { @("Manifest schema validation failed.") })

@@ -2,12 +2,15 @@
 
 [![NPDev CI Validation](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml/badge.svg?branch=main)](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml?query=branch%3Amain)
 
-**You declare what your application is. NPDev builds all of it — database, REST API, admin screens,
-role-based access, durable background processes — as Spring Boot source you own outright.**
+**You declare what your application is, as a model. NPDev projects that model into all of it —
+database, REST API, admin screens, role-based access, durable background processes — as source code
+you own outright.**
 
 One JSON file describes the things your app tracks, how they relate, who may see them, and what
-happens automatically. NPDev turns that into a real Gradle/Spring Boot project — not a scaffold you
-fill in, a working application.
+happens automatically. NPDev turns that model into a real, runnable project — not a scaffold you fill
+in, a working application. Today it projects through one runtime binder, Gradle/Spring Boot; the
+model is the durable artifact, and the generated code is a projection of it, not the other way
+around.
 
 ---
 

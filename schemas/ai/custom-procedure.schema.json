@@ -28,7 +28,7 @@
     },
     "trust": {
       "enum": [
-        "trusted",
+        "untrustedExtension",
         "inproc"
       ]
     },
@@ -150,7 +150,7 @@
       ],
       "properties": {
         "mode": {
-          "const": "trustedSource"
+          "const": "untrustedExtension"
         },
         "language": {
           "const": "java"

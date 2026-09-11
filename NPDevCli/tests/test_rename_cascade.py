@@ -141,7 +141,7 @@ class PlanCascadeTest(unittest.TestCase):
 class TrustedSourceTest(unittest.TestCase):
     def test_a_hash_pinned_panel_refuses(self) -> None:
         model = {"panels": [{"name": "PinnedPanel",
-                             "metadata": {"trustedSourceEntrypoint": "assets/pinned.html"}}]}
+                             "metadata": {"untrustedExtensionEntrypoint": "assets/pinned.html"}}]}
         edges = [_edge("panels[PinnedPanel].layout.fields[0]", "panel.layout.fields",
                        "Patient.birthDay", from_name="PinnedPanel")]
 

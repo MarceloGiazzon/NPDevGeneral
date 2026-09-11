@@ -55,7 +55,7 @@ class TrustedSourceEmitterTest {
                   </body>
                 </html>
                 """);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), manifest(sha256(procedure), sha256(panel)));
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), manifest(sha256(procedure), sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-source-out-");
         new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
@@ -88,9 +88,9 @@ class TrustedSourceEmitterTest {
         Path modelRoot = Files.createTempDirectory("npdev-trusted-source-missing-");
         Path modelPath = modelRoot.resolve("model.json");
         Files.writeString(modelPath, "{}");
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), """
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "scenarioId": "missing",
                   "policyVersion": "test",
                   "expectedOutcome": "fail",
@@ -126,7 +126,7 @@ class TrustedSourceEmitterTest {
                 null,
                 List.of("admin"),
                 "summary",
-                Map.of("trustedSourceEntrypoint", "procedure/CreateUsersProcedure.java")
+                Map.of("untrustedExtensionEntrypoint", "procedure/CreateUsersProcedure.java")
         );
         CompiledPanel panel = new CompiledPanel(
                 "user-admin-panel",
@@ -139,7 +139,7 @@ class TrustedSourceEmitterTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/user-admin-panel.html"),
+                Map.of("untrustedExtensionEntrypoint", "panel/user-admin-panel.html"),
                 null
         );
         return new CompiledModel(
@@ -163,7 +163,7 @@ class TrustedSourceEmitterTest {
     private static String manifest(String procedureHash, String panelHash) {
         return """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "scenarioId": "trusted-source",
                   "policyVersion": "test",
                   "expectedOutcome": "pass",

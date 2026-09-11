@@ -2,9 +2,9 @@
   "schemaVersion": "ai-custom-procedure.v1",
   "procedureId": "create-users",
   "executionMode": "governed",
-  "trust": "trusted",
+  "trust": "untrustedExtension",
   "implementation": {
-    "mode": "trustedSource",
+    "mode": "untrustedExtension",
     "language": "java",
     "entrypoint": "procedure/CreateUsersProcedure.java",
     "className": "CreateUsersProcedure",

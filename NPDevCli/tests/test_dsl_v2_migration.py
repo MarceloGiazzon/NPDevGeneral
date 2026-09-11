@@ -600,5 +600,106 @@ class QueryProcedureAuditPolicyMigrationTest(unittest.TestCase):
         self.assertNotIn("auditPolicy", query)
 
 
+class UntrustedExtensionEntrypointMigrationTest(unittest.TestCase):
+    """Path A P0.4: `metadata.trustedSourceEntrypoint` on a panel/procedure renamed to
+    `metadata.untrustedExtensionEntrypoint`, no alias window -- ships breaking with this codemod
+    in the same commit, per the stability policy."""
+
+    def _doc(self, panels=None, procedures=None) -> dict:
+        return {
+            "namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": [], "flows": [],
+            "panels": panels or [], "procedures": procedures or [],
+        }
+
+    def test_renamed_on_panel(self):
+        doc = self._doc(panels=[
+            {"name": "AdminPanel", "metadata": {"trustedSourceEntrypoint": "panel/admin.html"}},
+        ])
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        metadata = doc["panels"][0]["metadata"]
+        self.assertNotIn("trustedSourceEntrypoint", metadata)
+        self.assertEqual("panel/admin.html", metadata["untrustedExtensionEntrypoint"])
+
+    def test_renamed_on_procedure(self):
+        doc = self._doc(procedures=[
+            {"name": "DoThing", "metadata": {"trustedSourceEntrypoint": "procedure/DoThing.java"}},
+        ])
+        result = migrate_document(doc)
+        self.assertTrue(result.changed)
+        metadata = doc["procedures"][0]["metadata"]
+        self.assertNotIn("trustedSourceEntrypoint", metadata)
+        self.assertEqual("procedure/DoThing.java", metadata["untrustedExtensionEntrypoint"])
+
+    def test_no_entrypoint_present_is_a_no_op(self):
+        doc = self._doc(
+            panels=[{"name": "OrdinaryPanel", "metadata": {"displayName": "Orders"}}],
+            procedures=[{"name": "OrdinaryProcedure", "steps": []}],
+        )
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+
+    def test_idempotent_second_run_makes_no_further_changes(self):
+        doc = self._doc(panels=[
+            {"name": "AdminPanel", "metadata": {"trustedSourceEntrypoint": "panel/admin.html"}},
+        ])
+        first = migrate_document(doc)
+        self.assertTrue(first.changed)
+        before = copy.deepcopy(doc)
+        second = migrate_document(doc)
+        self.assertFalse(second.changed)
+        self.assertEqual(before, doc)
+
+    def test_already_canonical_key_is_untouched(self):
+        doc = self._doc(panels=[
+            {"name": "AdminPanel", "metadata": {"untrustedExtensionEntrypoint": "panel/admin.html"}},
+        ])
+        before = copy.deepcopy(doc)
+        result = migrate_document(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual(before, doc)
+
+
+class UntrustedExtensionManifestMigrationTest(unittest.TestCase):
+    """Path A P0.4: the sibling trusted-source-manifest.json's own schemaVersion, migrated by the
+    dedicated function `run_migrate_dsl2` dispatches to (a manifest is neither an authored nor a
+    compiled model.json, so migrate_document has nothing to say about it)."""
+
+    def test_schema_version_renamed(self):
+        from dsl_v2_migration import (
+            looks_like_untrusted_extension_manifest,
+            migrate_untrusted_extension_manifest,
+        )
+        doc = {
+            "schemaVersion": "npdev-trusted-source-manifest.v1",
+            "scenarioId": "x", "policyVersion": "1", "expectedOutcome": "pass", "entries": [],
+        }
+        self.assertTrue(looks_like_untrusted_extension_manifest(doc))
+        result = migrate_untrusted_extension_manifest(doc)
+        self.assertTrue(result.changed)
+        self.assertEqual("npdev-untrusted-extension-manifest.v1", doc["schemaVersion"])
+
+    def test_already_migrated_manifest_is_not_matched_or_changed(self):
+        from dsl_v2_migration import (
+            looks_like_untrusted_extension_manifest,
+            migrate_untrusted_extension_manifest,
+        )
+        doc = {
+            "schemaVersion": "npdev-untrusted-extension-manifest.v1",
+            "scenarioId": "x", "policyVersion": "1", "expectedOutcome": "pass", "entries": [],
+        }
+        self.assertFalse(looks_like_untrusted_extension_manifest(doc))
+        result = migrate_untrusted_extension_manifest(doc)
+        self.assertFalse(result.changed)
+        self.assertEqual("npdev-untrusted-extension-manifest.v1", doc["schemaVersion"])
+
+    def test_an_ordinary_model_document_does_not_match(self):
+        from dsl_v2_migration import looks_like_untrusted_extension_manifest
+        doc = {"namespace": "test", "dslVersion": "1.0.0", "version": "1.0", "concepts": []}
+        self.assertFalse(looks_like_untrusted_extension_manifest(doc))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -35,7 +35,7 @@
       "requiredRole": "agent",
       "tenantScoped": true,
       "implementation": {
-        "mode": "trustedSource",
+        "mode": "untrustedExtension",
         "language": "html",
         "entrypoint": "../outside.html"
       }

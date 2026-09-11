@@ -44,7 +44,7 @@ function Write-TrustedProcedureScenario {
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourcePath).Hash.ToLowerInvariant()
     if ($HashMismatch) { $hash = ("0" * 64) }
     $manifest = [ordered]@{
-        schemaVersion = "npdev-trusted-source-manifest.v1"
+        schemaVersion = "npdev-untrusted-extension-manifest.v1"
         scenarioId = $ScenarioId
         policyVersion = "test"
         expectedOutcome = $ExpectedOutcome
@@ -63,7 +63,7 @@ function Write-TrustedProcedureScenario {
             }
         )
     }
-    $manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $scenario "trusted-source-manifest.json") -Encoding UTF8
+    $manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $scenario "untrusted-extension-manifest.json") -Encoding UTF8
 }
 
 function Write-TrustedPanelScenario {
@@ -78,7 +78,7 @@ function Write-TrustedPanelScenario {
     Set-Content -LiteralPath $sourcePath -Value $Source -Encoding UTF8
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $sourcePath).Hash.ToLowerInvariant()
     $manifest = [ordered]@{
-        schemaVersion = "npdev-trusted-source-manifest.v1"
+        schemaVersion = "npdev-untrusted-extension-manifest.v1"
         scenarioId = $ScenarioId
         policyVersion = "test"
         expectedOutcome = "fail"
@@ -95,7 +95,7 @@ function Write-TrustedPanelScenario {
             }
         )
     }
-    $manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $scenario "trusted-source-manifest.json") -Encoding UTF8
+    $manifest | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $scenario "untrusted-extension-manifest.json") -Encoding UTF8
 }
 
 function Invoke-Proof {
@@ -192,33 +192,33 @@ Set-Content -LiteralPath (Join-Path $missingRef "procedure/TestProcedure.java") 
     schemaVersion = "ai-custom-procedure.v1"
     procedureId = "test"
     executionMode = "governed"
-    trust = "trusted"
+    trust = "untrustedExtension"
     sideEffectType = "none"
     requiredRole = "admin"
     tenantScoped = $true
     maxAffectedRows = 0
     inputs = @()
     outputs = @()
-    implementation = @{ mode = "trustedSource"; language = "java"; entrypoint = "procedure/TestProcedure.java"; className = "TestProcedure"; method = "execute" }
+    implementation = @{ mode = "untrustedExtension"; language = "java"; entrypoint = "procedure/TestProcedure.java"; className = "TestProcedure"; method = "execute" }
 } | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $missingRef "custom-procedure.json") -Encoding UTF8
 @{
-    schemaVersion = "npdev-trusted-source-manifest.v1"
+    schemaVersion = "npdev-untrusted-extension-manifest.v1"
     scenarioId = "reference-missing-from-manifest"
     policyVersion = "test"
     expectedOutcome = "fail"
     entries = @(@{ entryId = "placeholder"; kind = "procedure"; relativePath = "procedure/OtherProcedure.java"; language = "java"; sha256 = ("0" * 64); runtimeBinding = "procedure:other"; className = "OtherProcedure"; method = "execute"; requiredRole = "admin"; tenantScoped = $true })
-} | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $missingRef "trusted-source-manifest.json") -Encoding UTF8
+} | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $missingRef "untrusted-extension-manifest.json") -Encoding UTF8
 $unexpected = Join-Path $manifestRoot "unexpected-manifest-entry"
 New-Item -ItemType Directory -Force -Path (Join-Path $unexpected "procedure") | Out-Null
 Set-Content -LiteralPath (Join-Path $unexpected "procedure/TestProcedure.java") -Value $safeSource -Encoding UTF8
 $unexpectedHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $unexpected "procedure/TestProcedure.java")).Hash.ToLowerInvariant()
 @{
-    schemaVersion = "npdev-trusted-source-manifest.v1"
+    schemaVersion = "npdev-untrusted-extension-manifest.v1"
     scenarioId = "unexpected-manifest-entry"
     policyVersion = "test"
     expectedOutcome = "fail"
     entries = @(@{ entryId = "unexpected"; kind = "procedure"; relativePath = "procedure/TestProcedure.java"; language = "java"; sha256 = $unexpectedHash; runtimeBinding = "procedure:test"; className = "TestProcedure"; method = "execute"; requiredRole = "admin"; tenantScoped = $true })
-} | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $unexpected "trusted-source-manifest.json") -Encoding UTF8
+} | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $unexpected "untrusted-extension-manifest.json") -Encoding UTF8
 $manifestRun = Invoke-Proof -ScenarioRoot $manifestRoot -Name "manifest-negative" -StaticOnlyPass
 if ($manifestRun.report.overallStatus -ne "passed") { throw "Manifest negative cases did not pass fail-closed proof." }
 

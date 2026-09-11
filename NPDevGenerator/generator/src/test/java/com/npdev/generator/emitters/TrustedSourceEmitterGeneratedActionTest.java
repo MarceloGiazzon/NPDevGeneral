@@ -247,9 +247,9 @@ final class TrustedSourceEmitterGeneratedActionTest {
                     }
                 }
                 """, StandardCharsets.UTF_8);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), """
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "entries": [
                     {
                       "entryId": "create-user",
@@ -290,7 +290,7 @@ final class TrustedSourceEmitterGeneratedActionTest {
                         true
                 ),
                 Map.of(
-                        "trustedSourceEntrypoint", "trusted/CreateUserProcedure.java",
+                        "untrustedExtensionEntrypoint", "trusted/CreateUserProcedure.java",
                         "sideEffectConcept", "LegacyShouldNotWin",
                         "affectedConcepts", "LegacyShouldNotWin",
                         "eventNameOnSuccess", "generated.action.legacy.completed"
