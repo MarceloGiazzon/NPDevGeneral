@@ -1,0 +1,19 @@
+{
+  "id": "path-a-regeneration-survival",
+  "title": "path-a-regeneration-survival",
+  "complexity": "extension-probe",
+  "purpose": "Path A P5.4 golden regeneration-survival test: generate, hand-edit a real generated javaHook file, declare regenerationIntent=preserve, change the model elsewhere, regenerate -- the hand-edit survives verbatim and the model change still takes effect.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo. Driven by scripts/quality/check-golden-regeneration-survival.py.",
+    "First generate+assemble establishes 'a previous generation happened' -- P5.3's FinalAppAssembler baseline.",
+    "The generated survival-hook javaHook .java file is hand-edited (a marker line appended), standing in for a real user customization.",
+    "model.v2.json (adds a field to SurvivalRecord) is swapped in for model.json, standing in for 'the model changed elsewhere'.",
+    "Second generate+assemble (P5.3's KeepCustom outcome, driven by this fixture's own customization-provenance.json) must restore the hand-edited file verbatim while the new field shows up in the regenerated entity."
+  ],
+  "expectedOutcomes": [
+    "The regenerated survival-hook .java file still contains the hand-edited marker line, byte for byte.",
+    "The regenerated SurvivalRecord entity Java file contains the new 'note' field from model.v2.json.",
+    "Neither generate+assemble call fails or blocks."
+  ]
+}

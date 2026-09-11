@@ -871,6 +871,17 @@ try {
         $failures += "the regeneration-conflict-outcome mechanism is missing or its proof test failed: see scripts/quality/check-regeneration-conflict-outcomes.py output above"
     }
 
+    # Path A realignment P5.4: "generate, customize, change the model, regenerate, custom code
+    # survives" is worthless as a claim without an automated proof. This runs the REAL generator +
+    # assembler twice against NPDevSamples/probes/path-a-regeneration-survival -- hand-editing a real
+    # generated javaHook file and swapping in a model variant between passes -- and asserts the
+    # hand-edit survives verbatim while the model change still takes effect elsewhere.
+    Write-Host '[45/45] Checking the golden regeneration-survival proof (generate/customize/change-model/regenerate)...'
+    & $py "scripts/quality/check-golden-regeneration-survival.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the golden regeneration-survival proof failed: see scripts/quality/check-golden-regeneration-survival.py output above"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

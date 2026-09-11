@@ -1,0 +1,55 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.probes.pathARegenSurvival",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "Path A P5.4 golden regeneration-survival probe: proves a real, hand-edited javaHook file, declared regenerationIntent=preserve in the sibling customization-provenance.json, survives a real end-to-end regenerate that ALSO changes the model elsewhere (see model.v2.json, the 'changed model' variant check-golden-regeneration-survival.py swaps in for the second generation). Deliberately minimal -- one concept, one javaHook conversion."
+  },
+  "concepts": [
+    {
+      "name": "SurvivalRecord",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "summary",
+          "type": "string",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "conversions": [
+    {
+      "id": "survival-hook",
+      "concept": "SurvivalRecord",
+      "javaHook": {
+        "source": "conversion-hooks/survival/src/main/java",
+        "class": "com.npdev.samples.regensurvival.SurvivalHook",
+        "method": "summarize"
+      },
+      "claims": [ "summary" ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    }
+  ]
+}
