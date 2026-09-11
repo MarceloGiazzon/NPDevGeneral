@@ -1,0 +1,74 @@
+{
+  "_comment": "Path A realignment, Phase 0 (P0.1). The Constitution as structured data, not prose -- see D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_REALIGNMENT_PLAN\\NPDEV_PATH_A_REALIGNMENT_PLAN.md. Each law's `enforcement` is enforced|declared|aspirational, checked mechanically by scripts/quality/check-constitution-coverage.py: a law can be aspirational, but it cannot claim `enforced` for free -- that requires a named `checker` (a repo-relative path, optionally with a pattern) that actually exists in the tree. The eight laws below are the Path A charter as stated in the source proposal (Analisis_Visions_And_Proposal_Realign.txt / PATH_A_REALIGNMENT_ANALYSIS_2026-09-10.md line 16): model as sole durable truth; runtime artifacts disposable; domain rules in model/kernel; capabilities as contracts; technology-neutral model; the Anti-Drift Law; layered complexity; understandable by domain experts and AI.",
+  "laws": [
+    {
+      "id": "model-is-truth",
+      "law": "The model is the sole durable source of truth. Generated code is a projection of it, never authored directly as the thing that carries meaning.",
+      "enforcement": "enforced",
+      "checker": {
+        "path": "NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java",
+        "pattern": "assertThinProjection"
+      },
+      "note": "P0.2 (2026-09-10): GeneratedProjectionGuard now runs after every GeneratorFacade emission and fails generation on a planted violation (GeneratorFacadeProjectionGuardWiredTest). Narrow scope by design -- it forbids direct adapter instantiation / adapterId branching in generated Java, not a full thin-projection audit of every emitted line."
+    },
+    {
+      "id": "runtime-artifacts-disposable",
+      "law": "A generated FinalApp can be deleted and regenerated from its model without losing anything that matters -- only `data`, `logs` and `secrets` survive regeneration, and that three-directory list is the same in every seam that spares it.",
+      "enforcement": "enforced",
+      "checker": {
+        "path": "scripts/quality/twin-pair-registry.json",
+        "pattern": "app-secrets-dir-spared-three-seams"
+      },
+      "note": "The disposability claim is only honest if the spared-directory list can't drift between Build-NpdevApp.ps1, Build-ClaudeApp.ps1 and FinalAppAssembler.PRESERVED_APP_DIRECTORIES -- that's the twin-pair rule this checker enforces."
+    },
+    {
+      "id": "domain-rules-in-model",
+      "law": "Domain rules -- invariants, access, lifecycle -- are declared in the model and enforced by the kernel/validator, not hand-written into generated application code.",
+      "enforcement": "declared",
+      "checker": null,
+      "note": "Largely true by construction (SemanticValidator + kernel enforce access/lifecycle/invariants from the model), but no single checker measures 'no domain rule leaked into hand code' holistically -- GeneratedProjectionGuard's scope is narrower (adapter selection only). Revisit once P2's semantic graph validation (P2.3) exists."
+    },
+    {
+      "id": "capabilities-as-contracts",
+      "law": "A capability a pack or app depends on is declared as a contract (requires/provides), never assumed as a concrete implementation baked into the consumer.",
+      "enforcement": "enforced",
+      "checker": {
+        "path": "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/ModelSourceResolver.java",
+        "pattern": "unbound"
+      },
+      "note": "Composition refuses when a pack's `requires` is left unbound by the consuming app's `provides`, naming the pack and the unbound key."
+    },
+    {
+      "id": "technology-neutral-model",
+      "law": "The model itself carries no technology identifier. Spring is the platform's current runtime binder, not NPDev's identity, and a second binder must be addable without changing the model schema.",
+      "enforcement": "aspirational",
+      "checker": null,
+      "note": "Currently false in the schema itself: config.runtime REQUIRES springProfile and gradleTask, with no `binder` field. Becomes checkable once P0.6 (open the binder seam) lands -- see scripts/policy/constitution.json's own P0.6 task in helpers/tasks.json."
+    },
+    {
+      "id": "anti-drift",
+      "law": "Generation is deterministic: two runs from the same model produce byte-identical output. Drift between runs is a bug, not an acceptable variance.",
+      "enforcement": "enforced",
+      "checker": {
+        "path": "scripts/hygiene/check-deterministic-generation.ps1"
+      },
+      "note": "Generates one sample twice and SHA-256s every emitted file under ArtifactNP/ + App/, failing on any differing path (declared exclusions: npdev-build-info.properties, generation-run.json). Run by run-generator-gate.ps1."
+    },
+    {
+      "id": "layered-complexity",
+      "law": "Basic features stay simple by default; escape hatches exist for real needs but are honestly branded for what they are, not disguised as first-class 'trusted' shortcuts.",
+      "enforcement": "aspirational",
+      "checker": null,
+      "note": "The escape-hatch mechanism exists (TrustedSource/javaHook/trustLevel across 119 files, 21 generator main classes) but is branded 'Trusted', the opposite of honest labelling. Becomes checkable once P0.4 (invert Trusted -> Untrusted Extension) lands."
+    },
+    {
+      "id": "legible-to-domain-experts-and-ai",
+      "law": "The model and its diagnostics are legible to both domain experts and AI agents without either needing to read generated code to understand what an application does.",
+      "enforcement": "declared",
+      "checker": {
+        "path": "scripts/ai/build_knowledge.py"
+      },
+      "note": "The AI knowledge substrate (knowledge/cards/*.json, MCP search tools, validated by build_knowledge.py --validate-only in the AI knowledge gate) is real but partial -- it describes the platform, not yet 'why does this model element exist' from a semantic graph. That's P2.2-P2.4's acceptance slice."
+    }
+  ]
+}
