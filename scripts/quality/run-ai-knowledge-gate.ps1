@@ -366,6 +366,16 @@ try {
         $failures += "a pack-composition surface has zero corpus coverage: see scripts/quality/check-pack-coverage.py output above"
     }
 
+    # Path A P4.2: cross-application reuse proof. NPDevSamples/dsl-conformance-max +
+    # pack9-role-binding-a + pack9-role-binding-b all consume the identical in-git `labeling` pack;
+    # this fails if any two corpus apps declare the same pack name+version with DIFFERENT content
+    # (forked instead of shared), and --strict fails if that live witness ever disappears.
+    Write-Host "Checking packs shared across corpus apps are identical, not forked..."
+    & $py "scripts/quality/check-pack-shared-not-forked.py" "--probes" "--strict"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a pack shared by two corpus apps has diverged (forked instead of shared): see scripts/quality/check-pack-shared-not-forked.py output above"
+    }
+
     # R4 Part C: check-record-surfaces.py moved to the weekly paperwork gate -- branch-freshness and
     # record-surfaces.json drift are slow-moving, not something a single commit can introduce. See
     # scripts/policy/gate-classification-policy.json.
