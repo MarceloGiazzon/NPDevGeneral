@@ -136,7 +136,11 @@ public final class ModelResolver {
                 // pack/context-declared) upstream by ModelSourceResolver, so there is nothing here
                 // for this resolver to expand or rename. Order is preserved untouched (never
                 // sorted), unlike every sibling list above -- see SeedAst's javadoc for why.
-                source.getSeeds()
+                source.getSeeds(),
+                // Path A P6.3: whole-object pass-through, same reasoning as settings/externalAi
+                // above -- appShell is app-level shell chrome with no `extends`/specialization
+                // concept of its own for this resolver to expand.
+                source.getAppShell()
         );
         return ResolvedModel.from(resolvedAst);
     }

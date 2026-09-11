@@ -72,7 +72,35 @@ public final class CompiledModelCanonicalJson {
         root.set("webhooks", toWebhooks(model));
         root.set("sequences", toSequences(model));
         root.set("seeds", toSeeds(model));
+        root.set("appShell", toAppShell(model));
         return root;
+    }
+
+    /** Path A P6.3: writes the declared navigation structure + default route, or JSON null if the
+     *  model declares no {@code appShell} block. */
+    private static ObjectNode toAppShell(CompiledModel model) {
+        CompiledAppShell appShell = model.getAppShell();
+        if (appShell == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (appShell.getDefaultRoute() != null) {
+            node.put("defaultRoute", safe(appShell.getDefaultRoute()));
+        }
+        ArrayNode navigation = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAppShellNavItem item : appShell.getNavigation()) {
+            ObjectNode itemNode = JsonNodeFactory.instance.objectNode();
+            itemNode.put("label", safe(item.getLabel()));
+            if (item.getTarget() != null) {
+                itemNode.put("target", safe(item.getTarget()));
+            }
+            if (item.getGroup() != null) {
+                itemNode.put("group", safe(item.getGroup()));
+            }
+            navigation.add(itemNode);
+        }
+        node.set("navigation", navigation);
+        return node;
     }
 
     /** R6.2: writes the model-declared inbound webhook doors, sorted by source (deterministic-

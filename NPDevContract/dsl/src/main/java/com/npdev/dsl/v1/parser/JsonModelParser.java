@@ -607,6 +607,7 @@ public final class JsonModelParser {
         webhooks.addAll(parseWebhooks(root.get("webhooks")));
         List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
         List<com.npdev.dsl.v1.ast.SeedAst> seeds = parseSeeds(root.get("seeds"));
+        AppShellAst appShell = parseAppShell(root.get("appShell"));
 
         return new ModelAst(
                 namespace,
@@ -639,7 +640,8 @@ public final class JsonModelParser {
                 physicalQualifierByConceptName,
                 webhooks,
                 sequences,
-                seeds
+                seeds,
+                appShell
         );
     }
 
@@ -1003,6 +1005,35 @@ public final class JsonModelParser {
             dateFormat = readText(uiNode, "dateFormat");
         }
         return new SettingsAst(locale, strings, pageRows, dateFormat);
+    }
+
+    /** Path A P6.3: parses the optional top-level {@code appShell} block (declared navigation
+     *  structure + default route for the generated app's shell chrome); null if the model declares
+     *  none. Neither {@code defaultRoute} nor a nav item's {@code target} is validated against an
+     *  actual concept/panel name here -- structural plumbing only, see AppShellAst's javadoc. */
+    private static AppShellAst parseAppShell(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("appShell must be an object");
+        }
+        String defaultRoute = readText(node, "defaultRoute");
+        List<AppShellNavItemAst> navigation = new ArrayList<>();
+        JsonNode navigationNode = node.get("navigation");
+        if (navigationNode != null && navigationNode.isArray()) {
+            for (JsonNode itemNode : navigationNode) {
+                if (!itemNode.isObject()) {
+                    throw new IOException("appShell.navigation entries must be objects");
+                }
+                navigation.add(new AppShellNavItemAst(
+                        readText(itemNode, "label"),
+                        readText(itemNode, "target"),
+                        readText(itemNode, "group")
+                ));
+            }
+        }
+        return new AppShellAst(defaultRoute, navigation);
     }
 
     private static List<QueryAst> parseQueries(

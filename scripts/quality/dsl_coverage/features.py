@@ -41,6 +41,9 @@ from .detectors_ui import (  # noqa: F401 - every name the table below reference
 
 FEATURE_DETECTORS = {
     "externalAi": lambda m: "externalAi" in m,
+    # Path A P6.3: declared navigation structure + default route for the generated app's shell
+    # chrome, a new top-level object sibling of settings/externalAi.
+    "appShell": lambda m: "appShell" in m,
     "domainTypes": lambda m: _nonempty(m, "domainTypes"),
     # D1 (FIRST_IMPRESSION_PLAN.md I5): field.renamedFrom -- see _has_renamed_field's own docstring.
     "field.renamedFrom": _has_renamed_field,

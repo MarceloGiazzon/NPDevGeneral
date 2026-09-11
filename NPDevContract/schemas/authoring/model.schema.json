@@ -470,6 +470,9 @@
         "$ref": "#/$defs/seed"
       },
       "description": "R8.8: model/pack-declared seed rows, reusing the existing app-level seed record shape (NPDevContract/schemas/seed.schema.json's $defs/record). Applied once, automatically, at first boot through the same governed ConceptGateway.save path every other write uses (see com.finalexec.seed.ModelSeedRunner in NPDevRuntimeHost); regenerating/restarting the app does not duplicate rows. A pack/context-declared seed's concept must name a concept the SAME pack/context owns -- rewritten to its pack-qualified form at composition time, and a seed naming a concept the pack does not own is a compile error (see ModelSourceResolver's seeds handling and SeedValidation)."
+    },
+    "appShell": {
+      "$ref": "#/$defs/appShell"
     }
   },
   "$defs": {
@@ -760,6 +763,49 @@
               "minLength": 1
             }
           }
+        }
+      }
+    },
+    "appShell": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Path A P6.3: declared navigation structure and default route for the generated app's shell chrome. Absent entirely = the shell's existing default behavior (nav derived purely from concepts/panels, default route = the first visible concept by declaration order). Structural plumbing only -- neither defaultRoute nor a nav item's target is validated against an actual concept/panel name yet.",
+      "properties": {
+        "defaultRoute": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The concept or panel name to show by default when the app loads, overriding the shell's own first-visible-concept fallback."
+        },
+        "navigation": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/appShellNavItem"
+          },
+          "description": "Declared navigation entries, in display order. Absent/empty = the shell's existing default nav (one entry per visible concept, in declaration order, no grouping)."
+        }
+      }
+    },
+    "appShellNavItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Display label for this nav entry."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The concept or panel name this entry navigates to. Omitted for a group-header-only entry with no target of its own."
+        },
+        "group": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional section/group label this entry is organized under (e.g. \"Operations\"), mirroring the shell's own System/Dados/Paineis grouping."
         }
       }
     },

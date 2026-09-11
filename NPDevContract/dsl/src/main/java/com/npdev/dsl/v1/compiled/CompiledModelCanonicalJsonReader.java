@@ -147,6 +147,8 @@ public final class CompiledModelCanonicalJsonReader {
             seeds.add(toSeed(node));
         }
 
+        CompiledAppShell appShell = toAppShell(root.get("appShell"));
+
         return new CompiledModel(
                 namespace,
                 dslVersion,
@@ -175,7 +177,8 @@ public final class CompiledModelCanonicalJsonReader {
                 conversions,
                 webhooks,
                 sequences,
-                seeds
+                seeds,
+                appShell
         );
     }
 
@@ -329,6 +332,19 @@ public final class CompiledModelCanonicalJsonReader {
         String dateFormat = uiNode == null ? null : optionalText(uiNode, "dateFormat");
         return new CompiledSettings(
                 optionalText(node, "locale"), toStringMap(node.get("strings")), pageRows, dateFormat);
+    }
+
+    /** Path A P6.3: reads the optional {@code appShell} block; null if absent. */
+    private static CompiledAppShell toAppShell(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        List<CompiledAppShellNavItem> navigation = new ArrayList<>();
+        for (JsonNode itemNode : array(node, "navigation")) {
+            navigation.add(new CompiledAppShellNavItem(
+                    text(itemNode, "label"), optionalText(itemNode, "target"), optionalText(itemNode, "group")));
+        }
+        return new CompiledAppShell(optionalText(node, "defaultRoute"), navigation);
     }
 
     private static CompiledDocument toDocument(JsonNode node) {
