@@ -53,10 +53,19 @@ public final class TrustedSourceEmitter {
         this.writer = writer;
     }
 
-    public void emit(CompiledModel model, Path modelSourcePath) throws IOException {
+    /**
+     * @return generated-output-relative paths this call wrote, keyed by {@code kind + "::" + owner}
+     *         (the same {@code reference.kind()}/{@code reference.id()} pair {@link
+     *         ExtensionInventoryEmitter} keys its own entries by) -- Path A P5.3
+     *         (NPDEV_PATH_A_REALIGNMENT_PLAN.md): {@link com.npdev.generator.assembly.FinalAppAssembler}
+     *         needs to know exactly which files a customization-provenance-declared owner produced, to
+     *         classify and preserve/block a regeneration conflict at file granularity. Empty when this
+     *         model declares no untrusted-extension references.
+     */
+    public Map<String, List<String>> emit(CompiledModel model, Path modelSourcePath) throws IOException {
         List<TrustedReference> references = referencesFrom(model);
         if (references.isEmpty()) {
-            return;
+            return Map.of();
         }
         if (modelSourcePath == null || modelSourcePath.getParent() == null) {
             throw new IllegalStateException("Untrusted extension references require a model source path for sibling manifest discovery.");
@@ -93,15 +102,28 @@ public final class TrustedSourceEmitter {
         List<TrustedProcedure> procedures = new ArrayList<>();
         List<TrustedPanel> panels = new ArrayList<>();
         List<TrustedWidget> widgets = new ArrayList<>();
+        Map<String, List<String>> generatedPathsByOwner = new LinkedHashMap<>();
         for (TrustedReference reference : references) {
             ManifestEntry entry = entryByKey.get(key(reference.kind(), reference.relativePath()));
             validateHash(sourceRoot, entry);
+            String ownerKey = reference.kind() + "::" + reference.id();
             if ("procedure".equals(reference.kind())) {
-                procedures.add(toProcedure(reference, entry, sourceRoot));
+                TrustedProcedure procedure = toProcedure(reference, entry, sourceRoot);
+                procedures.add(procedure);
+                generatedPathsByOwner.computeIfAbsent(ownerKey, k -> new ArrayList<>())
+                        .add("src/main/java/" + PACKAGE_PATH + "/" + procedure.className() + ".java");
             } else if ("panel".equals(reference.kind())) {
-                panels.add(toPanel(reference, entry, sourceRoot));
+                TrustedPanel panel = toPanel(reference, entry, sourceRoot);
+                panels.add(panel);
+                List<String> paths = generatedPathsByOwner.computeIfAbsent(ownerKey, k -> new ArrayList<>());
+                paths.add("src/main/resources/trusted-source/panel/" + panel.resourceName());
+                paths.add("src/main/resources/trusted-source/panel/" + panel.cssResourceName());
+                paths.add("src/main/resources/trusted-source/panel/" + panel.jsResourceName());
             } else if ("widget".equals(reference.kind())) {
-                widgets.add(toWidget(entry, sourceRoot));
+                TrustedWidget widget = toWidget(entry, sourceRoot);
+                widgets.add(widget);
+                generatedPathsByOwner.computeIfAbsent(ownerKey, k -> new ArrayList<>())
+                        .add("src/main/resources/trusted-source/widget/" + widget.relativePath());
             }
         }
         List<TrustedFlow> flows = trustedFlowsFrom(model);
@@ -204,6 +226,7 @@ public final class TrustedSourceEmitter {
                 "src/main/resources/trusted-source/trusted-source-generation-manifest.json",
                 generationManifest(entries, procedures, panels, widgets, manifestPath)
         );
+        return generatedPathsByOwner;
     }
 
     private static String key(String kind, String relativePath) {

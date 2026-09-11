@@ -66,7 +66,7 @@ class ExtensionInventoryEmitterTest {
         Path modelSourcePath = tempDir.resolve("Input").resolve("model.json");
 
         new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
-                .emit(model(), null, modelSourcePath);
+                .emit(model(), null, modelSourcePath, outRoot, java.util.Map.of());
 
         Path inventoryPath = outRoot.resolve("src/main/resources/npdev/extension-inventory.json");
         assertTrue(Files.isRegularFile(inventoryPath), "extension-inventory.json must be written");
@@ -122,7 +122,7 @@ class ExtensionInventoryEmitterTest {
                 """);
 
         new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
-                .emit(model(), null, modelSourcePath);
+                .emit(model(), null, modelSourcePath, outRoot, java.util.Map.of());
 
         Path inventoryPath = outRoot.resolve("src/main/resources/npdev/extension-inventory.json");
         JsonNode entries = MAPPER.readTree(Files.readString(inventoryPath)).path("entries");
@@ -163,6 +163,6 @@ class ExtensionInventoryEmitterTest {
 
         assertThrows(IllegalStateException.class,
                 () -> new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
-                        .emit(model(), null, modelSourcePath));
+                        .emit(model(), null, modelSourcePath, outRoot, java.util.Map.of()));
     }
 }

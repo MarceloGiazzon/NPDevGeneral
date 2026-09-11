@@ -338,7 +338,8 @@ public final class GeneratorFacade {
             new BoxManifestEmitter().emit(model, writer, resolvedModelSource, modelSourcePath);
             new PackCatalogEmitter().emit(writer, internalTablesEnabled, installedPackAliases);
         }
-        new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
+        Map<String, List<String>> trustedSourceGeneratedPaths =
+                new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.
@@ -386,7 +387,8 @@ public final class GeneratorFacade {
         // Path A / P0.3: the escape surface (trusted-source assets, conversions[].javaHook,
         // plugin-mounted in-process controllers, plugin packages) made visible as a generated
         // artifact instead of only discoverable by grep.
-        new ExtensionInventoryEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);
+        new ExtensionInventoryEmitter(writer).emit(model, resolvedModelSource, modelSourcePath, outRoot,
+                trustedSourceGeneratedPaths);
 
         new GeneratedFolderSignatureEmitter().emit(outRoot);
 
