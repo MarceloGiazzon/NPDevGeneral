@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.compiler;
 
+import com.npdev.dsl.v1.ast.AppShellAst;
+import com.npdev.dsl.v1.ast.AppShellNavItemAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
 import com.npdev.dsl.v1.ast.ContextAst;
 import com.npdev.dsl.v1.ast.ConversionAst;
@@ -73,6 +75,8 @@ import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
+import com.npdev.dsl.v1.compiled.CompiledAppShell;
+import com.npdev.dsl.v1.compiled.CompiledAppShellNavItem;
 import com.npdev.dsl.v1.compiled.CompiledConversion;
 import com.npdev.dsl.v1.compiled.CompiledFileMetadata;
 import com.npdev.dsl.v1.compiled.CompiledCapability;
@@ -650,8 +654,21 @@ public final class ModelCompiler {
                 conversions,
                 toCompiledWebhooks(modelAst.getWebhooks()),
                 toCompiledSequences(modelAst.getSequences()),
-                toCompiledSeeds(modelAst.getSeeds())
+                toCompiledSeeds(modelAst.getSeeds()),
+                toCompiledAppShell(modelAst.getAppShell())
         );
+    }
+
+    /** Path A P6.3: compiles the app-level appShell block, or null if the model declares none. */
+    private static CompiledAppShell toCompiledAppShell(AppShellAst appShellAst) {
+        if (appShellAst == null) {
+            return null;
+        }
+        List<CompiledAppShellNavItem> navigation = new ArrayList<>();
+        for (AppShellNavItemAst item : appShellAst.getNavigation()) {
+            navigation.add(new CompiledAppShellNavItem(item.getLabel(), item.getTarget(), item.getGroup()));
+        }
+        return new CompiledAppShell(appShellAst.getDefaultRoute(), navigation);
     }
 
     /** ADR-0009: compiles the app-level externalAi block, or null if the model declares none. */

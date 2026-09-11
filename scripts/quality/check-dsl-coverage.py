@@ -129,7 +129,7 @@ def calibrate() -> int:
 # the split was warned about: a coverage gate that stops covering something is invisible by
 # construction. So the count is now asserted, in the same spirit as
 # check-dsl-reference-output-floor.py.
-TRACKED_FEATURE_FLOOR = 91
+TRACKED_FEATURE_FLOOR = 92
 
 
 def main(argv: list[str]) -> int:

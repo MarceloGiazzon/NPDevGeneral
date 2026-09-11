@@ -40,6 +40,7 @@ public final class ModelAst {
     private final List<WebhookAst> webhooks;
     private final List<SequenceAst> sequences;
     private final List<SeedAst> seeds;
+    private final AppShellAst appShell;
 
     public ModelAst(String namespace, String version, List<? extends EntityAst> entities) {
         this(namespace, DEFAULT_DSL_VERSION, version, entities, List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -587,8 +588,7 @@ public final class ModelAst {
                 contexts, conversions, physicalQualifierByConceptName, webhooks, sequences, List.of());
     }
 
-    /** R8.8: canonical constructor, adds {@code seeds} (model/pack-declared first-boot seed rows --
-     *  see {@link SeedAst}). */
+    /** R8.8: adds {@code seeds} (model/pack-declared first-boot seed rows -- see {@link SeedAst}). */
     public ModelAst(
             String namespace,
             String dslVersion,
@@ -622,6 +622,48 @@ public final class ModelAst {
             List<SequenceAst> sequences,
             List<SeedAst> seeds
     ) {
+        this(namespace, dslVersion, version, entities, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                selectors, documents, parserWarnings, externalAi, settings, roles, propertyScopes, properties,
+                contexts, conversions, physicalQualifierByConceptName, webhooks, sequences, seeds, null);
+    }
+
+    /** Path A P6.3: canonical constructor, adds {@code appShell} (declared navigation structure and
+     *  default route for the generated app's shell chrome -- see {@link AppShellAst}). */
+    public ModelAst(
+            String namespace,
+            String dslVersion,
+            String version,
+            List<? extends EntityAst> entities,
+            List<DomainTypeAst> domainTypes,
+            List<CapabilityAst> capabilities,
+            List<CapabilityBindingAst> bindings,
+            List<EventAst> events,
+            List<FlowAst> flows,
+            List<OrchestrationAst> orchestrationRules,
+            List<QueryAst> queries,
+            List<RuleProfileAst> ruleProfiles,
+            List<ProcedureAst> procedures,
+            List<PanelAst> panels,
+            List<GuidePageAst> guidePages,
+            List<AggregateAst> aggregates,
+            List<AutoPanelAst> autoPanels,
+            List<SelectorAst> selectors,
+            List<DocumentAst> documents,
+            List<String> parserWarnings,
+            ExternalAiAst externalAi,
+            SettingsAst settings,
+            List<RoleAst> roles,
+            List<PropertyScopeAst> propertyScopes,
+            List<PropertyAst> properties,
+            List<ContextAst> contexts,
+            List<ConversionAst> conversions,
+            Map<String, String> physicalQualifierByConceptName,
+            List<WebhookAst> webhooks,
+            List<SequenceAst> sequences,
+            List<SeedAst> seeds,
+            AppShellAst appShell
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -654,6 +696,7 @@ public final class ModelAst {
         this.webhooks = webhooks == null ? new ArrayList<>() : new ArrayList<>(webhooks);
         this.sequences = sequences == null ? new ArrayList<>() : new ArrayList<>(sequences);
         this.seeds = seeds == null ? new ArrayList<>() : new ArrayList<>(seeds);
+        this.appShell = appShell;
     }
 
     public String getNamespace() { return namespace; }
@@ -798,6 +841,12 @@ public final class ModelAst {
      *  data} may reference an earlier one's {@code alias} via {@code "$ref:<alias>"}. */
     public List<SeedAst> getSeeds() {
         return Collections.unmodifiableList(seeds);
+    }
+
+    /** Path A P6.3: declared navigation structure and default route for the shell chrome, or
+     *  {@code null} if the model declares none (the shell's existing default behavior applies). */
+    public AppShellAst getAppShell() {
+        return appShell;
     }
 
     private static List<ConceptAst> toConcepts(List<? extends EntityAst> source) {

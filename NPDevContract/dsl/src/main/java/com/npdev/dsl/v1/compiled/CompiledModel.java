@@ -32,6 +32,7 @@ public final class CompiledModel {
     private final List<CompiledWebhook> webhooks;
     private final List<CompiledSequence> sequences;
     private final List<CompiledSeed> seeds;
+    private final CompiledAppShell appShell;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -468,8 +469,7 @@ public final class CompiledModel {
                 sequences, List.of());
     }
 
-    /** R8.8: canonical constructor, adds {@code seeds} (model/pack-declared first-boot seed rows --
-     *  see {@link CompiledSeed}). */
+    /** R8.8: adds {@code seeds} (model/pack-declared first-boot seed rows -- see {@link CompiledSeed}). */
     public CompiledModel(
             String namespace,
             String dslVersion,
@@ -499,6 +499,45 @@ public final class CompiledModel {
             List<CompiledWebhook> webhooks,
             List<CompiledSequence> sequences,
             List<CompiledSeed> seeds
+    ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
+                sequences, seeds, null);
+    }
+
+    /** Path A P6.3: canonical constructor, adds {@code appShell} (declared navigation structure and
+     *  default route for the generated app's shell chrome -- see {@link CompiledAppShell}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks,
+            List<CompiledSequence> sequences,
+            List<CompiledSeed> seeds,
+            CompiledAppShell appShell
     ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
@@ -532,6 +571,7 @@ public final class CompiledModel {
         this.webhooks = webhooks == null ? List.of() : List.copyOf(webhooks);
         this.sequences = sequences == null ? List.of() : List.copyOf(sequences);
         this.seeds = seeds == null ? List.of() : List.copyOf(seeds);
+        this.appShell = appShell;
     }
 
     public String getNamespace() { return namespace; }
@@ -714,6 +754,12 @@ public final class CompiledModel {
      *  boot-time, idempotent executor. */
     public List<CompiledSeed> getSeeds() {
         return Collections.unmodifiableList(seeds);
+    }
+
+    /** Path A P6.3: declared navigation structure and default route for the shell chrome, or
+     *  {@code null} if the model declares none (the shell's existing default behavior applies). */
+    public CompiledAppShell getAppShell() {
+        return appShell;
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

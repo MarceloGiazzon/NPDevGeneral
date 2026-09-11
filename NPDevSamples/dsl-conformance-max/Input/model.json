@@ -19,6 +19,15 @@
     }
   },
 
+  "appShell": {
+    "defaultRoute": "WidgetOrder",
+    "navigation": [
+      { "label": "Widget Orders", "target": "WidgetOrder", "group": "Operations" },
+      { "label": "Widget Catalog", "target": "WidgetCatalogEntry", "group": "Operations" },
+      { "label": "Reference Data" }
+    ]
+  },
+
   "roles": [
     {
       "name": "WarehouseManager",
