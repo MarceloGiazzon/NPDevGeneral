@@ -828,6 +828,17 @@ try {
         $failures += "a Constitution law claims enforcement=enforced with no real checker behind it, or its checker is missing/dangling: see scripts/quality/check-constitution-coverage.py output above, and scripts/policy/constitution.json"
     }
 
+    # Path A realignment P0.3: the escape surface (trusted-source assets, conversions[].javaHook,
+    # plugin-mounted in-process controllers, plugin packages) is now emitted as
+    # extension-inventory.json on every generation (ExtensionInventoryEmitter). This proves the
+    # artifact is actually produced and well-formed for the real corpus fixtures that exercise each
+    # mechanism, not just that the generator command exited 0.
+    Write-Host '[42/42] Checking extension-inventory.json is emitted and well-formed...'
+    & $py "scripts/quality/check-extension-inventory.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "extension-inventory.json is missing, malformed, or under-counts a known escape hatch: see scripts/quality/check-extension-inventory.py output above"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

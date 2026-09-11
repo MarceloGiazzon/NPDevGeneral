@@ -189,8 +189,13 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["springProfile", "serverPort", "javaArgs", "gradleTask"],
+      "required": ["serverPort", "javaArgs"],
       "properties": {
+        "binder": {
+          "type": "string",
+          "description": "P0.6 (Path A realignment): the runtime binder that mounts the generated projection. Optional -- absent means 'spring', the only implemented value today. Exists so springProfile/gradleTask can be scoped to the binder that needs them instead of required unconditionally, which is what made the config contract itself claim Spring was the identity rather than a binder.",
+          "enum": ["spring"]
+        },
         "springProfile": {
           "type": "string",
           "minLength": 1
@@ -208,6 +213,12 @@
           "type": "string",
           "enum": ["bootRun"]
         }
+      },
+      "if": {
+        "properties": { "binder": { "const": "spring" } }
+      },
+      "then": {
+        "required": ["springProfile", "gradleTask"]
       }
     },
     "build": {

@@ -307,6 +307,9 @@
     "scripts/quality/check-executable-line-endings.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-extension-inventory.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-external-ai-mission-coverage.py": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/adr/ADR-0009-external-ai-delegation.md"
