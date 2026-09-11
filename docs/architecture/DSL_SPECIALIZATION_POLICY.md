@@ -84,3 +84,15 @@ element type — proven for concepts by
 - `LabelLocaleSpecializationMergeTest` — the `ui` label/locale merge, pre-existing.
 - `DslSpecializationTest` — `extends`-alias parsing, unknown-base and cycle rejection (both
   `extends`-only and `specializes`-only), duplicate-field rejection.
+
+## Lineage (P3.3)
+
+`ConceptLineage` (`NPDevContract/dsl/.../resolution/ConceptLineage.java`) answers "what does this
+specialization inherit, add, change and remove, and from which parent version" for every row in the
+table above that has a live parent/child pair -- computed by diffing a concept's raw (pre-resolution)
+declaration against its resolved base, not by adding new provenance fields to `ConceptAst` itself.
+`BoxManifestEmitter` attaches it to each specialized concept's box as a `specializes` entry in
+`npdev/box/box-manifest.json`, and the generated app's Box View (`/api/admin/box`,
+`business-ui-app.mustache`'s `renderBoxViewPanel`) renders it as a `Specializes` column. `removes` is
+always empty today -- there is no mechanism to remove an inherited field, invariant or event, only to
+add one -- see `ConceptLineage`'s own doc for why that is a scope statement, not a bug.
