@@ -349,7 +349,7 @@ public final class ModelSourceResolver {
             resolveContexts((ArrayNode) contexts, resolved, sourceFile, state);
         }
 
-        resolveUnqualifiedReferences(resolved, sourceFile);
+        resolveUnqualifiedReferences(resolved, sourceFile, state);
 
         if (!metadata.isEmpty()) {
             resolved.set("metadata", metadata);
@@ -537,7 +537,7 @@ public final class ModelSourceResolver {
             Map<String, Map<String, String>> rewriteMaps = buildRewriteMaps(name, contextContent);
             mergeQualifiedConcepts("Context", name, contextContent, resolved, contextFile, rewriteMaps);
 
-            QualifiedReferenceValidator gate = qualifiedName -> {
+            QualifiedReferenceValidator gate = (fieldName, qualifiedName) -> {
                 String prefix = qualifiedName.substring(0, qualifiedName.indexOf("::"));
                 if (prefix.equals(name) || allowedImports.contains(prefix) || !importGraph.containsKey(prefix)) {
                     // Self-reference, a declared import, or not a known context at all (assumed to be
@@ -799,6 +799,22 @@ public final class ModelSourceResolver {
         }
     }
 
+    /** P4.1 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): records this pack/context's own {@code private}/
+     *  {@code extensionPoints} declarations under its qualifier, exactly alongside {@link
+     *  #recordOrigin} -- {@link #resolveUnqualifiedReferences}'s GLOBAL pass is the sole reader,
+     *  via {@link #checkMemberVisibility}. Absent entirely for a pack/context that declares neither
+     *  array (the overwhelming majority, and every pack's shape before this field existed). */
+    static void recordVisibility(String qualifierId, ObjectNode packNode, ResolutionState state) {
+        Set<String> privateNames = textSetOf(packNode, "private");
+        if (!privateNames.isEmpty()) {
+            state.privateMembersByQualifier.put(qualifierId, privateNames);
+        }
+        Set<String> extensionPoints = textSetOf(packNode, "extensionPoints");
+        if (!extensionPoints.isEmpty()) {
+            state.extensionPointsByQualifier.put(qualifierId, extensionPoints);
+        }
+    }
+
     private static int parsePackMajorVersion(JsonNode versionNode, Path packFile) throws IOException {
         String version = versionNode == null ? "" : textOrBlank(versionNode);
         if (version.isBlank()) {
@@ -910,7 +926,7 @@ public final class ModelSourceResolver {
      *  this time, unlike the per-pack pass, which explicitly skips it) -- this is what lets a
      *  root-model-authored concept's own {@code field.domainType} resolve against a pack-provided
      *  domain type without any pack-specific code path: the same walker just runs one more time. */
-    private void resolveUnqualifiedReferences(ObjectNode resolved, Path sourceFile) {
+    private void resolveUnqualifiedReferences(ObjectNode resolved, Path sourceFile, ResolutionState state) {
         Map<String, Map<String, Set<String>>> candidatesByKind = new LinkedHashMap<>();
         for (String kind : MODEL_ARRAY_KEYS) {
             JsonNode array = resolved.get(kind);
@@ -974,9 +990,61 @@ public final class ModelSourceResolver {
                 continue;
             }
             for (JsonNode member : array) {
-                rewritePackLocalConceptReferencesInPlace(member, globalRewriteMaps, ambiguousNames, kind, QUALIFIED_REF_NOOP);
+                // P4.1: the one place every reference in the FULLY resolved model -- bare-resolved
+                // or authored-qualified, app-root or pack-to-pack -- passes through exactly once.
+                // ownerQualifier lets a pack's own members reference each other freely regardless of
+                // privacy; only a reference from OUTSIDE the declaring pack is checked.
+                String ownerQualifier = ownerQualifierOf(member);
+                QualifiedReferenceValidator visibilityGate = (fieldName, qualifiedName) ->
+                        checkMemberVisibility(state, sourceFile, ownerQualifier, fieldName, qualifiedName);
+                rewritePackLocalConceptReferencesInPlace(member, globalRewriteMaps, ambiguousNames, kind, visibilityGate);
             }
         }
+    }
+
+    /** P4.1: the qualifier that OWNS {@code member} -- the prefix of its own already-qualified
+     *  {@code Qualifier::Name} (a pack- or context-contributed member), or {@code ""} for a
+     *  root-declared member (root members are never namespace-qualified). */
+    private static String ownerQualifierOf(JsonNode member) {
+        if (member == null || !member.isObject() || !member.has("name") || !member.get("name").isTextual()) {
+            return "";
+        }
+        String name = member.get("name").asText();
+        int separator = name.indexOf("::");
+        return separator <= 0 ? "" : name.substring(0, separator);
+    }
+
+    /** P4.1 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): refuses composition the moment a reference from
+     *  outside a pack's own members names one of that pack's {@code private} members -- the
+     *  visibility counterpart of {@link #checkPackRequirements}'s unbound-requirement refusal,
+     *  wired in as a {@link QualifiedReferenceValidator} rather than a separate walking pass so it
+     *  sees every reference field {@link #rewriteKnownMemberReferenceFields} already knows about,
+     *  for free. A pack with no {@code private} declaration (the default) is untouched: {@code
+     *  ResolutionState.privateMembersByQualifier} simply has no entry for it. */
+    private static void checkMemberVisibility(
+            ResolutionState state, Path sourceFile, String ownerQualifier, String fieldName, String qualifiedName) {
+        int separator = qualifiedName.indexOf("::");
+        if (separator <= 0) {
+            return;
+        }
+        String refQualifier = qualifiedName.substring(0, separator);
+        String refName = qualifiedName.substring(separator + 2);
+        if (refQualifier.equals(ownerQualifier)) {
+            return; // A pack/context's own members may always reference each other.
+        }
+        Set<String> privateNames = state.privateMembersByQualifier.getOrDefault(refQualifier, Set.of());
+        if (!privateNames.contains(refName)) {
+            return; // Public (or refQualifier declares no visibility at all -- fully public default).
+        }
+        if (("specializes".equals(fieldName) || "extends".equals(fieldName))
+                && state.extensionPointsByQualifier.getOrDefault(refQualifier, Set.of()).contains(refName)) {
+            return; // Declared extension point -- specialization is the one exempted use.
+        }
+        throwUnchecked(error(sourceFile, "$", "PACK_VISIBILITY: reference '" + qualifiedName + "' (field '"
+                + fieldName + "') names '" + refName + "', which pack '" + refQualifier + "' declares private -- a "
+                + "private member may only be referenced by the SAME pack's own members (declare it in "
+                + refQualifier + "'s extensionPoints[] to allow specializing it, or drop it from " + refQualifier
+                + "'s private[] to make it public)."));
     }
 
     /**
@@ -1211,6 +1279,17 @@ public final class ModelSourceResolver {
         MemberNameResolver conceptRewriteMap = resolverFor(rewriteMaps, ambiguousNames, "concepts");
         rewriteTextField(object, "conceptRef", conceptRewriteMap, qualifiedReferenceValidator);
         rewriteTextField(object, "domainType", resolverFor(rewriteMaps, ambiguousNames, "domainTypes"), qualifiedReferenceValidator);
+        if ("concepts".equals(rootKey) && parentKey.isBlank()) {
+            // P4.1: a concept's OWN specializes/extends -- by established convention (see
+            // SpecializationParentVersionDriftTest's fixtures) always authored already-qualified
+            // when it crosses a pack boundary, never bare-resolved here (conceptRewriteMap only
+            // matters for the theoretical bare-name case; it is a no-op for a same-pack or app-root
+            // specialization, which never matches a pack-qualified candidate). Wiring it in gives
+            // checkMemberVisibility (via qualifiedReferenceValidator) the one thing it needs: to see
+            // the already-qualified value at all.
+            rewriteTextField(object, "specializes", conceptRewriteMap, qualifiedReferenceValidator);
+            rewriteTextField(object, "extends", conceptRewriteMap, qualifiedReferenceValidator);
+        }
         if ("queries".equals(rootKey)) {
             rewriteTextField(object, "concept", conceptRewriteMap, qualifiedReferenceValidator);
             gateCheckGroupByJoinPaths(object, qualifiedReferenceValidator);
@@ -1351,7 +1430,7 @@ public final class ModelSourceResolver {
                 field = item.get("field").asText();
             }
             if (field != null && field.contains("::")) {
-                qualifiedReferenceValidator.validate(field);
+                qualifiedReferenceValidator.validate("groupBy", field);
             }
         }
     }
@@ -1387,7 +1466,7 @@ public final class ModelSourceResolver {
         boolean changed = false;
         for (JsonNode item : value) {
             if (item != null && item.isTextual()) {
-                String replacement = rewriteConceptName(item.asText(), resolver, qualifiedReferenceValidator);
+                String replacement = rewriteConceptName(item.asText(), fieldName, resolver, qualifiedReferenceValidator);
                 rewritten.add(replacement);
                 changed = changed || !replacement.equals(item.asText());
             } else {
@@ -1409,32 +1488,53 @@ public final class ModelSourceResolver {
         if (value == null || !value.isTextual()) {
             return;
         }
-        String replacement = rewriteConceptName(value.asText(), resolver, qualifiedReferenceValidator);
+        String replacement = rewriteConceptName(value.asText(), fieldName, resolver, qualifiedReferenceValidator);
         if (!replacement.equals(value.asText())) {
             object.put(fieldName, replacement);
         }
     }
 
+    /** P4.1: validates BOTH branches -- an already-qualified {@code authored} value (unchanged
+     *  behavior) AND, now, a bare name that {@code resolver} successfully resolved to a qualified
+     *  {@code Qualifier::Name} (previously left silently unvalidated here, which is exactly the
+     *  "normal path" {@code {"type":"reference","ref":"OrderItem"}} bare-reference case a pack
+     *  visibility check MUST cover -- see NPDEV_PATH_A_REALIGNMENT_PLAN.md P4.1). Harmless for
+     *  every existing caller: {@link #QUALIFIED_REF_NOOP} ignores both branches identically, and
+     *  {@code resolveContexts}'s D3 gate already treats a same-context resolution as a no-op
+     *  self-reference. */
     private static String rewriteConceptName(
-            String authored, MemberNameResolver resolver, QualifiedReferenceValidator qualifiedReferenceValidator) {
+            String authored, String fieldName, MemberNameResolver resolver, QualifiedReferenceValidator qualifiedReferenceValidator) {
         if (authored == null) {
             return authored;
         }
         if (authored.contains("::")) {
-            qualifiedReferenceValidator.validate(authored);
+            qualifiedReferenceValidator.validate(fieldName, authored);
             return authored;
         }
-        return resolver.resolve(authored);
+        String resolved = resolver.resolve(authored);
+        if (!resolved.equals(authored)) {
+            qualifiedReferenceValidator.validate(fieldName, resolved);
+        }
+        return resolved;
     }
 
     /** B20 (S2): a no-op qualified-reference check -- packs today have no import restriction, so an
      *  already-qualified reference (cross-pack or, since D1 reuses the same {@code ::} separator,
-     *  cross-context) is left completely unvalidated when reached through a pack's own merge path. */
-    private static final QualifiedReferenceValidator QUALIFIED_REF_NOOP = qualifiedName -> { };
+     *  cross-context) is left completely unvalidated when reached through a pack's own LOCAL merge
+     *  path (see {@link #resolveUnqualifiedReferences}'s GLOBAL pass for where P4.1 visibility is
+     *  actually enforced -- once, after every pack/context is merged, rather than once per pack). */
+    private static final QualifiedReferenceValidator QUALIFIED_REF_NOOP = (fieldName, qualifiedName) -> { };
 
+    /** P4.1 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): {@code fieldName} is the authoring field the
+     *  reference was found on (e.g. {@code "domainType"}, {@code "specializes"}) -- carried
+     *  alongside the already-qualified {@code Qualifier::Name} value so a real validator can grant
+     *  the {@code specializes}/{@code extends} exemption for a pack's declared
+     *  {@code extensionPoints} without needing to know which {@link #MODEL_ARRAY_KEYS} kind the
+     *  reference targets (a flat, pack-scoped bare-name list is enough -- see
+     *  {@link #checkMemberVisibility}). */
     @FunctionalInterface
     private interface QualifiedReferenceValidator {
-        void validate(String qualifiedName);
+        void validate(String fieldName, String qualifiedName);
     }
 
     /** PK-1 step 4: resolves a bare (unqualified) member name to its qualified form.
@@ -1513,6 +1613,16 @@ public final class ModelSourceResolver {
         // .readExtensionTarget() is the actual consumer, one layer up.
         if (rawPack.has("extends")) {
             resolvedPack.set("extends", rawPack.get("extends").deepCopy());
+        }
+        // P4.1: same "schema-validates then silently vanishes" hazard as packs[]/requires/
+        // migrations/extends above -- neither `private` nor `extensionPoints` is a
+        // PACK_ROOT_SCALAR_KEYS scalar or a MODEL_ARRAY_KEYS collection. recordVisibility (called
+        // one layer up, from PackDependencyGraphWalker.run) is the actual consumer.
+        if (rawPack.has("private")) {
+            resolvedPack.set("private", rawPack.get("private").deepCopy());
+        }
+        if (rawPack.has("extensionPoints")) {
+            resolvedPack.set("extensionPoints", rawPack.get("extensionPoints").deepCopy());
         }
         JsonNode fragments = rawPack.get("fragments");
         if (fragments != null) {
@@ -2222,6 +2332,18 @@ public final class ModelSourceResolver {
          *  Absent for any root- or context-declared member (never pack-contributed), which is
          *  exactly how {@code JsonModelParser} distinguishes "no origin" from "pack origin". */
         final Map<String, Map<String, PackOrigin>> originByQualifiedMemberName = new LinkedHashMap<>();
+        /** P4.1: bare member names a pack/context declares {@code private} in its own manifest,
+         *  keyed by that pack/context's qualifier (its {@code as} alias when the importing model
+         *  gives one, its own file-declared id otherwise -- the exact same qualifier
+         *  {@link #recordOrigin} keys {@link #originByQualifiedMemberName} entries under). Absent
+         *  for any pack/context that declares no {@code private} array at all -- the
+         *  backward-compatible default, matching every pack's behavior before this field existed. */
+        final Map<String, Set<String>> privateMembersByQualifier = new LinkedHashMap<>();
+        /** P4.1: bare names -- normally a subset of the sibling {@code private} declaration -- a
+         *  pack/context exempts from the visibility refusal specifically for a
+         *  {@code specializes}/{@code extends} reference (never for a direct reference), keyed by
+         *  qualifier exactly like {@link #privateMembersByQualifier}. */
+        final Map<String, Set<String>> extensionPointsByQualifier = new LinkedHashMap<>();
 
         ResolutionState(Path rootRealPath, Path rootDirectory) {
             this.rootRealPath = rootRealPath;

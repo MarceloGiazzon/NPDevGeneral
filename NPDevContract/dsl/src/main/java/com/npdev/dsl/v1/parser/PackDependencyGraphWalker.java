@@ -352,6 +352,10 @@ final class PackDependencyGraphWalker {
             // to npdev.lock for this packId, never a second, independently-computed digest.
             ModelSourceResolver.recordOrigin(
                     qualifier, packNode, digestFor(packFile, fromByPackId.getOrDefault(packId, "")), state);
+            // P4.1: this pack/context's own private/extensionPoints declarations, keyed by the same
+            // qualifier -- resolveUnqualifiedReferences's GLOBAL pass (run by the caller, after every
+            // pack/context in this model is merged) is the sole reader.
+            ModelSourceResolver.recordVisibility(qualifier, packNode, state);
         }
 
         if (enforceLock) {

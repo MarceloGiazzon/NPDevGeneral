@@ -450,6 +450,18 @@
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "description": "REG-151: the pack's own true first-ever-published version, pinned once by `npdev pack publish --write` (either at this pack's first publish under this field's existence, backfilled from its migrations chain's own earliest hop, or -- for a pack with no chain yet -- copied from its own current `version`) and immutable thereafter, exactly like a migrations hop (see PackPublishGate's chain-immutability check). Exists as a trust anchor independent of the migrations chain's own current content: PackDependencyGraphWalker's untracked-pack fallback prefers this field over PackMigrationChain.earliestFromVersion() (which can be fooled if the chain's own earliest hop is later removed/truncated by a hand-edit that bypasses the publish gate)."
     },
+    "private": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "P4.1: bare member names (from concepts/capabilities/procedures/events/... -- any of the kinds this pack declares) that exist for this pack's own internal use only. A reference to '<thisPack>::<name>' from outside this pack -- another pack, a context, or the composing app's own root model -- refuses composition, naming the pack and the member. This pack's own members may still reference each other freely regardless of privacy (visibility only gates access from OUTSIDE the declaring pack). Absent (the default, and every pack's behavior before this field existed): every member is public.",
+      "uniqueItems": true
+    },
+    "extensionPoints": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "description": "P4.1: bare names -- normally a subset of `private` -- that a consuming app or pack MAY specialize (via `specializes`/`extends`) despite being private. Unlike full public membership, an extension point may still not be referenced directly (as a domain type, a query concept, a flow's scope, etc.) -- only named as the base of a specialization.",
+      "uniqueItems": true
+    },
     "signature": {
       "type": "object",
       "description": "PACK-8 Step 5: cryptographic signature of the pack's content digest. The digest is the same SHA-256 tree hash PackCache computes for content-addressed storage; the signature is that digest signed with a keypair (Ed25519 or SHA256withRSA). The public key is embedded so a consumer can verify without out-of-band key distribution. When present, `npdev pack add` verifies the signature against the cached digest and refuses on mismatch.",

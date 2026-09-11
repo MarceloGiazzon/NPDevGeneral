@@ -222,7 +222,26 @@ class ModelChangeClassifierTest {
      *  be skipped before {@code compile()} is even attempted, not just before mutation. */
     private static boolean hasInlineConcepts(JsonNode root) {
         JsonNode concepts = root.get("concepts");
-        return concepts != null && concepts.isArray() && !concepts.isEmpty();
+        if (concepts == null || !concepts.isArray() || concepts.isEmpty()) {
+            return false;
+        }
+        // P4.1 regression (found while verifying the specialization-medical-invoice corpus sample,
+        // NPDEV_PATH_A_REALIGNMENT_PLAN.md P3.5): a model can have a non-empty OWN concepts array
+        // and STILL be unresolvable by raw compile() here -- a specialization whose base is a pack
+        // concept is authored pack-qualified ("invoicing::Invoice", never rewritten by this test's
+        // unresolved-node compile path, which runs no pack composition at all). Skip those exactly
+        // like a pack-only model is already skipped, for the same reason.
+        for (JsonNode concept : concepts) {
+            if (concept == null || !concept.isObject()) {
+                continue;
+            }
+            String specializes = concept.has("specializes") ? concept.get("specializes").asText("") : "";
+            String extendsBase = concept.has("extends") ? concept.get("extends").asText("") : "";
+            if (specializes.contains("::") || extendsBase.contains("::")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** Adds one new field (named to never collide) to the first concept's {@code fields} array, or
