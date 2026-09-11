@@ -160,3 +160,20 @@ a silent no-op for the others — a known, accepted boundary.
 
 This contract is versioned by `schemaVersion` (currently `npdev-ui-contract.v1`). NPDev is pre-1.0 —
 see `BREAKING.md`.
+
+## Shell versioning
+
+The browser shell (`business-ui-index.mustache` + `business-ui-app.mustache` + `business-ui-style.mustache`
++ `shell.js.mustache` + `shell.css.mustache`, ~9,300 lines total) carries no model data and is emitted
+byte-identical into every generated app — see Path A finding 1.3(a). `NpdevUiShellVersion`
+(`NPDevGenerator/generator/.../emitters/`) is the single source of truth for its version
+(`npdev-ui-shell.v1`) and its declared compatibility range against this contract's `schemaVersion`
+(currently `npdev-ui-contract.v1`..`npdev-ui-contract.v1`). `BusinessUiEmitter` threads that identity
+into the shell templates (a JS constant, an HTML `<meta>` tag, a CSS comment) and into a dedicated
+`shell-manifest.json` stamp file alongside `generated-ui-manifest.json`, so a generated app carries a
+discoverable version rather than an anonymous copy. The shell still reads `./generated-ui-manifest.json`
+at runtime, not this contract's bundle endpoint, and nothing yet fails when shell and contract versions
+diverge — both are Path A P6.2.
+
+`layout.mustache` is not part of the shipped shell: it is never rendered by `BusinessUiEmitter` or
+included by any other template, so it does not carry a version stamp.
