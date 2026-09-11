@@ -1,0 +1,56 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "samples.specializationmedicalinvoice",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "packs": [
+    { "$ref": "packs/invoicing/pack.json" }
+  ],
+  "concepts": [
+    {
+      "name": "MedicalInvoice",
+      "specializes": "invoicing::Invoice",
+      "ui": {
+        "label": "Medical invoice"
+      },
+      "fields": [
+        {
+          "name": "doctorId",
+          "type": "uuid",
+          "required": true,
+          "ui": {
+            "label": "Doctor id"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "PositiveTotal",
+          "specializes": "PositiveTotal",
+          "override": true,
+          "type": "expression",
+          "expression": "total > 10"
+        }
+      ],
+      "access": {
+        "read": "true",
+        "write": "false"
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    }
+  ]
+}

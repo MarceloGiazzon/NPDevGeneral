@@ -82,6 +82,7 @@
     "NPDevSamples/restaurant-saas-multitenant": "showcase",
     "NPDevSamples/simple-contact-intake": "showcase",
     "NPDevSamples/simple-user-registry": "engine-variant",
+    "NPDevSamples/specialization-medical-invoice": "showcase",
     "NPDevSamples/superuser-admin-console": "showcase",
     "NPDevSamples/temporal-pricing-r58": "repro-case",
     "NPDevSamples/user-minimal": "dsl-fixture"

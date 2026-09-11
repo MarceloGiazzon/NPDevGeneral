@@ -1,0 +1,48 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "specialization-medical-invoice",
+    "description": "Golden specialization sample (P3.5, NPDEV_PATH_A_REALIGNMENT_PLAN.md Phase 3 exit criterion): a pack-owned Invoice specialized to MedicalInvoice, proving correct DDL, API, inherited UI, overridden invariant and overridden permissions -- and that regeneration is byte-identical.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "runtime": {
+    "springProfile": "dev,step0,trial",
+    "serverPort": 8098,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,step0,trial",
+    "runtimeUrl": "http://localhost:8098/",
+    "databaseMode": "step0-h2",
+    "pluginDiscoveryMode": "filesystem-folder",
+    "pluginPackageDirectory": "./npdev-generated/src/main/resources/npdev/plugin-packages",
+    "notes": [
+      "Phase 3 exit criterion: run scripts/hygiene/check-deterministic-generation.ps1 -SampleId specialization-medical-invoice to prove regeneration is byte-identical."
+    ]
+  }
+}
