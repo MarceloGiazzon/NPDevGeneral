@@ -260,6 +260,14 @@
   }
 
   function isFieldVisible(field, values) {
+    // Path A P6.2: field.permissionOverlay (set by applyUiContractFieldOverlay from the live
+    // /ui/bundle response, when reachable and version-compatible) is the SERVER's real per-actor
+    // answer, evaluated with the caller's actual role/tenant/row -- strictly more authoritative
+    // than the declared-presence flags below or the client-only evaluateWhen check, so it is
+    // consulted first and only ever narrows (never overrides a hide into a show).
+    if (field.permissionOverlay && field.permissionOverlay.visible === false) {
+      return false;
+    }
     return evaluateWhen(field.visibleWhen, values);
   }
 
@@ -281,6 +289,13 @@
     // isFieldReadonlyByCondition affect only this generic UI's own <input disabled/readOnly>
     // attributes; the server enforces regardless of what this function returns).
     if (field.accessWriteScoped) {
+      return true;
+    }
+    // Path A P6.2: field.permissionOverlay.editable === false is the live bundle's actual
+    // per-actor answer (strictly narrower information than the declared-presence flag above,
+    // which cannot evaluate role/tenant/row) -- when present, it replaces the guesswork above with
+    // the real answer instead of layering a second unconditional readonly on top of it.
+    if (field.permissionOverlay && field.permissionOverlay.editable === false) {
       return true;
     }
     return field.readonlyWhen ? evaluateWhen(field.readonlyWhen, values) : false;
@@ -444,6 +459,81 @@
       return payload.message || payload.error || payload.code || "HTTP " + status;
     }
     return payload ? String(payload) : "HTTP " + status;
+  }
+
+  // Path A P6.2: the shell reads its per-concept fields from ./generated-ui-manifest.json (static,
+  // model-derived, NOT permission-filtered -- see docs/UI_CONTRACT.md's "Only two arrays are
+  // permission-filtered"). GET /api/v1/runtime/metadata/ui/bundle?concept=X is the real, live,
+  // per-actor answer for that same concept's fields, already tested and versioned
+  // (npdev-ui-contract.vN). This section fetches it once per concept at boot and overlays its
+  // fields.visible/editable onto the manifest's own field objects (applyUiContractFieldOverlay,
+  // consumed by isFieldVisible/isFieldReadonlyByCondition above) -- the manifest itself remains the
+  // structural source of truth (routes, panels, nav) the bundle does not carry, so this is an
+  // overlay, never a replacement. A network failure or a schemaVersion outside
+  // NPDEV_UI_SHELL_CONTRACT_COMPAT degrades gracefully to the manifest's existing (unfiltered)
+  // behavior -- see fetchUiContractBundle's catch below -- logged once so the degradation is
+  // visible rather than silent.
+  var uiContractDiagnosticShown = false;
+
+  function warnUiContractDegraded(conceptName, reason) {
+    console.warn("[npdev-ui-shell] UI contract bundle unavailable for '" + conceptName + "' (" + reason
+        + ") -- falling back to the generated manifest's own (unfiltered) field metadata.");
+    if (!uiContractDiagnosticShown) {
+      uiContractDiagnosticShown = true;
+      toast("Live permission data unavailable from the UI contract bundle; showing the generated manifest instead.", "info");
+    }
+  }
+
+  function uiContractVersionNumber(schemaVersion) {
+    const match = /\.v(\d+)$/.exec(String(schemaVersion || ""));
+    return match ? Number(match[1]) : null;
+  }
+
+  function isCompatibleUiContractVersion(schemaVersion) {
+    const version = uiContractVersionNumber(schemaVersion);
+    const min = uiContractVersionNumber(NPDEV_UI_SHELL_CONTRACT_COMPAT.min);
+    const max = uiContractVersionNumber(NPDEV_UI_SHELL_CONTRACT_COMPAT.max);
+    if (version === null || min === null || max === null) {
+      return false;
+    }
+    return version >= min && version <= max;
+  }
+
+  async function fetchUiContractBundle(conceptName) {
+    const params = new URLSearchParams();
+    params.set("concept", conceptName);
+    try {
+      const bundle = await fetchJson("/api/v1/runtime/metadata/ui/bundle?" + params.toString(), {
+        method: "GET",
+        headers: headers()
+      });
+      if (!isCompatibleUiContractVersion(bundle.schemaVersion)) {
+        warnUiContractDegraded(conceptName, "schemaVersion '" + bundle.schemaVersion + "' outside this shell's "
+            + "declared compat range " + NPDEV_UI_SHELL_CONTRACT_COMPAT.min + ".." + NPDEV_UI_SHELL_CONTRACT_COMPAT.max);
+        return null;
+      }
+      return bundle;
+    } catch (error) {
+      warnUiContractDegraded(conceptName, error.message);
+      return null;
+    }
+  }
+
+  function applyUiContractFieldOverlay(concept, bundle) {
+    if (!bundle || !Array.isArray(bundle.fields)) {
+      return;
+    }
+    const livePermissionByPath = {};
+    bundle.fields.forEach(function (item) { livePermissionByPath[item.fieldPath] = item; });
+    concept.fields.forEach(function (field) {
+      const live = livePermissionByPath[field.name];
+      field.permissionOverlay = live ? {
+        visible: live.visible !== false,
+        editable: live.editable !== false,
+        permissionState: live.permissionState || "editable",
+        denial: live.denial || null
+      } : null;
+    });
   }
 
   function panelState(concept) {
@@ -5910,7 +6000,15 @@
         window.location.hash = "#" + sectionId(state.activeConcept);
       }
     }
-    await Promise.all(visibleConcepts().map(loadPanel));
+    // Path A P6.2: fetch each visible concept's live /ui/bundle once at boot and overlay its
+    // field-level permission answers onto the manifest before that concept's own records load, so
+    // the very first form/grid render already reflects the real per-actor visible/editable state
+    // rather than an unfiltered one that then jumps ("fixes itself") a moment later.
+    await Promise.all(visibleConcepts().map(async function (concept) {
+      const bundle = await fetchUiContractBundle(concept.conceptName);
+      applyUiContractFieldOverlay(concept, bundle);
+      await loadPanel(concept);
+    }));
   }
 
   // Resolve the current user's roles to decide whether to surface the admin section.
