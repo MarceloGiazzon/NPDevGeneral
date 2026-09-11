@@ -96,3 +96,37 @@ declaration against its resolved base, not by adding new provenance fields to `C
 `business-ui-app.mustache`'s `renderBoxViewPanel`) renders it as a `Specializes` column. `removes` is
 always empty today -- there is no mechanism to remove an inherited field, invariant or event, only to
 add one -- see `ConceptLineage`'s own doc for why that is a scope statement, not a bug.
+
+## Parent-version drift (P3.4, Decision D3)
+
+*Pinned by default; explicit opt-in float. Reuses `npdev.lock`'s existing `migratedVersion` field
+(PK-4 Stage D) -- never a second versioning mechanism.*
+
+Before P3.4, a specialization whose base concept came from a pack had no protection at all: the next
+`npdev generate` after a `pack update` silently re-resolved the child against whatever shape the pack
+now declares, with no signal that anything had changed. `PackDependencyGraphWalker
+.checkSpecializationPinning` (called from `run()`, same JSON-node layer as `checkLock`/
+`applyMigrationChains`) closes that gap:
+
+- For every model concept declaring `specializes`/`extends`, if the resolved base is pack-contributed
+  (found in `state.originByQualifiedMemberName`), its owning pack's *current* declared `version` is
+  compared against `npdev.lock`'s `migratedVersion` for that pack -- the exact value the pack's own
+  migration-replay chain (`PackMigrationComposer`) already reads as its `fromVersion`.
+- **No drift** (no lock yet -- first-ever generate; or `migratedVersion == version` -- pack hasn't
+  moved since the last successful generate): nothing happens, matching every specialization's
+  behaviour before this card.
+- **Drift, pinned (default)**: generation refuses with a `PARENT_VERSION_DRIFT`-prefixed message
+  naming the concept, the parent pack, and both versions -- the same string-message refusal idiom
+  `checkLock`/`PackMigrationComposer.Refused` already use at this layer, not a new
+  `ResolutionDiagnosticCode` (that enum lives one layer up, in `ModelResolver`, and is never reached
+  here since the refusal happens before AST resolution).
+- **Drift, floating**: the specializing concept declares `"specializesFloat": true` (new concept-only
+  schema field, all 4 mirrored copies) -- the check is skipped entirely and the next generate silently
+  adopts the pack's current shape, exactly like today's pre-P3.4 behaviour.
+- A concept specializing a non-pack-contributed base (an app's own root concept) is never affected --
+  there is no pack version to drift from.
+
+**Fixtures:** `SpecializationParentVersionDriftTest`
+(`NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/`) -- pinned refusal, float opt-in success,
+first-generate no-op, same-version no-op, and a RED control proving an app's-own-concept
+specialization is never gated by an unrelated pack's drift.
