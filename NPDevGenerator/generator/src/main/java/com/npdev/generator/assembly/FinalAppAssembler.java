@@ -1,6 +1,8 @@
 package com.npdev.generator.assembly;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.generator.emitters.GeneratedContentHash;
 import com.npdev.generator.packs.PackAbiCompatibility;
 import com.npdev.generator.packs.PackAbiManifest;
 
@@ -107,6 +109,14 @@ public final class FinalAppAssembler {
         Options normalized = options.normalized();
         validate(normalized);
 
+        // Path A P5.3 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): classify every owner the LAST generation
+        // declared as file-addressable (untrustedExtensionAsset/javaHook) against what is actually on
+        // disk right now, and capture the bytes of anything declared KeepCustom -- all BEFORE
+        // deleteTree touches a single file, so a Block/AskUser conflict aborts with nothing destroyed.
+        Map<String, byte[]> keepCustomContent = normalized.deleteBeforeMount() && Files.exists(normalized.finalAppRoot())
+                ? resolveRegenerationConflicts(normalized)
+                : Map.of();
+
         if (normalized.deleteBeforeMount() && Files.exists(normalized.finalAppRoot())) {
             ensureSafeDeleteTarget(normalized);
             deleteTree(normalized.finalAppRoot());
@@ -136,6 +146,9 @@ public final class FinalAppAssembler {
                 CopyMode.GENERATED_ARTIFACT,
                 normalized
         );
+        // P5.3: KeepCustom -- restore the pre-wipe bytes of every owner this build resolved as
+        // "preserve", overwriting whatever the fresh copy above just wrote at the same relative path.
+        restoreKeepCustomContent(generatedMount, keepCustomContent);
 
         int schemaRealizationCount = countSchemaRealizationArtifacts(generatedMount);
         writeAiBetaLocalProfile(normalized, generatedMount);
@@ -462,6 +475,176 @@ public final class FinalAppAssembler {
     private static boolean onlyPreservedDirectoriesRemain(Path root, List<Path> preserved) throws IOException {
         try (var entries = Files.list(root)) {
             return entries.allMatch(preserved::contains);
+        }
+    }
+
+    private static final String EXTENSION_INVENTORY_RELATIVE_PATH =
+            "src/main/resources/npdev/extension-inventory.json";
+
+    /**
+     * Path A P5.3: one {@code untrustedExtensionAsset}/{@code javaHook} entry from a generation's
+     * extension-inventory.json ({@code ExtensionInventoryEmitter}, P0.3/P5.2/P5.3), reduced to exactly
+     * what a regeneration-conflict decision needs. Entries with an empty {@code generatedPaths} (every
+     * {@code inProcessController}/{@code pluginPackage} entry, and any owner the generator could not
+     * resolve a real path for) are filtered out before this record is ever constructed -- see {@link
+     * #readExtensionInventory}.
+     */
+    private record InventoryOwner(String owner, List<String> generatedPaths, String contentHash,
+            boolean provenanceDeclared, String regenerationIntent) {
+    }
+
+    /**
+     * Path A P5.3: reads an extension-inventory.json written by {@code ExtensionInventoryEmitter} and
+     * keeps only the entries this class can act on -- ones with at least one {@code generatedPaths}
+     * entry. Never throws on an absent or unreadable file (no previous generation, or an inventory
+     * predating P5.3's {@code generatedPaths} field): returns {@code List.of()}, the same "nothing to
+     * compare against" signal a first-ever generation produces.
+     */
+    private static List<InventoryOwner> readExtensionInventory(Path inventoryJsonPath) {
+        if (!Files.isRegularFile(inventoryJsonPath)) {
+            return List.of();
+        }
+        try {
+            JsonNode root = OBJECT_MAPPER.readTree(inventoryJsonPath.toFile());
+            List<InventoryOwner> owners = new ArrayList<>();
+            for (JsonNode entry : root.path("entries")) {
+                String owner = entry.path("owner").asText("");
+                List<String> generatedPaths = new ArrayList<>();
+                for (JsonNode path : entry.path("generatedPaths")) {
+                    generatedPaths.add(path.asText());
+                }
+                if (owner.isEmpty() || generatedPaths.isEmpty()) {
+                    continue;
+                }
+                String contentHash = entry.hasNonNull("contentHash") ? entry.path("contentHash").asText() : null;
+                JsonNode provenanceNode = entry.path("provenance");
+                boolean declared = provenanceNode.path("declared").asBoolean(false);
+                String regenerationIntent = declared ? provenanceNode.path("regenerationIntent").asText(null) : null;
+                owners.add(new InventoryOwner(owner, List.copyOf(generatedPaths), contentHash, declared, regenerationIntent));
+            }
+            return owners;
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * Path A P5.3: the regeneration-conflict-outcome step (NPDEV_PATH_A_REALIGNMENT_PLAN.md P5.3;
+     * docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md's Promotion Workflow -- "the generator must
+     * never silently overwrite protected human-authored resources", allowed outcomes KeepCustom /
+     * ReplaceGenerated / AskUser / Block). Runs BEFORE {@link #deleteTree} touches anything.
+     *
+     * <p>For every owner the LAST generation recorded as file-addressable, recomputes today's hash of
+     * those same paths under the CURRENT generated mount (still on disk, about to be wiped) and
+     * compares it to what was recorded as generated then. The drift BASELINE (generatedPaths + hash)
+     * comes from that last generation's own inventory; the provenance DECISION is read from the FRESH
+     * inventory this run just wrote to {@code generatedArtifactRoot} (today's {@code
+     * customization-provenance.json}, already joined in by {@code ExtensionInventoryEmitter}) -- so an
+     * intent declared for the first time takes effect on the very regeneration that follows declaring
+     * it, rather than one generation later:
+     *
+     * <ul>
+     *   <li>Hash unchanged -- nothing to protect; regenerates normally (this is also the path taken
+     *       for every owner nobody ever customized).</li>
+     *   <li>Hash changed, no {@code customization-provenance.json} record for the owner (in the FRESH
+     *       inventory) -- undeclared drift (a hand-edit with no declared intent). Outcome:
+     *       <b>Block</b>.</li>
+     *   <li>Hash changed, {@code regenerationIntent=preserve} -- outcome <b>KeepCustom</b>: the current
+     *       bytes are captured here and restored over the fresh copy by {@link
+     *       #restoreKeepCustomContent} after assembly completes.</li>
+     *   <li>Hash changed, {@code regenerationIntent=replace} -- outcome <b>ReplaceGenerated</b>: an
+     *       explicit "fine to overwrite" declaration; no special handling, falls through to the normal
+     *       wipe-and-copy.</li>
+     *   <li>Hash changed, {@code regenerationIntent=ask} (or an unrecognized value) -- nobody is at a
+     *       terminal to ask during an unattended build (Build-NpdevApp.ps1/Build-ClaudeApp.ps1 run
+     *       headless). Outcome: <b>AskUser</b>, realized here as the same hard failure as Block, so the
+     *       build stops rather than silently guessing -- the two are reported with different messages so
+     *       the fix is obvious (declare an intent vs. resolve a standing "ask").</li>
+     * </ul>
+     *
+     * <p>Any Block/AskUser conflict throws {@link IOException} naming every offending owner in one
+     * message, before a single file is deleted -- resolving all of them takes one rerun, not one per
+     * conflict.
+     *
+     * @return the pre-wipe bytes of every KeepCustom owner's generated paths, to be restored by {@link
+     *         #restoreKeepCustomContent} once the fresh copy has landed. Empty when there is nothing to
+     *         preserve (including: no previous generation ever ran).
+     */
+    private static Map<String, byte[]> resolveRegenerationConflicts(Options options) throws IOException {
+        Path generatedMount = options.finalAppRoot().resolve(options.generatedFolderName());
+        List<InventoryOwner> previousOwners = readExtensionInventory(generatedMount.resolve(EXTENSION_INVENTORY_RELATIVE_PATH));
+        if (previousOwners.isEmpty()) {
+            return Map.of();
+        }
+        // The provenance DECISION is read from the FRESH inventory (just written to
+        // generatedArtifactRoot this run, from today's customization-provenance.json), never the
+        // stale one above -- otherwise an intent a user declares for the first time would never take
+        // effect on the very regeneration that follows declaring it (the previous inventory predates
+        // the declaration by construction). previousOwners above supplies only the drift baseline
+        // (generatedPaths + the hash of what was generated last time), which is a property of the
+        // LAST run and correctly stays sourced from there.
+        Map<String, InventoryOwner> freshByOwner = new LinkedHashMap<>();
+        for (InventoryOwner fresh : readExtensionInventory(
+                options.generatedArtifactRoot().resolve(EXTENSION_INVENTORY_RELATIVE_PATH))) {
+            freshByOwner.put(fresh.owner(), fresh);
+        }
+
+        List<String> blocked = new ArrayList<>();
+        Map<String, byte[]> keepCustomContent = new LinkedHashMap<>();
+
+        for (InventoryOwner previous : previousOwners) {
+            String currentHash = GeneratedContentHash.of(generatedMount, previous.generatedPaths());
+            boolean unchanged = currentHash != null && currentHash.equals(previous.contentHash());
+            if (unchanged) {
+                continue;
+            }
+            InventoryOwner fresh = freshByOwner.get(previous.owner());
+            boolean provenanceDeclared = fresh != null && fresh.provenanceDeclared();
+            if (!provenanceDeclared) {
+                blocked.add("owner '" + previous.owner() + "' (" + previous.generatedPaths()
+                        + ") has undeclared changes -- no customization-provenance.json entry declares an intent "
+                        + "for it. Add one (regenerationIntent: preserve|replace) or revert the file(s), then "
+                        + "regenerate again.");
+                continue;
+            }
+            String intent = fresh.regenerationIntent();
+            if ("preserve".equals(intent)) {
+                for (String relativePath : previous.generatedPaths()) {
+                    Path file = generatedMount.resolve(relativePath).normalize();
+                    if (Files.isRegularFile(file)) {
+                        keepCustomContent.put(relativePath, Files.readAllBytes(file));
+                    }
+                }
+            } else if ("replace".equals(intent)) {
+                // ReplaceGenerated: an explicit "fine to overwrite" declaration -- normal wipe-and-copy.
+                continue;
+            } else if ("ask".equals(intent)) {
+                blocked.add("owner '" + previous.owner() + "' (" + previous.generatedPaths()
+                        + ") declares regenerationIntent=ask -- resolve it to preserve or replace in "
+                        + "customization-provenance.json, then regenerate again.");
+            } else {
+                blocked.add("owner '" + previous.owner() + "' (" + previous.generatedPaths()
+                        + ") declares an unrecognized regenerationIntent '" + intent + "'.");
+            }
+        }
+
+        if (!blocked.isEmpty()) {
+            throw new IOException("Regeneration blocked by " + blocked.size()
+                    + " unresolved customization conflict(s) under " + generatedMount + ":\n"
+                    + String.join("\n", blocked));
+        }
+        return keepCustomContent;
+    }
+
+    /** Path A P5.3: the other half of {@link #resolveRegenerationConflicts}'s KeepCustom outcome --
+     *  writes the pre-wipe bytes captured there back over the fresh copy, at the same relative paths
+     *  under the just-assembled {@code generatedMount}. A no-op (as it is for every caller that never
+     *  customized anything) when {@code keepCustomContent} is empty. */
+    private static void restoreKeepCustomContent(Path generatedMount, Map<String, byte[]> keepCustomContent) throws IOException {
+        for (Map.Entry<String, byte[]> restored : keepCustomContent.entrySet()) {
+            Path file = generatedMount.resolve(restored.getKey()).normalize();
+            Files.createDirectories(file.getParent());
+            Files.write(file, restored.getValue(), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
         }
     }
 

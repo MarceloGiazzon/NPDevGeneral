@@ -859,6 +859,18 @@ try {
         $failures += "ledger/semantic/inventory.yml is missing an entry for a model.schema.json key (or vice versa): see scripts/quality/check-semantic-inventory.py output above"
     }
 
+    # Path A realignment P5.3: regeneration used to wipe and freshly re-emit an app's entire
+    # untrusted-extension zone unconditionally, so a hand-edit with no declared intent was destroyed
+    # silently. FinalAppAssembler now classifies each customizable owner (generated / customized /
+    # protected) and applies KeepCustom / ReplaceGenerated / AskUser / Block before deleteTree touches
+    # anything -- this both greps for the mechanism and actually runs its JUnit proof
+    # (FinalAppAssemblerRegenerationConflictTest), not just that the words appear in source.
+    Write-Host '[44/44] Checking regeneration conflict outcomes (KeepCustom/ReplaceGenerated/AskUser/Block) are real...'
+    & $py "scripts/quality/check-regeneration-conflict-outcomes.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the regeneration-conflict-outcome mechanism is missing or its proof test failed: see scripts/quality/check-regeneration-conflict-outcomes.py output above"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red
