@@ -34,6 +34,8 @@
   "logsDir": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\logs",
   "infoJsonPath": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\npdev-generated\\src\\main\\resources\\static\\info.json",
   "hasInfoJson": true,
+  "extensionInventoryPath": "D:\\WorkSpace\\NPDev\\Build\\monitor-live\\npdev-generated\\src\\main\\resources\\npdev\\extension-inventory.json",
+  "hasExtensionInventory": true,
   "probeBaseUrl": "http://127.0.0.1:8411",
   "baseUrl": "http://localhost:8411",
   "pid": 24520,
@@ -212,6 +214,42 @@
     ],
     "probedBy": "npdev monitor probe --app-dir <this app>",
     "note": "Portable facts only. Anything true of one machine rather than of this app is supplied by `npdev monitor probe` at display time and is never written here."
+  },
+  "extensionInventory": {
+    "schemaVersion": "1.0",
+    "counts": {
+      "untrustedExtensionAsset": 1,
+      "javaHook": 1,
+      "inProcessController": 0,
+      "pluginPackage": 0
+    },
+    "entries": [
+      {
+        "category": "untrustedExtensionAsset",
+        "kind": "panel",
+        "origin": "panel/user-admin-panel.html",
+        "owner": "panel-user-admin",
+        "provenance": {
+          "declared": true,
+          "changeSummary": "Adds a bulk-create button the generated CRUD panel does not offer",
+          "reason": "Operators create canary tasks in batches of three during a scale drill",
+          "author": "ana@example.test",
+          "authorType": "human",
+          "regenerationIntent": "preserve",
+          "requiresRetest": true,
+          "releaseImpact": "minor"
+        }
+      },
+      {
+        "category": "javaHook",
+        "kind": "conversionJavaHook",
+        "origin": "conversion-hooks/summary/src/main/java/SummaryHook.java#summarize",
+        "owner": "0001-java-hook-summary",
+        "provenance": {
+          "declared": false
+        }
+      }
+    ]
   },
   "status": "ok",
   "schemaVersion": "npdev-monitor-probe.v1",

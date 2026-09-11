@@ -384,6 +384,21 @@ def _find_info_json(app_root: Path) -> Path | None:
     return None
 
 
+def _find_extension_inventory_json(app_root: Path) -> Path | None:
+    """Path A P0.3/P5.2: `ExtensionInventoryEmitter` writes into the GENERATED source set (unlike
+    info.json, `src/main/resources/npdev/` is not one of `FinalAppAssembler`'s reserved web-asset
+    paths, so it follows the default `npdev-generated/` mount) -- same two-candidate hedge as
+    `_find_info_json` for a plain, unassembled generation output."""
+    for relative in (
+        Path("npdev-generated") / "src" / "main" / "resources" / "npdev" / "extension-inventory.json",
+        Path("src") / "main" / "resources" / "npdev" / "extension-inventory.json",
+    ):
+        candidate = app_root / relative
+        if candidate.is_file():
+            return candidate
+    return None
+
+
 def app_definition_root(app_root: Path) -> str | None:
     """Where THIS app's definition (layer 2) lives, or None. ONE rule, because two callers ask:
     `probe_app` publishes it as a fact, and `npdev_explore.definition_dirs` hangs its
@@ -592,6 +607,10 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
     record["infoJsonPath"] = str(info_json) if info_json else None
     record["hasInfoJson"] = info_json is not None
 
+    extension_inventory_json = _find_extension_inventory_json(final_app_root)
+    record["extensionInventoryPath"] = str(extension_inventory_json) if extension_inventory_json else None
+    record["hasExtensionInventory"] = extension_inventory_json is not None
+
     # --- liveness ---------------------------------------------------------------------------
     # R3: probe over 127.0.0.1, ALWAYS. `localhost` resolves to ::1 first on Windows while the app
     # binds IPv4, so a localhost probe of a perfectly healthy app reports it down. The user-facing
@@ -676,6 +695,10 @@ def probe_app(app_dir: Path, *, include_info: bool = False, origin: str = "expli
 
     if include_info:
         record["info"] = _read_json(info_json) if info_json else None
+        # Path A P5.2: the customization inventory (P0.3), now carrying each entry's provenance
+        # (P5.1's untrusted-extension declarations plus P5.2's own customization-provenance.json
+        # join) -- same "None until built" contract as info above, never a probe failure.
+        record["extensionInventory"] = _read_json(extension_inventory_json) if extension_inventory_json else None
 
     record["status"] = "ok"
     return record

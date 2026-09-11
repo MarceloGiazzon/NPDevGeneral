@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schemas/ai/customization-provenance.schema.json",
+  "title": "NPDev Customization Provenance Manifest",
+  "description": "Path A P5.2 (NPDEV_PATH_A_REALIGNMENT_PLAN.md; docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md's Customization Registry): an OPTIONAL sibling of model.json declaring what/where/why/who for a customization ExtensionInventoryEmitter (P0.3) already discovers by construction -- untrustedExtensionAsset (panel/procedure/widget, P5.1's own untrusted-extension-manifest.json covers identity/source for that one category only), javaHook, inProcessController, pluginPackage. The file itself is optional -- an inventory entry with no matching record here is reported as undeclared, never a generation failure; declaring nothing never blocks creation, only a false claim would.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "entries"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-customization-provenance.v1"
+    },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "owner",
+          "changeSummary",
+          "reason",
+          "author",
+          "authorType",
+          "regenerationIntent",
+          "requiresRetest",
+          "releaseImpact"
+        ],
+        "properties": {
+          "owner": {
+            "type": "string",
+            "minLength": 1,
+            "description": "The model element id this record describes -- the same value ExtensionInventoryEmitter's own `owner` field already carries for this customization (a procedure/panel/widget id, a conversion id, or a capability requirement id)."
+          },
+          "changeSummary": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What changed -- a short description of the customization itself."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Why this customization exists rather than the generated default."
+          },
+          "author": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Who created it -- a name, handle, or agent/session id."
+          },
+          "authorType": {
+            "enum": [
+              "human",
+              "ai"
+            ]
+          },
+          "regenerationIntent": {
+            "enum": [
+              "preserve",
+              "replace",
+              "ask"
+            ],
+            "description": "Declared intent only -- P5.3 is where the generator actually enforces a regeneration conflict outcome against this."
+          },
+          "requiresRetest": {
+            "type": "boolean",
+            "description": "Whether a model/generator change touching this customization's area should trigger a re-test before release."
+          },
+          "releaseImpact": {
+            "enum": [
+              "none",
+              "minor",
+              "major"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.compiled.CompiledConversion;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.parser.ResolvedModelSource;
+import com.npdev.generator.emitters.customization.model.CustomizationRecord;
 import com.npdev.generator.emitters.trustedsource.model.TrustedReference;
 import com.npdev.generator.output.GeneratedSourceWriter;
 
@@ -44,9 +45,15 @@ import java.util.TreeMap;
  *       is the package id; owner is the capability requirement that bound it.</li>
  * </ul>
  *
- * <p>None of these mechanisms carries a human-authorship field, so "owner" is defined as the model
- * element responsible for the extension existing -- the same reading {@code check-*-inventory}
+ * <p>None of these mechanisms carries a human-authorship field on its own, so "owner" is defined as
+ * the model element responsible for the extension existing -- the same reading {@code check-*-inventory}
  * scripts elsewhere in the repo use for "owner" when no author metadata exists.
+ *
+ * <p>Path A P5.2: each entry also carries a {@code provenance} object, joined by {@code owner} against
+ * the OPTIONAL sibling {@code customization-provenance.json} ({@link CustomizationProvenanceManifest}).
+ * An owner with no matching record gets {@code {"declared": false}} -- declaring nothing never blocks
+ * generation, only a false claim would (the same rule P5.1 established for the untrusted-extension
+ * zone's {@code truthStatus}).
  */
 public final class ExtensionInventoryEmitter {
 
@@ -62,9 +69,10 @@ public final class ExtensionInventoryEmitter {
     public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath) throws IOException {
         ArrayNode entries = OBJECT_MAPPER.createArrayNode();
         Map<String, Integer> counts = new TreeMap<>();
+        Map<String, CustomizationRecord> provenance = CustomizationProvenanceManifest.readSibling(modelSourcePath);
 
         for (TrustedReference reference : TrustedSourceManifest.referencesFrom(model)) {
-            addEntry(entries, counts, "untrustedExtensionAsset", reference.kind(), reference.relativePath(), reference.id());
+            addEntry(entries, counts, provenance, "untrustedExtensionAsset", reference.kind(), reference.relativePath(), reference.id());
         }
 
         for (CompiledConversion conversion : model.getConversions()) {
@@ -73,16 +81,16 @@ public final class ExtensionInventoryEmitter {
                 continue;
             }
             String origin = javaHook.source() + "/" + javaHook.className().replace('.', '/') + ".java#" + javaHook.method();
-            addEntry(entries, counts, "javaHook", "conversionJavaHook", origin, conversion.id());
+            addEntry(entries, counts, provenance, "javaHook", "conversionJavaHook", origin, conversion.id());
         }
 
         GeneratedPluginMountPlan mountPlan = GeneratedPluginMountPlan.fromModelSource(resolvedModelSource, modelSourcePath);
         for (GeneratedPluginMountPlan.Mount mount : mountPlan.javaControllerMounts()) {
-            addEntry(entries, counts, "inProcessController", "javaController", mount.controllerClassName(), mount.capability());
+            addEntry(entries, counts, provenance, "inProcessController", "javaController", mount.controllerClassName(), mount.capability());
         }
         for (GeneratedPluginMountPlan.PackageGroup packageGroup : mountPlan.packageGroups()) {
             GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
-            addEntry(entries, counts, "pluginPackage", representative.pluginId(), representative.packageId(), representative.capability());
+            addEntry(entries, counts, provenance, "pluginPackage", representative.pluginId(), representative.packageId(), representative.capability());
         }
 
         ObjectNode root = OBJECT_MAPPER.createObjectNode();
@@ -97,13 +105,28 @@ public final class ExtensionInventoryEmitter {
         writer.writeRelative(OUTPUT_PATH, json);
     }
 
-    private static void addEntry(ArrayNode entries, Map<String, Integer> counts, String category, String kind,
+    private static void addEntry(ArrayNode entries, Map<String, Integer> counts,
+            Map<String, CustomizationRecord> provenance, String category, String kind,
             String origin, String owner) {
         ObjectNode entry = entries.addObject();
         entry.put("category", category);
         entry.put("kind", kind);
         entry.put("origin", origin);
         entry.put("owner", owner == null ? "" : owner);
+        ObjectNode provenanceNode = entry.putObject("provenance");
+        CustomizationRecord record = owner == null ? null : provenance.get(owner);
+        if (record == null) {
+            provenanceNode.put("declared", false);
+        } else {
+            provenanceNode.put("declared", true);
+            provenanceNode.put("changeSummary", record.changeSummary());
+            provenanceNode.put("reason", record.reason());
+            provenanceNode.put("author", record.author());
+            provenanceNode.put("authorType", record.authorType());
+            provenanceNode.put("regenerationIntent", record.regenerationIntent());
+            provenanceNode.put("requiresRetest", record.requiresRetest());
+            provenanceNode.put("releaseImpact", record.releaseImpact());
+        }
         counts.merge(category, 1, Integer::sum);
     }
 }

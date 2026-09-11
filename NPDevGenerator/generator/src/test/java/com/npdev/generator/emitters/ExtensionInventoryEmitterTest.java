@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -86,5 +87,82 @@ class ExtensionInventoryEmitterTest {
         assertEquals("conversionJavaHook", entry.path("kind").asText());
         assertEquals("0001-java-hook-summary", entry.path("owner").asText());
         assertTrue(entry.path("origin").asText().contains("SummaryHook.java#summarize"));
+        assertEquals(false, entry.path("provenance").path("declared").asBoolean());
+    }
+
+    /**
+     * Path A P5.2: when a customization-provenance.json sits next to model.json, ExtensionInventoryEmitter
+     * joins its entries into the inventory by owner -- the mechanism that turns a bare "this customization
+     * exists" line into "what changed, why, by whom, human or AI".
+     */
+    @Test
+    void joinsDeclaredProvenanceByOwner(@TempDir Path tempDir) throws IOException {
+        Path outRoot = tempDir.resolve("Output");
+        Files.createDirectories(outRoot);
+        Path inputDir = tempDir.resolve("Input");
+        Files.createDirectories(inputDir);
+        Path modelSourcePath = inputDir.resolve("model.json");
+        Files.writeString(modelSourcePath, MODEL_JSON);
+        Files.writeString(inputDir.resolve("customization-provenance.json"), """
+                {
+                  "schemaVersion": "npdev-customization-provenance.v1",
+                  "entries": [
+                    {
+                      "owner": "0001-java-hook-summary",
+                      "changeSummary": "Summarizes the order for the operator console",
+                      "reason": "The generated default has no natural-language summary field",
+                      "author": "ana@example.test",
+                      "authorType": "human",
+                      "regenerationIntent": "preserve",
+                      "requiresRetest": true,
+                      "releaseImpact": "minor"
+                    }
+                  ]
+                }
+                """);
+
+        new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
+                .emit(model(), null, modelSourcePath);
+
+        Path inventoryPath = outRoot.resolve("src/main/resources/npdev/extension-inventory.json");
+        JsonNode entries = MAPPER.readTree(Files.readString(inventoryPath)).path("entries");
+        JsonNode provenance = entries.get(0).path("provenance");
+        assertEquals(true, provenance.path("declared").asBoolean());
+        assertEquals("ana@example.test", provenance.path("author").asText());
+        assertEquals("human", provenance.path("authorType").asText());
+        assertEquals("preserve", provenance.path("regenerationIntent").asText());
+        assertEquals(true, provenance.path("requiresRetest").asBoolean());
+        assertEquals("minor", provenance.path("releaseImpact").asText());
+    }
+
+    @Test
+    void failsClosedOnAnInvalidAuthorType(@TempDir Path tempDir) throws IOException {
+        Path outRoot = tempDir.resolve("Output");
+        Files.createDirectories(outRoot);
+        Path inputDir = tempDir.resolve("Input");
+        Files.createDirectories(inputDir);
+        Path modelSourcePath = inputDir.resolve("model.json");
+        Files.writeString(modelSourcePath, MODEL_JSON);
+        Files.writeString(inputDir.resolve("customization-provenance.json"), """
+                {
+                  "schemaVersion": "npdev-customization-provenance.v1",
+                  "entries": [
+                    {
+                      "owner": "0001-java-hook-summary",
+                      "changeSummary": "x",
+                      "reason": "x",
+                      "author": "x",
+                      "authorType": "robot",
+                      "regenerationIntent": "preserve",
+                      "requiresRetest": false,
+                      "releaseImpact": "none"
+                    }
+                  ]
+                }
+                """);
+
+        assertThrows(IllegalStateException.class,
+                () -> new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
+                        .emit(model(), null, modelSourcePath));
     }
 }
