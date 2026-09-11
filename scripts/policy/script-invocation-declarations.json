@@ -342,6 +342,9 @@
     "scripts/quality/check-pack-diff-gate.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-pack-shared-not-forked.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-panel-provenance-impact.py": {
       "invocation": "ci-gate"
     },
