@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "npdev-customization-provenance.v1",
+  "entries": [
+    {
+      "owner": "survival-hook",
+      "changeSummary": "Operator-tuned summary wording for the golden regeneration-survival probe (Path A P5.4).",
+      "reason": "Proves KeepCustom actually survives a real end-to-end regenerate, not just a hand-built fixture.",
+      "author": "path-a-regeneration-survival-probe",
+      "authorType": "human",
+      "regenerationIntent": "preserve",
+      "requiresRetest": false,
+      "releaseImpact": "none"
+    }
+  ]
+}

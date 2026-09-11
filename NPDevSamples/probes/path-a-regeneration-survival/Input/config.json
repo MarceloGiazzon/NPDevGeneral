@@ -1,0 +1,54 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "path-a-regeneration-survival",
+    "description": "Path A P5.4 golden regeneration-survival probe: a real conversions[].javaHook, hand-edited and declared regenerationIntent=preserve, must survive a real regenerate that also changes the model elsewhere.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": false
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "path_a_regen_survival",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8322,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8322/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "Path A P5.4 probe. Not meant to be booted -- check-golden-regeneration-survival.py only generates and assembles it, twice, to prove a customization survives a real regenerate."
+    ]
+  },
+  "build": {
+    "javaVersion": 17
+  }
+}

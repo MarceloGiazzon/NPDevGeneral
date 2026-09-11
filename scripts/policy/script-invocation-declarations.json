@@ -320,6 +320,9 @@
     "scripts/quality/check-ledger-status-reverse-freshness.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-golden-regeneration-survival.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-regeneration-conflict-outcomes.py": {
       "invocation": "ci-gate"
     },
