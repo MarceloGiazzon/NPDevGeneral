@@ -1,0 +1,195 @@
+schemaVersion: npdev-semantic-inventory.v1
+# Path A Phase 1 (P1.1, NPDEV_PATH_A_REALIGNMENT_PLAN.md): the "does NPDev already have this?"
+# question answered by a query instead of a re-read of the tree. `keys` maps every top-level
+# model.schema.json property to the mechanism that implements it and its current status.
+# scripts/quality/check-semantic-inventory.py enforces the mapping in BOTH directions: a schema key
+# with no entry here fails, and an entry here naming a key the schema no longer has also fails.
+# `concepts` maps named semantic ideas that are NOT their own top-level key (they live inside one,
+# or cut across several) -- curated by hand, not drift-checked, because there is no single
+# enumerable source of truth for "every named semantic concept" the way there is for schema keys.
+#
+# statuses used below:
+#   shipped -- implemented, tested, no known structural gap
+#   partial -- implemented but with a named, scoped gap
+#   duplicated -- implemented more than once, disagreeing; see duplicate-lanes.yml
+
+keys:
+  - key: "$schema"
+    mechanism: "JSON Schema meta-marker; not app-semantic."
+    status: shipped
+
+  - key: aggregates
+    mechanism: "AggregateAst + Aggregate Workbench (docs/architecture ADR-0004, project_aggregate_workbench_vision)."
+    status: shipped
+
+  - key: autoPanels
+    mechanism: "AutoPanelAst -- panel scaffolding derived from a concept without a hand-authored panel."
+    status: shipped
+
+  - key: bindings
+    mechanism: "BindingAst; config.schema.json runtime.binder seam (P0.6, this plan) scopes springProfile/gradleTask to the one binder that exists today."
+    status: partial
+    notes: "Technology neutrality is constitutional but only one binder (Spring) is implemented; the seam makes that testable instead of assumed."
+
+  - key: capabilities
+    mechanism: "CapabilityAst + CapabilityDispatcher (NPDevKernel/kernel)."
+    status: shipped
+
+  - key: concepts
+    mechanism: "ConceptAst; inheritance resolved independently by ModelResolver.mergeConcept, ModelCompiler.resolveEffective, ConceptValidation.resolveEffective/validateInheritanceGraph, and ReferenceIndex."
+    status: duplicated
+    notes: "Four sites walk the specializes/extends edge and disagree (field-override refusal vs. silent win, and whether specializes is honoured at all). See duplicate-lanes.yml lanes 1-4; Phase 3 (P3.1) collapses them."
+
+  - key: contexts
+    mechanism: "ContextAst (B20, S2 wave) -- bounded-context declarations, each $ref'ing a fragment file via the pack/fragment $ref machinery."
+    status: shipped
+
+  - key: conversions
+    mechanism: "ConversionAst; ExtensionInventoryEmitter tracks javaHook usage as one of the four escape-hatch categories (P0.3)."
+    status: shipped
+
+  - key: customCapabilities
+    mechanism: "CustomCapabilityAst -- app-declared capability beyond the built-in set."
+    status: shipped
+
+  - key: documents
+    mechanism: "DocumentAst -- generated document/report definitions."
+    status: shipped
+
+  - key: domainTypes
+    mechanism: "DomainTypeAst -- app-declared scalar/value types beyond the DSL's built-in field types."
+    status: shipped
+
+  - key: dslVersion
+    mechanism: "Model-level DSL version pin; DSL is at 2.0 (BREAKING.md). npdev migrate dsl_v2_migration.py replays codemods between versions."
+    status: shipped
+
+  - key: events
+    mechanism: "EventAst + EventStore (NPDevKernel/kernel)."
+    status: shipped
+
+  - key: externalAi
+    mechanism: "AI authoring bridge -- AgentProxyController / external-ai-http adapter, golden-ai-scenarios fixtures."
+    status: shipped
+
+  - key: flows
+    mechanism: "FlowAst + durable FlowEngine port hosted in KernelRunner (docs/FLOWS.md)."
+    status: shipped
+
+  - key: fragments
+    mechanism: "localModelRef; ModelSourceResolver composes fragment files into the resolved model via MODEL_ARRAY_KEYS."
+    status: shipped
+
+  - key: guidePages
+    mechanism: "GuidePageAst -- authored in-app documentation pages."
+    status: shipped
+
+  - key: metadata
+    mechanism: "Free-form app metadata object; passthrough, no dedicated AST node."
+    status: shipped
+
+  - key: model
+    mechanism: "Root model identifier (string) -- the app's own name/id."
+    status: shipped
+
+  - key: namespace
+    mechanism: "Root namespace string used to qualify unqualified names across the resolved model."
+    status: shipped
+
+  - key: orchestrationRules
+    mechanism: "OrchestrationRuleAst."
+    status: shipped
+
+  - key: orchestrations
+    mechanism: "OrchestrationAst."
+    status: shipped
+
+  - key: packs
+    mechanism: "packRef; pack manifest (43 keys incl. version/requires/provides/roleBindings/signature/migrations/extends/satelliteOf). All 20 PACK-* ledger items DONE."
+    status: partial
+    notes: "Mechanism is fully built; the genuine remaining gap is the public/private member boundary (Phase 4, P4.1) -- referencing a private pack member does not yet refuse composition."
+
+  - key: panels
+    mechanism: "PanelAst + business-ui-app.mustache emitter; UI Contract (docs/UI_CONTRACT.md, docs/SCREEN_TAXONOMY.md)."
+    status: shipped
+
+  - key: procedures
+    mechanism: "ProcedureAst."
+    status: shipped
+
+  - key: properties
+    mechanism: "PropertyAst (Move 13 / REG-108: threaded through MODEL_ARRAY_KEYS, pack.schema.json, ModelResolver, canonical JSON r/w)."
+    status: shipped
+
+  - key: propertyScopes
+    mechanism: "PropertyScopeAst + PropertyResolver scoped-property cascade (see SUBSYSTEM_CONTRACTS.md)."
+    status: shipped
+
+  - key: provides
+    mechanism: "PK-3: what an app satisfies for a pack's own requires (roles/capabilities/network); an unbound requirement refuses composition, naming pack/path/key."
+    status: shipped
+
+  - key: queries
+    mechanism: "QueryAst."
+    status: shipped
+
+  - key: roles
+    mechanism: "RoleAst (Move 13 / REG-108: threaded through MODEL_ARRAY_KEYS, pack.schema.json, ModelResolver, canonical JSON r/w)."
+    status: shipped
+
+  - key: ruleProfiles
+    mechanism: "RuleProfileAst."
+    status: shipped
+
+  - key: schemaVersion
+    mechanism: "Model-level schema version pin, distinct from dslVersion."
+    status: shipped
+
+  - key: seeds
+    mechanism: "SeedAst -- seed/mock data feature. Reference-rewriting posture deliberately differs from every other MODEL_ARRAY_KEYS member (R8.8)."
+    status: shipped
+
+  - key: selectors
+    mechanism: "SelectorAst."
+    status: shipped
+
+  - key: sequences
+    mechanism: "SequenceAst + SequenceValidation; nextNumber('name') referenced as an opaque literal inside defaultExpression text, so its declaration is pack-qualified but its reference is not (R5.3)."
+    status: shipped
+
+  - key: settings
+    mechanism: "settings $def -- app-level settings object."
+    status: shipped
+
+  - key: version
+    mechanism: "App/model version string."
+    status: shipped
+
+  - key: webhooks
+    mechanism: "WebhookAst + WebhookValidation (R6.2); source field carries a wire-visible identity requiring global uniqueness."
+    status: shipped
+
+concepts:
+  - name: "canonical identity (uid)"
+    mechanism: "Stable identity surviving rename; exists on concept and field only."
+    status: partial
+    notes: "Missing on capability, event, flow, procedure, panel, query, aggregate (Phase 2, P2.1 extends it to all seven)."
+
+  - name: "inheritance (specializes / extends)"
+    mechanism: "See keys.concepts above -- four independent walkers, duplicated."
+    status: duplicated
+    notes: "Full detail in duplicate-lanes.yml."
+
+  - name: "pack visibility (public / private)"
+    mechanism: "None -- every pack member is composable by any consumer today."
+    status: partial
+    notes: "Named gap for Phase 4 (P4.1); referencing a private member should refuse composition and name the pack + member."
+
+  - name: "untrusted extension (formerly 'trusted source')"
+    mechanism: "javaHook / inProcessController / pluginPackage / untrustedExtensionAsset -- four escape-hatch categories, inventoried per generation by ExtensionInventoryEmitter (P0.3) and vocabulary-inverted by npdev migrate dsl-2 (P0.4)."
+    status: shipped
+
+  - name: "binder seam (technology neutrality)"
+    mechanism: "config.schema.json runtime.binder (P0.6) -- springProfile/gradleTask scoped to the spring binder specifically, so the schema no longer requires Spring-shaped fields unconditionally."
+    status: partial
+    notes: "Seam opened; a second binder implementation is not scheduled (Phase 6 shell work is the closer analogue, not a second binder)."

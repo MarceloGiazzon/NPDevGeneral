@@ -839,6 +839,16 @@ try {
         $failures += "extension-inventory.json is missing, malformed, or under-counts a known escape hatch: see scripts/quality/check-extension-inventory.py output above"
     }
 
+    # Path A realignment P1.1: "does NPDev already have this?" must be answerable by a query, not a
+    # re-read of the tree. ledger/semantic/inventory.yml maps every model.schema.json top-level key
+    # to its implementing mechanism and status; this fails on drift in either direction (a schema
+    # key with no entry, or an entry naming a key the schema no longer has).
+    Write-Host '[43/43] Checking ledger/semantic/inventory.yml covers every model.schema.json key...'
+    & $py "scripts/quality/check-semantic-inventory.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "ledger/semantic/inventory.yml is missing an entry for a model.schema.json key (or vice versa): see scripts/quality/check-semantic-inventory.py output above"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red
