@@ -16,7 +16,8 @@ public record CompiledQuery(
         List<CompiledGroupByField> groupBy,
         List<CompiledAggregateFunction> aggregates,
         String having,
-        CompiledOrigin origin
+        CompiledOrigin origin,
+        String uid
 ) {
     public CompiledQuery {
         orderBy = orderBy == null ? List.of() : List.copyOf(orderBy);
@@ -43,7 +44,27 @@ public record CompiledQuery(
             String having
     ) {
         this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
-                metadata, groupBy, aggregates, having, null);
+                metadata, groupBy, aggregates, having, null, null);
+    }
+
+    /** Pre-P2.1 convenience constructor -- uid defaults to null (no stable identity declared). */
+    public CompiledQuery(
+            String name,
+            String concept,
+            String where,
+            List<String> orderBy,
+            Integer limit,
+            List<CompiledProcedureParameter> parameters,
+            List<String> permissionRequirements,
+            String tracePolicy,
+            Map<String, Object> metadata,
+            List<CompiledGroupByField> groupBy,
+            List<CompiledAggregateFunction> aggregates,
+            String having,
+            CompiledOrigin origin
+    ) {
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
+                metadata, groupBy, aggregates, having, origin, null);
     }
 
     /** Move 10 B1: a query with any groupBy/aggregates returns rows of aggregate output, not

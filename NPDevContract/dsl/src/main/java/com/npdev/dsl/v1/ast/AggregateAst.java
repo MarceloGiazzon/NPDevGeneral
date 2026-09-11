@@ -19,7 +19,8 @@ public record AggregateAst(
         String onValidate,
         // R4.4 (Roadmap Wave 1 2026-08-19): declarative cross-collection invariants, evaluated
         // against the whole aggregate draft tree pre-commit -- see AggregateInvariantAst's javadoc.
-        List<AggregateInvariantAst> invariants
+        List<AggregateInvariantAst> invariants,
+        String uid
 ) {
     public AggregateAst {
         collections = collections == null ? List.of() : List.copyOf(collections);
@@ -39,6 +40,19 @@ public record AggregateAst(
             Map<String, Object> metadata,
             String onValidate
     ) {
-        this(name, root, collections, onCommit, metadata, onValidate, List.of());
+        this(name, root, collections, onCommit, metadata, onValidate, List.of(), null);
+    }
+
+    /** Pre-P2.1 7-arg shape -- uid defaults to null (no stable identity declared). */
+    public AggregateAst(
+            String name,
+            String root,
+            List<AggregateCollectionAst> collections,
+            String onCommit,
+            Map<String, Object> metadata,
+            String onValidate,
+            List<AggregateInvariantAst> invariants
+    ) {
+        this(name, root, collections, onCommit, metadata, onValidate, invariants, null);
     }
 }

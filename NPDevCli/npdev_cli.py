@@ -1620,11 +1620,41 @@ def _generate_uid() -> str:
     return secrets.token_hex(8)
 
 
+def _stamp_named_items_uid(items, label_singular: str, stamped: list, write: bool, name_prefix: str = "") -> int:
+    """P2.1: shared uid-stamping logic for a flat array of named elements (capability, event, flow,
+    procedure, panel, query, aggregate) -- same rules as the concept/field stamping in
+    run_migrate_assign_uids (idempotent, warns instead of re-stamping a malformed existing uid).
+    `name_prefix` qualifies the displayed name (e.g. "ConceptName." for a concept-nested event).
+    Returns the count of elements that already had a valid-or-warned uid.
+    """
+    already_present = 0
+    if not isinstance(items, list):
+        return already_present
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        name = name_prefix + str(item.get("name", "<unnamed>"))
+        existing_uid = item.get("uid")
+        if existing_uid:
+            if not _UID_PATTERN.match(str(existing_uid)):
+                print(f"  [WARNING] {label_singular} '{name}': existing uid {existing_uid!r} does not "
+                      f"match ^[a-z0-9]{{8,32}}$ -- left as-is, not re-stamped")
+            already_present += 1
+        else:
+            new_uid = _generate_uid()
+            stamped.append(f"{label_singular} '{name}' -> {new_uid}")
+            if write:
+                item["uid"] = new_uid
+    return already_present
+
+
 def run_migrate_assign_uids(args: argparse.Namespace) -> int:
     """REG-209 (B1 lift, ALL_HITTABLE_LIFT_PLAN_2026-09-05.md package P7): stamps a random uid on
-    every concept and field in --model lacking one. Idempotent by construction -- only stamps where
-    absent, so running this twice on the same file produces byte-identical output the second time.
-    Dry-run by default (reports what would be stamped); pass --write to apply.
+    every concept and field in --model lacking one. P2.1 (Path A Phase 2) extended this to the seven
+    other identity-bearing element types: capability, event (top-level and concept-nested), flow,
+    procedure, panel, query, aggregate. Idempotent by construction -- only stamps where absent, so
+    running this twice on the same file produces byte-identical output the second time. Dry-run by
+    default (reports what would be stamped); pass --write to apply.
     """
     model_path = Path(args.model).expanduser().resolve()
     try:
@@ -1637,13 +1667,18 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
         return 2
 
     concepts = doc.get("concepts")
-    if not isinstance(concepts, list):
+    has_concepts = isinstance(concepts, list)
+    if not has_concepts and not any(
+            isinstance(doc.get(key), list)
+            for key in ("capabilities", "customCapabilities", "events", "flows",
+                        "procedures", "panels", "queries", "aggregates")
+    ):
         print(f"npdev migrate assign-uids: {model_path} has no concepts[] array -- nothing to stamp")
         return 0
 
     stamped = []
     already_present = 0
-    for concept in concepts:
+    for concept in (concepts if has_concepts else []):
         if not isinstance(concept, dict):
             continue
         concept_name = concept.get("name", "<unnamed>")
@@ -1660,6 +1695,10 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
             if args.write:
                 concept["uid"] = new_uid
         fields = concept.get("fields")
+        already_present += _stamp_named_items_uid(
+            concept.get("events"), "event", stamped, args.write,
+            name_prefix=f"{concept_name}."
+        )
         if not isinstance(fields, list):
             continue
         for field in fields:
@@ -1677,6 +1716,16 @@ def run_migrate_assign_uids(args: argparse.Namespace) -> int:
                 stamped.append(f"field '{concept_name}.{field_name}' -> {new_uid}")
                 if args.write:
                     field["uid"] = new_uid
+
+    # P2.1 (Path A Phase 2): the seven element types uid was extended to alongside concept/field.
+    already_present += _stamp_named_items_uid(doc.get("capabilities"), "capability", stamped, args.write)
+    already_present += _stamp_named_items_uid(doc.get("customCapabilities"), "capability", stamped, args.write)
+    already_present += _stamp_named_items_uid(doc.get("events"), "event", stamped, args.write)
+    already_present += _stamp_named_items_uid(doc.get("flows"), "flow", stamped, args.write)
+    already_present += _stamp_named_items_uid(doc.get("procedures"), "procedure", stamped, args.write)
+    already_present += _stamp_named_items_uid(doc.get("panels"), "panel", stamped, args.write)
+    already_present += _stamp_named_items_uid(doc.get("queries"), "query", stamped, args.write)
+    already_present += _stamp_named_items_uid(doc.get("aggregates"), "aggregate", stamped, args.write)
 
     verb = "STAMPED" if args.write else "WOULD STAMP"
     for line in stamped:
@@ -13624,7 +13673,8 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_hook_verify.add_argument("--report", help="write a JSON report of every file's outcome to this path")
 
     migrate_assign_uids = migrate_sub.add_parser(
-        "assign-uids", help="Stamp a stable uid on every concept/field lacking one (B1).",
+        "assign-uids", help="Stamp a stable uid on every concept/field/capability/event/flow/"
+                            "procedure/panel/query/aggregate lacking one (B1, P2.1).",
     )
     migrate_assign_uids.add_argument("--model", required=True, help="path to the model.json to stamp")
     migrate_assign_uids.add_argument(

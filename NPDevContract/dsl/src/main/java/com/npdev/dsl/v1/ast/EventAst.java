@@ -12,6 +12,7 @@ public final class EventAst {
     private final List<EventPayloadAst> payload;
     private final String triggerMode;
     private final OriginAst origin;
+    private final String uid;
 
     public EventAst(String name, List<EventPayloadAst> payload) {
         this(name, null, null, null, payload);
@@ -59,6 +60,20 @@ public final class EventAst {
             String triggerMode,
             OriginAst origin
     ) {
+        this(name, conceptName, specializesName, version, payload, triggerMode, origin, null);
+    }
+
+    /** P2.1: a stable identity for this event, generated once and never reused -- see getUid. */
+    public EventAst(
+            String name,
+            String conceptName,
+            String specializesName,
+            String version,
+            List<EventPayloadAst> payload,
+            String triggerMode,
+            OriginAst origin,
+            String uid
+    ) {
         this.name = name;
         this.conceptName = conceptName;
         this.specializesName = specializesName;
@@ -66,6 +81,7 @@ public final class EventAst {
         this.payload = payload == null ? List.of() : new ArrayList<>(payload);
         this.triggerMode = triggerMode;
         this.origin = origin;
+        this.uid = uid;
     }
 
     public String getName() { return name; }
@@ -87,6 +103,12 @@ public final class EventAst {
     /** PACK-2: pack-attribution provenance, or null if this event is not pack-contributed. */
     public OriginAst getOrigin() {
         return origin;
+    }
+
+    /** P2.1: a stable identity for this event, generated once and never reused
+     *  (npdev migrate assign-uids stamps one); null if the event declares none. */
+    public String getUid() {
+        return uid;
     }
 
     public List<EventPayloadAst> getPayloadFields() {

@@ -635,7 +635,8 @@ public final class ModelResolver {
                 capability.getType(),
                 null,
                 operations,
-                capability.getOrigin()
+                capability.getOrigin(),
+                capability.getUid()
         );
     }
 
@@ -672,12 +673,14 @@ public final class ModelResolver {
         mergedOperations.sort(Comparator.comparing(operation -> normalize(operation.getName())));
         // PACK-2: specialization wins, else base -- same rule as mergeConcept's origin.
         OriginAst mergedOrigin = specialization.getOrigin() != null ? specialization.getOrigin() : base.getOrigin();
+        // P2.1: uid identifies the specialization itself, not its base -- same rule as mergeConcept's uid.
         return new CapabilityAst(
                 specialization.getName(),
                 resolvedType,
                 null,
                 mergedOperations,
-                mergedOrigin
+                mergedOrigin,
+                specialization.getUid()
         );
     }
 
@@ -740,7 +743,8 @@ public final class ModelResolver {
                 event.getVersion(),
                 payload,
                 event.getTriggerMode(),
-                event.getOrigin()
+                event.getOrigin(),
+                event.getUid()
         );
     }
 
@@ -783,7 +787,8 @@ public final class ModelResolver {
                 resolvedVersion,
                 resolvedPayload,
                 resolvedTriggerMode,
-                mergedOrigin
+                mergedOrigin,
+                specialization.getUid()
         );
     }
 
@@ -921,7 +926,8 @@ public final class ModelResolver {
                 cloneActionMetadata(flow.getAction()),
                 flow.isStartEndpoint(),
                 flow.getSchedule(),
-                flow.getOrigin()
+                flow.getOrigin(),
+                flow.getUid()
         );
     }
 
@@ -979,7 +985,8 @@ public final class ModelResolver {
                 firstNonNullAction(specialization.getAction(), base.getAction()),
                 specialization.isStartEndpoint() || base.isStartEndpoint(),
                 mergedSchedule,
-                mergedOrigin
+                mergedOrigin,
+                specialization.getUid()
         );
     }
 

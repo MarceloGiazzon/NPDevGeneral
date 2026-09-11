@@ -13,7 +13,8 @@ public record ProcedureAst(
         List<String> permissionRequirements,
         String tracePolicy,
         GeneratedActionDescriptorAst actionDescriptor,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        String uid
 ) {
     public ProcedureAst {
         parameters = parameters == null ? List.of() : List.copyOf(parameters);
@@ -21,5 +22,22 @@ public record ProcedureAst(
         steps = steps == null ? List.of() : List.copyOf(steps);
         permissionRequirements = permissionRequirements == null ? List.of() : List.copyOf(permissionRequirements);
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+    }
+
+    /** Pre-P2.1 convenience constructor -- uid defaults to null (no stable identity declared). */
+    public ProcedureAst(
+            String name,
+            String description,
+            List<ProcedureParameterAst> parameters,
+            List<ProcedureVariableAst> variables,
+            List<ProcedureStepAst> steps,
+            SchemaAst returns,
+            List<String> permissionRequirements,
+            String tracePolicy,
+            GeneratedActionDescriptorAst actionDescriptor,
+            Map<String, Object> metadata
+    ) {
+        this(name, description, parameters, variables, steps, returns, permissionRequirements, tracePolicy,
+                actionDescriptor, metadata, null);
     }
 }

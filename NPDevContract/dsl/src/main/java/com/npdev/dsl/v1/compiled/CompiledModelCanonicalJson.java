@@ -636,6 +636,7 @@ public final class CompiledModelCanonicalJson {
             node.put("onValidate", safe(aggregate.onValidate()));
             // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> HERE -> reader.
             node.set("invariants", toAggregateInvariants(aggregate.invariants()));
+            node.put("uid", safe(aggregate.uid()));
             aggregates.add(node);
         }
         return aggregates;
@@ -920,6 +921,7 @@ public final class CompiledModelCanonicalJson {
             }
             node.set("operations", operationsNode);
             node.set("origin", toOrigin(capability.getOrigin()));
+            node.put("uid", safe(capability.getUid()));
             capabilities.add(node);
         }
         return capabilities;
@@ -961,6 +963,7 @@ public final class CompiledModelCanonicalJson {
             }
             node.set("payload", payloadNode);
             node.set("origin", toOrigin(event.getOrigin()));
+            node.put("uid", safe(event.getUid()));
             events.add(node);
         }
         return events;
@@ -982,6 +985,7 @@ public final class CompiledModelCanonicalJson {
             node.set("steps", toFlowSteps(flow.getSteps()));
             node.set("schedule", toFlowSchedule(flow.getSchedule()));
             node.set("origin", toOrigin(flow.getOrigin()));
+            node.put("uid", safe(flow.getUid()));
             flows.add(node);
         }
         return flows;
@@ -1016,6 +1020,7 @@ public final class CompiledModelCanonicalJson {
             node.set("aggregates", toAggregateFunctions(query.aggregates()));
             node.put("having", safe(query.having()));
             node.set("origin", toOrigin(query.origin()));
+            node.put("uid", safe(query.uid()));
             queries.add(node);
         }
         return queries;
@@ -1080,6 +1085,7 @@ public final class CompiledModelCanonicalJson {
             node.put("tracePolicy", safe(procedure.tracePolicy()));
             node.set("actionDescriptor", toGeneratedActionDescriptor(procedure.actionDescriptor()));
             node.set("metadata", toObjectMap(procedure.metadata()));
+            node.put("uid", safe(procedure.uid()));
             procedures.add(node);
         }
         return procedures;
@@ -1206,6 +1212,7 @@ public final class CompiledModelCanonicalJson {
             node.set("metadata", toObjectMap(panel.metadata()));
             node.put("guidePage", safe(panel.guidePage()));
             node.set("origin", toOrigin(panel.origin()));
+            node.put("uid", safe(panel.uid()));
             panels.add(node);
         }
         return panels;

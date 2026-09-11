@@ -399,7 +399,9 @@ public final class JsonModelParser {
                         throw new IOException("Concept " + name + " event " + eventName
                                 + " has invalid mode \"" + eventTriggerMode + "\" (must be create|update|delete)");
                     }
-                    EventAst eventAst = new EventAst(eventName, name, eventSpecializes, eventVersion, payload, eventTriggerMode);
+                    String eventUid = readText(ev, "uid");
+                    EventAst eventAst = new EventAst(eventName, name, eventSpecializes, eventVersion, payload, eventTriggerMode,
+                            null, eventUid);
                     conceptEvents.add(eventAst);
                     events.add(eventAst);
                 }
@@ -442,8 +444,9 @@ public final class JsonModelParser {
                             + " declares \"mode\", which only applies to a concept-nested event "
                             + "(move it under that concept's \"events\" array).");
                 }
+                String topLevelEventUid = readText(ev, "uid");
                 events.add(new EventAst(name, null, specializes, eventVersion, payload, null,
-                        originFor(originByQualifiedMemberName, "events", name)));
+                        originFor(originByQualifiedMemberName, "events", name), topLevelEventUid));
             }
         }
 
@@ -496,6 +499,7 @@ public final class JsonModelParser {
                 ActionMetadataAst action = parseActionMetadata(flowNode.get("action"), "flows[" + flowName + "].action");
                 Boolean startEndpoint = readOptionalBoolean(flowNode, "startEndpoint");
                 FlowScheduleAst schedule = parseFlowSchedule(flowNode.get("schedule"), flowName);
+                String flowUid = readText(flowNode, "uid");
                 flows.add(new FlowAst(
                         flowName,
                         concept,
@@ -508,7 +512,8 @@ public final class JsonModelParser {
                         action,
                         Boolean.TRUE.equals(startEndpoint),
                         schedule,
-                        originFor(originByQualifiedMemberName, "flows", flowName)
+                        originFor(originByQualifiedMemberName, "flows", flowName),
+                        flowUid
                 ));
             }
         }
@@ -1026,7 +1031,8 @@ public final class JsonModelParser {
                     parseGroupByFields(queryNode.get("groupBy")),
                     parseAggregateFunctions(queryNode.get("aggregates")),
                     readText(queryNode, "having"),
-                    toOriginAst(originByName.get(name))
+                    toOriginAst(originByName.get(name)),
+                    readText(queryNode, "uid")
             ));
         }
         return out;
@@ -1117,7 +1123,8 @@ public final class JsonModelParser {
                     parseTextArray(procedureNode.get("permissionRequirements")),
                     readText(procedureNode, "tracePolicy"),
                     parseGeneratedActionDescriptor(procedureNode.get("actionDescriptor"), "procedures[" + name + "].actionDescriptor"),
-                    parseObjectMap(procedureNode.get("metadata"))
+                    parseObjectMap(procedureNode.get("metadata")),
+                    readText(procedureNode, "uid")
             ));
         }
         return out;
@@ -1262,7 +1269,8 @@ public final class JsonModelParser {
                     parseObjectMap(panelNode.get("explainability")),
                     parseObjectMap(panelNode.get("metadata")),
                     readText(panelNode, "guidePage"),
-                    toOriginAst(originByName.get(name))
+                    toOriginAst(originByName.get(name)),
+                    readText(panelNode, "uid")
             ));
         }
         return out;
@@ -1356,7 +1364,8 @@ public final class JsonModelParser {
                     // R4.4/npdev-aggregate-invariant-four-place: parser -> compiler -> canonical
                     // writer+reader, mirroring ast-compiled-four-place's chain for a per-member field.
                     parseAggregateInvariants(aggregateNode.get("invariants"),
-                            "aggregates[" + name + "].invariants")
+                            "aggregates[" + name + "].invariants"),
+                    readText(aggregateNode, "uid")
             ));
         }
         return out;
@@ -2389,6 +2398,7 @@ public final class JsonModelParser {
             String name = requiredText(cap, "name");
             String type = readText(cap, "type");
             String specializes = readText(cap, "specializes");
+            String capabilityUid = readText(cap, "uid");
             List<CapabilityOperationAst> operations = new ArrayList<>();
             JsonNode opsNode = cap.get("operations");
             if (opsNode != null) {
@@ -2427,7 +2437,7 @@ public final class JsonModelParser {
                 }
             }
             target.add(new CapabilityAst(name, type, specializes, operations,
-                    originFor(originByQualifiedMemberName, sourceLabel, name)));
+                    originFor(originByQualifiedMemberName, sourceLabel, name), capabilityUid));
         }
         return target;
     }

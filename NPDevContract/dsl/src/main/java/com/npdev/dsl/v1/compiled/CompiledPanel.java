@@ -16,7 +16,8 @@ public record CompiledPanel(
         Map<String, Object> explainability,
         Map<String, Object> metadata,
         String guidePage,
-        CompiledOrigin origin
+        CompiledOrigin origin,
+        String uid
 ) {
     public CompiledPanel {
         dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);
@@ -42,6 +43,26 @@ public record CompiledPanel(
             String guidePage
     ) {
         this(name, route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions,
-                explainability, metadata, guidePage, null);
+                explainability, metadata, guidePage, null, null);
+    }
+
+    /** Pre-P2.1 convenience constructor -- uid defaults to null (no stable identity declared). */
+    public CompiledPanel(
+            String name,
+            String route,
+            String title,
+            List<CompiledPanelDataSource> dataSources,
+            CompiledPanelLayout layout,
+            List<CompiledPanelFieldBinding> fieldBindings,
+            String visibility,
+            String enabledWhen,
+            List<CompiledPanelAction> actions,
+            Map<String, Object> explainability,
+            Map<String, Object> metadata,
+            String guidePage,
+            CompiledOrigin origin
+    ) {
+        this(name, route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions,
+                explainability, metadata, guidePage, origin, null);
     }
 }

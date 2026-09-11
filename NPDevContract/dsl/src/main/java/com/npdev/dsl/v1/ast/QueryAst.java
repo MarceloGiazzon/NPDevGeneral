@@ -16,7 +16,8 @@ public record QueryAst(
         List<GroupByFieldAst> groupBy,
         List<AggregateFunctionAst> aggregates,
         String having,
-        OriginAst origin
+        OriginAst origin,
+        String uid
 ) {
     public QueryAst {
         orderBy = orderBy == null ? List.of() : List.copyOf(orderBy);
@@ -43,7 +44,27 @@ public record QueryAst(
             String having
     ) {
         this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
-                metadata, groupBy, aggregates, having, null);
+                metadata, groupBy, aggregates, having, null, null);
+    }
+
+    /** Pre-P2.1 convenience constructor -- uid defaults to null (no stable identity declared). */
+    public QueryAst(
+            String name,
+            String concept,
+            String where,
+            List<String> orderBy,
+            Integer limit,
+            List<ProcedureParameterAst> parameters,
+            List<String> permissionRequirements,
+            String tracePolicy,
+            Map<String, Object> metadata,
+            List<GroupByFieldAst> groupBy,
+            List<AggregateFunctionAst> aggregates,
+            String having,
+            OriginAst origin
+    ) {
+        this(name, concept, where, orderBy, limit, parameters, permissionRequirements, tracePolicy,
+                metadata, groupBy, aggregates, having, origin, null);
     }
 
     /** Move 10 B1: a query with any groupBy/aggregates is an AGGREGATE query -- it returns rows of
