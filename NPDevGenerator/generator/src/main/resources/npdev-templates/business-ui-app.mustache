@@ -2596,7 +2596,7 @@
     const table = document.createElement("table");
     table.className = "records";
     const thead = document.createElement("thead");
-    thead.appendChild(headerRow(["Entity Box", "Table", "Fields", "Bonds", "Source", "Truth Level"]));
+    thead.appendChild(headerRow(["Entity Box", "Table", "Fields", "Bonds", "Source", "Specializes", "Truth Level"]));
     table.appendChild(thead);
     const tbody = document.createElement("tbody");
     state.boxView.boxes.forEach(function (box) {
@@ -2607,6 +2607,7 @@
       row.appendChild(textCell(String(box.fieldCount || 0)));
       row.appendChild(textCell(String(box.bondCount || 0)));
       row.appendChild(textCell(box.admin ? "Built-in pack" : "App-authored"));
+      row.appendChild(lineageCell(box.specializes));
       row.appendChild(badgeCell(box.truthLevel || "T2_GENERATED", truthBadgeClass));
       tbody.appendChild(row);
     });
@@ -5800,6 +5801,28 @@
     badge.className = "badge " + badgeClass;
     badge.textContent = text;
     cell.appendChild(badge);
+    return cell;
+  }
+
+  // P3.3: box.specializes (when present) is ConceptLineage's parent/version/inherits/adds/changes,
+  // computed at generation time. Summarized inline ("Invoice +1/~1"); the full breakdown -- parent
+  // version, every inherited and added field, every changed attribute -- is in the native tooltip
+  // rather than a second click-through, since the counts alone are not enough to answer "what would
+  // I reuse" on their own.
+  function lineageCell(specializes) {
+    if (!specializes) {
+      return textCell("-");
+    }
+    const cell = document.createElement("td");
+    const parts = [];
+    if (specializes.adds && specializes.adds.length) parts.push("+" + specializes.adds.length);
+    if (specializes.changes && specializes.changes.length) parts.push("~" + specializes.changes.length);
+    cell.textContent = specializes.parent + (parts.length ? " (" + parts.join(" ") + ")" : "");
+    const versionSuffix = specializes.parentVersion ? "@" + specializes.parentVersion : "";
+    cell.title = "Specializes " + specializes.parent + versionSuffix
+        + "\nInherits: " + (specializes.inherits || []).join(", ")
+        + "\nAdds: " + (specializes.adds || []).join(", ")
+        + "\nChanges: " + (specializes.changes || []).join(", ");
     return cell;
   }
 

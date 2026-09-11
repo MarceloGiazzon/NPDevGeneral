@@ -88,6 +88,59 @@ final class BoxManifestEmitterTest {
         );
     }
 
+    /**
+     * P3.3: the lineage-aware overload attaches a {@code specializes} entry to a box for a
+     * specialized concept, computed from the model SOURCE (the compiled box entries themselves are
+     * built the same way as every other test in this class -- hand-constructed, decoupled from the
+     * model file, matched only by concept name -- since lineage computation and box construction are
+     * independent steps that meet by name).
+     */
+    @Test
+    void attachesSpecializationLineageWhenAModelSourceIsInScope() throws Exception {
+        CompiledConcept medicalInvoice = new CompiledConcept(
+                "MedicalInvoice", "MedicalInvoice", "medical_invoices",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("code", "string", "String", false, true, false),
+                        new CompiledField("doctorId", "uuid", "java.util.UUID", false, false, false)
+                )
+        );
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(medicalInvoice.getName(), medicalInvoice));
+
+        Path modelSourcePath = tempDir.resolve("model.json");
+        Files.writeString(modelSourcePath, """
+                {
+                  "namespace": "box.lineage", "dslVersion": "1.0.0", "version": "v1",
+                  "concepts": [
+                    { "name": "Invoice", "fields": [
+                        { "name": "id", "type": "uuid", "id": true, "required": true },
+                        { "name": "code", "type": "string" } ] },
+                    { "name": "MedicalInvoice", "specializes": "Invoice", "fields": [
+                        { "name": "doctorId", "type": "uuid" } ] }
+                  ]
+                }
+                """);
+
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir.resolve("out"), new RegenerationPolicy());
+        new BoxManifestEmitter().emit(model, writer, null, modelSourcePath);
+
+        JsonNode root = new ObjectMapper().readTree(
+                tempDir.resolve("out").resolve(BoxManifestEmitter.RELATIVE_PATH).toFile());
+        JsonNode specializes = findBox(root.path("boxes"), "MedicalInvoice").path("specializes");
+
+        assertEquals("Invoice", specializes.path("parent").asText());
+        assertEquals(List.of("doctorId"), toList(specializes.path("adds")));
+        // ModelResolver sorts fields by normalized name -- "code" < "id".
+        assertEquals(List.of("code", "id"), toList(specializes.path("inherits")));
+        assertTrue(specializes.path("removes").isEmpty());
+    }
+
+    private static List<String> toList(JsonNode arrayNode) {
+        List<String> out = new java.util.ArrayList<>();
+        arrayNode.forEach(node -> out.add(node.asText()));
+        return out;
+    }
+
     private static JsonNode findBox(JsonNode boxes, String conceptName) {
         for (JsonNode box : boxes) {
             if (conceptName.equals(box.path("conceptName").asText())) {

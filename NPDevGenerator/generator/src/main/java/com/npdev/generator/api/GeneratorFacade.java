@@ -331,7 +331,11 @@ public final class GeneratorFacade {
                     appOwnedSourceModel, superUserRole, settingResolver, extensionFieldOrigins);
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
             // since they are only reachable through its super-user admin nav.
-            new BoxManifestEmitter().emit(model, writer);
+            // P3.3: also computes and attaches each specialized concept's lineage (parent,
+            // version/digest, inherits/adds/changes/removes) -- needs the model SOURCE, not just
+            // the compiled model, since specialization provenance is already flattened away by
+            // the time CompiledModel exists.
+            new BoxManifestEmitter().emit(model, writer, resolvedModelSource, modelSourcePath);
             new PackCatalogEmitter().emit(writer, internalTablesEnabled, installedPackAliases);
         }
         new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
