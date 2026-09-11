@@ -84,6 +84,118 @@ class TrustedSourceEmitterTest {
     }
 
     @Test
+    void emitsWhenTruthStatusClaimIsBackedByADeclaredTest() throws Exception {
+        Path modelRoot = Files.createTempDirectory("npdev-trusted-source-truth-");
+        Path modelPath = modelRoot.resolve("model.json");
+        Files.writeString(modelPath, "{}");
+        Path procedure = modelRoot.resolve("procedure/CreateUsersProcedure.java");
+        Path panel = modelRoot.resolve("panel/user-admin-panel.html");
+        Files.createDirectories(procedure.getParent());
+        Files.createDirectories(panel.getParent());
+        Files.writeString(procedure, """
+                import java.util.List;
+                import java.util.Map;
+
+                public final class CreateUsersProcedure {
+                    public Map<String, Object> execute(NPDevProcedureContext ctx) {
+                        return Map.of("createdCount", 0, "users", List.of());
+                    }
+                }
+                """);
+        Files.writeString(panel, "<!doctype html><html><body></body></html>");
+        Path test = modelRoot.resolve("tests/CreateUsersProcedureTest.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, "// proof that a T4 truthStatus claim has real test evidence behind it");
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), """
+                {
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
+                  "scenarioId": "trusted-source-truth",
+                  "policyVersion": "test",
+                  "expectedOutcome": "pass",
+                  "entries": [
+                    {
+                      "entryId": "procedure-create-users",
+                      "kind": "procedure",
+                      "relativePath": "procedure/CreateUsersProcedure.java",
+                      "language": "java",
+                      "sha256": "%s",
+                      "runtimeBinding": "procedure:create-users",
+                      "className": "CreateUsersProcedure",
+                      "method": "execute",
+                      "requiredRole": "admin",
+                      "tenantScoped": true,
+                      "inputs": [],
+                      "outputs": ["createdCount", "users"],
+                      "dependencies": ["concept:User"],
+                      "tests": ["tests/CreateUsersProcedureTest.java"],
+                      "truthStatus": "T4"
+                    },
+                    {
+                      "entryId": "panel-user-admin",
+                      "kind": "panel",
+                      "relativePath": "panel/user-admin-panel.html",
+                      "language": "html+javascript",
+                      "sha256": "%s",
+                      "runtimeBinding": "panel:/users",
+                      "requiredRole": "admin",
+                      "tenantScoped": true
+                    }
+                  ]
+                }
+                """.formatted(sha256(procedure), sha256(panel)));
+
+        Path out = Files.createTempDirectory("npdev-trusted-source-out-");
+        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
+
+        assertTrue(Files.isRegularFile(out.resolve("src/main/java/com/npdev/generated/trusted/CreateUsersProcedure.java")));
+        String generationManifest = Files.readString(
+                out.resolve("src/main/resources/trusted-source/trusted-source-generation-manifest.json"));
+        assertTrue(generationManifest.contains("truthStatus"));
+        assertTrue(generationManifest.contains("T4"));
+        assertTrue(generationManifest.contains("tests/CreateUsersProcedureTest.java"));
+        assertTrue(generationManifest.contains("concept:User"));
+    }
+
+    @Test
+    void failsClosedWhenTruthStatusClaimsEvidenceWithNoDeclaredTest() throws Exception {
+        Path modelRoot = Files.createTempDirectory("npdev-trusted-source-untested-");
+        Path modelPath = modelRoot.resolve("model.json");
+        Files.writeString(modelPath, "{}");
+        Path procedure = modelRoot.resolve("procedure/CreateUsersProcedure.java");
+        Files.createDirectories(procedure.getParent());
+        Files.writeString(procedure, "public final class CreateUsersProcedure { public void execute() {} }");
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), """
+                {
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
+                  "scenarioId": "trusted-source-untested",
+                  "policyVersion": "test",
+                  "expectedOutcome": "fail",
+                  "entries": [
+                    {
+                      "entryId": "procedure-create-users",
+                      "kind": "procedure",
+                      "relativePath": "procedure/CreateUsersProcedure.java",
+                      "language": "java",
+                      "sha256": "%s",
+                      "runtimeBinding": "procedure:create-users",
+                      "className": "CreateUsersProcedure",
+                      "method": "execute",
+                      "requiredRole": "admin",
+                      "tenantScoped": true,
+                      "truthStatus": "T5"
+                    }
+                  ]
+                }
+                """.formatted(sha256(procedure)));
+        Path out = Files.createTempDirectory("npdev-trusted-source-out-");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath));
+        assertTrue(failure.getMessage().contains("T5"));
+        assertTrue(failure.getMessage().contains("test"));
+    }
+
+    @Test
     void failsClosedWhenTrustedReferenceIsMissingFromManifest() throws Exception {
         Path modelRoot = Files.createTempDirectory("npdev-trusted-source-missing-");
         Path modelPath = modelRoot.resolve("model.json");

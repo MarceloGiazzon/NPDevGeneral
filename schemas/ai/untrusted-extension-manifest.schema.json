@@ -89,6 +89,53 @@
           },
           "tenantScoped": {
             "type": "boolean"
+          },
+          "inputs": {
+            "description": "Path A P5.1: parameters/fields this code-bearing object consumes. Optional -- omitted defaults to an empty declaration, never a validation failure.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "outputs": {
+            "description": "Path A P5.1: fields/values this code-bearing object produces. Optional, same default as inputs.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "dependencies": {
+            "description": "Path A P5.1: other concepts, capabilities, or entryId values (e.g. a panel that calls a sibling procedure entry) this object relies on. Optional, same default as inputs.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "tests": {
+            "description": "Path A P5.1: relative paths (same safety rules as relativePath) to test files covering this object. Optional when truthStatus is below T4; required non-empty at T4 (Tested) or above, and each path must exist on disk -- the mechanism that keeps a truthStatus claim honest.",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "not": {
+                "pattern": "(^/|^[A-Za-z]:|\\\\|\\.\\.|://)"
+              }
+            }
+          },
+          "truthStatus": {
+            "description": "Path A P5.1 (docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md Truth Classification): T0 Idea, T1 Declared, T2 Generated, T3 RunsLocally, T4 Tested, T5 EvidenceBacked, T6 ReleaseApproved. Optional; an omitted value defaults to T2 (this entry was, at minimum, admitted and generated).",
+            "enum": [
+              "T0",
+              "T1",
+              "T2",
+              "T3",
+              "T4",
+              "T5",
+              "T6"
+            ]
           }
         },
         "additionalProperties": false
