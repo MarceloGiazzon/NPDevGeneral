@@ -26,6 +26,9 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
                            authoring diff-gate (model.json pair), or pack diff (pack.json pair)
   - npdev_generate       : run the real generator (slow/mutating -- gate in your client)
   - npdev_build_and_run  : GENERATE + BUILD + BOOT + health-check in one call (Move 10 D1)
+  - npdev_graph_reuse    : "what would I reuse for this intent" -- ranked over a generated app's
+                           npdev/semantic-graph.json (P2.4 acceptance slice)
+  - npdev_graph_explain  : "why does this element exist" -- its edges in that same graph
 
 Zero third-party deps on purpose: it runs under any Python 3.9+ with no install step, and is
 deterministically testable by piping JSON-RPC frames to stdin.
@@ -33,6 +36,7 @@ deterministically testable by piping JSON-RPC frames to stdin.
 
 from __future__ import annotations
 
+import difflib
 import json
 import os
 import subprocess
@@ -497,6 +501,167 @@ def _score_records(records: list[dict[str, Any]], terms: list[str],
     return [rec for _, rec in scored]
 
 
+def _load_semantic_graph(graph_path: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Load a generated app's npdev/semantic-graph.json. Returns (graph, None) or (None, error)."""
+    path = Path(graph_path)
+    if not path.is_absolute():
+        path = repo_root() / path
+    if not path.exists():
+        return None, (
+            f"no semantic graph at {path}. Generate the app first (npdev_generate) -- the "
+            "generator emits npdev/semantic-graph.json alongside the app's other resources."
+        )
+    try:
+        graph = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"could not read/parse {path}: {exc}"
+    if not isinstance(graph, dict) or "nodes" not in graph or "edges" not in graph:
+        return None, f"{path} does not look like a semantic-graph.json (missing nodes/edges)"
+    return graph, None
+
+
+def _node_matches(endpoint: dict[str, Any], node: dict[str, Any]) -> bool:
+    return endpoint.get("kind") == node.get("kind") and endpoint.get("name") == node.get("name")
+
+
+def tool_graph_explain(arguments: dict[str, Any]) -> dict[str, Any]:
+    """P2.4 acceptance slice: 'why does this element exist', purely from the semantic graph.
+
+    Answers via the element's edges -- what points AT it (why it exists: who relies on it) and
+    what it points AT (what it does). Never fabricates a reason when the graph records none.
+    """
+    graph_path = arguments.get("graph_path")
+    if not graph_path:
+        return _text_error(
+            "graph_path is required (path to a generated app's npdev/semantic-graph.json, e.g. "
+            "<appOutput>/npdev-generated/src/main/resources/npdev/semantic-graph.json)"
+        )
+    name = (arguments.get("name") or "").strip()
+    if not name:
+        return _text_error("name is required (the element's name, e.g. 'CanaryTask')")
+    kind = (arguments.get("kind") or "").strip()
+
+    graph, err = _load_semantic_graph(graph_path)
+    if err:
+        return _text_error(err)
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    matches = [n for n in nodes if n.get("name") == name and (not kind or n.get("kind") == kind)]
+    if not matches:
+        all_names = sorted({n.get("name", "") for n in nodes})
+        near = difflib.get_close_matches(name, all_names, n=10, cutoff=0.5)
+        detail = f" Similar names in this graph: {near}." if near else ""
+        return _text_error(
+            f"no node named '{name}'" + (f" of kind '{kind}'" if kind else "") +
+            f" in {graph_path}.{detail}"
+        )
+    if len(matches) > 1:
+        return _text_error(
+            f"'{name}' is ambiguous across kinds {[m.get('kind') for m in matches]} in this "
+            "graph -- pass kind to disambiguate."
+        )
+    node = matches[0]
+    incoming = [e for e in edges if _node_matches(e.get("to", {}), node)]
+    outgoing = [e for e in edges if _node_matches(e.get("from", {}), node)]
+
+    exists_because = [
+        f"{e['from']['kind']} '{e['from']['name']}' {e['verb']} it (site {e.get('site')})"
+        for e in incoming
+    ]
+    used_for = [
+        f"it {e['verb']} {e['to']['kind']} '{e['to']['name']}' (site {e.get('site')})"
+        for e in outgoing
+    ]
+    if incoming:
+        summary = f"{node['kind']} '{node['name']}' exists because {len(incoming)} element(s) reference it."
+    elif outgoing:
+        summary = (
+            f"{node['kind']} '{node['name']}' has no incoming references in this graph -- nothing "
+            f"recorded depends on it yet -- but it references {len(outgoing)} other element(s)."
+        )
+    else:
+        summary = (
+            f"{node['kind']} '{node['name']}' has no recorded edges at all -- this graph gives no "
+            "reason for its existence. It may be unused, or the edge kind connecting it isn't "
+            "modeled yet in the xref vocabulary."
+        )
+    return _text(json.dumps({
+        "element": node,
+        "existsBecause": exists_because,
+        "usedFor": used_for,
+        "incomingEdges": incoming,
+        "outgoingEdges": outgoing,
+        "summary": summary,
+    }, indent=2))
+
+
+def tool_graph_reuse(arguments: dict[str, Any]) -> dict[str, Any]:
+    """P2.4 acceptance slice: 'what would I reuse for this intent', purely from the semantic graph.
+
+    Keyword-ranks existing nodes against a free-text intent, then attaches each candidate's own
+    edges so the caller sees how it is already wired before deciding to reuse or extend it.
+    Structural keyword match only -- never claims semantic understanding of the intent.
+    """
+    graph_path = arguments.get("graph_path")
+    if not graph_path:
+        return _text_error(
+            "graph_path is required (path to a generated app's npdev/semantic-graph.json, e.g. "
+            "<appOutput>/npdev-generated/src/main/resources/npdev/semantic-graph.json)"
+        )
+    intent = (arguments.get("intent") or "").strip()
+    if not intent:
+        return _text_error(
+            "intent is required (free text describing what you're about to build, e.g. "
+            "'notify a customer when their invoice is overdue')"
+        )
+    limit = int(arguments.get("limit") or 5)
+
+    graph, err = _load_semantic_graph(graph_path)
+    if err:
+        return _text_error(err)
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+
+    terms = [t for t in _tokenize(intent) if t]
+    if not terms:
+        return _text_error("intent had no usable terms after tokenizing")
+
+    scored = []
+    for node in nodes:
+        haystack = f"{node.get('kind', '')} {node.get('name', '')}".lower()
+        score = sum(haystack.count(term) for term in terms)
+        if score > 0:
+            scored.append((score, node))
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+
+    candidates = []
+    for score, node in scored[:limit]:
+        related = [e for e in edges if _node_matches(e.get("from", {}), node) or _node_matches(e.get("to", {}), node)]
+        candidates.append({
+            "node": node,
+            "score": score,
+            "alreadyWiredTo": [
+                {
+                    "verb": e["verb"],
+                    "direction": "outgoing" if _node_matches(e.get("from", {}), node) else "incoming",
+                    "other": e["to"] if _node_matches(e.get("from", {}), node) else e["from"],
+                    "site": e.get("site"),
+                }
+                for e in related
+            ],
+        })
+    return _text(json.dumps({
+        "intent": intent,
+        "candidates": candidates,
+        "disclaimer": (
+            "Ranked by keyword overlap over node names/kinds in this graph only -- structural "
+            "reuse-discovery, not semantic understanding. An empty list means no existing "
+            "element's name matched the intent's terms, not that nothing relevant exists."
+        ),
+    }, indent=2))
+
+
 def tool_migration_diff(arguments: dict[str, Any]) -> dict[str, Any]:
     baseline = arguments.get("baseline")
     current = arguments.get("current")
@@ -876,6 +1041,60 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "npdev_graph_explain",
+        "description": (
+            "Why does this element exist? Answered purely from a generated app's "
+            "npdev/semantic-graph.json: which other elements reference it (why it exists -- who "
+            "relies on it) and what it references (what it does). Returns an explicit "
+            "no-recorded-edges result rather than fabricating a reason. Requires the app to have "
+            "been generated at least once (npdev_generate emits the graph)."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "graph_path": {
+                    "type": "string",
+                    "description": (
+                        "Path to the app's npdev/semantic-graph.json, e.g. "
+                        "<appOutput>/npdev-generated/src/main/resources/npdev/semantic-graph.json."
+                    ),
+                },
+                "name": {"type": "string", "description": "The element's name, e.g. 'CanaryTask'."},
+                "kind": {
+                    "type": "string",
+                    "description": "Optional node kind (concept, flow, event, panel, ...) to disambiguate a name reused across kinds.",
+                },
+            },
+            "required": ["graph_path", "name"],
+        },
+    },
+    {
+        "name": "npdev_graph_reuse",
+        "description": (
+            "What would I reuse for this intent? Ranks existing elements in a generated app's "
+            "npdev/semantic-graph.json by keyword overlap with a free-text intent, e.g. 'notify a "
+            "customer when their invoice is overdue', and shows each candidate's own edges so you "
+            "can see how it is already wired before reusing or extending it. Structural keyword "
+            "match only -- never claims to semantically understand the intent, and an empty result "
+            "means no name matched, not that nothing relevant exists."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "graph_path": {
+                    "type": "string",
+                    "description": (
+                        "Path to the app's npdev/semantic-graph.json, e.g. "
+                        "<appOutput>/npdev-generated/src/main/resources/npdev/semantic-graph.json."
+                    ),
+                },
+                "intent": {"type": "string", "description": "Free text describing what you're about to build."},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["graph_path", "intent"],
+        },
+    },
+    {
         "name": "npdev_migration_diff",
         "description": (
             "Classify a model change (baseline model.json -> current model.json) as METADATA_ONLY / "
@@ -1112,6 +1331,8 @@ TOOL_HANDLERS = {
     "npdev_search_examples": tool_search_examples,
     "npdev_search_fix": tool_search_fix,
     "npdev_check_support": tool_check_support,
+    "npdev_graph_explain": tool_graph_explain,
+    "npdev_graph_reuse": tool_graph_reuse,
     "npdev_migration_diff": tool_migration_diff,
     "npdev_author_diff_gate": tool_author_diff_gate,
     "npdev_author_submit": tool_author_submit,

@@ -1,0 +1,169 @@
+{
+  "schemaVersion": "npdev-semantic-graph.v1",
+  "model": "sample.npdevcanary",
+  "edges": [
+    {
+      "from": {"kind": "flow", "name": "CreateCanaryTask"},
+      "verb": "operatesOn",
+      "to": {"kind": "concept", "name": "CanaryTask"},
+      "site": "flow.concept",
+      "path": "flows[CreateCanaryTask].concept"
+    },
+    {
+      "from": {"kind": "flow", "name": "CreateCanaryTask"},
+      "verb": "checks",
+      "to": {"kind": "invariant", "name": "CanaryTaskTitleRequired"},
+      "site": "flow.steps.invariants",
+      "path": "flows[CreateCanaryTask].steps[0].invariants[0]"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "calls",
+      "to": {"kind": "procedure", "name": "SaveCanaryTaskProcedure"},
+      "site": "panel.actions.procedure",
+      "path": "panels[CanaryPanel].actions[0].procedure"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "reads",
+      "to": {"kind": "query", "name": "OpenHighPriorityCanaryTasks"},
+      "site": "panel.dataSources.query",
+      "path": "panels[CanaryPanel].dataSources[0].query"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "field", "name": "CanaryTask.title"},
+      "site": "panel.fieldBindings.field",
+      "path": "panels[CanaryPanel].fieldBindings[0].field"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "dataSource", "name": "openHighPriorityTasks"},
+      "site": "panel.fieldBindings.source",
+      "path": "panels[CanaryPanel].fieldBindings[0].source"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "field", "name": "CanaryTask.title"},
+      "site": "panel.fieldBindings.source",
+      "path": "panels[CanaryPanel].fieldBindings[0].source"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "field", "name": "CanaryTask.priority"},
+      "site": "panel.fieldBindings.field",
+      "path": "panels[CanaryPanel].fieldBindings[1].field"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "dataSource", "name": "openHighPriorityTasks"},
+      "site": "panel.fieldBindings.source",
+      "path": "panels[CanaryPanel].fieldBindings[1].source"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "field", "name": "CanaryTask.priority"},
+      "site": "panel.fieldBindings.source",
+      "path": "panels[CanaryPanel].fieldBindings[1].source"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "field", "name": "CanaryTask.status"},
+      "site": "panel.fieldBindings.field",
+      "path": "panels[CanaryPanel].fieldBindings[2].field"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "dataSource", "name": "openHighPriorityTasks"},
+      "site": "panel.fieldBindings.source",
+      "path": "panels[CanaryPanel].fieldBindings[2].source"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "binds",
+      "to": {"kind": "field", "name": "CanaryTask.status"},
+      "site": "panel.fieldBindings.source",
+      "path": "panels[CanaryPanel].fieldBindings[2].source"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "displays",
+      "to": {"kind": "field", "name": "CanaryTask.title"},
+      "site": "panel.layout.fields",
+      "path": "panels[CanaryPanel].layout.fields[0]"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "displays",
+      "to": {"kind": "field", "name": "CanaryTask.priority"},
+      "site": "panel.layout.fields",
+      "path": "panels[CanaryPanel].layout.fields[1]"
+    },
+    {
+      "from": {"kind": "panel", "name": "CanaryPanel"},
+      "verb": "displays",
+      "to": {"kind": "field", "name": "CanaryTask.status"},
+      "site": "panel.layout.fields",
+      "path": "panels[CanaryPanel].layout.fields[2]"
+    },
+    {
+      "from": {"kind": "procedure", "name": "SaveCanaryTaskProcedure"},
+      "verb": "operatesOn",
+      "to": {"kind": "concept", "name": "CanaryTask"},
+      "site": "procedure.steps.concept",
+      "path": "procedures[SaveCanaryTaskProcedure].steps[0].concept"
+    },
+    {
+      "from": {"kind": "query", "name": "OpenHighPriorityCanaryTasks"},
+      "verb": "reads",
+      "to": {"kind": "concept", "name": "CanaryTask"},
+      "site": "query.concept",
+      "path": "queries[OpenHighPriorityCanaryTasks].concept"
+    },
+    {
+      "from": {"kind": "query", "name": "OpenHighPriorityCanaryTasks"},
+      "verb": "sortsBy",
+      "to": {"kind": "field", "name": "CanaryTask.priority"},
+      "site": "query.orderBy",
+      "path": "queries[OpenHighPriorityCanaryTasks].orderBy[0]"
+    },
+    {
+      "from": {"kind": "query", "name": "OpenHighPriorityCanaryTasks"},
+      "verb": "filtersBy",
+      "to": {"kind": "field", "name": "CanaryTask.status"},
+      "site": "query.where",
+      "path": "queries[OpenHighPriorityCanaryTasks].where#0"
+    },
+    {
+      "from": {"kind": "query", "name": "OpenHighPriorityCanaryTasks"},
+      "verb": "filtersBy",
+      "to": {"kind": "field", "name": "CanaryTask.priority"},
+      "site": "query.where",
+      "path": "queries[OpenHighPriorityCanaryTasks].where#1"
+    }
+  ],
+  "nodes": [
+    {"kind": "concept", "name": "CanaryTask"},
+    {"kind": "dataSource", "name": "openHighPriorityTasks"},
+    {"kind": "field", "name": "CanaryTask.priority"},
+    {"kind": "field", "name": "CanaryTask.status"},
+    {"kind": "field", "name": "CanaryTask.title"},
+    {"kind": "flow", "name": "CreateCanaryTask"},
+    {"kind": "invariant", "name": "CanaryTaskTitleRequired"},
+    {"kind": "panel", "name": "CanaryPanel"},
+    {"kind": "procedure", "name": "SaveCanaryTaskProcedure"},
+    {"kind": "query", "name": "OpenHighPriorityCanaryTasks"}
+  ],
+  "summary": {
+    "nodes": 10,
+    "edges": 21
+  }
+}
