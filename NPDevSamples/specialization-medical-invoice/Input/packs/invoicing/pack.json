@@ -1,0 +1,48 @@
+{
+  "dslVersion": "1.0.0",
+  "pack": "invoicing",
+  "version": "1.0.0",
+  "concepts": [
+    {
+      "name": "Invoice",
+      "ui": {
+        "label": "Invoice"
+      },
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "code",
+          "type": "string",
+          "required": true,
+          "ui": {
+            "label": "Code"
+          }
+        },
+        {
+          "name": "total",
+          "type": "long",
+          "required": true,
+          "ui": {
+            "label": "Total"
+          }
+        }
+      ],
+      "invariants": [
+        {
+          "name": "PositiveTotal",
+          "type": "expression",
+          "expression": "total > 0"
+        }
+      ],
+      "access": {
+        "read": "true",
+        "write": "true"
+      }
+    }
+  ]
+}

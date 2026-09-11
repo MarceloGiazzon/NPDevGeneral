@@ -1,0 +1,31 @@
+{
+  "id": "specialization-medical-invoice",
+  "title": "Specialization: Invoice -> MedicalInvoice",
+  "complexity": "intermediate",
+  "purpose": "P3.5 (NPDEV_PATH_A_REALIGNMENT_PLAN.md Phase 3 exit criterion): a pack-owned concept (invoicing::Invoice) specialized by the consuming app into MedicalInvoice, proving the whole specialization stack lands correctly in a generated app -- not just at the resolver/test level.",
+  "businessStory": "A shared 'invoicing' pack ships a generic Invoice. A clinic app specializes it into MedicalInvoice: adding a doctorId field, tightening the positive-total rule, and locking the record read-only once billed, without copying Invoice's own implementation.",
+  "features": [
+    "pack-import",
+    "concept",
+    "specializes",
+    "invariants",
+    "access",
+    "persistence"
+  ],
+  "inputFiles": [],
+  "walkthrough": [
+    "Generate: pwsh -File NPDevSamples/scripts/generate-sample-app.ps1 -SampleId specialization-medical-invoice.",
+    "Confirm the DDL: MedicalInvoice's table carries id/code/total (inherited from Invoice) plus doctorId (its own).",
+    "Confirm the API: GET/POST against MedicalInvoice's CRUD endpoints work; a total <= 10 is refused by the overridden PositiveTotal invariant (base Invoice only refuses total <= 0).",
+    "Confirm the UI: the generated app's Box View shows MedicalInvoice specializing Invoice with the correct inherits/adds/changes lineage, and MedicalInvoice's own label reads 'Medical invoice'.",
+    "Confirm permissions: MedicalInvoice's access.write is 'false' (overridden), while the base Invoice's own access.write stays 'true'.",
+    "Prove regeneration survives: scripts/hygiene/check-deterministic-generation.ps1 -SampleId specialization-medical-invoice generates twice and diffs every emitted file."
+  ],
+  "expectedOutcomes": [
+    "MedicalInvoice's generated table has exactly id, code, total, doctorId.",
+    "The overridden PositiveTotal invariant (total > 10) is enforced, not the base's (total > 0).",
+    "MedicalInvoice's access is read-only (write: false), overriding Invoice's read/write access.",
+    "Box View's Specializes column shows MedicalInvoice -> Invoice with the correct inherits/adds/changes lineage.",
+    "Two consecutive generations produce byte-identical output."
+  ]
+}
