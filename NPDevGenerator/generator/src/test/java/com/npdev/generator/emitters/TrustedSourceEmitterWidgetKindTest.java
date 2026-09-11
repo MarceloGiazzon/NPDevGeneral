@@ -57,9 +57,9 @@ class TrustedSourceEmitterWidgetKindTest {
     }
 
     private static void writeManifest(Path modelRoot, String sha256) throws Exception {
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), """
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "scenarioId": "trusted-widget",
                   "policyVersion": "test",
                   "expectedOutcome": "pass",

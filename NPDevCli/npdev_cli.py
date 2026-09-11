@@ -1411,7 +1411,13 @@ def run_migrate_dsl2(args: argparse.Namespace) -> int:
     authored document.
     """
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from dsl_v2_migration import migrate_document  # local import: keep this optional dependency
+    from dsl_v2_migration import (  # local import: keep this optional dependency
+        migrate_document,
+        looks_like_untrusted_extension_manifest,
+        migrate_untrusted_extension_manifest,
+        OLD_MANIFEST_FILENAME,
+        NEW_MANIFEST_FILENAME,
+    )
 
     inputs = [Path(p).expanduser().resolve() for p in args.input]
     files: list[Path] = []
@@ -1439,6 +1445,30 @@ def run_migrate_dsl2(args: argparse.Namespace) -> int:
             print(f"  [SKIP] {f}: {exc}", file=sys.stderr)
             continue
         if not isinstance(doc, dict):
+            continue
+
+        # Path A P0.4: a trusted-source-manifest.json is neither an authored model.json nor a
+        # compiled one -- migrate_document has nothing to say about it (no matching keys), so its
+        # own schemaVersion rewrite (+ the file rename below) is dispatched here instead.
+        if looks_like_untrusted_extension_manifest(doc):
+            result = migrate_untrusted_extension_manifest(doc)
+            report_entries.append({
+                "file": str(f), "changed": result.changed, "isCompiled": False,
+                "changes": result.changes, "ambiguities": result.ambiguities,
+            })
+            if result.changed:
+                changed_count += 1
+                verb = "CHANGED" if args.write else "WOULD CHANGE"
+                for c in result.changes:
+                    print(f"  [{verb}] {f}: {c}")
+                if args.write:
+                    f.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
+                    if f.name == OLD_MANIFEST_FILENAME:
+                        renamed = f.with_name(NEW_MANIFEST_FILENAME)
+                        f.replace(renamed)
+                        print(f"  [RENAMED] {f} -> {renamed}")
+            else:
+                unchanged_count += 1
             continue
 
         result = migrate_document(doc)

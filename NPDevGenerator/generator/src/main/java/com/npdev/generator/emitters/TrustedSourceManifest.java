@@ -59,7 +59,7 @@ final class TrustedSourceManifest {
             return references;
         }
         for (CompiledProcedure procedure : model.getProcedures()) {
-            String entrypoint = metadataText(procedure.metadata(), "trustedSourceEntrypoint");
+            String entrypoint = metadataText(procedure.metadata(), "untrustedExtensionEntrypoint");
             if (!entrypoint.isBlank()) {
                 references.add(new TrustedReference(
                         "procedure",
@@ -72,7 +72,7 @@ final class TrustedSourceManifest {
             }
         }
         for (CompiledPanel panel : model.getPanels()) {
-            String entrypoint = metadataText(panel.metadata(), "trustedSourceEntrypoint");
+            String entrypoint = metadataText(panel.metadata(), "untrustedExtensionEntrypoint");
             if (!entrypoint.isBlank()) {
                 references.add(new TrustedReference(
                         "panel",
@@ -128,11 +128,11 @@ final class TrustedSourceManifest {
 
     static List<ManifestEntry> readManifest(Path manifestPath, Path sourceRoot) throws IOException {
         JsonNode root = OBJECT_MAPPER.readTree(manifestPath.toFile());
-        if (!"npdev-trusted-source-manifest.v1".equals(root.path("schemaVersion").asText())) {
-            throw new IllegalStateException("Unsupported trusted source manifest schemaVersion.");
+        if (!"npdev-untrusted-extension-manifest.v1".equals(root.path("schemaVersion").asText())) {
+            throw new IllegalStateException("Unsupported untrusted extension manifest schemaVersion.");
         }
         if (!root.path("entries").isArray()) {
-            throw new IllegalStateException("Trusted source manifest entries must be an array.");
+            throw new IllegalStateException("Untrusted extension manifest entries must be an array.");
         }
         List<ManifestEntry> entries = new ArrayList<>();
         for (JsonNode node : root.path("entries")) {
@@ -156,36 +156,36 @@ final class TrustedSourceManifest {
 
     private static void validateManifestEntry(Path sourceRoot, ManifestEntry entry) {
         if (!Set.of("procedure", "panel", "widget").contains(entry.kind())) {
-            throw new IllegalStateException("Unsupported trusted source kind: " + entry.kind());
+            throw new IllegalStateException("Unsupported untrusted extension kind: " + entry.kind());
         }
         if (!isSafeRelativePath(entry.relativePath())) {
-            throw new IllegalStateException("Unsafe trusted source relative path: " + entry.relativePath());
+            throw new IllegalStateException("Unsafe untrusted extension relative path: " + entry.relativePath());
         }
         if (!entry.sha256().matches("[a-f0-9]{64}")) {
-            throw new IllegalStateException("Trusted source manifest entry has invalid SHA-256: " + entry.relativePath());
+            throw new IllegalStateException("Untrusted extension manifest entry has invalid SHA-256: " + entry.relativePath());
         }
         Path source = sourceRoot.resolve(entry.relativePath()).normalize();
         if (!source.startsWith(sourceRoot) || !Files.isRegularFile(source)) {
-            throw new IllegalStateException("Trusted source file is missing or outside the model directory: " + entry.relativePath());
+            throw new IllegalStateException("Untrusted extension file is missing or outside the model directory: " + entry.relativePath());
         }
         if ("procedure".equals(entry.kind())) {
             if (!isJavaIdentifier(entry.className()) || !isJavaIdentifier(entry.method())) {
-                throw new IllegalStateException("Trusted procedure className/method must be Java identifiers: " + entry.relativePath());
+                throw new IllegalStateException("Untrusted extension procedure className/method must be Java identifiers: " + entry.relativePath());
             }
             if (!"java".equals(entry.language())) {
-                throw new IllegalStateException("Trusted procedure language must be java: " + entry.relativePath());
+                throw new IllegalStateException("Untrusted extension procedure language must be java: " + entry.relativePath());
             }
         }
         if ("panel".equals(entry.kind()) && !entry.runtimeBinding().startsWith("panel:")) {
-            throw new IllegalStateException("Trusted panel runtimeBinding must use panel:<route>: " + entry.relativePath());
+            throw new IllegalStateException("Untrusted extension panel runtimeBinding must use panel:<route>: " + entry.relativePath());
         }
         if ("widget".equals(entry.kind()) && !"javascript".equals(entry.language())) {
-            throw new IllegalStateException("Trusted widget language must be javascript: " + entry.relativePath());
+            throw new IllegalStateException("Untrusted extension widget language must be javascript: " + entry.relativePath());
         }
         // A widget is a shared script embedded in whatever form renders it, not a routed page of
         // its own -- it has no independent access-control role to require, unlike a procedure/panel.
         if (!"widget".equals(entry.kind()) && entry.requiredRole().isBlank()) {
-            throw new IllegalStateException("Trusted source entry requiredRole is required: " + entry.relativePath());
+            throw new IllegalStateException("Untrusted extension entry requiredRole is required: " + entry.relativePath());
         }
     }
 
@@ -216,7 +216,7 @@ final class TrustedSourceManifest {
         validatePanelSource(source, entry.relativePath());
         String route = firstNonBlank(reference.route(), entry.runtimeBinding().substring("panel:".length()));
         if (!route.startsWith("/")) {
-            throw new IllegalStateException("Trusted panel route must start with /: " + route);
+            throw new IllegalStateException("Untrusted extension panel route must start with /: " + route);
         }
         String resourcePrefix = safeResourceName(reference.id());
         PanelAssets assets = externalizePanelAssets(source, resourcePrefix);
@@ -245,7 +245,7 @@ final class TrustedSourceManifest {
     static void validateHash(Path sourceRoot, ManifestEntry entry) throws IOException {
         String actual = sha256(sourceRoot.resolve(entry.relativePath()).normalize());
         if (!actual.equals(entry.sha256())) {
-            throw new IllegalStateException("Trusted source SHA-256 mismatch for " + entry.relativePath());
+            throw new IllegalStateException("Untrusted extension SHA-256 mismatch for " + entry.relativePath());
         }
     }
 
@@ -332,7 +332,7 @@ final class TrustedSourceManifest {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(Files.readAllBytes(path)));
         } catch (Exception e) {
-            throw new IOException("Failed to hash trusted source: " + path, e);
+            throw new IOException("Failed to hash untrusted extension: " + path, e);
         }
     }
 

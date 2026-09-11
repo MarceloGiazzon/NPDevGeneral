@@ -594,8 +594,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * Aggregate Workbench's dedicated static page for a workbench panel ({@code dataVia:
      * "aggregate"}, ADR-0005), or the SPA's hash-addressed section for every other declared panel
      * (business-ui-app.mustache's own {@code sectionId}/{@code resolveHashTarget} already honor a
-     * hash present at page load as a deep link, so no client-side change is needed). Trusted-source
-     * panels ({@code metadata.trustedSourceEntrypoint}) are excluded --
+     * hash present at page load as a deep link, so no client-side change is needed). Untrusted-
+     * extension panels ({@code metadata.untrustedExtensionEntrypoint}) are excluded --
      * {@code TrustedSourceControllerTemplate} already emits a real {@code @GetMapping(route)} for
      * those, and registering both would collide on startup.
      */
@@ -611,7 +611,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             if (route == null || route.isBlank() || !route.startsWith("/") || !seenRoutes.add(route)) {
                 continue;
             }
-            if (panel.metadata() != null && panel.metadata().get("trustedSourceEntrypoint") != null) {
+            if (panel.metadata() != null && panel.metadata().get("untrustedExtensionEntrypoint") != null) {
                 continue;
             }
             boolean isWorkbench = panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"));

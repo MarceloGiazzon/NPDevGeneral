@@ -5,6 +5,52 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-09-10 — the escape-hatch vocabulary inverts: "trusted source" → "untrusted extension" (Path A P0.4)
+
+**What changes.** The author-facing name for the hash-pinned, admission-gated escape hatch (a
+panel/procedure implemented as your own HTML/JS/Java rather than the DSL step vocabulary) inverts
+from "trusted source" — the word that means safe — to "untrusted extension", naming the safety
+posture the platform actually treats it with rather than making a claim about the author. Renamed,
+consistently, no alias window:
+
+- `panels[]`/`procedures[].metadata.trustedSourceEntrypoint` → `.metadata.untrustedExtensionEntrypoint`
+  (a new, formally documented `properties` entry on `model.schema.json`'s panel/procedure `metadata`
+  object, mirrored across all four schema copies — previously an undocumented freeform-object
+  convention with no schema presence at all).
+- The sibling file an author places next to `model.json`: `trusted-source-manifest.json` →
+  `untrusted-extension-manifest.json`, including its own `schemaVersion` constant
+  (`npdev-trusted-source-manifest.v1` → `npdev-untrusted-extension-manifest.v1`).
+- The AI-authoring schema vocabulary (`schemas/ai/ai-model.schema.json`,
+  `schemas/ai/custom-procedure.schema.json`): `implementation.mode: "trustedSource"` →
+  `"untrustedExtension"`, and `custom-procedure`'s `trust: "trusted"` → `"untrustedExtension"`.
+  `schemas/ai/trusted-source-manifest.schema.json` renamed to
+  `schemas/ai/untrusted-extension-manifest.schema.json`.
+- Generation-time diagnostics (`TrustedSourceEmitter`/`TrustedSourceManifest`) and the
+  `extension-inventory.json` report's category name (`trustedSourceAsset` →
+  `untrustedExtensionAsset`, Path A P0.3) say "untrusted extension", not "trusted source".
+- `npdev_static_pages.py`'s rendered static-docs sections and `docs/NPDEV_FEATURE_GUIDE.md`.
+
+**Deliberately left unchanged (internal, not author-facing):** the generator's own Java class/
+package names (`TrustedSourceEmitter`, `com.npdev.generated.trusted`, …), the generated app's
+`src/main/resources/trusted-source/` resource directory and its
+`trusted-source-generation-manifest.json` report, and the CI-internal beta0-release-proof scripts
+(`run-trusted-source-beta0-proof*.ps1`) and their report schemas — none of these are vocabulary an
+app author ever types or reads. Also left unchanged: a separate, still-live `trustLevel` field on
+plugin-package descriptors (`RuntimePluginPackageDescriptor`/`RuntimePluginPackageAdmissionEvaluator`
+in NPDevRuntimeHost) — a related but distinct admission-control mechanism discovered while auditing
+this change, out of scope for this pass and tracked as a follow-up rather than folded in here.
+
+**Who is affected.** Any app whose `model.json` declares a panel/procedure via the old metadata key,
+or whose Input directory carries `trusted-source-manifest.json`. Every other app — no such
+declaration — is unaffected. An unmigrated app fails generation with a clear
+`IllegalStateException` naming the new expected filename, rather than silently misbehaving.
+
+**Codemod.** `npdev migrate dsl-2 --input <appDir> --write` now also: (1) renames
+`metadata.trustedSourceEntrypoint` to `metadata.untrustedExtensionEntrypoint` on every panel/
+procedure in `model.json`, and (2) rewrites `trusted-source-manifest.json`'s `schemaVersion` and
+renames the file itself to `untrusted-extension-manifest.json`. Both run in the same pass over an
+app directory; dry-run (no `--write`) reports what would change first.
+
 ## 2026-09-07 — mixed-DDL conversion hooks are split and journalled by default (STOR-35, boundary B11)
 
 **What changes.** `npdev.schema.conversionHooks.mixedDdlVerify` now defaults to `split` instead of

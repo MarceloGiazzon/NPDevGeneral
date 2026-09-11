@@ -163,8 +163,8 @@ $menu = Load-OptionalJson 'menu.json'
 if ($null -ne $menu) { $sections['Menu'] = $menu }
 $db = Load-OptionalJson 'db.definition.json'
 if ($null -ne $db) { $sections['Database'] = $db }
-$ts = Load-OptionalJson 'trusted-source-manifest.json'
-if ($null -ne $ts) { $sections['TrustedSources'] = $ts }
+$ts = Load-OptionalJson 'untrusted-extension-manifest.json'
+if ($null -ne $ts) { $sections['UntrustedExtensions'] = $ts }
 
 $seedsDir = Join-Path $Definition 'seeds'
 if (Test-Path -LiteralPath $seedsDir) {

@@ -59,13 +59,13 @@ public final class TrustedSourceEmitter {
             return;
         }
         if (modelSourcePath == null || modelSourcePath.getParent() == null) {
-            throw new IllegalStateException("Trusted source references require a model source path for sibling manifest discovery.");
+            throw new IllegalStateException("Untrusted extension references require a model source path for sibling manifest discovery.");
         }
 
         Path sourceRoot = modelSourcePath.toAbsolutePath().normalize().getParent();
-        Path manifestPath = sourceRoot.resolve("trusted-source-manifest.json").normalize();
+        Path manifestPath = sourceRoot.resolve("untrusted-extension-manifest.json").normalize();
         if (!Files.isRegularFile(manifestPath)) {
-            throw new IllegalStateException("Trusted source references require trusted-source-manifest.json next to the model.");
+            throw new IllegalStateException("Untrusted extension references require untrusted-extension-manifest.json next to the model.");
         }
 
         List<ManifestEntry> entries = readManifest(manifestPath, sourceRoot);
@@ -78,15 +78,15 @@ public final class TrustedSourceEmitter {
         for (ManifestEntry entry : entries) {
             String key = key(entry.kind(), entry.relativePath());
             if (entryByKey.put(key, entry) != null) {
-                throw new IllegalStateException("Duplicate trusted source manifest entry: " + key);
+                throw new IllegalStateException("Duplicate untrusted extension manifest entry: " + key);
             }
             if (!referenceByKey.containsKey(key)) {
-                throw new IllegalStateException("Unexpected trusted source manifest entry with no model reference: " + entry.relativePath());
+                throw new IllegalStateException("Unexpected untrusted extension manifest entry with no model reference: " + entry.relativePath());
             }
         }
         for (TrustedReference reference : references) {
             if (!entryByKey.containsKey(key(reference.kind(), reference.relativePath()))) {
-                throw new IllegalStateException("Trusted source model reference has no manifest entry: " + reference.relativePath());
+                throw new IllegalStateException("Untrusted extension model reference has no manifest entry: " + reference.relativePath());
             }
         }
 

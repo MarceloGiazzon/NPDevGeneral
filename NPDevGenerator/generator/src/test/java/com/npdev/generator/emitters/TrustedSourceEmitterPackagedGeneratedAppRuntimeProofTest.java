@@ -447,7 +447,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                         "claim",
                         true
                 ),
-                Map.of("trustedSourceEntrypoint", "trusted/CreateItem12UserProcedure.java")
+                Map.of("untrustedExtensionEntrypoint", "trusted/CreateItem12UserProcedure.java")
         );
         CompiledPanel panel = new CompiledPanel(
                 "item12-panel",
@@ -460,7 +460,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/item12-panel.html"),
+                Map.of("untrustedExtensionEntrypoint", "panel/item12-panel.html"),
                 null
         );
         CompiledFlow flow = new CompiledFlow(
@@ -688,9 +688,9 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                   </body>
                 </html>
                 """, StandardCharsets.UTF_8);
-        Files.writeString(modelRoot.resolve("trusted-source-manifest.json"), """
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), """
                 {
-                  "schemaVersion": "npdev-trusted-source-manifest.v1",
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
                   "entries": [
                     {
                       "entryId": "create-item12-user",
@@ -839,7 +839,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
                       "route": "/item12-panel",
                       "title": "Item 12 Packaged Proof Panel",
                       "metadata": {
-                        "trustedSourceEntrypoint": "panel/item12-panel.html"
+                        "untrustedExtensionEntrypoint": "panel/item12-panel.html"
                       }
                     }
                   ]

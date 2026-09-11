@@ -24,9 +24,12 @@ import java.util.TreeMap;
  * concept is introduced:
  *
  * <ul>
- *   <li><b>trustedSourceAsset</b> -- {@link TrustedSourceManifest#referencesFrom} (procedure/panel/
- *       widget files a trusted-source-manifest.json hash-locks). Origin is the asset's file path;
- *       owner is the model element ({@code id()}) that references it.</li>
+ *   <li><b>untrustedExtensionAsset</b> -- {@link TrustedSourceManifest#referencesFrom} (procedure/
+ *       panel/widget files an untrusted-extension-manifest.json hash-locks; Path A P0.4 renamed the
+ *       author-facing vocabulary from "trusted source" to "untrusted extension" -- the internal
+ *       Java class/package names in this package predate that rename and were deliberately left
+ *       alone as non-author-facing). Origin is the asset's file path; owner is the model element
+ *       ({@code id()}) that references it.</li>
  *   <li><b>javaHook</b> -- {@code conversions[].javaHook} ({@link CompiledConversion#javaHook()}),
  *       admitted by {@code ConversionHookJavaHookEmitter} through the same plugin machinery as a
  *       {@code plugin:java-source} mount, but declared inline rather than via {@code plugins[]}.
@@ -61,7 +64,7 @@ public final class ExtensionInventoryEmitter {
         Map<String, Integer> counts = new TreeMap<>();
 
         for (TrustedReference reference : TrustedSourceManifest.referencesFrom(model)) {
-            addEntry(entries, counts, "trustedSourceAsset", reference.kind(), reference.relativePath(), reference.id());
+            addEntry(entries, counts, "untrustedExtensionAsset", reference.kind(), reference.relativePath(), reference.id());
         }
 
         for (CompiledConversion conversion : model.getConversions()) {

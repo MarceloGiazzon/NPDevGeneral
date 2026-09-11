@@ -128,7 +128,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
                 "",
                 List.of(),
                 Map.of(),
-                Map.of("trustedSourceEntrypoint", "panel/user-admin-panel.html"),
+                Map.of("untrustedExtensionEntrypoint", "panel/user-admin-panel.html"),
                 null
         );
         CompiledModel model = new CompiledModel(
@@ -143,7 +143,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
                 "src/main/java/com/npdev/generated/controllers/GeneratedBusinessUiRouteController.java"));
 
         assertFalse(source.contains("@GetMapping(\"/users\")"),
-                "a trustedSourceEntrypoint panel must NOT get a second @GetMapping here -- "
+                "a untrustedExtensionEntrypoint panel must NOT get a second @GetMapping here -- "
                         + "TrustedSourceControllerTemplate already emits its own, and Spring rejects a duplicate "
                         + "mapping for the same path at boot; got: " + source);
     }

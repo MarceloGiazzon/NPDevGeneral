@@ -14,11 +14,11 @@ emission only, no build/boot):
   - probes/p7-plugin-controller: two plugin:java-controller mounts (adminTools, superOnlyTools) --
     proves the inProcessController category.
 
-trustedSourceAsset has no fixture in either corpus location the generator actually builds from
-(trusted-source-manifest.json only exists today under golden-ai-scenarios/, which the AI-authoring
-validation pipeline consumes, not npdev generate) -- this checker asserts the key's shape (a
-non-negative int) rather than a non-zero count for that one category, and says so in its output
-rather than silently passing over the gap.
+untrustedExtensionAsset has no fixture in either corpus location the generator actually builds from
+(untrusted-extension-manifest.json only exists today under golden-ai-scenarios/, which the
+AI-authoring validation pipeline consumes, not npdev generate) -- this checker asserts the key's
+shape (a non-negative int) rather than a non-zero count for that one category, and says so in its
+output rather than silently passing over the gap.
 
     python check-extension-inventory.py
     python check-extension-inventory.py --skip-generate   # assert against already-generated output
@@ -35,7 +35,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATE_SCRIPT = REPO_ROOT / "NPDevSamples" / "scripts" / "generate-sample-app.ps1"
 
-CATEGORIES = ("trustedSourceAsset", "javaHook", "inProcessController", "pluginPackage")
+CATEGORIES = ("untrustedExtensionAsset", "javaHook", "inProcessController", "pluginPackage")
 
 FIXTURES = {
     "dsl-conformance-max": {
@@ -113,9 +113,9 @@ def check_inventory(inventory: dict, min_counts: dict) -> list[str]:
 
 SYNTHETIC_VALID = {
     "schemaVersion": "1.0",
-    "counts": {"trustedSourceAsset": 1, "javaHook": 1, "inProcessController": 0, "pluginPackage": 1},
+    "counts": {"untrustedExtensionAsset": 1, "javaHook": 1, "inProcessController": 0, "pluginPackage": 1},
     "entries": [
-        {"category": "trustedSourceAsset", "kind": "panel", "origin": "panels/x.html", "owner": "x"},
+        {"category": "untrustedExtensionAsset", "kind": "panel", "origin": "panels/x.html", "owner": "x"},
         {"category": "javaHook", "kind": "conversionJavaHook", "origin": "h.java#m", "owner": "conv1"},
         {"category": "pluginPackage", "kind": "plugin-id", "origin": "pkg", "owner": "cap"},
     ],
@@ -124,7 +124,7 @@ SYNTHETIC_VALID = {
 SYNTHETIC_INVALID_MISSING_KEY = {"counts": {}, "entries": []}
 SYNTHETIC_INVALID_COUNT_MISMATCH = {
     "schemaVersion": "1.0",
-    "counts": {"trustedSourceAsset": 0, "javaHook": 5, "inProcessController": 0, "pluginPackage": 0},
+    "counts": {"untrustedExtensionAsset": 0, "javaHook": 5, "inProcessController": 0, "pluginPackage": 0},
     "entries": [],
 }
 
@@ -189,9 +189,9 @@ def main(argv: list[str]) -> int:
         total_problems += len(problems)
 
     print(
-        "\nNote: trustedSourceAsset has no generatable corpus fixture today (trusted-source-"
-        "manifest.json only exists under golden-ai-scenarios/, consumed by AI-authoring validation, "
-        "not npdev generate) -- only its shape is checked here, not a non-zero count."
+        "\nNote: untrustedExtensionAsset has no generatable corpus fixture today (untrusted-"
+        "extension-manifest.json only exists under golden-ai-scenarios/, consumed by AI-authoring "
+        "validation, not npdev generate) -- only its shape is checked here, not a non-zero count."
     )
 
     if total_problems:

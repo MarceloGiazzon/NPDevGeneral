@@ -3,7 +3,7 @@
   "panelId": "user-admin-panel",
   "route": "/users",
   "implementation": {
-    "mode": "trustedSource",
+    "mode": "untrustedExtension",
     "language": "html+javascript",
     "entrypoint": "panel/user-admin-panel.html"
   },

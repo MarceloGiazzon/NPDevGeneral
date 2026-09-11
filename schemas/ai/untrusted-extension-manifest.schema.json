@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://npdev.local/schemas/ai/trusted-source-manifest.schema.json",
-  "title": "NPDev Trusted Source Manifest",
+  "$id": "https://npdev.local/schemas/ai/untrusted-extension-manifest.schema.json",
+  "title": "NPDev Untrusted Extension Manifest",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -12,7 +12,7 @@
   ],
   "properties": {
     "schemaVersion": {
-      "const": "npdev-trusted-source-manifest.v1"
+      "const": "npdev-untrusted-extension-manifest.v1"
     },
     "scenarioId": {
       "type": "string",

@@ -15,13 +15,13 @@
      tests/checks area). Objects itself splits into Concepts (data shape: concepts, domainTypes,
      aggregates -- GeneXus's Transaction), Panels (every UI surface: autoPanels/panels/selectors/
      documents/guidePages/pages.json/menu.json, PLUS their implementation source -- widget JS,
-     hand-authored web/ pages, trusted-source panel HTML -- GeneXus's Web Panel), and Procedures
+     hand-authored web/ pages, untrusted-extension panel HTML -- GeneXus's Web Panel), and Procedures
      (flows/procedures/orchestrationRules/conversions, PLUS their Java source -- custom-capability
-     plugins, trusted-source procedures -- GeneXus's Procedure object). Features holds the
+     plugins, untrusted-extension procedures -- GeneXus's Procedure object). Features holds the
      cross-cutting, non-object DSL wiring (packs, roles, properties, capabilities, bindings,
      events, queries, ...). Configs splits into Project General (config.json + the model's own
      identity/meta fields) and DB Engines (db.definition.json). Tests splits into Checks
-     (trusted-source-manifest.json's policy/expectedOutcome), Scripts (smoke-plan.json, when an
+     (untrusted-extension-manifest.json's policy/expectedOutcome), Scripts (smoke-plan.json, when an
      app has one), and Seed Data (definition/seeds/*.json).
      This is a PURE regroup, not a data change: every key/file this script reads is placed into
      exactly one bucket via an explicit lookup table below; anything the table doesn't recognize
@@ -187,7 +187,7 @@ function Load-OptionalJson { param([string]$Name)
 $pages     = Load-OptionalJson 'pages.json'
 $menu      = Load-OptionalJson 'menu.json'
 $db        = Load-OptionalJson 'db.definition.json'
-$ts        = Load-OptionalJson 'trusted-source-manifest.json'
+$ts        = Load-OptionalJson 'untrusted-extension-manifest.json'
 $smokePlan = Load-OptionalJson 'smoke-plan.json'
 
 $seedObj = [ordered]@{}

@@ -3950,7 +3950,14 @@
           "$ref": "#/$defs/generatedActionDescriptor"
         },
         "metadata": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "untrustedExtensionEntrypoint": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path A P0.4: this procedure's implementation is an author-supplied, hash-pinned untrusted extension (a relative path into the sibling untrusted-extension-manifest.json) rather than a normal DSL-declared body -- admitted through the same bytecode/AST safety gate as a mounted plugin. 'Untrusted' names the safety posture the platform treats it with, not a judgement on the author."
+            }
+          }
         }
       },
       "additionalProperties": false
@@ -4245,7 +4252,14 @@
           "type": "object"
         },
         "metadata": {
-          "type": "object"
+          "type": "object",
+          "properties": {
+            "untrustedExtensionEntrypoint": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path A P0.4: this panel's implementation is an author-supplied, hash-pinned untrusted extension (a relative path into the sibling untrusted-extension-manifest.json) rather than a normal DSL-declared body -- admitted through the same bytecode/AST safety gate as a mounted plugin. 'Untrusted' names the safety posture the platform treats it with, not a judgement on the author."
+            }
+          }
         },
         "guidePage": {
           "type": "string",

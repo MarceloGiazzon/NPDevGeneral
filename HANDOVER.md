@@ -102,7 +102,9 @@ own. Confirm the change is visible in the browser.
 destructive change — and NPDev refuses it on purpose. That refusal is §4 territory, not a bug; see
 `docs/YOUR_FIRST_APP.md` for how to declare one.)*
 
-**That is the whole product.** If you got here, it works.
+**That is the whole product.** If you got here, it works. `model.json` is the thing you actually own;
+everything you just watched rebuild — API, screens, database — is a projection of it, generated
+through Spring Boot, today's runtime binder.
 
 ### 2.7 One last thing, and it is for us rather than for you
 

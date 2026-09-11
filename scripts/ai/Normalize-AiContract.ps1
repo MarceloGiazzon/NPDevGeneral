@@ -352,7 +352,7 @@ function New-OfficialModel {
                 sideEffectType = [string]$procedure.sideEffectType
                 tenantScoped = [bool]$procedure.tenantScoped
                 maxAffectedRows = [int]$procedure.maxAffectedRows
-                trustedSourceEntrypoint = if ($null -ne $procedure.implementation) { [string]$procedure.implementation.entrypoint } else { "" }
+                untrustedExtensionEntrypoint = if ($null -ne $procedure.implementation) { [string]$procedure.implementation.entrypoint } else { "" }
             }
         }
     }
@@ -400,7 +400,7 @@ function New-OfficialModel {
                 sourceType = [string]$panel.type
                 tenantScoped = [bool]$panel.tenantScoped
                 safeCustomPanelMetadata = $safePanelMetadata
-                trustedSourceEntrypoint = if ($null -ne $panel.implementation) { [string]$panel.implementation.entrypoint } else { "" }
+                untrustedExtensionEntrypoint = if ($null -ne $panel.implementation) { [string]$panel.implementation.entrypoint } else { "" }
             }
         }
     }
