@@ -178,6 +178,8 @@ def main() -> int:
         assert proc.stdout is not None
         for raw in proc.stdout:
             log.write(raw)
+            log.flush()
+            os.fsync(log.fileno())
             lines.append(raw.rstrip("\n"))
         code = proc.wait()
     elapsed = time.time() - started
