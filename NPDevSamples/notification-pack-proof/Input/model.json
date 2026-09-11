@@ -1,0 +1,15 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "sample.notificationpackproof",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "Path A P4.3: a second first-party pack, contracts only. Composes the notification pack's `mailer.send` custom capability contract and OutgoingMessage audit-trail concept, and binds its `requires.capabilities: [\"sendMail\"]` presence requirement via this app's own `provides.capabilities` -- proving the pack ships a capability CONTRACT (no concrete SMTP wiring here) that a real corpus app can consume end to end."
+  },
+  "packs": [
+    { "$ref": "packs/notification/pack.json", "as": "notification" }
+  ],
+  "provides": {
+    "capabilities": ["sendMail"]
+  }
+}

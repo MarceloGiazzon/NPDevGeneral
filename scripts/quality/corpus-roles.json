@@ -62,6 +62,7 @@
     "NPDevSamples/dsl-conformance-max": "dsl-fixture",
     "NPDevSamples/durable-workflow-demo": "dsl-fixture",
     "NPDevSamples/medium-expense-approval": "showcase",
+    "NPDevSamples/notification-pack-proof": "repro-case",
     "NPDevSamples/npdev-canary": "canary",
     "NPDevSamples/npdev-init-seed": "showcase",
     "NPDevSamples/pack9-role-binding-a": "repro-case",

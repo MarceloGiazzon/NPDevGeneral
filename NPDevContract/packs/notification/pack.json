@@ -1,0 +1,65 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "notification",
+  "version": "1.0.0",
+  "namespace": "com.npdev.notification",
+  "description": "Outgoing-notification audit trail plus a pluggable `mailer.send` capability contract. The pack declares WHAT a notification needs (an addressable mailer capability); the consuming app supplies the concrete implementation (e.g. the mail-smtp adapter) as an untrusted extension. Genuinely app-independent: any app that sends transactional messages needs this shape, and none of it depends on which app is asking.",
+  "category": "other",
+  "author": "NPDev",
+  "requires": {
+    "capabilities": ["sendMail"]
+  },
+  "customCapabilities": [
+    {
+      "name": "mailer",
+      "operations": [
+        {
+          "name": "send",
+          "input": {
+            "type": "object",
+            "properties": {
+              "to": { "type": "string" },
+              "subject": { "type": "string" },
+              "body": { "type": "string" }
+            },
+            "required": ["to", "subject", "body"]
+          },
+          "output": {
+            "type": "object",
+            "properties": {
+              "messageId": { "type": "string" },
+              "accepted": { "type": "boolean" }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "concepts": [
+    {
+      "name": "OutgoingMessage",
+      "truthLevel": "T2",
+      "ui": {
+        "label": "Outgoing Message"
+      },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "to", "type": "string", "required": true, "maxLength": 320 },
+        { "name": "subject", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "body", "type": "string", "required": true, "maxLength": 8000 },
+        {
+          "name": "status",
+          "type": "enum",
+          "required": true,
+          "enumValues": [
+            { "value": "pending", "label": { "default": "Pending", "en": "Pending" } },
+            { "value": "sent", "label": { "default": "Sent", "en": "Sent" } },
+            { "value": "failed", "label": { "default": "Failed", "en": "Failed" } }
+          ]
+        },
+        { "name": "sentAt", "type": "datetime", "required": false }
+      ]
+    }
+  ]
+}

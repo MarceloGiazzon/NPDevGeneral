@@ -1,0 +1,27 @@
+{
+  "$schema": "..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "notification-pack-proof",
+    "description": "Path A P4.3: second first-party pack (notification), contracts only -- consumed by this corpus app to prove requires/provides capability binding and customCapabilities generation end to end.",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": { "root": "..\\..\\..\\NPDevRuntimeHost", "mergeStrategy": "clean-copy" },
+  "artifact": { "root": "..\\Output\\ArtifactNP", "generatedFolderName": "npdev-generated", "libsFolderName": "libs", "metaFolderName": "npdev-meta" },
+  "finalExec": { "root": "..\\Output\\App", "deleteBeforeMount": true },
+  "database": { "provider": "h2-local", "database": "npdev_notification_pack_proof", "resetMode": "reset" },
+  "runtime": { "springProfile": "dev,trial", "serverPort": 8412, "javaArgs": [], "gradleTask": "bootRun" },
+  "trialDefaults": {
+    "apiKey": "dev-key", "recommendedProfiles": "dev,trial", "runtimeUrl": "http://localhost:8412/",
+    "databaseMode": "h2-local",
+    "notes": ["Path A P4.3 proof app. Not release-gated; a hand-run fixture."]
+  }
+}
