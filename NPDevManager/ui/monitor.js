@@ -489,6 +489,22 @@ function renderInspector(probe) {
       </div>`);
   }
 
+  // Path A P5.2: the customization inventory (P0.3) -- every untrusted-extension asset, javaHook,
+  // in-process controller and plugin-package mount this app declares, each row carrying its
+  // provenance (P5.1's untrusted-extension-manifest.json / P5.2's own customization-provenance.json
+  // join) when the author declared one, or an honest "undeclared" badge when they did not. Same
+  // graceful-degradation shape as info.json above: an app built before the emitter has none.
+  const inventory = probe.extensionInventory;
+  if (inventory && Array.isArray(inventory.entries) && inventory.entries.length) {
+    sections.push(accordion("Customizations", inventory.entries.map(customizationRow).join(""), inventory.entries.length));
+  } else if (probe.hasExtensionInventory === false) {
+    sections.push(`
+      <div class="insp-note">
+        This app has no <code>extension-inventory.json</code>. It was generated before the emitter
+        landed — regenerate it to see declared customizations here.
+      </div>`);
+  }
+
   // PROBED rows: exactly what the emitter deliberately does NOT bake (D2-a).
   const probed = [
     ["Generated app root", probe.finalAppRoot || probe.appDir],
@@ -581,6 +597,28 @@ function probedRow(key, value) {
       <span class="k">${esc(key)}</span>
       <span class="v">${esc(value)}</span>
       <span class="ops"><button data-copy="${esc(value)}">copy</button></span>
+    </div>`;
+}
+
+function customizationRow(entry) {
+  const provenance = entry.provenance || {};
+  const label = `${entry.category}${entry.kind ? " · " + entry.kind : ""}`;
+  const summary = provenance.declared
+    ? `${esc(provenance.changeSummary || "")} — ${esc(provenance.reason || "")}`
+    : `<span class="insp-undeclared">undeclared</span>`;
+  const meta = provenance.declared
+    ? [
+        provenance.author ? `by ${esc(provenance.author)} (${esc(provenance.authorType)})` : null,
+        provenance.regenerationIntent ? `on regen: ${esc(provenance.regenerationIntent)}` : null,
+        provenance.requiresRetest ? "needs retest" : null,
+        provenance.releaseImpact && provenance.releaseImpact !== "none" ? `${esc(provenance.releaseImpact)} release impact` : null,
+      ].filter(Boolean).join(" · ")
+    : "";
+  return `
+    <div class="irow probed">
+      <span class="k">${esc(label)} — ${esc(entry.owner || "")}</span>
+      <span class="v">${summary}${meta ? `<br><small>${meta}</small>` : ""}</span>
+      <span class="ops"><button data-copy="${esc(entry.origin || "")}">copy origin</button></span>
     </div>`;
 }
 

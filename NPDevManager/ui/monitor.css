@@ -295,6 +295,9 @@ dl.kv dd small { opacity: .6; }
   margin: 10px 8px; padding: 9px 12px; background: #1b1810; border: 1px solid #5a4a1e;
   border-radius: 8px; font-size: 11.5px; color: #e6d3a3;
 }
+.insp-undeclared {
+  color: #7a8494; font-style: italic;
+}
 .acc { border: 1px solid #1f242b; border-radius: 8px; margin: 8px; overflow: hidden; background: #10151b; }
 .acc > button.hd {
   width: 100%; display: flex; align-items: center; gap: 8px;
