@@ -23,6 +23,7 @@ import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.TrustedSourceEmitter;
 import com.npdev.generator.emitters.XrefEmitter;
+import com.npdev.generator.guard.GeneratedProjectionGuard;
 import com.npdev.generator.packs.LinkedSealedPack;
 import com.npdev.generator.dbconfig.ConversionHookEmitter;
 import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
@@ -372,6 +373,11 @@ public final class GeneratorFacade {
         new ConversionHookEmitter(databasePlan == null ? null : databasePlan.engine())
                 .emit(model, modelSourcePath, outRoot);
         new GeneratedFolderSignatureEmitter().emit(outRoot);
+
+        // Path A / P0.2: the Stage 0 constitutional guardrail (never previously called from any
+        // production path) now runs after every emission -- the model is the durable truth,
+        // generated Java must stay thin glue over it, never hardcode adapter/plugin selection.
+        new GeneratedProjectionGuard().assertThinProjection(outRoot);
     }
 
     /**

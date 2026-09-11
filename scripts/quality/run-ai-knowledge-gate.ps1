@@ -817,6 +817,17 @@ try {
         $failures += "a content/*.yml doc names an _ops script the runbook emitter never writes: see scripts/quality/check-ops-script-names.py output above -- fix the DOCUMENT to name an emitted script (OperationalRunbookEmitter's write() list is the ground truth)"
     }
 
+    # Path A realignment P0.1 (D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\NPDEV_REALIGNMENT_PLAN):
+    # scripts/policy/constitution.json lands the Constitution as structured data instead of an
+    # unversioned document nothing ratchets against. A law can be aspirational, but it cannot claim
+    # `enforcement: enforced` for free -- this fails the moment one does with no real, existing
+    # checker behind it, so the honesty of the claim is mechanical, not a matter of trust.
+    Write-Host '[41/41] Checking every enforced Constitution law names a real checker...'
+    & $py "scripts/quality/check-constitution-coverage.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a Constitution law claims enforcement=enforced with no real checker behind it, or its checker is missing/dangling: see scripts/quality/check-constitution-coverage.py output above, and scripts/policy/constitution.json"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red
