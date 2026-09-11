@@ -11,6 +11,7 @@ import com.npdev.generator.emitters.BusinessUiEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
 import com.npdev.generator.emitters.EntityEmitter;
+import com.npdev.generator.emitters.ExtensionInventoryEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.InfoPageEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
@@ -372,6 +373,12 @@ public final class GeneratorFacade {
         // that existed -- and stops being safe with a third (MySQL has no native UUID).
         new ConversionHookEmitter(databasePlan == null ? null : databasePlan.engine())
                 .emit(model, modelSourcePath, outRoot);
+
+        // Path A / P0.3: the escape surface (trusted-source assets, conversions[].javaHook,
+        // plugin-mounted in-process controllers, plugin packages) made visible as a generated
+        // artifact instead of only discoverable by grep.
+        new ExtensionInventoryEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);
+
         new GeneratedFolderSignatureEmitter().emit(outRoot);
 
         // Path A / P0.2: the Stage 0 constitutional guardrail (never previously called from any
