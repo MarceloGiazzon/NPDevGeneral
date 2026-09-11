@@ -15,6 +15,8 @@ import com.npdev.dsl.v1.ast.GuidePageAst;
 import com.npdev.dsl.v1.ast.GuidePageGadgetAst;
 import com.npdev.dsl.v1.ast.LifecycleAst;
 import com.npdev.dsl.v1.ast.ModelAst;
+import com.npdev.dsl.v1.ast.OrchestrationActionAst;
+import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.PanelActionAst;
 import com.npdev.dsl.v1.ast.PanelAst;
 import com.npdev.dsl.v1.ast.PanelDataSourceAst;
@@ -63,10 +65,10 @@ import java.util.Set;
  *   <li><b>Java, not Python.</b> Pack/context composition and {@code qualifierId::Name}
  *       qualification exist only in {@code ModelSourceResolver}/{@code JsonModelParser}. A second
  *       implementation walking the same graph is REG-108's exact shape.</li>
- *   <li><b>Reads the EFFECTIVE model.</b> Fields arrive by inheritance ({@code extends}), so a
- *       naive "is this name in {@code concept.getFields()}?" check reports inherited fields as
- *       missing. {@link #effectiveFields(ConceptAst)} mirrors
- *       {@code ConceptValidation.resolveEffective}'s own walk, cycle guard included.</li>
+ *   <li><b>Reads the EFFECTIVE model.</b> Inheritance ({@code specializes}/{@code extends}) is
+ *       already flattened by {@code ModelResolver} before this class ever runs (P3.1: the sole
+ *       inheritance-walking lane), so {@code effectiveFields} just reads a concept's own
+ *       (already-merged) field list -- no separate walk needed here.</li>
  *   <li><b>Three-state resolution.</b> See {@link Resolution}. "Could not evaluate" is recorded as
  *       such and never rounded down to "fine".</li>
  *   <li><b>Deterministic.</b> Insertion-ordered collections throughout, and {@link #edges()} is
@@ -95,6 +97,11 @@ public final class ReferenceIndex {
     public static final String SITE_CONCEPT_REFERENCE_PICKER_COLUMNS = "concept.field.reference.pickerColumns";
     public static final String SITE_CONCEPT_DOMAIN_TYPE = "concept.field.domainType";
     public static final String SITE_CONCEPT_LIFECYCLE_STATUS_FIELD = "concept.lifecycle.statusField";
+    /** P2.3 follow-up: a concept-nested event's {@code triggerMode} (create/update/delete) means
+     *  generated CRUD publishes it automatically -- a real producer relationship the graph did not
+     *  model before, indistinguishable from an event nothing ever produces. Always RESOLVED: this
+     *  is metadata on the event's own declaration, not a name that could fail to resolve. */
+    public static final String SITE_CONCEPT_EVENT_TRIGGER_MODE = "concept.events.triggerMode";
     public static final String SITE_CONCEPT_INDEX_FIELDS = "concept.indexes.fields";
     public static final String SITE_CONCEPT_UI_IMAGE_FIELD = "concept.ui.imageField";
     public static final String SITE_CONCEPT_UI_SEARCH_FIELDS = "concept.ui.searchFields";
@@ -172,6 +179,13 @@ public final class ReferenceIndex {
     public static final String SITE_CONVERSION_FIELD = "conversion.field";
     public static final String SITE_CONVERSION_MATCH_CONCEPT = "conversion.match.concept";
 
+    /** P2.3 follow-up: a {@code scheduleEvent} orchestration action's event -- the third of three
+     *  event-production mechanisms the graph did not model before this. {@code
+     *  OrchestrationValidation} already checks this exact reference for existence ("schedule event
+     *  not found"), so this site is excluded from {@code ReferenceIntegrityValidation}'s generic
+     *  sweep the same way every other already-owned site is. */
+    public static final String SITE_ORCHESTRATION_ACTION_EVENT = "orchestration.actions.event";
+
     public static final String KIND_FIELD = "field";
     public static final String KIND_CONCEPT = "concept";
     public static final String KIND_QUERY = "query";
@@ -187,6 +201,7 @@ public final class ReferenceIndex {
     public static final String KIND_EXPRESSION = "expression";
     public static final String KIND_GENERATED_ACTION = "generatedAction";
     public static final String KIND_PARAMETER = "parameter";
+    public static final String KIND_ORCHESTRATION = "orchestration";
 
     private final List<ReferenceEdge> edges;
 
@@ -419,10 +434,12 @@ public final class ReferenceIndex {
 
         List<ReferenceEdge> walk() {
             conceptEdges();
+            eventTriggerModeEdges();
             panelEdges();
             queryEdges();
             procedureEdges();
             flowEdges();
+            orchestrationEdges();
             aggregateEdges();
             autoPanelEdges();
             selectorEdges();
@@ -430,6 +447,57 @@ public final class ReferenceIndex {
             documentEdges();
             conversionEdges();
             return edges;
+        }
+
+        /**
+         * P2.3 follow-up: a concept-nested event's {@code triggerMode} means generated CRUD
+         * publishes it automatically on create/update/delete -- a real producer relationship with no
+         * step anywhere naming it. Always RESOLVED: {@code conceptName} is the event's own
+         * declaration, already indexed by {@code JsonModelParser}, not a free-text reference that
+         * could fail to resolve; a blank/unknown owner just means the event never gets an edge here.
+         */
+        private void eventTriggerModeEdges() {
+            for (var event : nullSafe(model.getEvents())) {
+                if (event == null || !hasText(event.getTriggerMode()) || !hasText(event.getConceptName())) {
+                    continue;
+                }
+                if (!conceptsByLower.containsKey(lower(event.getConceptName()))) {
+                    continue;
+                }
+                add(KIND_CONCEPT, event.getConceptName(), SITE_CONCEPT_EVENT_TRIGGER_MODE,
+                        "events[" + safe(event.getName()) + "].triggerMode", KIND_EVENT, event.getName(),
+                        null, Resolution.RESOLVED);
+            }
+        }
+
+        // -- orchestrations -------------------------------------------------------------------
+
+        /**
+         * P2.3 follow-up: a {@code scheduleEvent} action's event is the third event-production
+         * mechanism the graph did not model before this. Every other action type ({@code
+         * callCapability}, {@code create}) is already indexed via other sites the concept/capability
+         * edges above cover; this class adds only what those do not.
+         */
+        private void orchestrationEdges() {
+            for (OrchestrationAst rule : nullSafe(model.getOrchestrationRules())) {
+                if (rule == null || !hasText(rule.getName())) {
+                    continue;
+                }
+                String owner = rule.getName();
+                String base = "orchestrations[" + owner + "].actions";
+                List<OrchestrationActionAst> actionSequence = !nullSafe(rule.getActions()).isEmpty()
+                        ? rule.getActions()
+                        : (rule.getAction() == null ? List.of() : List.of(rule.getAction()));
+                int position = 0;
+                for (OrchestrationActionAst action : actionSequence) {
+                    if (action != null && "scheduleevent".equals(lower(action.getType()))
+                            && hasText(action.getEvent())) {
+                        named(KIND_ORCHESTRATION, owner, SITE_ORCHESTRATION_ACTION_EVENT,
+                                base + "[" + position + "].event", KIND_EVENT, action.getEvent(), eventNames);
+                    }
+                    position++;
+                }
+            }
         }
 
         // -- concepts -----------------------------------------------------------------------
@@ -771,20 +839,21 @@ public final class ReferenceIndex {
         }
 
         /** The concept a reference field points at, or null when the field is absent or not a
-         *  reference. Walks the effective (inherited) field list, not just the declared one. */
+         *  reference. Reads the concept's own (already-inheritance-merged) field list -- P3.1:
+         *  ModelResolver is the sole inheritance-walking lane; a concept reaching here is always
+         *  post-resolution, so there is no separate parent chain left to walk. */
         private String referenceTargetOf(String conceptName, String fieldName) {
             ConceptAst concept = conceptsByLower.get(lower(conceptName));
-            while (concept != null) {
-                for (FieldAst field : nullSafe(concept.getFields())) {
-                    if (field != null && lower(field.getName()).equals(lower(fieldName))) {
-                        ReferenceSemanticsAst semantics = field.getReferenceSemantics();
-                        String target = semantics != null && hasText(semantics.getTarget())
-                                ? semantics.getTarget() : field.getReferenceTarget();
-                        return hasText(target) ? target : null;
-                    }
+            if (concept == null) {
+                return null;
+            }
+            for (FieldAst field : nullSafe(concept.getFields())) {
+                if (field != null && lower(field.getName()).equals(lower(fieldName))) {
+                    ReferenceSemanticsAst semantics = field.getReferenceSemantics();
+                    String target = semantics != null && hasText(semantics.getTarget())
+                            ? semantics.getTarget() : field.getReferenceTarget();
+                    return hasText(target) ? target : null;
                 }
-                String parent = concept.getExtendsName();
-                concept = hasText(parent) ? conceptsByLower.get(lower(parent)) : null;
             }
             return null;
         }
@@ -1444,9 +1513,12 @@ public final class ReferenceIndex {
          * UNRESOLVED, because "field X of a concept that does not exist" is one defect reported by
          * the concept edge, not two.
          *
-         * <p>Mirrors {@code ConceptValidation.resolveEffective}: walk {@code extends} upward,
-         * parent fields first, with a cycle guard. {@code specializes} is deliberately NOT walked
-         * -- specialization is already flattened into the effective model before this runs.
+         * <p>P3.1: this used to walk {@code extends} upward itself, with its own cycle guard
+         * ({@code specializes} deliberately not walked). That walk was already dead in practice --
+         * the concept arriving here is always post-{@code ModelResolver}, which flattens
+         * {@code specializes ?? extends} into the concept's own field list and nulls out both
+         * references, so the walk never found a parent to visit. ModelResolver is now the sole
+         * inheritance-walking lane; this just reads the concept's own (already-merged) fields.
          */
         private Set<String> effectiveFields(String conceptName) {
             String key = lower(conceptName);
@@ -1459,16 +1531,10 @@ public final class ReferenceIndex {
                 return null;
             }
             Set<String> names = new LinkedHashSet<>();
-            Set<String> visited = new LinkedHashSet<>();
-            ConceptAst current = concept;
-            while (current != null && visited.add(lower(current.getName()))) {
-                for (FieldAst field : nullSafe(current.getFields())) {
-                    if (field != null && hasText(field.getName())) {
-                        names.add(lower(field.getName()));
-                    }
+            for (FieldAst field : nullSafe(concept.getFields())) {
+                if (field != null && hasText(field.getName())) {
+                    names.add(lower(field.getName()));
                 }
-                String parent = current.getExtendsName();
-                current = hasText(parent) ? conceptsByLower.get(lower(parent)) : null;
             }
             Set<String> result = Set.copyOf(names);
             effectiveFieldsCache.put(key, result);

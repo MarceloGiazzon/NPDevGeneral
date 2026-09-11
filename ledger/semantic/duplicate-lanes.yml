@@ -1,0 +1,41 @@
+schemaVersion: npdev-duplicate-lanes.v1
+# Path A Phase 1 (P1.2, NPDEV_PATH_A_REALIGNMENT_PLAN.md): register of mechanism pairs (or larger
+# groups) doing approximately one job, so "is this a duplicate lane?" is answerable by a query
+# instead of a re-read of the tree. Each lane carries a verdict:
+#   collapse           -- should become one implementation; scheduled work exists or is needed
+#   keep-with-reason   -- looks duplicated but isn't (different inputs/outputs/lifecycle)
+#   already-collapsed  -- was duplicated, now isn't; kept as a record of the fix
+#
+# Lanes 1-4 were seeded from NPDEV_PATH_A_REALIGNMENT_PLAN.md section 1.3(b): four sites walked the
+# concept inheritance edge (specializes/extends), three of them computing an "effective" merged
+# concept, and only one honouring `specializes` at all. P3.1 (2026-09-11) collapsed all four into
+# one: helpers/check_task.py's inheritanceLanes checker now reports exactly 1 site (ModelResolver).
+
+lanes:
+  - id: 1
+    title: "ModelResolver.mergeConcept -- specializes-honouring inheritance walk"
+    mechanism: "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/resolution/ModelResolver.java:246 (mergeConcept), reads specializes ?? extends"
+    behavior: "Inherits fields (add-only -- an override is a hard ILLEGAL_OVERRIDE refusal), invariants (override allowed when a local invariant declares override:true against a named base invariant), events, lifecycle, ui, access, indexes, module, origin. Runs unconditionally, first, inside SemanticValidator.validateWithWarnings and ModelCompiler.compile -- both throw/short-circuit on its ModelResolutionException before any other lane below ever sees the model."
+    verdict: already-collapsed
+    notes: "P3.1: this is now the SOLE remaining inheritance-walking lane, unchanged by the collapse (it was already correct and already matched Decision D2's answer -- add-only fields, override allowed for ui/access/lifecycle/named invariants -- verified by reading mergeConcept/mergeInvariants/mergePresentationMetadata directly, not inferred). Lanes 2-4 below were made to consume its already-resolved output instead of re-walking."
+
+  - id: 2
+    title: "ModelCompiler.resolveEffective -- extends-only inheritance walk, opposite override policy"
+    mechanism: "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java:1275 (resolveEffective)"
+    behavior: "Was: reads extends only (specializes invisible here); merges fields via a map put, override silently wins -- the opposite policy from lane 1. Now: a cache-backed repackaging of the already-resolved concept's own fields/invariants/lifecycle into an EffectiveEntityDef, no walk."
+    verdict: already-collapsed
+    notes: "The 'two lanes disagree' framing turned out to describe dead code, not a live defect: compile(modelAst) already called ModelResolver first (line 159, pre-dating this register) and passed its FLATTENED concepts (extends/specializes nulled by mergeConcept) into compileResolved -- so entity.getExtendsName() here was always null in practice, and the override-conflict path could never execute. Confirmed by reading the call graph, not assumed. Simplified to remove the now-provably-dead walk; same call site, same return shape, zero behavior change."
+
+  - id: 3
+    title: "ConceptValidation.resolveEffective + validateInheritanceGraph -- extends-only, cycle/unknown-base checks blind to specializes"
+    mechanism: "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/ConceptValidation.java:708 (validateInheritanceGraph, DELETED), :754 (resolveEffective, simplified)"
+    behavior: "Was: read extends only; cycle/unknown-base checks blind to specializes. Now: validateInheritanceGraph + detectInheritanceCycle deleted outright (and their sole call site in SemanticValidator.java removed); resolveEffective simplified to a direct fields/invariants repackaging, same as lane 2."
+    verdict: already-collapsed
+    notes: "The claim 'a specializes-only cycle passes validation unnoticed' does NOT hold for the real entry point and was disproven empirically before deleting anything: SemanticValidator.validateWithWarnings calls ModelResolver().resolve(modelAst) FIRST (line 106) and returns immediately on ModelResolutionException -- ModelResolver's own cycle guard is generic over specializes??extends, so it throws before ConceptValidation ever runs. Added DslSpecializationTest.validatorRejectsSpecializesOnlyCycle, ran it BEFORE any deletion: it already passed (BUILD SUCCESSFUL) against the pre-collapse tree, confirming validateInheritanceGraph/detectInheritanceCycle were unreachable dead code, not a live gap. That test now stands as the permanent regression lock. resolveEffective's parent-walk branch was equally dead (same reason) and its callers (validateConceptsAndFields, FlowValidation, ReferenceValidation) are unaffected -- same signature, same cache, no behavior change for real input."
+
+  - id: 4
+    title: "ReferenceIndex effective-fields walk -- documented-not-enforced mirror of lane 3"
+    mechanism: "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/xref/ReferenceIndex.java (effectiveFields, and a second undocumented site: referenceTargetOf) -- both simplified"
+    behavior: "Was: walked extends upward for xref purposes, with its own cycle guard, in TWO places (effectiveFields's own javadoc admitted mirroring lane 3; referenceTargetOf was an undocumented second copy the original inventory missed). Now: both read the concept's own already-merged field list directly, no walk."
+    verdict: already-collapsed
+    notes: "Both real call sites of ReferenceIndex.build (ModelXrefMain.java, ReferenceIntegrityValidation.java) already resolve via ModelResolver before calling it, so both walks were dead for the same reason as lanes 2-3. One test (ReferenceIndexTest.inheritedFieldsAreNotReportedAsMissing) called ReferenceIndex.build on a RAW un-resolved model directly, bypassing that contract -- fixed to resolve first, matching how the class is actually used in production, rather than kept alive by testing at the wrong seam."

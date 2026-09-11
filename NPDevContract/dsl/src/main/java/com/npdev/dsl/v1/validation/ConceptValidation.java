@@ -705,52 +705,15 @@ final class ConceptValidation {
     }
 
 
-    static void validateInheritanceGraph(Map<String, ConceptAst> entitiesByLower, List<String> errors) {
-        Set<String> globallyVisited = new HashSet<>();
-
-        for (ConceptAst entity : entitiesByLower.values()) {
-            String entityKey = normalize(entity.getName());
-
-            String parentName = entity.getExtendsName();
-            if (parentName != null && !parentName.isBlank()) {
-                ConceptAst parent = entitiesByLower.get(normalize(parentName));
-                if (parent == null) {
-                    errors.add("Entity " + entity.getName() + ": extends unknown base " + parentName);
-                } else if (normalize(parentName).equals(entityKey)) {
-                    errors.add("Entity " + entity.getName() + ": cannot extend itself");
-                }
-            }
-
-            detectInheritanceCycle(entity, entitiesByLower, globallyVisited, new HashSet<>(), errors);
-        }
-    }
-
-    private static void detectInheritanceCycle(
-            ConceptAst current,
-            Map<String, ConceptAst> entitiesByLower,
-            Set<String> globallyVisited,
-            Set<String> stack,
-            List<String> errors
-    ) {
-        String key = normalize(current.getName());
-        if (globallyVisited.contains(key)) return;
-        if (!stack.add(key)) {
-            errors.add("Inheritance cycle detected involving entity " + current.getName());
-            return;
-        }
-
-        String parentName = current.getExtendsName();
-        if (parentName != null && !parentName.isBlank()) {
-            ConceptAst parent = entitiesByLower.get(normalize(parentName));
-            if (parent != null) {
-                detectInheritanceCycle(parent, entitiesByLower, globallyVisited, stack, errors);
-            }
-        }
-
-        stack.remove(key);
-        globallyVisited.add(key);
-    }
-
+    // P3.1 (Path A realignment, duplicate-lanes.yml lane 3): this used to walk `extends` itself to
+    // detect cycles/unknown bases and to merge parent+child fields into an "effective" concept. Both
+    // are now dead code in practice: SemanticValidator.validateWithWarnings always runs
+    // ModelResolver.resolve() first, which walks `specializes ?? extends` generically (existence,
+    // cycle, add-only field merge) and throws before this class ever sees the model -- every concept
+    // reaching here already has its inheritance fully flattened (extends/specializes nulled out by
+    // ModelResolver's merge). ModelResolver is now the SOLE inheritance-walking lane; this method is
+    // just a cache-backed repackaging of an already-resolved concept's own fields/invariants for the
+    // callers below that expect an EffectiveEntity.
     static EffectiveEntity resolveEffective(
             ConceptAst entity,
             Map<String, ConceptAst> entitiesByLower,
@@ -761,43 +724,9 @@ final class ConceptValidation {
         String key = normalize(entity.getName());
         EffectiveEntity cached = cache.get(key);
         if (cached != null) return cached;
-
-        if (!stack.add(key)) {
-            errors.add("Inheritance cycle detected involving entity " + entity.getName());
-            return new EffectiveEntity(List.of(), List.of());
-        }
-
-        LinkedHashMap<String, FieldAst> fieldsByLower = new LinkedHashMap<>();
-        List<InvariantAst> invariants = new ArrayList<>();
-
-        String parentName = entity.getExtendsName();
-        if (parentName != null && !parentName.isBlank()) {
-            ConceptAst parent = entitiesByLower.get(normalize(parentName));
-            if (parent != null) {
-                EffectiveEntity parentEffective = resolveEffective(parent, entitiesByLower, cache, stack, errors);
-                for (FieldAst parentField : parentEffective.fields()) {
-                    fieldsByLower.put(normalize(parentField.getName()), parentField);
-                }
-                invariants.addAll(parentEffective.invariants());
-            }
-        }
-
-        for (FieldAst field : entity.getFields()) {
-            String fieldKey = normalize(field.getName());
-            FieldAst parentField = fieldsByLower.get(fieldKey);
-            if (parentField != null) {
-                errors.add("Entity " + entity.getName() + ": duplicate field name in inheritance: "
-                        + field.getName() + " (already declared in base concept)");
-                continue;
-            }
-            fieldsByLower.put(fieldKey, field);
-        }
-
-        invariants.addAll(entity.getInvariants());
-
-        EffectiveEntity effective = new EffectiveEntity(new ArrayList<>(fieldsByLower.values()), invariants);
+        EffectiveEntity effective = new EffectiveEntity(
+                new ArrayList<>(entity.getFields()), new ArrayList<>(entity.getInvariants()));
         cache.put(key, effective);
-        stack.remove(key);
         return effective;
     }
 
