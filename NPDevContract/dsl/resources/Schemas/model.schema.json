@@ -1361,6 +1361,10 @@
           "type": "string",
           "minLength": 1
         },
+        "specializesFloat": {
+          "type": "boolean",
+          "description": "P3.4 (Decision D3): when this concept specializes a pack-contributed base, the parent is pinned by default to the pack version this app was last generated against -- generation refuses once the pack has moved unless this is explicitly set to true, opting this concept into always tracking the pack's current version. Ignored when the base is not pack-contributed."
+        },
         "truthLevel": {
           "type": "string",
           "enum": [

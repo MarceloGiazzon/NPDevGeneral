@@ -353,6 +353,86 @@ final class PackDependencyGraphWalker {
             ModelSourceResolver.recordOrigin(
                     qualifier, packNode, digestFor(packFile, fromByPackId.getOrDefault(packId, "")), state);
         }
+
+        if (enforceLock) {
+            checkSpecializationPinning(modelFile, resolved);
+        }
+    }
+
+    /**
+     * P3.4 (NPDEV_PATH_A_REALIGNMENT_PLAN.md Decision D3): a specialization whose resolved base
+     * concept is pack-contributed stays PINNED by default to the pack version this app was last
+     * successfully generated against ({@code npdev.lock}'s {@code migratedVersion} -- the exact
+     * same field {@link #applyMigrationChains} already reads, never a second versioning mechanism).
+     * The moment the pack's own declared {@code version} has moved since then, generation refuses
+     * unless the specializing concept opts in with {@code "specializesFloat": true}.
+     *
+     * <p>Deliberately runs here (JSON-node layer, same as {@link #checkLock}/{@link
+     * #applyMigrationChains}) rather than in {@code ModelResolver}: {@link
+     * ModelSourceResolver.ResolutionState#originByQualifiedMemberName} -- populated by the {@code
+     * recordOrigin} calls in the loop just above -- is the one place that already knows which pack
+     * (if any) contributed a given qualified concept name, so no second lookup mechanism is needed
+     * and the check runs before the (potentially expensive) full AST resolution.
+     *
+     * <p>Never called for {@code resolveForCli} (mirrors {@link #checkLock}/{@link
+     * #applyMigrationChains}'s own {@code enforceLock}-only guard): a {@code pack add/update/why}
+     * invocation's merge output is never consumed by its callers, so there is no reason to risk a
+     * pinning refusal aborting it.
+     */
+    private void checkSpecializationPinning(Path modelFile, ObjectNode resolved) throws IOException {
+        JsonNode conceptsNode = resolved.get("concepts");
+        if (conceptsNode == null || !conceptsNode.isArray()) {
+            return;
+        }
+        PackLockFile existingLock = PackLockFile.exists(rootDirectory) ? PackLockFile.read(rootDirectory) : null;
+        Map<String, ModelSourceResolver.PackOrigin> conceptOrigins =
+                state.originByQualifiedMemberName.getOrDefault("concepts", Map.of());
+
+        for (JsonNode conceptNode : conceptsNode) {
+            if (!conceptNode.isObject()) {
+                continue;
+            }
+            ObjectNode concept = (ObjectNode) conceptNode;
+            String specializesName = ModelSourceResolver.textOrBlank(concept.get("specializes"));
+            if (specializesName.isBlank()) {
+                specializesName = ModelSourceResolver.textOrBlank(concept.get("extends"));
+            }
+            if (specializesName.isBlank()) {
+                continue;
+            }
+            boolean floats = concept.has("specializesFloat") && concept.get("specializesFloat").asBoolean(false);
+            if (floats) {
+                continue;
+            }
+            ModelSourceResolver.PackOrigin baseOrigin = conceptOrigins.get(specializesName);
+            if (baseOrigin == null) {
+                // Base isn't pack-contributed (an app's own root concept), or unresolved -- the
+                // latter is already refused by ModelResolver's own BASE_NOT_FOUND check.
+                continue;
+            }
+            String packId = baseOrigin.packId();
+            ObjectNode packNode = packNodeById.get(packId);
+            if (packNode == null) {
+                continue;
+            }
+            String currentVersion = ModelSourceResolver.textOrBlank(packNode.get("version"));
+            String migratedVersion = existingLock != null && existingLock.packs().containsKey(packId)
+                    ? existingLock.packs().get(packId).migratedVersion()
+                    : "";
+            if (migratedVersion.isBlank() || migratedVersion.equals(currentVersion)) {
+                // Never generated before (first-ever generate has nothing to drift from), or the
+                // pack hasn't moved since the last successful generate -- nothing to refuse.
+                continue;
+            }
+            String conceptName = ModelSourceResolver.textOrBlank(concept.get("name"));
+            throw ModelSourceResolver.error(modelFile, "/concepts", "PARENT_VERSION_DRIFT: Concept '" + conceptName
+                    + "' specializes '" + specializesName + "' from pack '" + packId + "', which has moved from "
+                    + migratedVersion + " to " + currentVersion + " since this app was last generated -- "
+                    + "specializations are pinned by default (Decision D3). Declare \"specializesFloat\": true on '"
+                    + conceptName + "' to adopt the pack's new parent shape, or review the change and run "
+                    + "'npdev generate' again once confirmed (the next successful generate re-pins to "
+                    + currentVersion + ").");
+        }
     }
 
     private ObjectNode loadAndResolvePack(Path packFile, int depth) throws IOException {
