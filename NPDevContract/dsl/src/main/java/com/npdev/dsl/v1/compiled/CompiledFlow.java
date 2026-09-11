@@ -15,6 +15,7 @@ public final class CompiledFlow {
     private final boolean startEndpoint;
     private final CompiledFlowSchedule schedule;
     private final CompiledOrigin origin;
+    private final String uid;
 
     public CompiledFlow(String name, String concept, List<CompiledFlowStep> steps) {
         this(name, concept, null, steps, null, null, null);
@@ -88,6 +89,23 @@ public final class CompiledFlow {
             CompiledFlowSchedule schedule,
             CompiledOrigin origin
     ) {
+        this(name, concept, mode, steps, inputSchema, outputSchema, action, startEndpoint, schedule, origin, null);
+    }
+
+    /** P2.1: a stable identity for this flow, generated once and never reused -- see getUid. */
+    public CompiledFlow(
+            String name,
+            String concept,
+            String mode,
+            List<CompiledFlowStep> steps,
+            CompiledSchema inputSchema,
+            CompiledSchema outputSchema,
+            CompiledActionMetadata action,
+            boolean startEndpoint,
+            CompiledFlowSchedule schedule,
+            CompiledOrigin origin,
+            String uid
+    ) {
         this.name = name;
         this.concept = concept;
         this.mode = mode;
@@ -98,6 +116,7 @@ public final class CompiledFlow {
         this.startEndpoint = startEndpoint;
         this.schedule = schedule;
         this.origin = origin;
+        this.uid = uid;
     }
 
     public String getName() { return name; }
@@ -133,5 +152,11 @@ public final class CompiledFlow {
     /** PACK-2: pack-attribution provenance, or null if this flow is not pack-contributed. */
     public CompiledOrigin getOrigin() {
         return origin;
+    }
+
+    /** P2.1: a stable identity for this flow, generated once and never reused
+     *  (npdev migrate assign-uids stamps one); null if the flow declares none. */
+    public String getUid() {
+        return uid;
     }
 }

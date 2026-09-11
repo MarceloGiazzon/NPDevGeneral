@@ -550,7 +550,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toObjectMap(node.get("metadata")),
                 optionalText(node, "onValidate"),
                 // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> writer -> HERE.
-                toAggregateInvariants(node.get("invariants"))
+                toAggregateInvariants(node.get("invariants")),
+                optionalText(node, "uid")
         );
     }
 
@@ -923,7 +924,8 @@ public final class CompiledModelCanonicalJsonReader {
                     toExecutionPolicy(operationNode.get("executionPolicy"))
             ));
         }
-        return new CompiledCapability(text(node, "name"), optionalText(node, "type"), operations, toOrigin(node.get("origin")));
+        return new CompiledCapability(text(node, "name"), optionalText(node, "type"), operations,
+                toOrigin(node.get("origin")), optionalText(node, "uid"));
     }
 
     private static CompiledEvent toEvent(JsonNode node) {
@@ -932,7 +934,7 @@ public final class CompiledModelCanonicalJsonReader {
             payload.add(new CompiledEventField(text(payloadNode, "name"), text(payloadNode, "type")));
         }
         return new CompiledEvent(text(node, "name"), optionalText(node, "conceptName"), payload,
-                optionalText(node, "triggerMode"), toOrigin(node.get("origin")));
+                optionalText(node, "triggerMode"), toOrigin(node.get("origin")), optionalText(node, "uid"));
     }
 
     private static CompiledFlow toFlow(JsonNode node) {
@@ -950,7 +952,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toActionMetadata(node.get("action")),
                 booleanValue(node, "startEndpoint"),
                 toFlowSchedule(node.get("schedule")),
-                toOrigin(node.get("origin"))
+                toOrigin(node.get("origin")),
+                optionalText(node, "uid")
         );
     }
 
@@ -1131,7 +1134,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toGroupByFields(node),
                 toAggregateFunctions(node),
                 optionalText(node, "having"),
-                toOrigin(node.get("origin"))
+                toOrigin(node.get("origin")),
+                optionalText(node, "uid")
         );
     }
 
@@ -1176,7 +1180,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toStringList(node.get("permissionRequirements")),
                 optionalText(node, "tracePolicy"),
                 toGeneratedActionDescriptor(node.get("actionDescriptor")),
-                toObjectMap(node.get("metadata"))
+                toObjectMap(node.get("metadata")),
+                optionalText(node, "uid")
         );
     }
 
@@ -1284,7 +1289,8 @@ public final class CompiledModelCanonicalJsonReader {
                 toObjectMap(node.get("explainability")),
                 toObjectMap(node.get("metadata")),
                 optionalText(node, "guidePage"),
-                toOrigin(node.get("origin"))
+                toOrigin(node.get("origin")),
+                optionalText(node, "uid")
         );
     }
 

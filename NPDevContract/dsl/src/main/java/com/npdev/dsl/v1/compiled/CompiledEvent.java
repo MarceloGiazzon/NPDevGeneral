@@ -10,6 +10,7 @@ public final class CompiledEvent {
     private final List<CompiledEventField> payload;
     private final String triggerMode;
     private final CompiledOrigin origin;
+    private final String uid;
 
     public CompiledEvent(String name, List<CompiledEventField> payload) {
         this(name, null, payload);
@@ -33,11 +34,24 @@ public final class CompiledEvent {
             String triggerMode,
             CompiledOrigin origin
     ) {
+        this(name, conceptName, payload, triggerMode, origin, null);
+    }
+
+    /** P2.1: a stable identity for this event, generated once and never reused -- see getUid. */
+    public CompiledEvent(
+            String name,
+            String conceptName,
+            List<CompiledEventField> payload,
+            String triggerMode,
+            CompiledOrigin origin,
+            String uid
+    ) {
         this.name = name;
         this.conceptName = conceptName;
         this.payload = payload == null ? List.of() : new ArrayList<>(payload);
         this.triggerMode = triggerMode;
         this.origin = origin;
+        this.uid = uid;
     }
 
     public String getName() { return name; }
@@ -48,6 +62,10 @@ public final class CompiledEvent {
 
     /** PACK-2: pack-attribution provenance, or null if this event is not pack-contributed. */
     public CompiledOrigin getOrigin() { return origin; }
+
+    /** P2.1: a stable identity for this event, generated once and never reused
+     *  (npdev migrate assign-uids stamps one); null if the event declares none. */
+    public String getUid() { return uid; }
 
     public List<CompiledEventField> getPayloadFields() {
         return Collections.unmodifiableList(payload);

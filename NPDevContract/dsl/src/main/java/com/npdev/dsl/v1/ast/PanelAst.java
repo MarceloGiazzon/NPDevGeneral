@@ -16,7 +16,8 @@ public record PanelAst(
         Map<String, Object> explainability,
         Map<String, Object> metadata,
         String guidePage,
-        OriginAst origin
+        OriginAst origin,
+        String uid
 ) {
     public PanelAst {
         dataSources = dataSources == null ? List.of() : List.copyOf(dataSources);
@@ -42,6 +43,26 @@ public record PanelAst(
             String guidePage
     ) {
         this(name, route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions,
-                explainability, metadata, guidePage, null);
+                explainability, metadata, guidePage, null, null);
+    }
+
+    /** Pre-P2.1 convenience constructor -- uid defaults to null (no stable identity declared). */
+    public PanelAst(
+            String name,
+            String route,
+            String title,
+            List<PanelDataSourceAst> dataSources,
+            PanelLayoutAst layout,
+            List<PanelFieldBindingAst> fieldBindings,
+            String visibility,
+            String enabledWhen,
+            List<PanelActionAst> actions,
+            Map<String, Object> explainability,
+            Map<String, Object> metadata,
+            String guidePage,
+            OriginAst origin
+    ) {
+        this(name, route, title, dataSources, layout, fieldBindings, visibility, enabledWhen, actions,
+                explainability, metadata, guidePage, origin, null);
     }
 }

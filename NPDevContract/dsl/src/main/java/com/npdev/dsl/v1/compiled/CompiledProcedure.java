@@ -13,7 +13,8 @@ public record CompiledProcedure(
         List<String> permissionRequirements,
         String tracePolicy,
         CompiledGeneratedActionDescriptorSpec actionDescriptor,
-        Map<String, Object> metadata
+        Map<String, Object> metadata,
+        String uid
 ) {
     public CompiledProcedure(
             String name,
@@ -36,8 +37,26 @@ public record CompiledProcedure(
                 permissionRequirements,
                 tracePolicy,
                 null,
-                metadata
+                metadata,
+                null
         );
+    }
+
+    /** Pre-P2.1 convenience constructor -- uid defaults to null (no stable identity declared). */
+    public CompiledProcedure(
+            String name,
+            String description,
+            List<CompiledProcedureParameter> parameters,
+            List<CompiledProcedureVariable> variables,
+            List<CompiledProcedureStep> steps,
+            CompiledSchema returns,
+            List<String> permissionRequirements,
+            String tracePolicy,
+            CompiledGeneratedActionDescriptorSpec actionDescriptor,
+            Map<String, Object> metadata
+    ) {
+        this(name, description, parameters, variables, steps, returns, permissionRequirements, tracePolicy,
+                actionDescriptor, metadata, null);
     }
 
     public CompiledProcedure {

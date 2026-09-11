@@ -799,6 +799,11 @@
           "type": "string",
           "minLength": 1
         },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this aggregate, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model aggregate's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
+        },
         "root": {
           "type": "string",
           "minLength": 1
@@ -2424,6 +2429,11 @@
           "type": "string",
           "minLength": 1
         },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this capability, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model capability's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
+        },
         "type": {
           "type": "string",
           "minLength": 1
@@ -2521,6 +2531,11 @@
           "type": "string",
           "minLength": 1
         },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this event, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model event's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
+        },
         "specializes": {
           "type": "string",
           "minLength": 1
@@ -2617,6 +2632,11 @@
         "name": {
           "type": "string",
           "minLength": 1
+        },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this flow, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model flow's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
         },
         "concept": {
           "type": "string",
@@ -3726,6 +3746,11 @@
           "type": "string",
           "minLength": 1
         },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this query, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model query's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
+        },
         "concept": {
           "type": "string",
           "minLength": 1
@@ -3898,6 +3923,11 @@
         "name": {
           "type": "string",
           "minLength": 1
+        },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this procedure, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model procedure's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
         },
         "description": {
           "type": "string",
@@ -4210,6 +4240,11 @@
         "name": {
           "type": "string",
           "minLength": 1
+        },
+        "uid": {
+          "type": "string",
+          "pattern": "^[a-z0-9]{8,32}$",
+          "description": "REG-209 (B1 lift, P2.1 extension): a stable identity for this panel, generated once and never reused (npdev migrate assign-uids stamps one). When a live element's persisted uid matches a model panel's uid but the name differs, the rename is resolved by identity -- declared by construction, no renamedFrom needed. Optional: a model with no uids behaves exactly as before."
         },
         "route": {
           "type": "string",
