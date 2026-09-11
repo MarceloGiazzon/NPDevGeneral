@@ -127,21 +127,35 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                 "src/main/java/com/npdev/generated/controllers/GeneratedQueryController.java",
                 templates.render("business-ui-query-controller.mustache", ctx)
         );
+        // Path A P6.1: the shell (index/app/style + shell.js/shell.css) carries zero model data,
+        // so this context is identical for every app built against the same platform version --
+        // deterministic generation (check-deterministic-generation.ps1) is unaffected. It exists
+        // only to stamp a version identity into an otherwise-anonymous copy; see
+        // NpdevUiShellVersion and docs/UI_CONTRACT.md's "Shell versioning" section.
+        Map<String, Object> shellCtx = Map.of(
+                "shellVersion", NpdevUiShellVersion.SHELL_VERSION,
+                "uiContractCompatMin", NpdevUiShellVersion.UI_CONTRACT_COMPAT_MIN,
+                "uiContractCompatMax", NpdevUiShellVersion.UI_CONTRACT_COMPAT_MAX
+        );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/index.html",
-                templates.render("business-ui-index.mustache", Map.of())
+                templates.render("business-ui-index.mustache", shellCtx)
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/app.js",
-                templates.render("business-ui-app.mustache", Map.of())
+                templates.render("business-ui-app.mustache", shellCtx)
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/style.css",
-                templates.render("business-ui-style.mustache", Map.of())
+                templates.render("business-ui-style.mustache", shellCtx)
         );
         writer.writeRelative(
                 "src/main/resources/static/npdev-business-ui/generated-ui-manifest.json",
                 manifestJson(model, persistedConcepts, superUserRole, resolver, fieldOrigins)
+        );
+        writer.writeRelative(
+                "src/main/resources/static/npdev-business-ui/shell-manifest.json",
+                shellManifestJson()
         );
 
         // The shared frame (top bar + left nav) is now the platform default for EVERY generated
@@ -151,8 +165,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // without workspace::Menu simply renders an empty System section (shell.js's own
         // GET /api/workspace_menus 404s harmlessly and falls back to an empty list); its System
         // section is the ONLY thing gated on that concept's presence.
-        writer.writeRelative("src/main/resources/static/shell.css", templates.render("shell.css.mustache", Map.of()));
-        writer.writeRelative("src/main/resources/static/shell.js", templates.render("shell.js.mustache", Map.of()));
+        writer.writeRelative("src/main/resources/static/shell.css", templates.render("shell.css.mustache", shellCtx));
+        writer.writeRelative("src/main/resources/static/shell.js", templates.render("shell.js.mustache", shellCtx));
         if (conceptsByName.containsKey(MENU_CONCEPT_NAME)) {
             writer.writeRelative("src/main/resources/npdev-seed/workspace-menu-seed.json",
                     menuSeedJson(persistedConcepts, model));
@@ -409,6 +423,26 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             return OBJECT_MAPPER.writeValueAsString(root) + System.lineSeparator();
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to serialize generated business UI manifest", exception);
+        }
+    }
+
+    /**
+     * Path A P6.1: a small, model-independent stamp declaring which version of the platform
+     * shell this app was generated with, and which runtime UI contract version(s) that shell
+     * build is compatible with -- so a generated app references a version instead of embedding
+     * an anonymous, unversioned copy. See NpdevUiShellVersion and docs/UI_CONTRACT.md.
+     */
+    private static String shellManifestJson() {
+        Map<String, Object> root = new LinkedHashMap<>();
+        root.put("shellVersion", NpdevUiShellVersion.SHELL_VERSION);
+        Map<String, Object> compat = new LinkedHashMap<>();
+        compat.put("min", NpdevUiShellVersion.UI_CONTRACT_COMPAT_MIN);
+        compat.put("max", NpdevUiShellVersion.UI_CONTRACT_COMPAT_MAX);
+        root.put("uiContractCompat", compat);
+        try {
+            return OBJECT_MAPPER.writeValueAsString(root) + System.lineSeparator();
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to serialize shell version manifest", exception);
         }
     }
 

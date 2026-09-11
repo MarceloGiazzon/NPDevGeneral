@@ -1,6 +1,13 @@
 (function () {
   "use strict";
 
+  // Path A P6.1: this shell is a versioned platform artifact (docs/UI_CONTRACT.md's "Shell
+  // versioning"), not an anonymous per-app copy -- the same identifiers are stamped into
+  // shell-manifest.json alongside app.js. Bumped only in NpdevUiShellVersion.
+  var NPDEV_UI_SHELL_VERSION = "{{{shellVersion}}}";
+  var NPDEV_UI_SHELL_CONTRACT_COMPAT = { min: "{{{uiContractCompatMin}}}", max: "{{{uiContractCompatMax}}}" };
+  window.NPDevUiShell = { version: NPDEV_UI_SHELL_VERSION, contractCompat: NPDEV_UI_SHELL_CONTRACT_COMPAT };
+
   // Runtime contract for a field.widget="custom" trusted-source widget (see TrustedSourceEmitter's
   // "widget" kind): the author's separately-loaded, hash-locked, safety-scanned script calls
   // window.NpdevCustomWidgets.register(field.customWidgetRef, { render(field, value) => HTMLElement })

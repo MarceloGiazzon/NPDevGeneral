@@ -18,6 +18,12 @@
 (function () {
   "use strict";
 
+  // Path A P6.1: same shell version identity as business-ui-app.mustache and
+  // shell-manifest.json -- see NpdevUiShellVersion and docs/UI_CONTRACT.md.
+  var NPDEV_UI_SHELL_VERSION = "{{{shellVersion}}}";
+  var NPDEV_UI_SHELL_CONTRACT_COMPAT = { min: "{{{uiContractCompatMin}}}", max: "{{{uiContractCompatMax}}}" };
+  window.NPDevUiShell = window.NPDevUiShell || { version: NPDEV_UI_SHELL_VERSION, contractCompat: NPDEV_UI_SHELL_CONTRACT_COMPAT };
+
   var TOKEN_STORAGE_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
   var BUSINESS_UI_ROOT = "/npdev-business-ui/index.html";
   var CACHE_TTL_MS = 60000;
