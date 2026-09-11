@@ -14,7 +14,17 @@
       "className": "CreateUsersProcedure",
       "method": "execute",
       "requiredRole": "admin",
-      "tenantScoped": true
+      "tenantScoped": true,
+      "inputs": [],
+      "outputs": [
+        "createdCount",
+        "users"
+      ],
+      "dependencies": [
+        "concept:User"
+      ],
+      "tests": [],
+      "truthStatus": "T2"
     },
     {
       "entryId": "panel-user-admin",
@@ -24,7 +34,18 @@
       "sha256": "71c2341c642db4d52e0f962de9a71320ecc03f961bf708248996b983eaf68bb8",
       "runtimeBinding": "panel:/users",
       "requiredRole": "admin",
-      "tenantScoped": true
+      "tenantScoped": true,
+      "inputs": [
+        "tenantId",
+        "requestedBy",
+        "source"
+      ],
+      "outputs": [],
+      "dependencies": [
+        "procedure-create-users"
+      ],
+      "tests": [],
+      "truthStatus": "T2"
     }
   ]
 }

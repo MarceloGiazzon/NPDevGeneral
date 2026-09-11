@@ -126,6 +126,10 @@ final class TrustedSourceManifest {
         return "";
     }
 
+    private static final Set<String> TRUTH_STATUSES = Set.of("T0", "T1", "T2", "T3", "T4", "T5", "T6");
+    private static final Set<String> TRUTH_STATUSES_REQUIRING_TESTS = Set.of("T4", "T5", "T6");
+    private static final String DEFAULT_TRUTH_STATUS = "T2";
+
     static List<ManifestEntry> readManifest(Path manifestPath, Path sourceRoot) throws IOException {
         JsonNode root = OBJECT_MAPPER.readTree(manifestPath.toFile());
         if (!"npdev-untrusted-extension-manifest.v1".equals(root.path("schemaVersion").asText())) {
@@ -146,7 +150,12 @@ final class TrustedSourceManifest {
                     text(node, "className"),
                     firstNonBlank(text(node, "method"), "execute"),
                     text(node, "requiredRole"),
-                    node.path("tenantScoped").asBoolean(false)
+                    node.path("tenantScoped").asBoolean(false),
+                    stringArray(node, "inputs"),
+                    stringArray(node, "outputs"),
+                    stringArray(node, "dependencies"),
+                    stringArray(node, "tests"),
+                    firstNonBlank(text(node, "truthStatus"), DEFAULT_TRUTH_STATUS)
             );
             validateManifestEntry(sourceRoot, entry);
             entries.add(entry);
@@ -187,6 +196,45 @@ final class TrustedSourceManifest {
         if (!"widget".equals(entry.kind()) && entry.requiredRole().isBlank()) {
             throw new IllegalStateException("Untrusted extension entry requiredRole is required: " + entry.relativePath());
         }
+        if (!TRUTH_STATUSES.contains(entry.truthStatus())) {
+            throw new IllegalStateException("Untrusted extension truthStatus must be one of "
+                    + TRUTH_STATUSES + ": " + entry.relativePath());
+        }
+        for (String test : entry.tests()) {
+            if (!isSafeRelativePath(test)) {
+                throw new IllegalStateException("Unsafe untrusted extension test path: " + test);
+            }
+            Path testPath = sourceRoot.resolve(test).normalize();
+            if (!testPath.startsWith(sourceRoot) || !Files.isRegularFile(testPath)) {
+                throw new IllegalStateException("Untrusted extension declares a test file that is missing: " + test);
+            }
+        }
+        // Path A P5.1 (docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md's Truth Classification):
+        // "truth classification should never block creation, it only blocks false claims" -- T0-T3
+        // need no evidence, but a T4+ claim (Tested/EvidenceBacked/ReleaseApproved) with no declared
+        // test is exactly the false claim the rule means to block.
+        if (TRUTH_STATUSES_REQUIRING_TESTS.contains(entry.truthStatus()) && entry.tests().isEmpty()) {
+            throw new IllegalStateException("Untrusted extension truthStatus " + entry.truthStatus()
+                    + " requires at least one declared test: " + entry.relativePath());
+        }
+    }
+
+    private static List<String> stringArray(JsonNode node, String fieldName) {
+        JsonNode value = node == null ? null : node.get(fieldName);
+        if (value == null || value.isNull()) {
+            return List.of();
+        }
+        if (!value.isArray()) {
+            throw new IllegalStateException("Untrusted extension manifest entry field must be an array: " + fieldName);
+        }
+        List<String> result = new ArrayList<>();
+        for (JsonNode item : value) {
+            String text = item.asText("").trim();
+            if (!text.isEmpty()) {
+                result.add(text);
+            }
+        }
+        return List.copyOf(result);
     }
 
     static TrustedProcedure toProcedure(TrustedReference reference, ManifestEntry entry, Path sourceRoot) throws IOException {
