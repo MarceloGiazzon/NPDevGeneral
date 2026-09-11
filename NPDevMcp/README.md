@@ -17,6 +17,8 @@ Model Context Protocol server (JSON-RPC 2.0 over stdio) that wraps the portable 
 | `npdev_core_context` | The stable, prompt-cacheable authoring prefix — contract + curated schemas + golden models (`scripts/ai/build_core_context.py`). `manifest_only` returns just the content hash. |
 | `npdev_app_context` | The volatile per-app half: this model's contents + the constrained schema its output must satisfy. Goes **after** the core-context prefix. |
 | `npdev_search_examples` | Retrieve real, working example snippets (RAG; reads `build/npdev-ai/rag-index.json` — see `scripts/ai/build_rag_index.py`). |
+| `npdev_graph_explain` | "Why does this element exist?" — purely from a generated app's `npdev/semantic-graph.json`: which elements reference it and what it references. |
+| `npdev_graph_reuse` | "What would I reuse for this intent?" — keyword-ranks existing elements in that same graph against a free-text intent, with each candidate's own wiring. |
 | `npdev_migration_diff` | Classify a schema change safe-additive vs destructive; dry-run migration plan. |
 | `npdev_generate` | Run the real generator. **Slow + writes to disk — gate behind confirmation.** |
 

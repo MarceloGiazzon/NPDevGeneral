@@ -1,5 +1,6 @@
-"""Tests for NPDevMcp/server.py's three AI-authoring-bridge tools (W3.4, 2026-08-25 remediation
-plan / QUAL-32's COV-MCP finding): npdev_search_examples, npdev_search_fix, npdev_check_support.
+"""Tests for NPDevMcp/server.py's AI-authoring-bridge tools: originally the three from W3.4,
+2026-08-25 remediation plan / QUAL-32's COV-MCP finding (npdev_search_examples, npdev_search_fix,
+npdev_check_support), plus P2.4's semantic-graph consumers (npdev_graph_explain, npdev_graph_reuse).
 
 Before this file, `git ls-files` under NPDevMcp/ returned exactly server.py + README.md -- the
 surface an external agent actually drives had zero automated regression coverage. Stdlib-only
@@ -229,6 +230,192 @@ class JsonRpcDispatchTest(_WithBuildRoot):
         })
 
         self.assertEqual(-32602, response["error"]["code"])
+
+
+class _WithSemanticGraph(unittest.TestCase):
+    """Writes a hand-built semantic-graph.json (real shape from schemas/ai/semantic-graph.schema.json,
+    modeled on the npdev-canary sample) to a fresh temp dir for each test."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.graph_path = Path(self._tmp.name) / "semantic-graph.json"
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def write_graph(self, nodes: list, edges: list) -> None:
+        self.graph_path.write_text(json.dumps({
+            "schemaVersion": "npdev-semantic-graph.v1",
+            "model": "CanaryModel",
+            "summary": {"nodes": len(nodes), "edges": len(edges)},
+            "nodes": nodes,
+            "edges": edges,
+        }), encoding="utf-8")
+
+
+_CANARY_NODES = [
+    {"kind": "concept", "name": "CanaryTask"},
+    {"kind": "field", "name": "CanaryTask.priority"},
+    {"kind": "flow", "name": "CreateCanaryTask"},
+    {"kind": "panel", "name": "CanaryPanel"},
+    {"kind": "procedure", "name": "SaveCanaryTaskProcedure"},
+]
+_CANARY_EDGES = [
+    {"from": {"kind": "flow", "name": "CreateCanaryTask"}, "verb": "operatesOn",
+     "to": {"kind": "concept", "name": "CanaryTask"}, "site": "flow.concept",
+     "path": "flows[CreateCanaryTask].concept"},
+    {"from": {"kind": "panel", "name": "CanaryPanel"}, "verb": "calls",
+     "to": {"kind": "procedure", "name": "SaveCanaryTaskProcedure"}, "site": "panel.actions.procedure",
+     "path": "panels[CanaryPanel].actions[0].procedure"},
+]
+
+
+class ToolGraphExplainTest(_WithSemanticGraph):
+    def test_missing_graph_returns_actionable_error_not_a_crash(self):
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTask"})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("npdev_generate", result["content"][0]["text"])
+
+    def test_missing_name_is_rejected(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path)})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("name is required", result["content"][0]["text"])
+
+    def test_unknown_name_reports_similar_names_never_fabricates(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTsk"})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("no node named", result["content"][0]["text"])
+        self.assertIn("CanaryTask", result["content"][0]["text"])
+
+    def test_element_referenced_by_others_explains_why_it_exists(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTask"})
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual(1, len(payload["incomingEdges"]))
+        self.assertIn("CreateCanaryTask", payload["existsBecause"][0])
+        self.assertIn("exists because", payload["summary"])
+
+    def test_element_with_no_edges_says_so_explicitly(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTask.priority"})
+
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual([], payload["incomingEdges"])
+        self.assertEqual([], payload["outgoingEdges"])
+        self.assertIn("no recorded edges", payload["summary"])
+
+    def test_ambiguous_name_across_kinds_asks_for_disambiguation(self):
+        self.write_graph(_CANARY_NODES + [{"kind": "event", "name": "CanaryTask"}], _CANARY_EDGES)
+
+        result = server.tool_graph_explain({"graph_path": str(self.graph_path), "name": "CanaryTask"})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("ambiguous", result["content"][0]["text"])
+
+
+class ToolGraphReuseTest(_WithSemanticGraph):
+    def test_missing_intent_is_rejected(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_graph_reuse({"graph_path": str(self.graph_path), "intent": "  "})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("intent is required", result["content"][0]["text"])
+
+    def test_matching_intent_ranks_the_matching_node_with_its_wiring(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_graph_reuse({"graph_path": str(self.graph_path), "intent": "canary task priority"})
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        names = [c["node"]["name"] for c in payload["candidates"]]
+        self.assertIn("CanaryTask", names)
+        top = payload["candidates"][0]
+        self.assertGreater(top["score"], 0)
+
+    def test_no_matching_terms_returns_empty_list_not_a_fabricated_guess(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_graph_reuse({"graph_path": str(self.graph_path), "intent": "zzz nonexistent qqq"})
+
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual([], payload["candidates"])
+        self.assertIn("not that nothing relevant exists", payload["disclaimer"])
+
+
+class JsonRpcDispatchGraphTest(_WithSemanticGraph):
+    def test_tools_call_routes_to_graph_explain_and_wraps_the_result(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        response = server.handle_request({
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {"name": "npdev_graph_explain",
+                       "arguments": {"graph_path": str(self.graph_path), "name": "CanaryTask"}},
+        })
+
+        self.assertEqual(9, response["id"])
+        self.assertFalse(response["result"]["isError"])
+        payload = json.loads(response["result"]["content"][0]["text"])
+        self.assertEqual("CanaryTask", payload["element"]["name"])
+
+
+class GraphAcceptanceSliceP24Test(unittest.TestCase):
+    """P2.4's golden-scenario fixture: NPDevMcp/tests/fixtures/p2_4_canary_semantic_graph.json is a
+    frozen copy of a REAL generated app's npdev/semantic-graph.json (npdev-canary, P2.2's emitter,
+    verified byte-for-byte against the live Output/ copy on 2026-09-11), not a hand-simplified toy.
+
+    P2.4's doneWhen: the MCP/authoring path answers 'what would I reuse for this intent' and 'why
+    does this element exist' purely from the semantic graph. Each test below is one of those two
+    questions, answered only by calling the real tool function against this fixture -- no mocking,
+    no shortcut into the DSL/generator internals that produced the graph.
+    """
+
+    GRAPH_PATH = str(Path(__file__).resolve().parent / "fixtures" / "p2_4_canary_semantic_graph.json")
+
+    def test_why_does_this_element_exist(self):
+        result = server.tool_graph_explain({"graph_path": self.GRAPH_PATH, "name": "CanaryTask"})
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        # CanaryTask exists because a flow creates it, a procedure saves it, and a query reads it --
+        # exactly the three real incoming edges the canary generator emitted.
+        self.assertEqual(3, len(payload["incomingEdges"]))
+        reasons = " ".join(payload["existsBecause"])
+        self.assertIn("CreateCanaryTask", reasons)
+        self.assertIn("SaveCanaryTaskProcedure", reasons)
+        self.assertIn("OpenHighPriorityCanaryTasks", reasons)
+
+    def test_what_would_i_reuse_for_this_intent(self):
+        result = server.tool_graph_reuse({
+            "graph_path": self.GRAPH_PATH,
+            "intent": "show a high priority task on a panel",
+        })
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        names = [c["node"]["name"] for c in payload["candidates"]]
+        # The existing CanaryPanel + its priority-sorted query are real, reusable precedent for
+        # "show a high-priority task" -- reusing them (or seeing how they're wired) beats
+        # authoring a new panel/query from scratch.
+        self.assertIn("CanaryPanel", names)
+        self.assertIn("OpenHighPriorityCanaryTasks", names)
+        top = payload["candidates"][0]
+        self.assertTrue(top["alreadyWiredTo"], "the top candidate must show how it's already wired, "
+                                                "not just that its name matched")
 
 
 if __name__ == "__main__":
