@@ -171,9 +171,29 @@ byte-identical into every generated app — see Path A finding 1.3(a). `NpdevUiS
 (currently `npdev-ui-contract.v1`..`npdev-ui-contract.v1`). `BusinessUiEmitter` threads that identity
 into the shell templates (a JS constant, an HTML `<meta>` tag, a CSS comment) and into a dedicated
 `shell-manifest.json` stamp file alongside `generated-ui-manifest.json`, so a generated app carries a
-discoverable version rather than an anonymous copy. The shell still reads `./generated-ui-manifest.json`
-at runtime, not this contract's bundle endpoint, and nothing yet fails when shell and contract versions
-diverge — both are Path A P6.2.
+discoverable version rather than an anonymous copy.
 
 `layout.mustache` is not part of the shipped shell: it is never rendered by `BusinessUiEmitter` or
 included by any other template, so it does not carry a version stamp.
+
+### The shell now also consumes this contract's bundle endpoint (Path A P6.2)
+
+`./generated-ui-manifest.json` remains the shell's structural source of truth (routes, panels, nav) —
+this contract's bundle endpoint has no equivalent (`panels` is explicitly not exposed here; see "The
+platform's catalogs" above), so it cannot replace the manifest, only refine it. At boot,
+`business-ui-app.mustache` additionally fetches `GET .../ui/bundle?concept=X` once for every visible
+concept (`fetchUiContractBundle`) and overlays the response's permission-filtered `fields` (matched to
+the manifest's own fields by `name`/`fieldPath`) onto that concept's manifest fields
+(`applyUiContractFieldOverlay`) — `isFieldVisible`/`isFieldReadonlyByCondition` consult the overlay
+first, so a field the caller cannot actually read/write is hidden/read-only using the SERVER's real
+per-actor answer, not just the declared-presence guess `field.accessWriteScoped` provided before.
+
+Two conditions degrade to the manifest's prior (unfiltered) behavior, never a broken page: a fetch
+failure (network error, non-2xx), or a `schemaVersion` outside `NpdevUiShellVersion`'s declared compat
+range (compared numerically off the trailing `.vN`). Either logs `console.warn` plus a one-time
+"Live permission data unavailable..." toast (`warnUiContractDegraded`) so the degradation is visible,
+not silent. The bundle's `actions` catalog (declared PanelActions — label/confirmation/danger-level) is
+NOT consumed: the manifest's own concept `actions` are a different, simpler concept (fixed
+create/display/update/delete flags), not the same catalog, so overlaying one onto the other would
+conflate two unrelated concerns — left as a known, accepted boundary rather than force a shoehorned
+merge. Declared Panels/Store/Box View sections are likewise not covered (no concept to scope by).
