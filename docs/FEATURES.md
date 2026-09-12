@@ -1,11 +1,13 @@
 # NPDev features
 
-> **Verified 2026-08-05.** Every row is a declared capability in `model.schema.json`, and every
-> row previously marked now has a confirmed working example in the corpus:
-> `extends`, `specializes`, `sensitive`, `selectors`, `documents` and tenancy all appear in
-> `NPDevSamples/dsl-conformance-max`; `derivedExpression`/`defaultExpression` appear in a corpus
-> model each. **A feature list is a promise — this one is backed by examples that a gate keeps
-> exercising.**
+> **Verified 2026-08-05**, corpus-example claims (every row previously marked now has a confirmed
+> working example: `extends`, `specializes`, `sensitive`, `selectors`, `documents` and tenancy all
+> appear in `NPDevSamples/dsl-conformance-max`; `derivedExpression`/`defaultExpression` appear in a
+> corpus model each) **and re-spot-checked 2026-09-12** against the live schema/CLI/MCP source for
+> the numbers most likely to drift: field-type count, flow-step-type count, and MCP tool count. The
+> last one *had* drifted (see §8) — a reminder that this banner's date is a floor on staleness, not
+> a guarantee every row is still current. **A feature list is a promise — this one is backed by
+> examples that a gate keeps exercising**, but a full row-by-row re-audit is still due periodically.
 
 ---
 
@@ -133,7 +135,7 @@ processes, screens, permissions, and how it all changes over time.
 | **`npdev capabilities`** | what each storage engine can do — read from the dialects, so it always matches what the generator refuses |
 | **`npdev migrate`** | when NPDev's own DSL changes, a codemod rewrites your models |
 | **`npdev validate`** | typed, machine-readable diagnostics with the exact path and a suggested fix |
-| **MCP server + AI authoring** | 16 tools so an agent can author, validate, correct itself, and generate |
+| **MCP server + AI authoring** | 23 tools (`NPDevMcp/server.py`, re-counted 2026-09-12; was 16 at this doc's last full verification) so an agent can author, validate, correct itself, generate, and — added since 2026-08-05 — query the semantic reuse graph (`npdev_graph_explain`, `npdev_graph_reuse`), gate a diff before authoring (`npdev_author_diff_gate`, `npdev_author_submit`), and run one intent-to-runtime-proof loop (`npdev_close_loop`) |
 
 ---
 
