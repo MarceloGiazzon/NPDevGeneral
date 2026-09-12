@@ -1,0 +1,77 @@
+{
+  "$schemaVersion": "npdev-code-docs-zip-manifest.v1",
+  "description": "Content list for scripts/release/New-CodeDocsZip.ps1 -- a code+docs review snapshot of this repo. Paths are repo-relative with forward slashes, enumerated from 'git ls-files' (nothing untracked or gitignored can ever enter). The archive's TREE listing always covers EVERY tracked file (scripts/, ledger/, tests included, by name only); a file's actual bytes are staged into the zip only when it matches a 'contentInclude' pattern and no 'contentExclude' pattern -- exclude always wins. Edit this file to change what ships -- the script itself carries no path knowledge.",
+  "archiveBaseName": "npdev-code-docs",
+  "contentInclude": [
+    {
+      "pattern": "(^|/)src/main/",
+      "note": "All production Java + main resources for every module (dsl, kernel, adapters, generator, runtimehost, runtimehost-core, tools, db-history)."
+    },
+    {
+      "pattern": "^NPDevContract/schemas/",
+      "note": "JSON Schema contracts: runtime, kernel, generator, authoring."
+    },
+    {
+      "pattern": "^NPDevContract/dsl/resources/Schemas/",
+      "note": "The 4th model.schema.json mirror (see CLAUDE.md) -- kept so the four copies stay complete."
+    },
+    {
+      "pattern": "^NPDevContract/packs/",
+      "note": "Built-in packs shipped into every generated app: workspace, identity, project-tracker-demo."
+    },
+    {
+      "pattern": "^NPDevCli/[^/]+\\.py$",
+      "note": "The Python CLI (npdev_cli, npdev_monitor, npdev_explore, npdev_diagram, npdev_engines, migrations, ...). Top level only -- NPDevCli/tests/ is content-excluded, tree-listed only."
+    },
+    {
+      "pattern": "^NPDevCli/static_page_templates/.*\\.tpl$",
+      "note": "npdev_static_pages.py's HTML/CSS/JS templates (control-panel, app-tree, app-tree-v2, agent-prompter, properties, verification)."
+    },
+    {
+      "pattern": "^NPDevMcp/[^/]+\\.py$",
+      "note": "MCP server for AI authoring. Top level only -- NPDevMcp/tests/ is content-excluded, tree-listed only."
+    },
+    {
+      "pattern": "^NPDevManager/(src|ui|capabilities)/",
+      "note": "Tauri desktop Manager: Rust src, ui/, capabilities. fixtures/ (tests) and icons/ (binaries) are content-excluded below."
+    },
+    {
+      "pattern": "^NPDevManager/(Cargo\\.toml|Cargo\\.lock|tauri\\.conf\\.json|build\\.rs)$",
+      "note": "Manager's Rust/Tauri manifests."
+    },
+    {
+      "pattern": "^docs/",
+      "note": "Current, curated docs (index + architecture + maintainers + reference + security + adr + ai + external-ai-review). docs/archive/ and docs/beta/ are content-excluded below -- CLAUDE.md marks both 'historical', narrative only."
+    },
+    {
+      "pattern": "^README\\.md$",
+      "note": "Root repo overview."
+    }
+  ],
+  "contentExclude": [
+    {
+      "pattern": "(^|/)src/test/",
+      "note": "All Java test sources and test resources in every module -- tree-listed only."
+    },
+    {
+      "pattern": "^NPDevCli/tests/",
+      "note": "Python CLI tests -- tree-listed only."
+    },
+    {
+      "pattern": "^NPDevMcp/tests/",
+      "note": "MCP server tests -- tree-listed only."
+    },
+    {
+      "pattern": "^NPDevManager/fixtures/",
+      "note": "Manager test fixtures (doctor/monitor/explore JSON captures) -- tree-listed only."
+    },
+    {
+      "pattern": "^NPDevManager/icons/",
+      "note": "Binary PNG/ICO assets -- not code or docs; tree-listed only."
+    },
+    {
+      "pattern": "^docs/(archive|beta)/",
+      "note": "Historical/closed-programme docs (CLAUDE.md: 'read for narrative, never for status') -- tree-listed only."
+    }
+  ]
+}
