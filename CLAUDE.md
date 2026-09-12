@@ -115,6 +115,13 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   to preview). Enumerates via `git ls-files`, filters through
   `scripts/policy/source-zip-manifest.json`, writes to `<BuildRoot>\source-zip\`.
   **To change what ships, edit the manifest — the script holds no path knowledge.**
+- **Code+docs review snapshot:** `pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1`
+  (`-ListOnly` to preview). Same `git ls-files` + manifest pattern as `New-SourceZip.ps1`
+  (`scripts/policy/code-docs-zip-manifest.json`), writes to `<BuildRoot>\code-docs-zip\`, but the
+  TREE listing it emits (alongside the zip, and embedded as `TREE.txt` inside it) always names
+  **every** tracked file — scripts, ledger items, test classes included — while only files matching
+  a `contentInclude` pattern (production `src/main/`, schemas, packs, the CLI/MCP/Manager top-level
+  source, current `docs/`) get their actual bytes staged into the zip.
 - **Wrap long/noisy runs in the digest runner** so the full log goes to disk and only the verdict
   enters context: `python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`.
   Patterns live in `scripts/policy/output-digest-policy.json`; add a family there, never in the script.
