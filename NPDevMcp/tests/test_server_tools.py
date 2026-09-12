@@ -21,6 +21,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -554,6 +555,70 @@ class ToolAuthorTierSpecializationTest(unittest.TestCase):
         self.assertFalse(trail["specialization"]["applies"])
         self.assertIn("BASE_NOT_FOUND", trail["specialization"]["reason"])
         self.assertEqual("new-concept", payload["chosenTier"])
+
+
+class ToolCloseLoopTest(unittest.TestCase):
+    """P7.2: tool_close_loop is a thin CLI-argv builder over `npdev loop run`, same shape as
+    tool_build_and_run/tool_generate -- the CLI (run_closed_loop) is the real, already-unit-tested
+    implementation (NPDevCli/tests/test_closed_loop.py). These tests pin the argv this tool builds,
+    since that mapping is the one thing only this layer owns; a live end-to-end run (through this
+    exact tool) is recorded separately as this session's own P7.2 evidence."""
+
+    def test_missing_required_argument_is_a_tool_level_error_not_a_cli_call(self):
+        with patch("server.run_cli") as mock_run_cli:
+            result = server.tool_close_loop({"previous": "prev.json", "submitted": "sub.json"})
+
+        mock_run_cli.assert_not_called()
+        self.assertTrue(result["isError"])
+
+    def test_minimal_required_arguments_build_the_expected_argv(self):
+        with patch("server.run_cli", return_value={"ok": True, "stdout": "{}"}) as mock_run_cli:
+            server.tool_close_loop({
+                "previous": "prev.json", "submitted": "sub.json",
+                "config": "config.json", "output": "out-dir", "scenarios": "acceptance/",
+            })
+
+        args, kwargs = mock_run_cli.call_args
+        argv = args[0]
+        self.assertEqual([
+            "loop", "run",
+            "--previous", "prev.json", "--submitted", "sub.json",
+            "--config", "config.json", "--output", "out-dir", "--scenarios", "acceptance/",
+            "--timeout", "420",
+        ], argv)
+        self.assertEqual(480, kwargs["timeout"], "run_cli's own timeout must exceed the CLI's --timeout")
+
+    def test_every_optional_argument_maps_to_its_own_cli_flag(self):
+        with patch("server.run_cli", return_value={"ok": True, "stdout": "{}"}) as mock_run_cli:
+            server.tool_close_loop({
+                "previous": "prev.json", "submitted": "sub.json",
+                "config": "config.json", "output": "out-dir", "scenarios": "acceptance/",
+                "manifest": "manifest.json", "diff_gate_output": "diff-out/",
+                "port": 8194, "timeout": 60, "profile": "dev", "api_key": "dev-key",
+                "require_db_definition": True, "keep_running": True,
+            })
+
+        argv = mock_run_cli.call_args[0][0]
+        self.assertEqual([
+            "loop", "run",
+            "--previous", "prev.json", "--submitted", "sub.json",
+            "--config", "config.json", "--output", "out-dir", "--scenarios", "acceptance/",
+            "--manifest", "manifest.json", "--diff-gate-output", "diff-out/",
+            "--port", "8194", "--timeout", "60", "--profile", "dev", "--api-key", "dev-key",
+            "--require-db-definition", "--keep-running",
+        ], argv)
+
+    def test_result_is_passed_through_verbatim(self):
+        with patch("server.run_cli", return_value={"ok": True, "stdout": '{"schemaVersion": "npdev-closed-loop-report.v1", "ok": true}'}):
+            result = server.tool_close_loop({
+                "previous": "prev.json", "submitted": "sub.json",
+                "config": "config.json", "output": "out-dir", "scenarios": "acceptance/",
+            })
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual("npdev-closed-loop-report.v1", payload["schemaVersion"])
+        self.assertTrue(payload["ok"])
 
 
 if __name__ == "__main__":

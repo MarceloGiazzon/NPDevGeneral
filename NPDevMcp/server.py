@@ -26,6 +26,9 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
                            authoring diff-gate (model.json pair), or pack diff (pack.json pair)
   - npdev_generate       : run the real generator (slow/mutating -- gate in your client)
   - npdev_build_and_run  : GENERATE + BUILD + BOOT + health-check in one call (Move 10 D1)
+  - npdev_close_loop     : intent (manifest 'request') -> validated model -> generated app ->
+                           runtime proof, in ONE call: diffGate -> validate -> classify ->
+                           run+acceptance, stopping at the earliest refusal (P7.2 acceptance slice)
   - npdev_graph_reuse    : "what would I reuse for this intent" -- ranked over a generated app's
                            npdev/semantic-graph.json (P2.4 acceptance slice)
   - npdev_graph_explain  : "why does this element exist" -- its edges in that same graph
@@ -991,6 +994,52 @@ def tool_build_and_run(arguments: dict[str, Any]) -> dict[str, Any]:
     return _passthrough(result)
 
 
+def tool_close_loop(arguments: dict[str, Any]) -> dict[str, Any]:
+    """P7.2: wraps `npdev loop run` -- the AI loop's other missing half. `npdev_build_and_run`
+    proves GENERATE->BUILD->BOOT; this proves the whole authoring chain in ONE call: the manifest's
+    'request' field (the natural-language intent) -> diffGate (AI Authoring Contract) -> validate
+    (semantic model) -> classify -> run+acceptance (generated app + real runtime proof), stopping at
+    the earliest gate that refuses. Same CLI-argv-building pattern as tool_build_and_run: the CLI
+    (run_closed_loop) is the real, already-unit-tested implementation; this tool just runs it and
+    passes its structured npdev-closed-loop-report.v1 JSON straight through.
+    """
+    previous = arguments.get("previous")
+    submitted = arguments.get("submitted")
+    config = arguments.get("config")
+    output = arguments.get("output")
+    scenarios = arguments.get("scenarios")
+    if not (previous and submitted and config and output and scenarios):
+        return _text_error("previous, submitted, config, output and scenarios are required")
+    args = [
+        "loop", "run",
+        "--previous", previous, "--submitted", submitted,
+        "--config", config, "--output", output, "--scenarios", scenarios,
+    ]
+    if arguments.get("manifest"):
+        args += ["--manifest", arguments["manifest"]]
+    if arguments.get("diff_gate_output"):
+        args += ["--diff-gate-output", arguments["diff_gate_output"]]
+    port = arguments.get("port")
+    if port:
+        args += ["--port", str(port)]
+    timeout = int(arguments.get("timeout") or 420)
+    args += ["--timeout", str(timeout)]
+    if arguments.get("profile"):
+        args += ["--profile", arguments["profile"]]
+    if arguments.get("api_key"):
+        args += ["--api-key", arguments["api_key"]]
+    if arguments.get("require_db_definition"):
+        args += ["--require-db-definition"]
+    if arguments.get("keep_running"):
+        args += ["--keep-running"]
+    # Same slack-over-timeout reasoning as tool_build_and_run: the CLI's own bounded teardown
+    # (across diffGate+validate+classify+run+acceptance) should always end the run before run_cli's
+    # own timeout would, so a genuine over-budget run reports the CLI's richer per-stage report
+    # rather than run_cli's generic {"ok": false, "error": "cli timed out..."} envelope.
+    result = run_cli(args, timeout=timeout + 60)
+    return _passthrough(result)
+
+
 def tool_build_review_pack(arguments: dict[str, Any]) -> dict[str, Any]:
     mission_id = arguments.get("mission_id")
     if not mission_id:
@@ -1562,6 +1611,51 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "npdev_close_loop",
+        "description": (
+            "P7.2: close the loop in ONE call -- natural-language intent (the manifest's 'request' "
+            "field) -> validated semantic model -> generated app -> runtime proof. Wraps `npdev loop "
+            "run`: diffGate (AI Authoring Contract, refuses an undiffed/undeclared change) -> "
+            "validate (full structural + semantic validation) -> classify (SAFE_ADDITIVE / "
+            "BACKFILL_REQUIRED / MANUAL_REVIEW / METADATA_ONLY) -> run+acceptance (GENERATE+BUILD+"
+            "BOOT via npdev_build_and_run, then every approved *.scenario.json in 'scenarios' "
+            "executed against the real booted app -- the runtime proof). Stops at the EARLIEST gate "
+            "that refuses, same ordering npdev_author_diff_gate/npdev_validate/npdev_build_and_run "
+            "enforce individually -- this composes them rather than re-implementing any of them. "
+            "Returns npdev-closed-loop-report.v1: {ok, stoppedAt, diffGate, validate, classification, "
+            "run, acceptance}. stoppedAt names the first stage that did not pass (null when ok:true). "
+            "Slow and writes to disk (generates+builds+boots a real app) -- gate this behind "
+            "confirmation in your client, same as npdev_build_and_run."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "previous": {"type": "string", "description": "Path to the app's currently-live/previously-accepted model.json (I1)."},
+                "submitted": {"type": "string", "description": "Path to the Author's newly-submitted model.json."},
+                "manifest": {
+                    "type": "string",
+                    "description": (
+                        "Path to a npdev-authoring-submission.v1 manifest JSON file. Its 'request' "
+                        "field is the natural-language intent this whole run traces back to. "
+                        "Omitting it is itself refused at the diffGate (AUTHORING_MANIFEST_MISSING) "
+                        "-- the run still executes and reports that refusal rather than erroring."
+                    ),
+                },
+                "diff_gate_output": {"type": "string", "description": "Directory the diffGate's own report is written under."},
+                "config": {"type": "string", "description": "Path to an ai-generator-config.v1 JSON file -- same shape npdev_generate/npdev_build_and_run take."},
+                "output": {"type": "string", "description": "Directory to assemble the final generated app into."},
+                "scenarios": {"type": "string", "description": "Directory containing *.scenario.json acceptance fixtures -- the runtime-proof layer."},
+                "port": {"type": "integer", "description": "Server port to boot on. Default 8080."},
+                "timeout": {"type": "integer", "description": "Overall wall-clock budget in seconds across the WHOLE chain (diffGate..acceptance). Default 420."},
+                "profile": {"type": "string", "description": "Spring profile to activate at boot. Default 'dev'."},
+                "api_key": {"type": "string", "description": "X-Api-Key header value used for every scenario's HTTP calls. Default 'dev-key'."},
+                "require_db_definition": {"type": "boolean", "description": "Fail if db.definition.json is missing instead of defaulting to an InMemory database."},
+                "keep_running": {"type": "boolean", "description": "Skip the PORT_IN_USE pre-flight refusal (default: refused outright)."},
+            },
+            "required": ["previous", "submitted", "config", "output", "scenarios"],
+        },
+    },
+    {
         "name": "npdev_ingest_review_verdict",
         "description": (
             "ADR-0009: validates a verdict JSON file (must carry recordKind:'external-ai-verdict', "
@@ -1607,6 +1701,7 @@ TOOL_HANDLERS = {
     "npdev_impact": tool_impact,
     "npdev_generate": tool_generate,
     "npdev_build_and_run": tool_build_and_run,
+    "npdev_close_loop": tool_close_loop,
     "npdev_build_review_pack": tool_build_review_pack,
     "npdev_ingest_review_verdict": tool_ingest_review_verdict,
 }

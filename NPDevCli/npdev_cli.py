@@ -6657,6 +6657,7 @@ def run_acceptance(args: argparse.Namespace) -> dict:
     base_url = getattr(args, "base_url", None)
     if base_url:
         boot_result = {"ok": True, "baseUrl": base_url, "skipped": "boot skipped -- --base-url was supplied"}
+        api_key = getattr(args, "api_key", "dev-key")
     else:
         if not (args.model and args.config and args.output):
             raise CliError("acceptance run: --model/--config/--output are required unless --base-url is given.")
@@ -6678,9 +6679,28 @@ def run_acceptance(args: argparse.Namespace) -> dict:
                 "summary": {"total": 0, "approvedTotal": 0, "passed": 0, "failed": 0, "excludedUnapproved": 0},
             }
         base_url = boot_result["baseUrl"]
+        api_key = getattr(args, "api_key", "dev-key")
+        # T1/C2 removed the 'dev' profile's fixed admin key -- StartupValidator now refuses to boot
+        # without one supplied externally, so run_app's own BOOT phase already provisioned (or
+        # reused) a real per-app credential via ensure_api_key and named its file as apiKeyFile.
+        # The CLI's static --api-key default ("dev-key") can never match a freshly generated key
+        # anymore, so read that SAME file here instead of trusting the default -- guarded by
+        # existence (never present on the mocked run_app() unit tests) so nothing here writes to
+        # disk, only reads what BOOT already wrote. Found live while proving npdev_close_loop end
+        # to end (P7.2): every scenario failed with HTTP 401 invalid_api_key against a freshly
+        # generated app before this fix, because this line still hard-coded the pre-C2 key.
+        key_file = boot_result.get("apiKeyFile")
+        if key_file and Path(key_file).exists():
+            for raw_line in Path(key_file).read_text(encoding="utf-8").splitlines():
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                _, mapping = line.split("=", 1)
+                if mapping:
+                    api_key = mapping.split("=", 1)[0]
+                break
     scenarios_dir = Path(args.scenarios).expanduser().resolve()
     scenario_files = sorted(scenarios_dir.glob("*.scenario.json"))
-    api_key = getattr(args, "api_key", "dev-key")
     results = [
         _run_one_scenario(base_url, json.loads(sf.read_text(encoding="utf-8")), sf.name, api_key)
         for sf in scenario_files
@@ -6734,7 +6754,7 @@ def run_closed_loop(args: argparse.Namespace) -> dict:
     # 2. validate model -- refuses an illegal model (schema + full semantic validation).
     with tempfile.TemporaryDirectory(prefix="npdev-loop-validate-") as tmp:
         validate_report_path = Path(tmp) / "validation-report.json"
-        exit_code = run_validate_semantic(Path(args.submitted), validate_report_path)
+        exit_code = run_validate_semantic(Path(args.submitted), validate_report_path, quiet=True)
         report["validate"] = read_json(validate_report_path) if validate_report_path.exists() else None
         if exit_code != 0:
             report["stoppedAt"] = "validate"
@@ -8961,7 +8981,7 @@ def run_release_candidate(args: argparse.Namespace, root: Path) -> dict:
             "sha": manifest["sha"], "tag": manifest["tag"], "stepsRun": steps_run}
 
 
-def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
+def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: bool = False) -> int:
     """Run full structural + semantic validation via the standalone Java validator.
 
     Runs ModelValidatorMain, which runs the exact validation the generator runs -- without
@@ -8976,6 +8996,13 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
     4.61s -> 2.24s median on canonical-demo (see _default_ai_tools_jar for the full numbers), with a
     byte-identical report: the model path is the only environment-dependent value in it, and both
     paths hand the validator the same resolved absolute path.
+
+    quiet=True (P7.2): suppresses the stdout echo -- for a caller that embeds this report inside a
+    LARGER single JSON document (run_closed_loop's own npdev-closed-loop-report.v1) rather than
+    being the CLI's own top-level `validate` command. Without this, `npdev loop run --json`'s stdout
+    was two concatenated JSON documents (this function's own echo, then the loop's outer report)
+    whenever validation actually ran -- found live while proving npdev_close_loop end to end: any
+    real `json.loads(stdout)` consumer broke on "Extra data" past the first document.
     """
     root = repo_root()
     model = Path(model_path).expanduser().resolve()
@@ -9020,10 +9047,11 @@ def run_validate_semantic(model_path: Path, report_out: Path | None) -> int:
         report = read_json(report_target)
 
     _capture_validation(model, report)
-    print(json.dumps(report, indent=2))
-    _print_boundary_limits(report)
-    route = "warm" if warm_path else "gradle"
-    print(f"validate: {elapsed_ms} ms ({route} path)", file=sys.stderr)
+    if not quiet:
+        print(json.dumps(report, indent=2))
+        _print_boundary_limits(report)
+        route = "warm" if warm_path else "gradle"
+        print(f"validate: {elapsed_ms} ms ({route} path)", file=sys.stderr)
     return 2 if report.get("status") == "failed" else 0
 
 
