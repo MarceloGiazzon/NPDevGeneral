@@ -43,12 +43,21 @@
     self-contained document for pasting into an LLM context without unzipping anything. Written
     alongside the zip as <name>.bundle.txt and embedded inside the zip as BUNDLE.txt.
 
+.PARAMETER PrefaceFile
+    Path to a doc to prepend as orientation for a cold AI reader -- e.g. docs/NPDEV_CONCEPTS_DEEP_DIVE.md
+    (current, verified platform docs; NOT an external/unversioned vision doc, which risks feeding an
+    AI stale or aspirational claims as if they were current behavior). Relative paths resolve against
+    the workspace root. Embedded in the zip as PREFACE<ext> regardless of -EmitTextBundle, and also
+    prepended to the bundle text (ahead of TREE) when -EmitTextBundle is set.
+
 .EXAMPLE
     pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1
 .EXAMPLE
     pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1 -ListOnly
 .EXAMPLE
     pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1 -IncludeScripts -EmitTextBundle
+.EXAMPLE
+    pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1 -EmitTextBundle -PrefaceFile docs/NPDEV_CONCEPTS_DEEP_DIVE.md
 #>
 [CmdletBinding()]
 param(
@@ -58,7 +67,8 @@ param(
     [switch]$ListOnly,
     [switch]$KeepStaging,
     [switch]$IncludeScripts,
-    [switch]$EmitTextBundle
+    [switch]$EmitTextBundle,
+    [string]$PrefaceFile = ""
 )
 
 Set-StrictMode -Version Latest
@@ -111,9 +121,23 @@ if ($IncludeScripts) {
     $contentIncludeRules += New-NPDevZipRuleSet -Rules $optionalScripts
 }
 
+$prefaceFullPath = $null
+if (-not [string]::IsNullOrWhiteSpace($PrefaceFile)) {
+    $prefaceFullPath = if ([System.IO.Path]::IsPathRooted($PrefaceFile)) {
+        Normalize-NPDevPath $PrefaceFile
+    }
+    else {
+        Resolve-NPDevWorkspacePath $workspaceRoot $PrefaceFile
+    }
+    Ensure-NPDevFile $prefaceFullPath "preface file"
+}
+
 Write-NPDevInfo ("Workspace root        : " + $workspaceRoot)
 Write-NPDevInfo ("Manifest              : " + $ManifestPath)
 Write-NPDevInfo ("contentInclude rules  : " + $contentIncludeRules.Count + "   contentExclude rules: " + $contentExcludeRules.Count + "   IncludeScripts: " + [bool]$IncludeScripts)
+if ($prefaceFullPath) {
+    Write-NPDevInfo ("Preface file          : " + $prefaceFullPath)
+}
 
 if (-not (Test-NPDevCommandAvailable "git")) {
     throw "git is required to enumerate tracked files but was not found on PATH."
@@ -241,6 +265,13 @@ foreach ($path in $zippedPaths) {
 Set-Content -LiteralPath $treePath -Value $treeEntries -Encoding utf8
 Copy-Item -LiteralPath $treePath -Destination (Join-Path $stagingRoot "TREE.txt") -Force
 
+$prefaceRelativePath = $null
+if ($prefaceFullPath) {
+    $prefaceRelativePath = ($prefaceFullPath.Substring($workspaceRoot.Length) -replace "\\", "/").TrimStart("/")
+    $prefaceExtension = [System.IO.Path]::GetExtension($prefaceFullPath)
+    Copy-Item -LiteralPath $prefaceFullPath -Destination (Join-Path $stagingRoot ("PREFACE" + $prefaceExtension)) -Force
+}
+
 $bundlePath = $null
 if ($EmitTextBundle) {
     $bundlePath = Join-Path $OutputDir ([System.IO.Path]::GetFileNameWithoutExtension($ArchiveName) + ".bundle.txt")
@@ -250,6 +281,13 @@ if ($EmitTextBundle) {
     $bundleLines.Add("NPDev code+docs bundle -- generated " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + " (local)")
     $bundleLines.Add("Zipped (" + $(if ($IncludeScripts) { "code+docs+scripts" } else { "code+docs" }) + "): " + $zippedPaths.Count + " of " + $tracked.Count + " tracked files")
     $bundleLines.Add("")
+    if ($prefaceRelativePath) {
+        $bundleLines.Add("======== PREFACE (" + $prefaceRelativePath + ") ========")
+        $prefaceContent = Get-Content -LiteralPath $prefaceFullPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        if ($null -eq $prefaceContent) { $prefaceContent = "" }
+        $bundleLines.Add($prefaceContent)
+        $bundleLines.Add("")
+    }
     $bundleLines.Add("======== TREE (every tracked file; [zipped] = content included below) ========")
     $bundleLines.AddRange($treeEntries)
     $bundleLines.Add("")
@@ -287,6 +325,9 @@ $zipItem = Get-Item -LiteralPath $zipPath
 Write-Host ""
 Write-NPDevOk ("zip      : " + $zipItem.FullName + "  (" + [math]::Round($zipItem.Length / 1MB, 2) + " MB)")
 Write-NPDevOk ("tree     : " + $treePath + "  (also embedded as TREE.txt inside the zip)")
+if ($prefaceRelativePath) {
+    Write-NPDevOk ("preface  : " + $prefaceRelativePath + "  (embedded as PREFACE" + $prefaceExtension + " inside the zip" + $(if ($EmitTextBundle) { ", prepended to the bundle" } else { "" }) + ")")
+}
 if ($bundlePath) {
     $bundleItem = Get-Item -LiteralPath $bundlePath
     Write-NPDevOk ("bundle   : " + $bundleItem.FullName + "  (" + [math]::Round($bundleItem.Length / 1MB, 2) + " MB, also embedded as BUNDLE.txt inside the zip)")
