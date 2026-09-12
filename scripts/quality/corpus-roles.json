@@ -34,6 +34,7 @@
     "AppGen/apps/_official/WmsOffice": "showcase",
     "AppGen/apps/_official/WordLab": "showcase",
     "AppGen/apps/_scratch/bench-r37-proof": "repro-case",
+    "AppGen/apps/_scratch/p72-close-loop-proof": "repro-case",
     "AppGen/apps/_scratch/reg193-proof": "repro-case",
     "AppGen/apps/_scratch/seed-r32-bench": "repro-case",
     "AppGen/apps/aggregate-query-verify-h2local": "repro-case",

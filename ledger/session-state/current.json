@@ -1,20 +1,22 @@
 {
-  "closedAt": "2026-09-11T14:19:36.6011931Z",
+  "closedAt": "2026-09-12T04:09:16.0098541Z",
   "branch": "main",
-  "head": "190845ad",
-  "headSubject": "feat(path-a): P4.1 public/private boundaries on packs",
-  "summary": "Implemented and committed P4.1 (Phase 4) of NPDEV_PATH_A_REALIGNMENT_PLAN.md: public/private boundaries on packs. Added private[]/extensionPoints[] to pack.schema.json (both mirrors); enforced at ModelSourceResolver's existing QualifiedReferenceValidator choke point (the same mechanism D3 context-import gating uses) -- a reference from outside a pack to one of its own declared-private members refuses composition, naming the pack and the member; a pack's own members reference each other freely; a private concept flagged as an extensionPoint may still be specialized despite not being otherwise referenceable. Had to fix two real gaps found along the way: (1) rewriteConceptName previously validated only an already-qualified authored reference, never a bare name's RESOLVED qualified form -- silently missing the 'normal path' bare pack reference entirely; (2) resolvePackRoot didn't pass through the new private/extensionPoints keys at all (the established REG-108 schema-validates-then-vanishes shape), and concepts.specializes/extends was never wired into rewriteKnownMemberReferenceFields to begin with. Also fixed an unrelated pre-existing regression in ModelChangeClassifierTest (found while regression-testing): the P3.5 specialization-medical-invoice corpus sample broke its raw-compile corpus check because hasInlineConcepts() didn't know a non-empty concepts[] can still reference an unresolved pack-qualified base. Commit 190845ad.",
-  "nextStep": "Start P4.2 of NPDEV_PATH_A_REALIGNMENT_PLAN.md: cross-application reuse proof. doneWhen (helpers/tasks.json): 'Two corpus apps consume the same versioned pack, both generate and boot, and a check fails if the pack is forked rather than shared.' Marked checkable:false (MANUAL) in tasks.json, dependsOn P4.1 (now done). Needs: pick or create two corpus apps (AppGen/apps or NPDevSamples) that import the SAME versioned pack (npdev.lock pinning the same digest/version for both), verify both generate+build+boot, then add a checker that fails if the two apps' resolved pack content has DIFFERENT digests for the same declared pack id/version (i.e. one was forked/hand-copied instead of genuinely shared) -- likely belongs alongside check-pack-coverage.py or as a new scripts/quality/check-*.py wired into run-ai-knowledge-gate.ps1 per the script-inventory rules. After P4.2: P4.3 (a second/third first-party pack, contracts only, also MANUAL).",
+  "head": "2f375da1",
+  "headSubject": "feat(path-a): P7.1 -- rank reuse > specialization > new concept > untrusted extension",
+  "summary": "Closed Path A P7.2: added npdev_close_loop MCP tool wrapping 'npdev loop run' (intent-manifest 'request' -> diffGate -> validate -> classify -> generate+build+boot -> real acceptance-scenario runtime proof, one call, one traceable npdev-closed-loop-report.v1). Proving it live (not mocked) surfaced and fixed two real bugs: run_validate_semantic printed a second JSON doc to stdout inside the loop (Extra data on any real json.loads), and run_acceptance still hard-coded the pre-C2 'dev-key' default even though T1/C2 removed the dev profile's fixed admin key, so every scenario 401'd against a freshly booted app -- fixed by reading the boot's own apiKeyFile. Built a real corpus fixture (AppGen/apps/_scratch/p72-close-loop-proof, registered in corpus-roles.json) with a genuine additive model change and NL intent, and drove it through the actual MCP dispatch end to end to ok:true.",
+  "nextStep": "Path A Phase 7 (the plan's final phase per its dependency chain P2.4+P3.5+P4.2--P7.1--P7.2) is now fully closed. BUT helpers/check_task.py --all still shows MANUAL (not machine-checkable, NOT necessarily incomplete -- P6.2/P6.4 also show MANUAL despite being closed by commits already on main) for P3.2 (per-element inheritance policy), P3.3 (lineage/specialization delta), P3.4 (parent-version drift policy), P5.1-P5.4 (object manifests, customization provenance, regeneration-conflict outcomes, golden regen-survival test), and P6.2/P6.4 (already done per git log). Before picking a next task: grep git log for P3.2/P3.3/P3.4/P5.1/P5.2/P5.3/P5.4 commit messages to see which are genuinely still open vs already landed and just unverifiable by the script. If P5's regeneration-conflict work is genuinely open, it is the more foundational gap (everything else in the plan assumes regeneration behaves correctly).",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_REALIGNMENT_PLAN\\NPDEV_PATH_A_REALIGNMENT_PLAN.md",
   "blocked": "",
-  "verified": "NPDevContract:dsl:test full suite green (includes new PackVisibilityTest: 7/7 passing, plus SpecializationParentVersionDriftTest re-verified with no regressions from the rewriteConceptName/rewriteKnownMemberReferenceFields changes). NPDevGenerator:generator:test full suite green (510 tests, including the ModelChangeClassifierTest fix). check-schema-mirror-consistency.py, check-twin-pair-consistency.py, check-dsl-coverage.py, check-doc-inventory.py all green after the schema/resolver changes. Path A plan's own helpers/check_task.py --task P4.1 reports PASS (pack visibility keys: ['extensionPoints', 'private']).",
-  "dirtyCount": 2,
+  "verified": "NPDevCli tests.test_acceptance_runner + tests.test_closed_loop: 30/30 green after the api-key fix. NPDevMcp full suite (python -m unittest discover): 40/40 green, including 4 new tests for npdev_close_loop's argv construction; coverage.py measured NPDevMcp at 58% (was regressing to 53.05% against the 55.39% recorded floor before those tests were added). One real, live, non-mocked end-to-end run through the actual npdev_close_loop MCP dispatch (server.handle_request, not the bare CLI function) against a real generate+build+boot+acceptance cycle: ok:true, diffGate passed, validate 0 errors, classification SAFE_ADDITIVE, boot READY, 2/2 real acceptance scenarios passed. Did NOT re-run the full run-all-gates.ps1 after the fixes (ran it once before the api-key fix, found the coverage regression plus two pre-existing unrelated findings from last session's handoff (untriaged security-pattern hits, lineage-verify's missing corpusRole) -- neither touched -- then verified the specific deltas narrowly rather than repeating the ~8min full gate).",
+  "dirtyCount": 6,
   "dirtyFiles": [
+    " M NPDevCli/npdev_cli.py",
+    " M NPDevMcp/server.py",
+    " M NPDevMcp/tests/test_server_tools.py",
     " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
+    " M ledger/session-state/history.jsonl",
+    " M scripts/quality/corpus-roles.json"
   ],
-  "unpushed": 14,
-  "landedCommits": [
-    "190845ad feat(path-a): P4.1 public/private boundaries on packs"
-  ]
+  "unpushed": 0,
+  "landedCommits": []
 }
