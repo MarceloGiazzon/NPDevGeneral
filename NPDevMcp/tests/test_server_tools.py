@@ -418,5 +418,143 @@ class GraphAcceptanceSliceP24Test(unittest.TestCase):
                                                 "not just that its name matched")
 
 
+class ToolAuthorTierTest(_WithSemanticGraph):
+    """P7.1: reuse > specialization > new concept > untrusted extension, over the canary graph
+    for tiers 1/3/4 (specialization needs a real DSL model + the real resolver -- see
+    ToolAuthorTierSpecializationTest below)."""
+
+    def test_missing_intent_is_rejected(self):
+        result = server.tool_author_tier({"proposal": {"name": "Whatever"}})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("intent is required", result["content"][0]["text"])
+
+    def test_missing_proposal_is_rejected(self):
+        result = server.tool_author_tier({"intent": "track something"})
+
+        self.assertTrue(result["isError"])
+        self.assertIn("proposal is required", result["content"][0]["text"])
+
+    def test_reuse_wins_when_an_existing_element_matches_strongly(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_author_tier({
+            "intent": "canary task priority",
+            "proposal": {"name": "CanaryTaskV2"},
+            "graph_path": str(self.graph_path),
+        })
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual("reuse", payload["chosenTier"])
+        trail = {t["tier"]: t for t in payload["tierTrail"]}
+        self.assertTrue(trail["reuse"]["applies"])
+        self.assertFalse(trail["specialization"]["applies"])
+        self.assertFalse(trail["new-concept"]["applies"])
+        self.assertFalse(trail["untrusted-extension"]["applies"])
+
+    def test_new_concept_wins_with_no_inputs_and_no_untrusted_marker(self):
+        result = server.tool_author_tier({
+            "intent": "track something nobody has modeled yet",
+            "proposal": {"name": "BrandNewThing"},
+        })
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual("new-concept", payload["chosenTier"])
+        self.assertEqual(["reuse", "specialization"], payload["tiersSkippedForLackOfInput"])
+
+    def test_untrusted_extension_wins_and_flags_enforcement_risk_when_tiers_were_skipped(self):
+        result = server.tool_author_tier({
+            "intent": "embed a bespoke calendar widget",
+            "proposal": {"name": "BespokeCalendar", "implementation": {"mode": "untrustedExtension"}},
+        })
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual("untrusted-extension", payload["chosenTier"])
+        trail = {t["tier"]: t for t in payload["tierTrail"]}
+        self.assertIn("ENFORCEMENT RISK", trail["untrusted-extension"]["reason"])
+
+    def test_untrusted_extension_wins_without_risk_flag_when_reuse_was_actually_checked(self):
+        self.write_graph(_CANARY_NODES, _CANARY_EDGES)
+
+        result = server.tool_author_tier({
+            "intent": "zzz nonexistent qqq",
+            "proposal": {"name": "BespokeCalendar", "implementation": {"mode": "untrustedExtension"}},
+            "graph_path": str(self.graph_path),
+        })
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        self.assertEqual("untrusted-extension", payload["chosenTier"])
+        trail = {t["tier"]: t for t in payload["tierTrail"]}
+        # reuse WAS checked (graph_path given) and genuinely found nothing -- only specialization
+        # (no app_model_path given) should be named as an unproven skip.
+        self.assertIn("specialization", trail["untrusted-extension"]["reason"])
+        self.assertNotIn("reuse", trail["untrusted-extension"]["reason"])
+
+
+class ToolAuthorTierSpecializationTest(unittest.TestCase):
+    """P7.1 tier 2 has no standalone 'can X specialize Y' predicate -- these tests drive the REAL
+    DSL resolver (via a subprocess to NPDevCli/npdev_cli.py) on a synthetic probe model built next
+    to NPDevSamples/specialization-medical-invoice/Input/model.json, confirmed by hand against that
+    real corpus fixture on 2026-09-11: a clean specialization reports status=passed with empty
+    diagnostics; an unresolvable one reports a diagnostic whose message is prefixed BASE_NOT_FOUND:.
+    """
+
+    MODEL_PATH = str(
+        Path(__file__).resolve().parents[2]
+        / "NPDevSamples" / "specialization-medical-invoice" / "Input" / "model.json"
+    )
+
+    def test_probe_reports_resolves_cleanly_against_a_real_qualified_base(self):
+        result = server._probe_specialization(
+            self.MODEL_PATH,
+            {"name": "ProbeInvoiceSpecialization", "fields": [{"name": "extra", "type": "string", "required": False}]},
+            "invoicing::Invoice",
+        )
+
+        self.assertTrue(result["resolvesCleanly"], result.get("reason"))
+
+    def test_probe_reports_base_not_found_against_an_unqualified_or_unknown_base(self):
+        result = server._probe_specialization(
+            self.MODEL_PATH,
+            {"name": "ProbeInvoiceSpecialization", "fields": [{"name": "extra", "type": "string", "required": False}]},
+            "NoSuchConcept",
+        )
+
+        self.assertFalse(result["resolvesCleanly"])
+        self.assertIn("BASE_NOT_FOUND", result["reason"])
+
+    def test_full_tool_falls_through_to_new_concept_when_the_reuse_candidate_does_not_specialize(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            graph_path = Path(tmp) / "semantic-graph.json"
+            graph_path.write_text(json.dumps({
+                "schemaVersion": "npdev-semantic-graph.v1",
+                "model": "ProbeModel",
+                "summary": {"nodes": 1, "edges": 0},
+                "nodes": [{"kind": "concept", "name": "SomeUnrelatedConcept"}],
+                "edges": [],
+            }), encoding="utf-8")
+
+            # 5 terms, only "someunrelatedconcept" matches (score 1) -- enough to be the top
+            # (only) candidate, not enough to win tier 1 outright (required_score == term count).
+            result = server.tool_author_tier({
+                "intent": "someunrelatedconcept access policy review workflow",
+                "proposal": {"name": "ProbeInvoiceSpecialization", "fields": [{"name": "extra", "type": "string", "required": False}]},
+                "graph_path": str(graph_path),
+                "app_model_path": self.MODEL_PATH,
+            })
+
+        self.assertFalse(result["isError"])
+        payload = json.loads(result["content"][0]["text"])
+        trail = {t["tier"]: t for t in payload["tierTrail"]}
+        self.assertFalse(trail["reuse"]["applies"])
+        self.assertFalse(trail["specialization"]["applies"])
+        self.assertIn("BASE_NOT_FOUND", trail["specialization"]["reason"])
+        self.assertEqual("new-concept", payload["chosenTier"])
+
+
 if __name__ == "__main__":
     unittest.main()

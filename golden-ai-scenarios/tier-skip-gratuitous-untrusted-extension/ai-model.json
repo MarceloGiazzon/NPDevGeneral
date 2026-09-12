@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "ai-model.v1",
+  "app": {
+    "name": "Tier Skip Gratuitous Extension",
+    "kind": "expanded-beta-application"
+  },
+  "entities": [
+    {
+      "name": "Ticket",
+      "fields": [
+        {
+          "name": "title",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "name": "CreateTicket",
+      "entity": "Ticket",
+      "operation": "create"
+    }
+  ],
+  "panels": [
+    {
+      "panelId": "ticket-list",
+      "type": "entity-list",
+      "route": "/tickets",
+      "dataSource": {
+        "kind": "entity",
+        "name": "Ticket"
+      },
+      "requiredRole": "agent",
+      "tenantScoped": true,
+      "implementation": {
+        "mode": "untrustedExtension",
+        "language": "html",
+        "entrypoint": "ticket-list.html"
+      }
+    }
+  ],
+  "procedures": [
+    {
+      "procedureId": "close-ticket",
+      "type": "single-entity-command",
+      "inputs": [
+        {
+          "name": "ticketId",
+          "type": "uuid",
+          "required": true
+        }
+      ],
+      "outputs": [
+        {
+          "name": "closed",
+          "type": "boolean",
+          "required": true
+        }
+      ],
+      "sideEffectType": "single-entity",
+      "requiredRole": "agent",
+      "tenantScoped": true,
+      "allowedEntities": ["Ticket"],
+      "maxAffectedRows": 1
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "ticket-lifecycle",
+      "entity": "Ticket",
+      "states": ["Open", "Closed"],
+      "startState": "Open",
+      "terminalStates": ["Closed"],
+      "transitions": [
+        {
+          "name": "Close",
+          "from": "Open",
+          "to": "Closed",
+          "requiredRole": "agent"
+        }
+      ],
+      "tenantScoped": true
+    }
+  ],
+  "roles": [
+    {
+      "roleId": "agent",
+      "permissions": ["ticket:manage"]
+    }
+  ],
+  "tenancy": {
+    "mode": "shared-app-tenant-scoped-data",
+    "tenantIdField": "tenantId",
+    "testTenants": ["tenant-a", "tenant-b"]
+  },
+  "auth": {
+    "mode": "generated-test-token",
+    "principalFields": ["userId", "tenantId", "roles"],
+    "testUsers": [
+      {
+        "userId": "agent-a",
+        "tenantId": "tenant-a",
+        "roles": ["agent"]
+      },
+      {
+        "userId": "agent-b",
+        "tenantId": "tenant-b",
+        "roles": ["agent"]
+      }
+    ]
+  }
+}

@@ -29,6 +29,8 @@ that exposes the NPDev authoring pipeline as typed tools. It wraps the portable 
   - npdev_graph_reuse    : "what would I reuse for this intent" -- ranked over a generated app's
                            npdev/semantic-graph.json (P2.4 acceptance slice)
   - npdev_graph_explain  : "why does this element exist" -- its edges in that same graph
+  - npdev_author_tier    : ranks reuse > specialization > new concept > untrusted extension for an
+                           authoring intent and explains each choice (P7.1 acceptance slice)
 
 Zero third-party deps on purpose: it runs under any Python 3.9+ with no install step, and is
 deterministically testable by piping JSON-RPC frames to stdin.
@@ -662,6 +664,233 @@ def tool_graph_reuse(arguments: dict[str, Any]) -> dict[str, Any]:
     }, indent=2))
 
 
+def _proposal_declares_untrusted_extension(proposal: dict[str, Any]) -> bool:
+    """True if `proposal` itself declares an untrusted-extension escape hatch: a javaHook, a
+    metadata.untrustedExtensionEntrypoint, or a panel/procedure-style `implementation` block."""
+    if proposal.get("javaHook") is not None:
+        return True
+    if proposal.get("implementation") is not None:
+        return True
+    metadata = proposal.get("metadata")
+    if isinstance(metadata, dict) and metadata.get("untrustedExtensionEntrypoint"):
+        return True
+    return False
+
+
+_SPECIALIZATION_DIAGNOSTIC_CODES = ("BASE_NOT_FOUND", "ILLEGAL_OVERRIDE", "CONFLICT_DUPLICATE_MEMBER")
+
+
+def _probe_specialization(app_model_path: str, proposal: dict[str, Any], base_name: str) -> dict[str, Any]:
+    """P7.1 tier 2: there is no standalone 'can X specialize Y' predicate anywhere in the DSL --
+    the only way to answer it is to actually run the real resolver on a synthetic probe model and
+    read its diagnostics (confirmed against NPDevSamples/specialization-medical-invoice: a clean
+    specialization reports `status: passed, diagnostics: []`; an invalid one reports `status: failed`
+    with a diagnostic whose `message` is prefixed `BASE_NOT_FOUND:` / `ILLEGAL_OVERRIDE:` /
+    `CONFLICT_DUPLICATE_MEMBER:` -- the resolver has no separate typed `code` for these, unlike the
+    npdev-validation-report.v2 `code` field, which is always the generic `semantic_validation_error`).
+
+    The probe file is written as a SIBLING of app_model_path (not an unrelated temp dir) because a
+    pack-composed model's `$ref`s are relative -- moving the file elsewhere breaks pack resolution
+    before the resolver ever reaches the specialization question.
+    """
+    app_path = Path(app_model_path)
+    if not app_path.is_absolute():
+        app_path = repo_root() / app_path
+    try:
+        app_model = json.loads(app_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"resolvesCleanly": False, "reason": f"could not read/parse {app_model_path}: {exc}"}
+
+    concept_name = proposal.get("name")
+    if not concept_name:
+        return {"resolvesCleanly": False, "reason": "proposal.name is required to probe specialization"}
+
+    probe_concept = {k: v for k, v in proposal.items() if k not in ("javaHook", "implementation", "metadata")}
+    probe_concept["specializes"] = base_name
+    probe_concept.setdefault("fields", [])
+
+    probe_model = dict(app_model)
+    probe_model["concepts"] = list(app_model.get("concepts", [])) + [probe_concept]
+
+    probe_path = app_path.with_name(f"_npdev_author_tier_probe_{os.getpid()}.json")
+    try:
+        probe_path.write_text(json.dumps(probe_model, indent=2), encoding="utf-8")
+        result = run_cli(["validate", "model", str(probe_path), "--semantic"])
+    finally:
+        try:
+            probe_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    stdout = (result.get("stdout") or "").strip()
+    if not stdout:
+        return {"resolvesCleanly": False, "reason": "specialization probe produced no validation report"}
+    try:
+        report = json.loads(stdout)
+    except ValueError:
+        return {"resolvesCleanly": False, "reason": "specialization probe's validation report was not valid JSON"}
+
+    inheritance_failures = [
+        d.get("message", "")
+        for d in report.get("diagnostics", [])
+        if any(str(d.get("message", "")).startswith(code + ":") for code in _SPECIALIZATION_DIAGNOSTIC_CODES)
+        and concept_name in str(d.get("message", ""))
+    ]
+    if inheritance_failures:
+        return {"resolvesCleanly": False, "reason": "; ".join(inheritance_failures)}
+    if report.get("summary", {}).get("errors", 0) == 0:
+        # status may be "warning" (e.g. a missing UI label) -- irrelevant to whether the
+        # specialization mechanism itself resolved, so only a real error disqualifies this tier.
+        return {"resolvesCleanly": True, "reason": f"specializing '{concept_name}' from '{base_name}' resolves cleanly."}
+    # A failure unrelated to specialization (e.g. the proposal's own shape is malformed) is
+    # inconclusive for this tier, not a verdict against specializing -- never overclaim.
+    other_failures = [d.get("message", "") for d in report.get("diagnostics", [])]
+    return {
+        "resolvesCleanly": False,
+        "reason": (
+            "specialization probe was inconclusive -- the probe model failed validation for "
+            "reasons unrelated to BASE_NOT_FOUND/ILLEGAL_OVERRIDE/CONFLICT_DUPLICATE_MEMBER: "
+            + "; ".join(other_failures)
+        ),
+    }
+
+
+def tool_author_tier(arguments: dict[str, Any]) -> dict[str, Any]:
+    """P7.1 acceptance slice: rank reuse > specialization > new concept > untrusted extension for
+    an authoring intent, explaining each choice. Each tier is only ever reported `applies: true`
+    if it was ACTUALLY checked against real input (a generated app's semantic graph for reuse, the
+    real DSL resolver for specialization) -- a tier that could not be checked (missing graph_path /
+    app_model_path) is recorded as skipped, never silently treated as ruled out.
+    """
+    intent = (arguments.get("intent") or "").strip()
+    if not intent:
+        return _text_error("intent is required (free text describing what you're about to author)")
+    proposal = arguments.get("proposal")
+    if not isinstance(proposal, dict):
+        return _text_error(
+            "proposal is required (an object describing the candidate concept/element -- at least "
+            "'name', plus any of javaHook/implementation/metadata.untrustedExtensionEntrypoint if "
+            "it declares an untrusted-extension escape hatch)"
+        )
+    graph_path = arguments.get("graph_path")
+    app_model_path = arguments.get("app_model_path")
+    limit = int(arguments.get("limit") or 5)
+    declares_untrusted_extension = _proposal_declares_untrusted_extension(proposal)
+
+    trail: list[dict[str, Any]] = []
+    tiers_skipped: list[str] = []
+    reuse_candidates: list[dict[str, Any]] = []
+
+    # Tier 1: reuse.
+    if graph_path:
+        graph, err = _load_semantic_graph(graph_path)
+        if err:
+            trail.append({"tier": "reuse", "applies": False, "reason": err})
+        else:
+            nodes = graph.get("nodes", [])
+            edges = graph.get("edges", [])
+            terms = [t for t in _tokenize(intent) if t]
+            scored = []
+            for node in nodes:
+                haystack = f"{node.get('kind', '')} {node.get('name', '')}".lower()
+                score = sum(haystack.count(term) for term in terms)
+                if score > 0:
+                    scored.append((score, node))
+            scored.sort(key=lambda pair: pair[0], reverse=True)
+            for score, node in scored[:limit]:
+                related = [e for e in edges if _node_matches(e.get("from", {}), node) or _node_matches(e.get("to", {}), node)]
+                reuse_candidates.append({
+                    "node": node,
+                    "score": score,
+                    "alreadyWiredTo": [
+                        {
+                            "verb": e["verb"],
+                            "direction": "outgoing" if _node_matches(e.get("from", {}), node) else "incoming",
+                            "other": e["to"] if _node_matches(e.get("from", {}), node) else e["from"],
+                            "site": e.get("site"),
+                        }
+                        for e in related
+                    ],
+                })
+            # A candidate must score at least one point per intent term to win outright -- a weak
+            # partial match is surfaced (in reuse_candidates) but does not block lower tiers.
+            required_score = max(len(terms), 1)
+            if reuse_candidates and reuse_candidates[0]["score"] >= required_score:
+                top = reuse_candidates[0]
+                trail.append({
+                    "tier": "reuse", "applies": True,
+                    "reason": (
+                        f"'{top['node'].get('name')}' ({top['node'].get('kind')}) scored "
+                        f"{top['score']} against {required_score} intent term(s) -- reuse it (see "
+                        "alreadyWiredTo) before authoring anything new."
+                    ),
+                })
+            else:
+                trail.append({
+                    "tier": "reuse", "applies": False,
+                    "reason": (
+                        "no existing element matched the intent strongly enough to reuse outright."
+                        if reuse_candidates else
+                        "no existing element's name/kind matched the intent's terms at all."
+                    ),
+                })
+    else:
+        tiers_skipped.append("reuse")
+        trail.append({"tier": "reuse", "applies": False, "reason": "not checked: no graph_path given."})
+
+    reuse_wins = trail[0]["applies"]
+
+    # Tier 2: specialization -- only reachable with a reuse candidate to specialize from.
+    if reuse_wins:
+        trail.append({"tier": "specialization", "applies": False, "reason": "not checked: tier 1 (reuse) already applied."})
+    elif not app_model_path:
+        tiers_skipped.append("specialization")
+        trail.append({"tier": "specialization", "applies": False, "reason": "not checked: no app_model_path given."})
+    elif not reuse_candidates:
+        trail.append({"tier": "specialization", "applies": False, "reason": "not checked: no reuse candidate existed to specialize from."})
+    else:
+        best = reuse_candidates[0]["node"]
+        probe = _probe_specialization(app_model_path, proposal, best.get("name"))
+        trail.append({"tier": "specialization", "applies": bool(probe.get("resolvesCleanly")), "reason": probe.get("reason"), "probedAgainst": best.get("name")})
+
+    specialization_wins = trail[1]["applies"]
+
+    # Tier 3: new concept.
+    if reuse_wins or specialization_wins:
+        trail.append({"tier": "new-concept", "applies": False, "reason": "not checked: a higher tier already applied."})
+    elif declares_untrusted_extension:
+        trail.append({"tier": "new-concept", "applies": False, "reason": "the proposal itself declares an untrusted-extension marker, so plain new-concept authoring does not apply."})
+    else:
+        trail.append({"tier": "new-concept", "applies": True, "reason": "no reuse or specialization candidate applied, and the proposal declares no untrusted-extension marker -- author it as a plain new concept."})
+
+    new_concept_wins = trail[2]["applies"]
+
+    # Tier 4: untrusted extension -- last resort, and flagged when never actually proven necessary.
+    if reuse_wins or specialization_wins or new_concept_wins:
+        trail.append({"tier": "untrusted-extension", "applies": False, "reason": "not checked: a higher tier already applied."})
+    elif not declares_untrusted_extension:
+        trail.append({"tier": "untrusted-extension", "applies": False, "reason": "the proposal declares no untrusted-extension marker either -- re-examine the proposal; no tier applies."})
+    else:
+        unchecked = [t for t in tiers_skipped]
+        reason = "the proposal declares an untrusted-extension marker and no higher tier applied."
+        if unchecked:
+            reason += (
+                " ENFORCEMENT RISK: tier(s) " + ", ".join(unchecked) +
+                " were never actually checked (missing input), so this choice is not proven necessary -- "
+                "supply graph_path/app_model_path before trusting it."
+            )
+        trail.append({"tier": "untrusted-extension", "applies": True, "reason": reason})
+
+    chosen = next((t["tier"] for t in trail if t["applies"]), None)
+    return _text(json.dumps({
+        "intent": intent,
+        "chosenTier": chosen,
+        "tierTrail": trail,
+        "reuseCandidates": reuse_candidates,
+        "tiersSkippedForLackOfInput": tiers_skipped,
+    }, indent=2))
+
+
 def tool_migration_diff(arguments: dict[str, Any]) -> dict[str, Any]:
     baseline = arguments.get("baseline")
     current = arguments.get("current")
@@ -1095,6 +1324,44 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "npdev_author_tier",
+        "description": (
+            "P7.1: ranks reuse > specialization > new concept > untrusted extension for an "
+            "authoring intent, and explains each choice. Reuse is checked against a generated "
+            "app's npdev/semantic-graph.json (like npdev_graph_reuse) if graph_path is given; "
+            "specialization is checked by actually running the real DSL resolver on a synthetic "
+            "probe model built from app_model_path (there is no standalone 'can X specialize Y' "
+            "predicate) if app_model_path is given. A tier that could not be checked because its "
+            "input was omitted is reported as skipped, never silently treated as ruled out -- and "
+            "an untrusted-extension verdict reached with tiers skipped is flagged as an "
+            "enforcement risk, not a clean answer."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "intent": {"type": "string", "description": "Free text describing what you're about to author."},
+                "proposal": {
+                    "type": "object",
+                    "description": (
+                        "The candidate concept/element -- at least 'name', plus any of "
+                        "javaHook/implementation/metadata.untrustedExtensionEntrypoint if it "
+                        "declares an untrusted-extension escape hatch."
+                    ),
+                },
+                "graph_path": {
+                    "type": "string",
+                    "description": "Path to an existing app's npdev/semantic-graph.json, for reuse-ranking.",
+                },
+                "app_model_path": {
+                    "type": "string",
+                    "description": "Path to an existing app's model.json, for the specialization probe.",
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20},
+            },
+            "required": ["intent", "proposal"],
+        },
+    },
+    {
         "name": "npdev_migration_diff",
         "description": (
             "Classify a model change (baseline model.json -> current model.json) as METADATA_ONLY / "
@@ -1333,6 +1600,7 @@ TOOL_HANDLERS = {
     "npdev_check_support": tool_check_support,
     "npdev_graph_explain": tool_graph_explain,
     "npdev_graph_reuse": tool_graph_reuse,
+    "npdev_author_tier": tool_author_tier,
     "npdev_migration_diff": tool_migration_diff,
     "npdev_author_diff_gate": tool_author_diff_gate,
     "npdev_author_submit": tool_author_submit,
