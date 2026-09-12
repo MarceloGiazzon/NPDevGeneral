@@ -193,6 +193,14 @@ public final class GeneratorMain {
         GeneratedSourceWriter writer =
                 new GeneratedSourceWriter(outRoot, new RegenerationPolicy());
 
+        // W0.1: resolved here (rather than reused from resolveFinalAppAssemblyRequest's later,
+        // independent computation of the same flag) because ExtensionInventoryEmitter runs inside
+        // generate(), which happens before assembly -- see GeneratorFacade's own doc on the overload
+        // this feeds.
+        Path webAssetsRootForInventory = firstNonBlank(a.webAssetsRoot) != null
+                ? resolveConfiguredPath(null, a.webAssetsRoot)
+                : null;
+
         new GeneratorFacade(templates, writer, settingResolver, installedPackAliases).generate(
                 compiled,
                 outRoot,
@@ -202,7 +210,8 @@ public final class GeneratorMain {
                 migrationPlanDestructiveItemStableStrings,
                 normalize(a.destructiveAcknowledgmentToken),
                 List.of(),
-                extensionFieldOrigins
+                extensionFieldOrigins,
+                webAssetsRootForInventory
         );
 
         writer.flushSummary();

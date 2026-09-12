@@ -99,7 +99,7 @@ public final class GeneratorFacade {
     ) throws Exception {
         generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
                 legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
-                List.of(), null, linkedSealedPacks, Map.of());
+                List.of(), null, linkedSealedPacks, Map.of(), null);
     }
 
     /**
@@ -117,7 +117,7 @@ public final class GeneratorFacade {
     ) throws Exception {
         generate(model, outRoot, schemaRealizationDir, null, modelSourcePath,
                 legacyInMemoryPlan(model, outRoot, schemaRealizationDir, modelSourcePath),
-                List.of(), null, linkedSealedPacks, extensionFieldOrigins);
+                List.of(), null, linkedSealedPacks, extensionFieldOrigins, null);
     }
 
     public void generate(CompiledModel model, Path outRoot, Path schemaRealizationDir, GeneratedDatabasePlan databasePlan) throws Exception {
@@ -256,6 +256,32 @@ public final class GeneratorFacade {
             List<LinkedSealedPack> linkedSealedPacks,
             Map<String, Map<String, String>> extensionFieldOrigins
     ) throws Exception {
+        generate(model, outRoot, schemaRealizationDir, resolvedModelSource, databasePlan,
+                migrationPlanDestructiveItemStableStrings, destructiveAcknowledgmentToken,
+                linkedSealedPacks, extensionFieldOrigins, null);
+    }
+
+    /**
+     * W0.1 (NPDEV_ROADMAP_2026-09-12.md): {@code webAssetsRoot} is {@code GeneratorMain}'s
+     * {@code --webAssetsRoot} CLI flag, threaded down to {@link ExtensionInventoryEmitter} so the
+     * generated {@code handwrittenScreen} inventory category can see the same {@code web/} directory
+     * {@code FinalAppAssembler} mounts into {@code static/} during assembly (a separate, later phase
+     * with no visibility into this method's {@code outRoot}). {@code null} for every existing caller
+     * (the 9-arg overload above delegates here) -- zero behavior change for an app with no {@code
+     * web/} directory.
+     */
+    public void generate(
+            CompiledModel model,
+            Path outRoot,
+            Path schemaRealizationDir,
+            ResolvedModelSource resolvedModelSource,
+            GeneratedDatabasePlan databasePlan,
+            List<String> migrationPlanDestructiveItemStableStrings,
+            String destructiveAcknowledgmentToken,
+            List<LinkedSealedPack> linkedSealedPacks,
+            Map<String, Map<String, String>> extensionFieldOrigins,
+            Path webAssetsRoot
+    ) throws Exception {
         generate(
                 model,
                 outRoot,
@@ -266,7 +292,8 @@ public final class GeneratorFacade {
                 migrationPlanDestructiveItemStableStrings,
                 destructiveAcknowledgmentToken,
                 linkedSealedPacks,
-                extensionFieldOrigins
+                extensionFieldOrigins,
+                webAssetsRoot
         );
     }
 
@@ -279,7 +306,7 @@ public final class GeneratorFacade {
             GeneratedDatabasePlan databasePlan
     ) throws Exception {
         generate(model, outRoot, schemaRealizationDir, resolvedModelSource, modelSourcePath, databasePlan,
-                List.of(), null, List.of(), Map.of());
+                List.of(), null, List.of(), Map.of(), null);
     }
 
     private void generate(
@@ -292,7 +319,8 @@ public final class GeneratorFacade {
             List<String> migrationPlanDestructiveItemStableStrings,
             String destructiveAcknowledgmentToken,
             List<LinkedSealedPack> linkedSealedPacks,
-            Map<String, Map<String, String>> extensionFieldOrigins
+            Map<String, Map<String, String>> extensionFieldOrigins,
+            Path webAssetsRoot
     ) throws Exception {
         // REG-44: fail BEFORE emitting anything. A model that declares row-level access rules while
         // crud.kernelControlled is false would generate an app that silently enforces neither them nor
@@ -386,9 +414,11 @@ public final class GeneratorFacade {
 
         // Path A / P0.3: the escape surface (trusted-source assets, conversions[].javaHook,
         // plugin-mounted in-process controllers, plugin packages) made visible as a generated
-        // artifact instead of only discoverable by grep.
+        // artifact instead of only discoverable by grep. W0.1: plus handwrittenScreen, the 5th
+        // category -- everything under the app's own web/ (--webAssetsRoot), the one escape hatch
+        // that previously reported zero unconditionally.
         new ExtensionInventoryEmitter(writer).emit(model, resolvedModelSource, modelSourcePath, outRoot,
-                trustedSourceGeneratedPaths);
+                trustedSourceGeneratedPaths, webAssetsRoot);
 
         new GeneratedFolderSignatureEmitter().emit(outRoot);
 

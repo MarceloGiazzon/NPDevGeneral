@@ -46,6 +46,16 @@ import java.util.stream.Stream;
  *   <li><b>pluginPackage</b> -- {@link GeneratedPluginMountPlan#packageGroups()}: every deployable
  *       plugin unit a {@code plugins[]}/capability binding mounted, regardless of mount kind. Origin
  *       is the package id; owner is the capability requirement that bound it.</li>
+ *   <li><b>handwrittenScreen</b> -- W0.1 (NPDEV_ROADMAP_2026-09-12.md): every file under the app's
+ *       author-owned {@code web/} directory ({@code --webAssetsRoot}, mounted verbatim into
+ *       {@code static/} by {@code FinalAppAssembler.mountWebAssets} -- the same mechanism
+ *       {@code definition/pages.json} points its {@code path} entries at). Origin and owner are both
+ *       the file's path relative to that directory, since neither a model element nor a compiled
+ *       reference names it -- unlike every other category here, this one exists specifically because
+ *       the model has no visibility into it at all. Kind is {@code companionPage} for a {@code .html}
+ *       file, {@code appAsset} for anything else (CSS, JS, images, ...). Without this category an app
+ *       could ship arbitrary hand-authored HTML/JS under {@code web/} and honestly report zero
+ *       untrusted extensions.</li>
  * </ul>
  *
  * <p>None of these mechanisms carries a human-authorship field on its own, so "owner" is defined as
@@ -69,6 +79,11 @@ import java.util.stream.Stream;
  * empty {@code generatedPaths} and no hash -- an honest, named limitation: those are plugin-mounted
  * compiled units with their own build/versioning lifecycle upstream of the generated App tree, not
  * hand-editable files inside it, so file-level drift detection does not apply to them in this pass.
+ * {@code handwrittenScreen} entries get the same empty {@code generatedPaths}/no-hash treatment for a
+ * different reason: their real destination ({@code <finalAppRoot>/src/main/resources/static/...}) is
+ * mounted by {@code FinalAppAssembler} in the ASSEMBLE phase, which runs after this emitter and against
+ * a different root ({@code finalAppRoot}, not this method's {@code outRoot}) -- there is no
+ * outRoot-relative path to hash at emit time.
  */
 public final class ExtensionInventoryEmitter {
 
@@ -83,6 +98,17 @@ public final class ExtensionInventoryEmitter {
 
     public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath,
             Path outRoot, Map<String, List<String>> trustedSourceGeneratedPaths) throws IOException {
+        emit(model, resolvedModelSource, modelSourcePath, outRoot, trustedSourceGeneratedPaths, null);
+    }
+
+    /**
+     * W0.1: convenience twin of the 5-arg {@link #emit(CompiledModel, ResolvedModelSource, Path, Path,
+     * Map)} above, for callers that also want the {@code handwrittenScreen} category populated from a
+     * real {@code --webAssetsRoot}. {@code null} for every existing caller (the 5-arg overload above
+     * delegates here) -- zero behavior change when the app declares no {@code web/} directory.
+     */
+    public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath,
+            Path outRoot, Map<String, List<String>> trustedSourceGeneratedPaths, Path webAssetsRoot) throws IOException {
         ArrayNode entries = OBJECT_MAPPER.createArrayNode();
         Map<String, Integer> counts = new TreeMap<>();
         Map<String, CustomizationRecord> provenance = CustomizationProvenanceManifest.readSibling(modelSourcePath);
@@ -114,6 +140,11 @@ public final class ExtensionInventoryEmitter {
             GeneratedPluginMountPlan.Mount representative = packageGroup.representative();
             addEntry(entries, counts, provenance, "pluginPackage", representative.pluginId(), representative.packageId(),
                     representative.capability(), List.of(), outRoot);
+        }
+
+        for (String relativePath : handwrittenScreenPaths(webAssetsRoot)) {
+            String kind = relativePath.endsWith(".html") ? "companionPage" : "appAsset";
+            addEntry(entries, counts, provenance, "handwrittenScreen", kind, relativePath, relativePath, List.of(), outRoot);
         }
 
         ObjectNode root = OBJECT_MAPPER.createObjectNode();
@@ -151,6 +182,28 @@ public final class ExtensionInventoryEmitter {
             return stream
                     .filter(path -> Files.isRegularFile(path) && path.toString().endsWith(".java"))
                     .map(path -> "src/main/java/" + sourceRoot.relativize(path).toString().replace('\\', '/'))
+                    .sorted(Comparator.naturalOrder())
+                    .toList();
+        } catch (IOException e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * W0.1: every regular file under {@code webAssetsRoot} ({@code --webAssetsRoot}, the app's
+     * author-owned {@code web/} directory), relative-path/forward-slash normalized, sorted for a
+     * deterministic entry order. Returns {@code List.of()} (never throws) when {@code webAssetsRoot}
+     * is {@code null} or not a directory on disk -- most apps declare no {@code web/} directory at
+     * all, matching this emitter's established graceful-degradation style for an absent mechanism.
+     */
+    private static List<String> handwrittenScreenPaths(Path webAssetsRoot) {
+        if (webAssetsRoot == null || !Files.isDirectory(webAssetsRoot)) {
+            return List.of();
+        }
+        try (Stream<Path> stream = Files.walk(webAssetsRoot)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .map(path -> webAssetsRoot.relativize(path).toString().replace('\\', '/'))
                     .sorted(Comparator.naturalOrder())
                     .toList();
         } catch (IOException e) {

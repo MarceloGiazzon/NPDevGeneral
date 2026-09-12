@@ -1,0 +1,43 @@
+{
+  "$schema": "..\\\\..\\\\..\\\\..\\\\NPDevContract\\\\schemas\\\\model.schema.json",
+  "namespace": "sample.probes.p11handwrittenpages",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "W0.1 repro-case: a declared companion page (Input/pages.json, the AppGen-authoring convention Build-NpdevApp.ps1 flattens into a workspace-menu seed) backed by web/companion.html + web/theme.css, proving the extension-inventory's handwrittenScreen category is non-zero for a real fixture -- the escape hatch that previously reported zero unconditionally. pages.json itself is inert to `npdev generate` (BusinessUiEmitter's own doc: neither pages.json nor web/ ever reaches the generator's model layer) -- it ships here only so the fixture matches the real AppGen shape this category protects against; what the generator/checker actually see is --webAssetsRoot, auto-detected by generate-sample-app.ps1 from this sample's Input/web/."
+  },
+  "concepts": [
+    {
+      "name": "Item",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "id": true,
+          "required": true
+        },
+        {
+          "name": "label",
+          "type": "string",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": [
+        "save",
+        "findById"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "p11-handwritten-pages",
+  "title": "p11-handwritten-pages",
+  "complexity": "extension-inventory-probe",
+  "purpose": "W0.1 repro-case: a declared companion page (pages.json) backed by web/companion.html + web/theme.css, proving the extension-inventory's handwrittenScreen category is non-zero for a real fixture.",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- it serves check-extension-inventory.py's handwrittenScreen assertion and nothing else.",
+    "Built with -NoAssembleFinalApp; not intended to be run by hand."
+  ],
+  "expectedOutcomes": [
+    "extension-inventory.json's handwrittenScreen count is >= 2: one companionPage (companion.html), one appAsset (theme.css)."
+  ]
+}

@@ -1,0 +1,95 @@
+id: W0.1
+title: >-
+  Extension inventory has no category for a hand-authored web/ companion page or theme.css, so an
+  app can ship arbitrary HTML/JS and honestly report zero untrusted extensions
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-12
+closed: 2026-09-12
+verification: UNIT_TESTED
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 0 (W0.1): the extension inventory covered untrustedExtensionAsset,
+  javaHook, inProcessController and pluginPackage, but not definition/pages.json hand-authored
+  companion pages nor an app-owned web/theme.css that shell.js loads at runtime.
+surface: generator/extension-inventory
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ExtensionInventoryEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/GeneratorMain.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ExtensionInventoryEmitterTest.java
+  - NPDevSamples/scripts/generate-sample-app.ps1
+  - NPDevSamples/probes/p11-handwritten-pages/Input/model.json
+  - NPDevSamples/probes/p11-handwritten-pages/Input/config.json
+  - NPDevSamples/probes/p11-handwritten-pages/Input/db.definition.json
+  - NPDevSamples/probes/p11-handwritten-pages/Input/manifest.json
+  - NPDevSamples/probes/p11-handwritten-pages/Input/pages.json
+  - NPDevSamples/probes/p11-handwritten-pages/Input/web/companion.html
+  - NPDevSamples/probes/p11-handwritten-pages/Input/web/theme.css
+  - scripts/quality/check-extension-inventory.py
+  - scripts/quality/corpus-roles.json
+detail: |
+  ExtensionInventoryEmitter now walks a 5th source: --webAssetsRoot (the app's author-owned web/
+  directory, the same one FinalAppAssembler.mountWebAssets copies into static/ at assembly time).
+  Every regular file under it becomes a handwrittenScreen entry -- kind companionPage for a .html
+  file, appAsset for anything else (theme.css, js, images). Origin and owner are both the file's
+  path relative to web/, since (unlike every other category) no model element or compiled reference
+  names it. generatedPaths/contentHash are intentionally empty, the same honest-limitation pattern
+  already used for inProcessController/pluginPackage: the real destination
+  (<finalAppRoot>/src/main/resources/static/...) is written by FinalAppAssembler in the ASSEMBLE
+  phase, a separate, later step against a different root than this emitter's outRoot.
+
+  Threading --webAssetsRoot to the point ExtensionInventoryEmitter runs required a small chain:
+  GeneratorMain.main() now resolves it before calling GeneratorFacade.generate() (previously it was
+  only resolved later, inside resolveFinalAppAssemblyRequest, for the ASSEMBLE phase) and passes it
+  through a new 10-arg generate() overload (webAssetsRoot=null for every existing caller -- the
+  established "convenience overload with a defaulted trailing param" pattern this class already
+  uses throughout). ExtensionInventoryEmitter got the matching new 6-arg emit() overload.
+
+  Investigated and corrected one wrong assumption along the way: the roadmap's own brief said to
+  "find how definition/pages.json reaches the generator" in BusinessUiEmitter.java, but that
+  class's own doc comment (and Build-NpdevApp.ps1's step 4c) says the opposite -- pages.json is an
+  AppGen-authoring-only convention, NEVER forwarded to the generator, which has no visibility into
+  it at all. What DOES reach the generator is the web/ directory's actual file contents, via
+  --webAssetsRoot (already passed for FinalAppAssembler.mountWebAssets, just not yet for
+  ExtensionInventoryEmitter). The category is keyed off real files under web/, not off pages.json
+  entries -- pages.json only supplies a menu label, which is irrelevant to whether the file is an
+  untrusted extension.
+
+  New corpus fixture NPDevSamples/probes/p11-handwritten-pages (corpusRole repro-case) ships
+  Input/pages.json (matching the real AppGen shape this category protects against, though inert to
+  `npdev generate` for the reason above) plus Input/web/companion.html and Input/web/theme.css.
+  generate-sample-app.ps1 now auto-detects an Input/web directory and passes --webAssetsRoot,
+  mirroring Build-NpdevApp.ps1's own $AppFolder/web convention -- zero behavior change for every
+  existing sample, none of which has an Input/web directory.
+
+  check-extension-inventory.py extended: CATEGORIES gained handwrittenScreen, and the new fixture
+  asserts a real non-zero count (minCounts handwrittenScreen: 2) -- the roadmap explicitly
+  distinguished this from untrustedExtensionAsset, which stays shape-only because no generatable
+  fixture exists for it.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ExtensionInventoryEmitterTest.java
+  asserts: >-
+    countsHandwrittenScreensFromWebAssetsRoot proves a companion.html + theme.css under
+    webAssetsRoot become exactly 2 handwrittenScreen entries (companionPage/appAsset kinds, correct
+    origin/owner), and reportsZeroHandwrittenScreensWithNoWebAssetsRoot proves the 5-arg overload
+    (no webAssetsRoot) still reports zero -- zero behavior change for every existing caller. Also
+    proven live end-to-end (not mocked): `python scripts/quality/check-extension-inventory.py` ran a
+    real generation of NPDevSamples/probes/p11-handwritten-pages and read back
+    extension-inventory.json with counts.handwrittenScreen == 2 and the expected
+    companionPage/appAsset entries.
+  provenRed: true
+  provenRedNote: >-
+    Before this fix, ExtensionInventoryEmitter had no handwrittenScreen category at all --
+    counts.handwrittenScreen was simply absent from every generated extension-inventory.json, and
+    check-extension-inventory.py's CATEGORIES tuple did not include it (so a well-formed inventory
+    with zero coverage of web/ would pass unnoticed). Measured directly: ran the checker's new
+    fixture generation before implementing the emitter change and confirmed the key was missing.
+notes: |
+  run-ai-knowledge-gate.ps1 was run in full after this change (not just the narrow
+  check-extension-inventory.py). It failed on two items, both pre-existing and already recorded in
+  the prior session's handoff as untouched: untriaged security-pattern hits, and
+  AppGen/apps/_scratch/lineage-verify missing a corpusRole in corpus-roles.json. Neither is related
+  to this change -- check 42/45 (extension-inventory) and 43/45 (corpus roles for THIS fixture)
+  both reported OK. Left untouched; out of scope for W0.1.
