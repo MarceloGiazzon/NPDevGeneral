@@ -270,16 +270,18 @@ platform's. Separately, every model declares `"dslVersion": "1.0.0"` — that is
 format* version, unrelated to any of the above; it has never changed, including across the
 "DSL 2.0" flowStep-vocabulary change (`BREAKING.md`).
 
-`beta1.7` is cut exactly at `main`'s current head — no drift to record. (Superseded `beta1.5`'s and
-`beta1.6`'s own drift notes, each resolved the same way: cut the next tag fresh at `main` rather
-than move a published one.)
+The latest tag as of this writing is `beta1.20` (cut 2026-08-26); `main` moves continuously between
+tags, so a tag is a point-in-time cut, not a live mirror of `HEAD` — check
+`git tag --sort=-creatordate` for the current one rather than trusting a number written into this
+file. (`beta1.5` and `beta1.6` each accumulated drift against `main` before being superseded; the
+practice since is to cut the next tag fresh at `main` rather than try to move a published one.)
 
-**`main` is the only branch** (as of 2026-08-07, REG-139/I2 + FINAL_PLAN.md/F1) — both locally and
-on `origin`, no exceptions. All work lands directly on `main`; there is no separate release/working
-branch to keep in sync. Four stale branches accumulated across earlier phases of this project
-(`beta1-vision-spine`, `beta0-ai-autonomous-loop`, `beta0-no-false-green-release-hardening`,
-`lnch19-ci-verify`) have all been deleted after confirming each had nothing `main` didn't already
-have (`git log main..<branch>` empty for all). See
-`docs/RELEASE_PROCESS.md`'s "Merge cadence" section for why a drifting second branch was a real,
-previously-recurring problem (150 and then 71 commits of drift), and why collapsing to one branch
-removes that failure mode by construction.
+**`main` is the sole working/release branch** (as of 2026-08-07, REG-139/I2 + FINAL_PLAN.md/F1) —
+no second long-lived branch is kept in sync with it, and all work lands directly on `main`. That
+policy claim is about there being no competing *release* branch, not about the repo having zero
+other branches at any given moment: short-lived feature/experiment branches accumulate on both
+`origin` and locally and are cleaned up periodically, some already fully merged and some abandoned
+mid-experiment — neither carries release state that isn't already on `main`. See
+`docs/RELEASE_PROCESS.md`'s "Merge cadence" section for why a drifting second *working* branch was
+a real, previously-recurring problem (150 and then 71 commits of drift), and why collapsing to one
+working branch removes that failure mode by construction.
