@@ -19,17 +19,25 @@ import java.util.Map;
 import com.fasterxml.jackson.core.type.TypeReference;
 
 /**
- * Read-only "Box View": one Entity Box per persisted concept, per the Box/Object/Truth model.
- * Truth level is generation-time T2 (Generated) in the manifest; this controller honestly upgrades
+ * Read-only "Box Inspector" backend: Application -> Module -> Concept -> Field/Rule boxes, plus a
+ * top-level Capability (+ Implementation) list, per the Box/Object/Truth model (P6.4). Every box's
+ * truth level is generation-time T2 (Generated) in the manifest; this controller honestly upgrades
  * it to T3 (RunsLocally) at response time, since successfully serving this request IS the evidence
  * that the app is running locally. T4+ (Tested, EvidenceBacked, ReleaseApproved) require external
  * evidence this runtime cannot observe, so they are never claimed here. Super-user only.
+ *
+ * <p>The separate {@code /api/admin/box/graph} endpoint serves {@code npdev/semantic-graph.json}
+ * as-is -- it is the SAME edges {@code npdev/model-xref.json} already carries, just relabeled with a
+ * semantic verb (P2.2) -- so the Box Inspector UI can answer "why does this exist" by filtering those
+ * edges for the box's own {@code graphKind}/{@code graphName} live, at read time, rather than this
+ * controller (or the generator) pre-computing a "why" string.
  */
 @RestController
 public class GeneratedBoxViewController {
 
     private static final String SUPER_USER_ROLE = "{{superUserRole}}";
     private static final String BOX_MANIFEST_RESOURCE = "npdev/box/box-manifest.json";
+    private static final String SEMANTIC_GRAPH_RESOURCE = "npdev/semantic-graph.json";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
     private final RuntimeContextService runtimeContextService;
@@ -40,11 +48,21 @@ public class GeneratedBoxViewController {
 
     @GetMapping("/api/admin/box")
     public Map<String, Object> boxView(HttpServletRequest request) {
+        requireSuperUser(request);
+        return readBoxes();
+    }
+
+    @GetMapping("/api/admin/box/graph")
+    public Map<String, Object> boxGraph(HttpServletRequest request) {
+        requireSuperUser(request);
+        return readGraph();
+    }
+
+    private void requireSuperUser(HttpServletRequest request) {
         ExecutionContext context = runtimeContextService.currentContext(request);
         if (!context.roles().contains(SUPER_USER_ROLE)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Super-user role required");
         }
-        return readBoxes();
     }
 
     private Map<String, Object> readBoxes() {
@@ -57,15 +75,54 @@ public class GeneratedBoxViewController {
                 boxes.add(box);
             }
             Map<String, Object> body = new LinkedHashMap<>();
+            body.put("application", upgradeTruthLevel(root.path("application")));
+            body.put("modules", upgradeTruthLevels(root.path("modules")));
             body.put("boxes", boxes);
+            body.put("capabilities", upgradeTruthLevels(root.path("capabilities")));
             body.put("truthLevelNote",
                     "T2 Generated and T3 RunsLocally are observed directly. T4 Tested, T5 EvidenceBacked, "
                             + "and T6 ReleaseApproved require external evidence this runtime does not yet track.");
             return body;
         } catch (Exception exception) {
             Map<String, Object> body = new LinkedHashMap<>();
+            body.put("application", Map.of());
+            body.put("modules", List.of());
             body.put("boxes", List.of());
+            body.put("capabilities", List.of());
             body.put("truthLevelNote", "Box manifest unavailable.");
+            return body;
+        }
+    }
+
+    private Map<String, Object> upgradeTruthLevel(JsonNode node) {
+        Map<String, Object> map = OBJECT_MAPPER.convertValue(node, new TypeReference<Map<String, Object>>() { });
+        if (map.containsKey("truthLevel")) {
+            map.put("truthLevel", "T3_RUNS_LOCALLY");
+        }
+        return map;
+    }
+
+    private List<Map<String, Object>> upgradeTruthLevels(JsonNode arrayNode) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (JsonNode node : arrayNode) {
+            out.add(upgradeTruthLevel(node));
+        }
+        return out;
+    }
+
+    /**
+     * Serves the semantic graph unmodified: it describes what the MODEL asserts (Panel X reads
+     * Concept Y), which generation already established -- there is no "runs locally" upgrade to make
+     * for a relationship, only for a box's own existence.
+     */
+    private Map<String, Object> readGraph() {
+        try (InputStream in = new ClassPathResource(SEMANTIC_GRAPH_RESOURCE).getInputStream()) {
+            return OBJECT_MAPPER.convertValue(
+                    OBJECT_MAPPER.readTree(in), new TypeReference<Map<String, Object>>() { });
+        } catch (Exception exception) {
+            Map<String, Object> body = new LinkedHashMap<>();
+            body.put("edges", List.of());
+            body.put("nodes", List.of());
             return body;
         }
     }

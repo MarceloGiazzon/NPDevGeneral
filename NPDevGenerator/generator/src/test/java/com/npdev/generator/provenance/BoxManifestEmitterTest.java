@@ -2,8 +2,11 @@ package com.npdev.generator.provenance;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.dsl.v1.compiled.CompiledCapability;
+import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledField;
+import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
@@ -12,6 +15,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -133,6 +137,80 @@ final class BoxManifestEmitterTest {
         // ModelResolver sorts fields by normalized name -- "code" < "id".
         assertEquals(List.of("code", "id"), toList(specializes.path("inherits")));
         assertTrue(specializes.path("removes").isEmpty());
+    }
+
+    /**
+     * P6.4 (Box Inspector): the manifest is now a hierarchy -- an application box, one module box
+     * per distinct {@code concept.module}, and per-concept field/rule boxes -- plus a top-level
+     * capabilities list carrying its bound implementation (adapter) when one exists.
+     */
+    @Test
+    void emitsApplicationModuleFieldRuleAndCapabilityBoxes() throws Exception {
+        CompiledConcept invoice = new CompiledConcept(
+                "Invoice", "Invoice", "invoices",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("total", "decimal", "java.math.BigDecimal", false, true, false)
+                ),
+                List.of(),
+                List.of(new CompiledInvariant("InvoiceTotalPositive", "expression", "total", "total > 0")),
+                null, null, "T1_DECLARED", "Billing"
+        );
+        Map<String, CompiledConcept> entities = new LinkedHashMap<>();
+        entities.put(invoice.getName(), invoice);
+
+        CompiledModel model = new CompiledModel(
+                "acme", "1.0.0", "v1", entities,
+                List.of(new CompiledCapability("SendReceipt", "notification", List.of())),
+                List.of(new CompiledCapabilityBinding("SendReceipt", "notification-inproc")),
+                List.of(), List.of()
+        );
+
+        GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
+        new BoxManifestEmitter().emit(model, writer);
+
+        JsonNode root = new ObjectMapper().readTree(
+                tempDir.resolve(BoxManifestEmitter.RELATIVE_PATH).toFile());
+
+        assertEquals("acme", root.path("application").path("name").asText());
+        assertEquals("T2_GENERATED", root.path("application").path("truthLevel").asText());
+
+        JsonNode modules = root.path("modules");
+        assertEquals(1, modules.size());
+        assertEquals("Billing", modules.get(0).path("name").asText());
+        assertEquals(1, modules.get(0).path("conceptCount").asInt());
+
+        JsonNode invoiceBox = findBox(root.path("boxes"), "Invoice");
+        assertEquals("Billing", invoiceBox.path("module").asText());
+        assertEquals("T1_DECLARED", invoiceBox.path("declaredTruthLevel").asText());
+        assertEquals("concept", invoiceBox.path("graphKind").asText());
+        assertEquals("Invoice", invoiceBox.path("graphName").asText());
+
+        JsonNode fields = invoiceBox.path("fields");
+        assertEquals(2, fields.size());
+        JsonNode totalField = findByName(fields, "total");
+        assertEquals("Invoice.total", totalField.path("graphName").asText());
+        assertEquals("field", totalField.path("graphKind").asText());
+        assertTrue(totalField.path("required").asBoolean());
+
+        JsonNode rules = invoiceBox.path("rules");
+        assertEquals(1, rules.size());
+        assertEquals("InvoiceTotalPositive", rules.get(0).path("graphName").asText());
+        assertEquals("invariant", rules.get(0).path("graphKind").asText());
+
+        JsonNode capabilities = root.path("capabilities");
+        assertEquals(1, capabilities.size());
+        assertEquals("SendReceipt", capabilities.get(0).path("name").asText());
+        assertEquals("notification-inproc", capabilities.get(0).path("implementation").path("adapter").asText());
+    }
+
+    private static JsonNode findByName(JsonNode arrayNode, String name) {
+        for (JsonNode node : arrayNode) {
+            if (name.equals(node.path("name").asText())) {
+                return node;
+            }
+        }
+        throw new AssertionError("No entry found named " + name);
     }
 
     private static List<String> toList(JsonNode arrayNode) {

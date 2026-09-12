@@ -38,7 +38,13 @@
     isSuperUser: false,
     actorId: "",
     store: { packs: [], discoverable: false, loading: false, loaded: false, filter: "", installedIntents: {} },
-    boxView: { boxes: [], note: "", loading: false, loaded: false },
+    // P6.4 Box Inspector: application/modules/boxes/capabilities come from /api/admin/box (the
+    // enriched box-manifest.json); graph comes from the separate /api/admin/box/graph endpoint
+    // (npdev/semantic-graph.json, P2.2) and is what every "Why?" answer is filtered from live.
+    boxView: {
+      application: null, modules: [], boxes: [], capabilities: [], graph: null,
+      note: "", loading: false, loaded: false, moduleFilter: ""
+    },
     promotion: { currentStage: "", history: [], loading: false, loaded: false, attempted: false },
     // R7.2: the named seed/mock datasets declared under an app's definition/seeds/ (see
     // DataSeedAdminController) -- loaded once (gated on ADMIN/SUPERUSER, the same guard the
@@ -1523,7 +1529,7 @@
     if (!concept) return "";
     if (concept.declaredPanel) return concept.declaredPanel.title;
     if (concept === STORE_SECTION) return "Store";
-    if (concept === BOX_VIEW_SECTION) return "Box View";
+    if (concept === BOX_VIEW_SECTION) return "Box Inspector";
     if (concept === PROMOTION_SECTION) return "Promotion";
     return concept.displayName || "";
   }
@@ -2647,22 +2653,169 @@
     return wrapper;
   }
 
-  // Read-only "Box View": one Entity Box per persisted concept, with its truth level. The server
-  // upgrades T2 (Generated) to T3 (RunsLocally) since serving the response is itself the evidence.
+  // P6.4 Box Inspector: Application -> Module -> Concept -> Field/Rule boxes, plus a top-level
+  // Capability (+ Implementation) list, per the Box/Object/Truth model. The server upgrades every
+  // box's T2 (Generated) to T3 (RunsLocally) since serving the response is itself the evidence.
+  // The semantic graph (P2.2) is fetched separately and never cached into a box -- every "Why?"
+  // answer is a live filter over graph.edges, not a string baked in ahead of time.
   async function loadBoxView() {
     state.boxView.loading = true;
     render();
     try {
-      const payload = await fetchJson("/api/admin/box", { method: "GET", headers: headers() });
-      state.boxView.boxes = Array.isArray(payload.boxes) ? payload.boxes : [];
-      state.boxView.note = payload.truthLevelNote || "";
+      const [manifest, graph] = await Promise.all([
+        fetchJson("/api/admin/box", { method: "GET", headers: headers() }),
+        fetchJson("/api/admin/box/graph", { method: "GET", headers: headers() }).catch(function () { return null; })
+      ]);
+      state.boxView.application = manifest.application || null;
+      state.boxView.modules = Array.isArray(manifest.modules) ? manifest.modules : [];
+      state.boxView.boxes = Array.isArray(manifest.boxes) ? manifest.boxes : [];
+      state.boxView.capabilities = Array.isArray(manifest.capabilities) ? manifest.capabilities : [];
+      state.boxView.graph = graph;
+      state.boxView.note = manifest.truthLevelNote || "";
       state.boxView.loaded = true;
-      setStatus("Box view loaded.", false);
+      setStatus("Box Inspector loaded.", false);
     } catch (error) {
       setStatus(error.message, true);
     }
     state.boxView.loading = false;
     render();
+  }
+
+  function truthBadge(level) {
+    const badgeClass = level === "T3_RUNS_LOCALLY" ? "badge-success" : "badge-info";
+    return badgeCell(level || "T2_GENERATED", badgeClass);
+  }
+
+  // Every graph edge names its endpoints by (kind, name) -- ReferenceIndex's own node vocabulary
+  // (see BoxManifestEmitter's graphKind/graphName pair on every field/rule/concept/capability box).
+  // "Used by" reads incoming edges (something else references THIS box); "Depends on" reads outgoing
+  // edges (this box references something else). A box with no graphName (a free-form expression
+  // invariant, which has no ref and so no graph node) can never be looked up -- that is reported
+  // honestly rather than silently showing an empty result.
+  function whyLines(kind, name) {
+    if (!name || !kind) {
+      return { loading: false, lines: [], unavailable: "No graph node recorded for this element." };
+    }
+    if (!state.boxView.graph) {
+      return { loading: true, lines: [], unavailable: "" };
+    }
+    const edges = (state.boxView.graph.edges || []);
+    const lines = [];
+    edges.forEach(function (edge) {
+      if (edge.to && edge.to.kind === kind && edge.to.name === name) {
+        lines.push((edge.from.kind || "") + " " + (edge.from.name || "") + " " + (edge.verb || "references") + " this");
+      }
+      if (edge.from && edge.from.kind === kind && edge.from.name === name) {
+        lines.push("this " + (edge.verb || "references") + " " + (edge.to.kind || "") + " " + (edge.to.name || ""));
+      }
+    });
+    return { loading: false, lines: lines, unavailable: lines.length ? "" : "No recorded relationships yet." };
+  }
+
+  function whyParagraph(kind, name) {
+    const why = whyLines(kind, name);
+    const p = document.createElement("p");
+    p.className = "box-why";
+    if (why.loading) {
+      p.textContent = "Loading semantic graph…";
+    } else if (why.unavailable) {
+      p.textContent = why.unavailable;
+    } else {
+      p.textContent = "Why: " + why.lines.join("; ");
+    }
+    return p;
+  }
+
+  // Truncated inline summary (mirrors lineageCell's "counts + full detail in the native tooltip"
+  // pattern) -- used in Field/Rule rows, where a full multi-line "Why" per row would overwhelm the
+  // table, but the answer must still be reachable without another click-through.
+  function whyCell(kind, name) {
+    const why = whyLines(kind, name);
+    const cell = document.createElement("td");
+    if (why.loading) {
+      cell.textContent = "…";
+      return cell;
+    }
+    if (why.unavailable) {
+      cell.textContent = "-";
+      cell.title = why.unavailable;
+      return cell;
+    }
+    cell.textContent = why.lines.length + (why.lines.length === 1 ? " relationship" : " relationships");
+    cell.title = why.lines.join("\n");
+    return cell;
+  }
+
+  function buildConceptInspectorContent(box) {
+    const wrapper = document.createElement("div");
+
+    const summary = document.createElement("p");
+    summary.textContent = "Module: " + (box.module || "Ungrouped")
+        + " | Table: " + (box.table || "-")
+        + " | Declared truth level: " + (box.declaredTruthLevel || "-");
+    wrapper.appendChild(summary);
+    wrapper.appendChild(whyParagraph(box.graphKind, box.graphName));
+
+    const fieldsHeading = document.createElement("h4");
+    fieldsHeading.textContent = "Fields";
+    wrapper.appendChild(fieldsHeading);
+    const fieldsTable = document.createElement("table");
+    fieldsTable.className = "records";
+    const fieldsHead = document.createElement("thead");
+    fieldsHead.appendChild(headerRow(["Field", "Type", "Required", "Truth Level", "Why"]));
+    fieldsTable.appendChild(fieldsHead);
+    const fieldsBody = document.createElement("tbody");
+    (box.fields || []).forEach(function (field) {
+      const row = document.createElement("tr");
+      row.appendChild(textCell(field.name));
+      row.appendChild(textCell(field.dslType || ""));
+      row.appendChild(textCell(field.required ? "Yes" : "No"));
+      row.appendChild(truthBadge(field.truthLevel));
+      row.appendChild(whyCell(field.graphKind, field.graphName));
+      fieldsBody.appendChild(row);
+    });
+    fieldsTable.appendChild(fieldsBody);
+    wrapper.appendChild(fieldsTable);
+
+    const rulesHeading = document.createElement("h4");
+    rulesHeading.textContent = "Rules";
+    wrapper.appendChild(rulesHeading);
+    if (!(box.rules || []).length) {
+      const noRules = document.createElement("p");
+      noRules.textContent = "No rules declared on this concept.";
+      wrapper.appendChild(noRules);
+    } else {
+      const rulesTable = document.createElement("table");
+      rulesTable.className = "records";
+      const rulesHead = document.createElement("thead");
+      rulesHead.appendChild(headerRow(["Rule", "Truth Level", "Why"]));
+      rulesTable.appendChild(rulesHead);
+      const rulesBody = document.createElement("tbody");
+      box.rules.forEach(function (rule) {
+        const row = document.createElement("tr");
+        row.appendChild(textCell(rule.description));
+        row.appendChild(truthBadge(rule.truthLevel));
+        row.appendChild(whyCell(rule.graphKind, rule.graphName));
+        rulesBody.appendChild(row);
+      });
+      rulesTable.appendChild(rulesBody);
+      wrapper.appendChild(rulesTable);
+    }
+    return wrapper;
+  }
+
+  function inspectConcept(box) {
+    openModal((box.displayName || box.conceptName) + " (Concept Box)", buildConceptInspectorContent(box));
+  }
+
+  function inspectCapability(capability) {
+    const wrapper = document.createElement("div");
+    const summary = document.createElement("p");
+    summary.textContent = "Type: " + (capability.type || "-") + " | Implementation: "
+        + (capability.implementation ? capability.implementation.adapter : "Not yet bound to an adapter");
+    wrapper.appendChild(summary);
+    wrapper.appendChild(whyParagraph(capability.graphKind, capability.graphName));
+    openModal(capability.name + " (Capability Box)", wrapper);
   }
 
   function renderBoxViewPanel() {
@@ -2673,7 +2826,7 @@
     const header = document.createElement("div");
     header.className = "panel-header";
     const title = document.createElement("h2");
-    title.textContent = "Box View";
+    title.textContent = "Box Inspector";
     header.appendChild(title);
     const actions = document.createElement("div");
     actions.className = "panel-actions";
@@ -2684,32 +2837,106 @@
     if (!state.boxView.loaded && !state.boxView.loading) {
       loadBoxView();
     }
+
+    // Application Box: the root of the hierarchy every Module/Concept box below belongs to.
+    if (state.boxView.application) {
+      const appLine = document.createElement("p");
+      appLine.textContent = "Application: " + (state.boxView.application.name || "");
+      const appBadge = document.createElement("span");
+      const badgeClass = state.boxView.application.truthLevel === "T3_RUNS_LOCALLY" ? "badge-success" : "badge-info";
+      appBadge.className = "badge " + badgeClass;
+      appBadge.textContent = state.boxView.application.truthLevel || "T2_GENERATED";
+      appLine.appendChild(document.createTextNode(" "));
+      appLine.appendChild(appBadge);
+      section.appendChild(appLine);
+    }
     if (state.boxView.note) {
       const note = document.createElement("p");
       note.textContent = state.boxView.note;
       section.appendChild(note);
     }
 
+    // Module Box filter: narrows the concept table below to one module's concepts. Left at "All
+    // modules" the table shows every concept, same as the box view did before progressive
+    // disclosure existed.
+    if (state.boxView.modules.length) {
+      const moduleLabel = document.createElement("label");
+      moduleLabel.className = "module-filter";
+      moduleLabel.textContent = "Module: ";
+      const select = document.createElement("select");
+      const allOption = document.createElement("option");
+      allOption.value = "";
+      allOption.textContent = "All modules (" + state.boxView.boxes.length + " concepts)";
+      select.appendChild(allOption);
+      state.boxView.modules.forEach(function (module) {
+        const option = document.createElement("option");
+        option.value = module.name;
+        option.textContent = module.name + " (" + module.conceptCount + ")";
+        select.appendChild(option);
+      });
+      select.value = state.boxView.moduleFilter;
+      select.addEventListener("change", function () {
+        state.boxView.moduleFilter = select.value;
+        render();
+      });
+      moduleLabel.appendChild(select);
+      section.appendChild(moduleLabel);
+    }
+
     const table = document.createElement("table");
     table.className = "records";
     const thead = document.createElement("thead");
-    thead.appendChild(headerRow(["Entity Box", "Table", "Fields", "Bonds", "Source", "Specializes", "Truth Level"]));
+    thead.appendChild(headerRow(["Entity Box", "Module", "Table", "Fields", "Bonds", "Source", "Specializes", "Truth Level", ""]));
     table.appendChild(thead);
     const tbody = document.createElement("tbody");
-    state.boxView.boxes.forEach(function (box) {
+    const visibleBoxes = state.boxView.moduleFilter
+        ? state.boxView.boxes.filter(function (box) { return box.module === state.boxView.moduleFilter; })
+        : state.boxView.boxes;
+    visibleBoxes.forEach(function (box) {
       const row = document.createElement("tr");
-      const truthBadgeClass = box.truthLevel === "T3_RUNS_LOCALLY" ? "badge-success" : "badge-info";
       row.appendChild(textCell(box.displayName || box.conceptName));
+      row.appendChild(textCell(box.module || "Ungrouped"));
       row.appendChild(textCell(box.table || ""));
       row.appendChild(textCell(String(box.fieldCount || 0)));
       row.appendChild(textCell(String(box.bondCount || 0)));
       row.appendChild(textCell(box.admin ? "Built-in pack" : "App-authored"));
       row.appendChild(lineageCell(box.specializes));
-      row.appendChild(badgeCell(box.truthLevel || "T2_GENERATED", truthBadgeClass));
+      row.appendChild(truthBadge(box.truthLevel));
+      const inspectCell = document.createElement("td");
+      inspectCell.appendChild(button("Inspect", "", function () { inspectConcept(box); }));
+      row.appendChild(inspectCell);
       tbody.appendChild(row);
     });
     table.appendChild(tbody);
     section.appendChild(table);
+
+    // Capability Box + Implementation: a flat top-level list (capabilities aren't owned by a single
+    // module), each row answering both "what does this capability need" (type) and "how is it
+    // actually carried out right now" (implementation/adapter, or honestly "not yet bound").
+    if (state.boxView.capabilities.length) {
+      const capHeading = document.createElement("h3");
+      capHeading.textContent = "Capabilities";
+      section.appendChild(capHeading);
+      const capTable = document.createElement("table");
+      capTable.className = "records";
+      const capHead = document.createElement("thead");
+      capHead.appendChild(headerRow(["Capability", "Type", "Implementation", "Truth Level", ""]));
+      capTable.appendChild(capHead);
+      const capBody = document.createElement("tbody");
+      state.boxView.capabilities.forEach(function (capability) {
+        const row = document.createElement("tr");
+        row.appendChild(textCell(capability.name));
+        row.appendChild(textCell(capability.type || ""));
+        row.appendChild(textCell(capability.implementation ? capability.implementation.adapter : "Not yet bound"));
+        row.appendChild(truthBadge(capability.truthLevel));
+        const inspectCell = document.createElement("td");
+        inspectCell.appendChild(button("Inspect", "", function () { inspectCapability(capability); }));
+        row.appendChild(inspectCell);
+        capBody.appendChild(row);
+      });
+      capTable.appendChild(capBody);
+      section.appendChild(capTable);
+    }
     return section;
   }
 

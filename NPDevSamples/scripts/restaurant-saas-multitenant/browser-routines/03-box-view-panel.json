@@ -10,8 +10,14 @@
     { "action": "waitForSelector", "selector": "#sideNav a[href=\"#concept-__boxview__\"]", "state": "visible", "label": "Super-user nav ready" },
     { "action": "click", "selector": "#sideNav a[href=\"#concept-__boxview__\"]", "label": "Open the Box View surface" },
     { "action": "waitForSelector", "selector": "#concept-__boxview__", "state": "visible", "label": "Box View panel rendered" },
-    { "action": "assertVisible", "selector": "#concept-__boxview__ table.records", "label": "Box View renders the box manifest table (served from /api/admin/box)" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__", "text": "Entity Box", "label": "Box Inspector renders the box manifest table (served from /api/admin/box) -- not assertVisible table.records, which now also matches the P6.4 Capabilities table" },
     { "action": "assertTextContains", "selector": "#concept-__boxview__", "text": "T3", "label": "Truth level bumped to T3_RUNS_LOCALLY by serving the box view" },
+    { "action": "assertVisible", "selector": "#concept-__boxview__ label.module-filter select", "label": "P6.4: Module Box filter renders over the concept table" },
+    { "action": "assertTextContains", "selector": "#concept-__boxview__", "text": "Capabilities", "label": "P6.4: Capability Box section renders below the concept table" },
+    { "action": "click", "selector": "#concept-__boxview__ table.records tbody tr:first-child button:has-text(\"Inspect\")", "label": "P6.4: drill into the first Concept Box" },
+    { "action": "waitForSelector", "selector": "#modalRoot .modal", "state": "visible", "label": "Concept Box Inspector modal opened" },
+    { "action": "assertTextContains", "selector": "#modalRoot .modal", "text": "Fields", "label": "P6.4: Field Boxes listed for the inspected concept" },
+    { "action": "click", "selector": "#modalRoot .modal button:has-text(\"Close\")", "label": "Close the Concept Box Inspector" },
     { "action": "screenshot", "name": "box_view_panel" },
     { "action": "collect", "what": ["domText", "url"] }
   ]
