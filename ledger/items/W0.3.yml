@@ -1,0 +1,97 @@
+id: W0.3
+title: >-
+  Two Constitution laws (technology-neutral-model, layered-complexity) were aspirational with no
+  checker and no boundary record -- P0.1's whole point was that a law cannot claim enforcement for
+  free, and these were the ones nobody had come back to
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-12
+closed: 2026-09-12
+verification: UNIT_TESTED
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 0 (W0.3): scripts/policy/constitution.json has 8 laws; two
+  aspirational with no checker, two more merely declared. config.runtime.binder (P0.6) made
+  technology neutrality genuinely testable for the first time.
+surface: scripts/policy, scripts/quality, ledger/boundaries, docs
+files:
+  - scripts/policy/constitution.json
+  - scripts/policy/technology-neutral-model-policy.json
+  - scripts/quality/check-model-technology-neutrality.py
+  - scripts/quality/run-ai-knowledge-gate.ps1
+  - scripts/policy/script-invocation-declarations.json
+  - ledger/boundaries/B32.yml
+  - docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  Split the two free-riding laws by what each one actually is, rather than forcing both into the
+  same fix.
+
+  `technology-neutral-model` flipped `aspirational` -> `enforced`. New checker
+  `check-model-technology-neutrality.py` walks every model.json in the corpus (AppGen/apps +
+  NPDevSamples, INCLUDING probes -- deliberately not reusing dsl_coverage.corpus.find_models,
+  which excludes probes for an unrelated DSL-feature-coverage reason; mirrors validate-corpus.py's
+  own find_models() convention instead, same pattern check-dsl-coverage.py/
+  check-engine-variant-families.py already use for a hyphenated, non-importable filename) and
+  fails on: a runtime-shaped key (springProfile/gradleTask/javaArgs -- the exact config.schema.json
+  runtime keys that exist because Spring is a binder, not identity), a capability-binding adapter
+  id naming a technology (a 'spring' substring), or a literal JDBC URL. The forbidden-key/pattern
+  list lives in scripts/policy/technology-neutral-model-policy.json, not the script (R3's spirit).
+  Ran clean against the real corpus first try: 64 models scanned, 0 violations -- every adapter id
+  in the corpus today (repository, inproc, notification-inproc, webhook-inproc, plugin:java-source,
+  plugin:java-controller) was already framework-neutral. Wired into run-ai-knowledge-gate.ps1 as
+  step [46/46] and registered in script-invocation-declarations.json (script-inventory-policy.json
+  needed no edit -- scripts/quality/*.py auto-classifies 'canonical' by an existing glob rule).
+  run-script-inventory-check.ps1 confirms 228/228 (was 227) scripts classified+invocation-declared.
+
+  `layered-complexity` stays `aspirational`, deliberately: "basic features stay simple by default"
+  has no diagnostic that could fire without becoming a subjective complexity linter, so giving it a
+  fake `enforced` checker would be the exact dishonesty P0.1 exists to prevent. Instead it is no
+  longer FREE-riding -- new `ledger/boundaries/B32.yml` (POSTURAL, mirroring B6's shape exactly)
+  records it as an accepted boundary, and constitution.json's note now points at B32 by name. This
+  satisfies check_task.py's `constitutionNoFreeAspirational` rule literally: an aspirational law
+  with no `checkers` field is only "free" if its own id string does not appear anywhere in
+  ledger/boundaries/*.yml -- B32.yml's title and body both say "layered-complexity" verbatim.
+  docs/ACCEPTED_BOUNDARIES.md updated in the SAME commit as the ledger boundary file (the
+  trap this task named explicitly): a new row in section 2 (Authoring & runtime), and B32 added to
+  the classification table's POSTURAL line alongside B6.
+
+  Also recorded in B32's own text (not a new claim, just cross-referenced): the OTHER half of
+  layered-complexity's law -- escape hatches honestly branded, not disguised as first-class
+  "trusted" shortcuts -- is not aspirational at all. It is a real, already-shipped mechanism via
+  P0.4 and this Wave's own sibling task W0.2 (TrustedSource* -> UntrustedExtension* in the
+  generator layer), proven by run-untrusted-extension-security-check.ps1 and
+  check-extension-inventory.py. B32 only carries the "stay simple by default" half, which is the
+  half with genuinely no possible checker.
+
+  Verified: python scripts/quality/check-constitution-coverage.py (8 laws: enforced=5 declared=2
+  aspirational=1, PASS); python scripts/quality/check-model-technology-neutrality.py directly and
+  via --calibrate (dirty fixture fires all 3 detectors, clean fixture fires none); full
+  run-ai-knowledge-gate.ps1 run end to end -- step 46 (the new checker) and step 41 (constitution
+  coverage) both PASS; the gate's two OTHER failures (untriaged security-pattern-sweep hits in
+  unrelated NPDevRuntimeHost auth files, and AppGen/apps/_scratch/lineage-verify missing a
+  corpusRole entry) are pre-existing drift in files this task never touches, not caused by this
+  change and out of this task's scope. python helpers/check_task.py --task W0.3 reports PASS on
+  all 3 automatic done-when conditions.
+guard:
+  kind: test
+  ref: scripts/quality/check-model-technology-neutrality.py::calibrate
+  asserts: >-
+    check-model-technology-neutrality.py --calibrate proves the checker distinguishes a model
+    carrying all three forbidden signals (a forbidden runtime key, a technology-named adapter
+    substring, a JDBC URL) from a clean one carrying none. check-constitution-coverage.py proves
+    technology-neutral-model's new `enforced` claim names a real, existing checker path.
+    check_task.py's constitutionNoFreeAspirational condition proves layered-complexity's id
+    appears in a real ledger/boundaries/*.yml file, not left as a bare aspirational claim.
+  provenRed: true
+  provenRedNote: >-
+    Before this task, technology-neutral-model was aspirational with checker=null and no
+    mechanism could have caught a model.json carrying springProfile/gradleTask/a spring-named
+    adapter/a JDBC URL -- confirmed by running the new checker's --calibrate mode, whose "dirty"
+    fixture reproduces exactly that shape and is the positive proof the new detection logic
+    actually fires (3 violations found), not a checker that vacuously passes everything.
+notes: |
+  The full run-ai-knowledge-gate.ps1 run surfaced two PRE-EXISTING, unrelated failures (untriaged
+  security-pattern-sweep hits in NPDevRuntimeHost auth files; AppGen/apps/_scratch/lineage-verify
+  missing a corpusRole entry) -- neither is caused by or in scope for W0.3, and this task's own
+  done-when (measured by check_task.py) does not require a full clean gate run. Left untouched
+  deliberately, not silently: flagging here so a future session does not mistake them for new.

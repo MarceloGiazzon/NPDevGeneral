@@ -1,0 +1,28 @@
+id: B32
+title: "layered-complexity (Constitution law) -- basic features stay simple by default, escape hatches are honestly branded"
+codeLinked: false
+codeLinkedNote: >-
+  POSTURAL: no diagnostic fires because "basic features stay simple by default" is not a property
+  a checker can evaluate against a feature -- there is no failing input that proves a feature IS too
+  complex, only a design review judgment. This is the Constitution's own layered-complexity law
+  (scripts/policy/constitution.json), deliberately kept `enforcement: aspirational` rather than
+  given a bare, unbacked claim: check-constitution-coverage.py refuses `enforced` with no real
+  checker, and no such checker exists or could exist for this half of the law. The law's OTHER
+  half -- escape hatches honestly branded, not disguised as first-class "trusted" shortcuts -- IS a
+  real, already-shipped mechanism: P0.4 (2026-08-xx) and W0.2 (2026-09-12, NPDEV_ROADMAP_2026-09-12.md
+  Wave 0) inverted the generator's escape-hatch vocabulary from TrustedSource* to
+  UntrustedExtension*, so an author reading the generator now learns the honest word for what a
+  javaHook/untrustedExtensionAsset/pluginPackage actually is: untrusted author code the platform
+  admission-checks, not a first-class trusted shortcut. That half is proven by
+  scripts/quality/run-untrusted-extension-security-check.ps1 and
+  scripts/quality/check-extension-inventory.py, not by this boundary row -- this row exists only to
+  give the STILL-aspirational "stay simple by default" half a named, honest home instead of a dangling
+  claim, per check_task.py's constitutionNoFreeAspirational rule (an aspirational law's own id must
+  appear in a ledger/boundaries/*.yml entry).
+  Revisit trigger: never for the "stay simple by default" half -- there is no diagnostic design that
+  would make it testable without becoming a subjective complexity linter, which is its own can of
+  worms this boundary deliberately declines to open. Revisit the escape-hatch-branding half only if
+  a NEW escape hatch is added under a name that reintroduces "trusted" as a synonym for "first-class",
+  the exact failure mode P0.4/W0.2 corrected.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B32 -- scripts/policy/constitution.json (layered-complexity)"
+classification: POSTURAL

@@ -1,0 +1,10 @@
+{
+  "_comment": "W0.3 (NPDEV_ROADMAP_2026-09-12.md): facts for check-model-technology-neutrality.py, kept in data rather than the script (R3's spirit -- the checker asks these questions, it does not own the answers). Backs the Constitution's 'technology-neutral-model' law (scripts/policy/constitution.json): the MODEL (not config.json, which legitimately names Spring via its own runtime.binder field, P0.6) must carry no runtime/technology identifier.",
+  "forbiddenKeys": ["springProfile", "gradleTask", "javaArgs"],
+  "forbiddenKeysNote": "The exact config.schema.json runtime keys that exist precisely because Spring is a binder, not the model's identity (see config.schema.json's runtime.binder description) -- a model.json that carries any of these has technology leaking one layer up from where it belongs.",
+  "jdbcUrlPattern": "(?i)^jdbc:",
+  "jdbcUrlNote": "A literal JDBC URL in a model.json names a technology (a driver scheme) the model is supposed to be neutral about; connection info belongs in config.json/the resolved DB plan, never the model.",
+  "bindingAdapterField": "adapter",
+  "forbiddenAdapterSubstrings": ["spring"],
+  "forbiddenAdapterSubstringsNote": "A capability binding's adapter id (model.schema.json's `binding` definition) names a capability implementation, e.g. 'plugin:java-source' or 'repository' -- never a runtime/framework name. Every real corpus adapter id today is framework-neutral (repository, inproc, notification-inproc, webhook-inproc, plugin:java-source, plugin:java-controller); a 'spring' substring would be the first leak."
+}

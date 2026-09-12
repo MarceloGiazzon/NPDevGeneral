@@ -41,9 +41,11 @@
     {
       "id": "technology-neutral-model",
       "law": "The model itself carries no technology identifier. Spring is the platform's current runtime binder, not NPDev's identity, and a second binder must be addable without changing the model schema.",
-      "enforcement": "aspirational",
-      "checker": null,
-      "note": "Currently false in the schema itself: config.runtime REQUIRES springProfile and gradleTask, with no `binder` field. Becomes checkable once P0.6 (open the binder seam) lands -- see scripts/policy/constitution.json's own P0.6 task in helpers/tasks.json."
+      "enforcement": "enforced",
+      "checker": {
+        "path": "scripts/quality/check-model-technology-neutrality.py"
+      },
+      "note": "W0.3 (2026-09-12): P0.6 opened the binder seam (config.schema.json's runtime.binder, optional, absent defaults to 'spring') so springProfile/gradleTask are now scoped to binder=='spring' in CONFIG, not required unconditionally -- and check-model-technology-neutrality.py makes the MODEL's half of the claim mechanical: every corpus model.json is scanned for a runtime-shaped key, a technology-named capability-binding adapter, or a literal JDBC URL, none of which belong in the model. Forbidden-key/pattern list lives in scripts/policy/technology-neutral-model-policy.json."
     },
     {
       "id": "anti-drift",
@@ -59,7 +61,7 @@
       "law": "Basic features stay simple by default; escape hatches exist for real needs but are honestly branded for what they are, not disguised as first-class 'trusted' shortcuts.",
       "enforcement": "aspirational",
       "checker": null,
-      "note": "The escape-hatch mechanism exists (TrustedSource/javaHook/trustLevel across 119 files, 21 generator main classes) but is branded 'Trusted', the opposite of honest labelling. Becomes checkable once P0.4 (invert Trusted -> Untrusted Extension) lands."
+      "note": "W0.3 (2026-09-12): deliberately left aspirational rather than given a bare, unbacked claim -- 'basic features stay simple by default' is a design posture, not a testable property (there is no diagnostic that could fire for a feature being too complex). P0.4/W0.2 already made the honest-branding half true in the generator layer (TrustedSource -> UntrustedExtension); see ledger/boundaries/B32.yml for the layered-complexity boundary record (POSTURAL, docs/ACCEPTED_BOUNDARIES.md) this aspirational entry now points at, per check_task.py's constitutionNoFreeAspirational rule."
     },
     {
       "id": "legible-to-domain-experts-and-ai",
