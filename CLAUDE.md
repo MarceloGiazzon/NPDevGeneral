@@ -125,6 +125,9 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `scripts/` (manifest's `optionalContentInclude.scripts`, off by default). `-EmitTextBundle` also
   writes one big `<name>.bundle.txt` (embedded as `BUNDLE.txt` too) — the TREE listing followed by
   every zipped file's content concatenated, a single paste-into-an-LLM document with no unzip step.
+  `-PrefaceFile <path>` prepends a chosen doc (e.g. `docs/NPDEV_CONCEPTS_DEEP_DIVE.md`) ahead of the
+  TREE, embedded as `PREFACE<ext>` in the zip either way — point it at current, verified `docs/`
+  content, never an external/unversioned vision doc that could feed an AI stale claims as current.
 - **Wrap long/noisy runs in the digest runner** so the full log goes to disk and only the verdict
   enters context: `python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`.
   Patterns live in `scripts/policy/output-digest-policy.json`; add a family there, never in the script.
