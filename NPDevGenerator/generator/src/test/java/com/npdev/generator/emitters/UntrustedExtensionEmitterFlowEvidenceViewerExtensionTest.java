@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
-class TrustedSourceEmitterFlowEvidenceViewerExtensionTest {
-    // 2.B.2: TrustedSourceEmitter.java was split into several sibling files under this same
+class UntrustedExtensionEmitterFlowEvidenceViewerExtensionTest {
+    // 2.B.2: UntrustedExtensionEmitter.java was split into several sibling files under this same
     // package (trusted-source manifest/policy/template classes) -- the generated-source text this
-    // test greps for now lives across that whole family, not in TrustedSourceEmitter.java alone.
+    // test greps for now lives across that whole family, not in UntrustedExtensionEmitter.java alone.
     private static String trustedSourceEmitterSource() throws IOException {
         List<Path> candidates = List.of(
                 Path.of("src/main/java/com/npdev/generator/emitters"),

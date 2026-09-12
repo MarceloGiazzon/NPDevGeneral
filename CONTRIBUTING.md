@@ -154,7 +154,7 @@ A test that constructs `CompiledModel` / `CompiledFlow` objects directly (bypass
 `JsonModelParser`/`SemanticValidator` entirely) proves the emitter/runtime does the right thing
 **given that compiled shape**. It does **not** prove a real `model.json` can produce that shape.
 
-This is not hypothetical: `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest` built and
+This is not hypothetical: `UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest` built and
 booted a real packaged app with a `generatedAction`-shaped compiled step and passed for the entire
 time no model could actually express one (`FlowValidation` rejected the schema's own canonical enum
 value as "unsupported" — REG-65, `docs/archive/programme-history/FINAL_OPEN_ITEMS_PLAN.md` F4). A green runtime proof coexisted

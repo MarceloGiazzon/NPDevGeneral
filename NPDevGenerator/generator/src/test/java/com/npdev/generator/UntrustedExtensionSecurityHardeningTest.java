@@ -3,7 +3,7 @@ package com.npdev.generator;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.generator.emitters.TrustedSourceEmitter;
+import com.npdev.generator.emitters.UntrustedExtensionEmitter;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
@@ -23,7 +23,7 @@ import javax.tools.ToolProvider;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class TrustedSourceSecurityHardeningTest {
+class UntrustedExtensionSecurityHardeningTest {
 
     @Test
     void astPolicyBlocksTrustedProcedureSandboxEscapeVectors() throws Exception {
@@ -145,7 +145,7 @@ class TrustedSourceSecurityHardeningTest {
         Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), panelManifest(sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-source-csp-out-");
-        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath);
 
         String controller = Files.readString(out.resolve("src/main/java/com/npdev/generated/trusted/GeneratedTrustedSourceRuntimeController.java"));
         assertTrue(controller.contains("object-src 'none'"));
@@ -176,7 +176,7 @@ class TrustedSourceSecurityHardeningTest {
         Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), generatedProcedureManifest(sha256(procedure)));
 
         Path out = Files.createTempDirectory("npdev-trusted-bytecode-out-");
-        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(generatedProcedureModel(), modelPath);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(generatedProcedureModel(), modelPath);
 
         Path proofRoot = bytecodeIntegrationProofRoot();
         Path generatedClassRoot = proofRoot == null
@@ -248,7 +248,7 @@ class TrustedSourceSecurityHardeningTest {
 
         Path out = Files.createTempDirectory("npdev-trusted-source-out-" + caseName + "-");
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(procedureModel(), modelPath));
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(procedureModel(), modelPath));
         assertTrue(error.getMessage().contains("Forbidden Java source use"), error.getMessage());
     }
 
@@ -263,7 +263,7 @@ class TrustedSourceSecurityHardeningTest {
 
         Path out = Files.createTempDirectory("npdev-trusted-panel-out-" + caseName + "-");
         IllegalStateException error = assertThrows(IllegalStateException.class,
-                () -> new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath));
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath));
         assertTrue(error.getMessage().contains("Forbidden panel source use"), error.getMessage());
     }
 
@@ -277,7 +277,7 @@ class TrustedSourceSecurityHardeningTest {
         Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), panelManifest(sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-panel-sanitize-out-" + caseName + "-");
-        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath);
         String html = Files.readString(out.resolve("src/main/resources/trusted-source/panel/user-admin-panel.html")).toLowerCase();
         assertTrue(!html.contains("javascript:"), html);
         assertTrue(!html.contains("onclick"), html);

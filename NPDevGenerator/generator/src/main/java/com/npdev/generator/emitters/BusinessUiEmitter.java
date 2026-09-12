@@ -630,7 +630,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
      * (business-ui-app.mustache's own {@code sectionId}/{@code resolveHashTarget} already honor a
      * hash present at page load as a deep link, so no client-side change is needed). Untrusted-
      * extension panels ({@code metadata.untrustedExtensionEntrypoint}) are excluded --
-     * {@code TrustedSourceControllerTemplate} already emits a real {@code @GetMapping(route)} for
+     * {@code UntrustedExtensionControllerTemplate} already emits a real {@code @GetMapping(route)} for
      * those, and registering both would collide on startup.
      */
     private static List<Map<String, Object>> panelRouteNodes(CompiledModel model) {
@@ -654,8 +654,8 @@ public final class BusinessUiEmitter extends AbstractEmitter {
                     : "/npdev-business-ui/#concept-" + ("__panel-" + panel.name() + "__").replaceAll("[^a-zA-Z0-9_-]", "-");
             Map<String, Object> node = new LinkedHashMap<>();
             node.put("methodName", "panelRoute" + index);
-            node.put("routeLiteral", TrustedSourceTemplateSupport.quote(route));
-            node.put("redirectLiteral", TrustedSourceTemplateSupport.quote("redirect:" + redirectTarget));
+            node.put("routeLiteral", UntrustedExtensionTemplateSupport.quote(route));
+            node.put("redirectLiteral", UntrustedExtensionTemplateSupport.quote("redirect:" + redirectTarget));
             nodes.add(node);
             index++;
         }

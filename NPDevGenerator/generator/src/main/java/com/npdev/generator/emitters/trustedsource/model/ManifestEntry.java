@@ -7,7 +7,7 @@ import java.util.List;
  * are the object-manifest attributes the untrusted-extension zone declares for a code-bearing
  * object, alongside the identity/source/permissions/tenancy fields above. Additive on the existing
  * {@code npdev-untrusted-extension-manifest.v1} schema (not a version bump): an author who omits
- * them gets safe defaults from {@link com.npdev.generator.emitters.TrustedSourceManifest#readManifest},
+ * them gets safe defaults from {@link com.npdev.generator.emitters.UntrustedExtensionManifest#readManifest},
  * matching the platform's truth-classification rule that declaring nothing should never block
  * generation -- only a false claim (an unproven high {@code truthStatus}) does.
  */

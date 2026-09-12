@@ -9,7 +9,7 @@
 
 ## The four places to update
 
-1. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java`
+1. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java`
    — add `":adapters:<your-adapter>:jar"` to the adapter-jar build list (kept in alphabetical order).
 2. `NPDevGenerator\generator\src\test\java\com\npdev\generator\emitters\HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java`
    — same list, same entry.
@@ -36,7 +36,7 @@
 now enforces this checklist mechanically: every `NPDevKernel/settings.gradle` adapter must appear in
 ALL three proof-test lists (or in the test's explicit `KNOWN_NOT_PACKAGED` set, with the reason
 recorded here), and the three lists must stay identical. It caught a real drift on arrival
-(`TrustedSourceEmitter...` was missing `file-store-objectstore`). The sync script needs no guard —
+(`UntrustedExtensionEmitter...` was missing `file-store-objectstore`). The sync script needs no guard —
 verified list-free (jar discovery). If you consciously exclude a new adapter, add it to
 `KNOWN_NOT_PACKAGED` AND record the reason below:
 

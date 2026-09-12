@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
  * event handlers, unsafe URLs, forbidden elements) and externalizes a panel's inline
  * {@code <style>}/{@code <script>} into the served {@link PanelAssets} triple.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2).
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2).
  */
 final class TrustedPanelSourcePolicy {
 

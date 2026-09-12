@@ -47,7 +47,7 @@ mirrors). `JsonModelParser` handles it and *requires* `actionName`
 already compiled it into a `CompiledCapabilityCall("GeneratedActionCapability", ...)`, and the
 generator/runtime (`TrustedActionKernelRunnerTemplate`, `GeneratedActionCapabilityAdapter`) already
 had full, tested support for executing one — proven live by
-`TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`, which builds and boots a real packaged
+`UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest`, which builds and boots a real packaged
 app with a `generatedAction`-shaped compiled step.
 
 But `SemanticValidator` had no case for it: `FlowValidation.java`'s step-type switch handled

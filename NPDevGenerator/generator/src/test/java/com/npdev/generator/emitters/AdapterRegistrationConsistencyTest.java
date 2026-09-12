@@ -46,7 +46,7 @@ class AdapterRegistrationConsistencyTest {
             "tracing-inproc");
 
     private static final List<String> PROOF_TESTS = List.of(
-            "TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java",
+            "UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java",
             "HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java",
             "HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java");
 

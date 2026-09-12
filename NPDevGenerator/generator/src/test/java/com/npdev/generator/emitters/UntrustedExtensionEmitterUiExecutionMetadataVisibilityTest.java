@@ -20,7 +20,7 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
+final class UntrustedExtensionEmitterUiExecutionMetadataVisibilityTest {
     @TempDir
     Path tempDir;
 
@@ -64,7 +64,7 @@ final class TrustedSourceEmitterUiExecutionMetadataVisibilityTest {
         Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), manifest(sha256(procedure), sha256(panel)));
 
         Path out = tempDir.resolve("out");
-        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
 
         Path trustedRoot = out.resolve("src/main/java/com/npdev/generated/trusted");
         String controller = Files.readString(trustedRoot.resolve("GeneratedTrustedSourceRuntimeController.java"));

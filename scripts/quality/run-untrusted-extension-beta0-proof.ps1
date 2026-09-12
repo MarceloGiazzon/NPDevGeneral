@@ -1002,7 +1002,7 @@ function Invoke-GeneratedRuntimeIntegrationProof {
         $adminApiKey = Get-GeneratedBetaLocalApiKey -ScenarioId "create-users-panel-procedure" -UserId "admin-user"
         $viewerApiKey = Get-GeneratedBetaLocalApiKey -ScenarioId "create-users-panel-procedure" -UserId "viewer-user"
         $otherAdminApiKey = Get-GeneratedBetaLocalApiKey -ScenarioId "create-users-panel-procedure" -UserId "other-admin"
-        # REG-121 (Move 16 Phase A1): must match TrustedSourceControllerTemplate.FULL_CSP exactly (generator
+        # REG-121 (Move 16 Phase A1): must match UntrustedExtensionControllerTemplate.FULL_CSP exactly (generator
         # source of truth) -- this copy was missing the frame-src/frame-ancestors/worker-src/manifest-src/
         # upgrade-insecure-requests directives added to the platform constant since this string was last
         # updated here, so the comparison below always failed even though the real served header was correct.
@@ -1595,6 +1595,10 @@ $report = [pscustomobject]@{
     schemaVersion = "npdev-trusted-source-beta0-proof-report.v1"
     runId = $RunId
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    # W0.2: NOT renamed to match this script's own new filename -- schemas/ai/trusted-source-
+    # beta0-proof-report.schema.json pins this exact string via `"const"`. The report's identity
+    # token is part of the output contract this task deliberately leaves alone; only the .ps1's
+    # filename and internal generator-class references moved.
     scriptPath = "scripts/quality/run-trusted-source-beta0-proof.ps1"
     overallStatus = if ($overallPassed) { "passed" } else { "failed" }
     releaseBlocking = $releaseBlocking

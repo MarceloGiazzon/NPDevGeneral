@@ -598,7 +598,7 @@ subcommands remain for direct single-instance inspection or a forced retry.
    deferred event, making it an indirect fifth trigger.
 3. **Boot** — `ResumeBootstrapRunner`, once, on `ApplicationReadyEvent` (§4).
 4. **A generated action endpoint** — an authenticated caller submitting the awaited event's payload
-   through a generated REST action is itself a resume trigger (`TrustedSourceEmitter`-generated code
+   through a generated REST action is itself a resume trigger (`UntrustedExtensionEmitter`-generated code
    publishes the event, then calls `resumeExecution` if the target instance is `WAITING_EVENT`).
 
 **Two instances polling the same database never double-resume the same waiting instance (R8c/RUN-2).**

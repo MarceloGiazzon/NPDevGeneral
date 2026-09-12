@@ -32,7 +32,7 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
+final class UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest {
     @TempDir
     Path tempDir;
 
@@ -68,7 +68,7 @@ final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
 
         try (URLClassLoader loader = new URLClassLoader(
                 new URL[]{classesDir.toUri().toURL()},
-                TrustedSourceEmitterGeneratedActionJdbcEvidenceTest.class.getClassLoader()
+                UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest.class.getClassLoader()
         )) {
             Class<?> harness = Class.forName("validation.GeneratedActionJdbcEvidenceHarness", true, loader);
             Object proof = harness.getMethod("runProof").invoke(null);
@@ -175,7 +175,7 @@ final class TrustedSourceEmitterGeneratedActionJdbcEvidenceTest {
                 List.of()
         );
 
-        new TrustedSourceEmitter(new GeneratedSourceWriter(outputRoot, new RegenerationPolicy())).emit(model, modelSource);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(outputRoot, new RegenerationPolicy())).emit(model, modelSource);
         return outputRoot;
     }
 

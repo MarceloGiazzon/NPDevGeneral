@@ -36,7 +36,7 @@ import static com.npdev.generator.emitters.TrustedJavaSourcePolicy.validateJavaS
 import static com.npdev.generator.emitters.TrustedPanelSourcePolicy.externalizePanelAssets;
 import static com.npdev.generator.emitters.TrustedPanelSourcePolicy.validatePanelJavaScript;
 import static com.npdev.generator.emitters.TrustedPanelSourcePolicy.validatePanelSource;
-import static com.npdev.generator.emitters.TrustedSourceTemplateSupport.metadataText;
+import static com.npdev.generator.emitters.UntrustedExtensionTemplateSupport.metadataText;
 
 /**
  * Trusted-source manifest handling: turning a compiled model's procedure/panel/widget
@@ -44,13 +44,13 @@ import static com.npdev.generator.emitters.TrustedSourceTemplateSupport.metadata
  * {@code trusted-source-manifest.json}, hashing/loading/validating each referenced source file
  * into its model record, and (at the end of generation) writing the generated-side manifest.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2).
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2).
  */
-final class TrustedSourceManifest {
+final class UntrustedExtensionManifest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Pattern JAVA_IDENTIFIER = Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*");
 
-    private TrustedSourceManifest() {
+    private UntrustedExtensionManifest() {
     }
 
     static List<TrustedReference> referencesFrom(CompiledModel model) {

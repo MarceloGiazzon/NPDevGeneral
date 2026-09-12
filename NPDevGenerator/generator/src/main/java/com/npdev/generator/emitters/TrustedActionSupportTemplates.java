@@ -7,7 +7,7 @@ package com.npdev.generator.emitters;
  * dispatcher-factory / registry-contributor that wire generated actions into the kernel's
  * capability dispatch path.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2) -- every method here is a pure,
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2) -- every method here is a pure,
  * parameterless string literal with no dependency on the rest of the emitter.
  */
 final class TrustedActionSupportTemplates {

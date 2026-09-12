@@ -33,7 +33,7 @@ import javax.tools.ToolProvider;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-final class TrustedSourceEmitterGeneratedActionTest {
+final class UntrustedExtensionEmitterGeneratedActionTest {
     @TempDir
     Path tempDir;
 
@@ -213,7 +213,7 @@ final class TrustedSourceEmitterGeneratedActionTest {
 
         try (URLClassLoader loader = new URLClassLoader(
                 new URL[]{classesDir.toUri().toURL()},
-                TrustedSourceEmitterGeneratedActionTest.class.getClassLoader()
+                UntrustedExtensionEmitterGeneratedActionTest.class.getClassLoader()
         )) {
             Class<?> harness = Class.forName("validation.GeneratedActionEndpointHarness", true, loader);
             harness.getMethod("main", String[].class).invoke(null, (Object) new String[0]);
@@ -358,7 +358,7 @@ final class TrustedSourceEmitterGeneratedActionTest {
                 List.of()
         );
 
-        new TrustedSourceEmitter(new GeneratedSourceWriter(outputRoot, new RegenerationPolicy())).emit(model, modelSource);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(outputRoot, new RegenerationPolicy())).emit(model, modelSource);
         return outputRoot;
     }
 

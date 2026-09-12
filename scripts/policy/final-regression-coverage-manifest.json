@@ -243,8 +243,8 @@
       "id": "trusted-source-manifest-locking",
       "description": "Trusted source manifest and SHA-256 locking fail closed.",
       "finalEntrypoints": [
-        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
-        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+        "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1",
+        "scripts/quality/run-untrusted-extension-beta0-proof.ps1"
       ],
       "reports": [
         {
@@ -268,8 +268,8 @@
       "id": "trusted-source-java-containment-bytecode",
       "description": "Trusted Java source and bytecode containment checks cover forbidden APIs.",
       "finalEntrypoints": [
-        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
-        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+        "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1",
+        "scripts/quality/run-untrusted-extension-beta0-proof.ps1"
       ],
       "reports": [
         {
@@ -284,7 +284,7 @@
       ],
       "sourcePatterns": [
         {
-          "path": "scripts/quality/run-trusted-source-beta0-proof.ps1",
+          "path": "scripts/quality/run-untrusted-extension-beta0-proof.ps1",
           "patterns": [
             "System.getProperty",
             "ThreadLocal",
@@ -298,8 +298,8 @@
       "id": "trusted-source-panel-browser-csp-proof",
       "description": "Trusted-source panel proof uses browser/CSP evidence and rejects fallback behavior.",
       "finalEntrypoints": [
-        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
-        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+        "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1",
+        "scripts/quality/run-untrusted-extension-beta0-proof.ps1"
       ],
       "reports": [
         {
@@ -320,7 +320,7 @@
       ],
       "sourcePatterns": [
         {
-          "path": "scripts/quality/run-trusted-source-beta0-proof.ps1",
+          "path": "scripts/quality/run-untrusted-extension-beta0-proof.ps1",
           "patterns": [
             "playwright",
             "fullCspMatched",
@@ -335,8 +335,8 @@
       "id": "trusted-source-generated-runtime-integration-proof",
       "description": "Trusted source support is proven through the product generated runtime path.",
       "finalEntrypoints": [
-        "scripts/quality/run-trusted-source-beta0-proof-tests.ps1",
-        "scripts/quality/run-trusted-source-beta0-proof.ps1"
+        "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1",
+        "scripts/quality/run-untrusted-extension-beta0-proof.ps1"
       ],
       "reports": [
         {

@@ -7,11 +7,11 @@ import java.util.Map;
  * Small text-generation helpers shared across more than one trusted-source template file
  * (quoting a Java string literal, reading a metadata value, deriving a bare file name).
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2).
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2).
  */
-final class TrustedSourceTemplateSupport {
+final class UntrustedExtensionTemplateSupport {
 
-    private TrustedSourceTemplateSupport() {
+    private UntrustedExtensionTemplateSupport() {
     }
 
     static String metadataText(Map<String, Object> metadata, String key) {

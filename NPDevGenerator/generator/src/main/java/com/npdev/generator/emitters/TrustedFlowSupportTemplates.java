@@ -4,14 +4,14 @@ import com.npdev.generator.emitters.trustedsource.model.TrustedFlow;
 
 import java.util.List;
 
-import static com.npdev.generator.emitters.TrustedSourceTemplateSupport.quote;
+import static com.npdev.generator.emitters.UntrustedExtensionTemplateSupport.quote;
 
 /**
  * Static Java source templates for the trusted-source flow-execution DTOs (descriptor,
  * execution request/response) plus the {@code GeneratedFlowRegistry} template that lists every
  * start-endpoint flow the compiled model declares.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2).
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2).
  */
 final class TrustedFlowSupportTemplates {
 

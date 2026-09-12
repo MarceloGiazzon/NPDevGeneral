@@ -93,8 +93,9 @@ anything:
 **Faster than any of this:** `python scripts/ai/build_symbol_map.py` emits a symbol index of the
 hot files (class/def name → line number) to the Build root. Grep that, then `Read(offset, limit)`.
 
-`SemanticValidator.java` (10 KB) and `TrustedSourceEmitter.java` (11 KB) are **no longer large** —
-both are now orchestrators over sibling classes. Grep the package, not the file.
+`SemanticValidator.java` (10 KB) and `UntrustedExtensionEmitter.java` (renamed from
+`TrustedSourceEmitter.java` by W0.2, 13 KB) are **no longer large** — both are now orchestrators
+over sibling classes. Grep the package, not the file.
 
 **`model.schema.json` is duplicated in 4 places** — edits must mirror to all four:
 `NPDevContract/schemas/model.schema.json`, `NPDevContract/schemas/authoring/model.schema.json`,
