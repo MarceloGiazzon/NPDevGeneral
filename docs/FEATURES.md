@@ -54,7 +54,7 @@ processes, screens, permissions, and how it all changes over time.
 | **Destructive-change refusal** | dropping a column or concept is refused unless you explicitly acknowledge it. **Your data is not collateral damage of an edit** |
 | **`conversions`** — `copy`, `split`, `lookup`, `merge`, `convert` | reshape existing data as part of a migration, declaratively: split a name into two columns, look a value up against another table |
 | **Raw-SQL hooks** | when the declarative vocabulary is not enough, run SQL, guarded by a claim that must match the real schema diff |
-| **H2 → PostgreSQL** | develop on a file database, promote to Postgres with a real operator command |
+| **H2 → PostgreSQL / MySQL / SQL Server** | develop on a file database, promote to any of the three production engines with a real operator command (`npdev engines` lists what each needs and its caveats) |
 | **Snapshots** | table-level snapshot and restore around risky migrations |
 | **Multi-instance safety** | a real lock, so two instances cannot migrate the same database at once |
 

@@ -3,10 +3,40 @@
   "preamble": [
     {
       "type": "prose",
-      "text": "# NPDev\n\n[![NPDev CI Validation](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml/badge.svg?branch=main)](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml?query=branch%3Amain)\n\n**You declare what your application is. NPDev builds all of it — database, REST API, admin screens,\nrole-based access, durable background processes — as Spring Boot source you own outright.**\n\nOne JSON file describes the things your app tracks, how they relate, who may see them, and what\nhappens automatically. NPDev turns that into a real Gradle/Spring Boot project — not a scaffold you\nfill in, a working application.\n\n---\n"
+      "text": "# NPDev\n\n[![NPDev CI Validation](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml/badge.svg?branch=main)](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml?query=branch%3Amain)\n\n**The layer between the prompt and the code.**\n\nAI made *creating* software effortless. It did not make *owning* it effortless — and that is where\nprojects now die: business rules drift, nobody can say what the system guarantees, and every change\nmeans asking the AI again and hoping.\n\nNPDev puts an inspectable specification between human intent and running code. You declare what\nyour application **is** — its concepts, its invariants, its capabilities, its events, its\norchestration. NPDev deterministically compiles that into a hardened Java/Spring Boot system —\ndatabase, REST API, admin screens, role-based access, durable background processes — as source you\nown outright, operable from a GUI without ever opening a terminal.\n\n**An AI can write the specification. An AI cannot quietly mutate the rules you declared in it.**\n\n---\n"
     }
   ],
   "sections": [
+    {
+      "level": 2,
+      "title": "The problem this exists to solve",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nAn AI can build you an invoicing app from one sentence. It works. Then:\n\n- You cannot inspect what it guarantees.\n- You cannot reason about whether it is still correct.\n- You cannot evolve it safely.\n- Every change goes back through a prompt, and the answers stop being consistent.\n\nCreation was easy; understanding is absent; evolution becomes impossible. Eventually the system is\nrewritten, or handed to specialists who cannot reason about where it came from. The promise of\nsimplicity collapses exactly when the system starts to matter.\n\n**The problem is not the AI. It is that nothing sits between intent and implementation.**\n\nNPDev is that missing layer — model-driven development and domain-driven design, re-engineered for\nan age where the model is machine-authored and the code is disposable.\n\n---\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "Don't encode accidents. Declare invariants.",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\n| | |\n|---|---|\n| **Accidents** | which framework, which table layout, which endpoint shape, which widget |\n| **Invariants** | *there cannot be two users with the same document number* |\n\nAI can regenerate accidents infinitely and should. **AI must never invent an invariant.** Humans own\nthose. NPDev's design follows from that split: the specification holds the truths, the generator\nowns everything downstream of them, and regeneration is cheap precisely because nothing you care\nabout lives in the generated code.\n\n---\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "The five things the layer has to contain",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nNot a manifesto — these are keys in the model file, checked by a JSON Schema and a semantic\nvalidator before anything is generated.\n\n| The idea | In your model | What it buys you |\n|---|---|---|\n| **Concepts are open boxes** | `concepts[]`, each with fields, rules, a `truthLevel` | Nothing is a black box. Look once and see a concept; look deeper and see its fields, its validations, its generated code |\n| **Invariants are declared, not encoded** | `invariants[]`, `unique`, `expression` | Business truth enforced server-side where it cannot be bypassed — and where a regeneration cannot quietly drop it |\n| **Capabilities are contracts** | `capabilities[]` + `bindings[]` | A named promise: inputs, guarantees, outcomes. The implementation is swappable; the contract is not |\n| **Events are semantic facts** | `events[]` | `InvoiceCompleted`, not `invoiceService.complete()`. Causality is visible instead of buried in a call stack |\n| **Orchestration is declarative** | `orchestrationRules[]`, `flows[]` | *When `InvoiceCompleted`, require payment, then emit the fiscal document, then notify.* No glue code, full traceability, safe to regenerate |\n\nEvery box carries a **truth level** — `T0` idea, `T1` declared, `T2` generated, `T3` runs locally,\n`T4` tested, `T5` evidence-backed, `T6` release-approved. Strictness rises only when you claim\nstronger truth. **Release gates block false release claims; they never block imagination.**\nDoctrine: [`docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md`](docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md).\n\n---\n"
+        }
+      ]
+    },
     {
       "level": 2,
       "title": "Prefer not to use a terminal?",
@@ -121,7 +151,27 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\n| You write | You get |\n|---|---|\n| `fragments` | split a large model across files |\n| `packs` | reusable model modules shared between applications |\n| `contexts` + `imports` | bounded contexts, so one team's `Order` is not another's |\n| `propertyScopes` | configuration that cascades: global → tenant → user, in a declared order |\n| — | multi-tenancy, H2 for development and PostgreSQL for production |\n\n**Full reference: `docs/FEATURES.md`.**\n\n---\n"
+          "text": "\n| You write | You get |\n|---|---|\n| `fragments` | split a large model across files |\n| `packs` | reusable model modules shared between applications |\n| `contexts` + `imports` | bounded contexts, so one team's `Order` is not another's |\n| `propertyScopes` | configuration that cascades: global → tenant → user, in a declared order |\n| — | multi-tenancy, H2 for development and PostgreSQL, MySQL or SQL Server for production |\n\n**Full reference: `docs/FEATURES.md`.**\n\n---\n"
+        }
+      ]
+    },
+    {
+      "level": 2,
+      "title": "The escape hatch, and why it does not drift",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nEvery standard needs an escape hatch, or people route around the standard entirely. Reality will\nalways produce a requirement the declared step vocabulary does not cover.\n\n**So NPDev never asks you to edit generated code.** Your code is referenced *from* the model and\nlives *beside* the generated app, hash-pinned, so a regeneration cannot overwrite it and a modified\ncopy cannot silently run:\n\n| Escape hatch | How it survives a regeneration |\n|---|---|\n| `untrustedExtensionEntrypoint` on a procedure | your own Java class, pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin |\n| `untrustedExtensionEntrypoint` on a panel | your own HTML/JS asset, hash-pinned into the app — for bringing an existing page with you |\n| a `capability` with a swapped `binding` | the contract stays in the model; the implementation is yours and is resolved at runtime |\n| the generated REST API | a bespoke frontend is just another client — outside the blast radius of a regeneration entirely |\n\nRegeneration deliberately spares exactly three directories inside a built app — `data`, `logs`,\n`secrets` — so a rebuild never costs you your database, your history, or your keys.\n\n**\"Untrusted\" names the safety posture the platform applies, not a judgement on the author.** Where\neach hatch sits relative to the declarative paths — and when *not* to reach for one — is\n[`docs/NPDEV_FEATURE_GUIDE.md`](docs/NPDEV_FEATURE_GUIDE.md).\n"
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "title": "Custom code is a fork signal",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nOne exception is an exception. Five exceptions piling up inside one concept mean the concept was\nwrong: `Invoice` was never one thing — it was `MedicalInvoice` and `RentalInvoice` all along.\n\n`specializes` says exactly that in the model: this concept is a specialization of that one. When the\nparent comes from a pack, the parent version is **pinned** to the pack version you last generated\nagainst, and generation refuses once the pack has moved — unless you set `specializesFloat` to opt\nthat concept into tracking the pack's current version. **Inheritance drift becomes a decision you\nmake, not something that happens to you.**\n\n---\n"
         }
       ]
     },
@@ -136,11 +186,21 @@
         {
           "type": "fence",
           "lang": "",
-          "text": "Java 17 · Spring Boot · Gradle · H2 (dev) / PostgreSQL (production)\nREST API · generated admin UI · JWT or API-key auth · Docker Compose included"
+          "text": "Java 17 · Spring Boot · Gradle · H2 (dev) / PostgreSQL, MySQL or SQL Server (production)\nREST API · generated admin UI · JWT or API-key auth · Docker Compose included"
         },
         {
           "type": "prose",
-          "text": "\n**A normal Gradle project.** Open it in your IDE, read it, commit it, deploy it anywhere you deploy\nSpring Boot. **If you stopped using NPDev tomorrow, your application would keep working.**\n\n---\n"
+          "text": "\n**A normal Gradle project.** Open it in your IDE, read it, commit it, deploy it anywhere you deploy\nSpring Boot. **If you stopped using NPDev tomorrow, your application would keep working.**\n"
+        }
+      ]
+    },
+    {
+      "level": 3,
+      "title": "Enterprise infrastructure without a platform team",
+      "blocks": [
+        {
+          "type": "prose",
+          "text": "\nThe JVM is the point, not the price of admission. Someone building their first real system is\nusually pushed onto fragile serverless wiring or a low-code vendor's lock-in, and both buckle under\nreal load, real data, and real audit questions. NPDev hands that same person a multi-threaded,\ntransactional, battle-tested backend — the stack banks run on — with connection pooling,\nmigrations, durable execution and role enforcement already wired.\n\nThe trade-off is explicit, and it is a good one: **a small VPS running a JVM container is a rounding\nerror next to hiring someone to configure Kubernetes, connection pools and backup pipelines.** NPDev\nabsorbs the architectural complexity; you keep full ownership of the stack, and you can walk away\nfrom NPDev without losing it.\n\n---\n"
         }
       ]
     },
@@ -160,7 +220,7 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\n**A good fit for** internal tools, admin systems, operations back-offices, line-of-business\napps — anything with real entities, real rules, real users, and a schema that will change a dozen\ntimes before it settles.\n\n**Also a good fit if you want an AI to write it.** The model is JSON with a strict schema and a\nvalidator that returns typed, machine-readable errors, so an agent can author, check its own work,\nand correct itself. See `docs/AUTHORING_WITH_AI.md`.\n\n**Not a good fit if you want** a bespoke consumer-facing UI (NPDev generates a functional admin\ninterface, not a designed product surface), a microservice generator (one model is one deployable\napp), or frozen APIs today.\n\n---\n"
+          "text": "\n**A good fit for** internal tools, admin systems, operations back-offices, line-of-business\napps — anything with real entities, real rules, real users, and a schema that will change a dozen\ntimes before it settles.\n\n**Also a good fit if you want an AI to write it.** The model is JSON with a strict schema and a\nvalidator that returns typed, machine-readable errors, so an agent can author, check its own work,\nand correct itself — and every rule it must not touch is declared somewhere a human can review it.\nSee `docs/AUTHORING_WITH_AI.md`.\n\n**And a good fit for the senior developer who is nobody's idea of a beginner.** The declarative\nlayer is not there because you cannot write the code; it is there so you do not write it for the\nfifth time — and so that when you do reach for code, the reach is surgical and it survives the next\nregeneration.\n\n**Not a good fit if you want** a bespoke consumer-facing UI (NPDev generates a functional admin\ninterface, not a designed product surface), a microservice generator (one model is one deployable\napp), or frozen APIs today.\n\n---\n"
         }
       ]
     },
@@ -219,7 +279,7 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\nApache-2.0 (see `LICENSE`). Pre-1.0; the git tag (e.g. `beta1.4`) is the authoritative release\nversion. Two other numbers exist and mean something narrower: `npdev --version` reports the\nportable CLI wrapper's own version, and the Gradle module version pinned in each module's\n`build.gradle` (e.g. `NPDevContract/dsl/build.gradle`) is an internal JAR-artifact version, not the\nplatform's. Separately, every model declares `\"dslVersion\": \"1.0.0\"` — that is the *model JSON\nformat* version, unrelated to any of the above; it has never changed, including across the\n\"DSL 2.0\" flowStep-vocabulary change (`BREAKING.md`).\n\n`beta1.7` is cut exactly at `main`'s current head — no drift to record. (Superseded `beta1.5`'s and\n`beta1.6`'s own drift notes, each resolved the same way: cut the next tag fresh at `main` rather\nthan move a published one.)\n\n**`main` is the only branch** (as of 2026-08-07, REG-139/I2 + FINAL_PLAN.md/F1) — both locally and\non `origin`, no exceptions. All work lands directly on `main`; there is no separate release/working\nbranch to keep in sync. Four stale branches accumulated across earlier phases of this project\n(`beta1-vision-spine`, `beta0-ai-autonomous-loop`, `beta0-no-false-green-release-hardening`,\n`lnch19-ci-verify`) have all been deleted after confirming each had nothing `main` didn't already\nhave (`git log main..<branch>` empty for all). See\n`docs/RELEASE_PROCESS.md`'s \"Merge cadence\" section for why a drifting second branch was a real,\npreviously-recurring problem (150 and then 71 commits of drift), and why collapsing to one branch\nremoves that failure mode by construction.\n"
+          "text": "\nApache-2.0 (see `LICENSE`). Pre-1.0; the git tag (e.g. `beta1.4`) is the authoritative release\nversion. Two other numbers exist and mean something narrower: `npdev --version` reports the\nportable CLI wrapper's own version, and the Gradle module version pinned in each module's\n`build.gradle` (e.g. `NPDevContract/dsl/build.gradle`) is an internal JAR-artifact version, not the\nplatform's. Separately, every model declares `\"dslVersion\": \"1.0.0\"` — that is the *model JSON\nformat* version, unrelated to any of the above; it has never changed, including across the\n\"DSL 2.0\" flowStep-vocabulary change (`BREAKING.md`).\n\nThe latest tag as of this writing is `beta1.20` (cut 2026-08-26); `main` moves continuously between\ntags, so a tag is a point-in-time cut, not a live mirror of `HEAD` — check\n`git tag --sort=-creatordate` for the current one rather than trusting a number written into this\nfile. (`beta1.5` and `beta1.6` each accumulated drift against `main` before being superseded; the\npractice since is to cut the next tag fresh at `main` rather than try to move a published one.)\n\n**`main` is the sole working/release branch** (as of 2026-08-07, REG-139/I2 + FINAL_PLAN.md/F1) —\nno second long-lived branch is kept in sync with it, and all work lands directly on `main`. That\npolicy claim is about there being no competing *release* branch, not about the repo having zero\nother branches at any given moment: short-lived feature/experiment branches accumulate on both\n`origin` and locally and are cleaned up periodically, some already fully merged and some abandoned\nmid-experiment — neither carries release state that isn't already on `main`. See\n`docs/RELEASE_PROCESS.md`'s \"Merge cadence\" section for why a drifting second *working* branch was\na real, previously-recurring problem (150 and then 71 commits of drift), and why collapsing to one\nworking branch removes that failure mode by construction.\n"
         }
       ]
     }

@@ -2,12 +2,73 @@
 
 [![NPDev CI Validation](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml/badge.svg?branch=main)](https://github.com/MarceloGiazzon/NPDevGeneral/actions/workflows/npdev-ci-validation.yml?query=branch%3Amain)
 
-**You declare what your application is. NPDev builds all of it — database, REST API, admin screens,
-role-based access, durable background processes — as Spring Boot source you own outright.**
+**The layer between the prompt and the code.**
 
-One JSON file describes the things your app tracks, how they relate, who may see them, and what
-happens automatically. NPDev turns that into a real Gradle/Spring Boot project — not a scaffold you
-fill in, a working application.
+AI made *creating* software effortless. It did not make *owning* it effortless — and that is where
+projects now die: business rules drift, nobody can say what the system guarantees, and every change
+means asking the AI again and hoping.
+
+NPDev puts an inspectable specification between human intent and running code. You declare what
+your application **is** — its concepts, its invariants, its capabilities, its events, its
+orchestration. NPDev deterministically compiles that into a hardened Java/Spring Boot system —
+database, REST API, admin screens, role-based access, durable background processes — as source you
+own outright, operable from a GUI without ever opening a terminal.
+
+**An AI can write the specification. An AI cannot quietly mutate the rules you declared in it.**
+
+---
+
+## The problem this exists to solve
+
+An AI can build you an invoicing app from one sentence. It works. Then:
+
+- You cannot inspect what it guarantees.
+- You cannot reason about whether it is still correct.
+- You cannot evolve it safely.
+- Every change goes back through a prompt, and the answers stop being consistent.
+
+Creation was easy; understanding is absent; evolution becomes impossible. Eventually the system is
+rewritten, or handed to specialists who cannot reason about where it came from. The promise of
+simplicity collapses exactly when the system starts to matter.
+
+**The problem is not the AI. It is that nothing sits between intent and implementation.**
+
+NPDev is that missing layer — model-driven development and domain-driven design, re-engineered for
+an age where the model is machine-authored and the code is disposable.
+
+---
+
+## Don't encode accidents. Declare invariants.
+
+| | |
+|---|---|
+| **Accidents** | which framework, which table layout, which endpoint shape, which widget |
+| **Invariants** | *there cannot be two users with the same document number* |
+
+AI can regenerate accidents infinitely and should. **AI must never invent an invariant.** Humans own
+those. NPDev's design follows from that split: the specification holds the truths, the generator
+owns everything downstream of them, and regeneration is cheap precisely because nothing you care
+about lives in the generated code.
+
+---
+
+## The five things the layer has to contain
+
+Not a manifesto — these are keys in the model file, checked by a JSON Schema and a semantic
+validator before anything is generated.
+
+| The idea | In your model | What it buys you |
+|---|---|---|
+| **Concepts are open boxes** | `concepts[]`, each with fields, rules, a `truthLevel` | Nothing is a black box. Look once and see a concept; look deeper and see its fields, its validations, its generated code |
+| **Invariants are declared, not encoded** | `invariants[]`, `unique`, `expression` | Business truth enforced server-side where it cannot be bypassed — and where a regeneration cannot quietly drop it |
+| **Capabilities are contracts** | `capabilities[]` + `bindings[]` | A named promise: inputs, guarantees, outcomes. The implementation is swappable; the contract is not |
+| **Events are semantic facts** | `events[]` | `InvoiceCompleted`, not `invoiceService.complete()`. Causality is visible instead of buried in a call stack |
+| **Orchestration is declarative** | `orchestrationRules[]`, `flows[]` | *When `InvoiceCompleted`, require payment, then emit the fiscal document, then notify.* No glue code, full traceability, safe to regenerate |
+
+Every box carries a **truth level** — `T0` idea, `T1` declared, `T2` generated, `T3` runs locally,
+`T4` tested, `T5` evidence-backed, `T6` release-approved. Strictness rises only when you claim
+stronger truth. **Release gates block false release claims; they never block imagination.**
+Doctrine: [`docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md`](docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md).
 
 ---
 
@@ -143,21 +204,70 @@ you write.**
 | `packs` | reusable model modules shared between applications |
 | `contexts` + `imports` | bounded contexts, so one team's `Order` is not another's |
 | `propertyScopes` | configuration that cascades: global → tenant → user, in a declared order |
-| — | multi-tenancy, H2 for development and PostgreSQL for production |
+| — | multi-tenancy, H2 for development and PostgreSQL, MySQL or SQL Server for production |
 
 **Full reference: `docs/FEATURES.md`.**
+
+---
+
+## The escape hatch, and why it does not drift
+
+Every standard needs an escape hatch, or people route around the standard entirely. Reality will
+always produce a requirement the declared step vocabulary does not cover.
+
+**So NPDev never asks you to edit generated code.** Your code is referenced *from* the model and
+lives *beside* the generated app, hash-pinned, so a regeneration cannot overwrite it and a modified
+copy cannot silently run:
+
+| Escape hatch | How it survives a regeneration |
+|---|---|
+| `untrustedExtensionEntrypoint` on a procedure | your own Java class, pinned by hash in the app's `untrusted-extension-manifest.json`, admitted through the same bytecode/AST safety gate as a mounted plugin |
+| `untrustedExtensionEntrypoint` on a panel | your own HTML/JS asset, hash-pinned into the app — for bringing an existing page with you |
+| a `capability` with a swapped `binding` | the contract stays in the model; the implementation is yours and is resolved at runtime |
+| the generated REST API | a bespoke frontend is just another client — outside the blast radius of a regeneration entirely |
+
+Regeneration deliberately spares exactly three directories inside a built app — `data`, `logs`,
+`secrets` — so a rebuild never costs you your database, your history, or your keys.
+
+**"Untrusted" names the safety posture the platform applies, not a judgement on the author.** Where
+each hatch sits relative to the declarative paths — and when *not* to reach for one — is
+[`docs/NPDEV_FEATURE_GUIDE.md`](docs/NPDEV_FEATURE_GUIDE.md).
+
+### Custom code is a fork signal
+
+One exception is an exception. Five exceptions piling up inside one concept mean the concept was
+wrong: `Invoice` was never one thing — it was `MedicalInvoice` and `RentalInvoice` all along.
+
+`specializes` says exactly that in the model: this concept is a specialization of that one. When the
+parent comes from a pack, the parent version is **pinned** to the pack version you last generated
+against, and generation refuses once the pack has moved — unless you set `specializesFloat` to opt
+that concept into tracking the pack's current version. **Inheritance drift becomes a decision you
+make, not something that happens to you.**
 
 ---
 
 ## What you actually get
 
 ```
-Java 17 · Spring Boot · Gradle · H2 (dev) / PostgreSQL (production)
+Java 17 · Spring Boot · Gradle · H2 (dev) / PostgreSQL, MySQL or SQL Server (production)
 REST API · generated admin UI · JWT or API-key auth · Docker Compose included
 ```
 
 **A normal Gradle project.** Open it in your IDE, read it, commit it, deploy it anywhere you deploy
 Spring Boot. **If you stopped using NPDev tomorrow, your application would keep working.**
+
+### Enterprise infrastructure without a platform team
+
+The JVM is the point, not the price of admission. Someone building their first real system is
+usually pushed onto fragile serverless wiring or a low-code vendor's lock-in, and both buckle under
+real load, real data, and real audit questions. NPDev hands that same person a multi-threaded,
+transactional, battle-tested backend — the stack banks run on — with connection pooling,
+migrations, durable execution and role enforcement already wired.
+
+The trade-off is explicit, and it is a good one: **a small VPS running a JVM container is a rounding
+error next to hiring someone to configure Kubernetes, connection pools and backup pipelines.** NPDev
+absorbs the architectural complexity; you keep full ownership of the stack, and you can walk away
+from NPDev without losing it.
 
 ---
 
@@ -179,7 +289,13 @@ times before it settles.
 
 **Also a good fit if you want an AI to write it.** The model is JSON with a strict schema and a
 validator that returns typed, machine-readable errors, so an agent can author, check its own work,
-and correct itself. See `docs/AUTHORING_WITH_AI.md`.
+and correct itself — and every rule it must not touch is declared somewhere a human can review it.
+See `docs/AUTHORING_WITH_AI.md`.
+
+**And a good fit for the senior developer who is nobody's idea of a beginner.** The declarative
+layer is not there because you cannot write the code; it is there so you do not write it for the
+fifth time — and so that when you do reach for code, the reach is surgical and it survives the next
+regeneration.
 
 **Not a good fit if you want** a bespoke consumer-facing UI (NPDev generates a functional admin
 interface, not a designed product surface), a microservice generator (one model is one deployable
