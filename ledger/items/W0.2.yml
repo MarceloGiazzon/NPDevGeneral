@@ -1,0 +1,150 @@
+id: W0.2
+title: >-
+  87-88 non-historical files still say TrustedSource even though P0.4 inverted the author-facing
+  vocabulary -- 4 generator main classes and 3 gate scripts among them
+type: GAP
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-09-12
+closed: null
+verification: UNIT_TESTED
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 0 (W0.2): P0.4 inverted the author-facing vocabulary, but the
+  internal generator layer (4 main classes, 3 gate scripts) and the wider repo (kernel, runtime
+  host, ~15 closed ledger items, several docs) still taught the old word.
+surface: generator/emitters, scripts/quality
+files:
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/UntrustedExtensionEmitter.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/UntrustedExtensionManifest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/UntrustedExtensionControllerTemplate.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/UntrustedExtensionTemplateSupport.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/trustedsource/model/ManifestEntry.java
+  - scripts/quality/run-untrusted-extension-security-check.ps1
+  - scripts/quality/run-untrusted-extension-beta0-proof.ps1
+  - scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1
+  - scripts/quality/run-generator-gate.ps1
+  - scripts/quality/run-beta-release-evidence-orchestration.ps1
+  - scripts/quality/run-beta0-final-release-check.ps1
+  - scripts/quality/run-final-regression-coverage-audit-tests.ps1
+  - scripts/policy/script-invocation-declarations.json
+  - scripts/policy/final-regression-coverage-manifest.json
+  - CLAUDE.md
+  - CONTRIBUTING.md
+  - docs/ADAPTER_REGISTRATION_CHECKLIST.md
+  - docs/FLOWS.md
+  - NPDevContract/docs/BONDS-AI-HANDOFF.md
+  - NPDevSamples/dsl-conformance-max/Input/README.md
+  - NPDevCli/dsl_v2_migration.py
+detail: |
+  DELIBERATELY PARTIAL, by an explicit scope decision made with the owner before starting (the
+  numeric done-when target could not be hit within the task's own stated scope -- see "why this
+  did not reach the numeric target" below).
+
+  Renamed the 4 flagship generator emitter classes to their untrusted-extension names
+  (TrustedSourceEmitter -> UntrustedExtensionEmitter, TrustedSourceManifest ->
+  UntrustedExtensionManifest, TrustedSourceControllerTemplate -> UntrustedExtensionControllerTemplate,
+  TrustedSourceTemplateSupport -> UntrustedExtensionTemplateSupport) and their 10 test files (an
+  exact string rename via file moves + literal, non-regex substitution -- Java compiles clean,
+  the generator's own test suite green). Also renamed a lowercase internal variable
+  (trustedSourceGeneratedPaths -> untrustedExtensionGeneratedPaths, GeneratorFacade/
+  ExtensionInventoryEmitter) and fixed a dangling {@code @link} in the sibling trustedsource/model
+  package's ManifestEntry.java that pointed at a class name that no longer existed.
+
+  Renamed the 3 gate scripts (run-trusted-source-security-check.ps1 ->
+  run-untrusted-extension-security-check.ps1, run-trusted-source-beta0-proof.ps1 ->
+  run-untrusted-extension-beta0-proof.ps1, run-trusted-source-beta0-proof-tests.ps1 ->
+  run-untrusted-extension-beta0-proof-tests.ps1) and updated every literal path reference to them:
+  script-invocation-declarations.json (R6), final-regression-coverage-manifest.json's
+  finalEntrypoints/sourcePatterns (10 occurrences), and all 4 callers (run-generator-gate.ps1,
+  run-beta-release-evidence-orchestration.ps1, run-beta0-final-release-check.ps1,
+  run-final-regression-coverage-audit-tests.ps1's own OmitFinalEntrypoints test fixture). Inside
+  run-untrusted-extension-security-check.ps1, fixed the Gradle test filter
+  (`--tests "*TrustedSource*"` -> `--tests "*UntrustedExtension*"`, which would otherwise have
+  silently run ZERO tests in a SECURITY hardening check) and the two hardcoded JUnit XML filename
+  lookups that named the renamed test classes.
+
+  Boundary deliberately NOT crossed, and why each one stays: the two report schemas
+  (schemas/ai/trusted-source-*-report.schema.json) pin `scriptPath` via a JSON Schema `const` --
+  changing the emitted value to match the new filename would fail that const, so `scriptPath`
+  stays the OLD string on purpose (documented inline in both scripts) rather than silently
+  drifting the schema out of sync; this is an intentional identity-token vs. filename split, not
+  an oversight. Generated-app OUTPUT (the `GeneratedTrustedSourceRuntimeController` class/package,
+  its `/generated/trusted-source/...` URL routes, `trusted-source:execute`/`:read` permission
+  strings, the `productGeneratedTrustedSourceIntegrationStatus` report field) is a different,
+  AUTHOR-FACING contract than which internal Java class emits it -- renaming it would need R11's
+  migration codemod + BREAKING.md entry for every already-generated app's API surface, which this
+  task's own step 5 explicitly scopes out ("purely internal class/script naming... does not"
+  need R11). `com.npdev.kernel.security.TrustedSourceBytecodeInspector` (NPDevKernel) and its
+  runtime-host plugin-isolation callers were left alone entirely -- see "why this did not reach
+  the numeric target" below.
+
+  Fixed six now-genuinely-broken or now-inaccurate LIVE (non-archived, non-ledger) citations
+  found while auditing the surface: docs/ADAPTER_REGISTRATION_CHECKLIST.md's literal path to the
+  renamed `...PackagedGeneratedAppRuntimeProofTest.java` (was a dead path), CLAUDE.md's and
+  CONTRIBUTING.md's and docs/FLOWS.md's and NPDevContract/docs/BONDS-AI-HANDOFF.md's and
+  NPDevSamples/dsl-conformance-max/Input/README.md's citations of the renamed classes, and
+  NPDevCli/dsl_v2_migration.py's comment naming which class performs a schemaVersion check.
+  Left untouched, and why: BREAKING.md's own P0.4 entry (a dated changelog entry describing
+  history correctly in the terminology THEN current -- editing it would be revisionist), the
+  ~15 closed ledger/items/*.yml entries and 2 ledger/boundaries/*.yml rows (closed historical
+  incident records, same reasoning), docs/ACCEPTED_BOUNDARIES.md B30's `TrustedSourceBytecodeInspector`
+  citations (accurate -- that kernel class was not renamed), scripts/quality/check-record-surfaces.py's
+  calibration fixture reproducing the real 2026-07-29 CLAUDE.md drift verbatim (changing the
+  filename would misrepresent what that historical incident actually named),
+  scripts/policy/constitution.json's aspirational-law note (describes the ORIGINAL pre-P0.4
+  escape-hatch naming, historically accurate), NPDevCli/tests/test_rename_cascade.py's
+  `TrustedSourceTest`/`trusted_source_refusals` (a different Python module/tool with its own,
+  separately-named vocabulary -- not one of the 4 named generator classes or 3 scripts), and
+  scripts/docs/gaps-roadmap-narrative.md.tmpl's frozen historical regression narrative.
+
+  Why this did not reach the numeric target (57 files still match /TrustedSource/, floor 20):
+  measured file count is 88 at task start (roadmap said 78 when written 2026-09-12 -- some drift
+  already, plus this session's own W0.1 work incidentally touched 2 of the counted files).
+  Of those 88, only 46 were under NPDevGenerator/ or scripts/ (the generator + its 3 gate
+  scripts) -- renaming every one of THOSE still leaves 42+ files elsewhere: a real kernel
+  security class (TrustedSourceBytecodeInspector, bytecode-level untrusted-extension admission,
+  shared by generator-side PluginJavaSourcePolicyVisitor AND runtime-host boot-time
+  PluginBytecodeBootGate over one denylist -- SEC-3/B30's twin-pair), 2 runtime-host plugin-
+  isolation files, and roughly 15 CLOSED ledger/items/*.yml incident records (SEC-1, SEC-3,
+  SEC-10, REG-65, REG-121, REG-137, REG-143, REG-144, REG-176, REG-178, QUAL-6, QUAL-7, QUAL-35,
+  PACK-9, STOR-25) plus 2 ledger/boundaries rows. The task's own "files you will touch" list
+  named only the 4 generator classes + 3 scripts -- reaching under 20 was only possible by ALSO
+  renaming the kernel security class (security-critical code, its own Gradle module, its own
+  test suite) and editing already-closed historical incident records (rewriting what a SEC-3/
+  REG-65/etc. entry says a class was named, at the time the incident it documents occurred).
+  Presented this tradeoff to the owner before starting; the owner chose the generator-only scope
+  (files-list-literal) over the full repo-wide rename, accepting that the numeric done-when
+  would not clear its threshold as a result. This entry documents that as a deliberate, informed
+  choice, not an incomplete effort -- re-run
+  `python ../NPDEV_REALIGNMENT_PLAN/../NPDEV_ROADMAP_2026-09-12/helpers/check_task.py --task W0.2`
+  (FAIL is expected) if picking this back up to extend the rename into the kernel/runtime-host/
+  ledger surface.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/UntrustedExtensionSecurityHardeningTest.java
+  asserts: >-
+    Full run-generator-gate.ps1 (Java compile+test for the whole generator module, deterministic-
+    generation check, out-of-tree generation check, and run-untrusted-extension-security-check.ps1
+    as its own gate step) passes end to end after the rename. The security-check's own report
+    (scripts/reports/out/trusted-source-security-report.json) shows overallStatus=passed with all
+    6 checks true, and its evidence proves the renamed `--tests "*UntrustedExtension*"` filter
+    found and ran real tests (testCaseCount=6 from UntrustedExtensionSecurityHardeningTest.xml,
+    compatibilityTestCaseCount=4 from UntrustedExtensionEmitterTest.xml) -- not a filter that
+    silently matched zero tests and vacuously passed. scripts/quality/run-script-inventory-check.ps1
+    also passes (227/227 scripts classified+invocation-declared) after the 3 script renames.
+  provenRed: true
+  provenRedNote: >-
+    Before fixing the Gradle test filter, `--tests "*TrustedSource*"` would have matched ZERO of
+    the 10 renamed test classes (none contain the substring "TrustedSource" in their simple name
+    any more) -- a security-hardening check silently running and reporting on no tests at all,
+    exiting 0. Confirmed by reasoning about the literal string match before editing it (the same
+    10 classes the filter needs to match are exactly the 10 this task renamed); the corrected
+    filter's real run (testCaseCount=6, compatibilityTestCaseCount=4, both non-zero) is the
+    positive proof the fix works, run inside the same gate invocation as everything else.
+notes: |
+  helpers/check_task.py --task W0.2 (NPDEV_ROADMAP_2026-09-12.md) reports FAIL, not PASS/MANUAL:
+  its `notExists` condition (the flagship TrustedSourceEmitter.java is gone) passes, but its
+  `countBelow` condition (fewer than 20 non-historical files still say TrustedSource) does not --
+  57 remain, see "why this did not reach the numeric target" in `detail` above for the full
+  accounting and the scope decision behind it.

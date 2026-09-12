@@ -218,7 +218,7 @@ $testResult = Invoke-CommandCapture "trusted-source-security-hardening-tests" {
     $env:NPDEV_CP10_BYTECODE_INTEGRATION_PROOF_PATH = $bytecodeIntegrationProofPath
     $env:NPDEV_CP10_BYTECODE_INTEGRATION_DIR = $bytecodeIntegrationProofRoot
     try {
-        & $gradle -p NPDevGenerator :generator:test --tests "*TrustedSource*" --rerun-tasks --no-daemon --console=plain
+        & $gradle -p NPDevGenerator :generator:test --tests "*UntrustedExtension*" --rerun-tasks --no-daemon --console=plain
     }
     finally {
         if ($null -eq $previousProofPath) {
@@ -255,13 +255,13 @@ function Resolve-NPDevGeneratorTestXml {
     return Join-Path $root "NPDevGenerator/generator/build/test-results/test/$FileName"
 }
 
-$testXmlSource = Resolve-NPDevGeneratorTestXml "TEST-com.npdev.generator.TrustedSourceSecurityHardeningTest.xml"
-$testXmlProof = Join-Path $testResultRoot "TEST-com.npdev.generator.TrustedSourceSecurityHardeningTest.xml"
+$testXmlSource = Resolve-NPDevGeneratorTestXml "TEST-com.npdev.generator.UntrustedExtensionSecurityHardeningTest.xml"
+$testXmlProof = Join-Path $testResultRoot "TEST-com.npdev.generator.UntrustedExtensionSecurityHardeningTest.xml"
 if (Test-Path -LiteralPath $testXmlSource -PathType Leaf) {
     Copy-Item -LiteralPath $testXmlSource -Destination $testXmlProof -Force
 }
-$compatibilityTestXmlSource = Resolve-NPDevGeneratorTestXml "TEST-com.npdev.generator.TrustedSourceEmitterTest.xml"
-$compatibilityTestXmlProof = Join-Path $testResultRoot "TEST-com.npdev.generator.TrustedSourceEmitterTest.xml"
+$compatibilityTestXmlSource = Resolve-NPDevGeneratorTestXml "TEST-com.npdev.generator.UntrustedExtensionEmitterTest.xml"
+$compatibilityTestXmlProof = Join-Path $testResultRoot "TEST-com.npdev.generator.UntrustedExtensionEmitterTest.xml"
 if (Test-Path -LiteralPath $compatibilityTestXmlSource -PathType Leaf) {
     Copy-Item -LiteralPath $compatibilityTestXmlSource -Destination $compatibilityTestXmlProof -Force
 }
@@ -307,8 +307,8 @@ Add-Check $checks "trusted-source-security-hardening-tests-pass" $testResult.pas
         compatibilityTestCaseCount = $compatibilityTestCaseCount
     })
 Add-Check $checks "ast-validation-implemented" $astValidationImplemented ([pscustomobject]@{
-        implementationPath = "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/TrustedSourceEmitter.java"
-        testsPath = "NPDevGenerator/generator/src/test/java/com/npdev/generator/TrustedSourceSecurityHardeningTest.java"
+        implementationPath = "NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/UntrustedExtensionEmitter.java"
+        testsPath = "NPDevGenerator/generator/src/test/java/com/npdev/generator/UntrustedExtensionSecurityHardeningTest.java"
     })
 Add-Check $checks "bytecode-restrictions-verified" $bytecodeRestrictionsVerified ([pscustomobject]@{
         productIntegratedProofPath = Convert-ToRepoPath $root $bytecodeIntegrationProofPath
@@ -337,6 +337,10 @@ $report = [pscustomobject]@{
     schemaVersion = "npdev-trusted-source-security-report.v1"
     runId = $RunId
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    # W0.2: NOT renamed to match this script's own new filename -- schemas/ai/trusted-source-
+    # security-report.schema.json pins this exact string via `"const"`. The report's identity
+    # token is part of the output contract this task deliberately leaves alone; only the .ps1's
+    # filename and internal generator-class references moved.
     scriptPath = "scripts/quality/run-trusted-source-security-check.ps1"
     workspaceRoot = $root
     overallStatus = $overallStatus

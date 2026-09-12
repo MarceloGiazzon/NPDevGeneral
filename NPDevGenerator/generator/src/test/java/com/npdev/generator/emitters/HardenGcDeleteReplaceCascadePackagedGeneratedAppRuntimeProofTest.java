@@ -379,7 +379,7 @@ final class HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest {
 
     /**
      * CI_RED_PLAN.md I1 (2026-08-05): {@code HardenGcDeleteReplaceCascade...}, {@code
-     * HardenObjstoreFileUpload...}, and {@code TrustedSourceEmitter...} each call this method,
+     * HardenObjstoreFileUpload...}, and {@code UntrustedExtensionEmitter...} each call this method,
      * which spawns its own {@code --no-daemon} Gradle subprocess against the SAME NPDevKernel
      * project directory. {@code generator/build.gradle}'s {@code test} task runs with {@code
      * maxParallelForks = 2}, so two of these three classes can run concurrently in separate

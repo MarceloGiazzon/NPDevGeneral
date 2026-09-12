@@ -64,7 +64,7 @@ import org.junit.jupiter.api.condition.OS;
  * end to end in a real packaged app -- generate a model with a genuine {@code file}-typed field,
  * assemble + boot the app configured for {@code npdev.filestore.provider=objectstore} against a
  * real MinIO endpoint, upload+download over HTTP, and assert bytes exist in the bucket under the
- * tenant prefix. Companion to {@link TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest}
+ * tenant prefix. Companion to {@link UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest}
  * (same generate-assemble-boot harness), scoped to the file-store surface only.
  */
 @DisabledOnOs(value = OS.WINDOWS, disabledReason =
@@ -355,7 +355,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
 
     /**
      * CI_RED_PLAN.md I1 (2026-08-05): {@code HardenGcDeleteReplaceCascade...}, {@code
-     * HardenObjstoreFileUpload...}, and {@code TrustedSourceEmitter...} each call this method,
+     * HardenObjstoreFileUpload...}, and {@code UntrustedExtensionEmitter...} each call this method,
      * which spawns its own {@code --no-daemon} Gradle subprocess against the SAME NPDevKernel
      * project directory. {@code generator/build.gradle}'s {@code test} task runs with {@code
      * maxParallelForks = 2}, so two of these three classes can run concurrently in separate

@@ -5,7 +5,7 @@ package com.npdev.generator.emitters;
  * starts a start-endpoint flow and resumes it on incoming events, mirroring the action kernel
  * runner's idempotency/evidence/correlation handling for the flow-execution surface.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2) into its own file purely because of size
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2) into its own file purely because of size
  * -- this is one pure, parameterless string-literal method.
  */
 final class TrustedFlowCodaRunnerTemplate {

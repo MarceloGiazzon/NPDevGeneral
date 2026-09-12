@@ -8,7 +8,7 @@
   var NPDEV_UI_SHELL_CONTRACT_COMPAT = { min: "{{{uiContractCompatMin}}}", max: "{{{uiContractCompatMax}}}" };
   window.NPDevUiShell = { version: NPDEV_UI_SHELL_VERSION, contractCompat: NPDEV_UI_SHELL_CONTRACT_COMPAT };
 
-  // Runtime contract for a field.widget="custom" trusted-source widget (see TrustedSourceEmitter's
+  // Runtime contract for a field.widget="custom" trusted-source widget (see UntrustedExtensionEmitter's
   // "widget" kind): the author's separately-loaded, hash-locked, safety-scanned script calls
   // window.NpdevCustomWidgets.register(field.customWidgetRef, { render(field, value) => HTMLElement })
   // at its top level. The returned element must contain a form-associated control named field.name

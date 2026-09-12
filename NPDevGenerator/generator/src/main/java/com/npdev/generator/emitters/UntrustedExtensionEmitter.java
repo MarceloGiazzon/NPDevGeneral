@@ -34,22 +34,22 @@ import static com.npdev.generator.emitters.TrustedFlowSupportTemplates.generated
 import static com.npdev.generator.emitters.TrustedFlowSupportTemplates.generatedFlowExecutionRequestSource;
 import static com.npdev.generator.emitters.TrustedFlowSupportTemplates.generatedFlowExecutionResponseSource;
 import static com.npdev.generator.emitters.TrustedFlowSupportTemplates.generatedFlowRegistrySource;
-import static com.npdev.generator.emitters.TrustedSourceControllerTemplate.controllerSource;
-import static com.npdev.generator.emitters.TrustedSourceManifest.generationManifest;
-import static com.npdev.generator.emitters.TrustedSourceManifest.readManifest;
-import static com.npdev.generator.emitters.TrustedSourceManifest.referencesFrom;
-import static com.npdev.generator.emitters.TrustedSourceManifest.toPanel;
-import static com.npdev.generator.emitters.TrustedSourceManifest.toProcedure;
-import static com.npdev.generator.emitters.TrustedSourceManifest.toWidget;
-import static com.npdev.generator.emitters.TrustedSourceManifest.trustedFlowsFrom;
-import static com.npdev.generator.emitters.TrustedSourceManifest.validateHash;
+import static com.npdev.generator.emitters.UntrustedExtensionControllerTemplate.controllerSource;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.generationManifest;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.readManifest;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.referencesFrom;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.toPanel;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.toProcedure;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.toWidget;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.trustedFlowsFrom;
+import static com.npdev.generator.emitters.UntrustedExtensionManifest.validateHash;
 
-public final class TrustedSourceEmitter {
+public final class UntrustedExtensionEmitter {
     private static final String PACKAGE_PATH = "com/npdev/generated/trusted";
 
     private final GeneratedSourceWriter writer;
 
-    public TrustedSourceEmitter(GeneratedSourceWriter writer) {
+    public UntrustedExtensionEmitter(GeneratedSourceWriter writer) {
         this.writer = writer;
     }
 

@@ -7,19 +7,19 @@ import com.npdev.generator.emitters.trustedsource.model.TrustedWidget;
 
 import java.util.List;
 
-import static com.npdev.generator.emitters.TrustedSourceTemplateSupport.quote;
+import static com.npdev.generator.emitters.UntrustedExtensionTemplateSupport.quote;
 
 /**
  * Static Java source template for {@code GeneratedTrustedSourceRuntimeController}: the single
  * REST controller a generated app mounts for the whole trusted-source runtime surface -- action/
  * flow invocation and evidence endpoints (fixed), plus one route per declared panel/widget.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2) into its own file purely because of size.
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2) into its own file purely because of size.
  */
-final class TrustedSourceControllerTemplate {
+final class UntrustedExtensionControllerTemplate {
     private static final String FULL_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; object-src 'none'; base-uri 'self'; frame-src 'none'; frame-ancestors 'none'; worker-src 'none'; manifest-src 'self'; upgrade-insecure-requests";
 
-    private TrustedSourceControllerTemplate() {
+    private UntrustedExtensionControllerTemplate() {
     }
 
     static String controllerSource(

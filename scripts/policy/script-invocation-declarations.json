@@ -646,13 +646,13 @@
     "scripts/quality/run-traceable-local-release.ps1": {
       "invocation": "ci-gate"
     },
-    "scripts/quality/run-trusted-source-beta0-proof-tests.ps1": {
+    "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1": {
       "invocation": "orchestrated"
     },
-    "scripts/quality/run-trusted-source-beta0-proof.ps1": {
+    "scripts/quality/run-untrusted-extension-beta0-proof.ps1": {
       "invocation": "orchestrated"
     },
-    "scripts/quality/run-trusted-source-security-check.ps1": {
+    "scripts/quality/run-untrusted-extension-security-check.ps1": {
       "invocation": "orchestrated"
     },
     "scripts/quality/run-weekly-paperwork-checks.ps1": {

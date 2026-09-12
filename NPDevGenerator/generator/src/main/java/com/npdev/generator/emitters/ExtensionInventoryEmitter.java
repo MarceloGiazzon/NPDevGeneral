@@ -28,7 +28,7 @@ import java.util.stream.Stream;
  * concept is introduced:
  *
  * <ul>
- *   <li><b>untrustedExtensionAsset</b> -- {@link TrustedSourceManifest#referencesFrom} (procedure/
+ *   <li><b>untrustedExtensionAsset</b> -- {@link UntrustedExtensionManifest#referencesFrom} (procedure/
  *       panel/widget files an untrusted-extension-manifest.json hash-locks; Path A P0.4 renamed the
  *       author-facing vocabulary from "trusted source" to "untrusted extension" -- the internal
  *       Java class/package names in this package predate that rename and were deliberately left
@@ -97,8 +97,8 @@ public final class ExtensionInventoryEmitter {
     }
 
     public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath,
-            Path outRoot, Map<String, List<String>> trustedSourceGeneratedPaths) throws IOException {
-        emit(model, resolvedModelSource, modelSourcePath, outRoot, trustedSourceGeneratedPaths, null);
+            Path outRoot, Map<String, List<String>> untrustedExtensionGeneratedPaths) throws IOException {
+        emit(model, resolvedModelSource, modelSourcePath, outRoot, untrustedExtensionGeneratedPaths, null);
     }
 
     /**
@@ -108,13 +108,13 @@ public final class ExtensionInventoryEmitter {
      * delegates here) -- zero behavior change when the app declares no {@code web/} directory.
      */
     public void emit(CompiledModel model, ResolvedModelSource resolvedModelSource, Path modelSourcePath,
-            Path outRoot, Map<String, List<String>> trustedSourceGeneratedPaths, Path webAssetsRoot) throws IOException {
+            Path outRoot, Map<String, List<String>> untrustedExtensionGeneratedPaths, Path webAssetsRoot) throws IOException {
         ArrayNode entries = OBJECT_MAPPER.createArrayNode();
         Map<String, Integer> counts = new TreeMap<>();
         Map<String, CustomizationRecord> provenance = CustomizationProvenanceManifest.readSibling(modelSourcePath);
 
-        for (TrustedReference reference : TrustedSourceManifest.referencesFrom(model)) {
-            List<String> generatedPaths = trustedSourceGeneratedPaths.getOrDefault(
+        for (TrustedReference reference : UntrustedExtensionManifest.referencesFrom(model)) {
+            List<String> generatedPaths = untrustedExtensionGeneratedPaths.getOrDefault(
                     reference.kind() + "::" + reference.id(), List.of());
             addEntry(entries, counts, provenance, "untrustedExtensionAsset", reference.kind(),
                     reference.relativePath(), reference.id(), generatedPaths, outRoot);

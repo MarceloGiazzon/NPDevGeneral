@@ -73,7 +73,7 @@ $producers = @(
         script = "scripts/quality/run-ai-schema-validation.ps1"
         reports = @("ai-schema-validation-report.json") }
     [pscustomobject]@{ name = "trusted-source-beta0-proof"; stage = 1
-        script = "scripts/quality/run-trusted-source-beta0-proof.ps1"
+        script = "scripts/quality/run-untrusted-extension-beta0-proof.ps1"
         reports = @("trusted-source-beta0-proof-report.json") }
 
     # ---- stage 2: build / boot / container -------------------------------------------------------

@@ -837,7 +837,7 @@ def migrate_db_definition(doc: dict) -> MigrationResult:
 # the file this concerns is the one a `panels[]`/`procedures[].metadata.untrustedExtensionEntrypoint`
 # reference points at by content, not by a filename the platform enforces. No alias window ships for
 # the schemaVersion string itself (per the same decision as the metadata key rename above): an
-# unmigrated manifest fails TrustedSourceEmitter's schemaVersion check with a clear message rather
+# unmigrated manifest fails UntrustedExtensionEmitter's schemaVersion check with a clear message rather
 # than silently being accepted under two names forever.
 # =================================================================================================
 

@@ -102,7 +102,7 @@ function Invoke-Proof {
     param([string]$ScenarioRoot, [string]$Name, [switch]$ExpectNonZero, [switch]$StaticOnlyPass)
     $reportPath = Join-Path $testRoot ($Name + ".json")
     $relativeRoot = [System.IO.Path]::GetRelativePath($workspaceRoot, $ScenarioRoot) -replace "\\", "/"
-    $args = @("-NoProfile", "-File", "scripts/quality/run-trusted-source-beta0-proof.ps1", "-RunId", $RunId, "-ScenarioRoot", $relativeRoot, "-ReportPath", $reportPath)
+    $args = @("-NoProfile", "-File", "scripts/quality/run-untrusted-extension-beta0-proof.ps1", "-RunId", $RunId, "-ScenarioRoot", $relativeRoot, "-ReportPath", $reportPath)
     if ($StaticOnlyPass) { $args += "-StaticOnlyPass" }
     $ErrorActionPreference = "Continue"
     & pwsh @args 2>$null | Out-Null
@@ -298,7 +298,7 @@ $report = [pscustomobject]@{
     schemaVersion = "npdev-trusted-source-beta0-proof-test-report.v1"
     runId = $RunId
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
-    scriptPath = "scripts/quality/run-trusted-source-beta0-proof-tests.ps1"
+    scriptPath = "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1"
     overallStatus = "passed"
     cases = @(
         [pscustomobject]@{ name = "java-forbidden-api-negative-cases"; count = $negativeJavaCases.Count; reportPath = $javaRun.reportPath },

@@ -5,7 +5,7 @@ package com.npdev.generator.emitters;
  * drives a single generated-action invocation through idempotency, capability dispatch,
  * evidence (event/audit/trace) recording, and correlation bookkeeping.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2) into its own file purely because of size
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2) into its own file purely because of size
  * -- this is one pure, parameterless string-literal method.
  */
 final class TrustedActionKernelRunnerTemplate {

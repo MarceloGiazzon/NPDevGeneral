@@ -198,7 +198,7 @@ Assert-Condition -Condition (@($missingSchemaReport.failures | Where-Object { [s
 
 $representativeMissingEntrypoints = @(
     [pscustomobject]@{ name = "runtimehost-staged-jar-preflight-tests"; omitted = "scripts/quality/run-runtimehost-staged-jar-preflight-tests.ps1"; expectedCoverage = "runtimehost-full-staged-jar-preflight" },
-    [pscustomobject]@{ name = "trusted-source-proof-tests"; omitted = "scripts/quality/run-trusted-source-beta0-proof-tests.ps1"; expectedCoverage = "trusted-source-manifest-locking" },
+    [pscustomobject]@{ name = "trusted-source-proof-tests"; omitted = "scripts/quality/run-untrusted-extension-beta0-proof-tests.ps1"; expectedCoverage = "trusted-source-manifest-locking" },
     [pscustomobject]@{ name = "scope-policy-enforcement-tests"; omitted = "scripts/quality/run-scope-policy-enforcement-tests.ps1"; expectedCoverage = "scope-policy-enforcement-drift-tests" },
     [pscustomobject]@{ name = "structured-command-alignment"; omitted = "scripts/quality/run-structured-command-surface-alignment.ps1"; expectedCoverage = "structured-command-schema-policy-runner-alignment" },
     [pscustomobject]@{ name = "sample-matrix-strict-semantics-tests"; omitted = "scripts/quality/run-sample-matrix-tests.ps1"; expectedCoverage = "strict-sample-matrix-semantics" }

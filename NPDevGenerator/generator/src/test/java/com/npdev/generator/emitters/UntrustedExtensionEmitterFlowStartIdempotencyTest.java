@@ -9,10 +9,10 @@ import java.util.List;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
-class TrustedSourceEmitterFlowStartIdempotencyTest {
-    // 2.B.2: TrustedSourceEmitter.java was split into several sibling files under this same
+class UntrustedExtensionEmitterFlowStartIdempotencyTest {
+    // 2.B.2: UntrustedExtensionEmitter.java was split into several sibling files under this same
     // package (trusted-source manifest/policy/template classes) -- the generated-source text this
-    // test greps for now lives across that whole family, not in TrustedSourceEmitter.java alone.
+    // test greps for now lives across that whole family, not in UntrustedExtensionEmitter.java alone.
     private static String trustedSourceEmitterSource() throws IOException {
         List<Path> candidates = List.of(
                 Path.of("src/main/java/com/npdev/generator/emitters"),
@@ -41,9 +41,9 @@ class TrustedSourceEmitterFlowStartIdempotencyTest {
 
     private static String packagedProofSource() throws IOException {
         List<Path> candidates = List.of(
-                Path.of("src/test/java/com/npdev/generator/emitters/TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java"),
-                Path.of("generator/src/test/java/com/npdev/generator/emitters/TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java"),
-                Path.of("NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java")
+                Path.of("src/test/java/com/npdev/generator/emitters/UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java"),
+                Path.of("generator/src/test/java/com/npdev/generator/emitters/UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java"),
+                Path.of("NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java")
         );
 
         for (Path candidate : candidates) {
@@ -52,7 +52,7 @@ class TrustedSourceEmitterFlowStartIdempotencyTest {
             }
         }
 
-        throw new IOException("Could not locate TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java. Tried: " + candidates);
+        throw new IOException("Could not locate UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java. Tried: " + candidates);
     }
 
     @Test

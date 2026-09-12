@@ -20,7 +20,7 @@ import javax.lang.model.element.Modifier;
  * records every forbidden construct (escape-hatch identifiers, reflective/qualified access,
  * forbidden method selects, static initializers, native/synchronized methods) it finds.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2) -- self-contained, zero coupling to the
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2) -- self-contained, zero coupling to the
  * rest of the emitter beyond the violations list its caller supplies.
  */
 public final class TrustedJavaSourcePolicyVisitor extends TreeScanner<Void, Void> {

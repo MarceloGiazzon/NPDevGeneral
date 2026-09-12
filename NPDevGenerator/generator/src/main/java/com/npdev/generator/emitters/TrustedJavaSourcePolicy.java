@@ -23,7 +23,7 @@ import javax.tools.ToolProvider;
  * platform compiler and rejects it (throwing) if its imports or constructs fall outside the
  * sanctioned trusted-source subset.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2).
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2).
  */
 final class TrustedJavaSourcePolicy {
 

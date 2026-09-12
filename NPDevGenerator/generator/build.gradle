@@ -155,7 +155,7 @@ tasks.register('authorDiffGate', JavaExec) {
 // wherever GeneratedCrudRuntimeSupport itself is loaded -- they cannot be scoped to only the test's own
 // child URLClassLoader.
 //
-// They also cannot simply be added to the main `test` task's classpath: TrustedSourceEmitterGeneratedActionTest
+// They also cannot simply be added to the main `test` task's classpath: UntrustedExtensionEmitterGeneratedActionTest
 // and its JDBC sibling hand-write their OWN minimal stub classes under these exact same package/class
 // names (org.springframework.stereotype.Service, jakarta.servlet.http.HttpServletRequest, ...) and
 // compile+load them through an isolated URLClassLoader that reuses `System.getProperty("java.class.path")`

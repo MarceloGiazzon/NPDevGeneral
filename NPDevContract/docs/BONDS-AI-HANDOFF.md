@@ -321,7 +321,7 @@ cd d:/WorkSpace/NPDev/NPDev_General/NPDevGenerator
 ./gradlew :generator:test --tests "com.npdev.generator.emitters.FlywayEmitterBondsTest"
 ```
 The generator build recompiles `:dsl` from source, so contract changes are picked up.
-The runtime-proof test (`TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`) **forks
+The runtime-proof test (`UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest`) **forks
 a nested Gradle build** of a generated app and boots it on H2 — it is the closest thing to
 an integration test and takes ~4–6 min.
 

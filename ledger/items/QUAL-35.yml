@@ -14,7 +14,7 @@ source: >-
   (Trap 1b), a different script.
 surface: quality/scripts, build-output-policy
 files:
-  - scripts/quality/run-trusted-source-security-check.ps1
+  - scripts/quality/run-untrusted-extension-security-check.ps1
 detail: |
   Line ~195: `$workRoot = Join-Path $root "build/cp10-trusted-source-security"` -- an unconditional
   repo-root write. A single real generator-gate run left 17 files there, several of them `.java`
@@ -48,7 +48,7 @@ detail: |
   `run-generator-gate.ps1`'s own T2 gate run, not repeated here.
 guard:
   kind: manual
-  ref: scripts/quality/run-trusted-source-security-check.ps1
+  ref: scripts/quality/run-untrusted-extension-security-check.ps1
   asserts: >-
     `$workRoot` is `Join-Path (Get-NPDevBuildRoot $root) "cp10-trusted-source-security"`, not a
     repo-relative `build/...` path. A generator-gate run leaves no `build/cp10-trusted-source-
@@ -58,3 +58,8 @@ guard:
     Pre-fix state directly cited by this item's own `source`/`detail`: a real generator-gate run
     measured 17 files left under repo-root `build/cp10-trusted-source-security` (2026-08-23), not a
     synthetic reproduction.
+notes: |
+  W0.2 (2026-09-12, ledger/items/W0.2.yml) renamed this script to
+  run-untrusted-extension-security-check.ps1 -- `files`/`guard.ref` above updated to the real
+  current path; the title/source/detail prose is left as written, describing the fix in the
+  filename that existed at the time.

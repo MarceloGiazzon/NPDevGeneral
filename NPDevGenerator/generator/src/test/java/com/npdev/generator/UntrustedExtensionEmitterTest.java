@@ -3,7 +3,7 @@ package com.npdev.generator;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledProcedure;
-import com.npdev.generator.emitters.TrustedSourceEmitter;
+import com.npdev.generator.emitters.UntrustedExtensionEmitter;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import org.junit.jupiter.api.Test;
@@ -18,10 +18,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class TrustedSourceEmitterTest {
+class UntrustedExtensionEmitterTest {
 
     @Test
-    void emitsTrustedSourceArtifactsFromSiblingManifest() throws Exception {
+    void emitsUntrustedExtensionArtifactsFromSiblingManifest() throws Exception {
         Path modelRoot = Files.createTempDirectory("npdev-trusted-source-model-");
         Path modelPath = modelRoot.resolve("model.json");
         Files.writeString(modelPath, "{}");
@@ -58,7 +58,7 @@ class TrustedSourceEmitterTest {
         Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), manifest(sha256(procedure), sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-source-out-");
-        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
 
         assertTrue(Files.isRegularFile(out.resolve("src/main/java/com/npdev/generated/trusted/CreateUsersProcedure.java")));
         assertTrue(Files.isRegularFile(out.resolve("src/main/java/com/npdev/generated/trusted/NPDevProcedureContext.java")));
@@ -145,7 +145,7 @@ class TrustedSourceEmitterTest {
                 """.formatted(sha256(procedure), sha256(panel)));
 
         Path out = Files.createTempDirectory("npdev-trusted-source-out-");
-        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath);
 
         assertTrue(Files.isRegularFile(out.resolve("src/main/java/com/npdev/generated/trusted/CreateUsersProcedure.java")));
         String generationManifest = Files.readString(
@@ -190,7 +190,7 @@ class TrustedSourceEmitterTest {
         Path out = Files.createTempDirectory("npdev-trusted-source-out-");
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath));
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath));
         assertTrue(failure.getMessage().contains("T5"));
         assertTrue(failure.getMessage().contains("test"));
     }
@@ -225,7 +225,7 @@ class TrustedSourceEmitterTest {
         Path out = Files.createTempDirectory("npdev-trusted-source-out-");
 
         assertThrows(IllegalStateException.class,
-                () -> new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath));
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model(), modelPath));
     }
 
     private static CompiledModel model() {

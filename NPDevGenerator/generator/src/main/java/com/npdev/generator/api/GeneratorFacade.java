@@ -23,7 +23,7 @@ import com.npdev.generator.emitters.RuntimeAuthPropertiesEmitter;
 import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.SemanticGraphEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
-import com.npdev.generator.emitters.TrustedSourceEmitter;
+import com.npdev.generator.emitters.UntrustedExtensionEmitter;
 import com.npdev.generator.emitters.XrefEmitter;
 import com.npdev.generator.guard.GeneratedProjectionGuard;
 import com.npdev.generator.packs.LinkedSealedPack;
@@ -366,8 +366,8 @@ public final class GeneratorFacade {
             new BoxManifestEmitter().emit(model, writer, resolvedModelSource, modelSourcePath);
             new PackCatalogEmitter().emit(writer, internalTablesEnabled, installedPackAliases);
         }
-        Map<String, List<String>> trustedSourceGeneratedPaths =
-                new TrustedSourceEmitter(writer).emit(model, modelSourcePath);
+        Map<String, List<String>> untrustedExtensionGeneratedPaths =
+                new UntrustedExtensionEmitter(writer).emit(model, modelSourcePath);
         new MetadataManifestAssetEmitter(writer).emit(model, resolvedModelSource, modelSourcePath);
 
         // Stage 3: emit deterministic plugin requirement asset derived from the model source.
@@ -418,7 +418,7 @@ public final class GeneratorFacade {
         // category -- everything under the app's own web/ (--webAssetsRoot), the one escape hatch
         // that previously reported zero unconditionally.
         new ExtensionInventoryEmitter(writer).emit(model, resolvedModelSource, modelSourcePath, outRoot,
-                trustedSourceGeneratedPaths, webAssetsRoot);
+                untrustedExtensionGeneratedPaths, webAssetsRoot);
 
         new GeneratedFolderSignatureEmitter().emit(outRoot);
 

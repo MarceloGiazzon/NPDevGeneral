@@ -22,10 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Path A P0.3: proves {@link ExtensionInventoryEmitter} writes extension-inventory.json and counts
  * a real {@code conversions[].javaHook} correctly, while reporting zero for the three mechanisms
- * this minimal model does not use ({@code TrustedSourceManifest.referencesFrom} and
- * {@link GeneratedPluginMountPlan#fromModelSource} both degrade gracefully -- no trusted-source
+ * this minimal model does not use ({@code UntrustedExtensionManifest.referencesFrom} and
+ * {@link GeneratedPluginMountPlan#fromModelSource} both degrade gracefully -- no untrusted-extension
  * manifest and no model source file on disk -- rather than throwing, which is what lets this test
- * avoid standing up a full plugin/trusted-source fixture).
+ * avoid standing up a full plugin/untrusted-extension fixture).
  */
 class ExtensionInventoryEmitterTest {
 

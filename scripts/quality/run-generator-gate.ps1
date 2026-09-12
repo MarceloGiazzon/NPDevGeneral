@@ -255,12 +255,14 @@ $releaseGateEvidence = [pscustomobject]@{
 $gateReport | Add-Member -NotePropertyName releaseGateT2 -NotePropertyValue $releaseGateEvidence -Force
 $gateReport | Add-Member -NotePropertyName outOfTreeGeneration -NotePropertyValue $outOfTreeEvidence -Force
 
-# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): run-trusted-source-security-check.ps1 was
+# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): run-untrusted-extension-security-check.ps1
+# (renamed from run-trusted-source-security-check.ps1 by W0.2; its report contract still says
+# "trusted-source" -- schemas/ai/trusted-source-security-report.schema.json pins it) was
 # reachable from no gate at all before this card. It does something no check-*.py duplicates -- an
 # AST-validation + bytecode-restriction proof (javac/javap forbidden-opcode scan) for
-# TrustedSourceEmitter's generated code, not just re-running :generator:test (which generatorQualityGate
-# above already does). Wired in HERE rather than a new standalone gate.
-$trustedSourceSecurityScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-trusted-source-security-check.ps1"
+# UntrustedExtensionEmitter's generated code, not just re-running :generator:test (which
+# generatorQualityGate above already does). Wired in HERE rather than a new standalone gate.
+$trustedSourceSecurityScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-untrusted-extension-security-check.ps1"
 $trustedSourceSecurityReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\trusted-source-security-report.json"
 $trustedSourceSecurityError = $null
 $trustedSourceSecurityReport = $null

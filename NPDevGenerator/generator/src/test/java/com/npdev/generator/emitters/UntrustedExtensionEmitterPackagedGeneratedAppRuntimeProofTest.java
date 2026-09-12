@@ -60,7 +60,7 @@ import org.junit.jupiter.api.Timeout;
 // divergence. Tagged so a local `test` run can skip them (LOUDLY -- see build.gradle) while
 // CI always runs them. Do not remove the tag to "speed up CI"; CI is where they earn their keep.
 @Tag("packaged-proof")
-final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
+final class UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final Path WORKSPACE_ROOT = resolveWorkspaceRoot();
@@ -88,7 +88,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
 
         StringBuilder generationOutput = new StringBuilder();
         CompiledModel model = compiledProofModel();
-        Path modelSource = writeTrustedSourceModel(runRoot);
+        Path modelSource = writeUntrustedExtensionModel(runRoot);
         GeneratedDatabasePlan plan = h2JdbcPlan(runRoot, modelSource);
         new GeneratorFacade(new TemplateEngine("npdev-templates/"), new GeneratedSourceWriter(generatedRoot, new RegenerationPolicy()))
                 .generate(model, generatedRoot, schemaRoot, modelSource, plan);
@@ -647,7 +647,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
         );
     }
 
-    private static Path writeTrustedSourceModel(Path runRoot) throws Exception {
+    private static Path writeUntrustedExtensionModel(Path runRoot) throws Exception {
         Path modelRoot = runRoot.resolve("model");
         Files.createDirectories(modelRoot.resolve("trusted"));
         Files.createDirectories(modelRoot.resolve("panel"));
@@ -978,7 +978,7 @@ final class TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest {
 
     /**
      * CI_RED_PLAN.md I1 (2026-08-05): {@code HardenGcDeleteReplaceCascade...}, {@code
-     * HardenObjstoreFileUpload...}, and {@code TrustedSourceEmitter...} each call this method,
+     * HardenObjstoreFileUpload...}, and {@code UntrustedExtensionEmitter...} each call this method,
      * which spawns its own {@code --no-daemon} Gradle subprocess against the SAME NPDevKernel
      * project directory. {@code generator/build.gradle}'s {@code test} task runs with {@code
      * maxParallelForks = 2}, so two of these three classes can run concurrently in separate

@@ -144,7 +144,7 @@ public class BusinessUiEmitterPanelRouteControllerTest {
 
         assertFalse(source.contains("@GetMapping(\"/users\")"),
                 "a untrustedExtensionEntrypoint panel must NOT get a second @GetMapping here -- "
-                        + "TrustedSourceControllerTemplate already emits its own, and Spring rejects a duplicate "
+                        + "UntrustedExtensionControllerTemplate already emits its own, and Spring rejects a duplicate "
                         + "mapping for the same path at boot; got: " + source);
     }
 }

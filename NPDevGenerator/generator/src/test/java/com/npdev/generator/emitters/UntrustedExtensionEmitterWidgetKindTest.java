@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * external-fetch/etc.) already built and tested for trusted-source panels, per a new manifest
  * entry kind rather than a parallel mechanism.
  */
-class TrustedSourceEmitterWidgetKindTest {
+class UntrustedExtensionEmitterWidgetKindTest {
 
     private static Path writeModel(Path modelRoot) throws Exception {
         Path modelPath = modelRoot.resolve("model.json");
@@ -107,7 +107,7 @@ class TrustedSourceEmitterWidgetKindTest {
         CompiledModel model = compile(modelPath);
 
         Path out = Files.createTempDirectory("npdev-trusted-widget-out-");
-        new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model, modelPath);
+        new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model, modelPath);
 
         Path writtenScript = out.resolve("src/main/resources/trusted-source/widget/widgets/star-rating.js");
         assertTrue(Files.isRegularFile(writtenScript), "expected the widget script to be written to the resource tree");
@@ -131,7 +131,7 @@ class TrustedSourceEmitterWidgetKindTest {
 
         Path out = Files.createTempDirectory("npdev-trusted-widget-drift-out-");
         assertThrows(IllegalStateException.class,
-                () -> new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model, modelPath));
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model, modelPath));
     }
 
     @Test
@@ -145,6 +145,6 @@ class TrustedSourceEmitterWidgetKindTest {
 
         Path out = Files.createTempDirectory("npdev-trusted-widget-unsafe-out-");
         assertThrows(IllegalStateException.class,
-                () -> new TrustedSourceEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model, modelPath));
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(model, modelPath));
     }
 }

@@ -7,8 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-import static com.npdev.generator.emitters.TrustedSourceTemplateSupport.metadataText;
-import static com.npdev.generator.emitters.TrustedSourceTemplateSupport.quote;
+import static com.npdev.generator.emitters.UntrustedExtensionTemplateSupport.metadataText;
+import static com.npdev.generator.emitters.UntrustedExtensionTemplateSupport.quote;
 
 /**
  * Packaged-procedure wrapping and the {@code GeneratedActionRegistry} template: builds the
@@ -16,7 +16,7 @@ import static com.npdev.generator.emitters.TrustedSourceTemplateSupport.quote;
  * procedure's compiled {@link CompiledGeneratedActionDescriptorSpec} or, absent one, from its
  * trusted-source manifest metadata / naming conventions.
  *
- * <p>Split out of {@code TrustedSourceEmitter} (2.B.2).
+ * <p>Split out of {@code UntrustedExtensionEmitter} (2.B.2).
  */
 final class TrustedActionRegistryTemplate {
     private static final String PACKAGE_NAME = "com.npdev.generated.trusted";
