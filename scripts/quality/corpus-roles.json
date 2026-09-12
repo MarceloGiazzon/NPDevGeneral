@@ -81,6 +81,7 @@
     "NPDevSamples/probes/p6-satellite-extension": "probe",
     "NPDevSamples/probes/p7-plugin-controller": "probe",
     "NPDevSamples/probes/p10-extension-pack": "probe",
+    "NPDevSamples/probes/p11-handwritten-pages": "repro-case",
     "NPDevSamples/probes/path-a-regeneration-survival": "probe",
     "NPDevSamples/restaurant-saas-multitenant": "showcase",
     "NPDevSamples/simple-contact-intake": "showcase",

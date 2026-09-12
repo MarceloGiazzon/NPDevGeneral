@@ -4,15 +4,24 @@ trustLevel, 21 of them generator main classes, and the only way to answer "what 
 this app use" was grep. ExtensionInventoryEmitter (NPDevGenerator/generator/.../emitters/
 ExtensionInventoryEmitter.java) now writes src/main/resources/npdev/extension-inventory.json on
 every generation. This checker proves that artifact is actually produced, well-formed, and non-empty
-for the real corpus fixtures that exercise each of the four escape hatches -- not just that the
-generator command exited 0.
+for the real corpus fixtures that exercise each escape hatch -- not just that the generator command
+exited 0.
 
-Generates two fixtures for real (NPDevSamples/scripts/generate-sample-app.ps1 -NoAssembleFinalApp --
-emission only, no build/boot):
+W0.1 (NPDEV_ROADMAP_2026-09-12.md): added the 5th category, handwrittenScreen -- a hand-authored
+web/ directory (--webAssetsRoot) mounted into static/ at assembly time, which an app could
+previously ship with arbitrary HTML/JS while honestly reporting zero untrusted extensions.
+
+Generates three fixtures for real (NPDevSamples/scripts/generate-sample-app.ps1 -NoAssembleFinalApp
+-- emission only, no build/boot):
   - dsl-conformance-max: has a real conversions[].javaHook (0008-java-hook-order-summary) and one
     plugin:java-source mount (auditLog) -- proves the javaHook and pluginPackage categories.
   - probes/p7-plugin-controller: two plugin:java-controller mounts (adminTools, superOnlyTools) --
     proves the inProcessController category.
+  - probes/p11-handwritten-pages: Input/pages.json declares companion.html, backed by
+    Input/web/companion.html + Input/web/theme.css -- proves the handwrittenScreen category (one
+    companionPage entry, one appAsset entry). pages.json itself is inert to generation (never
+    forwarded to the generator -- see BusinessUiEmitter's own doc); what the checker actually
+    exercises is generate-sample-app.ps1 auto-detecting Input/web/ and passing --webAssetsRoot.
 
 untrustedExtensionAsset has no fixture in either corpus location the generator actually builds from
 (untrusted-extension-manifest.json only exists today under golden-ai-scenarios/, which the
@@ -35,7 +44,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GENERATE_SCRIPT = REPO_ROOT / "NPDevSamples" / "scripts" / "generate-sample-app.ps1"
 
-CATEGORIES = ("untrustedExtensionAsset", "javaHook", "inProcessController", "pluginPackage")
+CATEGORIES = ("untrustedExtensionAsset", "javaHook", "inProcessController", "pluginPackage", "handwrittenScreen")
 
 FIXTURES = {
     "dsl-conformance-max": {
@@ -43,6 +52,9 @@ FIXTURES = {
     },
     "probes/p7-plugin-controller": {
         "minCounts": {"inProcessController": 1},
+    },
+    "probes/p11-handwritten-pages": {
+        "minCounts": {"handwrittenScreen": 2},
     },
 }
 

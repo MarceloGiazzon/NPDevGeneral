@@ -165,4 +165,64 @@ class ExtensionInventoryEmitterTest {
                 () -> new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
                         .emit(model(), null, modelSourcePath, outRoot, java.util.Map.of()));
     }
+
+    /**
+     * W0.1: a companion.html + theme.css under webAssetsRoot must each become a
+     * {@code handwrittenScreen} entry -- html classified {@code companionPage}, everything else
+     * {@code appAsset} -- with no impact on the other four categories.
+     */
+    @Test
+    void countsHandwrittenScreensFromWebAssetsRoot(@TempDir Path tempDir) throws IOException {
+        Path outRoot = tempDir.resolve("Output");
+        Files.createDirectories(outRoot);
+        Path modelSourcePath = tempDir.resolve("Input").resolve("model.json");
+        Path webAssetsRoot = tempDir.resolve("web");
+        Files.createDirectories(webAssetsRoot);
+        Files.writeString(webAssetsRoot.resolve("companion.html"), "<html></html>");
+        Files.writeString(webAssetsRoot.resolve("theme.css"), "body { color: black; }");
+
+        new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
+                .emit(model(), null, modelSourcePath, outRoot, java.util.Map.of(), webAssetsRoot);
+
+        Path inventoryPath = outRoot.resolve("src/main/resources/npdev/extension-inventory.json");
+        JsonNode inventory = MAPPER.readTree(Files.readString(inventoryPath));
+        assertEquals(2, inventory.path("counts").path("handwrittenScreen").asInt());
+
+        JsonNode entries = inventory.path("entries");
+        boolean sawPage = false;
+        boolean sawAsset = false;
+        for (JsonNode entry : entries) {
+            if (!"handwrittenScreen".equals(entry.path("category").asText())) {
+                continue;
+            }
+            if ("companion.html".equals(entry.path("origin").asText())) {
+                assertEquals("companionPage", entry.path("kind").asText());
+                assertEquals("companion.html", entry.path("owner").asText());
+                sawPage = true;
+            } else if ("theme.css".equals(entry.path("origin").asText())) {
+                assertEquals("appAsset", entry.path("kind").asText());
+                sawAsset = true;
+            }
+        }
+        assertTrue(sawPage, "companion.html must be counted as companionPage");
+        assertTrue(sawAsset, "theme.css must be counted as appAsset");
+    }
+
+    /**
+     * W0.1: the 5-arg overload (no webAssetsRoot) must keep reporting zero -- an app with no web/
+     * directory declares no handwritten screens.
+     */
+    @Test
+    void reportsZeroHandwrittenScreensWithNoWebAssetsRoot(@TempDir Path tempDir) throws IOException {
+        Path outRoot = tempDir.resolve("Output");
+        Files.createDirectories(outRoot);
+        Path modelSourcePath = tempDir.resolve("Input").resolve("model.json");
+
+        new ExtensionInventoryEmitter(new GeneratedSourceWriter(outRoot, new RegenerationPolicy()))
+                .emit(model(), null, modelSourcePath, outRoot, java.util.Map.of());
+
+        Path inventoryPath = outRoot.resolve("src/main/resources/npdev/extension-inventory.json");
+        JsonNode inventory = MAPPER.readTree(Files.readString(inventoryPath));
+        assertEquals(0, inventory.path("counts").path("handwrittenScreen").asInt());
+    }
 }

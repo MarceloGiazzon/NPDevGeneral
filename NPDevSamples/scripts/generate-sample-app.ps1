@@ -66,6 +66,16 @@ $generatorArgs = @(
     "--clean"
 )
 
+# W0.1: same AppGen-authoring convention Build-NpdevApp.ps1 established for a hand-authored web/
+# directory (an author-owned companion-page/asset mount, e.g. NPDevSamples/probes/
+# p11-handwritten-screens/Input/web) -- optional, auto-detected, independent of -NoAssembleFinalApp
+# (the generate command reads --webAssetsRoot to populate ExtensionInventoryEmitter's
+# handwrittenScreen category regardless of whether assembly ever mounts the files into static/).
+$webAssetsRoot = Join-Path $sample.InputRoot "web"
+if (Test-Path -LiteralPath $webAssetsRoot -PathType Container) {
+    $generatorArgs += @("--webAssetsRoot", $webAssetsRoot)
+}
+
 if ($NoAssembleFinalApp) {
     $generatorArgs += "--no-assembleFinalApp"
 }
