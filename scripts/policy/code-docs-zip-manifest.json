@@ -1,6 +1,6 @@
 {
   "$schemaVersion": "npdev-code-docs-zip-manifest.v1",
-  "description": "Content list for scripts/release/New-CodeDocsZip.ps1 -- a code+docs review snapshot of this repo. Paths are repo-relative with forward slashes, enumerated from 'git ls-files' (nothing untracked or gitignored can ever enter). The archive's TREE listing always covers EVERY tracked file (scripts/, ledger/, tests included, by name only); a file's actual bytes are staged into the zip only when it matches a 'contentInclude' pattern and no 'contentExclude' pattern -- exclude always wins. Edit this file to change what ships -- the script itself carries no path knowledge.",
+  "description": "Content list for scripts/release/New-CodeDocsZip.ps1 -- a code+docs review snapshot of this repo. Paths are repo-relative with forward slashes, enumerated from 'git ls-files' (nothing untracked or gitignored can ever enter). The archive's TREE listing always covers EVERY tracked file (scripts/, ledger/, tests included, by name only); a file's actual bytes are staged into the zip (and, with -EmitTextBundle, merged into one big text file) only when it matches a 'contentInclude' pattern and no 'contentExclude' pattern -- exclude always wins. 'optionalContentInclude' entries are OFF by default and only turned on by a matching script switch (e.g. -IncludeScripts). Edit this file to change what ships -- the script itself carries no path knowledge.",
   "archiveBaseName": "npdev-code-docs",
   "contentInclude": [
     {
@@ -48,6 +48,14 @@
       "note": "Root repo overview."
     }
   ],
+  "optionalContentInclude": {
+    "scripts": [
+      {
+        "pattern": "^scripts/",
+        "note": "Automation scripts -- OFF by default (tree-listed only); zipped when New-CodeDocsZip.ps1 is run with -IncludeScripts."
+      }
+    ]
+  },
   "contentExclude": [
     {
       "pattern": "(^|/)src/test/",

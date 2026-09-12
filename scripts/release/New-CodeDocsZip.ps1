@@ -33,10 +33,22 @@
 .PARAMETER KeepStaging
     Leave the staging directory in place after zipping (for inspecting the exact tree).
 
+.PARAMETER IncludeScripts
+    Also zip scripts/ content (manifest's optionalContentInclude.scripts) instead of tree-listing it
+    only. Off by default -- scripts/ still always appears in the TREE listing either way.
+
+.PARAMETER EmitTextBundle
+    Also write one big text file with the TREE listing followed by every zipped file's content
+    concatenated in order (same files the zip carries, same -IncludeScripts scope) -- a single
+    self-contained document for pasting into an LLM context without unzipping anything. Written
+    alongside the zip as <name>.bundle.txt and embedded inside the zip as BUNDLE.txt.
+
 .EXAMPLE
     pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1
 .EXAMPLE
     pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1 -ListOnly
+.EXAMPLE
+    pwsh -NoProfile -File scripts/release/New-CodeDocsZip.ps1 -IncludeScripts -EmitTextBundle
 #>
 [CmdletBinding()]
 param(
@@ -44,7 +56,9 @@ param(
     [string]$OutputDir = "",
     [string]$ArchiveName = "",
     [switch]$ListOnly,
-    [switch]$KeepStaging
+    [switch]$KeepStaging,
+    [switch]$IncludeScripts,
+    [switch]$EmitTextBundle
 )
 
 Set-StrictMode -Version Latest
@@ -85,9 +99,21 @@ if ($contentIncludeRules.Count -eq 0) {
     throw "Manifest declares no contentInclude patterns: $ManifestPath"
 }
 
+if ($IncludeScripts) {
+    $optionalScripts = @()
+    if ($manifest.PSObject.Properties.Name -contains "optionalContentInclude" -and
+        $manifest.optionalContentInclude.PSObject.Properties.Name -contains "scripts") {
+        $optionalScripts = @($manifest.optionalContentInclude.scripts)
+    }
+    if ($optionalScripts.Count -eq 0) {
+        throw "manifest.optionalContentInclude.scripts is empty or missing: $ManifestPath"
+    }
+    $contentIncludeRules += New-NPDevZipRuleSet -Rules $optionalScripts
+}
+
 Write-NPDevInfo ("Workspace root        : " + $workspaceRoot)
 Write-NPDevInfo ("Manifest              : " + $ManifestPath)
-Write-NPDevInfo ("contentInclude rules  : " + $contentIncludeRules.Count + "   contentExclude rules: " + $contentExcludeRules.Count)
+Write-NPDevInfo ("contentInclude rules  : " + $contentIncludeRules.Count + "   contentExclude rules: " + $contentExcludeRules.Count + "   IncludeScripts: " + [bool]$IncludeScripts)
 
 if (-not (Test-NPDevCommandAvailable "git")) {
     throw "git is required to enumerate tracked files but was not found on PATH."
@@ -215,6 +241,32 @@ foreach ($path in $zippedPaths) {
 Set-Content -LiteralPath $treePath -Value $treeEntries -Encoding utf8
 Copy-Item -LiteralPath $treePath -Destination (Join-Path $stagingRoot "TREE.txt") -Force
 
+$bundlePath = $null
+if ($EmitTextBundle) {
+    $bundlePath = Join-Path $OutputDir ([System.IO.Path]::GetFileNameWithoutExtension($ArchiveName) + ".bundle.txt")
+    Write-NPDevInfo ("Writing text bundle   : " + $bundlePath)
+
+    $bundleLines = [System.Collections.Generic.List[string]]::new()
+    $bundleLines.Add("NPDev code+docs bundle -- generated " + (Get-Date -Format "yyyy-MM-dd HH:mm:ss") + " (local)")
+    $bundleLines.Add("Zipped (" + $(if ($IncludeScripts) { "code+docs+scripts" } else { "code+docs" }) + "): " + $zippedPaths.Count + " of " + $tracked.Count + " tracked files")
+    $bundleLines.Add("")
+    $bundleLines.Add("======== TREE (every tracked file; [zipped] = content included below) ========")
+    $bundleLines.AddRange($treeEntries)
+    $bundleLines.Add("")
+    $bundleLines.Add("======== FILE CONTENTS ========")
+    foreach ($path in $zippedPaths) {
+        $full = Join-Path $workspaceRoot ($path -replace "/", [System.IO.Path]::DirectorySeparatorChar)
+        $bundleLines.Add("")
+        $bundleLines.Add("---- FILE: " + $path + " ----")
+        $fileContent = Get-Content -LiteralPath $full -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        if ($null -eq $fileContent) { $fileContent = "" }
+        $bundleLines.Add($fileContent)
+    }
+
+    Set-Content -LiteralPath $bundlePath -Value $bundleLines -Encoding utf8
+    Copy-Item -LiteralPath $bundlePath -Destination (Join-Path $stagingRoot "BUNDLE.txt") -Force
+}
+
 if (-not ([System.Management.Automation.PSTypeName]"System.IO.Compression.ZipFile").Type) {
     Add-Type -AssemblyName "System.IO.Compression.FileSystem"
 }
@@ -235,6 +287,10 @@ $zipItem = Get-Item -LiteralPath $zipPath
 Write-Host ""
 Write-NPDevOk ("zip      : " + $zipItem.FullName + "  (" + [math]::Round($zipItem.Length / 1MB, 2) + " MB)")
 Write-NPDevOk ("tree     : " + $treePath + "  (also embedded as TREE.txt inside the zip)")
+if ($bundlePath) {
+    $bundleItem = Get-Item -LiteralPath $bundlePath
+    Write-NPDevOk ("bundle   : " + $bundleItem.FullName + "  (" + [math]::Round($bundleItem.Length / 1MB, 2) + " MB, also embedded as BUNDLE.txt inside the zip)")
+}
 Write-NPDevOk ("zipped   : " + $zippedPaths.Count + " of " + $tracked.Count + " tracked files  (" + [math]::Round($totalZippedBytes / 1MB, 2) + " MB uncompressed)")
 if ($KeepStaging) {
     Write-NPDevOk ("staging  : " + $stagingRoot)

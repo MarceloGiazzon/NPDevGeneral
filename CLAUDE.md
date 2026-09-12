@@ -121,7 +121,10 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   TREE listing it emits (alongside the zip, and embedded as `TREE.txt` inside it) always names
   **every** tracked file — scripts, ledger items, test classes included — while only files matching
   a `contentInclude` pattern (production `src/main/`, schemas, packs, the CLI/MCP/Manager top-level
-  source, current `docs/`) get their actual bytes staged into the zip.
+  source, current `docs/`) get their actual bytes staged into the zip. `-IncludeScripts` also zips
+  `scripts/` (manifest's `optionalContentInclude.scripts`, off by default). `-EmitTextBundle` also
+  writes one big `<name>.bundle.txt` (embedded as `BUNDLE.txt` too) — the TREE listing followed by
+  every zipped file's content concatenated, a single paste-into-an-LLM document with no unzip step.
 - **Wrap long/noisy runs in the digest runner** so the full log goes to disk and only the verdict
   enters context: `python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-all-gates.ps1`.
   Patterns live in `scripts/policy/output-digest-policy.json`; add a family there, never in the script.
