@@ -882,6 +882,17 @@ try {
         $failures += "the golden regeneration-survival proof failed: see scripts/quality/check-golden-regeneration-survival.py output above"
     }
 
+    # Path A realignment W0.3 (NPDEV_ROADMAP_2026-09-12.md Wave 0): the Constitution's
+    # 'technology-neutral-model' law became checkable once config.schema.json's runtime.binder
+    # field (P0.6) let springProfile/gradleTask be scoped to binder=='spring' instead of required
+    # unconditionally. This is the MODEL's half of that claim: every corpus model.json is scanned
+    # for a runtime-shaped key, a technology-named capability-binding adapter, or a JDBC URL.
+    Write-Host '[46/46] Checking every model.json is technology-neutral (no runtime-shaped key, adapter, or JDBC URL)...'
+    & $py "scripts/quality/check-model-technology-neutrality.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a model.json carries a runtime-shaped key, a technology-named capability-binding adapter, or a JDBC URL: see scripts/quality/check-model-technology-neutrality.py output above, and scripts/policy/technology-neutral-model-policy.json"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red
