@@ -164,6 +164,15 @@ function Test-AiModel {
             if ([string]$panel.dataSource.kind -eq "workflow" -and $workflowIds -notcontains [string]$panel.dataSource.name) {
                 Add-Failure $failures ("panel workflow data source is unresolved: " + [string]$panel.panelId)
             }
+            # P7.1: a panel over a plain declared entity already gets a generated panel for free --
+            # declaring implementation (the untrustedExtension escape hatch) on top of it is a
+            # tier-skip (reuse/specialize the generated surface before escaping to custom code).
+            if ($null -ne $panel.implementation -and [string]$panel.dataSource.kind -eq "entity" -and
+                $entityNames.Contains([string]$panel.dataSource.name)) {
+                Add-Failure $failures ("panel declares untrustedExtension over entity '" +
+                    [string]$panel.dataSource.name + "' which a generated panel already covers -- " +
+                    "reuse or specialize before escaping to untrusted extension: " + [string]$panel.panelId)
+            }
         }
         foreach ($procedure in @($Model.procedures)) {
             if ($roleIds -notcontains [string]$procedure.requiredRole) {
@@ -172,10 +181,20 @@ function Test-AiModel {
             if ([string]$procedure.type -eq "bulk-command" -and [int]$procedure.maxAffectedRows -lt 1) {
                 Add-Failure $failures ("bulk procedure must declare maxAffectedRows greater than zero: " + [string]$procedure.procedureId)
             }
-            foreach ($entity in @($procedure.allowedEntities)) {
+            $allowedEntities = @($procedure.allowedEntities)
+            foreach ($entity in $allowedEntities) {
                 if (-not $entityNames.Contains([string]$entity)) {
                     Add-Failure $failures ("procedure allowed entity is unresolved: " + [string]$procedure.procedureId)
                 }
+            }
+            # Same tier-skip rule as panels, for procedures: declaring untrustedExtension while
+            # every allowedEntities entry already resolves to a plain declared entity means a
+            # generated procedure would already cover this -- no need for the escape hatch.
+            if ($null -ne $procedure.implementation -and $allowedEntities.Count -gt 0 -and
+                -not ($allowedEntities | Where-Object { -not $entityNames.Contains([string]$_) })) {
+                Add-Failure $failures ("procedure declares untrustedExtension over entities [" +
+                    ($allowedEntities -join ", ") + "] which a generated procedure already covers -- " +
+                    "reuse or specialize before escaping to untrusted extension: " + [string]$procedure.procedureId)
             }
         }
         foreach ($workflow in @($Model.workflows)) {

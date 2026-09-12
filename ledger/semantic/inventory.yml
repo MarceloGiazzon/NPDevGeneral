@@ -22,6 +22,10 @@ keys:
     mechanism: "AggregateAst + Aggregate Workbench (docs/architecture ADR-0004, project_aggregate_workbench_vision)."
     status: shipped
 
+  - key: appShell
+    mechanism: "AppShellAst/AppShellNavItemAst + CompiledAppShell (P6.3, this plan) -- declared navigation structure and default route, threaded through the four-place schema/resolver/canonical-json seam and rendered by the versioned business-UI shell (P6.1/P6.2)."
+    status: shipped
+
   - key: autoPanels
     mechanism: "AutoPanelAst -- panel scaffolding derived from a concept without a hand-authored panel."
     status: shipped
