@@ -1,0 +1,26 @@
+{
+  "scenarioName": "shell-workbench-golden-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1400, "height": 900 } },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetOrder", "state": "visible", "label": "Confirm auth landed on the SPA (localStorage token now set)" },
+
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-workbench/WidgetOrderWorkbenchWorkbench.html", "label": "Open the standalone aggregate workbench page" },
+    { "action": "waitForSelector", "selector": ".app", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "screenshot", "name": "workbench_landing" },
+    { "action": "assertTextContains", "selector": ".app", "text": "WidgetOrder", "label": "Workbench header names its aggregate root" },
+    { "action": "assertVisible", "selector": "button:has-text(\"New\")", "label": "Workbench offers starting a new aggregate draft" },
+    { "action": "assertHidden", "selector": ".msg.err", "label": "No error banner on a clean landing" },
+
+    { "action": "click", "selector": "button:has-text(\"New\")", "label": "Start a new WidgetOrder draft" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "screenshot", "name": "workbench_new_draft" },
+    { "action": "assertVisible", "selector": "form.grid2", "label": "The root record's own header form renders" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

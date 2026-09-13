@@ -132,30 +132,18 @@
   }
 
   // NOTE: text() coalesces null/undefined to "". It does NOT escape anything, despite reading like
-  // it might -- never concatenate its result into innerHTML. Use setEmptyState() below, or a
-  // textContent assignment, so escaping is done by the DOM rather than by remembering to.
+  // it might -- never concatenate its result into innerHTML. Use window.NPDevShell.renderLoading/
+  // renderEmpty/renderError/renderDenied (W1.5, shell.js.mustache) below, or a textContent
+  // assignment, so escaping is done by the DOM rather than by remembering to.
+  //
+  // REG-16-resid Round 3 (R3-F1): those shared-state helpers build their message through the DOM
+  // (textContent), never string-concatenated into innerHTML -- every empty/loading/error
+  // placeholder used to assign a hand-built "<div class='empty'>" + message + "</div>" string
+  // straight into container.innerHTML instead, and several of those concatenated text(error.message)
+  // (a message the SERVER composes, which echoes request data into it -- "Unknown field for X: ...")
+  // or the user's own raw filter string. Those were XSS sinks.
   function text(value) {
     return value === null || value === undefined ? "" : String(value);
-  }
-
-  // REG-16-resid Round 3 (R3-F1). Replaces a container's contents with one "empty state" message,
-  // built through the DOM so the message can never be parsed as markup.
-  //
-  // Every empty/loading/error placeholder below used to assign a hand-built
-  //   "<div class='empty'>" + message + "</div>"
-  // string straight into container.innerHTML.
-  // Three of those concatenated text(error.message) -- a message the SERVER composes, and the server
-  // echoes request data into it ("Unknown field for X: ...") -- and one concatenated the user's own
-  // raw filter string. Those are XSS sinks. They were only ever self-inflicted, because nothing
-  // restores a filter from the URL and the error is the caller's own -- but that is a property of
-  // today's feature set, not of the code. Removing the sink outright means the next feature that
-  // renders a server-authored message here cannot quietly reintroduce it.
-  function setEmptyState(container, message) {
-    container.innerHTML = "";
-    const empty = document.createElement("div");
-    empty.className = "empty";
-    empty.textContent = text(message);
-    container.appendChild(empty);
   }
 
   // Tiny boolean-expression evaluator for visibleWhen/enabledWhen/readonlyWhen/requiredWhen.
@@ -3358,7 +3346,7 @@
     return input;
   }
 
-  // R7.2: a fresh app's grid used to render a bare "(empty)"/"No records" line -- indistinguishable
+  // R7.2: a fresh app's grid used to render a bare "(empty)" placeholder line -- indistinguishable
   // from a broken app. When no filter is active, this instead offers the two ways out of that state:
   // create the first record by hand, or (when the app declares any definition/seeds/*.json AND the
   // signed-in caller can reach DataSeedAdminController -- ADMIN/SUPERUSER, the identical guard the
@@ -4487,8 +4475,26 @@
       const readonly = isFieldReadonlyByCondition(field, values);
       const required = isFieldRequiredNow(field, values);
       const wrapper = control.closest(".form-field");
+      // W1.5: a field hidden by the SERVER's real per-actor overlay (field.permissionOverlay.visible
+      // === false) is a genuine denial, not a declarative visibleWhen condition -- those two used to
+      // collapse into the same silent field-hidden class, throwing away the bundle's own denial
+      // reason instead of showing it. Only the overlay case renders the denied notice; a plain
+      // conditional hide (author-declared visibleWhen, no server denial behind it) stays invisible
+      // exactly as before.
+      const permissionDenied = Boolean(field.permissionOverlay && field.permissionOverlay.visible === false);
       if (wrapper) {
-        wrapper.classList.toggle("field-hidden", !visible);
+        wrapper.classList.toggle("field-hidden", !visible && !permissionDenied);
+        wrapper.classList.toggle("field-denied", permissionDenied);
+        if (permissionDenied) {
+          let deniedSlot = wrapper.querySelector(".field-denied-slot");
+          if (!deniedSlot) {
+            deniedSlot = document.createElement("div");
+            deniedSlot.className = "field-denied-slot";
+            wrapper.appendChild(deniedSlot);
+          }
+          const denial = field.permissionOverlay.denial;
+          window.NPDevShell.renderDenied(deniedSlot, { reason: denial && denial.reason });
+        }
         const labelText = wrapper.querySelector(".field-label-text");
         if (labelText) {
           labelText.textContent = (field.label || field.name) + (required ? " *" : "");
@@ -5323,9 +5329,9 @@
     }
 
     async function loadOptionsAndCurrent() {
-      setEmptyState(list, "Loading…");
+      window.NPDevShell.renderLoading(list);
       if (!reference.endpointBase || !reference.anchorField) {
-        setEmptyState(list, "Reference metadata is incomplete.");
+        window.NPDevShell.renderError(list, { message: "Reference metadata is incomplete." });
         return;
       }
       const params = new URLSearchParams();
@@ -5341,7 +5347,7 @@
         });
         rows = Array.isArray(payload.content) ? payload.content : [];
       } catch (error) {
-        setEmptyState(list, text(error.message));
+        window.NPDevShell.renderError(list, { message: text(error.message) });
         return;
       }
       if (recordId && reference.bondEndpointBase && reference.bondFieldName) {
@@ -5358,7 +5364,7 @@
       syncHidden();
       list.innerHTML = "";
       if (rows.length === 0) {
-        setEmptyState(list, "No records available to link.");
+        window.NPDevShell.renderEmpty(list, { message: "No candidates available to link." });
         return;
       }
       rows.forEach(function (row) {
@@ -5618,7 +5624,7 @@
 
     const grid = document.createElement("div");
     grid.className = "image-select-grid";
-    setEmptyState(grid, "Loading…");
+    window.NPDevShell.renderLoading(grid);
     wrapper.appendChild(grid);
 
     const current = text(value);
@@ -5633,7 +5639,7 @@
 
     async function loadOptions() {
       if (!reference.endpointBase || !reference.targetIdField) {
-        setEmptyState(grid, "Reference metadata is incomplete.");
+        window.NPDevShell.renderError(grid, { message: "Reference metadata is incomplete." });
         return;
       }
       const params = new URLSearchParams();
@@ -5646,7 +5652,7 @@
         const rows = Array.isArray(payload.content) ? payload.content : [];
         grid.innerHTML = "";
         if (rows.length === 0) {
-          setEmptyState(grid, "No records available.");
+          window.NPDevShell.renderEmpty(grid, { message: "No options available." });
           return;
         }
         rows.forEach(function (row) {
@@ -5667,7 +5673,7 @@
           state.referenceLabels[referenceCacheKey(reference, id)] = { status: "resolved", label: cardLabel, row: row };
         });
       } catch (error) {
-        setEmptyState(grid, text(error.message));
+        window.NPDevShell.renderError(grid, { message: text(error.message) });
       }
     }
 
@@ -5701,10 +5707,10 @@
 
     async function loadPickerRows(filter) {
       if (!reference.endpointBase || !reference.targetIdField) {
-        setEmptyState(tableWrapper, "Reference metadata is incomplete.");
+        window.NPDevShell.renderError(tableWrapper, { message: "Reference metadata is incomplete." });
         return;
       }
-      setEmptyState(tableWrapper, "Loading…");
+      window.NPDevShell.renderLoading(tableWrapper);
       const params = new URLSearchParams();
       params.set("page", "0");
       params.set("size", "30");
@@ -5727,7 +5733,10 @@
         const rows = Array.isArray(payload.content) ? payload.content : [];
         tableWrapper.innerHTML = "";
         if (rows.length === 0) {
-          setEmptyState(tableWrapper, (normalizedFilter ? "No matches for “" + normalizedFilter + "”" : "No records found."));
+          window.NPDevShell.renderEmpty(tableWrapper, {
+            filtered: Boolean(normalizedFilter),
+            message: normalizedFilter ? "No matches for “" + normalizedFilter + "”." : null
+          });
           return;
         }
         const table = document.createElement("table");
@@ -5776,7 +5785,7 @@
         table.appendChild(tbody);
         tableWrapper.appendChild(table);
       } catch (error) {
-        setEmptyState(tableWrapper, text(error.message));
+        window.NPDevShell.renderError(tableWrapper, { message: text(error.message) });
         setStatus(error.message, true);
       }
     }

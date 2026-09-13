@@ -1,0 +1,43 @@
+{
+  "scenarioName": "shell-list-golden-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1400, "height": 900 } },
+  "variables": { "sku": "LIST-SCENARIO-SKU-PLACEHOLDER", "name": "List Scenario Widget" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetOrder", "state": "visible", "label": "Confirm auth landed" },
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetCatalogEntry", "label": "Open the WidgetCatalogEntry list" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry .filters input[type=\"search\"]", "value": "NO-SUCH-SKU-ANYWHERE", "label": "Filter to something that cannot match" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .filters button:has-text(\"Search\")" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "screenshot", "name": "list_filtered_empty" },
+    { "action": "assertTextContains", "selector": "#concept-WidgetCatalogEntry", "text": "match", "label": "Filtered-to-empty message reads differently from the unfiltered one (no create/seed CTA offered for a filter miss)" },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Clear\")", "label": "Clear the filter" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .panel-actions button:has-text(\"New\")", "label": "Open the create form" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "valueFromVariable": "sku" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"displayName\"]", "valueFromVariable": "name" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"unitPrice\"]", "value": "10" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Create\")", "label": "Submit the create form" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "assertTextContains", "selector": "#concept-WidgetCatalogEntry", "text": "LIST-SCENARIO-SKU", "label": "The new row renders in the grid" },
+
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry .filters input[type=\"search\"]", "valueFromVariable": "sku", "label": "Filter down to just this run's row" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .filters button:has-text(\"Search\")" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "assertCount", "selector": "#concept-WidgetCatalogEntry tbody tr", "operator": "=", "count": 1, "label": "Exactly this run's own row survives the unique-SKU filter" },
+    { "action": "screenshot", "name": "list_filtered_to_one_row" },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Clear\")" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

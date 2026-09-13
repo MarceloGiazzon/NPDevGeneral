@@ -32,9 +32,9 @@ body {
   width: 200px;
   flex-shrink: 0;
   overflow-y: auto;
-  border-right: 1px solid #d8dee7;
-  background: #ffffff;
-  padding: 12px 8px;
+  border-right: 1px solid var(--np-border, #d8dee7);
+  background: var(--np-surface, #ffffff);
+  padding: var(--np-pad, 12px) 8px;
 }
 
 .layout.nav-collapsed .side-nav {
@@ -74,8 +74,8 @@ body.frame-none .layout {
 .side-nav a {
   display: block;
   padding: 7px 12px;
-  border-radius: 6px;
-  color: #18202a;
+  border-radius: var(--np-radius, 6px);
+  color: var(--np-text, #18202a);
   text-decoration: none;
   font-size: 14px;
   white-space: nowrap;
@@ -84,7 +84,7 @@ body.frame-none .layout {
 }
 
 .side-nav a:hover {
-  background: #f0f4f8;
+  background: var(--np-bg, #f0f4f8);
 }
 
 .side-nav a.active {
@@ -96,12 +96,12 @@ body.frame-none .layout {
 .side-nav .nav-group-header {
   margin: 14px 8px 4px;
   padding-top: 8px;
-  border-top: 1px solid #e1e7ef;
+  border-top: 1px solid var(--np-border, #e1e7ef);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #8a97a8;
+  color: var(--np-text-muted, #8a97a8);
 }
 
 button,
@@ -111,17 +111,17 @@ select {
 }
 
 button {
-  border: 1px solid #c8d0da;
-  background: #ffffff;
-  color: #18202a;
-  border-radius: 6px;
-  min-height: 34px;
+  border: 1px solid var(--np-border, #c8d0da);
+  background: var(--np-surface, #ffffff);
+  color: var(--np-text, #18202a);
+  border-radius: var(--np-radius, 6px);
+  min-height: var(--np-control-h, 34px);
   padding: 0 12px;
   cursor: pointer;
 }
 
 button:hover {
-  border-color: #7d8da1;
+  border-color: var(--np-border-strong, #7d8da1);
 }
 
 button.primary {
@@ -448,12 +448,12 @@ textarea {
 
 .records th,
 .records td {
-  padding: 8px 10px;
-  border-bottom: 1px solid #e7ebf0;
+  padding: var(--np-row-pad-v, 8px) var(--np-row-pad-h, 10px);
+  border-bottom: 1px solid var(--np-border, #e7ebf0);
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
-  font-size: 13.5px;
+  font-size: var(--np-row-font-size, 13.5px);
 }
 
 .records th {
@@ -489,9 +489,9 @@ textarea {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  padding: 10px 16px;
+  padding: var(--np-row-pad-v, 10px) 16px;
   background: var(--np-grid-head-bg, #f9fafc);
-  border-bottom: 1px solid #e7ebf0;
+  border-bottom: 1px solid var(--np-border, #e7ebf0);
 }
 
 .bulk-actions-count {
@@ -504,9 +504,9 @@ textarea {
    distinct (its own background, no border-bottom to double up with the header's) so it reads as
    "controls for this column" rather than a second header line. */
 .records tr.filter-row td {
-  padding: 6px 10px;
+  padding: 6px var(--np-row-pad-h, 10px);
   background: var(--np-grid-head-bg, #f9fafc);
-  border-bottom: 1px solid #e7ebf0;
+  border-bottom: 1px solid var(--np-border, #e7ebf0);
   vertical-align: middle;
 }
 
@@ -730,6 +730,20 @@ textarea {
 
 .field-hidden {
   display: none !important;
+}
+
+/* W1.5: a permission-denied field (field.permissionOverlay.visible === false, a real server
+   denial -- see applyConditionals) stays in the form's layout grid but swaps its label/input for
+   the shared denied notice, rather than either showing an editable control the server would
+   reject or vanishing indistinguishably from a plain conditional hide. */
+.form-field.field-denied > *:not(.field-denied-slot) {
+  display: none;
+}
+.field-denied-slot {
+  display: none;
+}
+.form-field.field-denied .field-denied-slot {
+  display: block;
 }
 
 /* R7.1. A rejected save marks the offending field here and appends a .field-error note; no

@@ -646,6 +646,10 @@
     "scripts/quality/run-script-inventory-check.ps1": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/run-shell-scenarios.ps1": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/quality/run-structured-command-surface-alignment.ps1": {
       "invocation": "orchestrated"
     },

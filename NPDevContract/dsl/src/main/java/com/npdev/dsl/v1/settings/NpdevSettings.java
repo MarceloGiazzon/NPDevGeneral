@@ -95,6 +95,25 @@ public final class NpdevSettings {
                     "Site-relative path of the app's login page (empty disables shell auto-redirect).");
 
     /**
+     * App-wide default theme mode: light|dark|system. App-scope only. Read by BusinessUiEmitter
+     * into generated-ui-manifest.json's top-level {@code theme} block, applied by shell.js on
+     * <html>/<body> before any per-GuidePage {@code theme.mode} override. "system" means shell.js
+     * applies no data-np-theme attribute at all, letting shell.css's prefers-color-scheme rule decide.
+     */
+    public static final SettingKey<String> UI_THEME_MODE =
+            SettingKey.string("ui.theme.mode", "system",
+                    "App-wide default theme mode (light|dark|system).");
+
+    /**
+     * App-wide default UI density: comfortable|compact. App-scope only. Read by BusinessUiEmitter
+     * into generated-ui-manifest.json's top-level {@code theme} block, applied by shell.js on
+     * <html>/<body> before any per-GuidePage {@code theme.density} override.
+     */
+    public static final SettingKey<String> UI_DENSITY =
+            SettingKey.string("ui.density", "comfortable",
+                    "App-wide default UI density (comfortable|compact).");
+
+    /**
      * Persistence adapter variant for a concept's generated CRUD, overriding the model's declared
      * binding. Empty (default) = use the binding as declared, unchanged. Generation-time selection,
      * not a live per-request switch -- the resolved value is baked into the generated service when
@@ -130,7 +149,9 @@ public final class NpdevSettings {
             UI_GUIDE_PAGE,
             AUTH_LOGIN_PATH,
             PERSISTENCE_ADAPTER,
-            DATABASE_PROVIDER
+            DATABASE_PROVIDER,
+            UI_THEME_MODE,
+            UI_DENSITY
     );
 
     /** All registered settings, in declaration order. */

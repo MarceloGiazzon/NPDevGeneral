@@ -240,6 +240,18 @@
   }
 
   var el = function (h) { var t = document.createElement("template"); t.innerHTML = h.trim(); return t.content.firstChild; };
+  // W1.5: every "Failed to load..." handler below used to concatenate the caught error straight
+  // into an innerHTML string (`'<p>Failed to load: ' + e + '</p>'`) -- an XSS sink, since a fetch
+  // error can carry server-echoed request data. renderLoadError() puts the message through
+  // textContent instead, same fix as business-ui-app.mustache's REG-16-resid.
+  function renderLoadError(container, label, error) {
+    container.innerHTML = "";
+    var p = document.createElement("p");
+    p.className = "sub";
+    p.style.color = "var(--np-danger)";
+    p.textContent = label + ": " + error;
+    container.appendChild(p);
+  }
   var EDITABLE = true;
   // Focus tracking so a debounced recompute re-render can restore the caret to the cell being edited.
   var activeFocusKey = null, restoreFocus = false;
@@ -1228,7 +1240,7 @@
           Object.keys(data).forEach(function (kk) { if (Array.isArray(data[kk]) && rows === null) rows = data[kk]; });
           renderRows((rows || []).map(function (r) { return { id: r.id, data: r.data || {} }; }));
         })
-        .catch(function (e) { body.innerHTML = '<p class="sub">Failed to load: ' + e + '</p>'; });
+        .catch(function (e) { renderLoadError(body, "Failed to load", e); });
     } else {
       // B19: no panel -- the band's own collection concept, fetched through the SAME generic
       // reference-lookup endpoint an FK field's picker dialog already uses (GET .../api/concepts/<table>,
@@ -1249,7 +1261,7 @@
           var rows = Array.isArray(p.content) ? p.content : [];
           renderRows(rows.map(function (r) { return { id: r.id, data: r }; }));
         })
-        .catch(function (e) { body.innerHTML = '<p class="sub">Failed to load: ' + e + '</p>'; });
+        .catch(function (e) { renderLoadError(body, "Failed to load", e); });
     }
   }
 
@@ -1312,7 +1324,7 @@
         listState.columns = (p.layout && p.layout.fields) || [];
         renderList();
       })
-      .catch(function (e) { document.getElementById("app").innerHTML = '<p class="sub">Failed to load list: ' + e + '</p>'; });
+      .catch(function (e) { renderLoadError(document.getElementById("app"), "Failed to load list", e); });
   }
 
   function boot() {
@@ -1344,7 +1356,7 @@
           refreshServerDerivedFields();
         }
       })
-      .catch(function (e) { document.getElementById("app").innerHTML = '<p class="sub">Failed to load workbench: ' + e + '</p>'; });
+      .catch(function (e) { renderLoadError(document.getElementById("app"), "Failed to load workbench", e); });
   }
   document.addEventListener("DOMContentLoaded", boot);
 }());

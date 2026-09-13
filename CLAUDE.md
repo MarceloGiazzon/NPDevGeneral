@@ -169,6 +169,12 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `npdev verify --tier T0|T1|T2|T3` is the one CLI entry point for all four tiers, reading the same
   staleness ledger every tier writes to (`verification-cadence.json` + `cadence_state.py`) — a check
   past its `maxStaleness` shows as a blocking OVERDUE line, never a silent skip.
+- **Five golden browser scenarios (W1.7):** `scripts/quality/run-shell-scenarios.ps1` generates,
+  builds and boots `NPDevSamples/dsl-conformance-max` once and drives list/detail/workbench/
+  long-running-flow/permission-denied through it in a real headless browser (ScrapForAI), asserting
+  each `NPDevSamples/scripts/browser/browser-routines/*-verify-routine.json` is green. Boots a real
+  app, so it is T1/T2 (`shell-scenarios-golden-browser` in `verification-cadence.json`), never the
+  static `aiKnowledge` gate.
 - **Local machine resource policy:** `scripts/policy/local-test-profile.json` (read via
   `scripts/quality/test_profile.py`) declares a `checkLevel` and which DB engines are enabled on
   THIS machine — default `enabledEngines: [h2, sqlserver]`, so Postgres/MySQL/Docker are OFF for

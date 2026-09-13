@@ -1,0 +1,90 @@
+id: W1.5
+title: >-
+  Every surface improvised its own loading/empty/error placeholder (5 occurrences of the literal
+  "No records" alone, one hand-rolled skeleton) and there was NO permission-denied state anywhere
+  in the generated business UI -- even though the ui/bundle already returns a real per-field
+  `denial` object and P6.2 already merges the permission overlay onto fields, so the data to
+  render an honest "you cannot see this, because X" was already arriving and being thrown away.
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.5): "Shared global states: loading, empty, error,
+  permission-denied." Depends on W1.4 (design tokens), same session.
+surface: NPDevGenerator/generator (shell.js.mustache as the new shared-state owner,
+  business-ui-app.mustache/business-ui-style.mustache as the first consumer),
+  NPDevGenerator/generator (workbench-page.html.mustache, XSS fix only)
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.css.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterEmptyStateXssTest.java
+  - docs/UI_CONTRACT.md
+detail: |
+  WHAT WAS BUILT:
+  1. Four shared state primitives owned by shell.js.mustache (not business-ui-app.mustache, so any
+     surface -- including a future Untrusted Extension page -- gets them for free): renderLoading,
+     renderEmpty, renderEmpty({filtered}) distinguishing "no data yet" from "no data matching your
+     filter" (different affordances: create vs clear-filter), renderError, and renderDenied. All
+     four build through textContent only (stateBox/appendStateLine helpers), never string-
+     concatenated into innerHTML, and are styled purely from W1.4's tokens
+     (.npdev-shell-state* in shell.css.mustache). Exposed on window.NPDevShell.
+  2. Replaced business-ui-app.mustache's local setEmptyState() (the single improvised helper
+     behind 4 of the 5 "No records" occurrences, in the lookup-picker/multiselect/image-select
+     family) with calls to the shared primitives; deleted the now-dead local function. The literal
+     "No records" count in business-ui-app.mustache: 5 -> 1 (the one survivor is a static print-
+     view <td>, not a live app state).
+  3. Wired renderDenied to REAL data for the first time: applyConditionals (the form/detail render
+     loop) now distinguishes a field hidden by the server's live permissionOverlay
+     (field.permissionOverlay.visible === false, a genuine per-actor/per-record denial) from a
+     field hidden by a plain author-declared visibleWhen condition -- only the former renders the
+     denied notice (with the server's own denial.reason, never invented), via a new
+     .field-denied-slot appended into the existing .form-field wrapper.
+  4. Extending an existing DSL field with a record-scoped field.access.read rule
+     (ownerEmail == $user.id, added to dsl-conformance-max's WidgetCatalogEntry.internalNotes
+     purely as a corpus proof for this item and W1.7) and creating two records with different
+     ownerEmail values under the SAME actor proved the whole path live: the actor's own record
+     shows the real note; a record it doesn't own shows the value withheld server-side (never sent
+     to the client at all, not merely hidden by CSS) while every other field on the same record
+     still renders normally (field-scoped, not whole-record).
+  5. Found and fixed a real, pre-existing XSS sink while touching adjacent error-handling code:
+     workbench-page.html.mustache's four "Failed to load..." handlers concatenated the caught
+     fetch error directly into an innerHTML string (`'<p>Failed to load: ' + e + '</p>'`) -- the
+     same class of bug REG-16-resid already fixed in business-ui-app.mustache. Replaced with a new
+     renderLoadError() helper (local to this file, since it has its own separate token/design
+     system) that routes the message through textContent.
+  6. Documented all four states (incl. the not-yet-done next step: wiring a PanelAction's own
+     available:false + denial to renderDenied, since the bundle's `actions` catalog is still not
+     consumed anywhere in the shell) in docs/UI_CONTRACT.md.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterEmptyStateXssTest.java#noEmptyStatePlaceholderIsBuiltByStringConcatenationIntoInnerHtml
+  asserts: >-
+    Both automatic conditions PASS (helpers/check_task.py --task W1.5). BusinessUiEmitterEmptyStateXssTest
+    (3 tests, updated to assert the new window.NPDevShell.renderEmpty(...) call shape instead of
+    the deleted local setEmptyState helper) passes under :generator:test -- confirmed this was a
+    real regression this task introduced and then fixed, not a pre-existing gap (see provenRedNote).
+    Full live proof via a real generate+build+boot+browser cycle against dsl-conformance-max
+    (WidgetCatalogEntry create/list/detail/permission-denied all exercised through
+    NPDevSamples/scripts/browser/browser-routines/*, W1.7's own deliverable).
+  provenRed: true
+  provenRedNote: >-
+    Before this task: grep -c "No records" business-ui-app.mustache = 5; grep -c "renderDenied\|
+    permissionDenied" shell.js.mustache = 0. Mid-task: removing setEmptyState() and rewiring its
+    9 call sites broke BusinessUiEmitterEmptyStateXssTest's 3 tests (they pinned the OLD
+    setEmptyState/"<div class='empty'>" shape) -- caught by running the generator gate before
+    declaring this item done, not assumed fixed; updated the tests to pin the NEW shared-helper
+    shape instead, preserving the same underlying XSS-safety guarantee (asserted: no
+    string-concatenated innerHTML assignment survives anywhere in the emitted app.js).
+notes: |
+  Part of the same session's W1.4->W1.5->W1.7 chain -- see W1.4.yml/W1.7.yml. Explicitly OUT OF
+  SCOPE, left as a known next step: wiring a PanelAction's own available:false + denial object to
+  renderDenied would require consuming the ui/bundle's `actions` catalog for the first time
+  (docs/UI_CONTRACT.md already notes it as "not consumed... a known, accepted boundary" from an
+  earlier item) -- a larger architectural decision, not something to fold into this task
+  unannounced.

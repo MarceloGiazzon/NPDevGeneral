@@ -1,0 +1,42 @@
+{
+  "scenarioName": "shell-detail-golden-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1400, "height": 900 } },
+  "variables": { "sku": "DETAIL-SCENARIO-SKU-PLACEHOLDER", "name": "Detail Scenario Widget" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetOrder", "state": "visible", "label": "Confirm auth landed" },
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetCatalogEntry", "label": "Open the WidgetCatalogEntry list" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .panel-actions button:has-text(\"New\")", "label": "Open the create form" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "valueFromVariable": "sku" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"displayName\"]", "valueFromVariable": "name" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"unitPrice\"]", "value": "15" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Create\")", "label": "Submit the create form" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry .filters input[type=\"search\"]", "valueFromVariable": "sku", "label": "Filter down to just this run's row" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .filters button:has-text(\"Search\")" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "assertCount", "selector": "#concept-WidgetCatalogEntry tbody tr", "operator": "=", "count": 1, "label": "Exactly this run's own row" },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry tbody tr button:has-text(\"View\")", "label": "Open the read-only detail view" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "screenshot", "name": "detail_view" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "Detail Scenario Widget", "label": "Detail view renders the record's own field values" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "15", "label": "Detail view renders the unitPrice value" },
+    { "action": "assertVisible", "selector": "#modalRoot button:has-text(\"Close\")", "label": "Detail view is read-only and dismissable, not an edit form" },
+    { "action": "assertHidden", "selector": "#modalRoot button:has-text(\"Save\")", "label": "No Save affordance on a read-only detail view" },
+
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Close\")" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Clear\")" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

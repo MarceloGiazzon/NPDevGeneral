@@ -97,6 +97,13 @@
       "description": "dsl-conformance-max still emits cleanly (NPDevSamples/scripts/generate-sample-app.ps1 -SampleId dsl-conformance-max -NoAssembleFinalApp -- emission only, no build/boot)."
     },
     {
+      "id": "shell-scenarios-golden-browser",
+      "tier": "T1",
+      "maxStaleness": "1-wave",
+      "invokedBy": "scripts/quality/run-shell-scenarios.ps1",
+      "description": "W1.7: generate + build + boot dsl-conformance-max and drive the five golden browser scenarios (list, detail, workbench, long-running flow, permission-denied) against it via ScrapForAI, asserting each is green. Boots a real app, so this is T1/T2, never the static aiKnowledge gate."
+    },
+    {
       "id": "aiKnowledge",
       "tier": "T2",
       "maxStaleness": "1-move",

@@ -24,6 +24,16 @@
   --np-rightbar-w: 280px;
   --np-shadow: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .08);
   --np-focus-ring: 0 0 0 2px color-mix(in srgb, var(--np-accent) 40%, transparent);
+  --np-border-strong: #7d8da1;
+  --np-control-h: 34px;
+
+  /* W1.4 density axis: one scale plus the row/control tokens it actually drives. Comfortable is
+     the baseline captured above/here; body[data-np-density="compact"] below is the only variant
+     that overrides them -- an explicit "comfortable" attribute is a no-op by design. */
+  --np-density-scale: 1;
+  --np-row-pad-v: 8px;
+  --np-row-pad-h: 10px;
+  --np-row-font-size: 13.5px;
 
   /* Brandable sub-tokens: every one defaults to the base tokens above, so an app-owned
      /theme.css (injected by shell.js when present) can restyle just the topbar, the data-grid
@@ -82,6 +92,15 @@ body[data-np-theme="dark"] {
     --np-negative: #e06c6c;
     --np-warning: #d9a13c;
   }
+}
+
+body[data-np-density="compact"] {
+  --np-density-scale: .75;
+  --np-pad: 7px;
+  --np-row-pad-v: 4px;
+  --np-row-pad-h: 8px;
+  --np-row-font-size: 12.5px;
+  --np-control-h: 28px;
 }
 
 html, body { height: 100%; }
@@ -237,3 +256,28 @@ body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar { width: 0; padding: 0
 .npdev-shell-gadget-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; font-size: 10.5px; color: var(--np-text-muted); }
 .npdev-shell-gadget-legend-item { display: inline-flex; align-items: center; gap: 4px; }
 .npdev-shell-gadget-legend-item i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; }
+
+/* ---- W1.5 shared states: loading/empty/error/permission-denied (shell.js renderLoading/
+   renderEmpty/renderError/renderDenied). One box, four modifier classes, every value from W1.4's
+   tokens so an app-owned /theme.css restyles these the same way it restyles everything else. ---- */
+.npdev-shell-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; text-align: center; padding: calc(var(--np-pad) * 3) var(--np-pad);
+  color: var(--np-text-muted); font-size: var(--np-row-font-size);
+}
+.npdev-shell-state-message { color: inherit; }
+.npdev-shell-state-reason { font-size: 12px; color: var(--np-text-muted); font-style: italic; }
+.npdev-shell-state-action {
+  background: var(--np-surface); color: var(--np-accent); border: 1px solid var(--np-border);
+  border-radius: var(--np-radius); min-height: var(--np-control-h); padding: 0 14px; cursor: pointer;
+  font-size: var(--np-row-font-size);
+}
+.npdev-shell-state-action:hover { background: var(--np-bg); }
+.npdev-shell-state-error .npdev-shell-state-message { color: var(--np-negative); }
+.npdev-shell-state-denied .npdev-shell-state-message { color: var(--np-warning); }
+.npdev-shell-state-loading .npdev-shell-state-message::before {
+  content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px;
+  border-radius: 50%; border: 2px solid var(--np-border); border-top-color: var(--np-accent);
+  vertical-align: -1px; animation: npdev-shell-state-spin .7s linear infinite;
+}
+@keyframes npdev-shell-state-spin { to { transform: rotate(360deg); } }

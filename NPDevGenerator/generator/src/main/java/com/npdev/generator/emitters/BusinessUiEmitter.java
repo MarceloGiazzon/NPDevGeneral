@@ -383,6 +383,7 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         // shell.js.mustache) curate the SAME native nav with it when present, falling back to
         // today's flat auto-derivation for anything appShell doesn't mention.
         root.put("appShell", appShellNode(model));
+        root.put("theme", appThemeNode(settingResolver));
 
         // REG-12 Slice 3: index declared `document`s by their bound concept so each concept node
         // below can carry its own (usually 0 or 1) documents -- the toolbar's "Download PDF"
@@ -827,12 +828,27 @@ public final class BusinessUiEmitter extends AbstractEmitter {
     }
 
     private static Map<String, Object> guidePageThemeNode(CompiledGuidePageTheme theme) {
+        // W1.4: mode/density are left null (not defaulted to "light"/"comfortable") when the model
+        // does not declare them on this GuidePage, so the app-wide ui.theme.mode/ui.density
+        // settings (see appThemeNode) are the ones that actually take effect for every page that
+        // hasn't opted into a page-specific override -- a literal always-present default here would
+        // silently win the cascade instead, which is exactly why an app-wide "system"/"dark"/
+        // "compact" default was unreachable before this task.
         Map<String, Object> node = new LinkedHashMap<>();
-        node.put("mode", theme == null || theme.mode() == null || theme.mode().isBlank() ? "light" : theme.mode());
+        node.put("mode", theme == null ? null : blankToNull(theme.mode()));
         node.put("accent", theme == null || theme.accent() == null ? "" : theme.accent());
-        node.put("density", theme == null || theme.density() == null || theme.density().isBlank() ? "comfortable" : theme.density());
+        node.put("density", theme == null ? null : blankToNull(theme.density()));
         node.put("logoText", theme == null || theme.logoText() == null ? "" : theme.logoText());
         node.put("logoUrl", theme == null || theme.logoUrl() == null ? "" : theme.logoUrl());
+        return node;
+    }
+
+    /** W1.4: app-wide theme/density default, resolved from the ui.theme.mode/ui.density settings
+     * (config defaults/overrides envelope) -- applied by shell.js before any per-GuidePage override. */
+    private static Map<String, Object> appThemeNode(SettingResolver settingResolver) {
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("mode", settingResolver.value(NpdevSettings.UI_THEME_MODE, SettingTarget.app()));
+        node.put("density", settingResolver.value(NpdevSettings.UI_DENSITY, SettingTarget.app()));
         return node;
     }
 
