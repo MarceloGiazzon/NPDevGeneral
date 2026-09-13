@@ -169,7 +169,7 @@ function Test-AiModel {
             # tier-skip (reuse/specialize the generated surface before escaping to custom code).
             if ($null -ne $panel.implementation -and [string]$panel.dataSource.kind -eq "entity" -and
                 $entityNames.Contains([string]$panel.dataSource.name)) {
-                Add-Failure $failures ("panel declares untrustedExtension over entity '" +
+                Add-Failure $failures ("[AI_MODEL_GRATUITOUS_UNTRUSTED_EXTENSION] panel declares untrustedExtension over entity '" +
                     [string]$panel.dataSource.name + "' which a generated panel already covers -- " +
                     "reuse or specialize before escaping to untrusted extension: " + [string]$panel.panelId)
             }
@@ -192,7 +192,7 @@ function Test-AiModel {
             # generated procedure would already cover this -- no need for the escape hatch.
             if ($null -ne $procedure.implementation -and $allowedEntities.Count -gt 0 -and
                 -not ($allowedEntities | Where-Object { -not $entityNames.Contains([string]$_) })) {
-                Add-Failure $failures ("procedure declares untrustedExtension over entities [" +
+                Add-Failure $failures ("[AI_MODEL_GRATUITOUS_UNTRUSTED_EXTENSION] procedure declares untrustedExtension over entities [" +
                     ($allowedEntities -join ", ") + "] which a generated procedure already covers -- " +
                     "reuse or specialize before escaping to untrusted extension: " + [string]$procedure.procedureId)
             }
