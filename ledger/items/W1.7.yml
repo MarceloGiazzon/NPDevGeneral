@@ -1,0 +1,137 @@
+id: W1.7
+title: >-
+  Seven browser routines existed and none covered a list, a detail, a workbench, a long-running
+  flow, or a permission-denied path -- every Wave 1 exit criterion ("a non-technical user can
+  complete core tasks") was an assertion, not a test result.
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.7): "Five golden browser scenarios, in a gate."
+  Depends on W1.5 (shared global states), which depends on W1.4 (design tokens) -- all three
+  closed in this same session.
+surface: NPDevSamples (browser-routines corpus, dsl-conformance-max model), scripts/quality (new
+  gate script), scripts/policy + scripts/quality/verification-cadence.json (wiring)
+files:
+  - NPDevSamples/scripts/browser/browser-routines/list-verify-routine.json
+  - NPDevSamples/scripts/browser/browser-routines/detail-verify-routine.json
+  - NPDevSamples/scripts/browser/browser-routines/workbench-verify-routine.json
+  - NPDevSamples/scripts/browser/browser-routines/longrunning-flow-verify-routine.json
+  - NPDevSamples/scripts/browser/browser-routines/permission-denied-verify-routine.json
+  - scripts/quality/run-shell-scenarios.ps1
+  - scripts/quality/verification-cadence.json
+  - scripts/policy/script-invocation-declarations.json
+  - CLAUDE.md
+  - NPDevSamples/dsl-conformance-max/Input/model.json
+  - NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/ExecutionMonitorService.java
+detail: |
+  HOST APP DECISION, deviating from the roadmap's own suggestion: medium-expense-approval (the
+  brief's candidate) turned out to have no workbench and no async/awaitEvent flow at all --
+  checked live before committing. dsl-conformance-max (the DSL feature-conformance corpus app) was
+  chosen instead: it already had a plain concept (WidgetCatalogEntry, clean create path) for
+  list/detail, WidgetOrderAggregate's real standalone workbench page, and (after two small,
+  additive, well-precedented model.json changes made and documented as part of this task) a
+  UI-reachable long-running flow and a record-scoped permission denial. One boot serves all five.
+
+  MODEL CHANGES to dsl-conformance-max/Input/model.json (additive corpus coverage, not behavior
+  changes to the platform):
+  1. WidgetOrder's own two flow-bound actions (PlaceWidgetOrder, ConfirmWidgetOrder) turned out to
+     be unusable for seeding test data: PlaceWidgetOrder's generic create path hits an intentionally
+     -unbound `generatedAction` coverage step (ScoreWidgetOrderRisk, CAPABILITY_FAILED in this dev
+     profile) and WidgetOrder.status is unconditionally client-readonly (R5.5/GAP-2's declared-
+     presence rule) while also required -- a real, pre-existing dead end for creating a WidgetOrder
+     through the generic UI form at all, confirmed live and left as-is (out of scope to fix here).
+  2. Added WidgetCatalogReviewPanel (a new declared Panel) with a `fieldBindings` declaration (a
+     Panel needs one for PanelRuntime's renderDeclaredColumnsTable to render row-scoped actions at
+     all -- found live, since WidgetOrderReviewPanel's OWN pre-existing row action silently never
+     rendered for the identical reason) and a new row-scoped action, awaitApproval, bound to a new
+     flow AwaitCatalogEntryApproval (awaitEvent CatalogEntryApproved, correlation-matched, no
+     timeout -- same shape as the pre-existing AwaitPaymentConfirmation/EscalateWidgetOrderApproval,
+     just reachable from the UI, which neither of those was). New event CatalogEntryApproved
+     declared alongside PaymentConfirmed.
+  3. Added WidgetCatalogEntry.ownerEmail (plain) and WidgetCatalogEntry.internalNotes
+     (field.access.read: "ownerEmail == $user.id") -- a record-scoped field-level denial usable
+     under ONE identity (create a record you "own" and one you don't; W1.5's own field.access.read
+     wiring is concept-wide only via the ui/bundle fetch, so a ROLE-scoped rule needs a second,
+     properly-provisioned identity with baseline CRUD grants the corpus doesn't otherwise have --
+     record-scoped sidesteps that entirely).
+
+  REAL PLATFORM BUG found and fixed along the way: GET /api/v1/executions/active and
+  .../history (ExecutionMonitorService.active()/history()) NPE'd ("Cannot invoke Map.get because
+  record is null") for ANY execution not also present in the direct-execution-gateway index --
+  i.e. any NORMAL flow execution triggered through a Panel action or the plain flow endpoint,
+  which is the common case. `directExecutionByExecutionId.get(...)` had no null guard; fixed with
+  `.getOrDefault(execution.executionId(), Map.of())` at both call sites. Needed for the
+  long-running-flow routine to look up its own execution's correlationId to publish the awaited
+  event -- would otherwise 500 for every caller of these two monitoring endpoints under normal use.
+
+  THE FIVE ROUTINES (NPDevSamples/scripts/browser/browser-routines/*-verify-routine.json), each
+  independently proven green against a live boot before being finalized:
+  - list: unfiltered vs filtered-to-empty message distinction, create, filter-to-exactly-one-row.
+  - detail: create, open the read-only View modal, assert field values render, assert no Save
+    affordance (read-only, not an edit form).
+  - workbench: the standalone WidgetOrderWorkbenchWorkbench.html page (its OWN separate
+    localStorage-shared auth, no shell chrome) loads, names its aggregate root, offers "New",
+    a new draft's root-record header form renders.
+  - long-running-flow: click the flow-bound row action -> assert the toast says "X is running..."
+    (never "Saved!", the literal docs/UI_CONTRACT.md contract) -> assert a pending row appears in
+    the executions rail (opening it first -- the panel is display:none until its toggle is
+    clicked) -> publish the awaited event via the real POST /api/v1/events/publish (found via
+    /api/v1/executions/active, post-NPE-fix) -> assert the rail settles to succeeded and the toast
+    resolves to "completed." within one poll interval.
+  - permission-denied: create an owned + an other-owned WidgetCatalogEntry -> the owned record's
+    View shows its real internalNotes value; the other-owned record's View withholds it entirely
+    (assertHidden on the literal denied text, not just a CSS check) while every OTHER field on the
+    same record still renders -- a field-scoped denial, not a whole-record one.
+
+  THE RUNNER (scripts/quality/run-shell-scenarios.ps1): generates + builds + boots
+  dsl-conformance-max ONCE (gradlew build -x test, then a tracked bootRun process, health-polled),
+  runs all five routines through the existing ScrapForAI harness
+  (NPDevSamples/scripts/browser/scrapforai-harness.ps1) with per-run-unique variable overrides
+  (fixed-prefix + timestamp, so a rerun never collides and every routine's own fixed-prefix text
+  assertions still match), asserts each green (allowlisting four benign, always-expected console
+  status codes -- 401 pre-auth, 404 no-custom-theme/coverage-only-component, 503/500 dev-profile
+  admin-panel background polls -- Assert-RoutineGreen can only filter by status code, since the
+  failing URL lives in a field the substring match never sees), records the run against
+  verification-cadence.json's new shell-scenarios-golden-browser (T1) entry, and tears down the
+  app process tree + ScrapForAI in a finally block regardless of outcome.
+guard:
+  kind: script
+  ref: scripts/quality/run-shell-scenarios.ps1
+  asserts: >-
+    scripts/quality/run-shell-scenarios.ps1 exits 0: generate + build + boot dsl-conformance-max,
+    all five routines green, recorded against verification-cadence.json's shell-scenarios-golden-
+    browser (T1) entry. helpers/check_task.py --task W1.7's three automatic conditions (five new
+    routines exist, a runner exists, the gate is declared in the cadence ledger) all PASS. Each of
+    the five routines independently proven green via a real generate+build+boot+ScrapForAI cycle
+    against dsl-conformance-max BEFORE being written into their final form (not authored blind
+    against assumed selectors) -- iterated live through real failures: wrong nav-link visibility at
+    a narrow default viewport, the executions panel being display:none until its own toggle is
+    clicked, the ExecutionMonitorService NPE above, an HTML5 number input's default step rejecting
+    a decimal value, the auth API-key mapping format actually being semicolon- not comma-separated,
+    and a missing-argument bug in the shared scrapforai-harness.ps1's own Get-NPDevBuildRoot call
+    (fixed alongside). python scripts/quality/check-cadence-coverage.py passes with the new entry
+    (all required fields present, tier T1 valid, maxStaleness "1-wave" known to cadence_state.py).
+  provenRed: true
+  provenRedNote: >-
+    Before this task: 7 browser routines existed, 0 covered list/detail/workbench/long-running-
+    flow/permission-denied (confirmed by listing NPDevSamples/scripts/*/browser-routines/*.json
+    across the whole corpus). No run-shell-scenarios.ps1 existed. verification-cadence.json had no
+    shell-scenarios entry. Each of the two model.json additions (WidgetCatalogReviewPanel's row
+    action, the field.access.read pair) was independently confirmed non-functional before its
+    fix: the row action rendered nothing without fieldBindings (only "Refresh" in the panel's
+    button list); GET /api/v1/executions/active 500'd with the NPE above before the
+    ExecutionMonitorService fix.
+notes: |
+  Part of the same session's W1.4->W1.5->W1.7 chain -- see W1.4.yml/W1.5.yml. Two deliberate scope
+  boundaries, both explicit rather than silently dropped: (1) the workbench routine verifies the
+  page loads and a new draft's root form renders, not a full nested-collection add-line-then-save
+  cycle -- WidgetOrder's own broken create path (see model-change note 1 above) made a full save
+  cycle unreliable to assert on within this task's scope; (2) the permission-denied routine proves
+  a record-scoped field.access.read denial (real, wired, proven), not a role-scoped one or an
+  action's own available:false + denial object -- the latter needs the ui/bundle's `actions`
+  catalog consumed for the first time (W1.5's own noted next step) plus a second, properly-
+  provisioned non-admin identity the corpus does not otherwise have reason to carry.

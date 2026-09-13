@@ -37,7 +37,7 @@ public class ExecutionMonitorService {
         List<Map<String, Object>> items = kernelFacade.listExecutions(100, 0, requesterContext).stream()
                 .filter(execution -> isActive(execution.status()))
                 .sorted(Comparator.comparingLong(FlowInstance::updatedAtEpochMs).reversed())
-                .map(execution -> executionCard(execution, directExecutionByExecutionId.get(execution.executionId())))
+                .map(execution -> executionCard(execution, directExecutionByExecutionId.getOrDefault(execution.executionId(), Map.of())))
                 .toList();
 
         Map<String, Object> response = new LinkedHashMap<>();
@@ -54,7 +54,7 @@ public class ExecutionMonitorService {
         Map<String, Map<String, Object>> directExecutionByExecutionId = directExecutionIndex();
         List<Map<String, Object>> items = kernelFacade.listExecutions(100, 0, requesterContext).stream()
                 .sorted(Comparator.comparingLong(FlowInstance::updatedAtEpochMs).reversed())
-                .map(execution -> executionCard(execution, directExecutionByExecutionId.get(execution.executionId())))
+                .map(execution -> executionCard(execution, directExecutionByExecutionId.getOrDefault(execution.executionId(), Map.of())))
                 .toList();
 
         Map<String, Object> response = new LinkedHashMap<>();

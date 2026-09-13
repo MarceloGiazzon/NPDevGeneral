@@ -176,6 +176,68 @@ discoverable version rather than an anonymous copy.
 `layout.mustache` is not part of the shipped shell: it is never rendered by `BusinessUiEmitter` or
 included by any other template, so it does not carry a version stamp.
 
+## Design tokens — density and theme mode (W1.4)
+
+`shell.css.mustache`'s `:root` block is the single declaration site for every `--np-*` custom
+property; `business-ui-style.mustache` consumes them (never re-declares its own base colors) via
+`var(--np-token, <fallback>)`, so an app-owned `/theme.css` (injected by `shell.js` when present)
+restyles both the shell chrome and every generated business-UI screen by overriding one token in one
+place. This is a public surface: an app author's own theme override should target these tokens, not
+guess at the underlying literal colors/spacing they resolve to today.
+
+**Density.** `--np-density-scale` plus a matching set of row/control tokens
+(`--np-row-pad-v`, `--np-row-pad-h`, `--np-row-font-size`, `--np-control-h`, `--np-pad`) drive row
+height, padding and font-size everywhere a data grid or form control reads them. The baseline values
+declared in `:root` are `comfortable`; `body[data-np-density="compact"]` is the only variant rule and
+overrides them — so an explicit `data-np-density="comfortable"` attribute is a no-op by design, and
+adding a new density tier means adding one more `body[data-np-density="..."]` block, never touching
+individual selectors.
+
+**Theme mode.** `light` | `dark` | `system`, applied as `data-np-theme` on both `<html>` and `<body>`
+(shell.css checks both — the `prefers-color-scheme` escape hatch specifically targets `<html>`). Two
+sources feed it, in cascade order:
+
+1. **App-wide default** — the `ui.theme.mode`/`ui.density` settings (`NpdevSettings`, resolved
+   through the normal config `defaults`/`overrides` envelope, default `system`/`comfortable`),
+   emitted into `generated-ui-manifest.json`'s top-level `theme` block and applied by
+   `shell.js`'s `applyAppTheme()` on every boot, before any GuidePage is resolved.
+2. **Per-GuidePage override** — a GuidePage's own `theme.mode`/`theme.density` (model-declared,
+   `guidePages[].theme`), applied by `applyGuidePage()` immediately after. Left `null` in the
+   manifest when the GuidePage doesn't declare them, so the app-wide default is what actually shows
+   for every page that hasn't opted into a page-specific override.
+
+`mode: "system"` is applied as the ABSENCE of the `data-np-theme` attribute (removed, not set to the
+literal string `"system"`) — that is what lets the `prefers-color-scheme` media query decide. Both
+`applyThemeMode()`/`applyDensity()` in `shell.js.mustache` are the one place this logic lives; extend
+them rather than re-deriving the cascade elsewhere.
+
+## Shared global states (W1.5)
+
+Four states every surface needs -- loading, empty, error, permission-denied -- are owned in ONE
+place, `shell.js.mustache`, and exposed on `window.NPDevShell` so any surface (including an
+Untrusted Extension page) renders the same visual language instead of hand-rolling its own
+placeholder:
+
+- `renderLoading(container, { message })`
+- `renderEmpty(container, { filtered, message, action: { label, onClick } })` -- `filtered` says
+  whether this is "no data matching the current filter" (offer a clear-filter action) or "no data
+  yet" (offer a create action); callers that can tell the difference should pass it.
+- `renderError(container, { message, action })` -- `message` is whatever the caller/server composed
+  and is rendered through `textContent`, never `innerHTML` string concatenation (a caught error or a
+  server-echoed message is not trusted markup).
+- `renderDenied(container, { reason })` -- `reason` is the SERVER's own denial reason; this never
+  invents one. Wired to real data today: a concept form/detail field hidden by
+  `field.permissionOverlay.visible === false` (the live `ui/bundle` response, not a declared
+  `visibleWhen`) renders this instead of vanishing indistinguishably from a plain conditional hide.
+  Extending it to a PanelAction's own `available:false` + `denial` object is a known next step, not
+  done yet -- the bundle's `actions` catalog is still not consumed anywhere in the shell (see "The
+  shell now also consumes this contract's bundle endpoint" below).
+
+All four render through `stateBox`/`appendStateLine` helpers that only ever set `textContent`, and
+are styled purely from the density/theme tokens documented above (`.npdev-shell-state*` in
+`shell.css.mustache`) -- a caller passing a server- or user-composed string can't reintroduce an XSS
+sink by construction.
+
 ### The shell now also consumes this contract's bundle endpoint (Path A P6.2)
 
 `./generated-ui-manifest.json` remains the shell's structural source of truth (routes, panels, nav) —

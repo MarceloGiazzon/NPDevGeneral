@@ -310,6 +310,21 @@
           "scale": 2,
           "required": true,
           "ui": { "label": "Unit price" }
+        },
+        {
+          "name": "ownerEmail",
+          "type": "string",
+          "required": false,
+          "ui": { "label": "Owner email" }
+        },
+        {
+          "name": "internalNotes",
+          "type": "string",
+          "required": false,
+          "ui": { "label": "Internal notes" },
+          "access": {
+            "read": "ownerEmail == $user.id"
+          }
         }
       ],
       "invariants": [
@@ -550,6 +565,12 @@
       "payload": [
         { "name": "correlationId", "type": "string" },
         { "name": "reference", "type": "string" }
+      ]
+    },
+    {
+      "name": "CatalogEntryApproved",
+      "payload": [
+        { "name": "correlationId", "type": "string" }
       ]
     }
   ],
@@ -876,6 +897,34 @@
           "contentType": "text/csv",
           "metadata": {
             "purpose": "Coverage for panelAction.resultAs=download (Move 5, docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md Wave 4 / Gap 7): 'produce a file, stream it, persist nothing' -- PanelRuntime.executeAction returns the procedure's return value as a real file download instead of a JSON result."
+          }
+        }
+      ]
+    },
+    {
+      "name": "WidgetCatalogReviewPanel",
+      "route": "/widget-catalog-review",
+      "title": "Widget catalog review",
+      "dataSources": [
+        {
+          "name": "entries",
+          "concept": "WidgetCatalogEntry"
+        }
+      ],
+      "fieldBindings": [
+        { "field": "sku", "source": "entries.sku" },
+        { "field": "displayName", "source": "entries.displayName" }
+      ],
+      "actions": [
+        {
+          "name": "awaitApproval",
+          "label": "Await approval",
+          "binding": "flow",
+          "flow": "AwaitCatalogEntryApproval",
+          "scope": "row",
+          "dataSource": "entries",
+          "metadata": {
+            "purpose": "W1.7 (NPDEV_ROADMAP_2026-09-12.md Wave 1): a UI-reachable entry point for an awaitEvent flow, so the browser gate can prove the 202/WAITING + execution.statusRoute-polling behaviour docs/UI_CONTRACT.md's 'a UI that shows Saved! on a 202 is lying' describes end-to-end. Bound to WidgetCatalogEntry rather than WidgetOrder (whose own PlaceWidgetOrder-routed create hits an intentionally-unbound generatedAction coverage step, ScoreWidgetOrderRisk) so creating the row this action needs stays a plain, uncomplicated write."
           }
         }
       ]
@@ -1464,6 +1513,26 @@
         },
         {
           "name": "return-payment-outcome",
+          "type": "return",
+          "value": "$input"
+        }
+      ]
+    },
+    {
+      "name": "AwaitCatalogEntryApproval",
+      "concept": "WidgetCatalogEntry",
+      "steps": [
+        {
+          "name": "await-catalog-approval",
+          "type": "awaitEvent",
+          "awaitEvent": "CatalogEntryApproved",
+          "match": {
+            "correlation": true
+          },
+          "awaitRef": "catalogApproval"
+        },
+        {
+          "name": "return-catalog-approval",
           "type": "return",
           "value": "$input"
         }

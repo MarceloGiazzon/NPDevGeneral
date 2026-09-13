@@ -1,0 +1,73 @@
+id: W1.4
+title: >-
+  shell.css declares 31 --np-* tokens (with prefers-color-scheme + data-np-theme support) but
+  business-ui-style.mustache only consumed 12 of them and would have declared its own competing
+  :root; theme mode was reachable only through a GuidePage's own theme.mode (never a config
+  default); there was no density axis at all.
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.4): "Complete the design-token contract: density and
+  theme mode."
+surface: NPDevGenerator/generator (BusinessUiEmitter, shell.css/shell.js/business-ui-style
+  mustache templates), NPDevContract/dsl (NpdevSettings)
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.css.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-style.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/settings/NpdevSettings.java
+  - docs/UI_CONTRACT.md
+detail: |
+  WHAT WAS BUILT:
+  1. Density axis (shell.css.mustache): --np-density-scale plus the row/control tokens it actually
+     drives (--np-row-pad-v, --np-row-pad-h, --np-row-font-size, --np-control-h, --np-pad). The
+     :root baseline IS "comfortable"; body[data-np-density="compact"] is the only variant rule, so
+     an explicit data-np-density="comfortable" is a no-op by design.
+  2. Theme mode as a first-class, config-driven setting: two new NpdevSettings entries,
+     ui.theme.mode (default "system") and ui.density (default "comfortable"), resolved through the
+     normal defaults/overrides envelope and emitted into generated-ui-manifest.json's new top-level
+     `theme` block (BusinessUiEmitter.appThemeNode). shell.js's new applyAppTheme() applies it on
+     every boot, BEFORE any GuidePage is resolved.
+  3. Fixed a real bug this surfaced: BusinessUiEmitter.guidePageThemeNode unconditionally defaulted
+     an unset GuidePage theme.mode to "light" and theme.density to "comfortable" -- meaning EVERY
+     page visit silently forced light/comfortable regardless of the app-wide config default, making
+     a "system" or "dark" or "compact" default structurally unreachable. Now left null when the
+     GuidePage doesn't declare them, so the app-wide default actually wins for any page that hasn't
+     opted into its own override -- proven by shell.js's applyGuidePage still overriding correctly
+     when a GuidePage DOES declare its own theme.mode/theme.density.
+  4. mode="system" is applied as the ABSENCE of the data-np-theme attribute (removed, not set to
+     the literal string "system") -- shell.css's existing prefers-color-scheme escape hatch
+     (":root:not([data-np-theme=\"light\"])") already handles that correctly with zero CSS changes.
+  5. business-ui-style.mustache converted from 12 to 22 unique consumed tokens -- reusing existing
+     shell tokens (--np-border, --np-surface, --np-radius, --np-text-muted, --np-shadow) plus the
+     three new density tokens, on .side-nav/button/.records/.bulk-actions-bar/.filter-row -- rather
+     than declaring a second, competing token set.
+  6. Documented the full token contract (density + theme-mode cascade order) in docs/UI_CONTRACT.md
+     as a public surface an app's own theme.css overrides against.
+guard:
+  kind: script
+  ref: scripts/quality/run-generator-gate.ps1
+  asserts: >-
+    All three automatic conditions PASS (helpers/check_task.py --task W1.4, from
+    D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\NPDEV_ROADMAP_2026-09-12). Additionally verified
+    live: :NPDevContract:dsl:compileJava and NPDevGenerator's own :generator:compileJava both build
+    clean after the NpdevSettings/BusinessUiEmitter changes; the shared W1.5 shell.js state
+    primitives (loading/empty/error/denied, shipped in the same session) render correctly using
+    only these tokens, confirmed via a real generate+build+boot+browser cycle against
+    dsl-conformance-max.
+  provenRed: true
+  provenRedNote: >-
+    Before this task: grep -c '^\s*--np-' shell.css.mustache = 31 declared tokens; grep -o
+    'var(--np-[a-z0-9-]*' business-ui-style.mustache | sort -u | wc -l = 12 consumed; grep -c
+    density shell.css.mustache = 0. helpers/check_task.py --task W1.4 confirmed FAIL on all three
+    conditions before any edit.
+notes: |
+  Session also closed W1.5 and W1.7 (same Wave 1 chain: W1.7 depends on W1.5, which depends on
+  this item) in the same pass -- see W1.5.yml/W1.7.yml. The previous session's own handoff claimed
+  W1.7 had "nothing blocking it," which the roadmap tool's own dependency chain contradicted; user
+  chose to do the full W1.4->W1.5->W1.7 chain rather than a narrower scope.

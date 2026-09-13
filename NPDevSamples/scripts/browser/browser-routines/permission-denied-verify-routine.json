@@ -1,0 +1,65 @@
+{
+  "scenarioName": "shell-permission-denied-golden-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1400, "height": 900 } },
+  "variables": {
+    "skuOwn": "DENIED-SCENARIO-OWNED-PLACEHOLDER",
+    "skuOther": "DENIED-SCENARIO-OTHER-PLACEHOLDER"
+  },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetOrder", "state": "visible", "label": "Confirm auth landed" },
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetCatalogEntry", "label": "Navigate to WidgetCatalogEntry" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .panel-actions button:has-text(\"New\")", "label": "Create the record this actor owns (ownerEmail = its own actor id)" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "valueFromVariable": "skuOwn" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"displayName\"]", "value": "Owned Widget" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"unitPrice\"]", "value": "10" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"ownerEmail\"]", "value": "developer" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"internalNotes\"]", "value": "Visible note" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Create\")", "label": "Submit" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .panel-actions button:has-text(\"New\")", "label": "Create a record owned by someone else" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "valueFromVariable": "skuOther" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"displayName\"]", "value": "Other's Widget" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"unitPrice\"]", "value": "20" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"ownerEmail\"]", "value": "someone-else@example.test" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"internalNotes\"]", "value": "Should never be visible to this caller" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Create\")", "label": "Submit" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry .filters input[type=\"search\"]", "valueFromVariable": "skuOwn", "label": "Filter to the owned row" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .filters button:has-text(\"Search\")" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "assertCount", "selector": "#concept-WidgetCatalogEntry tbody tr", "operator": "=", "count": 1 },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry tbody tr button:has-text(\"View\")", "label": "Open the owned record's detail" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "screenshot", "name": "denied_owned_detail" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "Visible note", "label": "field.access.read (ownerEmail == $user.id) allows this caller to see its own record's internalNotes" },
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Close\")" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Clear\")" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry .filters input[type=\"search\"]", "valueFromVariable": "skuOther", "label": "Filter to the other-owned row" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .filters button:has-text(\"Search\")" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "assertCount", "selector": "#concept-WidgetCatalogEntry tbody tr", "operator": "=", "count": 1 },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry tbody tr button:has-text(\"View\")", "label": "Open the OTHER-owned record's detail -- this caller must NOT see its internalNotes" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+    { "action": "screenshot", "name": "denied_other_detail" },
+    { "action": "assertHidden", "selector": "#modalRoot :text(\"Should never be visible to this caller\")", "label": "The server-side field.access.read denial actually withheld the value -- never sent to this client at all, not merely hidden by CSS" },
+    { "action": "assertTextContains", "selector": "#modalRoot", "text": "Other's Widget", "label": "Every OTHER field on the same record still renders normally -- this is a field-scoped denial, not a whole-record one" },
+
+    { "action": "click", "selector": "#modalRoot button:has-text(\"Close\")" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

@@ -1130,6 +1130,117 @@
     return meta && meta.content ? meta.content.trim() : "";
   }
 
+  // W1.4: shared by the app-wide default (applyData, from manifest.theme) and any per-GuidePage
+  // override (applyGuidePage, from page.theme) -- both selectors shell.css checks
+  // (body[data-np-theme="dark"] and the prefers-color-scheme escape hatch ":root:not([data-np-
+  // theme=\"light\"])") look at <html>, not just <body>, so both elements get the attribute.
+  // "system" is applied as NO attribute at all (removed, not set to the literal string), which is
+  // what lets shell.css's prefers-color-scheme media query decide.
+  function applyThemeMode(mode) {
+    if (!mode) return;
+    if (mode === "system") {
+      document.documentElement.removeAttribute("data-np-theme");
+      document.body.removeAttribute("data-np-theme");
+      return;
+    }
+    document.documentElement.dataset.npTheme = mode;
+    document.body.dataset.npTheme = mode;
+  }
+
+  function applyDensity(density) {
+    if (!density) return;
+    document.documentElement.dataset.npDensity = density;
+    document.body.dataset.npDensity = density;
+  }
+
+  function applyAppTheme(manifest) {
+    var theme = (manifest && manifest.theme) || {};
+    applyThemeMode(theme.mode);
+    applyDensity(theme.density);
+  }
+
+  // ------------------------------------------------------------ shared states ----
+  //
+  // W1.5: the four states every surface used to improvise for itself (a bare "No records" text
+  // node, an ad-hoc "Loading…" reusing that same box, a raw error.message dropped in with no
+  // visual distinction, and NO permission-denied rendering anywhere at all even though the
+  // ui/bundle already hands back a real per-field `denial` reason) collapsed into one owner, styled
+  // purely from W1.4's tokens (shell.css's .npdev-shell-state rules) -- so any surface, including an
+  // Untrusted Extension page, gets the same visual language for free by calling these instead of
+  // hand-rolling its own placeholder. Exposed on window.NPDevShell (see the public API surface
+  // below) so business-ui-app.mustache/workbench-page.html.mustache (loaded after this script) can
+  // call them without reimplementing.
+
+  function stateBox(kind) {
+    var box = document.createElement("div");
+    box.className = "npdev-shell-state npdev-shell-state-" + kind;
+    return box;
+  }
+
+  function appendStateLine(box, className, textValue) {
+    if (!textValue) return;
+    var line = document.createElement("div");
+    line.className = className;
+    line.textContent = textValue;
+    box.appendChild(line);
+  }
+
+  function appendStateAction(box, action) {
+    if (!action || !action.label || typeof action.onClick !== "function") return;
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "npdev-shell-state-action";
+    button.textContent = action.label;
+    button.addEventListener("click", action.onClick);
+    box.appendChild(button);
+  }
+
+  // context: { message } -- message defaults to a generic "Loading…", never invented beyond that.
+  function renderLoading(container, context) {
+    var ctx = context || {};
+    container.innerHTML = "";
+    var box = stateBox("loading");
+    appendStateLine(box, "npdev-shell-state-message", ctx.message || "Loading…");
+    container.appendChild(box);
+  }
+
+  // context: { filtered, message, action: {label, onClick} } -- `filtered` is the caller's own
+  // signal for "no data matching the current filter" vs "no data yet"; those need different
+  // affordances (clear filter vs create the first record), so callers that can tell the difference
+  // should pass it rather than let this default to the unfiltered message.
+  function renderEmpty(container, context) {
+    var ctx = context || {};
+    container.innerHTML = "";
+    var box = stateBox("empty");
+    var message = ctx.message || (ctx.filtered ? "No matches for your filter." : "No records yet.");
+    appendStateLine(box, "npdev-shell-state-message", message);
+    appendStateAction(box, ctx.action);
+    container.appendChild(box);
+  }
+
+  // context: { message, action } -- message is whatever the caller/server composed; this never
+  // invents or rewrites it, only gives it a consistent, visually-distinct box to land in.
+  function renderError(container, context) {
+    var ctx = context || {};
+    container.innerHTML = "";
+    var box = stateBox("error");
+    appendStateLine(box, "npdev-shell-state-message", ctx.message || "Something went wrong.");
+    appendStateAction(box, ctx.action);
+    container.appendChild(box);
+  }
+
+  // context: { reason } -- the SERVER's own denial reason (field.permissionOverlay.denial.reason
+  // from the ui/bundle, or an action's own denial object), never a client-invented explanation. An
+  // unset reason renders the bare notice with nothing fabricated under it.
+  function renderDenied(container, context) {
+    var ctx = context || {};
+    container.innerHTML = "";
+    var box = stateBox("denied");
+    appendStateLine(box, "npdev-shell-state-message", "You don't have permission to view this.");
+    appendStateLine(box, "npdev-shell-state-reason", ctx.reason);
+    container.appendChild(box);
+  }
+
   function applyGuidePage(manifest, name) {
     var page = findGuidePage(manifest, name || (manifest && manifest.defaultGuidePage));
     if (!page) return;
@@ -1153,19 +1264,13 @@
     }
 
     var theme = page.theme || {};
-    if (theme.mode) {
-      // Both the body[data-np-theme="dark"] rule AND the prefers-color-scheme:dark media
-      // query's own light-mode escape hatch (":root:not([data-np-theme=\"light\"])") are
-      // selectors shell.css checks -- the escape hatch specifically looks at <html> (:root), not
-      // <body>. Setting only body.dataset here left that escape hatch permanently unmatched
-      // (<html> never got the attribute), so a GuidePage's explicit theme.mode="light" was
-      // silently overridden back to dark colors on any visitor whose OS/browser prefers dark --
-      // confirmed live: business-ui-style.mustache's :root text color inherits --np-text, which
-      // the media query then flips to near-white while the (hardcoded-white) modal/panel
-      // backgrounds stayed light, producing unreadable near-invisible form labels.
-      document.documentElement.dataset.npTheme = theme.mode;
-      document.body.dataset.npTheme = theme.mode;
-    }
+    // W1.4: theme.mode/theme.density are only present here when THIS GuidePage explicitly
+    // declares them (BusinessUiEmitter.guidePageThemeNode leaves them null otherwise) -- so a page
+    // that doesn't opt in keeps whatever applyAppTheme() already set from the app-wide
+    // ui.theme.mode/ui.density config defaults, instead of a baked-in "light"/"comfortable"
+    // silently winning the cascade.
+    applyThemeMode(theme.mode);
+    applyDensity(theme.density);
     if (theme.accent) {
       document.documentElement.style.setProperty("--np-accent", theme.accent);
     }
@@ -1237,6 +1342,7 @@
 
     applyIdentity();
     renderSidebar();
+    applyAppTheme(manifest);
     applyGuidePage(manifest, currentGuidePageName());
     recordRecentItem(document.title, window.location.pathname);
     // R3.9: the routine recorder never even builds its UI for a visitor who is not both the app's
@@ -1809,6 +1915,12 @@
     // R7.7: registers a flow-backed invocation that returned WAITING/202 for polling; see
     // trackExecution() above for the descriptor shape.
     trackExecution: trackExecution,
+    // W1.5: the shared loading/empty/error/permission-denied state primitives -- see the "shared
+    // states" section above for what each context object accepts.
+    renderLoading: renderLoading,
+    renderEmpty: renderEmpty,
+    renderError: renderError,
+    renderDenied: renderDenied,
     mount: function (options) {
       state.hostMode = true;
       state.deriveNativeGroups = options && options.deriveNativeGroups;

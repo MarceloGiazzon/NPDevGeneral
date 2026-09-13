@@ -148,8 +148,9 @@ function Start-ScrapForAI {
         # comes from Get-NPDevBuildRoot, which identifies the workspace by its CONTENTS -- never a
         # literal, and never repeated as one (CLAUDE.md's own rule about calling that function
         # rather than copying its answer).
-        . (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "..\scripts\npdev-common.ps1")
-        $ArtifactDir = Join-Path (Get-NPDevBuildRoot) "scrapforai-artifacts"
+        $workspaceRootForBuildRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+        . (Join-Path $workspaceRootForBuildRoot "scripts\npdev-common.ps1")
+        $ArtifactDir = Join-Path (Get-NPDevBuildRoot $workspaceRootForBuildRoot) "scrapforai-artifacts"
     }
     $ArtifactDir = Normalize-AbsolutePath $ArtifactDir
     New-Item -ItemType Directory -Force -Path $ArtifactDir | Out-Null

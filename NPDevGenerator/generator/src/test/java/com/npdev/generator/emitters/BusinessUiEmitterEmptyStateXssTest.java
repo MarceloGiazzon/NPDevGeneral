@@ -92,10 +92,14 @@ public class BusinessUiEmitterEmptyStateXssTest {
     void noEmptyStatePlaceholderIsBuiltByStringConcatenationIntoInnerHtml() throws Exception {
         String appJs = withoutLineComments(emitAppJs());
 
+        // W1.5: the DOM-based empty-state helper moved out of app.js entirely, into shell.js's
+        // shared renderLoading/renderEmpty/renderError/renderDenied (window.NPDevShell) -- one owner
+        // for every surface instead of a copy local to the generated business UI. app.js now calls
+        // it rather than declaring its own local helper.
+        assertTrue(appJs.contains("window.NPDevShell.renderEmpty("),
+                "the generated business UI must call the shared shell empty-state helper");
         // The specific shape that carried the bug. Its absence is the regression guard: if someone
         // hand-writes another `"<div class='empty'>" + something` placeholder, this fails.
-        assertTrue(appJs.contains("function setEmptyState("),
-                "the DOM-based empty-state helper must be emitted");
         assertEquals(-1, appJs.indexOf("\"<div class='empty'>\""),
                 "no empty-state placeholder may be assembled as an HTML string any more");
     }
@@ -122,8 +126,8 @@ public class BusinessUiEmitterEmptyStateXssTest {
         String appJs = emitAppJs();
 
         // The user's raw filter used to be concatenated into the "no matches" placeholder. It must
-        // now arrive as a setEmptyState() argument, i.e. through textContent.
-        assertTrue(appJs.contains("setEmptyState(tableWrapper, (normalizedFilter ?"),
-                "the no-matches message must route the raw filter through setEmptyState");
+        // now arrive as a renderEmpty() context field (message/filtered), i.e. through textContent.
+        assertTrue(appJs.contains("window.NPDevShell.renderEmpty(tableWrapper, {"),
+                "the no-matches message must route the raw filter through the shared renderEmpty helper");
     }
 }

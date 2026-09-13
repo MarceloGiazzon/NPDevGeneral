@@ -1,0 +1,51 @@
+{
+  "scenarioName": "shell-longrunning-flow-golden-scenario",
+  "targetPath": "/npdev-business-ui/",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1400, "height": 900 } },
+  "variables": { "sku": "FLOW-SCENARIO-SKU-PLACEHOLDER", "name": "Flow Scenario Widget" },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#apiKey", "state": "visible" },
+    { "action": "fill", "selector": "#apiKey", "valueFromCredential": "apiKey" },
+    { "action": "reload" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetOrder", "state": "visible", "label": "Confirm auth landed" },
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-WidgetCatalogEntry", "label": "Navigate to WidgetCatalogEntry" },
+    { "action": "waitForSelector", "selector": "#concept-WidgetCatalogEntry", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 600 },
+
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry .panel-actions button:has-text(\"New\")", "label": "Create a record to run the flow against" },
+    { "action": "waitForTimeout", "timeoutMs": 400 },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"sku\"]", "valueFromVariable": "sku" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"displayName\"]", "valueFromVariable": "name" },
+    { "action": "fill", "selector": "#concept-WidgetCatalogEntry [name=\"unitPrice\"]", "value": "10" },
+    { "action": "click", "selector": "#concept-WidgetCatalogEntry button:has-text(\"Create\")", "label": "Submit" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+
+    { "action": "goto", "url": "http://127.0.0.1:8099/npdev-business-ui/#concept-__panel-WidgetCatalogReviewPanel__", "label": "Open the review panel" },
+    { "action": "waitForSelector", "selector": "#concept-__panel-WidgetCatalogReviewPanel__", "state": "visible" },
+    { "action": "waitForTimeout", "timeoutMs": 500 },
+    { "action": "click", "selector": "#concept-__panel-WidgetCatalogReviewPanel__ button:has-text(\"Refresh\")", "label": "Load the entries datasource" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "screenshot", "name": "flow_before_invoke" },
+
+    { "action": "click", "selector": "#concept-__panel-WidgetCatalogReviewPanel__ button:has-text(\"Await approval\") >> nth=-1", "label": "Invoke the flow-bound row action on the just-created (last) row" },
+    { "action": "waitForTimeout", "timeoutMs": 700 },
+    { "action": "screenshot", "name": "flow_pending" },
+    { "action": "assertTextContains", "selector": ".toast-host", "text": "is running", "label": "R7.7 contract: a 202/WAITING flow invocation shows honest progress ('X is running...'), never an immediate 'Saved!'" },
+    { "action": "assertVisible", "selector": ".npdev-shell-executions-toggle-visible", "label": "The executions rail toggle becomes visible once a flow is tracked" },
+    { "action": "click", "selector": ".npdev-shell-executions-toggle", "label": "Open the executions rail" },
+    { "action": "waitForTimeout", "timeoutMs": 300 },
+    { "action": "assertVisible", "selector": ".npdev-shell-execution-row.npdev-shell-execution-pending", "label": "A pending execution row is tracked" },
+
+    {
+      "action": "evaluate", "name": "publish_awaited_event",
+      "script": "var key = localStorage.getItem('npdev.businessUi.apiKey'); return fetch('/api/v1/executions/active', { headers: { 'X-Api-Key': key } }).then(function(r){return r.json();}).then(function(list){ var items = list.items || []; var match = items.find(function(x){return x.flowName === 'AwaitCatalogEntryApproval';}); if (!match) return { error: 'no pending AwaitCatalogEntryApproval execution found', raw: list }; return fetch('/api/v1/events/publish', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Api-Key': key }, body: JSON.stringify({ eventName: 'CatalogEntryApproved', correlationId: match.correlationId, payload: {} }) }).then(function(r2){ return r2.json().then(function(b2){ return { httpStatus: r2.status, published: b2.published === true }; }); }); });",
+      "label": "Emit the awaited event through the platform's real publish endpoint -- proves completion, not just the pending state"
+    },
+    { "action": "waitForTimeout", "timeoutMs": 2500, "label": "Let the shell's poller (2s interval) pick up the settled execution" },
+    { "action": "screenshot", "name": "flow_completed" },
+    { "action": "assertVisible", "selector": ".npdev-shell-execution-row.npdev-shell-execution-succeeded", "label": "The execution rail reports real completion, not a client-side guess" },
+    { "action": "assertTextContains", "selector": ".toast-host", "text": "completed", "label": "The toast resolves to a real outcome" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}
