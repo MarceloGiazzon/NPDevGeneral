@@ -1,18 +1,20 @@
 {
-  "closedAt": "2026-09-13T21:35:26.0747443Z",
+  "closedAt": "2026-09-13T23:03:15.0736804Z",
   "branch": "main",
-  "head": "1bf27d41",
-  "headSubject": "docs(shell): record the chrome collapse that already happened (W1.3)",
-  "summary": "Closed W1.3 (record the chrome collapse that already happened): shell.js.mustache's header comment falsely claimed the SPA host mode was 'not wired yet' -- verified live that business-ui-app.mustache's bootstrap() already calls NPDevShell.mount() and renders zero chrome of its own, fixed the comment, and added entry 5 to ledger/semantic/duplicate-lanes.yml recording the collapse. No rendering code touched, no behavior change.",
-  "nextStep": "Wave 1 now has only W1.6 open (breadcrumbs/recents from the model, not localStorage alone) -- run 'python helpers/brief.py --task W1.6' from D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_ROADMAP_2026-09-12 to get its brief and start it. RUN-30 (2 pre-existing AiModelToDslMappingTest failures) and RUN-31 (corpusRole gap + 2 untriaged security-pattern hits + 2 pre-existing kernel test failures) remain open and unrelated -- do not re-derive, they are already filed.",
+  "head": "f054be64",
+  "headSubject": "feat(quality): accessibility baseline with a ratchet over the five golden scenarios (W1.8)",
+  "summary": "Closed W1.8 (accessibility baseline with a ratchet), the last open Wave 1 task -- vendored axe-core 4.13.0 (pinned, never fetched at runtime), extended scrapforai-harness.ps1 with an opt-in a11y-scan mechanism (New-A11yScanStep/Get-A11yScanSummary/-ExtraSteps/-AllowA11yScan) that runs axe against the real screen each of the five W1.7 routines reaches, and added check-a11y-baseline.py (check-coverage-ratchet.py's shape inverted: fewer violations is better, floor may only fall). Verified live with a full generate+build+boot+five-routine run against dsl-conformance-max: honest non-zero starting floors recorded (list 4/1/4/1, detail 4/1/4/1, workbench 8/14/10/1, longrunning-flow 0/2/5/1, permission-denied 4/2/4/1 critical/serious/moderate/minor), not chased to a fake zero. Wave 1 (W1.1-W1.8) is now fully closed -- a prior handoff had said W1.1-W1.7 was 'all of Wave 1,' missing that the roadmap declares 8 tasks; caught by reading the roadmap directly.",
+  "nextStep": "Wave 1 is fully closed. brief.py --next will mechanically resurface W0.2 (trust-vocabulary rename), but its ledger entry documents a deliberate owner-negotiated scope boundary (declining to rename the kernel security class TrustedSourceBytecodeInspector or rewrite closed historical ledger records) -- re-opening that needs a fresh owner decision, not a mechanical continuation. Reasonable next candidates instead: W2.1 (specialization scope decision, needs owner answer to D6 first), W3.1 (pack deprecation, self-contained), or W4.1 (capability contract errors/sideEffects/auth, highest trap density -- R4+R5+R8 all apply, schedule when a session can absorb it). Workbench's own a11y numbers (14 serious violations) are the worst of the five routines and are real follow-up work now that a floor exists to hold them to. RUN-30 and RUN-31 remain open and unrelated -- do not re-derive.",
   "plan": "",
   "blocked": "",
-  "verified": "check_task.py --task W1.3: PASS on both automatic conditions (stale comment gone, duplicate-lanes.yml has 5 entries). run-ai-knowledge-gate.ps1: only RUN-30/RUN-31's pre-existing failures remain (confirmed by exact match against RUN-31.yml), nothing new. git status: clean, main == origin/main at 1bf27d41.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "helpers/check_task.py --task W1.8: all three automatic conditions PASS. Full live run-shell-scenarios.ps1 (generate+build+boot dsl-conformance-max, all five routines + a11y scan) exited 0, all five produced real axe-core scans, a11y-baseline.json written with real first-measurement counts. Ratchet logic (first/regress/accept-with-flag/improve) unit-proven against synthetic reports before the real injection. run-script-inventory-check.ps1: 232/232 scripts classified+invocation-declared after fixing check-a11y-baseline.py's invocation to orchestrated. git status clean, committed at f054be64, pushed to origin/main.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "1bf27d41 docs(shell): record the chrome collapse that already happened (W1.3)",
-    "1f5f9663 chore(session): close session (re-verification pass)"
+    "f054be64 feat(quality): accessibility baseline with a ratchet over the five golden scenarios (W1.8)"
   ]
 }
