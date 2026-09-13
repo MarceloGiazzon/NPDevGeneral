@@ -5,7 +5,7 @@ title: >-
   since each is a one-line-cause, low-effort item
 type: GAP
 severity: LOW
-status: OPEN
+status: PARTIAL
 opened: 2026-09-13
 closed: null
 verification: UNIT_TESTED
@@ -54,3 +54,62 @@ notes: |
   is independently small enough to close in isolation whenever a session owns that subsystem. #3 and
   #4 are the cheapest (a docs/SECURITY_PATTERN_SWEEP_2026-07.md-style triage note + allowlist entry;
   one JSON line respectively) if someone wants a quick win.
+
+  UPDATE 2026-09-13, three of four closed:
+
+  #4 CLOSED: added `"AppGen/apps/_scratch/lineage-verify": "dsl-fixture"` to
+  `scripts/quality/corpus-roles.json` -- read the model itself (two concepts, `MedicalInvoice
+  specializes Invoice`) rather than guessing; it exists purely to exercise the specialization/lineage
+  DSL feature, matching dsl-fixture's own definition ("exists to exercise DSL surface... not a
+  demo") over repro-case (no specific past bug) or showcase. Verified: `validate-corpus.py` now
+  reports "every model declares a corpusRole" (65/65), zero MISSING.
+
+  #3 CLOSED: triaged both hits as SAFE, with fingerprints added to
+  `scripts/quality/security-pattern-sweep-allowlist.json` (frozenCount 574 -> 576, `frozenCountWhy`
+  extended with the reasoning). `b1b5948d78f0` (ModelSourceResolver.java:1046) is a genuine FALSE
+  POSITIVE: read the full method (checkMemberVisibility, lines 1024-1048) -- it is a plain Java
+  PACK_VISIBILITY exception-message string built with ordinary `+` concatenation, never SQL; the
+  sweep's SQL_VERB regex (`\bDROP\b`, case-insensitive) matched the ordinary English word "drop" in
+  "...or drop it from..." with no way to tell prose from a SQL keyword. `7809b81aca86`
+  (GeneratedContentHash.java:60) is a deliberate, documented null-on-failure contract -- verified
+  against BOTH real callers (not just the class's own javadoc): FinalAppAssembler.java:597 and
+  ExtensionInventoryEmitter.java:227 both check `!= null` FIRST and treat a null as CHANGED (the
+  fail-safe direction), never as a false unchanged/clean match, so the exact REG-39 failure mode this
+  pattern watches for is structurally prevented. Verified: `security-pattern-sweep.py` now reports
+  "0 needing triage" (689/689 cleared); `--fail-on-new` and `--self-test` both exit 0.
+
+  #2 CLOSED: `S3ObjectStoreFileStoreAdapterMinioLiveTest.startMinioAndAdapter()` called
+  `MINIO.start()` unconditionally in `@BeforeAll` with no Docker-availability guard at all -- fixed
+  by copying `PostgresTestSupport.postgresEnabled()`'s exact env-var convention
+  (`NPDEV_TEST_PROFILE_ENGINES=minio` or `CI=true`) into a new `minioEnabled()` and an
+  `Assumptions.assumeTrue` call at the top of `@BeforeAll`, so the class aborts cleanly instead of
+  reporting an opaque `initializationError`. Added `"minio"` to `local-test-profile.json`'s
+  `allEngines` (not `enabledEngines` -- stays off by default, same as postgres/mysql) and extended
+  its `note` for discoverability. Verified: `:adapters:file-store-objectstore:test --tests
+  '*MinioLiveTest*'` now BUILD SUCCESSFUL; JUnit XML shows `tests="3" skipped="3" errors="0"` --
+  a genuine clean skip, not a vanished/uncounted class. NOT verified: the opt-in
+  (`NPDEV_TEST_PROFILE_ENGINES=minio`) path actually passing against a real MinIO container --
+  Docker is unavailable on this machine (`docker info` fails), consistent with this platform's own
+  documented local-machine policy. The fix is structurally identical to PostgresTestSupport's
+  already-trusted pattern (same env-var parsing, same Assumptions call), and CI (which runs the full
+  matrix) is where this class actually gets exercised against a real container.
+
+  #1 NOT CLOSED, genuinely investigated rather than deferred again: read
+  `DefaultConceptGatewayDegradedConcurrencyTest.degradedModeSaveRaceIsLoudNotSilent` in full plus its
+  target, `DefaultConceptGateway.saveWithinTransaction` and `InMemoryConceptStore.save()`. The CAS
+  logic itself looks airtight: `InMemoryConceptStore.save()` is a single `synchronized` method that
+  correctly compares-and-bumps `rowVersion`, so two threads racing into it with the SAME read version
+  (both seeing 0, since the seed's own unconditional write sets `current.rowVersion()=0` before the
+  race begins, ruling out a null-rowVersion skip-the-CAS path) should deterministically let exactly
+  one through -- Java's `synchronized` guarantees this independent of scheduling. Ran the test
+  `--rerun-tasks` FIFTEEN consecutive times fresh (not from cache) specifically trying to reproduce
+  the failure RUN-31 recorded: all 15 green, 0 failures, confirmed by grepping the full build log for
+  any FAIL/BUILD FAILED line (none). Could not reproduce, and could not find a concrete logic defect
+  by inspection -- left OPEN rather than declared fixed, per this repo's own standing discipline
+  against closing something on "I looked and it seems fine" without either a reproduction or a
+  positive proof. Most likely explanation, unconfirmed: a genuine but rare test-infrastructure timing
+  issue under heavier machine load (e.g. mid-`run-all-gates.ps1`, with many concurrent Gradle
+  workers) rather than a product defect -- if it recurs, the next session should capture the ACTUAL
+  stack trace/assertion message from a real failing run (this session never got one to examine) before
+  investigating further, since 15/15 clean here means the next reproduction is the first real
+  evidence to work from.
