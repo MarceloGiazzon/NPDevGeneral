@@ -2,9 +2,10 @@
 // collapsible right gadget rail around whatever a hand-authored page already renders, reading its
 // menu from the same `workspace::Menu` table (GET /api/workspace_menus) and its GuidePage/theme
 // declarations from the generated manifest (GET /npdev-business-ui/generated-ui-manifest.json) --
-// one source of truth for navigation and frame appearance across the platform. A future SPA host
-// mode (`window.NPDevShell.mount(...)`) lets the generic business UI delegate its own chrome to
-// this same script instead of rendering its own (not wired yet -- see business-ui-app.mustache).
+// one source of truth for navigation and frame appearance across the platform. The SPA host mode
+// (`window.NPDevShell.mount(...)`) is wired and live: business-ui-app.mustache's bootstrap() calls
+// it (see NPDevShell.mount below) and delegates its own chrome here entirely -- it renders no
+// topbar/sidebar of its own.
 //
 // This only MOVES existing DOM nodes into a wrapper div; it never clones or rebuilds them, so a
 // page's own ids, event listeners, and inline script logic keep working unmodified.
