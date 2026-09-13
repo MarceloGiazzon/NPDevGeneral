@@ -1522,11 +1522,27 @@
     return concept.displayName || "";
   }
 
+  // W1.6: which deriveNativeGroups() group (the SAME curated+leftover tree the sidebar renders,
+  // appShell-curated or the native "Dados"/"Paineis" fallback) contains this concept/Panel -- so the
+  // breadcrumb is a projection of that one tree instead of a second, hand-maintained hierarchy.
+  // Returns null for the superuser-only synthetic sections (Store/Box View/Promotion), which have no
+  // home in that tree; the breadcrumb falls back to a flat title for those, unchanged from before.
+  function activeSectionGroupLabel(concept) {
+    if (!concept || !state.manifest) return null;
+    const targetHash = sectionId(concept);
+    const found = deriveNativeGroups().groups.find(function (group) {
+      return group.items.some(function (item) { return item.hash === targetHash; });
+    });
+    return found ? found.label : null;
+  }
+
   function applyActiveGuidePage(concept) {
     applyFrameMode(concept);
     if (window.NPDevShell && concept) {
       window.NPDevShell.applyGuidePage(concept.guidePage || (state.manifest && state.manifest.defaultGuidePage));
-      window.NPDevShell.setContext({ title: activeSectionLabel(concept), rows: [] });
+      const title = activeSectionLabel(concept);
+      const groupLabel = activeSectionGroupLabel(concept);
+      window.NPDevShell.setContext({ title: title, path: groupLabel ? [groupLabel, title] : [title], rows: [] });
     }
   }
 

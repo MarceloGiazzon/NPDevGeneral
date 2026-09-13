@@ -259,3 +259,23 @@ NOT consumed: the manifest's own concept `actions` are a different, simpler conc
 create/display/update/delete flags), not the same catalog, so overlaying one onto the other would
 conflate two unrelated concerns — left as a known, accepted boundary rather than force a shoehorned
 merge. Declared Panels/Store/Box View sections are likewise not covered (no concept to scope by).
+
+## Breadcrumbs and default route (W1.6)
+
+The topbar breadcrumb is a projection of the same nav tree `renderSidebar()` already draws
+(`deriveNativeGroups()` in `business-ui-app.mustache`), not a second, hand-maintained hierarchy.
+`setContext({ title, path, rows })` accepts an ordered `path` array; `shell.js.mustache` joins it with
+`" / "`. On activating a concept or declared Panel, `business-ui-app.mustache` looks up which group
+(`appShell`-curated, or the native `"Dados"`/`"Paineis"` fallback) contains that target's `hash` and
+passes `[groupLabel, title]` — a nested route (e.g. `appShell.navigation` placing `WidgetOrder` under
+group `"Operations"`) renders `/ Operations / Widget order`. A target with no group (the superuser-only
+Store/Box View/Promotion sections, which have no home in that tree) falls back to a flat `/ Title`,
+unchanged from before this task. Callers that only pass `title` (none remain in-repo, but an
+Untrusted Extension page could) still get the same single-segment breadcrumb they always did.
+
+Cold entry (`bootstrap()`, no URL hash present) already honours `appShell.defaultRoute` ahead of the
+positional `concepts[0]` fallback — built and validated in W1.1, unchanged here.
+
+Recents stay a per-viewer `localStorage` convenience (`RECENT_ITEMS_KEY`, capped at 10) — deliberately
+NOT promoted to a model-owned concept for this task. A model-owned "recent" belongs to the workspace
+pack, not the shell, and is out of scope here (see W1.6's own ledger item for the tradeoff).

@@ -1,0 +1,85 @@
+id: W1.6
+title: >-
+  shell.js has breadcrumb code (7 references) but no model-owned tree to derive a breadcrumb from --
+  it always rendered a flat "/ Title" string business-ui-app.mustache built itself, with no reflection
+  of the appShell group hierarchy W1.1/W1.2 already made real
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.6): "Breadcrumbs and recents from the model, not from
+  localStorage alone." Depends on W1.2 (menu re-projection) and W1.5 (shared global states), both
+  closed earlier this session.
+surface: NPDevGenerator/generator (business-ui-app.mustache, shell.js.mustache), docs/UI_CONTRACT.md
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - docs/UI_CONTRACT.md
+detail: |
+  SCOPE DECISION, made before writing code (per the brief's own "task-specific warning"): resisted
+  adding a top-level model field for this. The breadcrumb is fully derivable from appShell plus the
+  existing native-nav fallback, so a new field would have been a fifth mirror in this repo's dominant
+  defect class (R4/R5's four/four-copy threading). Recents were left exactly as they are --
+  per-browser localStorage (RECENT_ITEMS_KEY, capped at 10) -- since a model-owned "recent" is a
+  workspace-pack concept, not a shell one, and folding it in here would have been exactly the kind of
+  unannounced scope creep the brief warned against.
+
+  WHAT WAS BUILT:
+  1. `activeSectionGroupLabel(concept)` (new, business-ui-app.mustache): looks up which group in
+     `deriveNativeGroups()`'s own `{groups: [{label, items}]}` tree -- the SAME tree `renderSidebar()`
+     already draws, appShell-curated or the native "Dados"/"Paineis" fallback -- contains the given
+     concept/Panel's `hash`. Returns null for the three superuser-only synthetic sections
+     (Store/Box View/Promotion), which have no home in that tree.
+  2. `applyActiveGuidePage(concept)` now calls `window.NPDevShell.setContext({ title, path, rows })`
+     with `path: groupLabel ? [groupLabel, title] : [title]` instead of just `{ title, rows }` -- the
+     breadcrumb becomes a projection of the nav tree instead of a bare string the page built.
+  3. `shell.js.mustache`'s `setContext` now joins an ordered `context.path` array with `" / "` when
+     present, falling back to the old single-segment `[title]` behavior for any caller (none remain
+     in-repo, but an Untrusted Extension page could) that only passes `title` -- verified there is
+     exactly one caller of `setContext` in the whole template tree, so this is not a silent
+     compatibility gap.
+  4. Cold-entry `appShell.defaultRoute` handling was NOT touched -- W1.1 already built and validated
+     it (`bootstrap()`'s no-hash branch tries `resolveNavTarget(appShell.defaultRoute)` before the
+     positional `concepts[0]` fallback); this task only confirmed it still holds.
+  5. Documented the mechanism, its fallback boundary, and the deliberate recents non-change in
+     docs/UI_CONTRACT.md under a new "Breadcrumbs and default route (W1.6)" section.
+guard:
+  kind: script
+  ref: NPDevSamples/dsl-conformance-max (live Node execution against a real generated manifest)
+  asserts: >-
+    helpers/check_task.py --task W1.6's one automatic condition (breadcrumb code exists in
+    shell.js.mustache) PASSes; its one manual condition (a breadcrumb on a nested route reflects the
+    appShell group tree, cold entry lands on defaultRoute) was proven live, not assumed: generated
+    dsl-conformance-max fresh (NPDevSamples/scripts/generate-sample-app.ps1 -Sample
+    dsl-conformance-max -NoAssembleFinalApp), confirmed both edited functions made it into the emitted
+    app.js/shell.js, ran `node --check` on both (syntactically valid), then extracted the ACTUAL
+    deriveNativeGroups/activeSectionGroupLabel/resolveNavTarget/sectionId/visibleConcepts/
+    conceptIsAdmin/panelSectionRef function bodies verbatim from the real emitted app.js and executed
+    them under Node against the real emitted generated-ui-manifest.json (not a hand-built fixture):
+    WidgetOrder and WidgetCatalogEntry (both under appShell.navigation's declared group "Operations")
+    both resolved to group "Operations"; the synthetic Store section correctly resolved to null
+    (falls back to a flat breadcrumb); the exact shell.js setContext join logic
+    ("/ " + path.join(" / ")) produced "/ Operations / Widget order" for WidgetOrder and "/ Store" for
+    the ungrouped synthetic section. Narrow test regression check: `:generator:test --tests
+    'com.npdev.generator.emitters.BusinessUiEmitter*'` green (BUILD SUCCESSFUL, 33 tasks, all cached/
+    up-to-date test task included) -- confirms this change did not disturb the AppShellManifestTest
+    coverage W1.1 added or any other BusinessUiEmitter test.
+  provenRed: true
+  provenRedNote: >-
+    Before this task: `applyActiveGuidePage` passed only `{ title, rows }` to `setContext`, and
+    `shell.js.mustache`'s `setContext` rendered only `"/ " + contextState.title` -- confirmed by
+    reading both functions before editing. A nested route (e.g. WidgetOrder, grouped under
+    "Operations" by appShell.navigation since W1.1) therefore always rendered a flat "/ Widget order"
+    breadcrumb with no group segment, regardless of how deep appShell's own declared hierarchy was --
+    the breadcrumb ignored the very tree W1.1/W1.2 had already made real.
+notes: |
+  Ledger item created at start-of-task (the roadmap's own tasks.json had no pre-existing W1.6.yml,
+  unlike W1.1/W1.2/W1.3/W1.4/W1.5/W1.7 which the same session had already filed) -- filed OPEN before
+  editing any code, closed DONE here in the same session per the standing "open it when you start, not
+  after" instruction.
+
+  Wave 1 is now fully closed: W1.1 through W1.7 all DONE. RUN-30 and RUN-31 remain open and unrelated
+  (pre-existing test failures traced to pre-session commits, filed with their own root-cause evidence).
