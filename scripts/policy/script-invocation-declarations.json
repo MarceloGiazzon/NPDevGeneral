@@ -244,6 +244,9 @@
     "scripts/quality/cadence_state.py": {
       "invocation": "orchestrated"
     },
+    "scripts/quality/check-a11y-baseline.py": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/check-adr-decision-implementation.py": {
       "invocation": "ci-gate"
     },

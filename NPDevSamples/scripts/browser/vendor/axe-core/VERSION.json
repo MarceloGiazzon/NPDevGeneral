@@ -1,0 +1,12 @@
+{
+  "package": "axe-core",
+  "version": "4.13.0",
+  "purpose": "W1.8 accessibility baseline -- injected into ScrapForAI's evaluate step against the five W1.7 golden browser scenarios. Vendored (not fetched at runtime) so the scan is deterministic and works offline.",
+  "source": "https://registry.npmjs.org/axe-core/-/axe-core-4.13.0.tgz",
+  "shasum": "f868ecb1bd61d982321760e51d841ab497ab86d0",
+  "integrity": "sha512-UzGt8zg7Ny8djbYMhxl2zuEevVa7r2gJjYY5Lwr1xM7+XU2nd6CkIWFTVcCIbAP63vSz71NaVyyuSk9lHKcy0A==",
+  "file": "axe.min.js",
+  "fileSizeBytes": 580491,
+  "vendoredOn": "2026-09-13",
+  "upgradePolicy": "Bump the version deliberately (download the new tarball's axe.min.js, update this file's version/shasum/integrity/fileSizeBytes) -- never silently replaced by a build step. Re-run the full five-routine scan after any bump and re-pin scripts/policy/a11y-baseline.json only if the new numbers are lower."
+}

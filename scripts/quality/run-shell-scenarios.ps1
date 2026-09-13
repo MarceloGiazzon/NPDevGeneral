@@ -209,7 +209,14 @@ try {
     New-Item -ItemType Directory -Force -Path $evidenceDir | Out-Null
 
     Initialize-ScrapForAI | Out-Null
-    $scrapCtx = Start-ScrapForAI -AppBaseUrl $baseUrl -AllowEvaluate
+    $scrapCtx = Start-ScrapForAI -AppBaseUrl $baseUrl -AllowEvaluate -AllowA11yScan
+
+    # W1.8: one axe-core evaluate step, reused across all five routines -- appended AFTER each
+    # routine's own steps so it scans the real screen that scenario reaches (an open detail modal,
+    # the workbench page, the settled executions rail, the permission-denied view), not a blank
+    # navigation. The routine files themselves (NPDevSamples/scripts/browser/browser-routines/*)
+    # stay exactly what W1.7 authored and proved -- this only appends at request-build time.
+    $a11yStep = New-A11yScanStep
 
     $allGreen = $true
     foreach ($routineName in $routineOrder) {
@@ -217,7 +224,7 @@ try {
         Ensure-File -PathValue $routinePath -Label "Browser routine"
         $name = [System.IO.Path]::GetFileNameWithoutExtension($routineName)
         Info ("=== Routine: " + $name + " ===")
-        $result = Invoke-ScrapRoutine -Context $scrapCtx -RoutinePath $routinePath -Credentials $creds -Variables $routineVariables[$routineName]
+        $result = Invoke-ScrapRoutine -Context $scrapCtx -RoutinePath $routinePath -Credentials $creds -Variables $routineVariables[$routineName] -ExtraSteps @($a11yStep)
         $routineStatus = "passed"
         $routineMessage = "green"
         try {
@@ -244,11 +251,18 @@ try {
             $allGreen = $false
         }
         Save-RoutineEvidence -Result $result -OutDir $evidenceDir -Name $name | Out-Null
+        $a11ySummary = Get-A11yScanSummary -Result $result
+        if ($null -eq $a11ySummary) {
+            Info ("$name : no a11y scan recorded (routine's own steps did not reach it, or the scan result was truncated).")
+        } else {
+            Info ("$name : a11y scan -- critical=$($a11ySummary.critical) serious=$($a11ySummary.serious) moderate=$($a11ySummary.moderate) minor=$($a11ySummary.minor) ($($a11ySummary.ruleCount) rule(s) violated)")
+        }
         $report.routines += [pscustomobject]@{
             routine  = $name
             status   = $routineStatus
             message  = $routineMessage
             steps    = @($result.steps).Count
+            a11y     = $a11ySummary
         }
         Write-JsonReport $report
     }
@@ -257,9 +271,22 @@ try {
     Write-JsonReport $report
 
     $py = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "py" }
+
+    # W1.8: the accessibility ratchet reads THIS SAME report's routines[].a11y (written above) --
+    # runs only after every routine has had its chance to record a scan, never on a filtered/partial
+    # run (the coverage-ratchet lesson this task's own brief calls out: a partial measurement
+    # poisons the baseline). Folded into $allGreen BEFORE the cadence record and the report's own
+    # status field, so both reflect the combined verdict rather than only the five routines' own
+    # page/console/network checks.
+    Write-Section "Accessibility baseline (W1.8)"
+    & $py (Join-Path $repoRoot "scripts\quality\check-a11y-baseline.py") --report $ReportPath | Out-Host
+    if ($LASTEXITCODE -ne 0) { $allGreen = $false }
+    $report.status = if ($allGreen) { "passed" } else { "failed" }
+    Write-JsonReport $report
+
     & $py (Join-Path $repoRoot "scripts\quality\cadence_state.py") record --id "shell-scenarios-golden-browser" --tier T1 --result ($(if ($allGreen) { "passed" } else { "failed" })) 2>&1 | Out-Null
 
-    if (-not $allGreen) { throw "One or more browser scenarios failed -- see $ReportPath." }
+    if (-not $allGreen) { throw "One or more browser scenarios (or the accessibility baseline) failed -- see $ReportPath." }
 
     Ok ("All five golden browser scenarios green against $SampleId.")
 }
