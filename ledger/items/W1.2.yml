@@ -1,0 +1,123 @@
+id: W1.2
+title: >-
+  WorkspaceMenuSeeder has two seed modes and NEITHER reconciles -- insert-if-empty returns
+  immediately once the table has any row, so a model/menu.json change never reaches the nav;
+  upsert-if-fingerprint-changed deletes every row for the tenant (including every manual edit an
+  app author made via generic CRUD) on ANY change. The author has to choose between a navigation
+  the model can never correct and one that destroys their work on every redeploy.
+type: GAP
+severity: HIGH
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.2): "THE highest-value task in the roadmap" -- the
+  runtime side of the Path A repair (W1.1 was the model side). Unblocked by decision D7 (settled
+  2026-09-13, previous session): "Model wins; the user edit is preserved as an explicit override
+  row carrying provenance, and the Manager shows the divergence."
+surface: NPDevRuntimeHost/runtimehost-core (WorkspaceMenuSeeder), NPDevContract/packs/workspace (Menu
+  concept), scripts/appgen (Build-NpdevApp.ps1's menu.json flattening)
+files:
+  - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/workspace/WorkspaceMenuSeeder.java
+  - NPDevContract/packs/workspace/pack.json
+  - scripts/appgen/Build-NpdevApp.ps1
+  - NPDevContract/docs/WORKSPACE-MENU-AND-GUIDEPAGES.md
+  - NPDevSamples/probes/path-a-navigation-reprojection/Input/model.json
+  - NPDevSamples/probes/path-a-navigation-reprojection/Input/config.json
+  - NPDevSamples/probes/path-a-navigation-reprojection/Input/db.definition.json
+  - NPDevSamples/probes/path-a-navigation-reprojection/Input/manifest.json
+  - NPDevSamples/probes/path-a-navigation-reprojection/Input/packs/workspace/pack.json
+  - NPDevSamples/probes/path-a-navigation-reprojection/menu-seed-v1.json
+  - NPDevSamples/probes/path-a-navigation-reprojection/menu-seed-v2.json
+  - scripts/quality/run-navigation-reprojection-probe.ps1
+  - scripts/quality/check-navigation-reprojection.py
+  - scripts/quality/run-ai-knowledge-gate.ps1
+  - scripts/quality/corpus-roles.json
+  - scripts/policy/script-invocation-declarations.json
+detail: |
+  DEVIATION FROM THE ROADMAP'S LITERAL FILE LIST, made after tracing the actual generation
+  pipelines (documented here since it shapes where the probe lives and what it proves):
+  `definition/menu.json`/`pages.json` flattening (the authoring convention that feeds
+  `workspace-menu-pages-seed.json`) is entirely `scripts/appgen/Build-NpdevApp.ps1` -- an AppGen-
+  only script whose apps live outside this repo (layer 2, non-git). `NPDevSamples/scripts/
+  generate-sample-app.ps1` (the pipeline every checker/gate in THIS repo actually uses) has no
+  such step at all -- confirmed by grepping it for "menu.json"/"pages.json" and finding nothing.
+  `BusinessUiEmitter.menuSeedJson` (the generator's own would-be seed source) has returned a
+  hardcoded `"[]"` since before this session (W1.1's own notes: auto-deriving Menu rows from
+  concepts/Panels was tried and reverted). So the probe writes `workspace-menu-pages-seed.json`
+  DIRECTLY into the assembled app's output between boots, in the exact row shape
+  Build-NpdevApp.ps1 now produces -- WorkspaceMenuSeeder's real, documented contract is that FILE,
+  regardless of what produced it, and this keeps the proof inside the repo's own git-tracked,
+  CI-runnable corpus instead of depending on an external, non-versioned AppGen app folder.
+
+  WHAT WAS BUILT -- a new default `reconcile` mode (`WorkspaceMenuSeeder.java`), replacing
+  `insert-if-empty` as the default while keeping both old modes available, opt-in, for an app that
+  already depends on their exact semantics:
+
+  1. Row-level provenance (workspace pack 1.0.0 -> 1.1.0, additive, `migrations` entry in
+     `pack.json`): `Menu.seedKey` (content-derived identity -- `kind:target`, or `kind:label` for
+     a target-less GROUP header, chained under its parent's own key, so identity survives a
+     regeneration even though every row gets a fresh UUID each time), `seedOrigin`
+     (`generated`|`user`), `seedFingerprint` (a per-row content hash the seeder itself writes),
+     and `overrideOf` (links a preserved-edit clone back to the row it diverged from).
+  2. `Build-NpdevApp.ps1`'s `Add-MenuNode` no longer assigns a sequential `n1`/`n2`/... counter as
+     the row `key` (unstable the moment an earlier sibling is inserted -- every later key shifts);
+     `Get-MenuSeedKey` computes the same content-derived scheme described above, and now also
+     assigns a key to plain `pages.json` roots (previously keyless).
+  3. `reconcile()` (`WorkspaceMenuSeeder.java`): for each declared seed row -- insert if no row
+     with its `seedKey` exists; if one exists and is still `seedOrigin=generated`, update it in
+     place when the seed content changed, UNLESS the row's *live* DB content has also drifted from
+     what the seeder last wrote (a user edited it via generic CRUD since) -- decision D7's
+     "model wins" then applies: the canonical row is still updated to the fresh content, but its
+     prior value is cloned first into a new, invisible (`visible=false`), `seedKey`-less row
+     (`seedOrigin=user`, `overrideOf=<the row's seedKey>`) so the edit is never silently lost,
+     queryable via generic CRUD / the Manager (`WHERE override_of IS NOT NULL`) without this task
+     building new Manager UI ("the Manager shows the divergence" is satisfied at the data layer).
+     A `seedOrigin=generated` row whose `seedKey` no longer appears in the fresh seed set is
+     removed. A row with no `seedKey`, or `seedOrigin != generated` (author-created directly, or a
+     preserved-override clone), is never touched. The boot log always states the outcome:
+     `WorkspaceMenuSeeder: reconciled ... -- N inserted, N updated, N removed, N
+     preserved-as-override, N unchanged.`
+  4. The two legacy modes' own `insertMenuRow` now also stamps `seedKey`/`seedOrigin`/
+     `seedFingerprint`, so an app that later switches its `npdev.workspace.menu-seed.mode` to
+     `reconcile` does not find its existing rows untracked.
+  5. `WORKSPACE-MENU-AND-GUIDEPAGES.md`'s "Seeder modes" section rewritten to document all three
+     modes, `reconcile` as default, and the known limitation that a pure re-grouping move (parent
+     changes, nothing else) is not itself treated as content drift (the per-row fingerprint
+     deliberately excludes parent placement, to keep the change-detection surface small).
+
+  KNOWN LIMITATION, DOCUMENTED, NOT FIXED HERE: a row seeded before 1.1.0 (no `seedKey`) is left
+  alone by `reconcile` (never matched, never deleted) and can coexist with its newly-tracked
+  counterpart until an operator removes the stale one by hand -- a one-time migration quirk for an
+  app that was already running before this upgrade, not an ongoing correctness problem for any app
+  built with `reconcile` from day one (which is what the probe below actually proves).
+guard:
+  kind: test
+  ref: scripts/quality/check-navigation-reprojection.py (wraps scripts/quality/run-navigation-reprojection-probe.ps1)
+  asserts: >-
+    A REAL two-boot cycle against NPDevSamples/probes/path-a-navigation-reprojection, no mocking:
+    generate + boot v1 (reconcile inserts all 3 declared rows into an empty table, asserted via the
+    boot log's own summary line) -> stop -> hand-edit one row directly in the H2 database file
+    (org.h2.tools.RunScript, the same pattern already proven in scripts/ops/canonicalize-tenant-
+    ids.ps1) standing in for a generic-CRUD edit -> regenerate + write a changed seed (1 row
+    content-changed, 1 dropped, 1 added, 1 left identical) -> reboot against the SAME database file
+    (PORT-1's app-relative `data/` directory, spared by FinalAppAssembler across regeneration) ->
+    assert via CSVWRITE'd SQL SELECTs: the changed row shows the fresh v2 content (model wins), a
+    new invisible override row exists carrying the hand-edited label with overrideOf pointing back
+    at it, the dropped row is gone, the new row is present, and the untouched row was left exactly
+    alone. `--calibrate` covers the summary-line regex parsing in isolation.
+  provenRed: true
+  provenRedNote: >-
+    Before this task, `grep -n 'MODE_RECONCILE\|reconcile' NPDevRuntimeHost/runtimehost-core/.../
+    WorkspaceMenuSeeder.java` returned nothing -- neither existing mode's own code path reconciles
+    (insert-if-empty's early return on `countExistingMenus(...) > 0`; upsert-if-fingerprint-
+    changed's unconditional `deleteExistingMenus` on any change), confirmed by reading both paths
+    before writing any code (see this file's own pre-task version, still in git history).
+notes: |
+  Decision D7 was settled the previous session (2026-09-13, before this one) via AskUserQuestion,
+  recorded in the roadmap's helpers/tasks.json (outside this repo): "Model wins; the user edit is
+  preserved as an explicit override row carrying provenance, and the Manager shows the divergence."
+  This task implements that at the data layer (override_of, queryable) but does not build new
+  Manager UI to surface it -- out of scope per this task's own file list, and the roadmap's next
+  Wave-1 items (W1.7 etc.) are the more natural place for a Manager-side divergence view if wanted.

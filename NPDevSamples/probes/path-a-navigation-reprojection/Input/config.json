@@ -1,0 +1,51 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "path-a-navigation-reprojection",
+    "description": "W1.2: WorkspaceMenuSeeder reconcile-mode proof -- two real boots against the same database, with a directly-written workspace-menu-pages-seed.json standing in for a menu.json/pages.json change between them (that AppGen-only authoring convention is not part of this NPDevSamples generation pipeline; the seed FILE is WorkspaceMenuSeeder's actual, documented input contract regardless of how it was produced).",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": false,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "path_a_navigation_reprojection",
+    "resetMode": "preserve"
+  },
+  "runtime": {
+    "springProfile": "dev,trial",
+    "serverPort": 8323,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "trialDefaults": {
+    "apiKey": "dev-key",
+    "recommendedProfiles": "dev,trial",
+    "runtimeUrl": "http://localhost:8323/",
+    "databaseMode": "h2-local",
+    "notes": [
+      "Reconcile-mode probe for W1.2. Do not add features."
+    ]
+  }
+}

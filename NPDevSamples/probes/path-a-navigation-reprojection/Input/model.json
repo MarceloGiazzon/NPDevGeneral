@@ -1,0 +1,34 @@
+{
+  "$schema": "..\\..\\..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "npdev.probes.pathanavreprojection",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "W1.2 probe: proves WorkspaceMenuSeeder's default reconcile mode actually re-projects a menu-seed change onto an already-seeded workspace_v1_menus table across a real reboot against the SAME database -- insert a new row, update a changed row, preserve a user-edited row's prior content as a flagged override (D7: model wins), remove a row the fresh seed no longer declares, and leave an unrelated row untouched. Input/packs/workspace/pack.json is a COPY of NPDevContract/packs/workspace/pack.json (validate-corpus.py refuses a model-root-escaping $ref, the same convention p6-satellite-extension's identity pack copy already follows) -- keep it in sync with the canonical pack whenever Menu's seedKey/seedOrigin/seedFingerprint/overrideOf fields (workspace pack 1.1.0, W1.2) change."
+  },
+  "packs": [
+    { "$ref": "packs/workspace/pack.json" }
+  ],
+  "concepts": [
+    {
+      "name": "Task",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "title", "type": "string", "required": true }
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "type": "PersistenceCapability",
+      "operations": ["save", "findById"]
+    }
+  ],
+  "bindings": [
+    {
+      "capability": "persistence",
+      "adapter": "repository"
+    }
+  ]
+}

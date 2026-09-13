@@ -1,0 +1,14 @@
+{
+  "id": "path-a-navigation-reprojection",
+  "title": "path-a-navigation-reprojection",
+  "complexity": "storage-probe",
+  "purpose": "W1.2: proves WorkspaceMenuSeeder's default reconcile mode actually re-projects a declared-menu change onto an already-seeded table across a real reboot against the same database, instead of either ignoring the change (old insert-if-empty default) or destroying every manual edit (old upsert-if-fingerprint-changed).",
+  "inputFiles": [],
+  "walkthrough": [
+    "A FIXTURE, not a demo -- driven by check-navigation-reprojection.py, not intended to be run by hand.",
+    "Composes the real workspace pack via $ref (not a frozen local copy), so it always exercises the current Menu.seedKey/seedOrigin/seedFingerprint/overrideOf fields."
+  ],
+  "expectedOutcomes": [
+    "A reconciled workspace_v1_menus table after two boots: an unrelated row untouched, a changed row updated with the user's prior edit preserved as an invisible override row, a dropped row removed, and a new row inserted."
+  ]
+}

@@ -1,0 +1,5 @@
+[
+  { "key": "GROUP:Ops", "parentKey": null, "label": "Operations", "target": "", "kind": "GROUP", "ordinal": 10, "requiredRole": null, "visible": true },
+  { "key": "BUSINESS:Task", "parentKey": "GROUP:Ops", "label": "Tasks (renamed by model)", "target": "Task", "kind": "BUSINESS", "ordinal": 20, "requiredRole": null, "visible": true },
+  { "key": "PAGE:new.html", "parentKey": null, "label": "New Page", "target": "new.html", "kind": "PAGE", "ordinal": 40, "requiredRole": null, "visible": true }
+]

@@ -1,0 +1,56 @@
+id: RUN-31
+title: >-
+  Four pre-existing, mutually-unrelated gate gaps surfaced by running the full run-all-gates.ps1
+  for W1.2 -- none caused by W1.2, none touched by it, bundled here rather than filed separately
+  since each is a one-line-cause, low-effort item
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-09-13
+closed: null
+verification: UNIT_TESTED
+source: >-
+  Discovered while closing W1.2 (NPDEV_ROADMAP_2026-09-12.md Wave 1) and running its own prescribed
+  full run-all-gates.ps1 verification. Confirmed unrelated to W1.2 the same way RUN-30 confirmed its
+  own gap unrelated to W1.1: by tracing each to files W1.2 never touched.
+surface: NPDevKernel/kernel, NPDevKernel/adapters/file-store-objectstore, NPDevContract/dsl/parser,
+  NPDevGenerator/generator/emitters, AppGen/apps/_scratch
+detail: |
+  1. `DefaultConceptGatewayDegradedConcurrencyTest > degradedModeSaveRaceIsLoudNotSilent()` FAILS
+     unfiltered on `:kernel:test` (`org.opentest4j.AssertionFailedError` at
+     `DefaultConceptGatewayDegradedConcurrencyTest.java:116`). A concurrency/timing test in the
+     degraded-mode concept gateway -- W1.2 never touched `NPDevKernel/kernel` at all. Likely a
+     flaky race in the test's own timing assumptions rather than a real product defect, but not
+     investigated further here (wrong subsystem for this session).
+  2. `S3ObjectStoreFileStoreAdapterMinioLiveTest > initializationError` FAILS
+     (`java.lang.IllegalStateException` at `S3ObjectStoreFileStoreAdapterMinioLiveTest.java:42`).
+     Name and shape (`...LiveTest`, `initializationError`) strongly suggest a live-MinIO
+     integration test that should be skipped when MinIO/Docker isn't running locally --
+     `scripts/policy/local-test-profile.json`'s documented `enabledEngines: [h2, sqlserver]`
+     deliberately keeps Docker off for local/agent work (NPDev_General/CLAUDE.md, "Local machine
+     resource policy"), so this test needs the same skip-cleanly treatment `PostgresTestSupport`
+     already gets, not a hard `initializationError`. Not fixed here: wrong subsystem, and the real
+     fix is a Docker-skip guard in a file this session never opened.
+  3. Two pre-existing `security-pattern-sweep.py` hits remain untriaged after W1.2's own 7 new
+     WorkspaceMenuSeeder hits were triaged (`scripts/quality/security-pattern-sweep-allowlist.json`,
+     frozenCount raised 567 -> 574 this session): `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/
+     parser/ModelSourceResolver.java:1046` (`sql-string-building`, "DROP statement is assembled with
+     refQualifier spliced in rather than bound as a parameter") and `NPDevGenerator/generator/src/
+     main/java/com/npdev/generator/emitters/GeneratedContentHash.java:60`
+     (`swallowed-security-exception`, "catch (IOException | NoSuchAlgorithmException) returns null").
+     Neither file is touched by W1.2. Each needs the same triage every other entry in that allowlist
+     got: read the exact code, decide genuine-finding/safe/needs-deep-review, record a fingerprint +
+     reason.
+  4. `AppGen/apps/_scratch/lineage-verify` has no entry in `scripts/quality/corpus-roles.json`
+     (`validate-corpus.py` reports it "MISSING" role, alongside 64 other models that all correctly
+     resolve). Pre-existing before this session -- confirmed present in the very first
+     `validate-corpus.py` run of this session, before any W1.2 file existed. Also already
+     independently noted (not fixed) by W0.3's own ledger item the prior session. Needs one
+     `corpusRole` entry (`dsl-fixture`/`engine-variant`/`repro-case`/`showcase`) in
+     `scripts/quality/corpus-roles.json`, chosen by whoever knows what that scratch app is for.
+notes: |
+  Not chased further here: none is in W1.2's surface (WorkspaceMenuSeeder, the workspace pack,
+  Build-NpdevApp.ps1's menu-key generation, the new navigation-reprojection probe/checker), and each
+  is independently small enough to close in isolation whenever a session owns that subsystem. #3 and
+  #4 are the cheapest (a docs/SECURITY_PATTERN_SWEEP_2026-07.md-style triage note + allowlist entry;
+  one JSON line respectively) if someone wants a quick win.
