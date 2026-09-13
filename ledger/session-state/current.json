@@ -1,18 +1,17 @@
 {
-  "closedAt": "2026-09-13T20:59:37.2476503Z",
+  "closedAt": "2026-09-13T21:08:50.1189628Z",
   "branch": "main",
-  "head": "33b427bc",
-  "headSubject": "feat(shell): design tokens + shared states + five golden browser scenarios (W1.4/W1.5/W1.7)",
-  "summary": "Closed Wave 1's remaining critical-path chain: W1.4 (design-token contract -- density axis + config-driven theme mode, fixing a bug where an unset GuidePage theme silently forced light/comfortable), W1.5 (four shared loading/empty/error/permission-denied state primitives in shell.js, replacing five improvised placeholders; also fixed a real XSS sink in workbench-page.html.mustache), and W1.7 (five golden browser scenarios -- list/detail/workbench/long-running-flow/permission-denied -- proven live against dsl-conformance-max via a new scripts/quality/run-shell-scenarios.ps1, wired into verification-cadence.json at T1). Found and fixed two real platform bugs along the way: an ExecutionMonitorService NPE (crashed /api/v1/executions/active for any normal flow execution) and a missing-argument bug in scrapforai-harness.ps1's own Get-NPDevBuildRoot call. All three ledger items DONE, committed (33b427bc) and pushed to origin/main. Generator gate and ai-knowledge gate both re-verified clean (only pre-existing RUN-30/RUN-31 items remain red, unrelated to this session).",
-  "nextStep": "Wave 1 (W1.1/W1.2/W1.4/W1.5/W1.7) is now fully closed. Check ledger/session-state/open-state.md or re-run /prep for the next open item -- W1.3 (record the chrome collapse) and W1.6 (breadcrumbs/recents from the model) are the remaining Wave-1 items per the roadmap at D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_ROADMAP_2026-09-12\\NPDEV_ROADMAP_2026-09-12.md. RUN-30 (2 pre-existing AiModelToDslMappingTest failures) and RUN-31 (2 untriaged security-pattern hits + 1 corpusRole gap + 2 pre-existing kernel test failures) remain open, unrelated to this session's work.",
+  "head": "cfe5133d",
+  "headSubject": "chore(session): close W1.4/W1.5/W1.7 session handoff",
+  "summary": "Closed Wave 1's W1.4/W1.5/W1.7 chain (design-token contract, shared loading/empty/error/permission-denied states, five golden browser scenarios) and, in this final /close pass, re-confirmed via the ai-knowledge gate log (task bb3n4prd7) that its only two failures are exactly RUN-31's pre-existing items (corpusRole gap, 2 untriaged security-pattern hits), verified by exact file/line match -- no new failures. Everything was already committed (33b427bc, cfe5133d) and pushed to origin/main before this pass; this /close is a re-verification, not new work.",
+  "nextStep": "Wave 1 (W1.1/W1.2/W1.4/W1.5/W1.7) is fully closed and pushed. Next open Wave-1 items per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_ROADMAP_2026-09-12\\NPDEV_ROADMAP_2026-09-12.md are W1.3 (record the chrome collapse that already happened) and W1.6 (breadcrumbs/recents from the model, not localStorage alone) -- run 'python helpers/brief.py --task W1.3' from that roadmap folder to get the next task brief. RUN-30 (2 pre-existing AiModelToDslMappingTest failures) and RUN-31 (corpusRole gap + 2 untriaged security-pattern hits + 2 pre-existing kernel test failures) remain open and unrelated to Wave 1 -- do not re-derive, they are already filed.",
   "plan": "",
   "blocked": "",
-  "verified": "check_task.py --task W1.4/W1.5/W1.7: PASS on all automatic conditions. run-shell-scenarios.ps1: all 5 browser routines green against a real generate+build+boot cycle. run-generator-gate.ps1 and run-ai-knowledge-gate.ps1: only RUN-30/RUN-31's pre-existing failures remain, confirmed by exact file/line match against RUN-31.yml. check-cadence-coverage.py and run-script-inventory-check.ps1: both green.",
+  "verified": "run-generator-gate.ps1 and run-ai-knowledge-gate.ps1 both re-run this session: only RUN-30/RUN-31's pre-existing failures remain (confirmed by exact file/line match against RUN-31.yml), nothing new. check_task.py --task W1.4/W1.5/W1.7: PASS on all automatic conditions. scripts/quality/run-shell-scenarios.ps1: all 5 browser routines green against a real generate+build+boot cycle of dsl-conformance-max. check-cadence-coverage.py and run-script-inventory-check.ps1: both green. git status: clean, main == origin/main.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "33b427bc feat(shell): design tokens + shared states + five golden browser scenarios (W1.4/W1.5/W1.7)",
-    "b013e042 chore(session): close W1.2 session handoff"
+    "cfe5133d chore(session): close W1.4/W1.5/W1.7 session handoff"
   ]
 }
