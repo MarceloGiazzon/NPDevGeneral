@@ -1,0 +1,74 @@
+id: RUN-30
+title: >-
+  golden-ai-scenarios/tier-skip-gratuitous-untrusted-extension (added by P7.1, commit 2f375da1) was
+  never registered in scripts/policy/ai-model-to-dsl-mapping-policy.json or its scenario-count
+  assertion, so :dsl:test's AiModelToDslMappingTest fails unfiltered on main
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-09-13
+closed: null
+verification: UNIT_TESTED
+source: >-
+  Discovered while running the full run-generator-gate.ps1 as W1.1's own prescribed verification
+  (NPDEV_ROADMAP_2026-09-12.md Wave 1) -- confirmed unrelated to W1.1 by tracing the failure to a
+  golden-ai-scenarios/ commit that predates this session (2f375da1, "P7.1 -- rank reuse >
+  specialization > new concept > untrusted extension").
+surface: golden-ai-scenarios, NPDevContract/dsl (AiModelToDslMappingTest), scripts/policy
+detail: |
+  `:NPDevContract:dsl:test` fails 2 of 4 `AiModelToDslMappingTest` tests on a clean `main` checkout,
+  unrelated to any change in this session:
+
+  - `negativeGoldenScenariosHaveDocumentedDiagnosticCodes`: "negative scenario diagnostics are
+    undocumented: [tier-skip-gratuitous-untrusted-extension]" -- the scenario has
+    `expectedOutcome: fail` and declares an `aiModel` file, so the test requires an entry in
+    `scripts/policy/ai-model-to-dsl-mapping-policy.json`'s `goldenScenarioDiagnostics` array naming
+    its expected diagnostic code; none exists.
+  - `everyGoldenAiModelUsesOnlyClassifiedFields`: "golden AI-model scenario count changed ... expected
+    <24> but was <25>" -- the hardcoded literal in `AiModelToDslMappingTest.java` (line ~117) was
+    never bumped when this 25th scenario was added.
+
+  Root cause traced empirically, not guessed: ran `scripts/ai/Normalize-AiContract.ps1` directly
+  against the scenario's `ai-model.json` (with a synthesized `ai-config.json`, mirroring
+  `runNormalizerForNegativeAiModel`'s own approach since the scenario's manifest declares no
+  `aiConfig` file) -- it returned `"errors": []`, exit 0. The actual "gratuitous untrusted
+  extension" rejection this scenario is meant to prove lives ONLY in
+  `scripts/quality/run-ai-schema-validation.ps1` (lines ~167-198, the P7.1 "tier-skip" checks for
+  panels/procedures: declaring an `implementation` escape hatch over an entity/procedure a
+  generated surface already covers), which emits a plain failure STRING via `Add-Failure`, not a
+  structured `{code, ...}` object the way `Normalize-AiContract.ps1`'s AI_MODEL_* diagnostics do.
+
+  So the fix has two independent parts, and the second is a real design decision, not a
+  find-and-replace:
+  1. Bump `AiModelToDslMappingTest.java`'s hardcoded scenario-count assertion from 24 to 25 (trivial,
+     the comment above it already explains the "why 24" history -- extend it).
+  2. Add a `goldenScenarioDiagnostics` entry for `tier-skip-gratuitous-untrusted-extension`. This
+     needs an `expectedDiagnosticCode` -- but no such code exists yet anywhere, because
+     `run-ai-schema-validation.ps1`'s tier-skip check has never been given one. Two honest options:
+     (a) mint a real code (e.g. `AI_MODEL_GRATUITOUS_UNTRUSTED_EXTENSION`) and thread it through
+     `run-ai-schema-validation.ps1`'s `Add-Failure` calls at both tier-skip sites (panels AND
+     procedures) as a structured `{code, message}` shape instead of a bare string -- the more
+     correct fix, but touches a script this item's own investigation did not otherwise need to
+     change; (b) document the scenario's diagnostic as produced by `run-ai-schema-validation.ps1`
+     specifically (not `Normalize-AiContract.ps1`) if the policy schema/test can express that
+     distinction -- check `AiModelToDslMappingTest`'s `goldenScenarioDiagnostics` consumer (only the
+     first assertion, `missingDiagnostics`, reads this scenario; it is NOT in the smaller
+     `normalizerDiagnosticScenarios` list that actually re-runs the normalizer and checks the code
+     appears in `result.errors[].code` -- so a documentation-only entry with a code the normalizer
+     itself never emits would still pass THIS test, but would misdocument how the rejection actually
+     surfaces to a real caller, which is why this is flagged as a real decision, not deferred purely
+     for time).
+
+  Deliberately NOT fixed by W1.1 (NPDEV_ROADMAP_2026-09-12.md Wave 1, "Wire appShell into menu
+  derivation") -- wrong subsystem (AI-authoring admission ranking, not appShell/nav), and option (a)
+  above is itself a small design task (a new structured diagnostic-code shape for a PowerShell
+  gate) that deserves its own scoped pass rather than a rushed side-fix. W1.1's own specific
+  verification (narrowly-run `AppShellModelThreadingTest`/`BusinessUiEmitterAppShellManifestTest`,
+  a real `dsl-conformance-max` generation matching the fixture's declared appShell content byte for
+  byte, `node --check` on the emitted JS) is unaffected by this and was run and confirmed green
+  independently.
+notes: |
+  Whoever picks this up: start from `scripts/quality/run-ai-schema-validation.ps1` lines 167-198 (the
+  two tier-skip `Add-Failure` call sites) and `AiModelToDslMappingTest.java`'s
+  `negativeGoldenScenariosHaveDocumentedDiagnosticCodes`/`everyGoldenAiModelUsesOnlyClassifiedFields`
+  -- both already cited above with real line numbers, not re-derived.

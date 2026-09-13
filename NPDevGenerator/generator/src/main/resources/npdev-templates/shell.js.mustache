@@ -703,9 +703,14 @@
     el.sidebar.innerHTML = "";
     renderSystemSection(el.sidebar, state.manifest ? state.manifest.appName : "", state.menuRows);
     if (state.hostMode && typeof state.deriveNativeGroups === "function") {
+      // Path A W1.1: deriveNativeGroups() now returns an ORDERED list of named groups (appShell's
+      // own curated groups first, then the "Dados"/"Paineis" auto-derived leftovers) instead of a
+      // fixed two-bucket shape -- an app with no appShell still gets exactly the same two groups
+      // as before, just carried in this more general shape.
       var native = state.deriveNativeGroups() || {};
-      renderNativeGroup(el.sidebar, "Dados", native.data);
-      renderNativeGroup(el.sidebar, "Paineis", native.panels);
+      (native.groups || []).forEach(function (group) {
+        renderNativeGroup(el.sidebar, group.label, group.items);
+      });
     }
     renderNpdevSection(el.sidebar, state.manifest);
   }

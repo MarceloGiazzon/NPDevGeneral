@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.validation;
 
+import com.npdev.dsl.v1.ast.AppShellAst;
+import com.npdev.dsl.v1.ast.AppShellNavItemAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
@@ -942,6 +944,46 @@ final class PanelValidation {
             if (hasText(panel.guidePage()) && !knownGuidePageNames.contains(normalize(panel.guidePage()))) {
                 errors.add("Panel " + panel.name() + ": guidePage not found: " + panel.guidePage());
             }
+        }
+    }
+
+    /**
+     * Path A W1.1 (NPDEV_ROADMAP_2026-09-12.md Wave 1): {@code appShell.navigation} was structural
+     * plumbing only -- AppShellAst's own javadoc says plainly "neither defaultRoute nor a nav item's
+     * target is validated against an actual concept/panel name here". A typo, or a concept/panel
+     * renamed after the appShell block was written, silently produced a dead nav entry: the
+     * generated shell renders it, but clicking it goes nowhere. Mirrors validateGuidePages
+     * immediately above -- one pass, a normalized lookup set, a named diagnostic per miss -- since
+     * this is the same class of "declared cross-reference into concept/panel space" check.
+     */
+    static void validateAppShell(ModelAst modelAst, Map<String, ConceptAst> entitiesByLower, List<String> errors) {
+        AppShellAst appShell = modelAst.getAppShell();
+        if (appShell == null) {
+            return;
+        }
+        Set<String> panelNames = new HashSet<>();
+        for (PanelAst panel : modelAst.getPanels()) {
+            panelNames.add(normalize(panel.name()));
+        }
+        if (hasText(appShell.getDefaultRoute())
+                && !entitiesByLower.containsKey(normalize(appShell.getDefaultRoute()))
+                && !panelNames.contains(normalize(appShell.getDefaultRoute()))) {
+            errors.add("appShell.defaultRoute: '" + appShell.getDefaultRoute()
+                    + "' does not resolve to a declared concept or Panel"
+                    + " -- suggestedFix: point defaultRoute at a declared concept name or Panel name");
+        }
+        int index = 0;
+        for (AppShellNavItemAst item : appShell.getNavigation()) {
+            String target = item.getTarget();
+            if (hasText(target)
+                    && !entitiesByLower.containsKey(normalize(target))
+                    && !panelNames.contains(normalize(target))) {
+                errors.add("appShell.navigation[" + index + "] (\"" + item.getLabel() + "\"): target '"
+                        + target + "' does not resolve to a declared concept or Panel"
+                        + " -- suggestedFix: point this item's target at a declared concept name or"
+                        + " Panel name, or remove target to make it a group-header-only row");
+            }
+            index++;
         }
     }
 

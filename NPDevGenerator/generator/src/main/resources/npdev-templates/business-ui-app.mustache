@@ -1616,6 +1616,19 @@
     return panelMeta ? panelSectionRef(panelMeta) : null;
   }
 
+  // Path A W1.1: resolves a raw appShell.navigation[].target / defaultRoute name (a persisted
+  // concept name or a declared Panel name -- SemanticValidator already refuses anything else) to
+  // the same concept/panelSectionRef shape resolveHashTarget() produces from a hash, so nav
+  // building (deriveNativeGroups) and default-route activation (bootstrap) share one
+  // target-resolution rule instead of two.
+  function resolveNavTarget(name) {
+    if (!name || !state.manifest) return null;
+    const concept = visibleConcepts().find(function (c) { return c.conceptName === name; });
+    if (concept) return concept;
+    const panelMeta = (state.manifest.panels || []).find(function (p) { return p.name === name; });
+    return panelMeta ? panelSectionRef(panelMeta) : null;
+  }
+
   // R7.5: applies a drill-down's `where` clause onto this concept's OWN column-filter state (the
   // exact structure R7.3's buildColumnFilterControl reads/writes), so the filter row shows exactly
   // what's active -- not a silent server-side-only filter -- then refetches. Restricted to fields
@@ -6217,14 +6230,25 @@
       // gadget click within the same session -- resolve it the same way handleHashChange does.
       activateTarget(hashTarget, parseHashRoute(window.location.hash).where);
     } else {
-      // render() picks concepts[0] as the default active section by position, but (unlike
-      // showConcept) never actually records it into state.activeConcept -- do that here so the
-      // hash-publish below, and any later showConcept-based comparison, agree on what's active.
-      if (!state.activeConcept) {
-        state.activeConcept = visibleConcepts()[0] || null;
-      }
-      if (state.activeConcept) {
-        window.location.hash = "#" + sectionId(state.activeConcept);
+      // Path A W1.1: appShell.defaultRoute (validated to resolve at compile time) takes priority
+      // over render()'s own concepts[0] positional default -- activateTarget already handles both
+      // the concept and declaredPanel cases uniformly, exactly like the hashTarget branch above.
+      const appShell = state.manifest.appShell;
+      const defaultTarget = (appShell && appShell.defaultRoute && resolveNavTarget(appShell.defaultRoute)) || null;
+      if (defaultTarget) {
+        activateTarget(defaultTarget, null);
+        if (!defaultTarget.declaredPanel) state.activeConcept = defaultTarget;
+        window.location.hash = "#" + sectionId(defaultTarget);
+      } else {
+        // render() picks concepts[0] as the default active section by position, but (unlike
+        // showConcept) never actually records it into state.activeConcept -- do that here so the
+        // hash-publish below, and any later showConcept-based comparison, agree on what's active.
+        if (!state.activeConcept) {
+          state.activeConcept = visibleConcepts()[0] || null;
+        }
+        if (state.activeConcept) {
+          window.location.hash = "#" + sectionId(state.activeConcept);
+        }
       }
     }
     // Path A P6.2: fetch each visible concept's live /ui/bundle once at boot and overlay its
@@ -6252,24 +6276,73 @@
     state.isSuperUser = Boolean(superUserRole) && state.roles.indexOf(superUserRole) !== -1;
   }
 
-  // Supplies NPDevShell.mount()'s "Dados"/"Paineis" groups: plain business concepts and declared
+  // Supplies NPDevShell.mount()'s host-mode nav groups: plain business concepts and declared
   // Panels have no natural home in the shell's own System (workspace::Menu-curated) or NPDev
   // (admin-gated) sections, so without this an app that has never authored a menu.json/Menu row
   // would show NO nav at all for its own concepts -- this is the direct replacement for what
   // renderNav()'s "business"/"Panels" groups used to render, minus the DOM building (the shell
   // does that now); admin concepts are intentionally excluded here since renderNpdevSection
   // already covers them.
+  //
+  // Path A W1.1: when the model declares appShell, its navigation[] curates label/grouping/order
+  // for the targets it names, in declaration order -- an item with no target is a group-header-
+  // only row (AppShellNavItemAst's own documented shape, e.g. dsl-conformance-max's "Reference
+  // Data"), created even with zero children so far. A target with no `group` is deliberately left
+  // OUT of custom placement (falls through to the plain auto-derivation below, under its native
+  // displayName) -- grouped placement is the part appShell curates; an ungrouped reference adds
+  // nothing over simply not declaring it. Every concept/Panel appShell does NOT mention still gets
+  // a nav entry automatically, appended after appShell's own groups -- appShell curates hierarchy,
+  // it never hides an otherwise-reachable concept/Panel (the same guarantee definition/menu.json
+  // documents for its own tree). With no appShell declared at all, this renders the exact same
+  // "Dados"/"Paineis" groups as before appShell existed -- carried in the newer {groups: [...]}
+  // shape shell.js.mustache's renderSidebar() now iterates, instead of the old fixed {data, panels}.
   function deriveNativeGroups() {
     const concepts = visibleConcepts().filter(function (c) { return !conceptIsAdmin(c); });
-    const data = concepts.map(function (concept) {
-      return { label: concept.displayName, hash: sectionId(concept) };
-    });
     const panels = (state.manifest.panels || [])
-      .filter(function (panelMeta) { return evaluateWhen(panelMeta.visibility, panelContextValues()); })
-      .map(function (panelMeta) {
-        return { label: panelMeta.title, hash: sectionId(panelSectionRef(panelMeta)) };
+      .filter(function (panelMeta) { return evaluateWhen(panelMeta.visibility, panelContextValues()); });
+    const appShell = state.manifest.appShell;
+    const usedConceptNames = {};
+    const usedPanelNames = {};
+    const groups = [];
+    const groupByLabel = {};
+    function ensureGroup(label) {
+      if (!groupByLabel[label]) {
+        groupByLabel[label] = { label: label, items: [] };
+        groups.push(groupByLabel[label]);
+      }
+      return groupByLabel[label];
+    }
+
+    if (appShell && Array.isArray(appShell.navigation)) {
+      appShell.navigation.forEach(function (item) {
+        if (!item.target) {
+          ensureGroup(item.label);
+          return;
+        }
+        if (!item.group) {
+          return;
+        }
+        const resolved = resolveNavTarget(item.target);
+        if (!resolved) return; // SemanticValidator refuses this at compile time; defensive only.
+        if (resolved.declaredPanel) {
+          usedPanelNames[item.target] = true;
+        } else {
+          usedConceptNames[item.target] = true;
+        }
+        ensureGroup(item.group).items.push({ label: item.label, hash: sectionId(resolved) });
       });
-    return { data: data, panels: panels };
+    }
+
+    const leftoverData = concepts
+      .filter(function (c) { return !usedConceptNames[c.conceptName]; })
+      .map(function (c) { return { label: c.displayName, hash: sectionId(c) }; });
+    const leftoverPanels = panels
+      .filter(function (p) { return !usedPanelNames[p.name]; })
+      .map(function (p) { return { label: p.title, hash: sectionId(panelSectionRef(p)) }; });
+    if (leftoverData.length) groups.push({ label: "Dados", items: leftoverData });
+    if (leftoverPanels.length) groups.push({ label: "Paineis", items: leftoverPanels });
+
+    return { groups: groups };
   }
 
   bootstrap().catch(function (error) {
