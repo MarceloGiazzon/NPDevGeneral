@@ -111,10 +111,11 @@ class AiModelToDslMappingTest {
             }
         }
 
-        // 24 ACTIVE scenarios. Was 22 before the trusted-source scenarios were promoted from
-        // deferred/ to active (Wave 4 closeout). The deferred/ directory is deliberately excluded
-        // from this walk -- see scenarioDirs filtering.
-        assertEquals(24, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");
+        // 25 ACTIVE scenarios. Was 22 before the trusted-source scenarios were promoted from
+        // deferred/ to active (Wave 4 closeout); was 24 before P7.1 (commit 2f375da1) added
+        // tier-skip-gratuitous-untrusted-extension without bumping this literal (RUN-30). The
+        // deferred/ directory is deliberately excluded from this walk -- see scenarioDirs filtering.
+        assertEquals(25, aiModelScenarioCount, "golden AI-model scenario count changed; update the mapping evidence deliberately");
         assertTrue(unclassified.isEmpty(), "unclassified golden scenario AI model fields: " + unclassified);
     }
 

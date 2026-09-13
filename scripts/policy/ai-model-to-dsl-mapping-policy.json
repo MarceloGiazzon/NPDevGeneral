@@ -214,6 +214,7 @@
     { "scenarioId": "procedure-raw-shell", "expectedDiagnosticCode": "AI_MODEL_FIELD_UNCLASSIFIED", "stage": "ai-model-schema" },
     { "scenarioId": "procedure-unbounded-bulk", "expectedDiagnosticCode": "PROCEDURE_BULK_LIMIT_MISSING", "stage": "ai-model-schema" },
     { "scenarioId": "role-tenant-bypass", "expectedDiagnosticCode": "ROLE_TENANT_BYPASS_REJECTED", "stage": "ai-model-schema" },
+    { "scenarioId": "tier-skip-gratuitous-untrusted-extension", "expectedDiagnosticCode": "AI_MODEL_GRATUITOUS_UNTRUSTED_EXTENSION", "stage": "ai-model-schema" },
     { "scenarioId": "unknown-ai-schema-property", "expectedDiagnosticCode": "AI_MODEL_FIELD_UNCLASSIFIED", "stage": "ai-model-schema" },
     { "scenarioId": "workflow-invalid-transition", "expectedDiagnosticCode": "WORKFLOW_TRANSITION_STATE_UNRESOLVED", "stage": "ai-model-schema" },
     { "scenarioId": "workflow-no-terminal-state", "expectedDiagnosticCode": "WORKFLOW_TERMINAL_STATE_UNRESOLVED", "stage": "ai-model-schema" },

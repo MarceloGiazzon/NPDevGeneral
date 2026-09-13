@@ -5,9 +5,9 @@ title: >-
   assertion, so :dsl:test's AiModelToDslMappingTest fails unfiltered on main
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-09-13
-closed: null
+closed: 2026-09-13
 verification: UNIT_TESTED
 source: >-
   Discovered while running the full run-generator-gate.ps1 as W1.1's own prescribed verification
@@ -72,3 +72,31 @@ notes: |
   two tier-skip `Add-Failure` call sites) and `AiModelToDslMappingTest.java`'s
   `negativeGoldenScenariosHaveDocumentedDiagnosticCodes`/`everyGoldenAiModelUsesOnlyClassifiedFields`
   -- both already cited above with real line numbers, not re-derived.
+
+  CLOSED 2026-09-13, taking option (a) from the two named above (the more correct one): minted
+  `AI_MODEL_GRATUITOUS_UNTRUSTED_EXTENSION` for real and threaded it into BOTH
+  `run-ai-schema-validation.ps1` tier-skip `Add-Failure` call sites (panel at line ~172, procedure
+  at line ~195) as a `[CODE] message` string prefix -- a lighter-weight structured-diagnostic
+  convention than restructuring `$failures` from `List[string]` into `{code, message}` objects
+  everywhere (that list is built by ~50 Add-Failure call sites in this one file alone and consumed
+  by the report JSON downstream; a full object-shape migration is a separate, larger task this
+  fix's own scope did not need). Verified live before assuming it was safe: traced
+  `$actualFailureStage` detection (lines 439-458) to `$modelFailures.Count -gt 0`, never message
+  content, so the bracket prefix cannot perturb stage-matching for this or any other scenario.
+
+  Added `{"scenarioId": "tier-skip-gratuitous-untrusted-extension", "expectedDiagnosticCode":
+  "AI_MODEL_GRATUITOUS_UNTRUSTED_EXTENSION", "stage": "ai-model-schema"}` to
+  `goldenScenarioDiagnostics` in `scripts/policy/ai-model-to-dsl-mapping-policy.json` -- Deliberately
+  NOT added to `normalizerDiagnosticScenarios` (confirmed empirically in this item's own
+  investigation that `Normalize-AiContract.ps1` emits no errors for this scenario at all; the
+  rejection is real but lives only in `run-ai-schema-validation.ps1`, a different tool, so a
+  `normalizerDiagnosticScenarios` entry would fail the live round-trip that list actually performs
+  and would also misdocument which tool produces the diagnostic).
+
+  Bumped `AiModelToDslMappingTest.java`'s hardcoded scenario count 24 -> 25 with the comment
+  extended to explain both historical jumps (22->24 Wave 4 closeout, 24->25 this fix).
+
+  VERIFIED: narrow `:NPDevContract:dsl:test --tests '*AiModelToDslMappingTest*'` -- 4/4 pass (JUnit
+  XML: tests=4 failures=0 errors=0), where 2 of those 4 were the exact tests failing before this fix.
+  Then the FULL `:NPDevContract:dsl:test` suite -- 980/980 tests pass, 0 failures, 0 errors (summed
+  across all 167 test-result XML files), confirming no regression anywhere else in the module.
