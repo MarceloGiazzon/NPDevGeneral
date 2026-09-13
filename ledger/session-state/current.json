@@ -1,17 +1,18 @@
 {
-  "closedAt": "2026-09-13T21:08:50.1189628Z",
+  "closedAt": "2026-09-13T21:35:26.0747443Z",
   "branch": "main",
-  "head": "cfe5133d",
-  "headSubject": "chore(session): close W1.4/W1.5/W1.7 session handoff",
-  "summary": "Closed Wave 1's W1.4/W1.5/W1.7 chain (design-token contract, shared loading/empty/error/permission-denied states, five golden browser scenarios) and, in this final /close pass, re-confirmed via the ai-knowledge gate log (task bb3n4prd7) that its only two failures are exactly RUN-31's pre-existing items (corpusRole gap, 2 untriaged security-pattern hits), verified by exact file/line match -- no new failures. Everything was already committed (33b427bc, cfe5133d) and pushed to origin/main before this pass; this /close is a re-verification, not new work.",
-  "nextStep": "Wave 1 (W1.1/W1.2/W1.4/W1.5/W1.7) is fully closed and pushed. Next open Wave-1 items per D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_ROADMAP_2026-09-12\\NPDEV_ROADMAP_2026-09-12.md are W1.3 (record the chrome collapse that already happened) and W1.6 (breadcrumbs/recents from the model, not localStorage alone) -- run 'python helpers/brief.py --task W1.3' from that roadmap folder to get the next task brief. RUN-30 (2 pre-existing AiModelToDslMappingTest failures) and RUN-31 (corpusRole gap + 2 untriaged security-pattern hits + 2 pre-existing kernel test failures) remain open and unrelated to Wave 1 -- do not re-derive, they are already filed.",
+  "head": "1bf27d41",
+  "headSubject": "docs(shell): record the chrome collapse that already happened (W1.3)",
+  "summary": "Closed W1.3 (record the chrome collapse that already happened): shell.js.mustache's header comment falsely claimed the SPA host mode was 'not wired yet' -- verified live that business-ui-app.mustache's bootstrap() already calls NPDevShell.mount() and renders zero chrome of its own, fixed the comment, and added entry 5 to ledger/semantic/duplicate-lanes.yml recording the collapse. No rendering code touched, no behavior change.",
+  "nextStep": "Wave 1 now has only W1.6 open (breadcrumbs/recents from the model, not localStorage alone) -- run 'python helpers/brief.py --task W1.6' from D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_ROADMAP_2026-09-12 to get its brief and start it. RUN-30 (2 pre-existing AiModelToDslMappingTest failures) and RUN-31 (corpusRole gap + 2 untriaged security-pattern hits + 2 pre-existing kernel test failures) remain open and unrelated -- do not re-derive, they are already filed.",
   "plan": "",
   "blocked": "",
-  "verified": "run-generator-gate.ps1 and run-ai-knowledge-gate.ps1 both re-run this session: only RUN-30/RUN-31's pre-existing failures remain (confirmed by exact file/line match against RUN-31.yml), nothing new. check_task.py --task W1.4/W1.5/W1.7: PASS on all automatic conditions. scripts/quality/run-shell-scenarios.ps1: all 5 browser routines green against a real generate+build+boot cycle of dsl-conformance-max. check-cadence-coverage.py and run-script-inventory-check.ps1: both green. git status: clean, main == origin/main.",
+  "verified": "check_task.py --task W1.3: PASS on both automatic conditions (stale comment gone, duplicate-lanes.yml has 5 entries). run-ai-knowledge-gate.ps1: only RUN-30/RUN-31's pre-existing failures remain (confirmed by exact match against RUN-31.yml), nothing new. git status: clean, main == origin/main at 1bf27d41.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "cfe5133d chore(session): close W1.4/W1.5/W1.7 session handoff"
+    "1bf27d41 docs(shell): record the chrome collapse that already happened (W1.3)",
+    "1f5f9663 chore(session): close session (re-verification pass)"
   ]
 }
