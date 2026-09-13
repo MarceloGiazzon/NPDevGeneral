@@ -2,6 +2,7 @@ package com.npdev.adapters.filestore.objectstore;
 
 import com.npdev.kernel.ports.FileHandle;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.MinIOContainer;
@@ -16,6 +17,7 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -38,6 +40,13 @@ class S3ObjectStoreFileStoreAdapterMinioLiveTest {
 
     @BeforeAll
     static void startMinioAndAdapter() {
+        // RUN-31 item 2: same skip-cleanly convention PostgresTestSupport already uses --
+        // scripts/policy/local-test-profile.json deliberately keeps Docker off for local/agent work
+        // (NPDev_General/CLAUDE.md, "Local machine resource policy"), so this must abort the class
+        // cleanly rather than let MINIO.start() throw and report as an opaque initializationError.
+        Assumptions.assumeTrue(minioEnabled(),
+                "MinIO/S3 disabled locally (scripts/policy/local-test-profile.json) -- "
+                        + "set NPDEV_TEST_PROFILE_ENGINES=minio to opt in, or run with CI=true");
         MINIO = new MinIOContainer("minio/minio:RELEASE.2024-08-29T01-40-52Z");
         MINIO.start();
 
@@ -61,6 +70,23 @@ class S3ObjectStoreFileStoreAdapterMinioLiveTest {
         if (MINIO != null) {
             MINIO.stop();
         }
+    }
+
+    // Same env-var convention as com.npdev.test.postgres.PostgresTestSupport.postgresEnabled() --
+    // duplicated rather than shared, since this is the only MinIO-based test that runs by default
+    // (HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest's own MinIOContainer use is
+    // already excluded from the default gate by NPDevGenerator's packaged-proof filter).
+    private static boolean minioEnabled() {
+        if ("true".equalsIgnoreCase(System.getenv("CI"))) {
+            return true;
+        }
+        String override = System.getenv("NPDEV_TEST_PROFILE_ENGINES");
+        if (override == null) {
+            return false;
+        }
+        return Arrays.stream(override.split(","))
+                .map(String::trim)
+                .anyMatch(engine -> engine.equalsIgnoreCase("minio"));
     }
 
     @Test
