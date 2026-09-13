@@ -9,7 +9,8 @@ import java.util.List;
  * route for the generated app's shell chrome. {@code null} on {@link CompiledModel#getAppShell()}
  * when the model declares no {@code appShell} block (unlike {@code CompiledSettings}, there is no
  * meaningful "platform default" appShell to synthesize, so this is nullable rather than
- * always-populated). Structural plumbing only -- not yet consumed by the generator.
+ * always-populated). W1.1: consumed by {@code BusinessUiEmitter} (threaded into
+ * {@code generated-ui-manifest.json}'s {@code appShell} node).
  */
 public final class CompiledAppShell {
     private final String defaultRoute;

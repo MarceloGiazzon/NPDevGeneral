@@ -2,6 +2,8 @@ package com.npdev.generator.emitters;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.npdev.dsl.v1.compiled.CompiledAppShell;
+import com.npdev.dsl.v1.compiled.CompiledAppShellNavItem;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledContext;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
@@ -369,6 +371,18 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         }
         root.put("guidePages", guidePageNodes(guidePages.guidePages()));
         root.put("defaultGuidePage", guidePages.defaultGuidePage());
+        // Path A W1.1 (NPDEV_ROADMAP_2026-09-12.md Wave 1): appShell was compiled/resolved/threaded
+        // through the model but never consumed by the generator (grep for it anywhere under
+        // NPDevGenerator/NPDevRuntimeHost/NPDevKernel used to return nothing). Deliberately NOT
+        // routed through workspace::Menu/workspace-menu-seed.json -- BusinessUiEmitter.menuSeedJson's
+        // own doc comment explains that auto-deriving Menu rows from concepts/Panels was tried once
+        // and reverted, because business-ui-app.mustache's deriveNativeGroups() already lists every
+        // concept/Panel natively; feeding the SAME targets through workspace::Menu as well would
+        // reintroduce that exact double-listing. appShell instead rides the manifest this method
+        // already emits, and deriveNativeGroups()/renderSidebar() (business-ui-app.mustache,
+        // shell.js.mustache) curate the SAME native nav with it when present, falling back to
+        // today's flat auto-derivation for anything appShell doesn't mention.
+        root.put("appShell", appShellNode(model));
 
         // REG-12 Slice 3: index declared `document`s by their bound concept so each concept node
         // below can carry its own (usually 0 or 1) documents -- the toolbar's "Download PDF"
@@ -424,6 +438,37 @@ public final class BusinessUiEmitter extends AbstractEmitter {
         } catch (Exception exception) {
             throw new IllegalStateException("Failed to serialize generated business UI manifest", exception);
         }
+    }
+
+    /**
+     * Path A W1.1: {@code null} when the model declares no {@code appShell} block (matching
+     * {@link CompiledModel#getAppShell()}'s own nullability), so the client can test
+     * {@code manifest.appShell} truthy the same way it already tests {@code manifest.panels}
+     * emptiness. {@code target}/{@code group} are passed through verbatim -- resolving a target to
+     * a concept or a declared Panel is left to the SAME client-side lookup
+     * {@code resolveHashTarget}/{@code resolveNavTarget} already do for a hash-based deep link,
+     * rather than precomputing a "kind" here, so there is one resolution rule instead of two.
+     * {@code SemanticValidator}/{@code PanelValidation#validateAppShell} already refuses a model
+     * whose {@code defaultRoute}/{@code navigation[].target} does not resolve, so this method does
+     * not need to re-check that.
+     */
+    private static Map<String, Object> appShellNode(CompiledModel model) {
+        CompiledAppShell appShell = model == null ? null : model.getAppShell();
+        if (appShell == null) {
+            return null;
+        }
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("defaultRoute", appShell.getDefaultRoute());
+        List<Map<String, Object>> navigation = new ArrayList<>();
+        for (CompiledAppShellNavItem item : appShell.getNavigation()) {
+            Map<String, Object> itemNode = new LinkedHashMap<>();
+            itemNode.put("label", item.getLabel());
+            itemNode.put("target", item.getTarget());
+            itemNode.put("group", item.getGroup());
+            navigation.add(itemNode);
+        }
+        node.put("navigation", navigation);
+        return node;
     }
 
     /**

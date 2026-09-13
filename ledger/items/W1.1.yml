@@ -1,0 +1,141 @@
+id: W1.1
+title: >-
+  appShell is authored, parsed, compiled, canonicalised, resolved, threading-tested and exercised in
+  dsl-conformance-max -- but grep for it anywhere under NPDevGenerator/NPDevRuntimeHost/NPDevKernel
+  returns nothing, so the declared navigation of every app is dead data
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.1): the model side of the Path A repair (W1.2 is the
+  runtime side). Wave 0 closed 2026-09-12 (W0.1/W0.2/W0.3); this is Wave 1's critical-path first
+  task (W1.1 -> W1.2 -> W1.7).
+surface: NPDevContract/dsl (validation), NPDevGenerator/generator (BusinessUiEmitter + templates)
+files:
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/SemanticValidator.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AppShellAst.java
+  - NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledAppShell.java
+  - NPDevContract/dsl/src/test/java/com/npdev/dsl/v1/AppShellModelThreadingTest.java
+  - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterAppShellManifestTest.java
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/business-ui-app.mustache
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - ledger/items/RUN-30.yml
+detail: |
+  DEVIATION FROM THE ROADMAP'S LITERAL WORDING, made explicitly with the owner before implementing
+  (see "why not workspace-menu-seed.json" below) -- the mechanism is real and proven, just not the
+  one the brief's steps described.
+
+  Investigated the brief's literal plan first (wire appShell.navigation into
+  BusinessUiEmitter.menuSeedJson -> npdev-seed/workspace-menu-seed.json, the workspace::Menu table)
+  and found it would reintroduce a bug the codebase already fixed once: menuSeedJson's own doc
+  comment explains that auto-deriving Menu rows from concepts/Panels was tried and REVERTED, because
+  business-ui-app.mustache's native nav (deriveNativeGroups(), formerly renderNav()) already lists
+  every concept/Panel unconditionally -- confirmed live at the time ("every concept and panel
+  appeared twice in the sidebar"). dsl-conformance-max's own appShell targets exactly those native
+  business concepts (WidgetOrder, WidgetCatalogEntry) and does not even compose the workspace pack
+  (no workspace::Menu concept exists for it), so the literal plan would have needed: a new
+  "appShell requires the workspace pack" validation rule (to prevent WorkspaceMenuSeeder crashing at
+  boot resolving a table that doesn't exist), adding the workspace pack to the flagship
+  dsl-conformance-max fixture (wide blast radius -- many other checks assert exact counts/behavior
+  against it), and accepting duplicate sidebar entries for every appShell-covered target unless
+  something else were also changed to suppress the native listing. Presented this tradeoff plus the
+  recommended alternative to the owner before writing any code; the owner chose the alternative.
+
+  What was actually built: appShell rides generated-ui-manifest.json (BusinessUiEmitter already
+  emits this file) as a new `appShell: {defaultRoute, navigation: [{label, target, group}]}` node
+  (null when the model declares none), and business-ui-app.mustache/shell.js.mustache CURATE the
+  SAME native nav with it instead of feeding a parallel, duplicating listing:
+
+  - `deriveNativeGroups()` (business-ui-app.mustache): when appShell is present, its navigation[]
+    curates label/grouping/order for the targets it names, in declaration order. An item with no
+    target is a group-header-only row (AppShellNavItemAst's own documented shape --
+    dsl-conformance-max's "Reference Data"), created even with zero children. An item with a target
+    but no `group` is deliberately left OUT of custom placement (falls through to native
+    auto-derivation under its own displayName) -- a scope decision: grouped placement is the part
+    appShell curates, an ungrouped reference adds nothing over not declaring it. Every concept/Panel
+    appShell does NOT mention still gets a nav entry automatically, appended after appShell's own
+    groups as the same "Dados"/"Paineis" buckets an app with no appShell gets -- appShell curates
+    hierarchy, it never hides an otherwise-reachable concept/Panel (the same guarantee
+    definition/menu.json already documents for its own, unrelated tree). Return shape changed from
+    the old fixed `{data, panels}` to an ordered `{groups: [{label, items}]}` list; `renderSidebar()`
+    (shell.js.mustache) now iterates it generically instead of two hardcoded calls -- a model with no
+    appShell renders byte-identical "Dados"/"Paineis" sections as before this task.
+  - `resolveNavTarget(name)` (new, business-ui-app.mustache): resolves a raw target/defaultRoute name
+    to the same concept/panelSectionRef shape `resolveHashTarget()` already produces from a URL hash,
+    so nav-building and default-route activation share one resolution rule instead of two.
+  - `bootstrap()`'s no-hash-present branch now tries `appShell.defaultRoute` (via `resolveNavTarget`)
+    before falling back to `visibleConcepts()[0]`, reusing the existing `activateTarget()` (already
+    handles both the concept and declaredPanel cases uniformly, exactly like the hashTarget branch
+    immediately above it).
+
+  Validation (the brief's own step 4, done regardless of the pivot): `PanelValidation.validateAppShell`
+  (called from `SemanticValidator`) refuses a model whose `appShell.defaultRoute` OR any
+  `navigation[].target` does not resolve to a declared concept or Panel name -- AppShellAst's own
+  javadoc used to say plainly neither was checked ("a typo... silently produced a dead nav entry...
+  discoverable only by clicking it in a running app"). Each refusal carries a `-- suggestedFix: ...`
+  marker (required by `DiagnosticSuggestedFixCoverageTest`, R1.4 -- found by running the existing
+  test suite, not by inspection). Two new refusal-fixture tests
+  (`appShellNavigationTargetMustResolveToAConceptOrPanel`,
+  `appShellDefaultRouteMustResolveToAConceptOrPanel`) prove both refusal paths; the two pre-existing
+  `AppShellModelThreadingTest` tests (valid appShell survives parse/validate/compile; no-appShell
+  model compiles with null) still pass unchanged.
+
+  Verified: `AppShellModelThreadingTest` (4/4) and the new `BusinessUiEmitterAppShellManifestTest`
+  (2/2) run narrowly, both green. A REAL generation of dsl-conformance-max
+  (`NPDevSamples/scripts/generate-sample-app.ps1 -Sample dsl-conformance-max -NoAssembleFinalApp`,
+  the task's own prescribed verify command) produces `generated-ui-manifest.json` with the exact
+  declared appShell content (defaultRoute=WidgetOrder; navigation carrying Widget Orders/Widget
+  Catalog under group Operations plus the target-less Reference Data header, in order). `node --check`
+  confirms the emitted app.js/shell.js are syntactically valid. Beyond syntax, the ACTUAL
+  `deriveNativeGroups`/`resolveNavTarget` function bodies were extracted verbatim and executed under
+  Node against the real emitted manifest (not a hand-built fixture) with minimal stand-ins for their
+  DOM-free dependencies: produced groups in order "Operations (2), Reference Data (0), Dados (17),
+  Paineis (15)" -- the 2 appShell-curated items correctly excluded from the 17-strong native leftover
+  bucket (no duplication), the empty header rendered as declared, and `resolveNavTarget("WidgetOrder")`
+  resolved to the real WidgetOrder concept node from the manifest. Full `:NPDevContract:dsl:test`
+  (980 tests) run twice (before and after fixing the missing suggestedFix markers): first run found 3
+  failures (2 pre-existing + 1 caused by this change), second run confirmed exactly the 2 pre-existing
+  ones remain and nothing else regressed -- see RUN-30 below for why those 2 are not this task's to fix.
+
+  Found and deliberately deferred, not hidden: running the task's own prescribed
+  `run-generator-gate.ps1` surfaced 2 pre-existing `AiModelToDslMappingTest` failures in
+  `:dsl:test`, root-caused by tracing (not assumed) to a golden-ai-scenarios commit
+  (2f375da1, "P7.1") that predates this session -- a scenario was added without registering its
+  diagnostic code or bumping a hardcoded scenario-count assertion. Filed as `ledger/items/RUN-30.yml`
+  (OPEN) with the full empirical trace (including running the normalizer directly against the
+  scenario to prove it emits no error today) rather than fixed here: the real fix needs a new
+  structured diagnostic-code shape threaded into an unrelated PowerShell gate script
+  (`run-ai-schema-validation.ps1`), a separate design decision outside appShell/nav entirely.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterAppShellManifestTest.java
+  asserts: >-
+    declaredAppShellIsEmittedIntoTheManifest proves BusinessUiEmitter actually writes appShell's
+    defaultRoute/navigation (label/target/group per item) into generated-ui-manifest.json;
+    aModelWithNoAppShellEmitsNoAppShellKey proves the nullable-not-defaulted contract holds. Backed
+    by a live, non-test proof: a real dsl-conformance-max generation plus a Node execution of the
+    actual deriveNativeGroups/resolveNavTarget function bodies against that real manifest (not a
+    hand-built one), producing the exact grouped/ordered/deduplicated nav shape appShell declares.
+  provenRed: true
+  provenRedNote: >-
+    Before this task, `grep -rn appShell --include=*.java NPDevGenerator/ NPDevRuntimeHost/
+    NPDevKernel/` returned nothing (the roadmap's own stated red condition) -- confirmed by running
+    that exact grep before writing any code. `check_task.py --task W1.1`'s two automatic conditions
+    (a grepCount >=1 under NPDevGenerator/generator/src/main/java, and BusinessUiEmitter.java
+    matching /appShell|AppShell/) both report PASS after this change (19 matches).
+notes: |
+  The roadmap's third done-when item is MANUAL/judgement and is worded around "menu-seed rows" --
+  that wording assumed the workspace-menu-seed.json path this task deliberately did not take (see
+  detail's "DEVIATION" section, an explicit owner decision made before implementing). The manifest +
+  native-nav mechanism is the one actually verified live above; check_task.py correctly reports this
+  item as requiring manual judgement, not FAIL, since the other two automatic conditions pass and the
+  manual one is a real design choice, not an oversight.
+
+  RUN-30 (OPEN): 2 pre-existing AiModelToDslMappingTest failures found while running this task's own
+  prescribed run-generator-gate.ps1, root-caused to a pre-session commit (P7.1, 2f375da1), unrelated
+  to appShell/nav. Not fixed here -- see that item for the full trace and what a real fix needs.

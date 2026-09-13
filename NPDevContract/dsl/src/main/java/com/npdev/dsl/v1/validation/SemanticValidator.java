@@ -144,6 +144,7 @@ public final class SemanticValidator {
         PackValidation.validateProcedures(effectiveModel, entitiesByLower, errors);
         PanelValidation.validatePanels(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateGuidePages(effectiveModel, errors);
+        PanelValidation.validateAppShell(effectiveModel, entitiesByLower, errors);
         AggregateValidation.validateAggregates(effectiveModel, entitiesByLower, errors);
         DocumentValidation.validateDocuments(effectiveModel, entitiesByLower, errors);
         PanelValidation.validateAutoPanels(effectiveModel, entitiesByLower, errors, warnings);

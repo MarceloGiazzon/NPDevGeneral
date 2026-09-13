@@ -98,4 +98,74 @@ class AppShellModelThreadingTest {
         CompiledModel compiled = new ModelCompiler().compile(ast);
         assertNull(compiled.getAppShell(), "no default appShell is synthesized -- unlike settings, there is nothing to default to");
     }
+
+    /**
+     * Path A W1.1: before this task, AppShellAst's own javadoc said plainly "neither defaultRoute
+     * nor a nav item's target is validated against an actual concept/panel name here" -- a typo, or
+     * a concept renamed after the appShell block was written, silently produced a dead nav entry
+     * only discoverable by clicking it in a running app. PanelValidation#validateAppShell closes
+     * this; this is the refusal fixture step 4 of that task asked for.
+     */
+    @Test
+    void appShellNavigationTargetMustResolveToAConceptOrPanel(@TempDir Path tempDir) throws Exception {
+        Path modelPath = tempDir.resolve("model.json");
+        Files.writeString(modelPath, """
+                {
+                  "namespace": "appshell.badtarget.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                  ],
+                  "appShell": {
+                    "defaultRoute": "Widget",
+                    "navigation": [
+                      { "label": "Widgets", "target": "Widget", "group": "Operations" },
+                      { "label": "Gizmos", "target": "NoSuchConcept", "group": "Operations" }
+                    ]
+                  }
+                }
+                """);
+
+        JsonModelParser parser = new JsonModelParser();
+        ModelAst ast = parser.parse(modelPath);
+
+        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
+        assertTrue(validation.getErrors().stream().anyMatch(error ->
+                        error.contains("appShell.navigation[1]") && error.contains("Gizmos") && error.contains("NoSuchConcept")),
+                "expected a named refusal for the unresolved nav target, got: " + validation.getErrors());
+    }
+
+    /**
+     * Path A W1.1: the same unvalidated-reference hazard applies to defaultRoute -- it becomes the
+     * shell's landing route, so a typo there would silently land the app on nothing at all.
+     */
+    @Test
+    void appShellDefaultRouteMustResolveToAConceptOrPanel(@TempDir Path tempDir) throws Exception {
+        Path modelPath = tempDir.resolve("model.json");
+        Files.writeString(modelPath, """
+                {
+                  "namespace": "appshell.baddefault.demo",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "concepts": [
+                    { "name": "Widget", "fields": [{ "name": "id", "type": "uuid", "id": true, "required": true }] }
+                  ],
+                  "appShell": {
+                    "defaultRoute": "NoSuchConcept",
+                    "navigation": [
+                      { "label": "Widgets", "target": "Widget", "group": "Operations" }
+                    ]
+                  }
+                }
+                """);
+
+        JsonModelParser parser = new JsonModelParser();
+        ModelAst ast = parser.parse(modelPath);
+
+        ValidationResult validation = new SemanticValidator().validateWithWarnings(ast);
+        assertTrue(validation.getErrors().stream().anyMatch(error ->
+                        error.contains("appShell.defaultRoute") && error.contains("NoSuchConcept")),
+                "expected a named refusal for the unresolved defaultRoute, got: " + validation.getErrors());
+    }
 }
