@@ -1,0 +1,139 @@
+id: W1.8
+title: >-
+  Zero accessibility, visual or performance tooling existed in the repo -- the shell ships to every
+  generated app, so one fix (or one regression) reaches every app at once, and nothing measured it
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.8): "Accessibility baseline with a ratchet." Depends on
+  W1.7 (five golden browser scenarios), closed earlier this session. Finding (d) in the roadmap's
+  own §1.1: `grep -rli "axe-core|a11y|accessibility|visual regression|screenshot diff" scripts/
+  NPDevSamples/` returned nothing before this task.
+surface: NPDevSamples/scripts/browser (harness + vendored axe-core), scripts/quality (new ratchet
+  checker + run-shell-scenarios.ps1 wiring), scripts/policy (baseline + invocation declaration)
+files:
+  - NPDevSamples/scripts/browser/vendor/axe-core/axe.min.js
+  - NPDevSamples/scripts/browser/vendor/axe-core/VERSION.json
+  - NPDevSamples/scripts/browser/scrapforai-harness.ps1
+  - scripts/quality/run-shell-scenarios.ps1
+  - scripts/quality/check-a11y-baseline.py
+  - scripts/policy/a11y-baseline.json
+  - scripts/policy/script-invocation-declarations.json
+detail: |
+  WHAT WAS BUILT:
+  1. Vendored axe-core 4.13.0 verbatim from the npm registry tarball (NPDevSamples/scripts/browser/
+     vendor/axe-core/axe.min.js, 580,491 bytes; VERSION.json pins the exact version + shasum +
+     integrity + upgrade policy) -- never fetched at runtime, per the task's own instruction. Chosen
+     over a CDN fetch specifically so the scan works offline and deterministically; ScrapForAI's
+     evaluate step cannot reach outside its SSRF-allowlisted origin anyway without widening that
+     allowlist for a live external dependency, which would make every future run non-reproducible.
+  2. `New-A11yScanStep`/`Get-A11yScanSummary`/`Get-A11yAxeSource` (new, scrapforai-harness.ps1):
+     builds an `evaluate` step that injects the vendored axe-core source, runs
+     `axe.run(document, { runOnly: { type: "tag", values: ["wcag2a","wcag2aa","wcag21aa",
+     "best-practice"] } })` (the same stable rule families most accessibility audits ratchet
+     against, including axe's keyboard-reachability and focus-visibility rules -- the two things
+     the task named as breaking generated admin UIs most), and returns a SUMMARY (per-violation
+     id/impact/help/nodeCount plus per-impact totals) rather than axe's raw payload, which embeds a
+     full HTML snippet per failing node and would blow past MAX_EVALUATE_RESULT_CHARS on any page
+     with more than a handful of violations.
+  3. `Invoke-ScrapRoutine` gained an opt-in `-ExtraSteps` parameter (default empty, so every other
+     caller of this shared harness -- the per-sample demonstrate-browser.ps1 scripts -- is
+     unaffected) that appends steps AFTER a routine's own declared steps. `run-shell-scenarios.ps1`
+     passes the SAME a11y-scan step to all five W1.7 routines this way, so each scan runs against
+     the actual screen that scenario reaches (an open detail modal, the workbench page, the settled
+     executions rail, the permission-denied view) instead of a blank re-navigation -- the five
+     routine JSON files themselves are untouched, staying exactly what W1.7 authored and proved.
+  4. `Start-ScrapForAI` gained an opt-in `-AllowA11yScan` switch that raises four ScrapForAI env-var
+     limits sized for short one-line evaluate probes (MAX_EVALUATE_SCRIPT_CHARS 4000 -> 1000000,
+     MAX_REQUEST_BODY_SIZE 1mb -> 5mb, EVALUATE_TIMEOUT_MS 5000 -> 20000, MAX_EVALUATE_RESULT_CHARS
+     20000 -> 100000) only for this call -- found live, not assumed: the first real run against the
+     580KB axe-core injection failed Zod's `script` field validation before this switch existed
+     (`MAX_EVALUATE_SCRIPT_CHARS` defaults to 4000 chars), which is why these specific four knobs
+     and their specific new values are what they are, not a guess.
+  5. `scripts/quality/check-a11y-baseline.py` (new): the coverage-ratchet shape
+     (scripts/quality/check-coverage-ratchet.py), inverted -- there, higher is better and the floor
+     may only rise; here, FEWER violations is better and the floor may only fall. A routine with no
+     floor yet gets one from its first real measurement (never blocks). A routine whose fresh count
+     is lower auto-ratchets the floor down. A routine whose fresh count is HIGHER is a real
+     regression and fails the gate unless `--write-baseline` is passed explicitly (never implied).
+     A routine present in the report with no `a11y` field (its own earlier steps failed first, so
+     the scan never ran) is reported not-measured, never zero; at least one routine must have
+     produced a real scan or the whole check fails -- guards against exactly the "filtered run
+     poisons the baseline" trap the task's own brief calls out.
+  6. `run-shell-scenarios.ps1` now records each routine's `a11y` summary into its own
+     shell-scenarios-report.json (routines[].a11y), calls check-a11y-baseline.py against that same
+     report after all five routines have had their chance to scan, and folds its exit code into the
+     script's own $allGreen/exit-code/cadence-record BEFORE either is finalized -- an a11y
+     regression fails run-shell-scenarios.ps1 exactly like a routine's own console/page-error
+     failure would, not a separate silent side channel.
+  7. check-a11y-baseline.py declared `orchestrated` (not `ci-gate`) in
+     scripts/policy/script-invocation-declarations.json -- found live via run-script-inventory-
+     check.ps1 itself: `ci-gate` requires the declaring script to be named in a workflow or a
+     workflow-reachable gate runner, and run-shell-scenarios.ps1 (the only caller) is itself
+     `manual-runbook` (T1, boots a real app, not in CI), so one-hop `ci-gate` does not apply --
+     `orchestrated` (basename cited by another script under scripts/) is the correct, and only
+     truthful, classification.
+
+  RATCHET LOGIC VERIFIED BEFORE the real browser run (cheap, isolated, in a scratch directory):
+  synthetic reports proving (a) a first measurement with no prior floor is always accepted and
+  written, (b) a routine absent from a floor's still-`None` slot is reported not-measured rather
+  than a fabricated zero, (c) an increase in any impact level fails the gate (exit 1) without
+  `--write-baseline`, (d) the same increase is accepted and re-pinned with `--write-baseline`
+  (exit 0), (e) a subsequent decrease auto-ratchets the floor down and rewrites the file. All five
+  behaviors matched before wiring the real axe-core injection into the harness.
+
+  HONEST FIRST NUMBERS (not chased to zero, per the task's own explicit instruction -- "a fake zero
+  achieved by excluding rules is worse than a real 40"): critical/serious/moderate/minor node
+  counts recorded from the real dsl-conformance-max run are list 4/1/4/1, detail 4/1/4/1, workbench
+  8/14/10/1, longrunning-flow 0/2/5/1, permission-denied 4/2/4/1 (5 axe rules violated on every
+  routine). These are real, non-trivial numbers on the platform's own generated shell -- not
+  investigated or fixed here (out of scope for "add the tooling"; fixing the underlying markup is
+  real follow-up work now that there is a floor to ratchet it against).
+guard:
+  kind: script
+  ref: scripts/quality/run-shell-scenarios.ps1 (live run against dsl-conformance-max)
+  asserts: >-
+    helpers/check_task.py --task W1.8's three automatic conditions (a11y-baseline.json exists,
+    check-a11y-baseline.py exists, run-shell-scenarios.ps1 matches /a11y|axe/) all PASS. A full,
+    real `python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/
+    run-shell-scenarios.ps1` run (generate + build + boot dsl-conformance-max, all five W1.7
+    routines, ScrapForAI's real Playwright/Chromium engine) exited 0: all five routines green on
+    their own page/console/network assertions AND all five produced a real axe-core scan (not
+    truncated, not skipped), check-a11y-baseline.py reported FIRST for all five (no prior floor)
+    and wrote scripts/policy/a11y-baseline.json with the real per-routine counts quoted above, and
+    the script's own final "All five golden browser scenarios green" + exit 0 confirms the a11y
+    check's exit code was correctly folded into the combined verdict. `run-script-inventory-check.ps1`
+    passed after the orchestrated-not-ci-gate fix (232/232 scripts classified+invocation-declared).
+  provenRed: true
+  provenRedNote: >-
+    Before this task: `grep -rli "axe-core|a11y|accessibility" scripts/ NPDevSamples/` returned
+    nothing (the roadmap's own finding (d), reconfirmed before starting); scripts/policy/
+    a11y-baseline.json and scripts/quality/check-a11y-baseline.py did not exist; run-shell-
+    scenarios.ps1 had zero references to a11y/axe. The first real attempt to inject the vendored
+    axe-core source failed live with a Zod validation error on the `script` field (`String must
+    contain at most 4000 character(s)`) before -AllowA11yScan's four env-var overrides were added
+    -- confirmed by running it, not assumed from reading ScrapForAILegacy's schema. The first
+    run-script-inventory-check.ps1 pass also failed live (`declared ci-gate but not named in any
+    workflow or workflow-reachable gate runner`) before the orchestrated fix -- both real, caught-
+    and-fixed regressions this task introduced and then resolved, not pre-existing gaps.
+notes: |
+  Wave 1 (W1.1 through W1.8) is now FULLY closed -- all eight items DONE, matching the roadmap's
+  own "8 tasks" count for Wave 1 exactly (a prior session's handoff had said "Wave 1 W1.1-W1.7
+  DONE," missing that the roadmap lists eight Wave 1 tasks, not seven -- caught by reading
+  NPDEV_ROADMAP_2026-09-12.md itself rather than trusting the handoff's own count).
+
+  A prior /prep in this same session surfaced W0.2 (trust-vocabulary rename) as the mechanical
+  "next" task via helpers/brief.py --next, but its ledger entry documents a deliberate, owner-
+  negotiated scope boundary (leaving it PARTIAL/FAIL rather than renaming a security-critical
+  kernel class and rewriting closed historical ledger records) -- re-opening that was NOT a
+  mechanical continuation, so this task (W1.8) was chosen instead after asking the owner, since it
+  is fresh, uncontroversial, and completes the roadmap's own stated priority wave.
+
+  The five real violation-count floors recorded here (list 4/1/4/1, detail 4/1/4/1, workbench
+  8/14/10/1, longrunning-flow 0/2/5/1, permission-denied 4/2/4/1) are a real starting point, not a
+  finished state -- fixing the underlying markup (workbench's own numbers are the worst, 14 serious
+  violations) is real follow-up work, now possible because there is a floor to hold it to.

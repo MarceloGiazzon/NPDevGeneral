@@ -138,6 +138,14 @@ function Start-ScrapForAI {
         [string]$ArtifactDir = "",
         [string[]]$ExtraAllowedOrigins = @(),
         [switch]$AllowEvaluate,
+        # W1.8: the accessibility scan injects the whole vendored axe-core build (~580KB) as the
+        # `evaluate` step's script, then returns a summarized (not raw) result. ScrapForAI's default
+        # limits (MAX_EVALUATE_SCRIPT_CHARS=4000, MAX_REQUEST_BODY_SIZE=1mb, EVALUATE_TIMEOUT_MS=5000)
+        # are sized for short one-line probes like the pre-existing publish_awaited_event step and
+        # would reject or truncate an axe-core injection. Opt-in only -- every other caller of this
+        # shared harness (the per-sample demonstrate-browser.ps1 scripts) keeps the conservative
+        # defaults unless it explicitly asks for this.
+        [switch]$AllowA11yScan,
         [int]$ReadyTimeoutSec = 30
     )
     $Root = Get-ScrapForAIRoot $Root
@@ -181,6 +189,12 @@ function Start-ScrapForAI {
     # defaults of 10s/60s, which is too tight for cold-cache page loads.)
     $env:STEP_TIMEOUT_MS          = "30000"
     $env:JOB_TIMEOUT_MS           = "120000"
+    if ($AllowA11yScan) {
+        $env:MAX_EVALUATE_SCRIPT_CHARS = "1000000"
+        $env:MAX_EVALUATE_RESULT_CHARS = "100000"
+        $env:EVALUATE_TIMEOUT_MS       = "20000"
+        $env:MAX_REQUEST_BODY_SIZE     = "5mb"
+    }
 
     $tsx    = Join-Path $Root "node_modules\.bin\tsx.cmd"
     $server = Join-Path $Root "src\server.ts"
@@ -258,13 +272,17 @@ function Invoke-ScrapRoutine {
         [Parameter(Mandatory = $true)][object]$Context,
         [Parameter(Mandatory = $true)][string]$RoutinePath,
         [hashtable]$Variables = @{},    # merged over the routine's own variables (e.g. a per-run unique code)
-        [hashtable]$Credentials = @{}   # R7 Stage D: merged over the routine's own credentials (e.g. the
+        [hashtable]$Credentials = @{},  # R7 Stage D: merged over the routine's own credentials (e.g. the
                                          # app's live per-app API key -- see Get-NpdevLiveApiKey in
                                          # sample-common.ps1). Same merge shape as -Variables; kept as a
                                          # SEPARATE bucket (not folded into -Variables) because the engine
                                          # redacts `credentials` values from evidence/logs
                                          # (collectKnownSecretValues in ScrapForAILegacy), which `variables`
                                          # does not -- a real API key belongs in this bucket, never that one.
+        [object[]]$ExtraSteps = @()     # W1.8: appended AFTER the routine's own declared steps (e.g. an
+                                         # a11y scan of whatever DOM state the routine's real steps left
+                                         # behind) -- never mixed into the routine file itself, so the
+                                         # W1.7 routines stay exactly what they were authored/proven against.
     )
     Ensure-File -PathValue $RoutinePath -Label "Routine file"
     $routine = Get-Content -LiteralPath $RoutinePath -Raw | ConvertFrom-Json -Depth 30
@@ -297,11 +315,81 @@ function Invoke-ScrapRoutine {
     if ($routine.PSObject.Properties.Name -contains "options")      { $request.options      = $routine.options }
     if ($mergedVars.Count -gt 0)                                    { $request.variables    = $mergedVars }
     if ($mergedCreds.Count -gt 0)                                    { $request.credentials  = $mergedCreds }
-    $request.steps = $routine.steps
+    $steps = @($routine.steps)
+    if ($ExtraSteps.Count -gt 0) { $steps = @($steps) + @($ExtraSteps) }
+    $request.steps = $steps
 
     Info ("Routine -> " + (Split-Path -Leaf $RoutinePath) + "  target=" + $targetUrl)
     $result = Invoke-ScrapPost -Context $Context -Route "/v1/explorations/run" -BodyObject $request
     return $result.Body
+}
+
+# W1.8: caches the vendored axe-core source (NPDevSamples/scripts/browser/vendor/axe-core/axe.min.js,
+# version pinned in the sibling VERSION.json -- never fetched at runtime) so repeated calls across the
+# five routines in one script run don't re-read a 580KB file five times.
+$script:A11yAxeSourceCache = $null
+function Get-A11yAxeSource {
+    if ($null -eq $script:A11yAxeSourceCache) {
+        $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..\..")).Path
+        $axePath = Join-Path $repoRoot "NPDevSamples\scripts\browser\vendor\axe-core\axe.min.js"
+        Ensure-File -PathValue $axePath -Label "Vendored axe-core (see NPDevSamples/scripts/browser/vendor/axe-core/VERSION.json to refresh)"
+        $script:A11yAxeSourceCache = Get-Content -LiteralPath $axePath -Raw
+    }
+    return $script:A11yAxeSourceCache
+}
+
+# W1.8: builds the `evaluate` step that scans whatever DOM state the routine's own steps left
+# behind with the vendored, version-pinned axe-core build -- pass it as -ExtraSteps to
+# Invoke-ScrapRoutine so it runs AFTER a routine's real assertions, against the actual screen
+# each scenario reaches (list grid, an open detail modal, the workbench page, the flow's
+# completed-execution rail, the permission-denied view), not a fresh unauthenticated navigation.
+# Scoped to wcag2a/wcag2aa/wcag21aa/best-practice -- the same stable rule families most
+# accessibility audits ratchet against, which is where axe's own keyboard-reachability and
+# focus-visibility rules live -- rather than axe's full experimental ruleset. Returns a SUMMARY
+# (per-violation id/impact/help/nodeCount, plus per-impact totals), never the raw axe.run()
+# payload: that payload embeds a full HTML snippet per failing node and would blow past
+# MAX_EVALUATE_RESULT_CHARS on any page with more than a handful of violations.
+function New-A11yScanStep {
+    param([string]$Name = "a11y_scan")
+    $axeSource = Get-A11yAxeSource
+    $runner = @'
+return axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "best-practice"] } }).then(function (results) {
+  var counts = { critical: 0, serious: 0, moderate: 0, minor: 0 };
+  var violations = results.violations.map(function (v) {
+    var nodeCount = v.nodes.length;
+    if (Object.prototype.hasOwnProperty.call(counts, v.impact)) { counts[v.impact] += nodeCount; }
+    return { id: v.id, impact: v.impact, help: v.help, nodeCount: nodeCount };
+  });
+  return { ruleCount: results.violations.length, nodeCounts: counts, violations: violations };
+});
+'@
+    return [ordered]@{ action = "evaluate"; name = $Name; script = ($axeSource + "`n" + $runner) }
+}
+
+# Pulls the a11y_scan step's result back out of a routine result, normalized to a flat
+# PSCustomObject with the four impact counts. Returns $null if the step never ran (the routine's
+# OWN earlier steps failed first, so there is genuinely nothing to measure for this run --
+# Assert-RoutineGreen already reports that failure separately; this must not invent a fake zero).
+function Get-A11yScanSummary {
+    param([Parameter(Mandatory = $true)][object]$Result, [string]$Name = "a11y_scan")
+    $extracted = Get-Prop $Result "extracted"
+    if ($null -eq $extracted) { return $null }
+    $scan = Get-Prop $extracted $Name
+    if ($null -eq $scan) { return $null }
+    if (Get-Prop $scan "truncated" $false) {
+        Info "a11y scan result was truncated by MAX_EVALUATE_RESULT_CHARS -- counts below are unreliable."
+        return $null
+    }
+    $counts = Get-Prop $scan "nodeCounts" $null
+    if ($null -eq $counts) { return $null }
+    return [pscustomobject]@{
+        critical   = [int](Get-Prop $counts "critical" 0)
+        serious    = [int](Get-Prop $counts "serious" 0)
+        moderate   = [int](Get-Prop $counts "moderate" 0)
+        minor      = [int](Get-Prop $counts "minor" 0)
+        ruleCount  = [int](Get-Prop $scan "ruleCount" 0)
+        violations = @(Get-Prop $scan "violations" @())
+    }
 }
 
 # inspect-dom against a path of the booted app -- used during authoring to

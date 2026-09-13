@@ -1,0 +1,47 @@
+{
+  "$schemaVersion": "npdev-a11y-baseline.v1",
+  "_comment": "W1.8 (NPDEV_ROADMAP_2026-09-12.md). Ratchet floor per browser routine, read/written by scripts/quality/check-a11y-baseline.py from scripts/quality/run-shell-scenarios.ps1's own shell-scenarios-report.json. Counts are axe-core violation NODE counts (not rule counts) per impact level, scoped to the wcag2a/wcag2aa/wcag21aa/best-practice tag families -- see NPDevSamples/scripts/browser/vendor/axe-core/VERSION.json for the pinned engine version. A routine with no entry yet gets one from its first real measurement rather than blocking a merge. A DROP for a routine that produced a fresh scan this run auto-ratchets the floor down; an INCREASE is a gate failure unless --write-baseline is passed explicitly. Never hand-edit a count downward to fake progress -- let the ratchet script do it from a real scan.",
+  "engine": "axe-core",
+  "routines": {
+    "list-verify-routine": {
+      "critical": 4,
+      "serious": 1,
+      "moderate": 4,
+      "minor": 1,
+      "ruleCount": 5,
+      "measuredOn": "2026-09-13T22:57:40.1294185Z"
+    },
+    "detail-verify-routine": {
+      "critical": 4,
+      "serious": 1,
+      "moderate": 4,
+      "minor": 1,
+      "ruleCount": 5,
+      "measuredOn": "2026-09-13T22:57:40.1294185Z"
+    },
+    "workbench-verify-routine": {
+      "critical": 8,
+      "serious": 14,
+      "moderate": 10,
+      "minor": 1,
+      "ruleCount": 5,
+      "measuredOn": "2026-09-13T22:57:40.1294185Z"
+    },
+    "longrunning-flow-verify-routine": {
+      "critical": 0,
+      "serious": 2,
+      "moderate": 5,
+      "minor": 1,
+      "ruleCount": 5,
+      "measuredOn": "2026-09-13T22:57:40.1294185Z"
+    },
+    "permission-denied-verify-routine": {
+      "critical": 4,
+      "serious": 2,
+      "moderate": 4,
+      "minor": 1,
+      "ruleCount": 5,
+      "measuredOn": "2026-09-13T22:57:40.1294185Z"
+    }
+  }
+}

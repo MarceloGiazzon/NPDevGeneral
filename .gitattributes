@@ -75,3 +75,9 @@ gradlew.bat     text eol=crlf
 *.woff          binary
 *.woff2         binary
 *.ttf           binary
+
+# W1.8: vendored third-party build, pinned by exact shasum/integrity in the sibling VERSION.json.
+# Treated as binary so no line-ending conversion ever touches it -- a CRLF rewrite would silently
+# make the checked-out file diverge from the hash that file records as "this is exactly what was
+# downloaded."
+NPDevSamples/scripts/browser/vendor/axe-core/axe.min.js binary
