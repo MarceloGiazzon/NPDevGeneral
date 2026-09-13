@@ -1889,11 +1889,16 @@
   window.NPDevShell = {
     registerGadget: function (type, renderFn) { gadgetRenderers[type] = renderFn; },
     // `context.title` becomes the topbar breadcrumb (e.g. the active section's display name);
+    // `context.path` (W1.6), when given, is an ordered array of segments (e.g. [groupLabel, title])
+    // projected from the host's own nav tree (business-ui-app.mustache's deriveNativeGroups()) --
+    // callers that only pass `title` still render a single-segment breadcrumb, unchanged.
     // `context.rows` feeds the context-info gadget, if the active GuidePage declares one.
     setContext: function (context) {
       contextState = context || { title: "", rows: [] };
       if (el.breadcrumb) {
-        el.breadcrumb.textContent = contextState.title ? "/ " + contextState.title : "";
+        var path = (contextState.path && contextState.path.length) ? contextState.path :
+          (contextState.title ? [contextState.title] : []);
+        el.breadcrumb.textContent = path.length ? "/ " + path.join(" / ") : "";
       }
       // R7.5 fix: re-apply whichever GuidePage is CURRENTLY active (document.body.dataset
       // .guidePage) -- so a context refresh (e.g. new context-info rows) re-renders that page's
