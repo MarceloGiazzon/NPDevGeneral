@@ -1,0 +1,59 @@
+id: W1.3
+title: >-
+  shell.js.mustache's own header comment claimed the SPA host mode
+  (window.NPDevShell.mount(...)) was "not wired yet," describing a still-open chrome
+  duplication between shell.js and business-ui-app.mustache. It is not open: the collapse
+  already happened, only the comment (and the duplicate-lane register) never caught up --
+  the next reader would schedule a refactor that is already done.
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 1 (W1.3): "Record the chrome collapse that already
+  happened." Depends on W1.1 (appShell wiring), already DONE.
+surface: NPDevGenerator/generator (shell.js.mustache header comment only), ledger/semantic
+  (duplicate-lanes register)
+files:
+  - NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache
+  - ledger/semantic/duplicate-lanes.yml
+detail: |
+  VERIFIED BEFORE EDITING (per the task's own instruction): grep -n "NPDevShell.mount(" in
+  shell.js.mustache found a real implementation (window.NPDevShell = { ..., mount: function
+  (options) {...} }); grep -n "NPDevShell.mount(" in business-ui-app.mustache found a real call
+  site inside bootstrap() (window.NPDevShell.mount({ deriveNativeGroups: deriveNativeGroups })).
+  grep -i "topbar|top-bar|sidebar" in business-ui-app.mustache returned exactly one hit -- a
+  comment naming shell.js's own renderSidebar() function, not any chrome-rendering code of its
+  own. The collapse is real: business-ui-app.mustache owns zero chrome, shell.js owns all of it.
+
+  WHAT WAS CHANGED (deliberately tiny, per the task's own warning not to touch rendering code):
+  1. shell.js.mustache's header comment: deleted the "(not wired yet -- see
+     business-ui-app.mustache)" clause and replaced it with what is actually true today -- the
+     SPA host mode is wired and live, business-ui-app.mustache's bootstrap() calls it and
+     delegates its own chrome here entirely.
+  2. Added entry 5 to ledger/semantic/duplicate-lanes.yml (shell.js chrome vs business-ui-app
+     chrome), verdict already-collapsed, matching the shape of the existing four
+     inheritance-lane entries (mechanism/behavior/verdict/notes).
+
+  NOT CHANGED: no rendering code, no runtime behavior, SHELL_VERSION not bumped -- exactly the
+  task's own scope guard ("if your diff touches rendering code, stop -- you have misread the
+  tree").
+guard:
+  kind: script
+  ref: scripts/quality/run-ai-knowledge-gate.ps1
+  asserts: >-
+    check_task.py --task W1.3's two automatic conditions PASS: the "not wired yet" string is
+    gone from shell.js.mustache, and duplicate-lanes.yml has 5 entries (was 4). The
+    NPDevShell.mount() implementation/call-site claim was verified live via grep before editing,
+    not assumed from the roadmap's own prose.
+  provenRed: true
+  provenRedNote: >-
+    Before this task: grep -c "not wired yet" shell.js.mustache = 1; duplicate-lanes.yml had 4
+    entries (ids 1-4, all inheritance-walk lanes from Path A Phase 1 -- none about the shell
+    chrome). helpers/check_task.py --task W1.3 confirmed FAIL on both conditions before any edit.
+notes: |
+  Smallest of Wave 1's remaining items (effort S) -- a documentation/ledger-accuracy fix with a
+  verified-true claim behind it, not a behavior change. W1.6 (breadcrumbs/recents from the model)
+  is the next open Wave-1 item.
