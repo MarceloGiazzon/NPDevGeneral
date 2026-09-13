@@ -1,19 +1,17 @@
 {
-  "closedAt": "2026-09-13T23:32:50.3182489Z",
+  "closedAt": "2026-09-13T23:49:32.2356171Z",
   "branch": "main",
-  "head": "2470a8ed",
-  "headSubject": "fix(quality): close three of RUN-31's four pre-existing gate gaps",
-  "summary": "Cleaned up the genuinely-open ledger backlog surfaced during Wave 1: RUN-30 fully closed (minted AI_MODEL_GRATUITOUS_UNTRUSTED_EXTENSION, threaded it into run-ai-schema-validation.ps1's two tier-skip sites, registered it in ai-model-to-dsl-mapping-policy.json, bumped the scenario-count literal 24->25 -- verified via the full :NPDevContract:dsl:test suite, 980/980 green). RUN-31: 3 of 4 bundled gaps closed (corpus-roles.json entry for lineage-verify; both untriaged security-pattern-sweep hits triaged safe with real reasoning, allowlist ceiling raised 574->576; MinIO live test given the same Docker-skip Assumptions convention PostgresTestSupport already uses). The 4th (DefaultConceptGatewayDegradedConcurrencyTest's flaky race assertion) was genuinely investigated -- read the CAS logic in full (looks airtight, InMemoryConceptStore.save() is a single synchronized method), ran it 15 consecutive fresh times, got 15/15 green -- left OPEN with the investigation recorded rather than declared fixed without a reproduction.",
-  "nextStep": "Open ledger backlog is now just RUN-31's unreproduced flaky test (LOW, no urgency) plus two owner-accepted WONTFIX coverage floors (QUAL-40/41) and W0.2's declined-scope trust rename. Wave 1 (W1.1-W1.8) is fully closed. For NEW work, NPDEV_ROADMAP_2026-09-12.md's remaining candidates are W2.1 (needs owner answer to decision D6 first), W3.1 (pack deprecation, self-contained), or W4.1 (capability contract errors/sideEffects/auth -- highest trap density, R4+R5+R8 all apply). Ask the user which to prioritize; do not assume.",
-  "plan": "",
+  "head": "b7256a12",
+  "headSubject": "chore(session): close ledger-backlog cleanup session handoff",
+  "summary": "Closed W1.8 (accessibility baseline with a ratchet over axe-core, wired into the five W1.7 golden browser scenarios), completing Wave 1 (W1.1-W1.8) in full. Then cleaned up the genuinely-open ledger backlog it and prior sessions had surfaced: RUN-30 fully closed (registered the missing AI diagnostic code, bumped a stale scenario-count literal, 980/980 dsl tests green), and 3 of RUN-31's 4 bundled gaps closed (a missing corpus-role entry, two security-pattern-sweep false-positive/safe triages, a Docker-skip guard on the MinIO live test) -- the 4th (a flaky kernel concurrency test) was investigated in depth (code read end-to-end, 15 fresh reruns) but left honestly open since it could not be reproduced or root-caused.",
+  "nextStep": "No task is queued. Wave 1 is fully closed; remaining ledger items are RUN-31's unreproduced flaky test (LOW, no urgency, see its own investigation notes for what the next session should capture if it recurs) plus owner-accepted WONTFIX/declined-scope items (QUAL-40, QUAL-41, W0.2) that need a fresh owner decision, not mechanical continuation. For new work, ask the user to pick from NPDEV_ROADMAP_2026-09-12.md's remaining candidates: W2.1 (needs the owner's answer to decision D6 first), W3.1 (pack deprecation, self-contained), or W4.1 (capability contract errors/sideEffects/auth -- highest trap density in the roadmap, R4+R5+R8 all apply).",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_ROADMAP_2026-09-12\\NPDEV_ROADMAP_2026-09-12.md",
   "blocked": "",
-  "verified": "Full :NPDevContract:dsl:test: 980/980 pass. security-pattern-sweep.py: 0 needing triage, --fail-on-new and --self-test both exit 0. validate-corpus.py: 65/65 declare corpusRole, 0 MISSING. :adapters:file-store-objectstore:test full suite green (MinIO test cleanly skips: tests=3 skipped=3 errors=0). run-script-inventory-check.ps1: 232/232. git status clean, committed at 2470a8ed (plus b0421aa5 for RUN-30), pushed to origin/main.",
+  "verified": "helpers/check_task.py --task W1.8: all 3 automatic conditions PASS. Full live run-shell-scenarios.ps1 (generate+build+boot dsl-conformance-max + 5 routines + axe scan): exit 0. Full :NPDevContract:dsl:test: 980/980 pass (RUN-30 fix). security-pattern-sweep.py: 0 needing triage, --fail-on-new and --self-test both exit 0. validate-corpus.py: 65/65 declare corpusRole. :adapters:file-store-objectstore:test full module: green, MinIO test cleanly skips (tests=3 skipped=3 errors=0). run-script-inventory-check.ps1: 232/232 classified+invocation-declared. git status clean, 5 commits this session all pushed to origin/main (HEAD b7256a12).",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "2470a8ed fix(quality): close three of RUN-31's four pre-existing gate gaps",
-    "b0421aa5 fix(ai-knowledge): register tier-skip-gratuitous-untrusted-extension's diagnostic (RUN-30)",
-    "d391fffb chore(session): close W1.8 session handoff"
+    "b7256a12 chore(session): close ledger-backlog cleanup session handoff"
   ]
 }
