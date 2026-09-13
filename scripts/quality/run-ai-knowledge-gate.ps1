@@ -893,6 +893,19 @@ try {
         $failures += "a model.json carries a runtime-shaped key, a technology-named capability-binding adapter, or a JDBC URL: see scripts/quality/check-model-technology-neutrality.py output above, and scripts/policy/technology-neutral-model-policy.json"
     }
 
+    # Path A realignment W1.2 (NPDEV_ROADMAP_2026-09-12.md Wave 1): neither of WorkspaceMenuSeeder's
+    # two old modes actually reconciles a menu-seed change onto an already-seeded table --
+    # insert-if-empty ignores it, upsert-if-fingerprint-changed nukes every manual edit. This runs the
+    # REAL generator + a real two-boot cycle against NPDevSamples/probes/path-a-navigation-reprojection
+    # (hand-editing a row directly in the database between boots to stand in for a generic-CRUD edit)
+    # and asserts the new default `reconcile` mode inserts, updates-with-preserved-override (D7:
+    # model wins), removes, and leaves an unrelated row untouched -- all in one real reboot.
+    Write-Host '[47/47] Checking the navigation reprojection proof (reconcile mode across a real two-boot cycle)...'
+    & $py "scripts/quality/check-navigation-reprojection.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "the navigation reprojection proof failed: see scripts/quality/check-navigation-reprojection.py output above"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

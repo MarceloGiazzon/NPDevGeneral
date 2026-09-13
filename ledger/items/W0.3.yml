@@ -73,8 +73,8 @@ detail: |
   change and out of this task's scope. python helpers/check_task.py --task W0.3 reports PASS on
   all 3 automatic done-when conditions.
 guard:
-  kind: test
-  ref: scripts/quality/check-model-technology-neutrality.py::calibrate
+  kind: script
+  ref: python scripts/quality/check-model-technology-neutrality.py --calibrate
   asserts: >-
     check-model-technology-neutrality.py --calibrate proves the checker distinguishes a model
     carrying all three forbidden signals (a forbidden runtime key, a technology-named adapter

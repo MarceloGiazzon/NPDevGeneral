@@ -89,22 +89,49 @@ apps that want a multi-level tree (groups, nested groups) declare it once as
 
 `WorkspaceMenuSeeder` runs once per boot and is controlled by `npdev.workspace.menu-seed.mode`:
 
-- **`insert-if-empty`** (default): if `workspace_menus` already has any row for the tenant, do
-  nothing at all — an app author's edits/additions via the generic CRUD UI are permanent. This is
-  the safe default; existing installs need no changes and keep working exactly as before.
-- **`upsert-if-fingerprint-changed`** (opt-in): computes a SHA-256 fingerprint over the merged seed
-  rows (the generator's own derived seed + `menu.json`/`pages.json`) and records it in a hidden
-  marker row (`kind: INTERNAL`, `target: npdev:seed-fingerprint:<hash>`, `visible: false`). On
-  every boot, if the freshly computed fingerprint matches the stored one, nothing happens
+- **`reconcile`** (default, W1.2): the only mode that actually re-projects a model/`menu.json`
+  change onto an already-seeded table. Each declared seed row carries a content-derived `seedKey`
+  (`kind:target`, or `kind:label` for a target-less GROUP header, chained under its parent's own
+  key — see `Build-NpdevApp.ps1`'s `Get-MenuSeedKey`), persisted on the row (workspace pack 1.1.0:
+  `Menu.seedKey`/`seedOrigin`/`seedFingerprint`/`overrideOf`) so a later boot can recognize "this is
+  the same logical row" even though every UUID is freshly assigned each generation. Per boot:
+  - A seed row whose `seedKey` matches no existing row is **inserted** (`seedOrigin: generated`).
+  - A seed row matching an existing `seedOrigin: generated` row whose declared content changed
+    since the last reconcile is **updated in place** — UNLESS the row's *live* content has also
+    drifted from what the seeder last wrote (an app author edited it via generic CRUD since), in
+    which case (decision D7) **the model wins**: the canonical row is still updated to the fresh
+    content, but the row's prior value is first cloned into a new, invisible, `seedKey`-less row
+    (`seedOrigin: user`, `overrideOf: <the original row's seedKey>`) so the edit is never silently
+    lost — queryable via generic CRUD / the Manager (`WHERE override_of IS NOT NULL`) even though it
+    renders no nav entry.
+  - A previously-generated row whose `seedKey` no longer appears in the current seed set is
+    **removed**.
+  - A row with `seedOrigin: user` (author-created directly, or a preserved-override clone) or no
+    `seedKey` at all is **never** touched, inserted, updated, or removed by this pass.
+  - The boot log always states the outcome: `... reconciled ... -- N inserted, N updated, N
+    removed, N preserved-as-override, N unchanged.` -- an invisible reconcile is how the original
+    defect (neither older mode actually re-projects) returns.
+  - Known limitation: a pure re-grouping move (parent changes, nothing else) is not itself treated
+    as drift, since the per-row fingerprint deliberately excludes parent placement. A row seeded
+    before 1.1.0 (no `seedKey`) is left alone and can coexist with its newly-tracked counterpart
+    until an operator removes the stale one by hand — a one-time migration quirk, not an ongoing one.
+- **`insert-if-empty`** (opt-in legacy): if `workspace_menus` already has any row for the tenant, do
+  nothing at all — an app author's edits/additions via the generic CRUD UI are permanent, but a
+  model/`menu.json` change never reaches an already-seeded table either. Rows it inserts are still
+  stamped with `seedOrigin`/`seedKey`/`seedFingerprint`, so switching an app to `reconcile` later
+  does not leave its existing rows untracked.
+- **`upsert-if-fingerprint-changed`** (opt-in legacy): computes a SHA-256 fingerprint over the
+  merged seed rows (the generator's own derived seed + `menu.json`/`pages.json`) and records it in
+  a hidden marker row (`kind: INTERNAL`, `target: npdev:seed-fingerprint:<hash>`, `visible: false`).
+  On every boot, if the freshly computed fingerprint matches the stored one, nothing happens
   (idempotent no-op). If it differs — because the app author changed `menu.json`/`pages.json` and
   redeployed — **all rows for the tenant are deleted and reseeded from scratch**, including the new
   fingerprint. This is deliberately destructive: any manual edit made through generic CRUD since
-  the last seed is lost along with the stale rows. Use it only for environments where the
-  declared menu is the source of truth and redeploys should always pick up authoring changes
-  (e.g. a staging/demo environment reset on every deploy) — not for a production tenant where
-  operators curate the nav by hand.
+  the last seed is lost along with the stale rows. `reconcile` supersedes this for the normal case;
+  keep using this mode only where wholesale reset-on-any-change is genuinely wanted (e.g. a
+  staging/demo environment reset on every deploy).
 
-Manual fallback for either mode: truncate `workspace_menus` for the tenant and restart: the seeder
+Manual fallback for any mode: truncate `workspace_menus` for the tenant and restart: the seeder
 reseeds from scratch on the next boot regardless of mode.
 
 ## Shell gadgets

@@ -326,6 +326,9 @@
     "scripts/quality/check-golden-regeneration-survival.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-navigation-reprojection.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-regeneration-conflict-outcomes.py": {
       "invocation": "ci-gate"
     },
@@ -446,6 +449,9 @@
       "documentedIn": "ledger/README.md"
     },
     "scripts/quality/invoke-ai-beta-app-smoke.ps1": {
+      "invocation": "orchestrated"
+    },
+    "scripts/quality/run-navigation-reprojection-probe.ps1": {
       "invocation": "orchestrated"
     },
     "scripts/quality/json-schema-validator/validate-json-schema.mjs": {

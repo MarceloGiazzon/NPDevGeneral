@@ -564,8 +564,31 @@ $hasMenu  = Test-Path -LiteralPath $MenuJsonPath
 if ($hasPages -or $hasMenu) {
   $menuSeedRows = @()
   $menuTreePageTargets = New-Object 'System.Collections.Generic.HashSet[string]'
+  $seenSeedKeys = New-Object 'System.Collections.Generic.HashSet[string]'
   $nextOrdinal = 1000
-  $nextKey = 0
+
+  # W1.2: `key`/`parentKey` used to be a sequential "n1"/"n2"/... counter, scoped to a single
+  # flattening pass and discarded after WorkspaceMenuSeeder resolved parent_menu_id at boot. It is
+  # now ALSO persisted (as Menu.seedKey, workspace pack 1.1.0) so a later boot's reconcile mode can
+  # recognize "this is the same logical row" across regenerations -- which a positional counter
+  # cannot do (inserting an earlier sibling would shift every later key). Content-derived instead:
+  # kind+target (or kind+label for a target-less GROUP header) chained under its parent's own key,
+  # so a row's identity survives as long as its own kind/target/label and ancestry are unchanged --
+  # renaming/retargeting a node is, by design, indistinguishable from delete-old + add-new.
+  function Get-MenuSeedKey {
+    param([string]$ParentKey, [string]$Kind, [string]$Target, [string]$Label)
+    $leaf = if ($Target) { "$Kind`:$Target" } else { "$Kind`:$Label" }
+    $candidate = if ($ParentKey) { "$ParentKey/$leaf" } else { $leaf }
+    # Disambiguate true duplicates (two siblings with identical kind+target/label) rather than
+    # silently colliding two distinct authored rows onto one persisted identity.
+    $unique = $candidate
+    $suffix = 1
+    while (-not $script:seenSeedKeys.Add($unique)) {
+      $suffix += 1
+      $unique = "$candidate#$suffix"
+    }
+    return $unique
+  }
 
   if ($hasMenu) {
     Write-Step "Flattening declared menu hierarchy from $MenuJsonPath."
@@ -573,11 +596,10 @@ if ($hasPages -or $hasMenu) {
 
     function Add-MenuNode {
       param($Node, [string]$ParentKey)
-      $script:nextKey += 1
-      $ownKey = "n$($script:nextKey)"
       $nodeKind = if ($null -ne $Node.kind) { $Node.kind } elseif ($Node.children) { 'GROUP' } else { 'BUSINESS' }
       $nodeTarget = if ($null -ne $Node.target) { $Node.target } else { '' }
       $nodeRequiredRole = if ($null -ne $Node.requiredRole) { $Node.requiredRole } else { $null }
+      $ownKey = Get-MenuSeedKey -ParentKey $ParentKey -Kind $nodeKind -Target $nodeTarget -Label $Node.label
       if ($nodeKind -eq 'PAGE' -and $nodeTarget) { [void]$script:menuTreePageTargets.Add($nodeTarget) }
       $script:menuSeedRows += [ordered]@{
         key          = $ownKey
@@ -606,7 +628,10 @@ if ($hasPages -or $hasMenu) {
       if ($menuTreePageTargets.Contains($page.path)) { continue }
       $pageOrdinal = if ($null -ne $page.ordinal) { $page.ordinal } else { $nextOrdinal }
       $pageRequiredRole = if ($null -ne $page.requiredRole) { $page.requiredRole } else { $null }
+      $pageKey = Get-MenuSeedKey -ParentKey $null -Kind 'PAGE' -Target $page.path -Label $page.label
       $menuSeedRows += [ordered]@{
+        key          = $pageKey
+        parentKey    = $null
         label        = $page.label
         target       = $page.path
         kind         = 'PAGE'
