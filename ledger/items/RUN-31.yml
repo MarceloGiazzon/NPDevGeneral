@@ -5,10 +5,21 @@ title: >-
   since each is a one-line-cause, low-effort item
 type: GAP
 severity: LOW
-status: PARTIAL
+status: DONE
 opened: 2026-09-13
-closed: null
+closed: 2026-09-14
 verification: UNIT_TESTED
+guard:
+  kind: test
+  ref: NPDevKernel/kernel/src/test/java/com/npdev/kernel/concepts/DefaultConceptGatewayDegradedConcurrencyTest.java#degradedModeSaveRaceIsLoudNotSilent
+  asserts: >-
+    the degraded-mode save/delete race tests pass their forced two-thread race deterministically on
+    :kernel:test, now with join()/await() timeouts widened 5s->30s (RUN-31 #1) so they no longer
+    treat scheduler-delayed-not-hung racers as a CAS-logic failure; a disposable scratch test
+    (deleted, not committed) reproduced the exact original failure shape at the exact recorded
+    assertion by simulating that delay against the old 5s value, positively confirming the
+    mechanism before the fix was applied.
+  provenRed: true
 source: >-
   Discovered while closing W1.2 (NPDEV_ROADMAP_2026-09-12.md Wave 1) and running its own prescribed
   full run-all-gates.ps1 verification. Confirmed unrelated to W1.2 the same way RUN-30 confirmed its
@@ -113,3 +124,24 @@ notes: |
   stack trace/assertion message from a real failing run (this session never got one to examine) before
   investigating further, since 15/15 clean here means the next reproduction is the first real
   evidence to work from.
+
+  UPDATE 2026-09-14, #1 root-caused and fixed: re-read the recorded failure location itself --
+  `org.opentest4j.AssertionFailedError at DefaultConceptGatewayDegradedConcurrencyTest.java:116` --
+  and line 116 is the test's own `assertTrue(failureA.get() != null ^ failureB.get() != null, ...)`
+  check, which runs immediately after two `threadX.join(TimeUnit.SECONDS.toMillis(5))` calls. A
+  fixed 5s join is a pure hang-safety net (the barrier already forces the race deterministically;
+  nothing after release should legitimately take long), not race logic -- so a racer merely delayed
+  past 5s by scheduler contention (not hung) would leave its `AtomicReference` still null when the
+  assertion runs, failing the exact XOR check at the exact recorded line, with no CAS defect
+  involved. Built a disposable scratch test (`Run31HypothesisScratchTest.java`, never committed,
+  deleted after use) that kept the real barrier/CAS path untouched but added a 6s sleep to one
+  racer after it passes the deterministic barrier (simulating scheduler starvation, not a hang),
+  then ran the identical assertion with the old 5s joins: FAILED with
+  `org.opentest4j.AssertionFailedError at Run31HypothesisScratchTest.java:117` -- same assertion,
+  same failure shape, confirming the mechanism by reproduction rather than by inspection alone.
+  Fix applied to the real test: widened both `threadX.join(...)` calls (save test and its sibling
+  delete test) and `waitUntilBothRead()`'s `bothRead.await(...)` from 5s to 30s in
+  `DefaultConceptGatewayDegradedConcurrencyTest.java`, each with a comment noting these are
+  hang-safety nets widened for RUN-31, not part of the race logic. Verified:
+  `:kernel:test --tests DefaultConceptGatewayDegradedConcurrencyTest --rerun-tasks` BUILD SUCCESSFUL;
+  full `:kernel:test --rerun-tasks` also run to confirm no regressions elsewhere.

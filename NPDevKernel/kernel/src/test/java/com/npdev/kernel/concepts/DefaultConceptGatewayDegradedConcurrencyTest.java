@@ -83,7 +83,10 @@ class DefaultConceptGatewayDegradedConcurrencyTest {
         }
 
         void waitUntilBothRead() throws InterruptedException {
-            assertTrue(bothRead.await(5, TimeUnit.SECONDS), "both callers must reach the read barrier");
+            // RUN-31: 5s was observed to be too tight under the scheduling contention of a full
+            // run-all-gates.ps1 run (many concurrent Gradle workers) -- this is a pure hang-safety
+            // net, not part of the race logic, so a generous bound costs nothing on a healthy run.
+            assertTrue(bothRead.await(30, TimeUnit.SECONDS), "both callers must reach the read barrier");
         }
 
         void releaseReaders() {
@@ -108,8 +111,11 @@ class DefaultConceptGatewayDegradedConcurrencyTest {
         go.countDown();
         store.waitUntilBothRead();
         store.releaseReaders();
-        threadA.join(TimeUnit.SECONDS.toMillis(5));
-        threadB.join(TimeUnit.SECONDS.toMillis(5));
+        // RUN-31: 5s was too tight under heavy scheduling contention (a real gate run recorded a
+        // spurious failure at the XOR assertion below, consistent with one join timing out while
+        // its thread was merely delayed, not hung) -- this is a hang-safety net, not race logic.
+        threadA.join(TimeUnit.SECONDS.toMillis(30));
+        threadB.join(TimeUnit.SECONDS.toMillis(30));
 
         // Exactly one writer loses, loudly. Today (pre-REG-210) BOTH succeed and the last one
         // silently overwrites the other -- no exception at all.
@@ -151,8 +157,9 @@ class DefaultConceptGatewayDegradedConcurrencyTest {
         go.countDown();
         store.waitUntilBothRead();
         store.releaseReaders();
-        threadA.join(TimeUnit.SECONDS.toMillis(5));
-        threadB.join(TimeUnit.SECONDS.toMillis(5));
+        // RUN-31: same hang-safety-net widening as the save test above, same reasoning.
+        threadA.join(TimeUnit.SECONDS.toMillis(30));
+        threadB.join(TimeUnit.SECONDS.toMillis(30));
 
         // Exactly one deleter wins; the loser is told the row no longer carries the version it
         // read -- not silently a no-op. Today (pre-REG-210) BOTH deletes succeed silently.
