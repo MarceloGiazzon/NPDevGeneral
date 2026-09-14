@@ -72,7 +72,7 @@ detail: |
   (PackExportRoundTripTest, the tamper-guard round trips).
 guard:
   kind: script
-  ref: python -m unittest NPDevCli.tests.test_pack_deprecate (+ full NPDevCli/tests discovery)
+  ref: NPDevCli/tests/test_pack_deprecate.py (python -m unittest NPDevCli.tests.test_pack_deprecate + full NPDevCli/tests discovery)
   asserts: >-
     helpers/check_task.py --task W3.1's three automatic conditions (deprecated present in both
     pack.schema.json copies, "deprecate" matched in npdev_cli.py) all PASS.

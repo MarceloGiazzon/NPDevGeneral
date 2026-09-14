@@ -48,7 +48,7 @@ detail: |
      docs/UI_CONTRACT.md under a new "Breadcrumbs and default route (W1.6)" section.
 guard:
   kind: script
-  ref: NPDevSamples/dsl-conformance-max (live Node execution against a real generated manifest)
+  ref: NPDevSamples/scripts/generate-sample-app.ps1 -Sample dsl-conformance-max (live Node execution against a real generated manifest)
   asserts: >-
     helpers/check_task.py --task W1.6's one automatic condition (breadcrumb code exists in
     shell.js.mustache) PASSes; its one manual condition (a breadcrumb on a nested route reflects the

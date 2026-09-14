@@ -85,7 +85,7 @@ detail: |
   deprecation banner/why-panel/export-dialog all render as designed.
 guard:
   kind: script
-  ref: cargo check && cargo test (NPDevManager); python -m unittest NPDevCli.tests.test_pack_list_enrichment
+  ref: cargo check && cargo test (NPDevManager); NPDevCli/tests/test_pack_list_enrichment.py (python -m unittest NPDevCli.tests.test_pack_list_enrichment)
   asserts: >-
     helpers/check_task.py --task W3.2's automatic condition PASSes (66 pack-related matches in
     NPDevManager/ui, min 1 required); its judgement condition is honestly reported MANUAL, not
