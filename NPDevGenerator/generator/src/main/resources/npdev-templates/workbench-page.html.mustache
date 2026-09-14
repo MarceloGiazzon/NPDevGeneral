@@ -361,15 +361,21 @@
     else { headerCellKeydown(event, input); }
   }
 
-  var cell = function (val, on, key) {
+  var cell = function (val, on, key, forceReadOnly) {
     var i = el('<input class="cell">');
     i.value = val == null ? "" : String(val);
     if (key) { i.setAttribute("data-fkey", key); i.addEventListener("focus", function () { activeFocusKey = key; }); }
     i.oninput = function (e) { on(e.target.value); scheduleRecompute(); };
     i.addEventListener("keydown", cellKeydown);
-    if (!EDITABLE) { i.readOnly = true; }
+    // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): forceReadOnly marks a query-sourced
+    // lookupField column (sec/bd.readOnlyColumns) -- read-only regardless of the section's own
+    // EDITABLE state, since it is never a real field on the row's concept to begin with.
+    if (!EDITABLE || forceReadOnly) { i.readOnly = true; }
     return i;
   };
+  function isReadOnlyColumn(descriptor, columnName) {
+    return !!(descriptor.readOnlyColumns && descriptor.readOnlyColumns.indexOf(columnName) !== -1);
+  }
 
   // Reactive recompute (P3/C7): debounce cell edits, invoke the declared recompute procedure over the
   // draft, patch derived fields in place, and re-render — restoring focus to the cell being typed in.
@@ -630,6 +636,12 @@
   }
 
   var store = null, selected = null, pendingMsg = null;
+  // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the last on-demand balance-check report, keyed
+  // by balance rule name -- ephemeral UI state, exactly like server-tier derived fields below:
+  // never written into store's draft, never part of the commit payload. A stale report never
+  // outlives its draft in practice: the action bar it renders in (see render()) is only shown
+  // while EDITABLE, and a commit flips EDITABLE off along with everything else in that bar.
+  var lastBalanceReport = null;
   // Move 6 Move B: server-tier derivedFields' last-fetched values, keyed by field name -- refreshed
   // (fire-and-forget, best-effort) after any draft-changing event; client-tier fields need none of
   // this, they're evaluated fresh from the draft on every render by evaluateDerived below.
@@ -832,7 +844,7 @@
         tbl.append(el("<tr>" + sec.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
         sec.rows.forEach(function (r) {
           var tr = el('<tr class="master ' + (r.id === selected ? "sel" : "") + '"></tr>');
-          sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c)); tr.append(td); });
+          sec.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(r.values[c], function (val) { store.editRow(sec.collection, r.id, c, val); }, "s:" + sec.collection + ":" + r.id + ":" + c, isReadOnlyColumn(sec, c))); tr.append(td); });
           var del = el('<td></td>');
           // R7.9: a real <button>, not a <span onclick> -- was completely unreachable by keyboard.
           if (EDITABLE) { var x = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); x.onclick = function (e) { e.stopPropagation(); store.deleteRow(sec.collection, r.id); if (selected === r.id) selected = null; render(); }; del.append(x); }
@@ -880,7 +892,7 @@
             var gt = el("<table></table>"); gt.append(el("<tr>" + bd.columns.map(function (c) { return "<th>" + c + "</th>"; }).join("") + "<th></th></tr>"));
             (selRow.bands[bd.collection] || []).forEach(function (br) {
               var tr = el("<tr></tr>");
-              bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c)); tr.append(td); });
+              bd.columns.forEach(function (c) { var td = el("<td></td>"); td.append(cell(br.values[c], function (val) { store.editBandRow(sec.collection, selRow.id, bd.collection, br.id, c, val); }, "b:" + sec.collection + ":" + selRow.id + ":" + bd.collection + ":" + br.id + ":" + c, isReadOnlyColumn(bd, c))); tr.append(td); });
               var del = el('<td></td>');
               if (EDITABLE) { var bx = el('<button type="button" class="rowbtn" aria-label="Remove row">✕</button>'); bx.onclick = function () { store.deleteBandRow(sec.collection, selRow.id, bd.collection, br.id); render(); }; del.append(bx); }
               tr.append(del); gt.append(tr);
@@ -1052,9 +1064,34 @@
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
     }
+    // Session 1: the on-demand "Recalcular Saldos" affordance -- POSTs the current unsaved draft
+    // to /check-balances/{names} and renders the returned per-group report, WITHOUT ever merging
+    // the response into store's draft (a checkBalances action never patches the draft the way a
+    // procedure action's result can -- see the render()-time balance-banner block below instead).
+    function checkBalancesAction(action) {
+      msg.className = "msg"; msg.textContent = (action.label || "Recalculando") + "…";
+      var names = (action.checkBalances || []).join(",");
+      fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate) + "/check-balances/" + encodeURIComponent(names),
+        { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(store.toDraft()) })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
+        .then(function (res) {
+          if (res.ok) {
+            lastBalanceReport = (res.b && res.b.__balances) || {};
+            msg.textContent = "";
+            render();
+          } else {
+            msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || "error");
+          }
+        })
+        .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
+    }
     if (EDITABLE) {
       (store.descriptor.actions || [])
-        .filter(function (a) { return !si.allowedActions || si.allowedActions.indexOf(a.procedure) !== -1; })
+        // Session 1: a checkBalances action has no procedure name to match against
+        // allowedActions (a list of PROCEDURE names) -- it is a read/compute-only affordance, so
+        // it is never gated by lifecycle.allowedActions, only by the EDITABLE check above and its
+        // own visibleWhen below.
+        .filter(function (a) { return a.checkBalances || !si.allowedActions || si.allowedActions.indexOf(a.procedure) !== -1; })
         .filter(function (a) { return evaluateVisibleWhen(draftNow, a.visibleWhen); })
         .forEach(function (a) {
           var fieldNames = a.inputFields || [];
@@ -1073,8 +1110,9 @@
             });
             barDiv.append(inlineForm);
           }
-          var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure) + '</button>');
+          var b = el('<button class="btn" style="background:var(--np-accent);margin-left:6px">' + (a.label || a.procedure || "Recalcular") + '</button>');
           b.onclick = function () {
+            if (a.checkBalances) { checkBalancesAction(a); return; }
             var extraInput = {};
             Object.keys(inputsByField).forEach(function (field) { extraInput[field] = inputsByField[field].value; });
             invokeAction(a, extraInput);
@@ -1083,6 +1121,26 @@
         });
     }
     barDiv.append(msg); app.append(barDiv);
+    // Session 1: renders the last on-demand balance-check result -- one line per unbalanced group
+    // (the server's own business-language message), or a single confirmation line when every
+    // declared rule's every group balances (checklist B4: "a balanced document reports OK
+    // explicitly -- silence is not confirmation").
+    if (lastBalanceReport) {
+      var balanceBanner = el('<div class="balance-banner" style="margin:6px 0"></div>');
+      var anyUnbalanced = false;
+      Object.keys(lastBalanceReport).forEach(function (ruleName) {
+        var rule = lastBalanceReport[ruleName];
+        (rule.groups || []).forEach(function (g) {
+          if (g.balanced) return;
+          anyUnbalanced = true;
+          balanceBanner.append(el('<div class="msg err">' + (g.message || (ruleName + " is out of balance")) + '</div>'));
+        });
+      });
+      if (!anyUnbalanced) {
+        balanceBanner.append(el('<div class="msg ok">Balanced.</div>'));
+      }
+      app.append(balanceBanner);
+    }
 
     // Restore caret to the cell being typed in after a recompute-triggered re-render (P3).
     if (restoreFocus && activeFocusKey) {

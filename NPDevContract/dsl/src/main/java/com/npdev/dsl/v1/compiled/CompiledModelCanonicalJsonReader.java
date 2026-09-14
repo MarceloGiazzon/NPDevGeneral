@@ -475,7 +475,8 @@ public final class CompiledModelCanonicalJsonReader {
                     toWorkbenchActionApplyTo(actionNode.get("applyTo")),
                     optionalText(actionNode, "afterAction"),
                     optionalText(actionNode, "visibleWhen"),
-                    readLabelLocales(actionNode, "label")));
+                    readLabelLocales(actionNode, "label"),
+                    toStringList(actionNode.get("checkBalances"))));
         }
         return out;
     }
@@ -567,7 +568,9 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "onValidate"),
                 // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> writer -> HERE.
                 toAggregateInvariants(node.get("invariants")),
-                optionalText(node, "uid")
+                optionalText(node, "uid"),
+                // npdev-aggregate-balance-four-place (Session 1): parser -> compiler -> writer -> HERE.
+                toAggregateBalances(node.get("balances"))
         );
     }
 
@@ -587,6 +590,27 @@ public final class CompiledModelCanonicalJsonReader {
         return out;
     }
 
+    /** Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): reads aggregates[].balances[]. */
+    private static List<CompiledAggregateBalance> toAggregateBalances(JsonNode node) {
+        List<CompiledAggregateBalance> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode balanceNode : node) {
+            out.add(new CompiledAggregateBalance(
+                    text(balanceNode, "name"),
+                    text(balanceNode, "collection"),
+                    toStringList(balanceNode.get("groupBy")),
+                    text(balanceNode, "discriminatorField"),
+                    text(balanceNode, "leftValue"),
+                    text(balanceNode, "rightValue"),
+                    text(balanceNode, "quantityField"),
+                    optionalText(balanceNode, "message")
+            ));
+        }
+        return out;
+    }
+
     private static List<CompiledAggregateCollection> toAggregateCollections(JsonNode node) {
         List<CompiledAggregateCollection> out = new ArrayList<>();
         if (node == null || !node.isArray()) {
@@ -601,7 +625,26 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(collectionNode, "ownership"),
                     optionalText(collectionNode, "orderBy"),
                     toAggregateCollections(collectionNode.get("collections")),
-                    toObjectMap(collectionNode.get("metadata"))
+                    toObjectMap(collectionNode.get("metadata")),
+                    toAggregateCollectionLookupFields(collectionNode.get("lookupFields"))
+            ));
+        }
+        return out;
+    }
+
+    /** Session 1: reads aggregateCollection.lookupFields[]. */
+    private static List<CompiledAggregateCollectionLookupField> toAggregateCollectionLookupFields(
+            JsonNode node) {
+        List<CompiledAggregateCollectionLookupField> out = new ArrayList<>();
+        if (node == null || !node.isArray()) {
+            return out;
+        }
+        for (JsonNode lookupNode : node) {
+            out.add(new CompiledAggregateCollectionLookupField(
+                    text(lookupNode, "name"),
+                    text(lookupNode, "query"),
+                    text(lookupNode, "joinField"),
+                    text(lookupNode, "valueField")
             ));
         }
         return out;

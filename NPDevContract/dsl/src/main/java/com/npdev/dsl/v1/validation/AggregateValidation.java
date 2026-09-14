@@ -21,7 +21,9 @@ import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateBalanceAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
+import com.npdev.dsl.v1.ast.AggregateCollectionLookupFieldAst;
 import com.npdev.dsl.v1.ast.AggregateInvariantAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
@@ -89,6 +91,10 @@ final class AggregateValidation {
         for (ProcedureAst procedure : modelAst.getProcedures()) {
             proceduresByLower.put(normalize(procedure.name()), procedure);
         }
+        Map<String, QueryAst> queriesByLower = new HashMap<>();
+        for (QueryAst query : modelAst.getQueries()) {
+            queriesByLower.put(normalize(query.name()), query);
+        }
         for (AggregateAst aggregate : modelAst.getAggregates()) {
             if (!aggregateNames.add(normalize(aggregate.name()))) {
                 errors.add("Aggregate " + aggregate.name() + ": duplicate aggregate name");
@@ -103,6 +109,7 @@ final class AggregateValidation {
                     "Aggregate " + aggregate.name(),
                     aggregate.collections(),
                     entitiesByLower,
+                    queriesByLower,
                     new HashSet<>(),
                     errors);
             // Move 6 Move B (docs/MOVE6_TYPED_SURFACE_PLAN.md §B.2): an aggregate-bound AutoPanel's
@@ -119,6 +126,72 @@ final class AggregateValidation {
             validateHookProcedure(aggregate.name(), "beforeAction",
                     hooks == null ? null : hooks.beforeAction(), proceduresByLower, errors);
             validateAggregateInvariants(aggregate, errors);
+            validateAggregateBalances(aggregate, errors);
+        }
+    }
+
+    /**
+     * Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): a declared balance rule's {@code name} is the
+     * rule identifier a commit-time API error names, so it must be present and unique within its
+     * aggregate, mirroring {@link #validateAggregateInvariants}. {@code collection} must resolve to
+     * a real dotted collection path within the aggregate's own composition tree (the same address
+     * format {@code PanelValidation}'s {@code derivedAddresses} already produces for
+     * {@code visibleWhen}/{@code regions}). {@code leftValue}/{@code rightValue} must differ -- a
+     * balance between a side and itself is always trivially satisfied and is almost certainly an
+     * authoring mistake.
+     */
+    private static void validateAggregateBalances(AggregateAst aggregate, List<String> errors) {
+        Set<String> collectionPaths = new HashSet<>();
+        collectCollectionPaths("", aggregate.collections(), collectionPaths);
+        Set<String> seenNames = new HashSet<>();
+        for (AggregateBalanceAst balance : aggregate.balances()) {
+            String here = "Aggregate " + aggregate.name() + " balance";
+            if (!hasText(balance.name())) {
+                errors.add(here + ": name is required");
+            } else {
+                here = "Aggregate " + aggregate.name() + " balance '" + balance.name() + "'";
+                if (!seenNames.add(normalize(balance.name()))) {
+                    errors.add(here + ": duplicate balance name within this aggregate");
+                }
+            }
+            if (!hasText(balance.collection())) {
+                errors.add(here + ": collection is required");
+            } else if (!collectionPaths.contains(normalize(balance.collection()))) {
+                errors.add(here + ": collection not found: " + balance.collection());
+            }
+            if (!hasText(balance.discriminatorField())) {
+                errors.add(here + ": discriminatorField is required");
+            }
+            if (!hasText(balance.leftValue())) {
+                errors.add(here + ": leftValue is required");
+            }
+            if (!hasText(balance.rightValue())) {
+                errors.add(here + ": rightValue is required");
+            }
+            if (hasText(balance.leftValue()) && hasText(balance.rightValue())
+                    && normalize(balance.leftValue()).equals(normalize(balance.rightValue()))) {
+                errors.add(here + ": leftValue and rightValue cannot both be the same value: "
+                        + balance.leftValue());
+            }
+            if (!hasText(balance.quantityField())) {
+                errors.add(here + ": quantityField is required");
+            }
+        }
+    }
+
+    /** Every dotted collection path reachable from an aggregate's root, at any depth (e.g.
+     *  "itens" and "itens.posicoes") -- the same address family {@code balance.collection}
+     *  references. Does not cap depth: a balance naming a path past the workbench UI's own
+     *  render-depth limit is a UI-rendering concern, not something this DSL-level check owns. */
+    private static void collectCollectionPaths(
+            String prefix, List<AggregateCollectionAst> collections, Set<String> out) {
+        for (AggregateCollectionAst collection : collections) {
+            if (!hasText(collection.name())) {
+                continue;
+            }
+            String path = prefix.isEmpty() ? collection.name() : prefix + "." + collection.name();
+            out.add(normalize(path));
+            collectCollectionPaths(path, collection.collections(), out);
         }
     }
 
@@ -272,6 +345,7 @@ final class AggregateValidation {
             String path,
             List<AggregateCollectionAst> collections,
             Map<String, ConceptAst> entitiesByLower,
+            Map<String, QueryAst> queriesByLower,
             Set<String> conceptChain,
             List<String> errors) {
         Set<String> siblingNames = new HashSet<>();
@@ -294,6 +368,7 @@ final class AggregateValidation {
                     && !normalize(collection.ownership()).equals("referenced")) {
                 errors.add(here + ": ownership must be 'owned' or 'referenced', found: " + collection.ownership());
             }
+            validateAggregateCollectionLookupFields(here, collection.lookupFields(), queriesByLower, errors);
             // Guard against an owned composition cycle (a concept owning an ancestor concept).
             boolean owned = !hasText(collection.ownership()) || normalize(collection.ownership()).equals("owned");
             if (owned && hasText(collection.concept()) && conceptChain.contains(normalizedConcept)) {
@@ -305,7 +380,47 @@ final class AggregateValidation {
                 nextChain.add(normalizedConcept);
             }
             validateAggregateCollections(aggregateName, here, collection.collections(),
-                    entitiesByLower, nextChain, errors);
+                    entitiesByLower, queriesByLower, nextChain, errors);
+        }
+    }
+
+    /**
+     * Session 1: {@code query} must name a declared query -- the same class of reference check
+     * every other procedure/query name gets elsewhere in this validator family. {@code joinField}/
+     * {@code valueField} are checked for presence only (not cross-referenced against the query's or
+     * concept's actual field list), matching this file's existing precedent that an invariant
+     * expression's collection/field references are not statically checked against the runtime draft
+     * shape either (see {@link #validateAggregateInvariants}'s javadoc) -- the deeper check would
+     * need to resolve the query's bound concept's field list, which is more machinery than this
+     * bounded feature needs.
+     */
+    private static void validateAggregateCollectionLookupFields(
+            String collectionPath,
+            List<AggregateCollectionLookupFieldAst> lookupFields,
+            Map<String, QueryAst> queriesByLower,
+            List<String> errors) {
+        Set<String> seenNames = new HashSet<>();
+        for (AggregateCollectionLookupFieldAst lookupField : lookupFields) {
+            String here = collectionPath + " lookupField";
+            if (!hasText(lookupField.name())) {
+                errors.add(here + ": name is required");
+            } else {
+                here = collectionPath + " lookupField '" + lookupField.name() + "'";
+                if (!seenNames.add(normalize(lookupField.name()))) {
+                    errors.add(here + ": duplicate lookupField name within this collection");
+                }
+            }
+            if (!hasText(lookupField.query())) {
+                errors.add(here + ": query is required");
+            } else if (!queriesByLower.containsKey(normalize(lookupField.query()))) {
+                errors.add(here + ": query not found: " + lookupField.query());
+            }
+            if (!hasText(lookupField.joinField())) {
+                errors.add(here + ": joinField is required");
+            }
+            if (!hasText(lookupField.valueField())) {
+                errors.add(here + ": valueField is required");
+            }
         }
     }
 

@@ -14,6 +14,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -85,6 +87,33 @@ public class AggregateApiController {
     ) {
         try {
             return requireAggregateRuntime().invoke(aggregateName, procedureName, draft, currentContext(request));
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        } catch (IllegalStateException ex) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+        }
+    }
+
+    /**
+     * Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the on-demand "Recalcular Saldos" affordance --
+     * evaluates the named, comma-separated {@code balances[]} rules against the draft in the body
+     * and returns it merged with a {@code __balances} report, WITHOUT persisting -- the same
+     * "sends the whole unsaved draft, gets a patched draft back" shape {@link #invoke} already uses.
+     * {@code POST /api/runtime/aggregate/{name}/check-balances/{balanceNames}} (comma-separated).
+     */
+    @PostMapping("/{aggregateName}/check-balances/{balanceNames}")
+    public Map<String, Object> checkBalances(
+            HttpServletRequest request,
+            @PathVariable String aggregateName,
+            @PathVariable String balanceNames,
+            @RequestBody(required = false) Map<String, Object> draft
+    ) {
+        try {
+            List<String> names = Arrays.stream(balanceNames.split(","))
+                    .map(String::trim)
+                    .filter(name -> !name.isEmpty())
+                    .toList();
+            return requireAggregateRuntime().checkBalances(aggregateName, names, draft);
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         } catch (IllegalStateException ex) {

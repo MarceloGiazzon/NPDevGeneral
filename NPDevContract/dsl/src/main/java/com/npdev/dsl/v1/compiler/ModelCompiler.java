@@ -44,7 +44,9 @@ import com.npdev.dsl.v1.ast.FlowScheduleAst;
 import com.npdev.dsl.v1.ast.GeneratedActionDescriptorAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
 import com.npdev.dsl.v1.ast.AggregateInvariantAst;
+import com.npdev.dsl.v1.ast.AggregateBalanceAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
+import com.npdev.dsl.v1.ast.AggregateCollectionLookupFieldAst;
 import com.npdev.dsl.v1.ast.AutoPanelAst;
 import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelDataSourceAst;
@@ -118,6 +120,8 @@ import com.npdev.dsl.v1.compiled.CompiledOrchestrationTrigger;
 import com.npdev.dsl.v1.compiled.CompiledOrigin;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
 import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
+import com.npdev.dsl.v1.compiled.CompiledAggregateBalance;
+import com.npdev.dsl.v1.compiled.CompiledAggregateCollectionLookupField;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
@@ -1082,7 +1086,8 @@ public final class ModelCompiler {
                     toCompiledWorkbenchActionApplyTo(action.applyTo()),
                     action.afterAction(),
                     action.visibleWhen(),
-                    action.labelLocales()
+                    action.labelLocales(),
+                    new ArrayList<>(action.checkBalances())
             ));
         }
         Map<String, CompiledWorkbenchBandPicker> bandPickers = new LinkedHashMap<>();
@@ -1166,8 +1171,30 @@ public final class ModelCompiler {
                 onValidate,
                 // npdev-aggregate-invariant-four-place (R4.4): parser -> HERE -> canonical writer+reader.
                 compileAggregateInvariants(aggregateAst.invariants()),
-                aggregateAst.uid()
+                aggregateAst.uid(),
+                // npdev-aggregate-balance-four-place (Session 1): parser -> HERE -> canonical writer+reader.
+                compileAggregateBalances(aggregateAst.balances())
         );
+    }
+
+    /** Session 1: pass-through compile of aggregates[].balances[] -- same 1:1 shape as
+     *  {@link #compileAggregateInvariants}. */
+    private static List<CompiledAggregateBalance> compileAggregateBalances(
+            List<AggregateBalanceAst> balanceAsts) {
+        List<CompiledAggregateBalance> compiled = new ArrayList<>();
+        for (AggregateBalanceAst balanceAst : balanceAsts) {
+            compiled.add(new CompiledAggregateBalance(
+                    balanceAst.name(),
+                    balanceAst.collection(),
+                    new ArrayList<>(balanceAst.groupBy()),
+                    balanceAst.discriminatorField(),
+                    balanceAst.leftValue(),
+                    balanceAst.rightValue(),
+                    balanceAst.quantityField(),
+                    balanceAst.message()
+            ));
+        }
+        return compiled;
     }
 
     /** R4.4: pass-through compile of aggregates[].invariants[] -- no specialization concept
@@ -1215,10 +1242,26 @@ public final class ModelCompiler {
                     collection.ownership(),
                     collection.orderBy(),
                     compileAggregateCollections(collection.collections()),
-                    sortObjectMap(collection.metadata())
+                    sortObjectMap(collection.metadata()),
+                    compileAggregateCollectionLookupFields(collection.lookupFields())
             ));
         }
         return out;
+    }
+
+    /** Session 1: pass-through compile of aggregateCollection.lookupFields[]. */
+    private static List<CompiledAggregateCollectionLookupField> compileAggregateCollectionLookupFields(
+            List<AggregateCollectionLookupFieldAst> lookupFieldAsts) {
+        List<CompiledAggregateCollectionLookupField> compiled = new ArrayList<>();
+        for (AggregateCollectionLookupFieldAst lookupFieldAst : lookupFieldAsts) {
+            compiled.add(new CompiledAggregateCollectionLookupField(
+                    lookupFieldAst.name(),
+                    lookupFieldAst.query(),
+                    lookupFieldAst.joinField(),
+                    lookupFieldAst.valueField()
+            ));
+        }
+        return compiled;
     }
 
     private static CompiledGuidePage compileGuidePage(GuidePageAst guidePageAst) {

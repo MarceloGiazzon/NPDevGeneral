@@ -259,3 +259,13 @@ def _has_typed_workbench_actions(model: dict) -> bool:
         if transaction.get("actions", None):
             return True
     return False
+
+
+def _has_workbench_check_balances(model: dict) -> bool:
+    """Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): a typed transaction.actions[] entry
+    declaring checkBalances instead of procedure -- the on-demand, non-persisting balance check."""
+    for transaction in _workbench_transactions(model):
+        for action in transaction.get("actions", None) or []:
+            if isinstance(action, dict) and action.get("checkBalances"):
+                return True
+    return False

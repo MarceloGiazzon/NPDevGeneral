@@ -878,6 +878,70 @@
             "$ref": "#/$defs/aggregateInvariant"
           },
           "description": "R4.4 (Roadmap Wave 1 2026-08-19): declarative cross-collection invariants evaluated against the whole aggregate draft tree (root fields plus every named collection) in the SAME pre-commit transaction slot onValidate uses -- a veto names the failing rule in the commit API error."
+        },
+        "balances": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateBalance"
+          },
+          "description": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): declarative, grouped cross-collection balance rules -- a role-partitioned collection's quantities must sum equal per group (e.g. Origem vs Destino per product/validity). Evaluated as a commit-time gate (alongside invariants) and, on demand without persisting, by a workbenchAction declaring checkBalances instead of procedure."
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregateBalance": {
+      "type": "object",
+      "required": [
+        "name",
+        "collection",
+        "discriminatorField",
+        "leftValue",
+        "rightValue",
+        "quantityField"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: the rule identifier a commit-time API error names when this balance rule vetoes a commit. Required and must be unique within its aggregate."
+        },
+        "collection": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: a dotted path into the aggregate's own composition tree naming the (possibly depth-2) collection this rule partitions, e.g. \"itens.posicoes\" -- the same address format aggregate.transaction.visibleWhen/regions already use."
+        },
+        "groupBy": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Session 1: row field names partitioning the collection into balance groups (e.g. [\"produtoId\", \"validade\"]). Empty means one group for the whole collection."
+        },
+        "discriminatorField": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: the row field distinguishing the two sides of the balance (e.g. \"papel\")."
+        },
+        "leftValue": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: discriminatorField value identifying the left side (e.g. \"Origem\")."
+        },
+        "rightValue": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: discriminatorField value identifying the right side (e.g. \"Destino\"). Must differ from leftValue."
+        },
+        "quantityField": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: the numeric row field summed per side per group."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: optional business-language template for a per-group shortfall, e.g. \"Faltam {delta} unidade(s) de {produtoId}\" -- {delta} plus every groupBy field name are available as substitution tokens. Defaults to a message composed from name plus the computed delta."
         }
       },
       "additionalProperties": false
@@ -950,6 +1014,45 @@
         },
         "metadata": {
           "type": "object"
+        },
+        "lookupFields": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/aggregateCollectionLookupField"
+          },
+          "description": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): read-only fields attached to every row of this collection at load time, sourced from a declared query's results rather than persisted (e.g. a live maximum-quantity bound). Excluded from the commit payload."
+        }
+      },
+      "additionalProperties": false
+    },
+    "aggregateCollectionLookupField": {
+      "type": "object",
+      "required": [
+        "name",
+        "query",
+        "joinField",
+        "valueField"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: the field name this lookup's value is attached under on every loaded row. Never persisted."
+        },
+        "query": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: a declared query, run once (unparameterized) when the collection loads."
+        },
+        "joinField": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: a field present on both the query's result rows and this collection's rows -- results are joined to rows in memory by equality on this field (no runtime query parameter binding exists anywhere in the platform today, so this is a load-time join, not a per-row parameterized query)."
+        },
+        "valueField": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Session 1: the field read off the matching query result row and attached under `name`."
         }
       },
       "additionalProperties": false
@@ -1154,14 +1257,20 @@
     "workbenchAction": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "procedure"
-      ],
+      "description": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): exactly one of procedure or checkBalances must be declared -- enforced semantically (PanelValidation#validateWorkbenchActions), not by JSON Schema, matching the platform's existing pattern for this class of either/or rule (see workbenchBandPicker's panel-or-filter/multiSelect, B19).",
       "properties": {
         "procedure": {
           "type": "string",
           "minLength": 1,
-          "description": "Declared procedure this action invokes over the draft."
+          "description": "Declared procedure this action invokes over the draft. Mutually exclusive with checkBalances."
+        },
+        "checkBalances": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Session 1: names declared aggregate.balances[] rules to evaluate against the current draft and return as a report, WITHOUT invoking a procedure or persisting anything -- an on-demand \"Recalcular Saldos\" affordance. Mutually exclusive with procedure."
         },
         "label": {
           "$ref": "#/$defs/localizableLabel",

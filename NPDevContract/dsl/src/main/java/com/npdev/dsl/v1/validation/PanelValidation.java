@@ -23,6 +23,7 @@ import com.npdev.dsl.v1.ast.OrchestrationActionAst;
 import com.npdev.dsl.v1.ast.OrchestrationAst;
 import com.npdev.dsl.v1.ast.OrchestrationTriggerAst;
 import com.npdev.dsl.v1.ast.AggregateAst;
+import com.npdev.dsl.v1.ast.AggregateBalanceAst;
 import com.npdev.dsl.v1.ast.AggregateCollectionAst;
 import com.npdev.dsl.v1.ast.AggregateFunctionAst;
 import com.npdev.dsl.v1.ast.GroupByFieldAst;
@@ -224,7 +225,7 @@ final class PanelValidation {
             if (hasAggregate) {
                 AggregateAst aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
                 validateRegions(here, autoPanel, aggregate, errors);
-                validateWorkbenchActions(here, autoPanel, procedureNames, errors);
+                validateWorkbenchActions(here, autoPanel, aggregate, procedureNames, errors);
                 validateVisibleWhen(here, autoPanel, aggregate, entitiesByLower, errors);
                 validateBandPickers(here, autoPanel, aggregate, entitiesByLower, errors);
             }
@@ -258,18 +259,46 @@ final class PanelValidation {
      * {@code transaction.metadata.actions} -- {@code procedure} and (when declared) {@code
      * afterAction} must both name a real declared procedure, same as {@code panelAction.procedure}
      * and dataSource {@code onRowLoad} are already checked in {@link #validatePanels}.
+     *
+     * <p>Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): {@code checkBalances} is an alternate to
+     * {@code procedure} for an on-demand, non-persisting balance check -- exactly one of the two
+     * must be declared (enforced here rather than by JSON Schema, matching this validator's
+     * existing either/or pattern, e.g. {@link #validateBandPickers}'s panel-or-filter check, B19),
+     * and every named rule must resolve to a {@code balances[]} entry declared on the bound
+     * aggregate.
      */
     private static void validateWorkbenchActions(
-            String panelLabel, AutoPanelAst autoPanel, Set<String> procedureNames, List<String> errors) {
+            String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate,
+            Set<String> procedureNames, List<String> errors) {
         AutoPanelSurfaceAst transaction = autoPanel.transaction();
         if (transaction == null || transaction.actions().isEmpty()) {
             return;
         }
+        Set<String> balanceNames = new HashSet<>();
+        if (aggregate != null) {
+            for (AggregateBalanceAst balance : aggregate.balances()) {
+                if (hasText(balance.name())) {
+                    balanceNames.add(normalize(balance.name()));
+                }
+            }
+        }
         for (WorkbenchActionAst action : transaction.actions()) {
-            if (!hasText(action.procedure())) {
-                errors.add(panelLabel + " transaction.actions: an action is missing procedure");
-            } else if (!procedureNames.contains(normalize(action.procedure()))) {
-                errors.add(panelLabel + " transaction.actions: procedure not found: " + action.procedure());
+            boolean hasProcedure = hasText(action.procedure());
+            boolean hasCheckBalances = !action.checkBalances().isEmpty();
+            if (hasProcedure == hasCheckBalances) {
+                errors.add(panelLabel
+                        + " transaction.actions: exactly one of procedure or checkBalances must be declared");
+            } else if (hasProcedure) {
+                if (!procedureNames.contains(normalize(action.procedure()))) {
+                    errors.add(panelLabel + " transaction.actions: procedure not found: " + action.procedure());
+                }
+            } else {
+                for (String balanceName : action.checkBalances()) {
+                    if (!hasText(balanceName) || !balanceNames.contains(normalize(balanceName))) {
+                        errors.add(panelLabel + " transaction.actions: checkBalances names a balance rule not found: "
+                                + balanceName);
+                    }
+                }
             }
             if (hasText(action.afterAction()) && !procedureNames.contains(normalize(action.afterAction()))) {
                 errors.add(panelLabel + " transaction.actions: afterAction names a procedure not found: "

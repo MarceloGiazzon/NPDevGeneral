@@ -1396,7 +1396,11 @@ public final class JsonModelParser {
                     // writer+reader, mirroring ast-compiled-four-place's chain for a per-member field.
                     parseAggregateInvariants(aggregateNode.get("invariants"),
                             "aggregates[" + name + "].invariants"),
-                    readText(aggregateNode, "uid")
+                    readText(aggregateNode, "uid"),
+                    // npdev-aggregate-balance-four-place (Session 1, 2026-09-14): parser -> compiler
+                    // -> canonical writer+reader, same shape as npdev-aggregate-invariant-four-place.
+                    parseAggregateBalances(aggregateNode.get("balances"),
+                            "aggregates[" + name + "].balances")
             ));
         }
         return out;
@@ -1423,6 +1427,32 @@ public final class JsonModelParser {
         return out;
     }
 
+    /** Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): aggregates[].balances[] -- grouped,
+     *  role-partitioned balance rules. See AggregateBalanceAst's javadoc. */
+    private static List<AggregateBalanceAst> parseAggregateBalances(JsonNode node, String path)
+            throws IOException {
+        List<AggregateBalanceAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(path + " must be an array");
+        }
+        for (JsonNode balanceNode : node) {
+            out.add(new AggregateBalanceAst(
+                    requiredText(balanceNode, "name"),
+                    requiredText(balanceNode, "collection"),
+                    parseTextArray(balanceNode.get("groupBy")),
+                    requiredText(balanceNode, "discriminatorField"),
+                    requiredText(balanceNode, "leftValue"),
+                    requiredText(balanceNode, "rightValue"),
+                    requiredText(balanceNode, "quantityField"),
+                    readText(balanceNode, "message")
+            ));
+        }
+        return out;
+    }
+
     private static List<AggregateCollectionAst> parseAggregateCollections(JsonNode node, String path)
             throws IOException {
         List<AggregateCollectionAst> out = new ArrayList<>();
@@ -1443,7 +1473,31 @@ public final class JsonModelParser {
                     readText(collectionNode, "orderBy"),
                     parseAggregateCollections(collectionNode.get("collections"),
                             path + "[" + name + "].collections"),
-                    parseObjectMap(collectionNode.get("metadata"))
+                    parseObjectMap(collectionNode.get("metadata")),
+                    parseAggregateCollectionLookupFields(collectionNode.get("lookupFields"),
+                            path + "[" + name + "].lookupFields")
+            ));
+        }
+        return out;
+    }
+
+    /** Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): aggregateCollection.lookupFields[] --
+     *  read-only, query-sourced per-row fields. See AggregateCollectionLookupFieldAst's javadoc. */
+    private static List<AggregateCollectionLookupFieldAst> parseAggregateCollectionLookupFields(
+            JsonNode node, String path) throws IOException {
+        List<AggregateCollectionLookupFieldAst> out = new ArrayList<>();
+        if (node == null || node.isNull()) {
+            return out;
+        }
+        if (!node.isArray()) {
+            throw new IOException(path + " must be an array");
+        }
+        for (JsonNode lookupNode : node) {
+            out.add(new AggregateCollectionLookupFieldAst(
+                    requiredText(lookupNode, "name"),
+                    requiredText(lookupNode, "query"),
+                    requiredText(lookupNode, "joinField"),
+                    requiredText(lookupNode, "valueField")
             ));
         }
         return out;
@@ -1571,13 +1625,17 @@ public final class JsonModelParser {
         }
         for (JsonNode actionNode : node) {
             out.add(new WorkbenchActionAst(
-                    requiredText(actionNode, "procedure"),
+                    // Session 1: procedure is now optional at the parser level -- an action may
+                    // instead declare checkBalances. PanelValidation#validateWorkbenchActions
+                    // enforces exactly one of the two is present.
+                    readText(actionNode, "procedure"),
                     readLabelText(actionNode, "label"),
                     parseTextArray(actionNode.get("inputFields")),
                     parseWorkbenchActionApplyTo(actionNode.get("applyTo")),
                     readText(actionNode, "afterAction"),
                     readText(actionNode, "visibleWhen"),
-                    readLabelLocales(actionNode, "label")
+                    readLabelLocales(actionNode, "label"),
+                    parseTextArray(actionNode.get("checkBalances"))
             ));
         }
         return out;
