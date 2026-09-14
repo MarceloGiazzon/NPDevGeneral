@@ -1273,7 +1273,10 @@ public final class ModelResolver {
                 operation.getOutput(),
                 operation.getInputSchema(),
                 operation.getOutputSchema(),
-                operation.getExecutionPolicy()
+                operation.getExecutionPolicy(),
+                operation.getErrors(),
+                operation.getSideEffects(),
+                operation.getAuth()
         );
     }
 

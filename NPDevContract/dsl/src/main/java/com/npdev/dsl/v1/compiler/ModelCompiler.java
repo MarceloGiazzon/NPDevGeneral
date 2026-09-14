@@ -31,6 +31,8 @@ import com.npdev.dsl.v1.ast.DomainTypeAst;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
+import com.npdev.dsl.v1.ast.CapabilityOperationErrorAst;
+import com.npdev.dsl.v1.ast.CapabilityAuthAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
 import com.npdev.dsl.v1.ast.DomainTypeUiAst;
@@ -85,6 +87,8 @@ import com.npdev.dsl.v1.compiled.CompiledCapabilityBinding;
 import com.npdev.dsl.v1.compiled.CompiledActionMetadata;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityExecutionPolicy;
 import com.npdev.dsl.v1.compiled.CompiledCapabilityOperation;
+import com.npdev.dsl.v1.compiled.CompiledCapabilityOperationError;
+import com.npdev.dsl.v1.compiled.CompiledCapabilityAuth;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledIndex;
 import com.npdev.dsl.v1.compiled.CompiledConceptAccess;
@@ -375,7 +379,10 @@ public final class ModelCompiler {
                         operationAst.getOutput(),
                         toCompiledSchema(operationAst.getInputSchema()),
                         toCompiledSchema(operationAst.getOutputSchema()),
-                        toCompiledPolicy(operationAst.getExecutionPolicy())
+                        toCompiledPolicy(operationAst.getExecutionPolicy()),
+                        toCompiledOperationErrors(operationAst.getErrors()),
+                        operationAst.getSideEffects(),
+                        toCompiledAuth(operationAst.getAuth())
                 ));
             }
             operations.sort(Comparator.comparing(operation -> normalize(operation.getName())));
@@ -2257,6 +2264,27 @@ public final class ModelCompiler {
                 policyAst.getIdempotencyKeyField(),
                 policyAst.getFailureClassification()
         );
+    }
+
+    private static List<CompiledCapabilityOperationError> toCompiledOperationErrors(
+            List<CapabilityOperationErrorAst> errorAsts
+    ) {
+        List<CompiledCapabilityOperationError> errors = new ArrayList<>();
+        for (CapabilityOperationErrorAst errorAst : errorAsts) {
+            errors.add(new CompiledCapabilityOperationError(
+                    errorAst.getName(),
+                    errorAst.getClassification(),
+                    errorAst.getDescription()
+            ));
+        }
+        return errors;
+    }
+
+    private static CompiledCapabilityAuth toCompiledAuth(CapabilityAuthAst authAst) {
+        if (authAst == null) {
+            return null;
+        }
+        return new CompiledCapabilityAuth(authAst.getRoles(), authAst.getScopes());
     }
 
     private static CompiledSchema resolveOperationSchema(

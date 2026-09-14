@@ -500,7 +500,18 @@
     {
       "name": "persistence",
       "type": "PersistenceCapability",
-      "operations": [ "save", "findById" ]
+      "operations": [
+        {
+          "name": "save",
+          "sideEffects": "writes",
+          "errors": [
+            { "name": "DuplicateKey", "classification": "CONTRACT", "description": "a row with this identity already exists" },
+            { "name": "StoreUnavailable", "classification": "transient" }
+          ],
+          "auth": { "roles": ["WarehouseManager"], "scopes": ["persistence:write"] }
+        },
+        "findById"
+      ]
     },
     {
       "name": "notification",
