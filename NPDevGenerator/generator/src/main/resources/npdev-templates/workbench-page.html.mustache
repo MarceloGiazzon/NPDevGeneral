@@ -220,10 +220,12 @@
             return {
               collection: s.collection, columns: s.columns || [], visibleWhen: s.visibleWhen || null,
               address: s.address, render: s.render || null, component: s.component || null,
+              readOnlyColumns: s.readOnlyColumns || null,
               bandDefs: (s.bands || []).map(function (b) {
                 return {
                   collection: b.collection, columns: b.columns || [], picker: b.picker || null, visibleWhen: b.visibleWhen || null,
-                  address: b.address, render: b.render || null, component: b.component || null
+                  address: b.address, render: b.render || null, component: b.component || null,
+                  readOnlyColumns: b.readOnlyColumns || null
                 };
               }),
               rows: (draft[s.collection] || []).map(function (r) {
@@ -934,10 +936,10 @@
       stripClientTempIds(payload);
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate),
         { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, authHeaders()), body: JSON.stringify(payload) })
-        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, b: b }; }); })
+        .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, status: r.status, b: b }; }); })
         .then(function (res) {
           if (res.ok) { pendingMsg = { className: "msg ok", text: (label || STRINGS['workbench.saved']) + "." }; store = createStore({ workbench: store.descriptor, title: store.title, aggregate: store.aggregate, data: res.b }); render(); refreshServerDerivedFields(); }
-          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || r.status); }
+          else { msg.className = "msg err"; msg.textContent = "Failed: " + (res.b && res.b.message || res.status); }
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
     }

@@ -49,6 +49,7 @@
   "testOnlyControllers": [],
   "supportedCoreServiceComponents": [
     "AggregateRuntime",
+    "BalanceEvaluator",
     "BetaSecurityRoleEvaluator",
     "ArtifactLocalJavaSourceCapabilityHandler",
     "CanonicalSourceArtifactStore",
