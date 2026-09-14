@@ -67,6 +67,22 @@ detail: |
   a real `dsl-conformance-max` generation matching the fixture's declared appShell content byte for
   byte, `node --check` on the emitted JS) is unaffected by this and was run and confirmed green
   independently.
+guard:
+  kind: script
+  ref: ":NPDevContract:dsl:test --tests com.npdev.dsl.v1.AiModelToDslMappingTest"
+  asserts: >-
+    `:NPDevContract:dsl:test --tests com.npdev.dsl.v1.AiModelToDslMappingTest` passes 4/4 on a
+    clean checkout, including the two tests (`negativeGoldenScenariosHaveDocumentedDiagnosticCodes`,
+    `everyGoldenAiModelUsesOnlyClassifiedFields`) that failed before this fix. The full
+    `:NPDevContract:dsl:test` suite (980/980) was also run and stayed green, confirming no
+    regression elsewhere -- narrower re-verification of just this class is sufficient to prove the
+    fix stays in place.
+  provenRed: true
+  provenRedNote: >-
+    Both named tests failed on a clean pre-fix `main` checkout (see `detail` above) --
+    `negativeGoldenScenariosHaveDocumentedDiagnosticCodes` on the undocumented diagnostic code,
+    `everyGoldenAiModelUsesOnlyClassifiedFields` on the stale scenario-count literal (24 vs. the
+    real 25) -- confirmed empirically before either fix landed, not assumed.
 notes: |
   Whoever picks this up: start from `scripts/quality/run-ai-schema-validation.ps1` lines 167-198 (the
   two tier-skip `Add-Failure` call sites) and `AiModelToDslMappingTest.java`'s
