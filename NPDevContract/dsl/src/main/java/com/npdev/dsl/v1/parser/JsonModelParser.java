@@ -2454,13 +2454,22 @@ public final class JsonModelParser {
                                 conceptsByLowerName
                         );
                         CapabilityPolicyAst operationPolicy = parseCapabilityPolicy(op.get("policy"));
+                        List<CapabilityOperationErrorAst> operationErrors = parseCapabilityOperationErrors(
+                                op.get("errors"),
+                                sourceLabel + "[" + name + "].operations[" + opName + "].errors"
+                        );
+                        String sideEffects = readText(op, "sideEffects");
+                        CapabilityAuthAst operationAuth = parseCapabilityAuth(op.get("auth"));
                         operations.add(new CapabilityOperationAst(
                                 opName,
                                 input,
                                 output,
                                 inputSchema,
                                 outputSchema,
-                                operationPolicy
+                                operationPolicy,
+                                operationErrors,
+                                sideEffects,
+                                operationAuth
                         ));
                     } else {
                         throw new IOException("Capability " + name + " operation must be a string or object");
@@ -2501,6 +2510,41 @@ public final class JsonModelParser {
                 idempotencyKeyField,
                 failureClassification
         );
+    }
+
+    private static List<CapabilityOperationErrorAst> parseCapabilityOperationErrors(
+            JsonNode errorsNode,
+            String fieldPath
+    ) throws IOException {
+        List<CapabilityOperationErrorAst> errors = new ArrayList<>();
+        if (errorsNode == null || errorsNode.isNull()) {
+            return errors;
+        }
+        if (!errorsNode.isArray()) {
+            throw new IOException(fieldPath + " must be an array");
+        }
+        for (JsonNode errorNode : errorsNode) {
+            if (!errorNode.isObject()) {
+                throw new IOException(fieldPath + " entries must be objects");
+            }
+            String errorName = requiredText(errorNode, "name");
+            String classification = readText(errorNode, "classification");
+            String description = readText(errorNode, "description");
+            errors.add(new CapabilityOperationErrorAst(errorName, classification, description));
+        }
+        return errors;
+    }
+
+    private static CapabilityAuthAst parseCapabilityAuth(JsonNode authNode) throws IOException {
+        if (authNode == null || authNode.isNull()) {
+            return null;
+        }
+        if (!authNode.isObject()) {
+            throw new IOException("Capability operation field 'auth' must be an object when provided");
+        }
+        List<String> roles = parseTextArray(authNode.get("roles"));
+        List<String> scopes = parseTextArray(authNode.get("scopes"));
+        return new CapabilityAuthAst(roles, scopes);
     }
 
     private static SchemaAst parseCapabilityOperationSchema(

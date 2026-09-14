@@ -937,7 +937,10 @@ public final class CompiledModelCanonicalJsonReader {
                     toStringList(operationNode.get("output")),
                     toSchema(operationNode.get("inputSchema")),
                     toSchema(operationNode.get("outputSchema")),
-                    toExecutionPolicy(operationNode.get("executionPolicy"))
+                    toExecutionPolicy(operationNode.get("executionPolicy")),
+                    toOperationErrors(operationNode),
+                    optionalText(operationNode, "sideEffects"),
+                    toAuth(operationNode.get("auth"))
             ));
         }
         return new CompiledCapability(text(node, "name"), optionalText(node, "type"), operations,
@@ -1075,6 +1078,25 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "idempotencyKeyField"),
                 optionalText(node, "failureClassification")
         );
+    }
+
+    private static List<CompiledCapabilityOperationError> toOperationErrors(JsonNode operationNode) {
+        List<CompiledCapabilityOperationError> errors = new ArrayList<>();
+        for (JsonNode errorNode : array(operationNode, "errors")) {
+            errors.add(new CompiledCapabilityOperationError(
+                    text(errorNode, "name"),
+                    optionalText(errorNode, "classification"),
+                    optionalText(errorNode, "description")
+            ));
+        }
+        return errors;
+    }
+
+    private static CompiledCapabilityAuth toAuth(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return null;
+        }
+        return new CompiledCapabilityAuth(toStringList(node.get("roles")), toStringList(node.get("scopes")));
     }
 
     private static CompiledOrchestration toOrchestration(JsonNode node) {

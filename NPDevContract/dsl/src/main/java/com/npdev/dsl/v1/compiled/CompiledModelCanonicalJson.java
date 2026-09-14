@@ -945,6 +945,9 @@ public final class CompiledModelCanonicalJson {
                 operationNode.set("inputSchema", toSchema(operation.getInputSchema()));
                 operationNode.set("outputSchema", toSchema(operation.getOutputSchema()));
                 operationNode.set("executionPolicy", toExecutionPolicy(operation.getExecutionPolicy()));
+                operationNode.set("errors", toOperationErrors(operation.getErrors()));
+                operationNode.put("sideEffects", safe(operation.getSideEffects()));
+                operationNode.set("auth", toAuth(operation.getAuth()));
                 operationsNode.add(operationNode);
             }
             node.set("operations", operationsNode);
@@ -1669,6 +1672,30 @@ public final class CompiledModelCanonicalJson {
         node.put("bulkheadMaxConcurrent", executionPolicy.getBulkheadMaxConcurrent());
         node.put("idempotencyKeyField", safe(executionPolicy.getIdempotencyKeyField()));
         node.put("failureClassification", safe(executionPolicy.getFailureClassification()));
+        return node;
+    }
+
+    private static ArrayNode toOperationErrors(List<CompiledCapabilityOperationError> errors) {
+        ArrayNode node = JsonNodeFactory.instance.arrayNode();
+        List<CompiledCapabilityOperationError> sorted = new ArrayList<>(errors);
+        sorted.sort(Comparator.comparing(error -> normalize(error.getName())));
+        for (CompiledCapabilityOperationError error : sorted) {
+            ObjectNode errorNode = JsonNodeFactory.instance.objectNode();
+            errorNode.put("name", safe(error.getName()));
+            errorNode.put("classification", safe(error.getClassification()));
+            errorNode.put("description", safe(error.getDescription()));
+            node.add(errorNode);
+        }
+        return node;
+    }
+
+    private static ObjectNode toAuth(CompiledCapabilityAuth auth) {
+        if (auth == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.set("roles", toStringArray(auth.getRoles()));
+        node.set("scopes", toStringArray(auth.getScopes()));
         return node;
     }
 

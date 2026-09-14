@@ -2541,6 +2541,17 @@
         },
         "policy": {
           "$ref": "#/$defs/capabilityPolicy"
+        },
+        "errors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/capabilityOperationError" }
+        },
+        "sideEffects": {
+          "type": "string",
+          "enum": ["none", "reads", "writes", "external"]
+        },
+        "auth": {
+          "$ref": "#/$defs/capabilityAuth"
         }
       },
       "additionalProperties": false
@@ -5071,15 +5082,49 @@
           "minLength": 1
         },
         "failureClassification": {
+          "$ref": "#/$defs/failureClassification"
+        }
+      },
+      "additionalProperties": false
+    },
+    "failureClassification": {
+      "type": "string",
+      "enum": [
+        "TRANSIENT",
+        "PERMANENT",
+        "CONTRACT",
+        "transient",
+        "permanent",
+        "contract"
+      ]
+    },
+    "capabilityOperationError": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {
           "type": "string",
-          "enum": [
-            "TRANSIENT",
-            "PERMANENT",
-            "CONTRACT",
-            "transient",
-            "permanent",
-            "contract"
-          ]
+          "minLength": 1
+        },
+        "classification": {
+          "$ref": "#/$defs/failureClassification"
+        },
+        "description": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "capabilityAuth": {
+      "type": "object",
+      "properties": {
+        "roles": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "scopes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
         }
       },
       "additionalProperties": false

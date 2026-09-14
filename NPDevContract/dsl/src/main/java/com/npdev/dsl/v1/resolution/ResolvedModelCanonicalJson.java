@@ -8,6 +8,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
+import com.npdev.dsl.v1.ast.CapabilityOperationErrorAst;
+import com.npdev.dsl.v1.ast.CapabilityAuthAst;
 import com.npdev.dsl.v1.ast.CapabilityPolicyAst;
 import com.npdev.dsl.v1.ast.ActionMetadataAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
@@ -117,6 +119,9 @@ public final class ResolvedModelCanonicalJson {
                 operationNode.set("inputSchema", toSchema(operation.getInputSchema()));
                 operationNode.set("outputSchema", toSchema(operation.getOutputSchema()));
                 operationNode.set("policy", toPolicy(operation.getExecutionPolicy()));
+                operationNode.set("errors", toOperationErrors(operation.getErrors()));
+                operationNode.put("sideEffects", safe(operation.getSideEffects()));
+                operationNode.set("auth", toAuth(operation.getAuth()));
                 operationsNode.add(operationNode);
             }
             node.set("operations", operationsNode);
@@ -344,6 +349,30 @@ public final class ResolvedModelCanonicalJson {
         }
         node.put("idempotencyKeyField", safe(policy.getIdempotencyKeyField()));
         node.put("failureClassification", safe(policy.getFailureClassification()));
+        return node;
+    }
+
+    private static ArrayNode toOperationErrors(List<CapabilityOperationErrorAst> errors) {
+        ArrayNode node = JsonNodeFactory.instance.arrayNode();
+        List<CapabilityOperationErrorAst> sorted = new ArrayList<>(errors);
+        sorted.sort(Comparator.comparing(error -> normalize(error.getName())));
+        for (CapabilityOperationErrorAst error : sorted) {
+            ObjectNode errorNode = JsonNodeFactory.instance.objectNode();
+            errorNode.put("name", safe(error.getName()));
+            errorNode.put("classification", safe(error.getClassification()));
+            errorNode.put("description", safe(error.getDescription()));
+            node.add(errorNode);
+        }
+        return node;
+    }
+
+    private static ObjectNode toAuth(CapabilityAuthAst auth) {
+        if (auth == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        node.set("roles", toStringArray(auth.getRoles()));
+        node.set("scopes", toStringArray(auth.getScopes()));
         return node;
     }
 

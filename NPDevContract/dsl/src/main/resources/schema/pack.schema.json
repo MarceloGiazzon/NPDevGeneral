@@ -485,6 +485,41 @@
       },
       "required": ["algorithm", "digest", "value", "publicKey"],
       "additionalProperties": false
+    },
+    "deprecated": {
+      "type": "object",
+      "description": "W3.1: marks a published pack VERSION as deprecated. Authored into pack.json BEFORE that version is published, so this block becomes ordinary, immutable content of the version it describes -- never a retroactive edit to an already-published file. `npdev pack deprecate` writes it; `npdev pack add`/`update` warn when a resolved pack's locked version carries it, naming `supersededBy` when present; `--strict` refuses instead of warning when `supersededBy` is present (with no successor named there is nothing to redirect the refusal to, so it only warns).",
+      "required": ["since", "reason"],
+      "properties": {
+        "since": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$",
+          "description": "The exact pack version this deprecation takes effect from -- normally equal to this pack.json's own `version`."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supersededBy": {
+          "type": "object",
+          "description": "The pack a consumer should migrate to instead. `version` uses the same minimal-constraint grammar as the root `packs[]` array (exact or caret).",
+          "required": ["pack", "version"],
+          "properties": {
+            "pack": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[a-z][a-z0-9_-]*$"
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^(\\^)?\\d+\\.\\d+(\\.\\d+)?$"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
