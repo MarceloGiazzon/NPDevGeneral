@@ -26,6 +26,7 @@ you to open a terminal.
 - [6 · Versions](#6--versions)
 - [7 · The Monitor](#7--the-monitor)
 - [8 · Scrap Manager](#8--scrap-manager)
+- [9 · Packs](#9--packs)
 - [Files & folders](#files-and-folders)
 - [The eleven checks](#the-eleven-checks)
 - [Commands it runs](#commands-it-runs-for-you)
@@ -396,6 +397,26 @@ custom theme, and a 401 on the first pre-auth load. Those are excused so runs ar
 but each one is listed on the run, struck through, with the rule that excused it. An app that ships a
 real theme does not inherit that excuse.
 
+## 9 · Packs
+
+What this app has resolved and locked (W3.1's deprecation lifecycle made this worth a screen: a
+pack version can now say "don't use me, use X instead", and an operator needs to see that without
+opening `npdev.lock` by hand). Thin pipe over `npdev pack list`/`pack why` — this tab decides
+nothing about resolution, digests, or signatures; the CLI already did, and enriched the report
+with `signature`/`deprecated` before this ever renders it.
+
+| Control | What it does |
+|---|---|
+| **App** | Which app's `npdev.lock` you are looking at (from the same registered-apps list Ready/Run use). |
+| **⟳ Refresh** | Re-reads the app list, then re-runs `npdev pack list --model <app>/model.json`. |
+| **Pack row** | Id, resolved version, a shortened digest (hover for the full `sha256:…`), and a signature badge — **verified** (green, names the trusted key), **unsigned** (amber, `(allowed)` when `--allow-unsigned` accepted it), or **local** (blue, no `from` coordinate — nothing to sign). |
+| **Deprecated banner** | Shown under a row only when its own `pack.json` carries a `deprecated` block: since-version, reason, and the successor pack/version when one was named. |
+| **why?** | Runs `npdev pack why --model <app>/model.json <packId>` and shows what required it, or "directly declared" when nothing else does. |
+| **export…** | Saves a copy of that pack's own resolved `pack.json` wherever you pick, through a native Save dialog. Not a new CLI verb — a plain file copy of a path the lock already gave this screen. |
+
+An app with no `npdev.lock` yet shows "run `npdev pack add`" rather than an empty list — same
+honest-empty-state convention as the Monitor's inventory panels.
+
 ## Files and folders
 
 Everything the Manager creates lives in one place.
@@ -595,6 +616,7 @@ merely slow.
 | `NPDEV_MANAGER_HOME` | Where everything is stored | `%LOCALAPPDATA%\NPDev` / `~/.local/share/npdev` |
 | `NPDEV_MANAGER_FAKE` | Preview mode — set to `1` | off |
 | `NPDEV_MANAGER_FAKE_HOST` | Preview mode's Share scenario before the window has set one at runtime | `needs-fixing` |
+| `NPDEV_MANAGER_FAKE_PACK` | Preview mode's Packs scenario before the window has set one at runtime | `normal` |
 
 Set `NPDEV_MANAGER_HOME` to keep everything on a different drive, or to run two independent
 installations side by side.
@@ -632,6 +654,14 @@ The Share screen has its own set, switched the same way (`fake_host_scenarios` /
 | `live` | A tunnel already open, with routed apps and hops |
 | `engine-mismatch` | An external target refused for the wrong database engine |
 | `deploy-written` | A successful deploy hand-off, with required environment variables |
+
+The Packs screen has its own set too (`fake_pack_scenarios` / `set_fake_pack_scenario`, or
+`NPDEV_MANAGER_FAKE_PACK` before launch):
+
+| Scenario | Shows |
+|---|---|
+| `normal` | A few ordinary resolved packs — local and remote, none deprecated (the default) |
+| `deprecated` | One resolved pack carrying a `deprecated` block naming a successor |
 
 Useful for a demonstration, for learning the screens before committing to a download, or for
 seeing what a failure looks like on a machine where nothing is wrong.
