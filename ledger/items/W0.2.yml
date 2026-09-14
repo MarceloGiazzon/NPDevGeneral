@@ -148,3 +148,53 @@ notes: |
   `countBelow` condition (fewer than 20 non-historical files still say TrustedSource) does not --
   57 remain, see "why this did not reach the numeric target" in `detail` above for the full
   accounting and the scope decision behind it.
+
+  UPDATE 2026-09-14: extended the rename into the kernel security class, with owner approval
+  (the previous session's own tradeoff note above named this as the next increment if picked back
+  up). `NPDevKernel/kernel/.../security/TrustedSourceBytecodeInspector.java` ->
+  `UntrustedExtensionBytecodeInspector.java` (class + file renamed via `git mv`), plus its test
+  class (`TrustedSourceBytecodeInspectorTest` -> `UntrustedExtensionBytecodeInspectorTest`, same
+  package, no import needed). Updated every live reference: the 2 runtime-host plugin-isolation
+  files named in the prior tradeoff note (`PluginRestrictedClassLoader.java`,
+  `PluginChildClasspath.java`) plus 4 more live call/doc sites the rename touched transitively
+  (`PluginRestrictedClassLoaderTest.java` comment, `PluginExecutionPolicyEvaluator.java` javadoc,
+  `PluginBytecodeBootGate.java` (NPDevRuntimeHost app module, import+javadoc+2 usages),
+  `PluginJavaSourcePolicyVisitor.java` (NPDevGenerator, import+javadoc+4 static-field refs),
+  `UntrustedExtensionSecurityHardeningTest.java` (import + 6 class usages -- deliberately left
+  its unrelated `com/npdev/generated/trusted/...` generated-output package path and
+  `GeneratedTrustedSourceRuntimeController` name untouched, per the ORIGINAL W0.2 decision that
+  generated-app output is a different, author-facing contract needing R11 + BREAKING.md, not
+  touched by this internal rename), `ConversionAst.java` javadoc (NPDevContract/dsl),
+  `docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md` (2 occurrences),
+  `docs/ACCEPTED_BOUNDARIES.md` B30's row (2 occurrences -- this row's citation is now stale
+  relative to the ORIGINAL W0.2 `detail` text above, which correctly said "that kernel class was
+  not renamed" AT THE TIME; superseded by this update, not edited in place, same as this file's
+  own discipline elsewhere), and `scripts/quality/twin-pair-registry.json`'s
+  `npdev-plugin-bytecode-gate` description. Left untouched, unchanged from the original decision:
+  the ~15 closed `ledger/items/*.yml` incident records (SEC-1, SEC-3, SEC-10, REG-65, REG-121,
+  REG-137, REG-143, REG-144, REG-176, REG-178, QUAL-6, QUAL-7, QUAL-35, PACK-9, STOR-25) and the
+  2 `ledger/boundaries/*.yml` rows (B13, B30) plus `ledger/session-state/history.jsonl` -- closed
+  historical incident records, rewriting them would misrepresent what those incidents actually
+  named at the time. This entry's own `detail` field above (line ~91's "that kernel class was not
+  renamed" and line ~106-122's tradeoff narrative) is likewise left as the accurate record of the
+  ORIGINAL decision, not retrofitted.
+
+  Verified: `:kernel:test --tests com.npdev.kernel.security.UntrustedExtensionBytecodeInspectorTest`
+  BUILD SUCCESSFUL. `runtimehost-core`'s own gradle root failed to compile on the first attempt
+  with "cannot find symbol: class UntrustedExtensionBytecodeInspector" -- a stale
+  `runtimehost-libs` jar cache, exactly the documented "restage after kernel Java change" trap
+  (CLAUDE.md); running `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars` fixed it,
+  and `:runtimehost-core:test --tests
+  com.finalexec.npdev.service.pluginipc.PluginRestrictedClassLoaderTest` then passed BUILD
+  SUCCESSFUL. `:generator:test --tests com.npdev.generator.UntrustedExtensionSecurityHardeningTest`
+  passed with the real JUnit XML confirming `tests="6" skipped="0" failures="0" errors="0"` (not a
+  filter silently matching zero tests, the same trap this task's ORIGINAL increment already found
+  once). Did NOT attempt to build `NPDevRuntimeHost` standalone (`compileJava` on that module
+  fails on `verifyNpdevRuntimeHostLibs` regardless of this change -- it is a template copied into
+  generated apps, never built on its own; see CLAUDE.md/this repo's own established note on that).
+  Final verification: the full `run-generator-gate.ps1` (codegen + test, deterministic-generation
+  check for `simple-contact-intake`, out-of-tree/no-absolute-path check for `npdev-canary`, and
+  corpus build) passed end to end -- "NPDevGenerator gate passed", exit 0, ~33 min.
+
+  A live-repo grep for `TrustedSourceBytecodeInspector` after this update finds exactly the 7
+  historical files named above and nothing else -- confirmed before closing out this increment.

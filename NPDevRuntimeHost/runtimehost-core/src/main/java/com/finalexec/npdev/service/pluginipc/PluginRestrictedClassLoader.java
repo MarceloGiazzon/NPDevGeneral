@@ -1,6 +1,6 @@
 package com.finalexec.npdev.service.pluginipc;
 
-import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
+import com.npdev.kernel.security.UntrustedExtensionBytecodeInspector;
 
 import java.util.Set;
 
@@ -8,7 +8,7 @@ import java.util.Set;
  * SEC-10 (B30 lift): loads a {@code plugin:java-source}/{@code plugin:java-controller} class itself
  * (never the host-side handler classes that reflect into it), denying two things a restricted
  * child-process classpath cannot: (1) the SAME escape-class denylist {@link
- * TrustedSourceBytecodeInspector} already refuses at admission time, closing the gap where a class
+ * UntrustedExtensionBytecodeInspector} already refuses at admission time, closing the gap where a class
  * name is constructed at runtime rather than appearing as a static bytecode reference; (2) any
  * {@code com.npdev.generated.*} or {@code com.finalexec.*} class OUTSIDE the one package a mounted
  * plugin is admitted under ({@code com.npdev.generated.plugin.} -- the SAME prefix
@@ -19,7 +19,7 @@ import java.util.Set;
  * boundary has to be enforced by the loader, not by {@link PluginChildClasspath}'s physical
  * reduction alone.
  *
- * <p>Deliberately mirrors {@link TrustedSourceBytecodeInspector}'s own prefix-exemption semantics
+ * <p>Deliberately mirrors {@link UntrustedExtensionBytecodeInspector}'s own prefix-exemption semantics
  * (not a fresh, stricter denylist) -- a plugin already admitted past the bytecode gate must not
  * fail to RUN here for a reference the admission gate itself would have allowed (e.g.
  * {@code java/io/PrintStream}, reached only via {@code System.out}/{@code System.err}).</p>
@@ -63,12 +63,12 @@ final class PluginRestrictedClassLoader extends ClassLoader {
         if (internalName.startsWith(RUNTIME_HOST_PREFIX)) {
             return true;
         }
-        for (String prefix : TrustedSourceBytecodeInspector.FORBIDDEN_OWNER_PREFIXES) {
+        for (String prefix : UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIXES) {
             if (internalName.startsWith(prefix)) {
-                Set<String> exemptions = TrustedSourceBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS.get(prefix);
+                Set<String> exemptions = UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS.get(prefix);
                 return exemptions == null || !exemptions.contains(internalName);
             }
         }
-        return TrustedSourceBytecodeInspector.FORBIDDEN_OWNERS.contains(internalName);
+        return UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNERS.contains(internalName);
     }
 }

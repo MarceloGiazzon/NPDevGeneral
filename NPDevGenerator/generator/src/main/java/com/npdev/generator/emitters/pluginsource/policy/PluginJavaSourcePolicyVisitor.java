@@ -1,6 +1,6 @@
 package com.npdev.generator.emitters.pluginsource.policy;
 
-import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
+import com.npdev.kernel.security.UntrustedExtensionBytecodeInspector;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.ImportTree;
 import com.sun.source.tree.MemberSelectTree;
@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
  * AST policy scanner for mounted plugin Java ({@code plugin:java-source} /
  * {@code plugin:java-controller}): walks a parsed compilation unit and records every escape
  * vector it finds, mirroring the bytecode-level denylist of the shared
- * {@code com.npdev.kernel.security.TrustedSourceBytecodeInspector} in source form.
+ * {@code com.npdev.kernel.security.UntrustedExtensionBytecodeInspector} in source form.
  *
  * <p>Deliberately DIFFERENT from {@code TrustedJavaSourcePolicyVisitor} (the trusted-source
  * PROCEDURE policy): plugin code is real application code -- it may declare packages, import
@@ -149,14 +149,14 @@ public final class PluginJavaSourcePolicyVisitor extends TreeScanner<Void, Void>
     }
 
     /** Import prefixes refused outright -- derived from the kernel inspector's owner prefixes. */
-    public static final Set<String> FORBIDDEN_IMPORT_PREFIXES = TrustedSourceBytecodeInspector.FORBIDDEN_OWNER_PREFIXES.stream()
+    public static final Set<String> FORBIDDEN_IMPORT_PREFIXES = UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIXES.stream()
             .map(prefix -> prefix.replace('/', '.'))
             .collect(Collectors.toUnmodifiableSet());
 
     /** Exact classes exempt from a banned import prefix -- derived from the kernel inspector's
      *  owner-prefix exemptions (java.io.PrintStream for console output). */
     public static final Map<String, Set<String>> FORBIDDEN_IMPORT_PREFIX_EXEMPTIONS =
-            TrustedSourceBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS.entrySet().stream()
+            UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS.entrySet().stream()
                     .collect(Collectors.toUnmodifiableMap(
                             entry -> entry.getKey().replace('/', '.'),
                             entry -> entry.getValue().stream()
@@ -165,12 +165,12 @@ public final class PluginJavaSourcePolicyVisitor extends TreeScanner<Void, Void>
                     ));
 
     /** Single-type imports refused outright -- derived from the kernel inspector's exact owners. */
-    public static final Set<String> FORBIDDEN_IMPORTS = TrustedSourceBytecodeInspector.FORBIDDEN_OWNERS.stream()
+    public static final Set<String> FORBIDDEN_IMPORTS = UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNERS.stream()
             .map(owner -> owner.replace('/', '.'))
             .collect(Collectors.toUnmodifiableSet());
 
     /** Member-select forms of the refused {@code java.lang.System} methods. */
-    public static final Set<String> FORBIDDEN_SYSTEM_SELECTS = TrustedSourceBytecodeInspector.FORBIDDEN_SYSTEM_METHODS.stream()
+    public static final Set<String> FORBIDDEN_SYSTEM_SELECTS = UntrustedExtensionBytecodeInspector.FORBIDDEN_SYSTEM_METHODS.stream()
             .map(method -> method.substring(method.lastIndexOf('/') + 1))
             .collect(Collectors.toUnmodifiableSet());
 

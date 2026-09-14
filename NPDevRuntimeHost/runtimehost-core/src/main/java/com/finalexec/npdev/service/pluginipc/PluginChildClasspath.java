@@ -1,6 +1,6 @@
 package com.finalexec.npdev.service.pluginipc;
 
-import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
+import com.npdev.kernel.security.UntrustedExtensionBytecodeInspector;
 
 import java.io.ByteArrayInputStream;
 import java.io.File;
@@ -51,7 +51,7 @@ import java.util.regex.Pattern;
  * manifest declaring it, the same absence established above). Every {@code plugin:java-source}/
  * {@code plugin:java-controller} mount's own compiled class (named by
  * {@code JavaSourceRuntimeRefManifest}/{@code PluginControllerRouteManifest}, already loaded at this
- * call site for other reasons) is now scanned with {@link TrustedSourceBytecodeInspector}'s
+ * call site for other reasons) is now scanned with {@link UntrustedExtensionBytecodeInspector}'s
  * constant-pool reader -- the SAME reader the B30 admission gates already use, just asking a
  * different question ("what does this reference" instead of "does this violate policy") -- and every
  * class it references becomes an ADDITIONAL marker, so the classpath entry actually holding that
@@ -258,7 +258,7 @@ public final class PluginChildClasspath {
 
     private static List<String> referencedClassMarkers(byte[] classBytes, String displayName) throws IOException {
         try (InputStream in = new ByteArrayInputStream(classBytes)) {
-            return new TrustedSourceBytecodeInspector().referencedClassNames(in, displayName).stream()
+            return new UntrustedExtensionBytecodeInspector().referencedClassNames(in, displayName).stream()
                     .map(owner -> owner + ".class")
                     .toList();
         }
