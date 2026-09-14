@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="monitor.css" />
 <link rel="stylesheet" href="hosting.css" />
 <link rel="stylesheet" href="verification.css" />
+<link rel="stylesheet" href="packs.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -33,6 +34,7 @@
     <button class="tab" data-screen="scrap">Scrap Manager</button>
     <button class="tab" data-screen="prompter">Prompter</button>
     <button class="tab" data-screen="verification">Verification</button>
+    <button class="tab" data-screen="packs">Packs</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -497,6 +499,24 @@
       <div class="verify-kanban" id="verify-kanban"></div>
       <div class="verify-table-wrap" id="verify-table-wrap" hidden></div>
     </section>
+
+    <!-- The Packs tab (W3.2, NPDEV_ROADMAP_2026-09-12): installed packs for one app, with
+         version/digest/signature/deprecation state, `pack why`, and an export-a-copy action.
+         Thin pipe over `npdev pack list`/`pack why` -- nothing here decides what a signature or a
+         deprecation means, the CLI already enriched the report before this ever renders it. -->
+    <section id="screen-packs" class="screen" hidden>
+      <h1>▤ PACKS <span class="dim">// what this app has resolved and locked</span></h1>
+      <p class="subtitle">Reads npdev.lock through <code>npdev pack list</code> — nothing is re-resolved here.</p>
+
+      <div class="packs-toolbar">
+        <label id="packs-app-label" hidden>App <select id="packs-app-picker"></select></label>
+        <button class="btn" id="packs-refresh">⟳ REFRESH</button>
+        <span id="packs-status" class="status-line"></span>
+      </div>
+
+      <div id="packs-list"></div>
+      <div id="packs-why" hidden></div>
+    </section>
   </main>
 
   <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
@@ -652,6 +672,7 @@
   <script src="scrap.js"></script>
   <script src="prompter.js"></script>
   <script src="verification.js"></script>
+  <script src="packs.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these
@@ -661,6 +682,7 @@
     try { window.__npdevInitScrap(); } catch (e) { console.error("Scrap Manager init failed", e); }
     try { window.__npdevInitPrompter(); } catch (e) { console.error("Prompter init failed", e); }
     try { window.__npdevInitVerification(); } catch (e) { console.error("Verification init failed", e); }
+    try { window.__npdevInitPacks(); } catch (e) { console.error("Packs init failed", e); }
   </script>
 </body>
 </html>

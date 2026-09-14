@@ -1,0 +1,25 @@
+{
+  "packs": {
+    "identity": {
+      "resolvedVersion": "1.0.0",
+      "sourcePath": "packs/identity/pack.json",
+      "digest": "sha256:1e6a0211cf5991090673a780184116a732a9c0a5a48bdebb0d1b9a4a7efadfbf"
+    },
+    "user": {
+      "resolvedVersion": "1.0.0",
+      "sourcePath": "C:\\Users\\Marcelo\\.npdev\\packs\\sha256\\7cde90f501395bfa48e95f16d64e0c39b25589ad5e3b6b013af1c13fc32c42b9\\pack.json",
+      "digest": "sha256:7cde90f501395bfa48e95f16d64e0c39b25589ad5e3b6b013af1c13fc32c42b9",
+      "signature": {
+        "status": "unsigned",
+        "allowedUnsigned": true
+      }
+    },
+    "workspace": {
+      "resolvedVersion": "1.0.0",
+      "sourcePath": "packs/workspace/pack.json",
+      "digest": "sha256:a7d536fd832b4e5f1e525d9b0b4cff067ec1e5117e301094a3396d584dc456ce"
+    }
+  },
+  "locked": true,
+  "status": "ok"
+}

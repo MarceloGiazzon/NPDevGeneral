@@ -1,0 +1,72 @@
+/* Packs tab -- W3.2 (NPDEV_ROADMAP_2026-09-12): installed packs, signature/deprecation state,
+   `pack why`, and an export-a-copy action. Same tokens/shapes as verification.css. */
+
+#screen-packs h1 {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  letter-spacing: 4px;
+  color: var(--ok);
+  text-shadow: 0 0 8px rgba(52, 255, 109, .55), 0 0 24px rgba(52, 255, 109, .25);
+  margin: 6px 0 2px;
+}
+#screen-packs h1 .dim { color: var(--muted); text-shadow: none; font-size: 14px; letter-spacing: 2px; }
+#screen-packs .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+#screen-packs .btn {
+  font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;
+  padding: 7px 16px; border-radius: 6px; cursor: pointer;
+  background: #1c2b1f; color: var(--ok); border: 1px solid #2c5236;
+}
+#screen-packs .btn:hover { background: #234030; }
+#screen-packs .btn.ghost { background: transparent; color: var(--muted); border-color: #262c33; padding: 4px 10px; font-size: 11.5px; }
+#screen-packs .btn.ghost:hover { color: var(--text); }
+
+.packs-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.packs-toolbar select {
+  background: #0d1117; color: var(--text); border: 1px solid #262c33; border-radius: 6px;
+  padding: 6px 10px; font-family: var(--font-ui); font-size: 12.5px;
+}
+#packs-status { font-size: 11.5px; }
+
+.prow {
+  background: var(--bg2);
+  border: 1px solid #1f242b;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
+.prow.selected { border-color: #2c5236; }
+.prow-main { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pname { font-weight: 700; font-size: 13px; color: var(--text); }
+.pversion { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.pdigest { font-family: var(--font-mono); font-size: 11px; color: #b7c6d6; }
+.pactions { margin-left: auto; display: flex; gap: 6px; }
+
+.pbadge {
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .5px;
+  padding: 1px 7px; border-radius: 4px;
+}
+.pbadge.verified { color: var(--ok); background: #12241a; border: 1px solid #1d4028; }
+.pbadge.unsigned { color: var(--warn); background: #241d13; border: 1px solid #4a4022; }
+.pbadge.unknown  { color: var(--err); background: #271318; border: 1px solid #4a2230; }
+.pbadge.local    { color: var(--info); background: #122536; border: 1px solid #1d4058; }
+
+.pdeprecated {
+  margin-top: 8px;
+  font-size: 11.5px; color: var(--warn);
+  background: #241d13; border: 1px solid #4a4022; border-radius: 6px;
+  padding: 6px 10px;
+}
+.pdeprecated code { color: var(--text); }
+
+#packs-why {
+  margin-top: 14px;
+  background: var(--bg2);
+  border: 1px solid #1f242b;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+#packs-why h4 { margin: 0 0 8px; font-size: 13px; color: var(--text); }
+.pwhy-list { margin: 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+.pwhy-list li { margin-bottom: 4px; }
+
+#screen-packs .status-line.err { color: var(--err); }

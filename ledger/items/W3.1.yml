@@ -1,0 +1,121 @@
+id: W3.1
+title: >-
+  Pack lifecycle has no deprecation path -- the only way to retire a published pack version is to
+  delete it, which breaks every dependent app instead of warning it
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-13
+closed: 2026-09-13
+verification: VERIFIED_LIVE
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 3 (W3.1): "Deprecation. Add a `deprecated` block to
+  pack.schema.json (both copies) -- since, reason, supersededBy -- and a `npdev pack deprecate`
+  command. Resolving a deprecated version emits a warning naming the successor; resolving one with
+  supersededBy and --strict refuses."
+surface: NPDevContract/schemas (pack.schema.json mirror), NPDevCli/npdev_cli.py (pack deprecate
+  command + packAdd/packUpdate resolution warning), NPDevCli/tests
+files:
+  - NPDevContract/schemas/pack.schema.json
+  - NPDevContract/dsl/src/main/resources/schema/pack.schema.json
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_pack_deprecate.py
+detail: |
+  WHAT WAS BUILT:
+  1. `deprecated` object added to BOTH pack.schema.json copies (byte-identical mirror, kept that
+     way by copying the file rather than hand-editing twice): `since` (MAJOR.MINOR.PATCH,
+     defaults to the pack's own `version` when authoring), `reason` (required string), optional
+     `supersededBy` {pack, version} using the SAME minimal-constraint version grammar the root
+     `packs[]` array already uses (exact or caret). Deliberately NOT threaded through
+     ModelSourceResolver.MODEL_ARRAY_KEYS or the model.schema.json 4-copy set (R4/R5's own scope)
+     -- `deprecated` is pack-identity metadata like `author`/`category`/`migrations`, never a
+     composable app-model member array, so those two traps do not actually apply here; confirmed
+     by re-reading ModelSourceResolver.MODEL_ARRAY_KEYS's own purpose before assuming otherwise.
+  2. `npdev pack deprecate <pack.json> --since --reason [--superseded-by-pack --superseded-by-version] [--write]`
+     (npdev_cli.py: parser near pack_verify, `run_pack_deprecate`) -- writes the block into a LOCAL
+     pack.json only, dry-run by default. Refuses if the file already has `deprecated` (first
+     deprecation only, never silently overwrites a recorded reason). Deliberately never mutates an
+     ALREADY-PUBLISHED file: the intended flow is author the block, then publish that version
+     through the existing `pack diff`/`pack publish` gate, so the block becomes ordinary,
+     immutable content of the version it describes from the moment it exists -- this is what
+     keeps it digest-safe, with no retroactive edit to a version some consumer has already locked
+     and digest-pinned.
+  3. `_check_deprecated_packs` (npdev_cli.py), wired into `_run_pack_gradle_task_with_tamper_guard`
+     AFTER the R8.6 tamper guard and R8.7 signature gate (ordering matters, same reasoning as
+     those two: a mutated-tag tamper is a stronger, unconditional signal and must be caught first).
+     Reads each locked pack's own `sourcePath` pack.json (the same file PackAddMain's Java-side
+     signature check already reads) and, when it carries `deprecated`, warns to stderr naming the
+     successor when present. `--strict` (new flag on `pack add`/`pack update`) refuses instead of
+     warning, but ONLY when `supersededBy` is present -- a deprecated version with no named
+     successor still only warns even under --strict, since there is nothing to redirect the
+     refusal to. A --strict refusal restores npdev.lock to its pre-call contents, same rollback
+     discipline `_guard_against_remote_pack_tamper`/`_verify_pack_signatures` already established.
+  4. Tests (NPDevCli/tests/test_pack_deprecate.py, 15 new tests): 9 unit tests against
+     `run_pack_deprecate` directly (dry-run vs --write, since-defaults-from-version, all four
+     refusal shapes), 5 unit tests against `_check_deprecated_packs` directly (synthetic
+     npdev.lock + a real pack.json at the entry's own sourcePath -- silent/warn/refuse/rollback/
+     missing-file-is-skipped-not-a-crash), and ONE real end-to-end round trip
+     (`PackDeprecateRoundTripTest`, ~4-25s depending on Gradle daemon warmth): a genuine
+     `git+file://` remote pack authored with a `deprecated` block before being tagged, resolved
+     through the REAL Gradle-backed PK-5 fetch via `run_pack_add`, asserting the real stderr
+     warning names both the deprecated pack and its successor, then `run_pack_update` with
+     --strict=True asserted to raise CliError naming the successor with npdev.lock restored
+     unchanged -- proving the warning/refusal fire on an actual resolve, not only a synthetic lock.
+  DELIBERATELY NOT DONE (out of this task's scope per its own steps -- schema + CLI +
+  corpus-fixture-style proof, not the Manager surface or docs): W3.2 (Manager pack screen) and
+  W3.3 (pack-design docs) are separate roadmap tasks; this task's step 4 ("corpus fixture ...
+  so the warning path is exercised, not just unit-tested") was satisfied by the real git+file://
+  round-trip test above rather than a new committed NPDevSamples corpus app -- it exercises the
+  identical Java resolution path a committed corpus fixture would, without needing a
+  scripts/quality/corpus-roles.json entry (R7) for a fixture that lives entirely in a
+  tempfile.TemporaryDirectory, matching every other pack round-trip test already in this suite
+  (PackExportRoundTripTest, the tamper-guard round trips).
+guard:
+  kind: script
+  ref: python -m unittest NPDevCli.tests.test_pack_deprecate (+ full NPDevCli/tests discovery)
+  asserts: >-
+    helpers/check_task.py --task W3.1's three automatic conditions (deprecated present in both
+    pack.schema.json copies, "deprecate" matched in npdev_cli.py) all PASS.
+    scripts/quality/check-schema-mirror-consistency.py reports the pack.schema.json group (2
+    copies) semantically identical with zero excused keys. All 16 tests in
+    test_pack_deprecate.py pass (15 original + 1 added by the 2026-09-14 amendment below),
+    including the real git+file:// round trip
+    (PackDeprecateRoundTripTest) proving a genuine `pack add` resolve warns on stderr naming the
+    deprecated pack and its successor, and a genuine `pack update --strict` on the same graph
+    raises CliError naming the successor with npdev.lock byte-identical to its pre-call contents
+    afterward. Full `python -m unittest discover -s NPDevCli/tests`: 832/832 pass (no regression
+    in any other pack/CLI test from the new --strict flag or the extra
+    _check_deprecated_packs call now wired into every packAdd/packUpdate).
+  provenRed: true
+  provenRedNote: >-
+    Before this task: `pack.schema.json` had no `deprecated` property at all (confirmed by reading
+    the file before editing it); `npdev pack deprecate` did not exist as a subcommand (`pack_sub`
+    listed add/update/list/why/search/build-catalog/export/diff/publish/sign-keygen/verify only,
+    confirmed by reading the parser registration block before adding to it); `_check_deprecated_packs`
+    did not exist and `_run_pack_gradle_task_with_tamper_guard` called only the R8.6 tamper guard
+    and R8.7 signature checks (confirmed by reading that function before editing it). All new
+    tests, including the real git+file:// round trip, passed on their first run once written --
+    no regression was caught and fixed mid-task; this is a from-scratch addition, not a repair.
+notes: |
+  Chosen from NPDEV_ROADMAP_2026-09-12.md's three remaining candidates (W2.1 needs owner decision
+  D6 first, W4.1 has the roadmap's own highest trap density) as the self-contained option -- user
+  picked it directly when asked. W3.2 (Manager pack screen) and W3.3 (pack-design docs) remain
+  open in Wave 3; W3.1 was the only one of the three with automatic doneWhen conditions in
+  helpers/tasks.json.
+
+  AMENDMENT 2026-09-14, found while building W3.2: `_check_deprecated_packs` (this task's own
+  function) resolved a LOCAL pack's `sourcePath` against the CLI process's current working
+  directory instead of the MODEL's own directory. `npdev.lock` stores a local pack's `sourcePath`
+  RELATIVE to the model (PackDependencyGraphWalker's `rootDirectory.relativize`) -- so the
+  deprecation warning silently never fired for a LOCAL deprecated pack whenever `pack add`/
+  `update` ran from a different cwd than the app's own directory, which is the common case (e.g.
+  running it from the repo root against an app living elsewhere, exactly what capturing a W3.2
+  fixture against a real AppGen app did live). This task's own round-trip test
+  (`PackDeprecateRoundTripTest`) did not catch it because it used a REMOTE git+file:// pack, whose
+  `sourcePath` is already absolute (the machine-wide pack cache) -- the bug only affects the LOCAL
+  case, which nothing in this task's test suite had exercised end-to-end. Fixed by a shared
+  `_resolve_pack_source_path` helper (npdev_cli.py), with a regression test added to both this
+  task's test_pack_deprecate.py and W3.2's test_pack_list_enrichment.py, reproducing the exact
+  failure (relative sourcePath + a different cwd) before asserting the fix. All 126 pack tests
+  pass after the fix. Filed here rather than as a new ledger item since it is a defect in code
+  this same item shipped, not a new gap.
