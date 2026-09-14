@@ -1,28 +1,47 @@
 id: B32
 title: "layered-complexity (Constitution law) -- basic features stay simple by default, escape hatches are honestly branded"
-codeLinked: false
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because "basic features stay simple by default" is not a property
-  a checker can evaluate against a feature -- there is no failing input that proves a feature IS too
-  complex, only a design review judgment. This is the Constitution's own layered-complexity law
-  (scripts/policy/constitution.json), deliberately kept `enforcement: aspirational` rather than
-  given a bare, unbacked claim: check-constitution-coverage.py refuses `enforced` with no real
-  checker, and no such checker exists or could exist for this half of the law. The law's OTHER
-  half -- escape hatches honestly branded, not disguised as first-class "trusted" shortcuts -- IS a
-  real, already-shipped mechanism: P0.4 (2026-08-xx) and W0.2 (2026-09-12, NPDEV_ROADMAP_2026-09-12.md
-  Wave 0) inverted the generator's escape-hatch vocabulary to
-  UntrustedExtension*, so an author reading the generator now learns the honest word for what a
+  LIFTED 2026-09-14, PARTIAL (owner-approved reversal of this boundary's own original reasoning):
+  a real checker now backs the "stay simple by default" half --
+  scripts/quality/check-layered-complexity-ratchet.py, wired into run-ai-knowledge-gate.ps1 as
+  check [48/48]. `scripts/policy/constitution.json`'s `layered-complexity` law moved from
+  `aspirational` to `enforced`; `check-constitution-coverage.py` PASSes against the new checker.
+
+  What the checker actually does, and why this is a PARTIAL lift, not a full one: it does NOT
+  judge whether a feature "is simple" -- the original reasoning below (no failing input proves a
+  feature IS too complex, only a design-review judgment) is still true and still stands. What it
+  DOES is operationalize the law as a RATCHET, the same shape scripts/policy/coverage-baseline.json
+  already uses for test coverage: the mandatory (JSON Schema `required`) surface of the platform's
+  basic building blocks -- the top-level model, and the `concept`/`field`/`panel`/`procedure`
+  definitions a first-time author meets first -- is measured against
+  scripts/policy/layered-complexity-baseline.json (initial floor: 2 required keys each, measured
+  directly from NPDevContract/schemas/model.schema.json, not assumed) and FAILS the moment any of
+  those counts grows without an explicit, reviewed bump to the baseline file. This is a real,
+  checkable regression guard against ONE concrete failure mode "stay simple by default" warns
+  against -- a basic feature silently getting harder to start with -- but it says nothing about
+  optional-field sprawl, generated-code size, or any other complexity axis, and a shrinking or
+  unchanged required-count is not proof a feature is actually simple, only that its mandatory floor
+  did not silently grow. `check-layered-complexity-ratchet.py --calibrate` proves the ratchet can
+  fail (grown count) and stays silent (unchanged/shrunk count).
+
+  The law's OTHER half -- escape hatches honestly branded, not disguised as first-class "trusted"
+  shortcuts -- was already real and shipped before this update: P0.4 (2026-08-xx) and W0.2
+  (2026-09-12, NPDEV_ROADMAP_2026-09-12.md Wave 0) inverted the generator's escape-hatch vocabulary
+  to UntrustedExtension*, so an author reading the generator now learns the honest word for what a
   javaHook/untrustedExtensionAsset/pluginPackage actually is: untrusted author code the platform
-  admission-checks, not a first-class trusted shortcut. That half is proven by
+  admission-checks, not a first-class trusted shortcut. Proven by
   scripts/quality/run-untrusted-extension-security-check.ps1 and
-  scripts/quality/check-extension-inventory.py, not by this boundary row -- this row exists only to
-  give the STILL-aspirational "stay simple by default" half a named, honest home instead of a dangling
-  claim, per check_task.py's constitutionNoFreeAspirational rule (an aspirational law's own id must
-  appear in a ledger/boundaries/*.yml entry).
-  Revisit trigger: never for the "stay simple by default" half -- there is no diagnostic design that
-  would make it testable without becoming a subjective complexity linter, which is its own can of
-  worms this boundary deliberately declines to open. Revisit the escape-hatch-branding half only if
-  a NEW escape hatch is added under a name that reintroduces "trusted" as a synonym for "first-class",
-  the exact failure mode P0.4/W0.2 corrected.
-ref: "docs/ACCEPTED_BOUNDARIES.md#B32 -- scripts/policy/constitution.json (layered-complexity)"
-classification: POSTURAL
+  scripts/quality/check-extension-inventory.py, unchanged by this update.
+
+  ORIGINAL REASONING (2026-09-12, kept for history -- the "true forever" half of it still holds):
+  no diagnostic design exists that would make "is this feature too complex" testable without
+  becoming a subjective complexity linter, which is its own can of worms this boundary originally
+  declined to open. That specific can of worms is STILL declined -- the new checker sidesteps it
+  entirely by measuring a structural proxy instead of attempting the judgment. Revisit the
+  escape-hatch-branding half only if a NEW escape hatch is added under a name that reintroduces
+  "trusted" as a synonym for "first-class", the exact failure mode P0.4/W0.2 corrected. Revisit the
+  ratchet's own scope (widen it past `required`-count, or to more definitions) only if a real
+  complexity regression slips through it undetected -- evidence-driven, not speculative.
+ref: "docs/ACCEPTED_BOUNDARIES.md#B32 -- scripts/policy/constitution.json (layered-complexity), scripts/quality/check-layered-complexity-ratchet.py, scripts/policy/layered-complexity-baseline.json"
+classification: LIFTED

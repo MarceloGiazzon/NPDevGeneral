@@ -59,9 +59,12 @@
     {
       "id": "layered-complexity",
       "law": "Basic features stay simple by default; escape hatches exist for real needs but are honestly branded for what they are, not disguised as first-class 'trusted' shortcuts.",
-      "enforcement": "aspirational",
-      "checker": null,
-      "note": "W0.3 (2026-09-12): deliberately left aspirational rather than given a bare, unbacked claim -- 'basic features stay simple by default' is a design posture, not a testable property (there is no diagnostic that could fire for a feature being too complex). P0.4/W0.2 already made the honest-branding half true in the generator layer (the escape-hatch vocabulary was inverted to UntrustedExtension*); see ledger/boundaries/B32.yml for the layered-complexity boundary record (POSTURAL, docs/ACCEPTED_BOUNDARIES.md) this aspirational entry now points at, per check_task.py's constitutionNoFreeAspirational rule."
+      "enforcement": "enforced",
+      "checker": {
+        "path": "scripts/quality/check-layered-complexity-ratchet.py",
+        "pattern": "layered-complexity-baseline\\.json"
+      },
+      "note": "2026-09-14 (owner-approved reversal of the W0.3 decision below): the honest-branding half was already real (P0.4/W0.2, generator escape-hatch vocabulary inverted to UntrustedExtension*, proven by run-untrusted-extension-security-check.ps1/check-extension-inventory.py). The 'stay simple by default' half now has a real, narrow checker too -- not a subjective complexity judgment (that remains impossible, per B32's own reasoning, kept below for the record), but an objective RATCHET over the mandatory (JSON Schema `required`) surface of the model and its concept/field/panel/procedure building blocks: check-layered-complexity-ratchet.py fails if that surface grows without an explicit, reviewed bump to scripts/policy/layered-complexity-baseline.json. See ledger/boundaries/B32.yml (now a PARTIAL lift, docs/ACCEPTED_BOUNDARIES.md) for the residual: a shrinking or unchanged required-count is not proof of simplicity, only a silently GROWING one is caught. W0.3 (2026-09-12) original note, kept for history: 'deliberately left aspirational rather than given a bare, unbacked claim -- basic features stay simple by default is a design posture, not a testable property.'"
     },
     {
       "id": "legible-to-domain-experts-and-ai",
