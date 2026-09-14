@@ -20,7 +20,7 @@ surface: runtimehost, plugin-execution, security
 files:
   - NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/TimeBoundedPluginExecutionEngine.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/TimeBoundedPluginExecutionEngineTest.java
-  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/security/TrustedSourceBytecodeInspector.java
+  - NPDevKernel/kernel/src/main/java/com/npdev/kernel/security/UntrustedExtensionBytecodeInspector.java
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/PluginJavaSourcePolicy.java
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeApiEmitter.java
   - NPDevRuntimeHost/src/main/java/com/finalexec/config/PluginBytecodeBootGate.java
@@ -86,7 +86,7 @@ detail: |
     only call back into capabilities its OWN manifest entry declares, checked against the SAME
     RegisteredAdapterContribution binding that authorized the original invoke, reusing
     PluginExecutionPolicyDecision rather than a second policy model. Deliberately NOT a reuse of
-    TrustedSourceBytecodeInspector (that inspector has no visibility into a running child's IPC calls).
+    UntrustedExtensionBytecodeInspector (that inspector has no visibility into a running child's IPC calls).
   - PluginIpcHostSession / PluginIpcChildRuntime / PluginIpcCallbackClient: the host and child
     orchestration primitives, parameterized on plain InputStream/OutputStream so step 2 (real child
     process) only has to swap PipedInputStream/PipedOutputStream for Process.getInputStream()/
@@ -119,7 +119,7 @@ detail: |
 
   Mechanism (one shared denylist, two enforcement ends):
   - The constant-pool inspector moved out of the generator into NPDevKernel
-    (com.npdev.kernel.security.TrustedSourceBytecodeInspector) so the generator AND the running app
+    (com.npdev.kernel.security.UntrustedExtensionBytecodeInspector) so the generator AND the running app
     consume identical rule sets. Hardened from the original generator-only scanner for production-gate
     duty: the pool is now RESOLVED (Class/Methodref/Fieldref entries spliced back into owner /
     owner.name -- javac stores java/lang/System and exit as SEPARATE constants, so a raw-Utf8 scan
@@ -247,7 +247,7 @@ detail: |
      capability"), not just the outbound invoke (host -> child, "run this plugin with this input").
      This is the crux: a plugin today can call arbitrary capabilities as ordinary Java calls; Model B
      needs a serialization boundary for every one of those calls, plus a way to enforce the SAME
-     admission-time denylist (TrustedSourceBytecodeInspector) against what the child is allowed to
+     admission-time denylist (UntrustedExtensionBytecodeInspector) against what the child is allowed to
      ask the host to do on its behalf, or the isolation is decorative.
   2. Process lifecycle: cold JVM start per invocation (measured elsewhere in this platform at
      several hundred ms) is likely too slow for the existing timeout budget
@@ -286,7 +286,7 @@ detail: |
   (TimeBoundedPluginExecutionEngine.execute/invokeHandler, CapabilityCall/CapabilityResult's exact
   shapes, PluginExecutionPolicyEvaluator's decision model): length-prefixed JSON frames over the
   child's stdin/stdout for both the outbound invoke and the child->host callback direction (with a
-  NEW runtime callback-allowlist gate, explicitly NOT a reuse of TrustedSourceBytecodeInspector's
+  NEW runtime callback-allowlist gate, explicitly NOT a reuse of UntrustedExtensionBytecodeInspector's
   static bytecode scan -- that inspector cannot see what a running child asks the host to do over an
   IPC channel that doesn't exist yet); a fixed-size warm pool of fungible (not per-plugin) worker
   processes to meet the existing timeout budget; Linux cgroups v2 (systemd-run --scope) vs Windows Job
@@ -779,3 +779,9 @@ guard:
     (PluginIpcChildProcessWindowsResourceLimitTest, template tree) verified live via
     run-runtimehost-gate.ps1. Verified live 2026-09-01.
   provenRed: true
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the security class named throughout this
+  file used the pre-W0.2-extension vocabulary (see git blame for the literal spelling used at
+  authoring time) at the time this incident was investigated; renamed to
+  UntrustedExtensionBytecodeInspector by this session's W0.2 continuation. The incident's substance
+  is unaffected.

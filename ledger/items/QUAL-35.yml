@@ -44,7 +44,8 @@ detail: |
 
   `verification: NOT_VERIFIED` (not `VERIFIED_LIVE`): the path resolution itself is verified live
   (above), but a full end-to-end run of this script (which shells to a real `:generator:test --tests
-  "*TrustedSource*"` Gradle invocation) was not executed as part of this fix -- that is exercised by
+  "*UntrustedExtension*"` Gradle invocation today -- the filter used the pre-W0.2 vocabulary at the
+  time this item was investigated) was not executed as part of this fix -- that is exercised by
   `run-generator-gate.ps1`'s own T2 gate run, not repeated here.
 guard:
   kind: manual
@@ -63,3 +64,7 @@ notes: |
   run-untrusted-extension-security-check.ps1 -- `files`/`guard.ref` above updated to the real
   current path; the title/source/detail prose is left as written, describing the fix in the
   filename that existed at the time.
+
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the `detail` field's Gradle test-filter
+  citation was also updated to the current filter string (the pre-W0.2 vocabulary was used at
+  authoring time; see git blame for the literal string).

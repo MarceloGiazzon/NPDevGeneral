@@ -34,7 +34,7 @@
 |---|---|
 | TREE 1 | all 16 tasks (2026-07-28) |
 | 2.A DSL 2.0 | `flowStep.type` 23 → **12**; codemod `NPDevCli/dsl_v2_migration.py` + tests; 4-mirror gate live |
-| 2.B all five splits | SemanticValidator 202 · TrustedSourceEmitter 212 · SchemaLifecycleExecutor 2,120 · GeneratedCrud 3,651 · KernelRunner 3,071 (+ step classes ⇒ **CORE C-4** closed) |
+| 2.B all five splits | SemanticValidator 202 · UntrustedExtensionEmitter (pre-rename name at the time) 212 · SchemaLifecycleExecutor 2,120 · GeneratedCrud 3,651 · KernelRunner 3,071 (+ step classes ⇒ **CORE C-4** closed) |
 | 2.F / CORE C-3 | durable demo **shipped** — `NPDevSamples/durable-workflow-demo` + `NPDevSamples/scripts/run-durable-resume-demo.ps1` |
 | 3.1 | repo public |
 | F5-V.2 | live re-verify **7/11**, step 11 (REG-48 cascade) PASSED |

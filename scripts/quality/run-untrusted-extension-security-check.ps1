@@ -174,8 +174,8 @@ public final class UnsafeBytecodeProcedure {
         forbiddenOwners = $forbiddenOwners
         safeForbiddenOwnerMatches = $safeMatches
         unsafeForbiddenOwnerMatches = $unsafeMatches
-        safeJavapPath = Convert-ToRepoPath $script:TrustedSourceSecurityWorkspaceRoot $safeJavapPath
-        unsafeJavapPath = Convert-ToRepoPath $script:TrustedSourceSecurityWorkspaceRoot $unsafeJavapPath
+        safeJavapPath = Convert-ToRepoPath $script:UntrustedExtensionSecurityWorkspaceRoot $safeJavapPath
+        unsafeJavapPath = Convert-ToRepoPath $script:UntrustedExtensionSecurityWorkspaceRoot $unsafeJavapPath
     }
     $proofPath = Join-Path $bytecodeRoot "bytecode-restrictions-proof.json"
     $proof | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $proofPath -Encoding UTF8
@@ -187,7 +187,7 @@ public final class UnsafeBytecodeProcedure {
 }
 
 $root = (Resolve-Path $WorkspaceRoot).Path
-$script:TrustedSourceSecurityWorkspaceRoot = $root
+$script:UntrustedExtensionSecurityWorkspaceRoot = $root
 if ([string]::IsNullOrWhiteSpace($RunId)) {
     $RunId = "trusted-source-security-" + (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
 }

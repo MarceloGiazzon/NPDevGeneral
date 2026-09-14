@@ -139,7 +139,7 @@ detail: |
   caller relying on the implicit default. **That belief was wrong, caught by this session's own
   adversarial review of this PR before merge, not by the grep it cites**: a grep for the flag's
   *presence* cannot find call sites where it is *absent*.
-  `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java`'s packaged-app boot
+  `UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java`'s packaged-app boot
   (`startPackagedApp()`) passed no `--spring.profiles.active` at all, making it a second, real
   caller of the implicit default -- and it is exactly why CI's `:generator:test` genuinely failed
   on this branch's first commit (`fa90e89c`, run `31754013976`: "322 tests completed, 2 failed"),
@@ -202,11 +202,11 @@ detail: |
   `31754013976`): `:generator:test` reported "322 tests completed, 2 failed" -- one was the
   standing, pre-existing `HardenGcDeleteReplaceCascade...` flake (present on essentially every
   recent PR-gate run regardless of content, confirmed across the already-merged Stage A/C runs
-  too), but the other was `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`, a genuine
+  too), but the other was `UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest`, a genuine
   regression from this same commit's own change (see the correction above: a second, missed caller
   of the implicit default profile). Fixed in a follow-up commit on this same branch, re-verified
   directly rather than assumed: the fixed test passes in isolation
-  (`./gradlew :generator:test --tests TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest
+  (`./gradlew :generator:test --tests UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest
   -PincludePackagedProofs`) and the full suite now shows exactly one failure -- the standing
   pre-existing flake, confirmed by name and stack trace, not a new one -- with generator at 322
   tests, 1 failed, 1 skipped (`HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest`'s own
@@ -288,3 +288,10 @@ detail: |
   authenticate (22 browser routines via the ScrapForAI engine's own `valueFromCredential`
   mechanism, the generated business/operator UI's auto-fill, two doc sources), live-verified
   against a freshly generated, `Ensure-NpdevApiKey`-launched app. Full detail in `REG-159.yml`.
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the test class name above used the
+  pre-W0.2 vocabulary (see git blame on this file for the literal spelling used at authoring time,
+  2026-08-12/14) at the time this incident was investigated; it is
+  `UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest` today after W0.2's rename. Updated
+  here to point at the live class rather than a name that no longer exists -- the incident's
+  substance (what was found and fixed) is unaffected.

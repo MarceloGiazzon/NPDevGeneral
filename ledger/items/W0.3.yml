@@ -58,7 +58,8 @@ detail: |
   Also recorded in B32's own text (not a new claim, just cross-referenced): the OTHER half of
   layered-complexity's law -- escape hatches honestly branded, not disguised as first-class
   "trusted" shortcuts -- is not aspirational at all. It is a real, already-shipped mechanism via
-  P0.4 and this Wave's own sibling task W0.2 (TrustedSource* -> UntrustedExtension* in the
+  P0.4 and this Wave's own sibling task W0.2 (inverting the generator's escape-hatch vocabulary to
+  UntrustedExtension* in the
   generator layer), proven by run-untrusted-extension-security-check.ps1 and
   check-extension-inventory.py. B32 only carries the "stay simple by default" half, which is the
   half with genuinely no possible checker.

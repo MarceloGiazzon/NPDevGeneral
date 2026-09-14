@@ -11,7 +11,7 @@ verification: VERIFIED_LIVE
 surface: build-tooling/root-resolution, ci/linux-maturity-validation
 source: >-
   Found while fixing three packaged-app proof tests that failed only on the Linux CI runner
-  (HardenGcDeleteReplaceCascade / HardenObjstoreFileUpload / TrustedSourceEmitter
+  (HardenGcDeleteReplaceCascade / HardenObjstoreFileUpload / UntrustedExtensionEmitter
   PackagedGeneratedAppRuntimeProofTest), red on main since 5317584 and passing on every local run.
 detail: >-
   Eleven independent copies of NPDev's external-build-root resolution located the repo root by
@@ -94,3 +94,9 @@ files:
   - scripts/quality/twin-pair-registry.json
   - .npdev-root
   - .github/workflows/npdev-ci-validation.yml
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the class named above used the pre-W0.2
+  vocabulary (see git blame for the literal spelling used at authoring time) at the time this
+  incident was investigated; renamed to UntrustedExtensionEmitter by W0.2. The incident's
+  substance is unaffected.

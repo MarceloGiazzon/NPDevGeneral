@@ -134,7 +134,7 @@ explicit merge, and **nothing measures the gap**. It will recur a fourth time by
 |---|---|---|
 | `app.js` 407 KB | 408 K | ✅ accurate |
 | `GeneratedCrudRuntimeSupport.java` 198 KB | 160 K | ⚠️ stale number, still belongs |
-| `TrustedSourceEmitter.java` 197 KB | **12 K** | ❌ **no longer belongs** (split by 2.B.2) |
+| `UntrustedExtensionEmitter.java` (pre-rename name at the time) 197 KB | **12 K** | ❌ **no longer belongs** (split by 2.B.2) |
 | `KernelRunner.java` 177 KB | 128 K | ⚠️ stale number, still belongs |
 | `SemanticValidator.java` 164 KB | **12 K** | ❌ **no longer belongs** (split by 2.B.1) |
 | `business-ui-app.mustache` 147 KB | **172 K** | ❌ **grew 25 K — understated** |
@@ -160,8 +160,8 @@ to *not* avoid a 140 KB one that is absent from the list. It also silently erase
 
 **No longer large** — split by the 2.B decomposition (2026-07-27/28), read them normally:
 `SemanticValidator.java` (12 KB, now an orchestrator over 12 `*Validation` classes) and
-`TrustedSourceEmitter.java` (12 KB). Their logic moved to sibling classes — grep the package, not
-the file.
+`UntrustedExtensionEmitter.java` (pre-rename name at the time, 12 KB). Their logic moved to
+sibling classes — grep the package, not the file.
 ```
 
 The "no longer large" note matters as much as the list: it tells a session **where the logic went**,
@@ -169,7 +169,7 @@ which the bare removal would not.
 
 **Definition of done.**
 - [ ] Every size in the block matches a measurement taken the same day
-- [ ] `SemanticValidator` and `TrustedSourceEmitter` removed, with the pointer to their split packages
+- [ ] `SemanticValidator` and `UntrustedExtensionEmitter` (pre-rename name at the time) removed, with the pointer to their split packages
 - [ ] `SchemaLifecycleExecutor` added
 - [ ] `business-ui-app.mustache` corrected upward
 
@@ -259,8 +259,9 @@ Deliberately **not** attempted: verifying CLAUDE.md's prose is complete. That is
 mechanical claims — sizes and branch gap — are the ones that go stale silently and can be checked
 statically.
 
-**Calibrate:** point it at CLAUDE.md as it stands today (pre-P2) and confirm it fires on
-`TrustedSourceEmitter` and `SemanticValidator`; fix P2 and confirm green. That is a free real fixture
+**Calibrate:** point it at CLAUDE.md as it stands today (pre-P2) and confirm it fires on the
+generator emitter later renamed to `UntrustedExtensionEmitter` and on `SemanticValidator`; fix P2
+and confirm green. That is a free real fixture
 — capture it **before** P2 lands, exactly as the corpus gate's RED run was captured before migrating.
 
 **Definition of done.**

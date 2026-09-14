@@ -27,7 +27,7 @@ files:
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/TrustedActionKernelRunnerTemplate.java
 detail: |
   `TrustedActionSupportTemplates.java`/`TrustedFlowSupportTemplates.java` are Java source TEXT
-  BLOCKS (`"""..."""` string literals) that `TrustedSourceEmitter` writes verbatim into every
+  BLOCKS (`"""..."""` string literals) that `UntrustedExtensionEmitter` writes verbatim into every
   generated FinalApp under `com.npdev.generated.trusted.*`. Several of those literal classes froze
   a caller-supplied `Map<String, Object>` via `Map.copyOf(new LinkedHashMap<>(x))` -- the exact
   REG-146 shape, except the randomized-order map is built and iterated inside the GENERATED APP's
@@ -35,7 +35,7 @@ detail: |
 
   `java.util.ImmutableCollections`' JEP 269 hash-flood mitigation re-salts on every JVM start, so a
   map's iteration order is STABLE while one process stays up but changes on every restart. Traced
-  end-to-end (background-agent audit, verified against `TrustedSourceControllerTemplate.java`'s
+  end-to-end (background-agent audit, verified against `UntrustedExtensionControllerTemplate.java`'s
   `.body(response.toMap())` calls): `GeneratedActionExecutionResponse.result` /
   `GeneratedActionCapabilityResult.result` / `GeneratedFlowExecutionResponse.result` are returned
   directly as the JSON body of `POST /api/generated/actions/{actionName}/run`,
@@ -79,10 +79,17 @@ resolution: >-
   perspective), `:generator:compileJava` succeeding does NOT prove the emitted text itself is valid
   Java -- verification requires actually generating and compiling the emitted
   `com.npdev.generated.trusted.*` classes. Ran the full `:generator:test` suite (345 tests, all
-  green), which includes `TrustedSourceEmitterGeneratedActionTest`/
-  `TrustedSourceEmitterGeneratedActionJdbcEvidenceTest` and other tests that generate real sample
+  green), which includes `UntrustedExtensionEmitterGeneratedActionTest`/
+  `UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest` and other tests that generate real sample
   output and compile it -- confirms the edited template text compiles correctly as part of a real
   generated app. Not additionally live-verified via an actual app-restart REST diff (the guard
   above) in this pass -- unit/generation-test coverage confirms the emitted code is syntactically
   and behaviorally sound (LinkedHashMap-backed, order-preserving), but the specific "two restarts,
   diff the JSON" live proof was not run.
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the classes named above used the pre-W0.2
+  vocabulary (see git blame for the literal spelling used at authoring time) at the time this
+  incident was investigated; renamed to UntrustedExtensionEmitter, UntrustedExtensionControllerTemplate,
+  UntrustedExtensionEmitterGeneratedActionTest and UntrustedExtensionEmitterGeneratedActionJdbcEvidenceTest
+  by W0.2. The incident's substance is unaffected.

@@ -174,10 +174,16 @@ resolution: |
      investigation was exactly this false-positive, caught by noticing an 8-second runtime for a
      test that otherwise always takes several minutes): both
      `HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest` and
-     `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest` pass with `--rerun`.
+     `UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest` pass with `--rerun`.
 
   Several transient Windows file-lock failures during iteration
   (`FileSystemException: O arquivo já está sendo usado por outro processo` deleting Output/App) --
   the known gotcha from this repo's own environment notes (a lingering handle, sometimes from a
   leftover `java.exe` this session's own manual boot tests spawned) -- all cleared on retry (killing
   stray `java` processes when a plain retry didn't clear it), not counted as real failures.
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the test class named above used the
+  pre-W0.2 vocabulary (see git blame for the literal spelling used at authoring time) at the time
+  this incident was investigated; renamed to UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest
+  by W0.2. The incident's substance is unaffected.

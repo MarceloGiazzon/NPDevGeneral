@@ -18,7 +18,7 @@ detail: |
   "capability-like" and compiles it into a CompiledCapabilityCall with capability type
   "GeneratedActionCapability". The generator (TrustedActionKernelRunnerTemplate,
   GeneratedActionCapabilityAdapter) has full, tested support for executing a compiled step of that
-  shape -- proven live by TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest, which builds and
+  shape -- proven live by UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest, which builds and
   boots a real packaged app with a generatedAction-shaped compiled flow step.
   But FlowValidation.validateFlowSteps's switch had no case for "generatedaction" (it handled
   invariant/capability/createentity-updateentity-createconcept-updateconcept/event/scheduleevent/
@@ -39,3 +39,10 @@ detail: |
   code-generation directive resolved by the generator at build time, not a model-declared capability).
   dsl-conformance-max (F3) now includes a real generatedAction step as its own proof; docs/FLOWS.md
   updated.
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the test class above used the pre-W0.2
+  vocabulary (see git blame for the literal spelling used at authoring time) at the time this
+  incident was investigated; renamed to
+  UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest by W0.2. The incident's substance
+  is unaffected.

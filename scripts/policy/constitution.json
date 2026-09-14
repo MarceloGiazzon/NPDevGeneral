@@ -61,7 +61,7 @@
       "law": "Basic features stay simple by default; escape hatches exist for real needs but are honestly branded for what they are, not disguised as first-class 'trusted' shortcuts.",
       "enforcement": "aspirational",
       "checker": null,
-      "note": "W0.3 (2026-09-12): deliberately left aspirational rather than given a bare, unbacked claim -- 'basic features stay simple by default' is a design posture, not a testable property (there is no diagnostic that could fire for a feature being too complex). P0.4/W0.2 already made the honest-branding half true in the generator layer (TrustedSource -> UntrustedExtension); see ledger/boundaries/B32.yml for the layered-complexity boundary record (POSTURAL, docs/ACCEPTED_BOUNDARIES.md) this aspirational entry now points at, per check_task.py's constitutionNoFreeAspirational rule."
+      "note": "W0.3 (2026-09-12): deliberately left aspirational rather than given a bare, unbacked claim -- 'basic features stay simple by default' is a design posture, not a testable property (there is no diagnostic that could fire for a feature being too complex). P0.4/W0.2 already made the honest-branding half true in the generator layer (the escape-hatch vocabulary was inverted to UntrustedExtension*); see ledger/boundaries/B32.yml for the layered-complexity boundary record (POSTURAL, docs/ACCEPTED_BOUNDARIES.md) this aspirational entry now points at, per check_task.py's constitutionNoFreeAspirational rule."
     },
     {
       "id": "legible-to-domain-experts-and-ai",

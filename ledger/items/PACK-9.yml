@@ -35,7 +35,7 @@ detail: |
   session's 16-item batch-fix pass; this item needs a design conversation first, not a mechanical
   fix): role-name strings appear in two structurally different shapes, both needing to be covered --
   (1) STRUCTURED fields, a small closed set (`RoleAst`/`CompiledRole`, `PanelAst.visibility`'s
-  existing `"role:ADMIN"` convention parsed by `TrustedSourceManifest.requiredRoleFromVisibility()`,
+  existing `"role:ADMIN"` convention parsed by `UntrustedExtensionManifest.requiredRoleFromVisibility()`,
   `ActionMetadataAst.permissionHint`); (2) EXPRESSION-EMBEDDED, open-ended and NOT machine-
   enumerable -- `ConceptAccessAst.access.read/write` and any `visibleWhen`/`enabledWhen` condition
   can embed a role check as a free-form string in the model's expression language (evaluated against
@@ -196,3 +196,9 @@ guard:
     (roles=[curator_b,user]) -> 200 row created; key-wrong (roles=[user]) -> 500
     ConceptGatewayAccessDeniedException. Both processes stopped afterward, ports 8410/8411 confirmed
     free.
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the manifest class named above used the
+  pre-W0.2 vocabulary (see git blame for the literal spelling used at authoring time) at the time
+  this incident was investigated; renamed to UntrustedExtensionManifest by W0.2. The incident's
+  substance is unaffected.

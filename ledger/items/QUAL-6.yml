@@ -68,9 +68,9 @@ resolution: |
     1. run-frontend-gate.ps1's Find-GeneratedResidue "coverage"-directory hard-fail: not triggered --
        this card adds no frontend/vitest coverage (explicitly out of scope, see above).
     2. :generator's packaged-proof test exclusion + custom URLClassLoader-based tests
-       (TrustedSourceEmitterGeneratedActionTest et al.): verified live, not just reasoned about.
+       (UntrustedExtensionEmitterGeneratedActionTest et al.): verified live, not just reasoned about.
        Ran `:generator:test --tests AdapterRegistrationConsistencyTest --tests
-       TrustedSourceEmitterGeneratedActionTest` with JaCoCo enabled -- BUILD SUCCESSFUL,
+       UntrustedExtensionEmitterGeneratedActionTest` with JaCoCo enabled -- BUILD SUCCESSFUL,
        jacocoTestReport produced real, plausible, non-zero, non-100% counters (LINE 393 covered /
        7304 missed from just 2 test classes). The custom-classloaded throwaway harness classes are
        invisible to the report (compiled outside src/main/java), exactly as documented -- not a
@@ -172,3 +172,9 @@ guard:
     would have made this guard pass on a developer machine that had run the gates and fail on
     every clean CI checkout.
   provenRed: true
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the test class named above used the
+  pre-W0.2 vocabulary (see git blame for the literal spelling used at authoring time) at the time
+  this incident was investigated; renamed to UntrustedExtensionEmitterGeneratedActionTest by W0.2.
+  The incident's substance is unaffected.

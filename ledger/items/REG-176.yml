@@ -125,7 +125,7 @@ resolution: >-
   `npdev-pr-gate.yml`'s "PR gate" job AND `npdev-ci-validation.yml`'s "Generator gate" job -- same
   commit, same three tests
   (`HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest`,
-  `TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest`,
+  `UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest`,
   `HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest`), same failure shape
   (`waitForHealth`/`java.net.ConnectException` -- the packaged app never became healthy within its
   own 6-minute per-test deadline). Root cause: `NPDevGenerator/generator/build.gradle`'s shared
@@ -182,7 +182,7 @@ resolution: >-
   status-page incident for this window).
 
   Applied one more, more conservative hardening as a result: raised each of the three tests' own
-  health-check deadline (6min -> 8min for `HardenGcDeleteReplaceCascade`/`TrustedSourceEmitter`'s
+  health-check deadline (6min -> 8min for `HardenGcDeleteReplaceCascade`/`UntrustedExtensionEmitter`'s
   named `HEALTH_TIMEOUT`; 2min -> 8min for `HardenObjstoreFileUpload`'s own inline deadline, which
   was a full 4 minutes shorter than its two siblings' and the more likely reason it was consistently
   the last/worst of the three to fail) and raised both workflow files' "Generator unit tests" step
@@ -210,3 +210,9 @@ resolution: >-
   address a real, independently-confirmed contention issue (verified clean on PR #95 before REG-177
   ever touched this branch) and are being KEPT, not reverted -- they're correct improvements in
   their own right, they just were not sufficient to explain or fix THIS branch's specific failures.
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the classes named above used the pre-W0.2
+  vocabulary (see git blame for the literal spelling used at authoring time) at the time this
+  incident was investigated; renamed to UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest
+  and UntrustedExtensionEmitter by W0.2. The incident's substance is unaffected.

@@ -17,7 +17,7 @@ codeLinkedNote: >-
   conversions[].javaHook: {source, class, method} as a sibling alternative to op (not an 8th enum
   value -- the fields are disjoint); the generator admits the source through the SAME bytecode/AST
   escape-detection a plugin:java-source mount goes through (PluginJavaSourcePolicy,
-  TrustedSourceBytecodeInspector), copies it into the app's compiled source tree, and registers ONE
+  UntrustedExtensionBytecodeInspector), copies it into the app's compiled source tree, and registers ONE
   plugin-manifest adapter row (ConversionHookJavaHookEmitter) so PluginIpcChildProcessPool's existing
   null-when-empty bean condition (NpdevPluginConfig, keyed on java-source-runtime-refs.json) "just
   works" for an app whose only plugin surface is a javaHook. At migration time
@@ -47,5 +47,10 @@ codeLinkedNote: >-
   historically tracked under the same boundary id but are genuinely separate concerns; this package
   did not touch the reference-validation one and left NPDevContract/schemas/accepted-boundaries.json
   unmodified.
+
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the security class named above used the
+  pre-W0.2-extension vocabulary (see git blame for the literal spelling used at authoring time) at
+  the time this row was written; renamed to UntrustedExtensionBytecodeInspector by this session's
+  W0.2 continuation.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B13, ConversionHookJavaHookEmitter.java, JavaMigrationHookRunner.java, STOR-25, REAL_LIFT_PLAN_2026-09-03.md package B1"
 classification: LIFTED
