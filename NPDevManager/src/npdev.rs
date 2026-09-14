@@ -88,6 +88,18 @@ const FIXTURE_EXPLORE_PREFLIGHT: &str = include_str!("../fixtures/explore-prefli
 /// that exact command when the cadence or its schema drifts.
 const FIXTURE_VERIFICATION_PANEL: &str = include_str!("../fixtures/verification-panel.json");
 
+/// W3.2. Captured live from `python NPDevCli/npdev_cli.py pack list --model <path>` against a
+/// real AppGen app (WmsOfficePackTest) with three resolved packs: two local, one remote and
+/// unsigned -- verbatim, not edited. Re-capture with that exact command if the report shape
+/// drifts.
+const FIXTURE_PACK_LIST: &str = include_str!("../fixtures/pack-list.json");
+/// W3.2. The SAME capture, but from a throwaway local app+pack built only to produce this one
+/// fixture honestly: no real published pack was deprecated to get this. See fixtures/README.md.
+const FIXTURE_PACK_LIST_DEPRECATED: &str = include_str!("../fixtures/pack-list-deprecated.json");
+/// W3.2. Captured live from `python NPDevCli/npdev_cli.py pack why --model <path> identity`
+/// against the same WmsOfficePackTest app.
+const FIXTURE_PACK_WHY: &str = include_str!("../fixtures/pack-why.json");
+
 /// Which doctor fixture stub mode serves -- switchable at runtime (see `set_fake_doctor_scenario`
 /// command) so every failure screen (missing Java, wrong version, unstaged jars) can be exercised
 /// without restarting the Manager or ever having a real broken machine to test on.
@@ -1181,6 +1193,66 @@ pub async fn run_verification_run_item(
         args.push(timeout_seconds.to_string());
     }
     run_json(python_exe, npdev_cli, &args, java_home, "verify --run").await
+}
+
+// ---------------------------------------------------------------------------------------------
+// W3.2: the Packs screen. Thin pipe, same standing rule as everything above -- no resolution
+// logic here, only `npdev pack list`/`pack why`, exactly as a terminal user would run them.
+// ---------------------------------------------------------------------------------------------
+
+/// Which fake state the Packs screen shows in stub mode -- same runtime-switchable Mutex shape
+/// as `FAKE_HOST_SCENARIO` above. Default is the common case: an app with a few ordinary
+/// resolved packs, none deprecated.
+pub static FAKE_PACK_SCENARIO: Mutex<String> = Mutex::new(String::new());
+
+pub fn fake_pack_scenario_names() -> Vec<&'static str> {
+    vec!["normal", "deprecated"]
+}
+
+fn fake_pack_scenario() -> String {
+    let guard = FAKE_PACK_SCENARIO.lock().expect("lock poisoned");
+    if guard.is_empty() {
+        std::env::var("NPDEV_MANAGER_FAKE_PACK").unwrap_or_else(|_| "normal".to_string())
+    } else {
+        guard.clone()
+    }
+}
+
+/// The Packs screen's list -- `npdev pack list --model <appDir>/model.json`. W3.2's own report is
+/// already enriched by the CLI itself (`_enrich_pack_list_report` in npdev_cli.py) with each
+/// pack's `signature` status and `deprecated` block when either exists on disk; this function
+/// never re-derives either, only shells out and returns what the CLI said.
+pub async fn run_pack_list(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        let text = if fake_pack_scenario() == "deprecated" { FIXTURE_PACK_LIST_DEPRECATED } else { FIXTURE_PACK_LIST };
+        return serde_json::from_str(text).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let model = format!("{app_dir}/model.json");
+    let args = vec!["pack".to_string(), "list".to_string(), "--model".to_string(), model];
+    run_json(python_exe, npdev_cli, &args, java_home, "pack list").await
+}
+
+/// The Packs screen's detail panel for one selected pack -- `npdev pack why --model <appDir>/
+/// model.json <packId>`, verbatim.
+pub async fn run_pack_why(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    pack_id: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_PACK_WHY).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let model = format!("{app_dir}/model.json");
+    let args = vec!["pack".to_string(), "why".to_string(), "--model".to_string(), model,
+                    pack_id.to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "pack why").await
 }
 
 pub async fn run_monitor_logs(

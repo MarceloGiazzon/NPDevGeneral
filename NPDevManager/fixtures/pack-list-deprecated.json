@@ -1,0 +1,19 @@
+{
+  "packs": {
+    "oldwidgets": {
+      "resolvedVersion": "1.0.0",
+      "sourcePath": "packs/oldwidgets/pack.json",
+      "digest": "sha256:b711c150b828e89e883eb4b118836ab6bbc4963cd8fddf09e80b52721bf853f4",
+      "deprecated": {
+        "since": "1.0.0",
+        "reason": "replaced by newwidgets, no longer maintained",
+        "supersededBy": {
+          "pack": "newwidgets",
+          "version": "2.0.0"
+        }
+      }
+    }
+  },
+  "locked": true,
+  "status": "ok"
+}

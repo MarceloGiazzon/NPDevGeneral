@@ -1,0 +1,5 @@
+{
+  "status" : "ok",
+  "packId" : "identity",
+  "requiredBy" : [ "user needs ^1.0 via app -> user" ]
+}

@@ -111,6 +111,16 @@ fn set_fake_host_scenario(name: String) {
     *npdev::FAKE_HOST_SCENARIO.lock().expect("lock poisoned") = name;
 }
 
+#[tauri::command]
+fn fake_pack_scenarios() -> Vec<&'static str> {
+    npdev::fake_pack_scenario_names()
+}
+
+#[tauri::command]
+fn set_fake_pack_scenario(name: String) {
+    *npdev::FAKE_PACK_SCENARIO.lock().expect("lock poisoned") = name;
+}
+
 // -------------------------------------------------------------------------------------------
 // M2: Ready screen
 // -------------------------------------------------------------------------------------------
@@ -789,6 +799,57 @@ async fn verification_run_item(state: State<'_, AppState>, item_id: String,
     let cli = resolve_npdev_cli(&state)?;
     npdev::run_verification_run_item(&python, &cli, java_home.as_deref(), &item_id,
                                      timeout_seconds.unwrap_or(0)).await
+}
+
+/// W3.2: the Packs screen's list -- `npdev pack list --model <appDir>/model.json`. Thin pipe, same
+/// shape as verification_panel: no resolution/signature/deprecation decision lives in Rust, the
+/// CLI's own report (already enriched by npdev_cli.py's `_enrich_pack_list_report`) is returned
+/// verbatim.
+#[tauri::command]
+async fn pack_list(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_pack_list(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                    java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_pack_list(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+/// W3.2: the Packs screen's detail panel -- `npdev pack why --model <appDir>/model.json <packId>`.
+#[tauri::command]
+async fn pack_why(state: State<'_, AppState>, app_dir: String, pack_id: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_pack_why(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                                   java_home.as_deref(), &app_dir, &pack_id).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_pack_why(&python, &cli, java_home.as_deref(), &app_dir, &pack_id).await
+}
+
+/// W3.2's "offer export": save a copy of the currently-locked pack's own pack.json file to
+/// wherever the user picks, through the same native "Save As" dialog `pick_local_repo_folder`
+/// uses for folders. Deliberately NOT a new `npdev pack` verb -- `source_path` is a lock entry's
+/// own field the Packs screen already has in hand, so this is a plain file copy, not a second
+/// resolution mechanism. Returns `None` if the user cancels the dialog.
+#[tauri::command]
+async fn pack_export_copy(source_path: String, suggested_name: String) -> Result<Option<String>, String> {
+    let Some(handle) = rfd::AsyncFileDialog::new()
+        .set_title("Save a copy of this pack.json")
+        .set_file_name(&suggested_name)
+        .add_filter("pack.json", &["json"])
+        .save_file()
+        .await
+    else {
+        return Ok(None);
+    };
+    let dest = handle.path().to_path_buf();
+    std::fs::copy(&source_path, &dest)
+        .map_err(|e| format!("could not copy {source_path} to {}: {e}", dest.display()))?;
+    Ok(Some(dest.to_string_lossy().to_string()))
 }
 
 /// D7's inspect paths were type-in-a-folder-path-by-hand only -- fine for a terminal user, hostile
@@ -2027,6 +2088,11 @@ fn main() {
             read_info_json,
             verification_panel,
             verification_run_item,
+            pack_list,
+            pack_why,
+            pack_export_copy,
+            fake_pack_scenarios,
+            set_fake_pack_scenario,
             pick_inspect_folders,
             get_inspect_paths,
             set_inspect_paths,

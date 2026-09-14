@@ -1,0 +1,110 @@
+id: W3.2
+title: >-
+  The Manager has no pack screen at all -- packs are the platform's central reuse unit and the
+  operator-facing tool cannot see them
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-14
+closed: 2026-09-14
+verification: UNIT_TESTED
+depends_on:
+  - W3.1
+source: >-
+  NPDEV_ROADMAP_2026-09-12.md, Wave 3 (W3.2): "Manager pack surface. The Manager has no pack
+  screen at all (NPDevManager/src/runtime.rs mentions 'pack' only for JDK archives). List
+  installed packs with version, digest and signature status, show `npdev pack why` output for
+  one, and offer export. Extend the Manager; never restart it."
+surface: NPDevManager/ui (new Packs screen), NPDevManager/src (Rust wrappers shelling to the
+  existing CLI, no resolution logic in Rust), NPDevCli/npdev_cli.py (pack list enrichment),
+  docs/MANAGER.md
+files:
+  - NPDevManager/ui/packs.js
+  - NPDevManager/ui/packs.css
+  - NPDevManager/ui/index.html
+  - NPDevManager/src/npdev.rs
+  - NPDevManager/src/main.rs
+  - NPDevCli/npdev_cli.py
+  - NPDevCli/tests/test_pack_list_enrichment.py
+  - docs/MANAGER.md
+  - NPDevManager/fixtures/pack-list.json
+  - NPDevManager/fixtures/pack-list-deprecated.json
+  - NPDevManager/fixtures/pack-why.json
+  - NPDevManager/fixtures/README.md
+detail: |
+  WHAT WAS BUILT:
+  1. New "Packs" tab (NPDevManager/ui/packs.js + packs.css, wired into index.html exactly like
+     every other added screen: nav button, `<section id="screen-packs">`, a CSS link, a script
+     tag, and a `window.__npdevInitPacks()` boot call guarded the same way Monitor/Scrap/Prompter/
+     Verification already are). An app picker (same `list_apps`-populated, choice-preserving
+     `<select>` as the Ready screen's doctor-app-picker) drives a pack list: each row shows id,
+     resolved version, a shortened digest, and a signature badge (verified / unsigned(allowed) /
+     local), with a deprecated-pack banner (since, reason, successor) rendered under any row whose
+     pack.json carries one. A "why?" button runs `pack why` into an inline detail panel; an
+     "export…" button saves a copy of the pack's own resolved file via a native Save dialog.
+  2. Rust wrappers (NPDevManager/src/npdev.rs: `run_pack_list`, `run_pack_why`; main.rs:
+     `pack_list`, `pack_why`, `pack_export_copy` Tauri commands, plus `fake_pack_scenarios`/
+     `set_fake_pack_scenario` for Preview mode) -- thin pipes shelling to `npdev pack list --model
+     <app>/model.json` / `pack why --model <app>/model.json <packId>`, verbatim, per the Monitor +
+     Scrap Manager subsystem contract's standing rule ("no CLI behaviour in Rust"). `pack_export_copy`
+     is a plain `std::fs::copy` to a path an `rfd::AsyncFileDialog` save dialog picked -- not a new
+     CLI verb, since `sourcePath` is a field the screen already has from `pack_list`.
+  3. `_enrich_pack_list_report` (npdev_cli.py): `npdev pack list`'s report comes straight from
+     PackListMain (Java), which only ever re-serializes resolvedVersion/sourcePath/digest -- never
+     `signature` (written into npdev.lock by W3.1's `_verify_pack_signatures` on a prior add/
+     update) or `deprecated` (W3.1's own authored pack.json field). This merges both in from data
+     that already exists on disk, with no re-verification and no re-resolution, so the Manager
+     screen (and any other future consumer of `pack list --json`) gets the full picture in one call.
+  4. Three fixtures, ALL real captures per fixtures/README.md's own rule ("captured, not written"):
+     `pack-list.json` (a real 3-pack AppGen app, WmsOfficePackTest, refreshed for real with
+     `pack update --allow-unsigned` first so the remote `user` pack's signature field is genuine),
+     `pack-why.json` (real `pack why identity` against the same app), and `pack-list-deprecated.json`
+     (a throwaway local app+pack, deprecated via a REAL `npdev pack deprecate --write` call, then
+     resolved via a real `npdev pack add` -- built only to capture this one fixture honestly, no
+     real published pack was touched).
+  5. docs/MANAGER.md: new "9 · Packs" section (control table, same shape as "8 · Scrap Manager"),
+     a Contents entry, and a Preview-mode scenario table + `NPDEV_MANAGER_FAKE_PACK` env var row
+     matching the Share screen's own documented pattern.
+
+  A REAL BUG WAS FOUND AND FIXED WHILE CAPTURING THE FIXTURES (not a synthetic exercise): see the
+  2026-09-14 amendment on ledger/items/W3.1.yml -- `_check_deprecated_packs` (W3.1) and this task's
+  own `_enrich_pack_list_report` both resolved a LOCAL pack's `sourcePath` against the wrong base
+  directory. Fixed by a shared `_resolve_pack_source_path` helper, with regression tests in both
+  test_pack_deprecate.py and test_pack_list_enrichment.py.
+
+  NOT DONE / NOT VERIFIABLE IN THIS SESSION: the Manager is a native Windows Tauri GUI application
+  with no display available in this shell, so the screen's actual on-screen rendering was never
+  visually confirmed -- `helpers/check_task.py --task W3.2` itself reports the judgement-based
+  doneWhen condition as MANUAL, not PASS, for exactly this reason. What WAS verified: `cargo check`
+  and `cargo test` (27/27) both pass clean after every change; the three fixtures are genuine CLI
+  captures (JSON-valid, confirmed by hand); `_enrich_pack_list_report` is unit-tested (6 tests,
+  including the sourcePath regression); the wiring (command names, arg casing, generate_handler!
+  registration, screen/tab id convention) matches every existing sibling screen exactly. The
+  concrete next step for whoever picks this up: launch the Manager with `NPDEV_MANAGER_FAKE=1` (or
+  for real, against WmsOfficePackTest), click the Packs tab, and confirm the three rows/badges/
+  deprecation banner/why-panel/export-dialog all render as designed.
+guard:
+  kind: script
+  ref: cargo check && cargo test (NPDevManager); python -m unittest NPDevCli.tests.test_pack_list_enrichment
+  asserts: >-
+    helpers/check_task.py --task W3.2's automatic condition PASSes (66 pack-related matches in
+    NPDevManager/ui, min 1 required); its judgement condition is honestly reported MANUAL, not
+    PASS -- see "NOT VERIFIABLE" above. `cargo check`/`cargo test` in NPDevManager: 0 warnings,
+    27/27 existing Rust tests still pass after adding pack_list/pack_why/pack_export_copy and
+    their fixture-mode branches. All 6 new Python tests in test_pack_list_enrichment.py pass,
+    including a regression test for the sourcePath bug found live while capturing fixtures. Full
+    NPDevCli pack-test suite (126 tests) green after the fix.
+  provenRed: true
+  provenRedNote: >-
+    Before this task: `grep -rn "pack" NPDevManager/src/runtime.rs` (the roadmap's own cited
+    evidence) found only JDK-archive unpacking, reconfirmed by grepping "pack" across all of
+    main.rs before adding anything and finding zero matches outside "package"/"unpack". No
+    packs.js/packs.css existed; no Packs tab existed in index.html. The fixture-capture process
+    itself hit a genuine live failure (the sourcePath bug above) before `_resolve_pack_source_path`
+    existed -- `pack list` against WmsOfficePackTest's real local packs and a deliberately-built
+    deprecated-pack scratch app both silently omitted data that should have been there, caught by
+    reading the actual captured JSON rather than assuming the enrichment worked.
+notes: |
+  W3.1's dependency was already PASS (checked via helpers/check_task.py --task W3.1 before
+  starting, per this task's own "DEPENDS ON" line). W3.3 (pack-design docs) remains open in Wave
+  3 -- the last item in that wave.

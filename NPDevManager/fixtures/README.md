@@ -81,6 +81,22 @@ Those only appear for a Postgres/MySQL/SqlServer-profiled deployment (`npdev_hos
 `host.definition.json` on the source app was reset to `rung: 1, target: null` after capture so the
 app is left in the same state `host-check-clean.json` was captured from.
 
+## Packs (W3.2), captured 2026-09-14
+
+| File | Captured from | Covers |
+|---|---|---|
+| `pack-list.json` | `python NPDevCli/npdev_cli.py pack list --model D:\WorkSpace\NPDev\AppGen\apps\_experiments\WmsOfficePackTest\definition\model.json` | Three real resolved packs: two local (`identity`, `workspace`, no `signature` field — nothing to sign), one remote and unsigned (`user`, from the real NPR repo, `signature.status: "unsigned"` after a real `pack update --allow-unsigned` run) |
+| `pack-list-deprecated.json` | The same command against a throwaway local app+pack built only to produce this fixture honestly (no real published pack was deprecated to get this): a local pack `oldwidgets`, deprecated via a real `npdev pack deprecate --write` call (W3.1) naming `newwidgets@2.0.0` as successor, then resolved with a real `npdev pack add` | The deprecated-banner state on a pack row |
+| `pack-why.json` | `python NPDevCli/npdev_cli.py pack why --model <same WmsOfficePackTest model> identity` | `identity`'s one real dependent (`user needs ^1.0 via app -> user`) |
+
+**A real bug was caught capturing these, not merely a UI gap:** `_enrich_pack_list_report` and
+`_check_deprecated_packs` (npdev_cli.py) both resolved a LOCAL pack's `sourcePath` against the
+CLI process's current working directory instead of the model's own directory — a relative
+`sourcePath` (the normal shape for a local pack) silently found nothing whenever those differed,
+which running `pack list` from the repo root against an app living elsewhere always does. Fixed
+by `_resolve_pack_source_path` before any fixture here was captured; the deprecated-fixture
+capture above is what surfaced it live.
+
 ## Re-capturing
 
 Fixtures go stale when a CLI contract changes; that is what they are for. Re-capture by running the

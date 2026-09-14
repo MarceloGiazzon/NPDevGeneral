@@ -9055,13 +9055,17 @@ def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: b
     return 2 if report.get("status") == "failed" else 0
 
 
-def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, str] | None = None) -> int:
+def _run_pack_gradle_task_raw(
+    task: str, model_path: Path, extra_props: dict[str, str] | None = None,
+) -> tuple[int, dict, str]:
     """PK-3: shared plumbing for npdev pack add|update|list|why -- same
     JavaExec-task-wrapping-a-small-Main-class shape run_validate_semantic already uses for
-    `validate model`. Each Main class prints its own JSON report to stdout; this just forwards the
-    Gradle task's own stdout (the report) and returns its exit code, since none of these four
-    commands need the temp-file capture-and-reread dance validate does (no --releaseGate-style
-    optional extra processing here).
+    `validate model`. Returns `(exit_code, parsed_report, raw_stdout)` -- never prints, so a
+    caller that wants to ENRICH the report before printing (W3.2: `run_pack_list` merges in
+    `signature`/`deprecated` fields PackListMain's own re-serialization drops) can do so; a caller
+    that just wants the original pass-through behavior uses `_run_pack_gradle_task` below, which
+    prints `raw_stdout` verbatim and returns only the exit code -- unchanged from before this was
+    split out.
     """
     root = repo_root()
     wrapper = gradle_wrapper(root)
@@ -9085,8 +9089,6 @@ def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, st
         gradle_args = ["cmd.exe", "/c"] + gradle_args
     completed = subprocess.run(gradle_args, cwd=root, check=False, capture_output=True, text=True)
     stdout = (completed.stdout or "").strip()
-    if stdout:
-        print(stdout)
     if completed.returncode not in (0, 2):
         detail = (completed.stderr or "").strip()
         raise CliError(f"pack {task} failed (gradle exit {completed.returncode})"
@@ -9095,11 +9097,34 @@ def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, st
         report = json.loads(stdout) if stdout else {}
     except json.JSONDecodeError:
         report = {}
-    return 2 if report.get("status") == "failed" else 0
+    code = 2 if report.get("status") == "failed" else 0
+    return code, report, stdout
+
+
+def _run_pack_gradle_task(task: str, model_path: Path, extra_props: dict[str, str] | None = None) -> int:
+    """Pass-through convenience over `_run_pack_gradle_task_raw`: prints the Gradle task's own
+    stdout (the report) verbatim and returns its exit code, since most of these commands need no
+    extra processing (no --releaseGate-style optional extra processing here)."""
+    code, _report, stdout = _run_pack_gradle_task_raw(task, model_path, extra_props)
+    if stdout:
+        print(stdout)
+    return code
 
 
 def _pack_lock_path(model_path: Path) -> Path:
     return Path(model_path).expanduser().resolve().parent / PACK_LOCK_FILE_NAME
+
+
+def _resolve_pack_source_path(model_path: Path, source_path: str) -> Path:
+    """A LOCAL pack's `sourcePath` in npdev.lock is written relative to the model's own directory
+    (`PackDependencyGraphWalker`'s `rootDirectory.relativize(packFile)`), NOT relative to whatever
+    directory the CLI process happens to be running from -- a real bug caught live while capturing
+    a Manager fixture (W3.2): running `pack list` from the repo root against an app in a different
+    directory silently found nothing for a relative sourcePath, because `Path("packs/x/pack.json")`
+    resolved against the WRONG base. A REMOTE pack's `sourcePath` is already absolute (the machine-
+    wide pack cache), so this is a no-op for that case -- `Path.is_absolute()` tells them apart."""
+    candidate = Path(source_path)
+    return candidate if candidate.is_absolute() else Path(model_path).expanduser().resolve().parent / candidate
 
 
 def _read_lock_entries_from_text(text: str | None) -> dict:
@@ -9187,11 +9212,12 @@ def _guard_against_remote_pack_tamper(model_path: Path, before_text: str | None,
 def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path, args: argparse.Namespace) -> int:
     """Wraps `_run_pack_gradle_task` for `packAdd`/`packUpdate` -- the two tasks that actually
     touch the network and can rewrite npdev.lock with freshly-fetched remote content -- with the
-    R8.6 tamper guard above, THEN (R8.7) the signature-verification gate. `packList`/`packWhy`
-    never fetch or rewrite the lock, so they call `_run_pack_gradle_task` directly, unwrapped.
-    Order matters: a mutated-tag tamper is a stronger, unconditional signal than "unsigned" and
-    must be caught and rolled back FIRST, before signature verification ever looks at (and
-    potentially re-persists a `signature` field onto) content the tamper guard would have refused.
+    R8.6 tamper guard above, THEN (R8.7) the signature-verification gate, THEN (W3.1) the
+    deprecation check. `packList`/`packWhy` never fetch or rewrite the lock, so they call
+    `_run_pack_gradle_task` directly, unwrapped. Order matters: a mutated-tag tamper is a stronger,
+    unconditional signal than "unsigned" or "deprecated" and must be caught and rolled back FIRST,
+    before either later check looks at (and, for signatures, potentially re-persists a field onto)
+    content the tamper guard would have refused.
     """
     lock_path = _pack_lock_path(model_path)
     before_text = lock_path.read_text(encoding="utf-8") if lock_path.is_file() else None
@@ -9199,6 +9225,7 @@ def _run_pack_gradle_task_with_tamper_guard(task: str, model_path: Path, args: a
     if code == 0:
         _guard_against_remote_pack_tamper(model_path, before_text, task)
         _verify_pack_signatures(model_path, before_text, args)
+        _check_deprecated_packs(model_path, before_text, args)
     return code
 
 
@@ -9338,6 +9365,81 @@ def _verify_pack_signatures(model_path: Path, before_text: str | None, args: arg
 
     if changed:
         lock_path.write_text(json.dumps(lock_doc, indent=2) + "\n", encoding="utf-8")
+
+
+def _check_deprecated_packs(model_path: Path, before_text: str | None, args: argparse.Namespace) -> None:
+    """W3.1: after packAdd/packUpdate resolves the graph (and after the tamper guard + signature
+    gate above have already passed), warn -- or with `--strict` and a named successor, refuse --
+    when a locked pack version carries a `deprecated` block in its own pack.json.
+
+    Reads each lock entry's own `sourcePath` -- the same file PackAddMain's Java-side signature
+    check already reads -- so this sees exactly what the resolver locked. A `deprecated` block is
+    ordinary pack.json content, authored before that version was ever published (see
+    `run_pack_deprecate`'s own doc): no digest-mismatch hazard, no second fetch, just a field this
+    function had not looked at before.
+
+    A deprecated version with no `supersededBy` only ever warns, `--strict` included -- there is
+    nothing to redirect a refusal to. Only a deprecated version that DOES name a successor is
+    refusable, and only under `--strict`; the un-strict default is warn either way, matching this
+    task's own "resolving a deprecated version emits a warning naming the successor" -- refusal is
+    the stricter opt-in, not the default.
+    """
+    lock_path = _pack_lock_path(model_path)
+    if not lock_path.is_file():
+        return
+    try:
+        lock_doc = json.loads(lock_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return
+    packs = lock_doc.get("packs")
+    if not isinstance(packs, dict):
+        return
+
+    strict = bool(getattr(args, "strict", False))
+    refusals: list[str] = []
+    for pack_id in sorted(packs):
+        entry = packs[pack_id]
+        if not isinstance(entry, dict):
+            continue
+        source_path = entry.get("sourcePath")
+        if not source_path:
+            continue
+        resolved_source = _resolve_pack_source_path(model_path, source_path)
+        if not resolved_source.is_file():
+            continue
+        try:
+            pack_doc = json.loads(resolved_source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        deprecated = pack_doc.get("deprecated") if isinstance(pack_doc, dict) else None
+        if not isinstance(deprecated, dict):
+            continue
+
+        version = entry.get("resolvedVersion", "?")
+        reason = deprecated.get("reason", "")
+        since = deprecated.get("since", "?")
+        superseded = deprecated.get("supersededBy")
+        successor = ""
+        if isinstance(superseded, dict) and superseded.get("pack") and superseded.get("version"):
+            successor = f" -- superseded by '{superseded['pack']}' @ {superseded['version']}"
+        message = (
+            f"pack '{pack_id}' resolved to DEPRECATED version {version} "
+            f"(deprecated since {since}): {reason}{successor}"
+        )
+        if strict and successor:
+            refusals.append(message)
+        else:
+            print(f"WARNING: {message}", file=sys.stderr)
+
+    if refusals:
+        if before_text is not None:
+            lock_path.write_text(before_text, encoding="utf-8")
+        else:
+            lock_path.unlink(missing_ok=True)
+        raise CliError(
+            "REFUSED (--strict): the resolved pack graph locks a DEPRECATED pack version that "
+            "names a successor:\n  " + "\n  ".join(refusals)
+        )
 
 
 # ---------------------------------------------------------------------------------------------
@@ -9542,6 +9644,80 @@ def run_pack_verify(args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 2
 
 
+_PACK_VERSION_PATTERN = re.compile(r"^\d+\.\d+\.\d+$")
+_PACK_ID_PATTERN = re.compile(r"^[a-z][a-z0-9_-]*$")
+_PACK_VERSION_RANGE_PATTERN = re.compile(r"^(\^)?\d+\.\d+(\.\d+)?$")
+
+
+def run_pack_deprecate(args: argparse.Namespace) -> int:
+    """`npdev pack deprecate` (W3.1): writes a `deprecated` block (since/reason/supersededBy,
+    pack.schema.json's own shape) into a LOCAL pack.json. Deliberately never mutates an
+    already-published file after the fact -- it only ever edits the path given on the command
+    line, and it is the author's job to publish the result under the version named by `--since`
+    through the existing `pack diff`/`pack publish` gate, exactly like any other pack.json edit.
+    That is what keeps this content-digest-safe: the block becomes part of that version's own
+    immutable bytes the moment it is published, never a retroactive change to a version some
+    consumer has already locked and digest-pinned.
+
+    Dry-run by default (prints what WOULD be written); `--write` applies it. Refuses if the file
+    already carries a `deprecated` block -- this command writes a FIRST deprecation only, so a
+    second accidental run can't silently overwrite a previously-recorded reason.
+    """
+    pack_path = Path(args.pack_path).expanduser().resolve()
+    if not pack_path.is_file():
+        raise CliError(f"pack.json not found: {pack_path}")
+    try:
+        doc = json.loads(pack_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise CliError(f"{pack_path} is not valid JSON: {exc}")
+    if not isinstance(doc, dict):
+        raise CliError(f"{pack_path} does not contain a JSON object")
+    if "deprecated" in doc:
+        existing_since = (doc["deprecated"] or {}).get("since") if isinstance(doc.get("deprecated"), dict) else "?"
+        raise CliError(
+            f"{pack_path} already has a `deprecated` block (since {existing_since}) -- edit the "
+            f"file directly to change it; `pack deprecate` only writes a first one."
+        )
+
+    since = args.since or str(doc.get("version") or "")
+    if not since:
+        raise CliError("--since is required (the pack has no `version` to default from)")
+    if not _PACK_VERSION_PATTERN.match(since):
+        raise CliError(f"--since must be a MAJOR.MINOR.PATCH version, got: {since!r}")
+    reason = (args.reason or "").strip()
+    if not reason:
+        raise CliError("--reason is required and must not be blank")
+
+    superseded_pack = getattr(args, "superseded_by_pack", None)
+    superseded_version = getattr(args, "superseded_by_version", None)
+    if bool(superseded_pack) != bool(superseded_version):
+        raise CliError("--superseded-by-pack and --superseded-by-version must be given together")
+
+    deprecated: dict = {"since": since, "reason": reason}
+    if superseded_pack and superseded_version:
+        if not _PACK_ID_PATTERN.match(superseded_pack):
+            raise CliError(
+                f"--superseded-by-pack must match pack.schema.json's pack id pattern, "
+                f"got: {superseded_pack!r}")
+        if not _PACK_VERSION_RANGE_PATTERN.match(superseded_version):
+            raise CliError(
+                f"--superseded-by-version must be an exact or caret version, got: {superseded_version!r}")
+        deprecated["supersededBy"] = {"pack": superseded_pack, "version": superseded_version}
+
+    report = {
+        "schemaVersion": "npdev-cli-result.v1", "command": "pack deprecate",
+        "pack": pack_path.as_posix(), "deprecated": deprecated, "written": bool(args.write),
+    }
+    if args.write:
+        doc["deprecated"] = deprecated
+        pack_path.write_text(json.dumps(doc, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        report["message"] = f"wrote `deprecated` block to {pack_path}"
+    else:
+        report["message"] = "dry run -- pass --write to apply"
+    print(json.dumps(report, indent=2))
+    return 0
+
+
 def run_pack_add(args: argparse.Namespace) -> int:
     from_catalog = getattr(args, "from_catalog", None)
     if from_catalog:
@@ -9553,8 +9729,61 @@ def run_pack_update(args: argparse.Namespace) -> int:
     return _run_pack_gradle_task_with_tamper_guard("packUpdate", Path(args.model), args)
 
 
+def _enrich_pack_list_report(model_path: Path, report: dict) -> None:
+    """W3.2: `pack list`'s report comes straight from PackListMain (Java), which only ever
+    re-serializes `resolvedVersion`/`sourcePath`/`digest` per entry -- it never carried
+    `signature` or `deprecated` even though both already exist on disk by the time `pack list`
+    runs: `signature` was written into THIS SAME npdev.lock by `_verify_pack_signatures` on a
+    prior `pack add`/`update` (re-read here verbatim, never re-verified -- this function performs
+    no cryptographic check of its own), and `deprecated` is authored content in the pack's own
+    `sourcePath` pack.json (the same file `_check_deprecated_packs` already reads). Mutates
+    `report["packs"]` entries in place; a missing lock file or missing pack.json just means
+    nothing to add, never an error -- `pack list`'s own dry-run (unlocked) case has no signature
+    or deprecated data yet either, and that is a correct, honest answer.
+    """
+    packs = report.get("packs")
+    if not isinstance(packs, dict):
+        return
+    lock_path = _pack_lock_path(model_path)
+    signatures: dict = {}
+    if lock_path.is_file():
+        try:
+            lock_doc = json.loads(lock_path.read_text(encoding="utf-8"))
+            lock_packs = lock_doc.get("packs")
+            if isinstance(lock_packs, dict):
+                for pack_id, lock_entry in lock_packs.items():
+                    if isinstance(lock_entry, dict) and "signature" in lock_entry:
+                        signatures[pack_id] = lock_entry["signature"]
+        except (OSError, json.JSONDecodeError):
+            pass
+    for pack_id, entry in packs.items():
+        if not isinstance(entry, dict):
+            continue
+        if pack_id in signatures:
+            entry["signature"] = signatures[pack_id]
+        source_path = entry.get("sourcePath")
+        if not source_path:
+            continue
+        resolved_source = _resolve_pack_source_path(model_path, source_path)
+        if not resolved_source.is_file():
+            continue
+        try:
+            pack_doc = json.loads(resolved_source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        deprecated = pack_doc.get("deprecated") if isinstance(pack_doc, dict) else None
+        if isinstance(deprecated, dict):
+            entry["deprecated"] = deprecated
+
+
 def run_pack_list(args: argparse.Namespace) -> int:
-    return _run_pack_gradle_task("packList", Path(args.model))
+    code, report, stdout = _run_pack_gradle_task_raw("packList", Path(args.model))
+    if code == 0 and isinstance(report, dict) and report:
+        _enrich_pack_list_report(Path(args.model), report)
+        print(json.dumps(report, indent=2))
+    elif stdout:
+        print(stdout)
+    return code
 
 
 def run_pack_why(args: argparse.Namespace) -> int:
@@ -13838,12 +14067,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="accept a remote pack with no detached signature. Recorded in npdev.lock "
              "(signature.status='unsigned', allowedUnsigned=true). Ignored in trust mode 'enforce'.",
     )
+    pack_add.add_argument(
+        "--strict", action="store_true",
+        help="W3.1: refuse (rather than warn) when the resolved graph locks a DEPRECATED pack "
+             "version that names a successor via `supersededBy`. A deprecated version with no "
+             "named successor still only warns -- there is nothing to redirect the refusal to.",
+    )
     pack_update = pack_sub.add_parser("update", help="Re-resolve the pack graph and rewrite npdev.lock.")
     pack_update.add_argument("--model", required=True, help="path to the model.json to resolve")
     pack_update.add_argument(
         "--allow-unsigned", dest="allow_unsigned", action="store_true",
         help="accept a remote pack with no detached signature. Recorded in npdev.lock "
              "(signature.status='unsigned', allowedUnsigned=true). Ignored in trust mode 'enforce'.",
+    )
+    pack_update.add_argument(
+        "--strict", action="store_true",
+        help="W3.1: refuse (rather than warn) when the resolved graph locks a DEPRECATED pack "
+             "version that names a successor via `supersededBy`. A deprecated version with no "
+             "named successor still only warns -- there is nothing to redirect the refusal to.",
     )
     pack_list = pack_sub.add_parser("list", help="Print the current npdev.lock (or a live dry-run).")
     pack_list.add_argument("--model", required=True, help="path to the model.json to resolve")
@@ -14033,6 +14274,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="treat an unsigned pack (or unsigned locked entry) as passing, same meaning as "
              "`pack add --allow-unsigned`",
     )
+
+    # W3.1: the last piece of the pack lifecycle -- deprecation. Writes a `deprecated` block
+    # (since/reason/supersededBy) into a LOCAL pack.json; it becomes part of that version's own
+    # immutable content the next time the file is legitimately published (through the existing
+    # `pack diff`/`pack publish` gate), never a retroactive edit to an already-published one.
+    pack_deprecate = pack_sub.add_parser(
+        "deprecate", help="Write a `deprecated` block (since/reason/supersededBy) into a pack.json."
+    )
+    pack_deprecate.add_argument("pack_path", metavar="<pack.json>", help="path to the pack.json to edit")
+    pack_deprecate.add_argument(
+        "--since", default=None,
+        help="the version this deprecation takes effect from (MAJOR.MINOR.PATCH); "
+             "default: the pack's own current `version`")
+    pack_deprecate.add_argument("--reason", required=True, help="why this version is deprecated")
+    pack_deprecate.add_argument(
+        "--superseded-by-pack", dest="superseded_by_pack", default=None, metavar="<packId>",
+        help="the pack id a consumer should migrate to instead. Requires --superseded-by-version.")
+    pack_deprecate.add_argument(
+        "--superseded-by-version", dest="superseded_by_version", default=None, metavar="<version>",
+        help="the successor's version constraint (exact or caret, e.g. '2.0.0' or '^2.0'). "
+             "Requires --superseded-by-pack.")
+    pack_deprecate.add_argument(
+        "--write", action="store_true",
+        help="apply the change; without this flag, only reports what would be written")
 
     # R1.5 (roadmap 2026-08-18 R1.5): "npdev init" scaffolds a whole app; before this, growing one
     # meant hand-editing model.json against the 4x-mirrored schema with no help until `npdev
@@ -15175,6 +15440,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_pack_sign_keygen(args)
         if args.command == "pack" and args.pack_command == "verify":
             return run_pack_verify(args)
+        if args.command == "pack" and args.pack_command == "deprecate":
+            return run_pack_deprecate(args)
         if args.command == "pack" and args.pack_command == "search":
             return run_pack_search(args)
         if args.command == "pack" and args.pack_command == "build-catalog":
