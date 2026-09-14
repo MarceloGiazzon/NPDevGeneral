@@ -38,6 +38,7 @@ if ([string]::IsNullOrWhiteSpace($Profiles)) {
 
 $gradlew = Get-NPDevGradleWrapperExecutable $AppRoot
 Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
+Ensure-NpdevSampleApiKey -AppRoot $AppRoot
 
 Info ("Starting sample app from: " + $AppRoot)
 Info ("URL after boot: http://localhost:" + $Port)

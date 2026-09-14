@@ -230,6 +230,15 @@ public class AggregateRuntime {
             }
         }
 
+        // Session 1 follow-up: a lookupFields[] value (e.g. maxQuantity) is attached to a row only
+        // by load() -- a brand-new draft that was never round-tripped through GET has no such key
+        // in its client-supplied JSON at all, and a client that DID load one is not trusted to echo
+        // it back honestly either (same "the server never trusts the client" rule assertAggregateBalances
+        // already follows below). Recomputed fresh here, overwriting whatever the client sent, so the
+        // invariant below always sees the current, real value regardless of how the draft originated.
+        Map<String, List<ConceptRecord>> lookupQueryResults = runLookupQueries(aggregate.collections(), gateway, ctx);
+        attachLookupFieldValues(aggregate.collections(), rootDraft, lookupQueryResults);
+
         // R4.4: declared invariants[] evaluate in this SAME pre-commit slot, right after onValidate
         // and still before the root upsert -- so a veto happens while there is nothing written to
         // roll back, and inside commit()'s transaction when one exists either way. Throwing
@@ -419,6 +428,39 @@ public class AggregateRuntime {
             out.put(queryName, page.items());
         }
         return out;
+    }
+
+    /**
+     * Mirrors {@link #loadCollection}'s join, but walks a client-supplied draft tree (plain
+     * {@code Map}/{@code List}, from JSON) instead of freshly {@code gateway.list()}-ed {@link
+     * ConceptRecord}s -- so a pre-commit invariant check sees the same fresh, server-computed
+     * lookup values a load() would have attached, regardless of whether this draft is a brand-new
+     * row (never loaded, so the client never had the value to send) or an edited existing one
+     * (whose client-echoed value is not trusted either). Mutates each row map in place.
+     */
+    private void attachLookupFieldValues(
+            List<CompiledAggregateCollection> collections,
+            Map<String, Object> parentDraft,
+            Map<String, List<ConceptRecord>> lookupQueryResults
+    ) {
+        for (CompiledAggregateCollection collection : collections) {
+            List<Map<String, Object>> draftRows = asRowList(parentDraft.get(collection.name()));
+            List<CompiledAggregateCollectionLookupField> lookupFields = collection.lookupFields();
+            List<Map<String, Object>> lookupIndexes = new ArrayList<>(lookupFields.size());
+            for (CompiledAggregateCollectionLookupField lookupField : lookupFields) {
+                lookupIndexes.add(buildLookupIndex(
+                        lookupQueryResults.getOrDefault(normalize(lookupField.query()), List.of()), lookupField));
+            }
+            for (Map<String, Object> row : draftRows) {
+                for (int i = 0; i < lookupFields.size(); i++) {
+                    CompiledAggregateCollectionLookupField lookupField = lookupFields.get(i);
+                    Object joinValue = row.get(lookupField.joinField());
+                    row.put(lookupField.name(),
+                            joinValue == null ? null : lookupIndexes.get(i).get(String.valueOf(joinValue)));
+                }
+                attachLookupFieldValues(collection.collections(), row, lookupQueryResults);
+            }
+        }
     }
 
     private static void collectLookupQueryNames(

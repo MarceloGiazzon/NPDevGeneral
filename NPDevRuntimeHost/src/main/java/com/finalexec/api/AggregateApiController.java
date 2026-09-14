@@ -6,13 +6,13 @@ import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Arrays;
 import java.util.List;
@@ -44,32 +44,32 @@ public class AggregateApiController {
     }
 
     @GetMapping("/{aggregateName}/{rootId}")
-    public Map<String, Object> load(
+    public ResponseEntity<Map<String, Object>> load(
             HttpServletRequest request,
             @PathVariable String aggregateName,
             @PathVariable String rootId
     ) {
         try {
-            return requireAggregateRuntime().load(aggregateName, rootId, currentContext(request));
+            return ResponseEntity.ok(requireAggregateRuntime().load(aggregateName, rootId, currentContext(request)));
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, ex.getMessage());
+            return errorBody(HttpStatus.NOT_FOUND, ex.getMessage());
         } catch (IllegalStateException ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+            return errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
         }
     }
 
     @PostMapping("/{aggregateName}")
-    public Map<String, Object> commit(
+    public ResponseEntity<Map<String, Object>> commit(
             HttpServletRequest request,
             @PathVariable String aggregateName,
             @RequestBody(required = false) Map<String, Object> draft
     ) {
         try {
-            return requireAggregateRuntime().commit(aggregateName, draft, currentContext(request));
+            return ResponseEntity.ok(requireAggregateRuntime().commit(aggregateName, draft, currentContext(request)));
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            return errorBody(HttpStatus.BAD_REQUEST, ex.getMessage());
         } catch (IllegalStateException ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+            return errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
         }
     }
 
@@ -79,18 +79,18 @@ public class AggregateApiController {
      * See ADR-0004 / P6 — procedure-over-aggregate (e.g. "Gerar Demanda"/recompute).
      */
     @PostMapping("/{aggregateName}/invoke/{procedureName}")
-    public Map<String, Object> invoke(
+    public ResponseEntity<Map<String, Object>> invoke(
             HttpServletRequest request,
             @PathVariable String aggregateName,
             @PathVariable String procedureName,
             @RequestBody(required = false) Map<String, Object> draft
     ) {
         try {
-            return requireAggregateRuntime().invoke(aggregateName, procedureName, draft, currentContext(request));
+            return ResponseEntity.ok(requireAggregateRuntime().invoke(aggregateName, procedureName, draft, currentContext(request)));
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            return errorBody(HttpStatus.BAD_REQUEST, ex.getMessage());
         } catch (IllegalStateException ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+            return errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
         }
     }
 
@@ -102,7 +102,7 @@ public class AggregateApiController {
      * {@code POST /api/runtime/aggregate/{name}/check-balances/{balanceNames}} (comma-separated).
      */
     @PostMapping("/{aggregateName}/check-balances/{balanceNames}")
-    public Map<String, Object> checkBalances(
+    public ResponseEntity<Map<String, Object>> checkBalances(
             HttpServletRequest request,
             @PathVariable String aggregateName,
             @PathVariable String balanceNames,
@@ -113,12 +113,24 @@ public class AggregateApiController {
                     .map(String::trim)
                     .filter(name -> !name.isEmpty())
                     .toList();
-            return requireAggregateRuntime().checkBalances(aggregateName, names, draft);
+            return ResponseEntity.ok(requireAggregateRuntime().checkBalances(aggregateName, names, draft));
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+            return errorBody(HttpStatus.BAD_REQUEST, ex.getMessage());
         } catch (IllegalStateException ex) {
-            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
+            return errorBody(HttpStatus.SERVICE_UNAVAILABLE, ex.getMessage());
         }
+    }
+
+    /**
+     * A bare {@code ResponseStatusException} loses its reason under Spring Boot's default
+     * {@code server.error.include-message=never} -- the client (see workbench-page.html.mustache's
+     * {@code res.b.message} read) never sees the business-language text the underlying
+     * {@code IllegalArgumentException}/{@code IllegalStateException} actually carried, only the
+     * bare status code. Every other controller in this codebase builds its own {@code "message"}
+     * body for this reason (see e.g. {@code AgentProxyController}); this controller must match.
+     */
+    private ResponseEntity<Map<String, Object>> errorBody(HttpStatus status, String message) {
+        return ResponseEntity.status(status).body(Map.of("message", message == null ? "" : message));
     }
 
     private ExecutionContext currentContext(HttpServletRequest request) {
