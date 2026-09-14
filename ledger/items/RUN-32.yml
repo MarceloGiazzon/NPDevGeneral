@@ -1,0 +1,49 @@
+id: RUN-32
+title: >-
+  build-finalapp fails its own bundled test suite on any freshly generated app right now, on two
+  unrelated model seeds, surviving a runtimehost-libs jar restage -- surfaced while live-verifying
+  Session 2's AI loop, not caused by it
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-14
+source: >-
+  NPDEV_MEGA_ROADMAP.md Session 2 (closing the AI authoring loop). The loop's live proof needed a
+  throwaway generated app to boot; `Build-FinalApp.ps1`'s `gradlew clean build` (which the platform's
+  build-finalapp ops script has always run, unchanged by this session) failed the SAME three tests on
+  BOTH a bare `npdev init` default-seed app and a second app generated from `NPDevSamples/npdev-canary`
+  (the frozen T1 fast-gate fixture, chosen specifically because it is supposed to be reliably green).
+  Confirmed unrelated to the AI loop: the loop's own code never ran in either build (both were built
+  directly via `npdev monitor ops --script build-finalapp`, before the loop touched anything), and
+  neither generated app was authored or edited by an AI candidate.
+surface: NPDevRuntimeHost (template tests shipped into every generated app), runtimehost-libs jar cache
+detail: |
+  `gradlew clean build --stacktrace --console=plain` on a fresh FinalApp consistently reports
+  "872 tests completed, 3 failed, 9 skipped", the same three failures both times:
+
+  - `SchemaPromotionControllerStandaloneTest > promoteRefusesWhenNoSchemaRealizationManifestIsOnTheClasspath()`
+    -- `java.lang.AssertionError` at line 98.
+  - `SchemaAcknowledgmentControllerTest > superUserWithNoManifestOnTheClasspathGetsServiceUnavailable()`
+    -- `java.lang.AssertionError` at line 92.
+  - `ConversionHookRunnerDeclaredConversionsTest > lookupConversionSetsTheForeignKeyFromTheMatchedRow_thenIsANoOpOnRerun()`
+    -- `org.opentest4j.AssertionFailedError` at line 149.
+
+  The first two both assert REFUSAL behaviour specifically "when no schema-realization manifest is on
+  the classpath" -- and both builds' own `enforceSingleSchemaRealizationSource` task output reads
+  "Generated schema-realization artifacts found: 2" unconditionally, which is at least consistent with
+  a manifest being present when these tests expect it absent (not confirmed by reading the test/task
+  source -- this session did not go further, wrong subsystem for Session 2).
+
+  Ruled out: staleness. `scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars` was run between
+  the two build attempts and the identical three tests still failed the same way afterward.
+
+  Not investigated: whether this reproduces under the officially-blessed `run-runtimehost-gate.ps1`
+  invocation (which assembles its OWN sample app and may pass different Gradle properties than a bare
+  `Build-FinalApp.ps1` run), whether it is specific to this machine's Gradle build-cache state, or
+  whether it is a genuine, previously-unnoticed regression in the `enforceSingleSchemaRealizationSource`
+  task or these tests' fixtures. Evidence left on disk for whoever picks this up:
+  `D:\WorkSpace\NPDev\Build\ai-loop-verify-app\logs\ops-build-finalapp-*.log` (two runs) and the app
+  itself at `D:\WorkSpace\NPDev\Build\ai-loop-verify-app` (throwaway, safe to delete once triaged).
+
+  Done when: root-caused and either fixed, or confirmed environment-specific and closed with that
+  evidence.
