@@ -30,6 +30,7 @@ release-governance material (still live, just not what a newcomer needs) lives i
 [SCHEMA_EVOLUTION.md](SCHEMA_EVOLUTION.md) ·
 [UI_CONTRACT.md](UI_CONTRACT.md) ·
 [SCREEN_TAXONOMY.md](SCREEN_TAXONOMY.md) ·
+[PACK_DESIGN.md](PACK_DESIGN.md) ·
 [MONITOR.md](MONITOR.md) ·
 [MANAGER.md](MANAGER.md) ·
 [RELEASE_PROCESS.md](RELEASE_PROCESS.md) ·
