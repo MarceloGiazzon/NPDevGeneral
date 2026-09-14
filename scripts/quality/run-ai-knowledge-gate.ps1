@@ -906,6 +906,18 @@ try {
         $failures += "the navigation reprojection proof failed: see scripts/quality/check-navigation-reprojection.py output above"
     }
 
+    # Constitution's 'layered-complexity' law, "basic features stay simple by default" half
+    # (B32, ledger/boundaries/B32.yml): not a subjective complexity judgment -- a ratchet over the
+    # mandatory (JSON Schema `required`) surface of the model itself and its concept/field/panel/
+    # procedure building blocks, so that surface can never grow silently. See
+    # scripts/policy/layered-complexity-baseline.json for the recorded floor and how to bump it on
+    # a real, reviewed decision.
+    Write-Host '[48/48] Checking the basic-building-block mandatory-field floor has not grown (layered-complexity ratchet)...'
+    & $py "scripts/quality/check-layered-complexity-ratchet.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a basic building block's mandatory-field floor grew past its recorded baseline: see scripts/quality/check-layered-complexity-ratchet.py output above, and scripts/policy/layered-complexity-baseline.json"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red
