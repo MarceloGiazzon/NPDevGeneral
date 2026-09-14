@@ -54,7 +54,7 @@ import java.util.Set;
  *       applied consistently in the source gate too.</li>
  * </ul>
  */
-public final class TrustedSourceBytecodeInspector {
+public final class UntrustedExtensionBytecodeInspector {
 
     private static final int JAVA_CLASS_MAGIC = 0xCAFEBABE;
 

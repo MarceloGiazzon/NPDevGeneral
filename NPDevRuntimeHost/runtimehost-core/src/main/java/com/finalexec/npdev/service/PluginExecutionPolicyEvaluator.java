@@ -88,7 +88,7 @@ public final class PluginExecutionPolicyEvaluator {
      * the host to perform capability calls on its behalf over the IPC channel, but only capabilities its
      * OWN manifest entry ({@code originalContribution.pluginId()}) declares it needs -- reusing this
      * evaluator's existing allow/deny decision shape rather than inventing a second policy model.
-     * Deliberately NOT a reuse of {@code TrustedSourceBytecodeInspector}: that inspector scans compiled
+     * Deliberately NOT a reuse of {@code UntrustedExtensionBytecodeInspector}: that inspector scans compiled
      * bytecode for direct forbidden references at admission time and has no visibility into what a
      * running child asks the host to do over an IPC channel that doesn't exist at admission time.
      */

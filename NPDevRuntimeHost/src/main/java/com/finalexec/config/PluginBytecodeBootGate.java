@@ -2,7 +2,7 @@ package com.finalexec.config;
 
 import com.finalexec.boundary.BoundaryBootException;
 import com.finalexec.boundary.BoundaryViolation;
-import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
+import com.npdev.kernel.security.UntrustedExtensionBytecodeInspector;
 import org.springframework.beans.factory.InitializingBean;
 
 import java.io.IOException;
@@ -27,7 +27,7 @@ import java.util.jar.JarFile;
  * reflection, dynamic loading, threads, scripting, detached async work, JVM internals) -- the
  * printed-form twin of the generator's source-level admission
  * ({@code PluginJavaSourcePolicy}, NPDevGenerator), sharing the same kernel denylist
- * ({@link TrustedSourceBytecodeInspector}).
+ * ({@link UntrustedExtensionBytecodeInspector}).
  *
  * <p><b>What it reads.</b> The per-app manifest the generator writes,
  * {@code npdev/plugin-bytecode/plugin-owned-classes.txt} (one classpath resource path per mounted
@@ -86,7 +86,7 @@ public final class PluginBytecodeBootGate implements InitializingBean {
         if (listedClasses.isEmpty()) {
             return List.of();
         }
-        TrustedSourceBytecodeInspector inspector = new TrustedSourceBytecodeInspector();
+        UntrustedExtensionBytecodeInspector inspector = new UntrustedExtensionBytecodeInspector();
         List<String> violations = new ArrayList<>();
         for (String listedClass : listedClasses) {
             for (String resourcePath : resolveCompiledClassResources(listedClass)) {
@@ -95,7 +95,7 @@ public final class PluginBytecodeBootGate implements InitializingBean {
                         LOG.warning("Plugin-owned class listed in " + PLUGIN_OWNED_CLASSES_RESOURCE + " is not on the classpath: " + resourcePath);
                         continue;
                     }
-                    TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(in, resourcePath);
+                    UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(in, resourcePath);
                     if (!result.passed()) {
                         for (String violation : result.violations()) {
                             violations.add(resourcePath + ": " + violation);

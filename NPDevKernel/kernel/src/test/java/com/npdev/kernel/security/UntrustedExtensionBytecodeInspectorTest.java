@@ -21,12 +21,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * reflection, threads, async detachment), and does not false-positive on benign neighbours
  * (RuntimeException references, java.util.concurrent.atomic.*).
  */
-class TrustedSourceBytecodeInspectorTest {
+class UntrustedExtensionBytecodeInspectorTest {
 
     @TempDir
     Path tempRoot;
 
-    private final TrustedSourceBytecodeInspector inspector = new TrustedSourceBytecodeInspector();
+    private final UntrustedExtensionBytecodeInspector inspector = new UntrustedExtensionBytecodeInspector();
 
     @Test
     void acceptsCleanPluginCode() throws Exception {
@@ -55,7 +55,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertTrue(result.passed(), "clean plugin class must pass: " + result.violations());
     }
 
@@ -83,7 +83,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertTrue(result.passed(), "benign neighbours must pass: " + result.violations());
     }
 
@@ -101,7 +101,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertFalse(result.passed(), "System.exit must be refused");
         assertTrue(result.violations().stream().anyMatch(v -> v.contains("java/lang/System.exit")),
                 "violations must name the System.exit reference: " + result.violations());
@@ -121,7 +121,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertFalse(result.passed(), "filesystem IO must be refused: " + result.violations());
     }
 
@@ -141,7 +141,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertFalse(result.passed(), "socket IO must be refused: " + result.violations());
     }
 
@@ -159,7 +159,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertFalse(result.passed(), "ProcessBuilder must be refused: " + result.violations());
     }
 
@@ -182,7 +182,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertFalse(result.passed(), "CompletableFuture must be refused (detached work outlives the timeout): " + result.violations());
     }
 
@@ -202,7 +202,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertFalse(result.passed(), "lambda body in the same class file must be refused: " + result.violations());
     }
 
@@ -222,7 +222,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertTrue(result.passed(), "System.out.println must pass: " + result.violations());
     }
 
@@ -240,7 +240,7 @@ class TrustedSourceBytecodeInspectorTest {
                 }
                 """
         );
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
         assertFalse(result.passed(), "Class.forName must be refused: " + result.violations());
     }
 

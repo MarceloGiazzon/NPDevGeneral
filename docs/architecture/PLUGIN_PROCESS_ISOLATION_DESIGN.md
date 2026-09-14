@@ -11,7 +11,7 @@ especially §1 and §3.
 ## 0. What Model A already closed, and what this document is for
 
 Model A (shipped 2026-08-27, see SEC-3's own `detail` history) added a static-analysis admission
-barrier: `TrustedSourceBytecodeInspector` (kernel) scans a plugin's *compiled bytecode* for direct
+barrier: `UntrustedExtensionBytecodeInspector` (kernel) scans a plugin's *compiled bytecode* for direct
 references to a fixed denylist (`java/lang/Runtime`, filesystem/socket packages, reflection,
 `java/lang/invoke/*`, detached-execution classes) at two enforcement points —
 `PluginJavaSourcePolicy` at generation time, `PluginBytecodeBootGate` at app boot. A plugin that
@@ -104,7 +104,7 @@ caught at generation time, not as a mid-flight serialization crash. `contextStat
 `_npdevEntityName`, per `adaptCallForHandler`) before finalizing which keys are safe to forward.
 
 **The callback allowlist is a separate, NEW runtime gate — not a reuse of
-`TrustedSourceBytecodeInspector`.** That inspector scans compiled bytecode for *direct* forbidden
+`UntrustedExtensionBytecodeInspector`.** That inspector scans compiled bytecode for *direct* forbidden
 references at admission time; it says nothing about which capabilities a *running* child may ask the
 host to perform over this new IPC channel. Without an explicit check here, isolation is decorative —
 a plugin whose declared job is `auditLog` could send a `callback` frame naming `persistence.dropAll`

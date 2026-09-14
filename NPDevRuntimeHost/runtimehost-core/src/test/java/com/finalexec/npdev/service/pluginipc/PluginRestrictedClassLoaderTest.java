@@ -49,7 +49,7 @@ class PluginRestrictedClassLoaderTest {
 
     @Test
     void theSameOwnerPrefixExemptionTheBytecodeAdmissionGateGrantsIsHonoredHere() {
-        // A plugin already admitted past TrustedSourceBytecodeInspector must not fail to RUN here
+        // A plugin already admitted past UntrustedExtensionBytecodeInspector must not fail to RUN here
         // for the one reference that inspector itself exempts (System.out/err's PrintStream).
         assertFalse(PluginRestrictedClassLoader.isDenied("java/io/PrintStream"));
     }

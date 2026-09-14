@@ -90,7 +90,7 @@ public record ConversionAst(
      *  {@code implementation.sourceRoot} uses), {@code className} the FQCN, {@code method} the
      *  method name -- admitted through the same bytecode/AST escape-detection a
      *  {@code plugin:java-source} mount goes through ({@code PluginJavaSourcePolicy},
-     *  {@code TrustedSourceBytecodeInspector}). */
+     *  {@code UntrustedExtensionBytecodeInspector}). */
     public record JavaHookAst(String source, String className, String method) {
         public JavaHookAst {
             if (source == null || source.isBlank()) {

@@ -6,7 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledProcedure;
 import com.npdev.generator.emitters.UntrustedExtensionEmitter;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.strategy.RegenerationPolicy;
-import com.npdev.kernel.security.TrustedSourceBytecodeInspector;
+import com.npdev.kernel.security.UntrustedExtensionBytecodeInspector;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
@@ -189,8 +189,8 @@ class UntrustedExtensionSecurityHardeningTest {
                 out.resolve("src/main/java/com/npdev/generated/trusted/CreateUsersProcedure.java")
         );
         Path generatedClass = generatedClassRoot.resolve("com/npdev/generated/trusted/CreateUsersProcedure.class");
-        TrustedSourceBytecodeInspector inspector = new TrustedSourceBytecodeInspector();
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult generatedResult = inspector.inspect(generatedClass);
+        UntrustedExtensionBytecodeInspector inspector = new UntrustedExtensionBytecodeInspector();
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult generatedResult = inspector.inspect(generatedClass);
         assertTrue(generatedResult.passed(), generatedResult.violations().toString());
 
         Path unsafeRoot = proofRoot == null
@@ -212,7 +212,7 @@ class UntrustedExtensionSecurityHardeningTest {
                 """);
         compileJava(unsafeRoot, out.resolve("src/main/java/com/npdev/generated/trusted/NPDevProcedureContext.java"), unsafeSource);
         Path unsafeClass = unsafeRoot.resolve("com/npdev/generated/trusted/UnsafeBytecodeProcedure.class");
-        TrustedSourceBytecodeInspector.BytecodeInspectionResult unsafeResult = inspector.inspect(unsafeClass);
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult unsafeResult = inspector.inspect(unsafeClass);
         assertTrue(!unsafeResult.passed(), unsafeResult.violations().toString());
         writeBytecodeIntegrationProof(generatedClass, generatedResult, unsafeClass, unsafeResult);
     }
@@ -476,9 +476,9 @@ class UntrustedExtensionSecurityHardeningTest {
 
     private static void writeBytecodeIntegrationProof(
             Path generatedClass,
-            TrustedSourceBytecodeInspector.BytecodeInspectionResult generatedResult,
+            UntrustedExtensionBytecodeInspector.BytecodeInspectionResult generatedResult,
             Path unsafeClass,
-            TrustedSourceBytecodeInspector.BytecodeInspectionResult unsafeResult
+            UntrustedExtensionBytecodeInspector.BytecodeInspectionResult unsafeResult
     ) throws Exception {
         String proofPath = System.getenv("NPDEV_CP10_BYTECODE_INTEGRATION_PROOF_PATH");
         if (proofPath == null || proofPath.isBlank()) {
