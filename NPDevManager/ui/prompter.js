@@ -15,6 +15,7 @@
 //   a page in this window cannot be talked into making a request the Rust side would not.
 
 const { invoke: pInvoke } = window.__TAURI__.core;
+const { listen: pListen } = window.__TAURI__.event;
 
 const prompterState = {
   apps: [],
@@ -22,6 +23,7 @@ const prompterState = {
   context: null,
   profiles: [],
   validatedCandidate: null,
+  loopRunning: false,
 };
 
 function pEsc(value) {
@@ -360,6 +362,129 @@ async function copyText(text, message) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Automatic (AI loop) -- Session 2, NPDEV_MEGA_ROADMAP.md. Everything past "Send" here is done FOR
+// you: validate, apply, generate+build, start, wait for health, and re-prompt the AI with the
+// specific classified failure on its own, bounded by the iteration budget. `ai-loop-event` is one
+// shared event stream (see `ai_loop.rs`'s `Sink`) -- the same events land in
+// `<app>/logs/ai-loop/run-<ts>.jsonl`, so nothing shown here is UI-only.
+// ---------------------------------------------------------------------------------------------
+
+function loopLog(text) {
+  const box = document.getElementById("prompter-loop-log");
+  box.textContent += (box.textContent ? "\n" : "") + text;
+  box.scrollTop = box.scrollHeight;
+}
+
+function loopStatus(text) {
+  document.getElementById("prompter-loop-status").textContent = text;
+}
+
+function setLoopRunning(running) {
+  prompterState.loopRunning = running;
+  document.getElementById("prompter-loop-run").disabled = running;
+  document.getElementById("prompter-loop-stop").disabled = !running;
+}
+
+/// One line per `ai-loop-event` kind, kept short -- the full detail (prompts, reports, log tails)
+/// is in the transcript file `loop-start` names, not repeated here.
+function renderLoopEvent(payload) {
+  const kind = payload.kind;
+  if (kind === "loop-start") {
+    loopLog(`— starting (max ${payload.maxIterations} iteration(s)) — transcript: ${payload.transcript}`);
+  } else if (kind === "iteration-start") {
+    loopLog(`\n[iteration ${payload.iteration}]`);
+  } else if (kind === "prompt-composed") {
+    loopLog(`  → sending prompt (${payload.prompt.length} chars)`);
+  } else if (kind === "ai-call-done") {
+    loopLog(`  ← response received (${payload.response.length} chars)`);
+  } else if (kind === "validate-result") {
+    const r = payload.report || {};
+    loopLog(`  validate: ${r.status} — ${r.summary?.errors ?? 0} error(s), ${r.summary?.warnings ?? 0} warning(s)`);
+  } else if (kind === "apply-done") {
+    loopLog(`  applied to model.json`);
+  } else if (kind === "generate-done") {
+    loopLog(`  generated`);
+  } else if (kind === "ops-line") {
+    if (payload.raw && payload.raw.text) loopLog(`  build: ${payload.raw.text}`);
+  } else if (kind === "build-done") {
+    loopLog(`  build finished`);
+  } else if (kind === "start-done") {
+    loopLog(`  started, waiting for health…`);
+  } else if (kind === "health-result") {
+    loopLog(`  health: ${payload.health}`);
+  } else if (kind === "iteration-failed") {
+    loopLog(`  ✗ ${payload.class}${payload.health ? ` (health: ${payload.health})` : ""}`);
+  } else if (kind === "reprompt") {
+    loopLog(`  retrying with the failure appended to a fresh prompt…`);
+  } else if (kind === "loop-done") {
+    setLoopRunning(false);
+    if (payload.outcome === "booted") {
+      loopStatus(`booted and healthy after ${payload.iteration} iteration(s)`);
+      loopLog(`\n— BOOTED AND HEALTHY (iteration ${payload.iteration}) —`);
+    } else if (payload.outcome === "exhausted") {
+      loopStatus(`exhausted budget — last failure: ${payload.lastFailure}`);
+      loopLog(`\n— EXHAUSTED after ${payload.iteration} iteration(s), last failure: ${payload.lastFailure} —`);
+    } else if (payload.outcome === "cancelled") {
+      loopStatus("stopped");
+      loopLog(`\n— stopped —`);
+    } else {
+      loopStatus(`aborted: ${payload.reason || "(no reason given)"}`);
+      loopLog(`\n— ABORTED: ${payload.reason || "(no reason given)"} —`);
+    }
+    if (window.__npdevRefreshMonitor) window.__npdevRefreshMonitor();
+  }
+}
+
+pListen("ai-loop-event", (event) => renderLoopEvent(event.payload || {}));
+
+async function runLoop() {
+  if (!prompterState.appDir) {
+    loopStatus("no app selected");
+    return;
+  }
+  const profile = selectedProfile();
+  if (!profile) {
+    loopStatus("no provider selected");
+    return;
+  }
+  const box = document.getElementById("prompter-prompt");
+  if (!box.textContent.trim()) buildPrompterPrompt();
+  const ask = document.getElementById("prompter-ask").value.trim();
+  if (!ask) {
+    loopStatus("describe what to build or change first");
+    return;
+  }
+
+  document.getElementById("prompter-loop-log").textContent = "";
+  setLoopRunning(true);
+  loopStatus("running…");
+  try {
+    await pInvoke("run_ai_loop", {
+      appDir: prompterState.appDir,
+      appName: document.getElementById("prompter-appname").value.trim() || "this app",
+      profileId: profile.id,
+      model: document.getElementById("prompter-model").value.trim(),
+      effort: document.getElementById("prompter-effort").value || null,
+      initialPrompt: box.textContent,
+      plainAsk: ask,
+      maxIterations: parseInt(document.getElementById("prompter-loop-max").value, 10) || 5,
+    });
+  } catch (e) {
+    setLoopRunning(false);
+    loopStatus(`could not start: ${e}`);
+  }
+}
+
+async function stopLoop() {
+  try {
+    await pInvoke("stop_ai_loop", { appDir: prompterState.appDir });
+    loopStatus("stopping…");
+  } catch (e) {
+    loopStatus(`could not stop: ${e}`);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
 // Validate + Apply
 //
 // The prompt now asks for a COMPLETE model.json (see buildPrompterPrompt above), so the answer
@@ -580,6 +705,8 @@ function initPrompter() {
     copyText(document.getElementById("prompter-answer").textContent, "response copied")
   );
   document.getElementById("prompter-send").addEventListener("click", sendPrompt);
+  document.getElementById("prompter-loop-run").addEventListener("click", runLoop);
+  document.getElementById("prompter-loop-stop").addEventListener("click", stopLoop);
   document.getElementById("prompter-validate").addEventListener("click", validatePrompterAnswer);
   document.getElementById("prompter-apply").addEventListener("click", applyPrompterModel);
 

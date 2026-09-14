@@ -4,7 +4,8 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};
 
@@ -239,6 +240,11 @@ pub struct AppState {
     /// launch with a clear reason instead of letting the collision happen and reporting a bare
     /// "stopped" the user has no way to explain.
     pub dev_app_dir: Mutex<Option<String>>,
+    /// Session 2 (NPDEV_MEGA_ROADMAP.md): one AI-loop run at a time per app directory, mirroring the
+    /// `running` map's key shape. The flag is cooperative -- `ai_loop::run` checks it at each stage
+    /// boundary rather than this being a kill switch -- because a run in the middle of `build` or
+    /// `start` has a real child process underway that a hard abort would orphan.
+    pub ai_loop_cancel: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
 impl AppState {
@@ -248,6 +254,7 @@ impl AppState {
             running: Mutex::new(HashMap::new()),
             engine: Mutex::new(None),
             dev_app_dir: Mutex::new(None),
+            ai_loop_cancel: Mutex::new(HashMap::new()),
         }
     }
 }

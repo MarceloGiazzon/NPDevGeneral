@@ -445,6 +445,28 @@
         <pre class="runout" id="prompter-prompt" style="max-height:320px;margin-top:10px"></pre>
       </div>
 
+      <!-- Session 2 (NPDEV_MEGA_ROADMAP.md): the AI loop. Reuses the app/profile/ask inputs above --
+           this is an alternative to the manual Send/Validate/Apply steps below, not a duplicate of
+           their inputs. -->
+      <div class="pane" style="margin-top:14px">
+        <h3>Automatic (AI loop)</h3>
+        <p class="subtitle">
+          Sends the prompt above, then validates, applies, builds, starts and checks health on its
+          own -- re-prompting the AI with the specific failure if a step fails, up to the iteration
+          budget below. Nothing here re-checks itself into the model without a passing validation
+          first, same as the manual Apply button.
+        </p>
+        <div class="statusbar" style="margin-top:8px">
+          <button class="btn" id="prompter-loop-run">▶ RUN LOOP</button>
+          <button class="btn ghost" id="prompter-loop-stop" disabled>■ STOP</button>
+          <label class="subtitle" style="margin:0">Max iterations
+            <input type="number" id="prompter-loop-max" value="5" min="1" max="10" style="width:4em">
+          </label>
+          <span class="subtitle" id="prompter-loop-status" style="margin-left:auto">—</span>
+        </div>
+        <pre class="runout" id="prompter-loop-log" style="max-height:360px;margin-top:10px"></pre>
+      </div>
+
       <div class="pane" style="margin-top:14px" id="prompter-answer-pane" hidden>
         <h3>Response</h3>
         <pre class="runout" id="prompter-answer" style="max-height:420px"></pre>

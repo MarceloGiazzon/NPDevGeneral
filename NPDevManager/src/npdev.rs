@@ -1431,6 +1431,110 @@ pub async fn run_ops_script_streaming(
     }))
 }
 
+/// Session 2 (NPDEV_MEGA_ROADMAP.md): like `run_ops_script_streaming` above, but for a caller that
+/// needs to know the run's FINAL outcome directly rather than only see it via the global
+/// `ops-event` broadcast every Monitor-tab listener shares. `ai_loop::run` awaits one specific
+/// `build-finalapp` invocation's exit code and log file without racing whatever else that shared
+/// bus carries. `on_line` still gets every parsed JSON-Lines event as it arrives, so a caller that
+/// wants live output (the AI loop streams its own `ai-loop-event`) is not left blind until the end.
+pub async fn run_ops_script_capture(
+    python_exe: PathBuf,
+    npdev_cli: PathBuf,
+    java_home: Option<String>,
+    app_dir: String,
+    script: String,
+    on_line: impl Fn(&Value),
+) -> Result<Value, String> {
+    if fake_mode() {
+        let line = serde_json::json!({
+            "kind": "line",
+            "text": format!("STUB MODE -- `npdev monitor ops --script {script}` was not run."),
+        });
+        on_line(&line);
+        let done = serde_json::json!({"kind": "done", "script": script, "exitCode": 0, "logFile": Value::Null});
+        on_line(&done);
+        return Ok(done);
+    }
+
+    let args: Vec<String> = vec!["monitor".into(), "ops".into(), "--json".into(),
+                                 "--app-dir".into(), app_dir, "--script".into(), script.clone()];
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut cmd = build_command(&python_exe, &npdev_cli, &borrowed, java_home.as_deref(), None);
+    let mut child = cmd.spawn().map_err(|e| format!("could not start {script}: {e}"))?;
+    #[cfg(windows)]
+    let _job = assign_to_new_job(&child);
+    let stdout = child.stdout.take().ok_or("ops: no stdout pipe")?;
+    let stderr = child.stderr.take().ok_or("ops: no stderr pipe")?;
+    let mut reader = BufReader::new(stdout).lines();
+    // Same reason as run_ops_script_streaming: a full stderr pipe blocks the child's next stdout
+    // write.
+    let mut stderr_reader = BufReader::new(stderr).lines();
+    tokio::spawn(async move { while let Ok(Some(_)) = stderr_reader.next_line().await {} });
+
+    let mut last: Option<Value> = None;
+    while let Ok(Some(line)) = reader.next_line().await {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        if let Ok(value) = serde_json::from_str::<Value>(line) {
+            on_line(&value);
+            last = Some(value);
+        }
+    }
+    let _ = child.wait().await;
+    let exit_code = last
+        .as_ref()
+        .and_then(|v| v.get("exitCode"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0);
+    let done = serde_json::json!({
+        "kind": "done", "script": script, "exitCode": exit_code,
+        "logFile": last.and_then(|v| v.get("logFile").cloned()),
+    });
+    on_line(&done);
+    Ok(done)
+}
+
+/// Session 2 (NPDEV_MEGA_ROADMAP.md): spawns a long-running ops script (`run-finalapp`) and returns
+/// immediately, the same fire-and-forget shape `start_app` already gets from
+/// `run_ops_script_streaming` -- but decoupled from `AppHandle`/`ops-event`/the confirm-token dance
+/// none of which `run-finalapp` needs, so `ai_loop::run` can call it from the headless `--ai-loop`
+/// CLI path too. Stdout is drained and discarded in a background task purely so the child can never
+/// block on a full pipe (same reason as every other spawn in this file) -- boot diagnosis reads the
+/// app's OWN log via `run_monitor_logs`, not this stream.
+pub async fn spawn_ops_script(
+    python_exe: PathBuf,
+    npdev_cli: PathBuf,
+    java_home: Option<String>,
+    app_dir: String,
+    script: String,
+) -> Result<RunningProcess, String> {
+    if fake_mode() {
+        return Err("cannot spawn a real process in stub mode".to_string());
+    }
+    let args: Vec<String> = vec!["monitor".into(), "ops".into(), "--json".into(),
+                                 "--app-dir".into(), app_dir, "--script".into(), script.clone()];
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let mut cmd = build_command(&python_exe, &npdev_cli, &borrowed, java_home.as_deref(), None);
+    let mut child = cmd.spawn().map_err(|e| format!("could not start {script}: {e}"))?;
+    #[cfg(windows)]
+    let job = assign_to_new_job(&child);
+    if let Some(stdout) = child.stdout.take() {
+        let mut reader = BufReader::new(stdout).lines();
+        tokio::spawn(async move { while let Ok(Some(_)) = reader.next_line().await {} });
+    }
+    if let Some(stderr) = child.stderr.take() {
+        let mut reader = BufReader::new(stderr).lines();
+        tokio::spawn(async move { while let Ok(Some(_)) = reader.next_line().await {} });
+    }
+    Ok(RunningProcess {
+        child,
+        #[cfg(windows)]
+        job,
+    })
+}
+
 /// R2: the engine outlives requests by design, so the Manager starts it through the process registry
 /// and it dies with the window. Started via the CLI, so the SSRF allowlist is composed in exactly one
 /// place (R4) -- the UI never assembles origins.
