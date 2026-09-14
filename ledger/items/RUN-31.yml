@@ -145,3 +145,22 @@ notes: |
   hang-safety nets widened for RUN-31, not part of the race logic. Verified:
   `:kernel:test --tests DefaultConceptGatewayDegradedConcurrencyTest --rerun-tasks` BUILD SUCCESSFUL;
   full `:kernel:test --rerun-tasks` also run to confirm no regressions elsewhere.
+
+  UPDATE 2026-09-14 (later same day), #1 RECURRED -- 30s still not always enough: closing out an
+  unrelated session (Session 1 browser-verification follow-up: AggregateRuntime/AggregateApiController/
+  workbench-page.html.mustache fixes, none touching NPDevKernel), `run-all-gates.ps1` and
+  `run-kernel-quality-gate.ps1` both failed on this exact test twice more (once
+  `degradedModeDeleteRaceIsLoudNotSilent` + `degradedModeSaveRaceIsLoudNotSilent` together, once
+  `degradedModeSaveRaceIsLoudNotSilent` alone) -- same assertion, same file. Isolated the trigger
+  precisely this time: `:kernel:test` run completely alone (`gradlew -p NPDevKernel/kernel :kernel:test`,
+  no other modules in the invocation) is BUILD SUCCESSFUL every time; the failure only reproduces when
+  `:kernel:test` runs inside `run-kernel-quality-gate.ps1`'s full invocation alongside all 36
+  `:adapters:*:test` tasks in the same Gradle daemon. Also reproduced with an otherwise-idle machine
+  (killed two stray Gradle daemons and the ScrapForAI Node process first) -- ruled out this session's
+  own browser-testing leftovers as the contention source. Conclusion: the widened 30s margin from the
+  fix above is still insufficient specifically against the ~37-module parallel-fork contention
+  `run-kernel-quality-gate.ps1` itself creates, not against general machine load. Not fixed here --
+  wrong subsystem for this session (same reasoning as the original filing) -- but next time: either
+  widen further (though that only buys margin, not a bound), or reduce
+  `org.gradle.workers.max`/`maxParallelForks` for this specific invocation, or restructure the test to
+  assert via a callback/latch instead of a wall-clock join so it cannot be timing-sensitive at all.
