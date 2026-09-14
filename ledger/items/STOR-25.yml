@@ -53,7 +53,7 @@ detail: |
   DONE-WHEN (from REAL_LIFT_PLAN_2026-09-03.md section 4, B1):
   1. A model declares conversions[].javaHook: {source, class, method}; the generator admits it
      through the same bytecode/AST policy a plugin:java-source mount goes through
-     (TrustedSourceBytecodeInspector + PluginJavaSourcePolicy.validatePluginJavaSource -- same static
+     (UntrustedExtensionBytecodeInspector + PluginJavaSourcePolicy.validatePluginJavaSource -- same static
      entry points, no new rule sets).
   2. At migration time the hook runs in a pooled child process (PluginIpcChildProcessPool); an
      InvokeFrame carries the row batch, the hook reads/writes only through CallbackFrames
@@ -150,3 +150,9 @@ guard:
     (run-generator-gate.ps1, run-runtimehost-gate.ps1, run-kernel-quality-gate.ps1,
     run-ai-knowledge-gate.ps1) run green in this session.
   provenRed: false
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the security class named above used the
+  pre-W0.2-extension vocabulary (see git blame for the literal spelling used at authoring time) at
+  the time this incident was investigated; renamed to UntrustedExtensionBytecodeInspector by this
+  session's W0.2 continuation. The incident's substance is unaffected.

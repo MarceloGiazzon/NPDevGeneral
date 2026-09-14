@@ -10,7 +10,7 @@ codeLinkedNote: >-
   checker, and no such checker exists or could exist for this half of the law. The law's OTHER
   half -- escape hatches honestly branded, not disguised as first-class "trusted" shortcuts -- IS a
   real, already-shipped mechanism: P0.4 (2026-08-xx) and W0.2 (2026-09-12, NPDEV_ROADMAP_2026-09-12.md
-  Wave 0) inverted the generator's escape-hatch vocabulary from TrustedSource* to
+  Wave 0) inverted the generator's escape-hatch vocabulary to
   UntrustedExtension*, so an author reading the generator now learns the honest word for what a
   javaHook/untrustedExtensionAsset/pluginPackage actually is: untrusted author code the platform
   admission-checks, not a first-class trusted shortcut. That half is proven by

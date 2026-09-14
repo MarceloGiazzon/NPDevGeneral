@@ -196,7 +196,7 @@ resolution: |
        manifest entry to 71c2341c642db4d52e0f962de9a71320ecc03f961bf708248996b983eaf68bb8.
    11. $fullCsp, the harness's hardcoded expected-CSP string, was missing five directives
        (frame-src, frame-ancestors, worker-src, manifest-src, upgrade-insecure-requests) that
-       TrustedSourceControllerTemplate.FULL_CSP (the generator's actual, canonical, currently-shipped
+       UntrustedExtensionControllerTemplate.FULL_CSP (the generator's actual, canonical, currently-shipped
        CSP constant) already includes -- a stale test-copy of a security string, not a platform gap.
        Updated $fullCsp to match FULL_CSP byte-for-byte.
 
@@ -226,3 +226,9 @@ resolution: |
     D:\WorkSpace\NPDev\NPDev_General\scripts\quality\run-trusted-source-beta0-proof.ps1
     D:\WorkSpace\NPDev\NPDev_General\golden-ai-scenarios\deferred\trusted-source\create-users-panel-procedure\trusted-source-manifest.json
     D:\WorkSpace\NPDev\NPDev_General\golden-ai-scenarios\deferred\trusted-source\create-users-panel-procedure\panel\user-admin-panel.html
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the template class above used the pre-W0.2
+  vocabulary (see git blame for the literal spelling used at authoring time) at the time this
+  incident was investigated; renamed to UntrustedExtensionControllerTemplate by W0.2. The
+  incident's substance is unaffected.

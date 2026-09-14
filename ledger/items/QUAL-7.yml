@@ -57,7 +57,7 @@ resolution: |
     - run-trusted-source-security-check.ps1: investigated, NOT redundant with any check-*.py already
       wired into run-ai-knowledge-gate.ps1 -- it runs a real AST-validation + bytecode-restriction
       proof (javac/javap forbidden-opcode scan on synthetic safe/unsafe fixtures) for
-      TrustedSourceEmitter's generated code, something no other gate does. Wired into
+      UntrustedExtensionEmitter's generated code, something no other gate does. Wired into
       run-generator-gate.ps1 as a new sub-step (same pattern as its existing
       deterministicGenerationScript/generatorGovernanceScript sub-steps); its own invocation
       declaration changed from manual-runbook to orchestrated (now literally true).
@@ -114,3 +114,9 @@ guard:
   asserts: script inventory check passes with zero orphaned gate checkers; the weekly paperwork
     script passes all 11 checks standalone; the renumbered per-commit gate passes all 34 steps
   provenRed: true
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the class named above used the pre-W0.2
+  vocabulary (see git blame for the literal spelling used at authoring time) at the time this
+  incident was investigated; renamed to UntrustedExtensionEmitter by W0.2. The incident's
+  substance is unaffected.

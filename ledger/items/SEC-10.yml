@@ -69,7 +69,7 @@ detail: |
 
   **The classloader denylist (step 3):** `PluginRestrictedClassLoader` overrides `loadClass` to
   deny two things a classpath reduction alone cannot: (1) the SAME escape-class denylist
-  `TrustedSourceBytecodeInspector` already refuses (kernel constants, one copy, shared with the
+  `UntrustedExtensionBytecodeInspector` already refuses (kernel constants, one copy, shared with the
   generation-time and boot-time gates B30's earlier rows built), closing the gap where a class name
   is constructed at runtime rather than appearing as a static bytecode reference; (2) any
   `com.npdev.generated.*` or `com.finalexec.*` class OUTSIDE `com.npdev.generated.plugin.` -- the
@@ -185,7 +185,7 @@ detail: |
   correct but a real DSL feature needing schema changes in 4 places plus an `npdev migrate` codemod
   per this repo's own model-array-field checklist -- and against a curated deny-list, simpler but an
   ongoing maintenance burden and a weaker "real reduction" than this item's original intent):
-  `TrustedSourceBytecodeInspector` (NPDevKernel, the SAME shared reader both B30 admission gates
+  `UntrustedExtensionBytecodeInspector` (NPDevKernel, the SAME shared reader both B30 admission gates
   already use) gained a new public `referencedClassNames(InputStream, displayName)`, reusing its
   existing constant-pool reader to answer a different question ("what does this class reference",
   not "does this violate policy"). `PluginChildClasspath.compute` gained a third parameter,
@@ -201,7 +201,7 @@ detail: |
   fat-jar (`BOOT-INF/classes/`) case.
 
   Not a new security hole: the actual admission authority over what a plugin may call at all is
-  still `TrustedSourceBytecodeInspector`'s escape denylist (generation-time `PluginJavaSourcePolicy`
+  still `UntrustedExtensionBytecodeInspector`'s escape denylist (generation-time `PluginJavaSourcePolicy`
   + boot-time `PluginBytecodeBootGate`) and `PluginRestrictedClassLoader`'s runtime denylist, neither
   of which this change touches -- this only makes an ALREADY-ADMITTED plugin's declared third-party
   calls actually resolve at runtime, which is E8's whole point ("a user capability calls an external
@@ -210,14 +210,14 @@ detail: |
   denylist today) was ALREADY admitted past both gates before this fix; this fix only means such a
   class's OWN driver jar, if referenced, is now handed to it instead of failing with a
   `NoClassDefFoundError` that happened to accidentally cover that gap. If that specific gap needs
-  closing, it belongs in `TrustedSourceBytecodeInspector`'s own denylist, independent of this fix.
+  closing, it belongs in `UntrustedExtensionBytecodeInspector`'s own denylist, independent of this fix.
 
   New test `PluginChildClasspathTest#keepsAThirdPartyJarAPluginOwnClassGenuinelyReferences` proves
   the mechanism against a REAL compiled class (in-test `javax.tools.JavaCompiler`) referencing a REAL
   jar already on the test JVM's own classpath (`org.junit.jupiter.api`, deliberately not one of the
   fixed markers) rather than a synthetic fixture, since the new code path genuinely parses bytecode
   where the pre-existing tests only ever checked resource-name existence. Verified live: all 4
-  `PluginChildClasspathTest` cases pass, `TrustedSourceBytecodeInspectorTest` (9 cases) passes
+  `PluginChildClasspathTest` cases pass, `UntrustedExtensionBytecodeInspectorTest` (9 cases) passes
   unchanged, and `run-runtimehost-gate.ps1` (regenerate + rebuild + the assembled sample app's full
   suite) passes green. Final confirmation is the E8 CI job itself, on the same real GitHub-hosted
   runner that caught both regressions.
@@ -241,3 +241,10 @@ guard:
     run failed on an unrelated H2Local regression (see detail); its second run, after that fix,
     passed clean with all three assertions ok:true.
   provenRed: false
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the security class and its test, named
+  throughout this file, used the pre-W0.2-extension vocabulary (see git blame for the literal
+  spelling used at authoring time) at the time this incident was investigated; renamed to
+  UntrustedExtensionBytecodeInspector/UntrustedExtensionBytecodeInspectorTest by this session's
+  W0.2 continuation. The incident's substance is unaffected.

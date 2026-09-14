@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-r"""Path A P0.3 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): 119 files mention TrustedSource/javaHook/
+r"""Path A P0.3 (NPDEV_PATH_A_REALIGNMENT_PLAN.md): 119 files mentioned the pre-P0.4 escape-hatch vocabulary/javaHook/
 trustLevel, 21 of them generator main classes, and the only way to answer "what escape hatches does
 this app use" was grep. ExtensionInventoryEmitter (NPDevGenerator/generator/.../emitters/
 ExtensionInventoryEmitter.java) now writes src/main/resources/npdev/extension-inventory.json on

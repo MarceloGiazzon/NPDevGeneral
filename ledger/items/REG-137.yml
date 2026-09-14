@@ -11,7 +11,7 @@ source: |
   Found while diagnosing a failing GitHub Actions scheduled run (npdev-ci-validation.yml, run
   30978607862, 2026-08-05). The Linux job's "Generator unit tests" step (:generator:test) failed
   3 tests deterministically (reproduced identically on a manual re-run, not flaky):
-    - TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.packagedGeneratedAppBootsHandlesHttpAndWritesJdbcEvidenceRows
+    - UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.packagedGeneratedAppBootsHandlesHttpAndWritesJdbcEvidenceRows
     - HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.deletingOrReplacingARecordCascadesTheUnderlyingFileBytes
     - HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.packagedGeneratedAppUploadsAndDownloadsAFileThroughARealObjectStore
 
@@ -54,7 +54,7 @@ source: |
 files:
   - NPDevRuntimeHost/build.gradle.template
   - NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java
-  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest.java
   - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest.java
   - NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest.java
   - .github/workflows/npdev-ci-validation.yml
@@ -81,7 +81,7 @@ resolution: |
   DONE (2026-08-05), same day as discovery. Both fix shapes from this item's own detail applied.
 
   Verified: all 3 previously-failing tests pass locally (`./gradlew.bat test --tests
-  TrustedSourceEmitterPackagedGeneratedAppRuntimeProofTest --tests
+  UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest --tests
   HardenGcDeleteReplaceCascadePackagedGeneratedAppRuntimeProofTest --tests
   HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest` -- BUILD SUCCESSFUL). The failure
   was also independently reproduced twice on the real GitHub Actions Linux runner (deterministic,
@@ -89,3 +89,10 @@ resolution: |
 
   Not yet re-verified on GitHub Actions itself after the fix (local verification only as of this
   writing) -- CI re-run is a natural follow-up.
+
+notes: |
+  UPDATE 2026-09-14 (W0.2 vocabulary-rename extension): the test class above used the pre-W0.2
+  vocabulary (see git blame for the literal spelling used at authoring time) at the time this
+  incident was investigated; renamed to
+  UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest by W0.2. The incident's substance
+  is unaffected.

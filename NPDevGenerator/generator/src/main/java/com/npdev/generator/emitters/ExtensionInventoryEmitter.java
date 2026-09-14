@@ -21,8 +21,8 @@ import java.util.TreeMap;
 import java.util.stream.Stream;
 
 /**
- * Path A P0.3: the escape surface (119 files mention {@code TrustedSource}/{@code javaHook}/
- * {@code trustLevel}, 21 of them generator main classes -- {@code NPDEV_PATH_A_REALIGNMENT_PLAN.md}
+ * Path A P0.3: the escape surface (119 files mentioned the pre-P0.4 escape-hatch vocabulary or
+ * {@code javaHook}/{@code trustLevel}, 21 of them generator main classes -- {@code NPDEV_PATH_A_REALIGNMENT_PLAN.md}
  * section 3) is otherwise discoverable only by grep. This emitter makes it an artifact every
  * generation writes, over the same four real mechanisms the plan names -- no new escape-hatch
  * concept is introduced:
