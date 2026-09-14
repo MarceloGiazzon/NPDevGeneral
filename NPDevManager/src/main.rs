@@ -2,6 +2,7 @@
 // a window instead of a terminal.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai_loop;
 mod log;
 mod npdev;
 mod runtime;
@@ -14,7 +15,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use serde_json::Value;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 use state::{AppEntry, AppState, InstalledVersion};
 
@@ -502,7 +503,7 @@ fn norm_path(p: &str) -> String {
     p.trim_end_matches(['\\', '/']).to_ascii_lowercase()
 }
 
-fn model_dir_of_app(app_dir: &str) -> Option<String> {
+pub(crate) fn model_dir_of_app(app_dir: &str) -> Option<String> {
     let normalized = app_dir.trim_end_matches(['\\', '/']);
     normalized.strip_suffix("-app").map(|s| s.to_string())
 }
@@ -1700,9 +1701,21 @@ async fn prompter_generate(
     // The id and model, never the prompt and never the key.
     log::info(format!("prompter_generate profile={} model={}", profile.id, model));
 
+    generate_via_profile(&profile, &model, effort.as_deref(), &prompt).await
+}
+
+/// The dispatch body of `prompter_generate` above, pulled out so `ai_loop::run` (Session 2,
+/// NPDEV_MEGA_ROADMAP.md) calls the exact same "command" vs "http" send rather than a second copy --
+/// the manual Prompter tab and the automatic AI loop must speak to a provider identically.
+pub(crate) async fn generate_via_profile(
+    profile: &state::PrompterProfile,
+    model: &str,
+    effort: Option<&str>,
+    prompt: &str,
+) -> Result<Value, String> {
     match profile.kind.as_str() {
-        "command" => prompter_generate_via_command(&profile, &prompt).await,
-        "http" => prompter_generate_via_http(&profile, &model, effort.as_deref(), &prompt).await,
+        "command" => prompter_generate_via_command(profile, prompt).await,
+        "http" => prompter_generate_via_http(profile, model, effort, prompt).await,
         other => Err(format!("unknown provider kind '{other}' -- expected 'command' or 'http'")),
     }
 }
@@ -1738,6 +1751,14 @@ async fn validate_prompter_model(state: State<'_, AppState>, candidate: Value) -
 /// called `validate_prompter_model` first and refused to reach here on a failed result.
 #[tauri::command]
 fn apply_prompter_model(app_dir: String, candidate: Value, confirm: String) -> Result<Value, String> {
+    apply_validated_model(app_dir, candidate, confirm)
+}
+
+/// The body of `apply_prompter_model` above, pulled out (not `#[tauri::command]` itself -- adding
+/// `pub(crate)` directly to a `#[tauri::command]` fn collides with the macro's own generated item
+/// names) so `ai_loop::run` (Session 2, NPDEV_MEGA_ROADMAP.md) calls the exact same write-plus-backup
+/// rather than a second copy.
+pub(crate) fn apply_validated_model(app_dir: String, candidate: Value, confirm: String) -> Result<Value, String> {
     const TOKEN: &str = "I_UNDERSTAND_THIS_OVERWRITES_MODEL_JSON";
     if confirm != TOKEN {
         return Err("confirmation token did not match -- model.json was not touched".to_string());
@@ -1782,6 +1803,84 @@ async fn generate_app_from_model(state: State<'_, AppState>, app_dir: String) ->
     let cli = resolve_npdev_cli(&state)?;
     let java_home = resolve_java_home(&state);
     npdev::run_generate_app(&python, &cli, java_home.as_deref(), &model, &config, &app_dir).await
+}
+
+/// Session 2 (NPDEV_MEGA_ROADMAP.md): the AI loop's Tauri entry point. Resolves everything the
+/// engine needs ONCE (profile, python/cli/java_home) and registers a cancel flag BEFORE spawning --
+/// same "already running" guard shape as `run_ops_script` -- then hands off to `ai_loop::run` in a
+/// background task, exactly like `run_ops_script_streaming` already does, because a multi-iteration
+/// run (build + boot per iteration) can genuinely take minutes and the command must return so the
+/// window stays responsive. Progress streams as `ai-loop-event`; nothing here re-implements the
+/// engine's own stage sequence.
+#[tauri::command]
+async fn run_ai_loop(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    app_dir: String,
+    app_name: String,
+    profile_id: String,
+    model: String,
+    effort: Option<String>,
+    initial_prompt: String,
+    plain_ask: String,
+    max_iterations: u32,
+) -> Result<(), String> {
+    {
+        let cancels = state.ai_loop_cancel.lock().expect("lock poisoned");
+        if cancels.contains_key(&app_dir) {
+            return Err("an AI loop is already running for this app -- stop it first".to_string());
+        }
+    }
+    let profile = {
+        let manager = state.manager.lock().expect("lock poisoned");
+        manager.prompter_profiles.iter().find(|p| p.id == profile_id).cloned()
+    };
+    let profile = profile.ok_or_else(|| {
+        format!("no provider profile '{profile_id}' -- open the Prompter tab's provider editor and add one")
+    })?;
+    let model = if model.trim().is_empty() { profile.default_model.clone().unwrap_or_default() } else { model };
+    let python_exe = resolve_python_exe(&state).await?;
+    let npdev_cli = resolve_npdev_cli(&state)?;
+    let java_home = resolve_java_home(&state);
+    let max_iterations = max_iterations.clamp(1, 10);
+
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    state.ai_loop_cancel.lock().expect("lock poisoned").insert(app_dir.clone(), cancel.clone());
+    log::info(format!("run_ai_loop app_dir={app_dir} profile={} model={model} max_iterations={max_iterations}", profile.id));
+
+    let config = ai_loop::LoopConfig {
+        app_dir: app_dir.clone(),
+        app_name,
+        profile,
+        model,
+        effort,
+        initial_prompt,
+        plain_ask,
+        max_iterations,
+        python_exe,
+        npdev_cli,
+        java_home,
+    };
+    let app2 = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let app_state = app2.state::<AppState>();
+        ai_loop::run(&app_state, config, ai_loop::Sink::Tauri(app2.clone()), cancel).await;
+        app_state.ai_loop_cancel.lock().expect("lock poisoned").remove(&app_dir);
+    });
+    Ok(())
+}
+
+/// The AI loop's Stop button: a cooperative cancel, not a process kill -- see `AppState.ai_loop_cancel`.
+#[tauri::command]
+fn stop_ai_loop(state: State<'_, AppState>, app_dir: String) -> Result<(), String> {
+    let cancels = state.ai_loop_cancel.lock().expect("lock poisoned");
+    match cancels.get(&app_dir) {
+        Some(flag) => {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            Ok(())
+        }
+        None => Err("no AI loop is running for this app".to_string()),
+    }
 }
 
 /// M10: the engine-mismatch offer's "Rebuild on <engine>" button. Only works for an app this
@@ -2029,6 +2128,94 @@ fn migrate_legacy_assistant_key() {
     }
 }
 
+/// The headless body of `--ai-loop`: `--app-dir <d> --profile <id> --ask <text> [--model <m>]
+/// [--effort low|medium|high] [--max-iterations N]`. Resolves python/cli/JAVA_HOME the same way
+/// every Tauri command does (`resolve_python_exe`/`resolve_npdev_cli`/`resolve_java_home`), composes
+/// the first prompt itself (`ai_loop::compose_initial_prompt`, reading the app's model.json the same
+/// way `prompter_app_context` does) since there is no frontend here to have already built one, then
+/// calls `ai_loop::run` directly -- the identical function the UI's `run_ai_loop` command spawns.
+async fn run_ai_loop_cli() -> i32 {
+    let mut app_dir: Option<String> = None;
+    let mut profile_id: Option<String> = None;
+    let mut ask: Option<String> = None;
+    let mut model = String::new();
+    let mut effort: Option<String> = None;
+    let mut max_iterations: u32 = 5;
+
+    let args: Vec<String> = std::env::args().collect();
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--app-dir" => { app_dir = args.get(i + 1).cloned(); i += 1; }
+            "--profile" => { profile_id = args.get(i + 1).cloned(); i += 1; }
+            "--ask" => { ask = args.get(i + 1).cloned(); i += 1; }
+            "--model" => { model = args.get(i + 1).cloned().unwrap_or_default(); i += 1; }
+            "--effort" => { effort = args.get(i + 1).cloned(); i += 1; }
+            "--max-iterations" => {
+                max_iterations = args.get(i + 1).and_then(|v| v.parse().ok()).unwrap_or(5);
+                i += 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    let (Some(app_dir), Some(profile_id), Some(ask)) = (app_dir, profile_id, ask) else {
+        eprintln!("--ai-loop requires --app-dir <dir> --profile <id> --ask <text>");
+        return 2;
+    };
+    let max_iterations = max_iterations.clamp(1, 10);
+
+    state::ensure_dirs().expect("could not create the Manager's home directories");
+    let app_state = AppState::new();
+    let profile = {
+        let manager = app_state.manager.lock().expect("lock poisoned");
+        manager.prompter_profiles.iter().find(|p| p.id == profile_id).cloned()
+    };
+    let Some(profile) = profile else {
+        eprintln!("no provider profile '{profile_id}' -- configure one in the Manager's Prompter tab first");
+        return 1;
+    };
+    let model = if model.trim().is_empty() { profile.default_model.clone().unwrap_or_default() } else { model };
+
+    let python_exe = match resolve_python_exe(&app_state).await {
+        Ok(p) => p,
+        Err(e) => { eprintln!("{e}"); return 1; }
+    };
+    let npdev_cli = match resolve_npdev_cli(&app_state) {
+        Ok(p) => p,
+        Err(e) => { eprintln!("{e}"); return 1; }
+    };
+    let java_home = resolve_java_home(&app_state);
+
+    let model_json: Option<Value> = model_dir_of_app(&app_dir)
+        .and_then(|d| std::fs::read_to_string(PathBuf::from(&d).join("model.json")).ok())
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok());
+    let app_name = model_json
+        .as_ref()
+        .and_then(|m| m.get("namespace"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let initial_prompt = ai_loop::compose_initial_prompt(&app_name, &ask, model_json.as_ref());
+
+    let config = ai_loop::LoopConfig {
+        app_dir,
+        app_name,
+        profile,
+        model,
+        effort,
+        initial_prompt,
+        plain_ask: ask,
+        max_iterations,
+        python_exe,
+        npdev_cli,
+        java_home,
+    };
+    let cancel = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    ai_loop::run(&app_state, config, ai_loop::Sink::Stdout, cancel).await;
+    0
+}
+
 fn main() {
     // I1 (CLOSEOUT_PLAN.md): a headless proof the whole install path works with no window, so
     // "does the Manager work on a clean machine" can be checked by a container on every change
@@ -2037,6 +2224,16 @@ fn main() {
     if std::env::args().any(|a| a == "--selftest") {
         let rt = tokio::runtime::Runtime::new().expect("failed to start a tokio runtime for --selftest");
         std::process::exit(rt.block_on(selftest::run()));
+    }
+
+    // Session 2 (NPDEV_MEGA_ROADMAP.md): "headless and scriptable first, UI second" -- this drives
+    // the EXACT SAME `ai_loop::run` the `run_ai_loop` Tauri command below calls, mirroring
+    // `--selftest`'s own precedent for a no-window entry point on this binary. Assumes the Manager's
+    // own Ready screen has already run once on this machine (a python/npdev/JDK install is a
+    // one-time setup step, not something a CI-facing flag should silently trigger).
+    if std::env::args().any(|a| a == "--ai-loop") {
+        let rt = tokio::runtime::Runtime::new().expect("failed to start a tokio runtime for --ai-loop");
+        std::process::exit(rt.block_on(run_ai_loop_cli()));
     }
 
     state::ensure_dirs().expect("could not create the Manager's home directories");
@@ -2142,6 +2339,8 @@ fn main() {
             generate_app_from_model,
             prompter_app_context,
             prompter_generate,
+            run_ai_loop,
+            stop_ai_loop,
             assistant_compose,
             assistant_generate,
         ])
