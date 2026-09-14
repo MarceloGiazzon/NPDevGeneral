@@ -386,6 +386,46 @@ def _has_aggregate_on_validate(model: dict) -> bool:
     )
 
 
+def _has_aggregate_invariants(model: dict) -> bool:
+    """R4.4 (Roadmap Wave 1 2026-08-19): declarative, cross-collection invariants on an
+    aggregate's own draft tree -- distinct from a concept's invariants[] (a different, much
+    older and already-tracked feature). Shipped end-to-end (schema/AST/compiled/runtime) with
+    zero corpus usage until Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14) added a witness."""
+    return any(
+        isinstance(a, dict) and a.get("invariants")
+        for a in (model.get("aggregates", None) or [])
+    )
+
+
+def _has_aggregate_balances(model: dict) -> bool:
+    """Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): grouped, role-partitioned balance rules on
+    an aggregate (checklist P4/P5) -- see AggregateBalanceAst's javadoc."""
+    return any(
+        isinstance(a, dict) and a.get("balances")
+        for a in (model.get("aggregates", None) or [])
+    )
+
+
+def _has_aggregate_collection_lookup_fields(model: dict) -> bool:
+    """Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): query-sourced, read-only per-row fields
+    (checklist H1/H2) attached at load time -- nested at any depth in an aggregate's collection
+    tree, so this walks recursively rather than checking only the top level."""
+    def walk(collections) -> bool:
+        for collection in collections or []:
+            if not isinstance(collection, dict):
+                continue
+            if collection.get("lookupFields"):
+                return True
+            if walk(collection.get("collections")):
+                return True
+        return False
+
+    return any(
+        isinstance(a, dict) and walk(a.get("collections"))
+        for a in (model.get("aggregates", None) or [])
+    )
+
+
 def _has_procedure_create_if_missing(model: dict) -> bool:
     return any(
         str(s.get("type", "")).lower() == "patchconcept" and s.get("createIfMissing")

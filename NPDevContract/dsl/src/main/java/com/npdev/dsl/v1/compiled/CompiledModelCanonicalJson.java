@@ -527,6 +527,9 @@ public final class CompiledModelCanonicalJson {
             if (action.visibleWhen() != null) {
                 node.put("visibleWhen", safe(action.visibleWhen()));
             }
+            // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the on-demand-balance-check alternate
+            // to `procedure` -- see WorkbenchActionAst's javadoc.
+            node.set("checkBalances", toStringArray(action.checkBalances()));
             array.add(node);
         }
         return array;
@@ -665,6 +668,8 @@ public final class CompiledModelCanonicalJson {
             // npdev-aggregate-invariant-four-place (R4.4): parser -> compiler -> HERE -> reader.
             node.set("invariants", toAggregateInvariants(aggregate.invariants()));
             node.put("uid", safe(aggregate.uid()));
+            // npdev-aggregate-balance-four-place (Session 1): parser -> compiler -> HERE -> reader.
+            node.set("balances", toAggregateBalances(aggregate.balances()));
             aggregates.add(node);
         }
         return aggregates;
@@ -683,6 +688,24 @@ public final class CompiledModelCanonicalJson {
         return array;
     }
 
+    /** Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): writes aggregates[].balances[]. */
+    private static ArrayNode toAggregateBalances(List<CompiledAggregateBalance> balances) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAggregateBalance balance : balances) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(balance.name()));
+            node.put("collection", safe(balance.collection()));
+            node.set("groupBy", toStringArray(balance.groupBy()));
+            node.put("discriminatorField", safe(balance.discriminatorField()));
+            node.put("leftValue", safe(balance.leftValue()));
+            node.put("rightValue", safe(balance.rightValue()));
+            node.put("quantityField", safe(balance.quantityField()));
+            node.put("message", safe(balance.message()));
+            array.add(node);
+        }
+        return array;
+    }
+
     private static ArrayNode toAggregateCollections(List<CompiledAggregateCollection> collections) {
         ArrayNode array = JsonNodeFactory.instance.arrayNode();
         for (CompiledAggregateCollection collection : collections) {
@@ -695,6 +718,22 @@ public final class CompiledModelCanonicalJson {
             node.put("orderBy", safe(collection.orderBy()));
             node.set("collections", toAggregateCollections(collection.collections()));
             node.set("metadata", toObjectMap(collection.metadata()));
+            node.set("lookupFields", toAggregateCollectionLookupFields(collection.lookupFields()));
+            array.add(node);
+        }
+        return array;
+    }
+
+    /** Session 1: writes aggregateCollection.lookupFields[]. */
+    private static ArrayNode toAggregateCollectionLookupFields(
+            List<CompiledAggregateCollectionLookupField> lookupFields) {
+        ArrayNode array = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAggregateCollectionLookupField lookupField : lookupFields) {
+            ObjectNode node = JsonNodeFactory.instance.objectNode();
+            node.put("name", safe(lookupField.name()));
+            node.put("query", safe(lookupField.query()));
+            node.put("joinField", safe(lookupField.joinField()));
+            node.put("valueField", safe(lookupField.valueField()));
             array.add(node);
         }
         return array;

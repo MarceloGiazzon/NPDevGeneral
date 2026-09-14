@@ -7,7 +7,9 @@ import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateBalance;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
+import com.npdev.dsl.v1.compiled.CompiledAggregateCollectionLookupField;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanel;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelComputed;
 import com.npdev.dsl.v1.compiled.CompiledAutoPanelSurface;
@@ -209,6 +211,13 @@ final class AutoPanelExpander {
         if (!derived.isEmpty()) {
             workbench.put("derived", derived);
         }
+        // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): declared balances[] surfaced so the client
+        // can label a group (groupBy field names) without itself computing anything -- the actual
+        // evaluation is always server-side, via a checkBalances action or the commit-time gate.
+        List<Map<String, Object>> balances = balanceDescriptors(aggregate.balances());
+        if (!balances.isEmpty()) {
+            workbench.put("balances", balances);
+        }
 
         Map<String, Object> metadata = surfaceMetadata(base, "transaction", rootConcept);
         metadata.put("dataVia", "aggregate");
@@ -261,13 +270,25 @@ final class AutoPanelExpander {
         // release of dual support, migrated by `npdev migrate`).
         if (!transaction.actions().isEmpty()) {
             for (CompiledWorkbenchAction typedAction : transaction.actions()) {
-                if (!hasText(typedAction.procedure())) {
+                boolean hasProcedure = hasText(typedAction.procedure());
+                boolean hasCheckBalances = !typedAction.checkBalances().isEmpty();
+                // Session 1: checkBalances is the on-demand-balance-check alternate to procedure --
+                // an action declaring it (and no procedure) is not skipped the way a procedure-less
+                // action always was; PanelValidation#validateWorkbenchActions already enforces
+                // exactly one of the two is present, so reaching here with neither cannot happen.
+                if (!hasProcedure && !hasCheckBalances) {
                     continue;
                 }
                 Map<String, Object> action = new LinkedHashMap<>();
-                action.put("label", hasText(typedAction.label())
-                        ? typedAction.label().trim() : typedAction.procedure().trim());
-                action.put("procedure", typedAction.procedure().trim());
+                String labelFallback = hasProcedure ? typedAction.procedure().trim()
+                        : typedAction.checkBalances().get(0);
+                action.put("label", hasText(typedAction.label()) ? typedAction.label().trim() : labelFallback);
+                if (hasProcedure) {
+                    action.put("procedure", typedAction.procedure().trim());
+                }
+                if (hasCheckBalances) {
+                    action.put("checkBalances", new ArrayList<>(typedAction.checkBalances()));
+                }
                 action.put("inputFields", new ArrayList<>(typedAction.inputFields()));
                 Map<String, Object> applyTo = typedWorkbenchActionApplyTo(typedAction.applyTo());
                 if (applyTo != null) {
@@ -404,6 +425,47 @@ final class AutoPanelExpander {
         return String.valueOf(raw).trim();
     }
 
+    /** Session 1: {name, collection, groupBy} per declared balance rule -- everything the client
+     *  needs to label a group in a rendered banner, nothing it needs to compute one. */
+    private static List<Map<String, Object>> balanceDescriptors(List<CompiledAggregateBalance> balances) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        for (CompiledAggregateBalance balance : balances) {
+            Map<String, Object> descriptor = new LinkedHashMap<>();
+            descriptor.put("name", balance.name());
+            descriptor.put("collection", balance.collection());
+            descriptor.put("groupBy", new ArrayList<>(balance.groupBy()));
+            out.add(descriptor);
+        }
+        return out;
+    }
+
+    /** Session 1: appends every declared lookupField's name to a section/band's own column list,
+     *  so the generic column renderer displays it -- it is a real key on every loaded row, just
+     *  never a declared concept field. */
+    private static List<String> withLookupColumns(
+            List<String> columns, List<CompiledAggregateCollectionLookupField> lookupFields) {
+        if (lookupFields.isEmpty()) {
+            return columns;
+        }
+        List<String> combined = new ArrayList<>(columns);
+        for (String name : lookupFieldNames(lookupFields)) {
+            combined.add(name);
+        }
+        return combined;
+    }
+
+    /** Session 1: the subset of a section/band's own columns that are read-only, query-sourced
+     *  lookups -- the client renders these as plain text, never an editable input. */
+    private static List<String> lookupFieldNames(List<CompiledAggregateCollectionLookupField> lookupFields) {
+        List<String> names = new ArrayList<>();
+        for (CompiledAggregateCollectionLookupField lookupField : lookupFields) {
+            if (hasText(lookupField.name())) {
+                names.add(lookupField.name().trim());
+            }
+        }
+        return names;
+    }
+
     private static Map<String, Object> sectionDescriptor(
             CompiledAggregateCollection collection, Map<String, List<String>> fieldsByConcept,
             Map<String, Map<String, Object>> bandPickers, Map<String, String> visibleWhen,
@@ -412,7 +474,9 @@ final class AutoPanelExpander {
         section.put("collection", collection.name());
         section.put("concept", collection.concept());
         section.put("childField", collection.childField());
-        section.put("columns", columnsFor(fieldsByConcept, collection.concept()));
+        section.put("columns", withLookupColumns(
+                columnsFor(fieldsByConcept, collection.concept()), collection.lookupFields()));
+        section.put("readOnlyColumns", lookupFieldNames(collection.lookupFields()));
         String sectionVisibleWhen = visibleWhen.get(collection.name());
         if (sectionVisibleWhen != null) {
             section.put("visibleWhen", sectionVisibleWhen);
@@ -424,7 +488,9 @@ final class AutoPanelExpander {
             band.put("collection", child.name());
             band.put("concept", child.concept());
             band.put("childField", child.childField());
-            band.put("columns", columnsFor(fieldsByConcept, child.concept()));
+            band.put("columns", withLookupColumns(
+                    columnsFor(fieldsByConcept, child.concept()), child.lookupFields()));
+            band.put("readOnlyColumns", lookupFieldNames(child.lookupFields()));
             Map<String, Object> picker = bandPickers.get(child.name());
             if (picker != null) {
                 band.put("picker", picker);

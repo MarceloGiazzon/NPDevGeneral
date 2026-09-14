@@ -1,17 +1,36 @@
 {
-  "closedAt": "2026-09-13T23:49:32.2356171Z",
+  "closedAt": "2026-09-14T07:22:18.8014286Z",
   "branch": "main",
-  "head": "b7256a12",
-  "headSubject": "chore(session): close ledger-backlog cleanup session handoff",
-  "summary": "Closed W1.8 (accessibility baseline with a ratchet over axe-core, wired into the five W1.7 golden browser scenarios), completing Wave 1 (W1.1-W1.8) in full. Then cleaned up the genuinely-open ledger backlog it and prior sessions had surfaced: RUN-30 fully closed (registered the missing AI diagnostic code, bumped a stale scenario-count literal, 980/980 dsl tests green), and 3 of RUN-31's 4 bundled gaps closed (a missing corpus-role entry, two security-pattern-sweep false-positive/safe triages, a Docker-skip guard on the MinIO live test) -- the 4th (a flaky kernel concurrency test) was investigated in depth (code read end-to-end, 15 fresh reruns) but left honestly open since it could not be reproduced or root-caused.",
-  "nextStep": "No task is queued. Wave 1 is fully closed; remaining ledger items are RUN-31's unreproduced flaky test (LOW, no urgency, see its own investigation notes for what the next session should capture if it recurs) plus owner-accepted WONTFIX/declined-scope items (QUAL-40, QUAL-41, W0.2) that need a fresh owner decision, not mechanical continuation. For new work, ask the user to pick from NPDEV_ROADMAP_2026-09-12.md's remaining candidates: W2.1 (needs the owner's answer to decision D6 first), W3.1 (pack deprecation, self-contained), or W4.1 (capability contract errors/sideEffects/auth -- highest trap density in the roadmap, R4+R5+R8 all apply).",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\NPDEV_ROADMAP_2026-09-12\\NPDEV_ROADMAP_2026-09-12.md",
+  "head": "fb4453b2",
+  "headSubject": "fix(kernel): widen RUN-31 degraded-concurrency test timeouts, close RUN-31",
+  "summary": "Implemented roadmap Session 1 (NPDEV_MEGA_ROADMAP.md): measured first and found the depth-2 aggregate workbench primitive already built and in production (WmsOffice Movimento), so the session became building the two genuinely-missing pieces on top of it -- a grouped, role-partitioned aggregate.balances[] DSL surface (schema x4 + AST + compiled + parser + compiler + canonical JSON round-trip + AggregateValidation, plus a new BalanceEvaluator runtime shared by AggregateRuntime's commit-time hard gate and a new on-demand, non-persisting checkBalances REST endpoint/workbenchAction), and aggregateCollection.lookupFields[] (query-sourced, read-only per-row bounds attached at load time, enforced for free by the existing invariants[] engine). Wired end-to-end through AutoPanelExpander and workbench-page.html.mustache (read-only lookup columns, a Recalcular-Saldos banner). Added a combined depth-2+balance+lookup+lifecycle fixture (StockTransferAggregate) to NPDevSamples/dsl-conformance-max, registered 4 new check-dsl-coverage.py detectors (closing aggregate.invariants' pre-existing zero-coverage gap too), and added targeted unit tests (BalanceEvaluator, AggregateRuntime, AggregateValidation).",
+  "nextStep": "Session 1's remaining item: drive the generated dsl-conformance-max app (StockTransferWorkbench) through a real browser via verify-in-browser/ScrapForAI to confirm the balance banner, read-only lookup column and post-commit lifecycle lock actually render/interact correctly -- blocked this session only by sample-app API-key bootstrap friction (npdev.auth.api-keys not resolving via env var or a fresh application-npdev-auth.properties for this freshly-generated sample; root cause not yet found), not by anything in the feature code itself. After that, Session 1 is fully done and NEXT should move to Session 2 (close the AI authoring loop) or Sessions 3/4/5 per the roadmap's dependency graph.",
+  "plan": "",
   "blocked": "",
-  "verified": "helpers/check_task.py --task W1.8: all 3 automatic conditions PASS. Full live run-shell-scenarios.ps1 (generate+build+boot dsl-conformance-max + 5 routines + axe scan): exit 0. Full :NPDevContract:dsl:test: 980/980 pass (RUN-30 fix). security-pattern-sweep.py: 0 needing triage, --fail-on-new and --self-test both exit 0. validate-corpus.py: 65/65 declare corpusRole. :adapters:file-store-objectstore:test full module: green, MinIO test cleanly skips (tests=3 skipped=3 errors=0). run-script-inventory-check.ps1: 232/232 classified+invocation-declared. git status clean, 5 commits this session all pushed to origin/main (HEAD b7256a12).",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "Full :NPDevContract:dsl:test (992 tests) green; NPDevRuntimeHost/runtimehost-core full test suite green including new BalanceEvaluatorTest/AggregateRuntimeBalanceTest; full scripts/quality/run-generator-gate.ps1 passed (deterministic generation, generator governance, DSL reference + floor, T2 release-gate validation against the updated dsl-conformance-max fixture, out-of-tree generation, trusted-source security, coverage ratchet all green, dsl coverage floor auto-ratcheted 85.1628%->85.3056%); check-dsl-coverage.py OK with all 4 new features covered; check-twin-pair-consistency.py and check-schema-mirror-consistency.py both OK with no new entries needed; dsl-conformance-max model.json validates with 0 errors/warnings at T2; the generated StockTransferWorkbenchWorkbench.html was confirmed to contain the new checkBalances/readOnlyColumns wiring. NOT verified: live browser interaction (app boot blocked on local API-key config, not a code issue).",
+  "dirtyCount": 36,
+  "dirtyFiles": [
+    " M NPDevContract/dsl/resources/Schemas/model.schema.json",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AggregateAst.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/AggregateCollectionAst.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/WorkbenchActionAst.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledAggregate.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledAggregateCollection.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJson.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledModelCanonicalJsonReader.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledWorkbenchAction.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/ModelCompiler.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/parser/JsonModelParser.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/AggregateValidation.java",
+    " M NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/PanelValidation.java",
+    " M NPDevContract/dsl/src/main/resources/schema/model.schema.json",
+    " M NPDevContract/schemas/authoring/model.schema.json",
+    " M NPDevContract/schemas/model.schema.json",
+    " M NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/AggregateRuntime.java",
+    " M NPDevRuntimeHost/src/main/java/com/finalexec/api/AggregateApiController.java"
+  ],
   "unpushed": 0,
-  "landedCommits": [
-    "b7256a12 chore(session): close ledger-backlog cleanup session handoff"
-  ]
+  "landedCommits": []
 }

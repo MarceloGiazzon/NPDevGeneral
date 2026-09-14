@@ -464,6 +464,76 @@
         { "name": "validFrom", "type": "date", "required": true, "ui": { "label": "Valid from" } },
         { "name": "validTo", "type": "date", "required": true, "ui": { "label": "Valid to" } }
       ]
+    },
+    {
+      "name": "StockLocation",
+      "truthLevel": "T2",
+      "ui": { "label": "Stock location" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "localId", "type": "string", "required": true, "ui": { "label": "Location" } },
+        { "name": "disponivel", "type": "integer", "required": true, "ui": { "label": "Available quantity" } }
+      ],
+      "indexes": [
+        { "name": "ux_stock_location_local_id", "fields": ["localId"], "unique": true }
+      ]
+    },
+    {
+      "name": "StockTransfer",
+      "truthLevel": "T2",
+      "ui": { "label": "Stock transfer" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "reference", "type": "string", "required": true, "ui": { "label": "Reference" } },
+        {
+          "name": "status",
+          "type": "enum",
+          "enumValues": ["Draft", "Committed"],
+          "required": true,
+          "ui": { "label": "Status" }
+        }
+      ],
+      "lifecycle": {
+        "statusField": "status",
+        "states": [
+          { "value": "Draft", "label": "Draft", "initial": true },
+          { "value": "Committed", "label": "Committed", "terminal": true }
+        ],
+        "transitions": [
+          { "from": "Draft", "to": "Committed" }
+        ]
+      }
+    },
+    {
+      "name": "StockTransferItem",
+      "truthLevel": "T2",
+      "ui": { "label": "Stock transfer item" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "stockTransferId", "type": "uuid", "required": true, "ui": { "label": "Stock transfer" } },
+        { "name": "sku", "type": "string", "required": true, "domainType": "Sku", "ui": { "label": "SKU" } },
+        { "name": "validity", "type": "date", "required": true, "ui": { "label": "Validity" } }
+      ]
+    },
+    {
+      "name": "StockTransferPosition",
+      "truthLevel": "T2",
+      "ui": { "label": "Stock transfer position" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "stockTransferItemId", "type": "uuid", "required": true, "ui": { "label": "Item" } },
+        {
+          "name": "role",
+          "type": "enum",
+          "enumValues": ["Origem", "Destino"],
+          "required": true,
+          "ui": { "label": "Role" }
+        },
+        { "name": "localId", "type": "string", "required": true, "ui": { "label": "Location" } },
+        { "name": "quantity", "type": "integer", "required": true, "ui": { "label": "Quantity" } },
+        { "name": "sku", "type": "string", "required": true, "domainType": "Sku", "ui": { "label": "SKU" } },
+        { "name": "validity", "type": "date", "required": true, "ui": { "label": "Validity" } }
+      ]
     }
   ],
 
@@ -651,6 +721,14 @@
       "metadata": {
         "purpose": "Coverage for query.groupBy/aggregates/having (Move 10 B1, LC-B1): plain-field groupBy + one bucketed date field (month), all five aggregate fn values, a having clause, orderBy and limit in one declaration."
       }
+    },
+    {
+      "name": "AvailableQuantityQuery",
+      "concept": "StockLocation",
+      "where": "disponivel >= 0",
+      "metadata": {
+        "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): backs StockTransferAggregate.items.positions.lookupFields[] (maxQuantity) -- run ONCE per aggregate load (AggregateRuntime.runLookupQueries), never per row and never with a runtime-bound parameter, since no query-execution path in the platform substitutes one into `where` today. Joined to position rows in memory by localId."
+      }
     }
   ],
 
@@ -697,6 +775,56 @@
       ],
       "metadata": {
         "purpose": "Second independent aggregate in the corpus; WmsOffice and its clone were the only ones. Depth-2 via lines->notes (REG-72, docs/MOVE3_AGGREGATE_WORKBENCH_PLAN.md)."
+      }
+    },
+    {
+      "name": "StockTransferAggregate",
+      "root": "StockTransfer",
+      "collections": [
+        {
+          "name": "items",
+          "concept": "StockTransferItem",
+          "childField": "stockTransferId",
+          "ownership": "owned",
+          "collections": [
+            {
+              "name": "positions",
+              "concept": "StockTransferPosition",
+              "childField": "stockTransferItemId",
+              "ownership": "owned",
+              "lookupFields": [
+                {
+                  "name": "maxQuantity",
+                  "query": "AvailableQuantityQuery",
+                  "joinField": "localId",
+                  "valueField": "disponivel"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "balances": [
+        {
+          "name": "OrigemDestinoBalance",
+          "collection": "items.positions",
+          "groupBy": ["sku", "validity"],
+          "discriminatorField": "role",
+          "leftValue": "Origem",
+          "rightValue": "Destino",
+          "quantityField": "quantity",
+          "message": "Faltam {delta} unidade(s) de {sku} (validade {validity}) no destino"
+        }
+      ],
+      "invariants": [
+        {
+          "name": "PositionWithinAvailable",
+          "expression": "items.all(i => i.positions.all(p => p.quantity <= p.maxQuantity))",
+          "message": "A quantidade de uma posicao nao pode exceder a quantidade disponivel no local"
+        }
+      ],
+      "metadata": {
+        "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the fixture for the WmsOffice Movimento->MovimentoItem->MovimentoItemPosicao shape (root->items->positions, depth-2, already-working nesting) combined with the NEW grouped balance primitive (balances[], checklist P4/P5/B1-B4) and the NEW query-sourced per-row bound (items.positions.lookupFields[].maxQuantity, checklist H1/H2). groupBy is [sku, validity] since StockTransferItem carries both, matching WmsOffice's real per-product/per-validity balance requirement, not just a document-wide total."
       }
     }
   ],
@@ -850,6 +978,22 @@
         "dataSource": {
           "procedure": "ListActiveWidgetCatalogEntriesProcedure"
         }
+      }
+    },
+    {
+      "name": "StockTransferWorkbench",
+      "aggregate": "StockTransferAggregate",
+      "route": "/stock-transfers",
+      "metadata": {
+        "purpose": "Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the corpus witness for aggregate.balances[], aggregateCollection.lookupFields[] and workbenchAction.checkBalances -- combined with the already-covered depth-2 rendering (WidgetOrderWorkbench) and, new here, a concept lifecycle actually driving an Aggregate Workbench's editable/allowedActions state (checklist S2/S3: fields read-only and add-row/recalculate buttons hidden once StockTransfer reaches Committed)."
+      },
+      "transaction": {
+        "actions": [
+          {
+            "label": "Recalcular Saldos",
+            "checkBalances": ["OrigemDestinoBalance"]
+          }
+        ]
       }
     }
   ],

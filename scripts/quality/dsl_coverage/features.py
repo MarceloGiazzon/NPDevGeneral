@@ -15,7 +15,8 @@ from __future__ import annotations
 from .constants import FLOW_STEP_TYPES  # noqa: F401 - the table expands one entry per type
 
 from .detectors_model import (  # noqa: F401 - every name the table below references
-    _all_steps, _flows, _has_aggregate_on_commit, _has_aggregate_on_validate,
+    _all_steps, _flows, _has_aggregate_balances, _has_aggregate_collection_lookup_fields,
+    _has_aggregate_invariants, _has_aggregate_on_commit, _has_aggregate_on_validate,
     _has_arithmetic_derived_expression,
     _has_capability_policy, _has_composite_index, _has_concept_access, _has_concept_extends,
     _has_concept_soft_delete, _has_concept_temporal, _has_concept_uid, _has_field_access,
@@ -35,8 +36,8 @@ from .detectors_ui import (  # noqa: F401 - every name the table below reference
     _has_field_picker_filter, _has_panel_action_concept_query, _has_panel_action_download,
     _has_panel_data_source_on_row_load, _has_picker_selector_ref, _has_region_component_mount,
     _has_transaction_hook, _has_typed_workbench_actions, _has_workbench_after_action,
-    _has_workbench_apply_to, _has_workbench_band_pickers, _has_workbench_derived,
-    _has_workbench_ui_state, _has_workbench_visible_when,
+    _has_workbench_apply_to, _has_workbench_band_pickers, _has_workbench_check_balances,
+    _has_workbench_derived, _has_workbench_ui_state, _has_workbench_visible_when,
 )
 
 FEATURE_DETECTORS = {
@@ -268,6 +269,17 @@ FEATURE_DETECTORS = {
     # onCommit, not a flag on it -- tracked separately so a regression to just this field still
     # fails the build.
     "aggregate.onValidate": _has_aggregate_on_validate,
+    # R4.4 (Roadmap Wave 1 2026-08-19): shipped end-to-end with zero corpus usage until Session 1
+    # (NPDEV_MEGA_ROADMAP.md, 2026-09-14) added a witness -- distinct from a concept's own,
+    # already-tracked invariants[] (a different, older feature).
+    "aggregate.invariants": _has_aggregate_invariants,
+    # Session 1: grouped, role-partitioned balance rules (checklist P4/P5).
+    "aggregate.balances": _has_aggregate_balances,
+    # Session 1: query-sourced, read-only per-row bound fields (checklist H1/H2).
+    "aggregateCollection.lookupFields": _has_aggregate_collection_lookup_fields,
+    # Session 1: the on-demand, non-persisting balance-check alternate to a typed action's
+    # procedure -- tracked separately so a regression to only the commit-time gate still fails.
+    "workbenchAction.checkBalances": _has_workbench_check_balances,
     # Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 4 / Gap 7): a panelAction's resultAs
     # ("download") -- inventario.html's Gerar Template had no declared surface for this before.
     "panelAction.resultAs.download": _has_panel_action_download,

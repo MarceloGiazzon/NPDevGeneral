@@ -2,12 +2,19 @@ package com.finalexec.npdev.service;
 
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregate;
+import com.npdev.dsl.v1.compiled.CompiledAggregateBalance;
 import com.npdev.dsl.v1.compiled.CompiledAggregateCollection;
+import com.npdev.dsl.v1.compiled.CompiledAggregateCollectionLookupField;
 import com.npdev.dsl.v1.compiled.CompiledAggregateInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.kernel.ExecutionContext;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.ConceptListRequest;
+import com.npdev.kernel.concepts.ConceptPage;
+import com.npdev.kernel.concepts.ConceptQuery;
+import com.npdev.kernel.concepts.ConceptQueryPredicateCompiler;
+import com.npdev.kernel.concepts.ConceptQueryRequest;
 import com.npdev.kernel.concepts.ConceptReadRequest;
 import com.npdev.kernel.concepts.ConceptRecord;
 import com.npdev.kernel.concepts.ConceptWriteRequest;
@@ -165,8 +172,14 @@ public class AggregateRuntime {
         Map<String, Object> tree = new LinkedHashMap<>();
         tree.put("aggregate", aggregate.name());
         putRecord(tree, root.get());
+        // Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): every declared lookupFields[] query is run
+        // ONCE per load (not once per row) -- see runLookupQueries's javadoc for why a per-row
+        // parameterized query is not something the platform's query-execution path supports today.
+        Map<String, List<ConceptRecord>> lookupQueryResults =
+                runLookupQueries(aggregate.collections(), gateway, effectiveContext);
         for (CompiledAggregateCollection collection : aggregate.collections()) {
-            tree.put(collection.name(), loadCollection(collection, rootId, gateway, effectiveContext));
+            tree.put(collection.name(),
+                    loadCollection(collection, rootId, gateway, effectiveContext, lookupQueryResults));
         }
         return tree;
     }
@@ -226,6 +239,12 @@ public class AggregateRuntime {
         // any controller change. Every failing rule is named, not just the first -- an author
         // fixing a draft should see all of them in one round trip.
         assertAggregateInvariants(aggregate, rootDraft);
+
+        // Session 1: declared balances[] evaluate in this SAME pre-commit slot, right after
+        // invariants -- the server-side truth backstop behind the on-demand checkBalances path
+        // below (checklist S6: "an unbalanced document cannot be saved, and says why before the
+        // attempt" -- the client already refuses via checkBalances, but the server never trusts it).
+        assertAggregateBalances(aggregate, rootDraft);
 
         String rootId = idOrNew(rootDraft.get("id"));
         Set<String> rootCollectionKeys = collectionNames(aggregate.collections());
@@ -287,6 +306,133 @@ public class AggregateRuntime {
         return patched;
     }
 
+    /**
+     * Session 1 (NPDEV_MEGA_ROADMAP.md, 2026-09-14): the on-demand "Recalcular Saldos" affordance --
+     * evaluates the named {@code balances[]} rules against {@code draft} (the client's full
+     * in-progress, unsaved tree, exactly as {@link #invoke} already receives it) and returns the
+     * draft merged with a {@code __balances} report, WITHOUT invoking any procedure and WITHOUT
+     * persisting anything -- same "does not persist" contract {@link #invoke} documents. A rule name
+     * that does not resolve is skipped rather than thrown (model validation, not runtime request
+     * handling, is where an unresolvable {@code checkBalances} name is refused -- see
+     * {@code PanelValidation#validateWorkbenchActions}).
+     *
+     * @throws IllegalArgumentException if the aggregate is unknown
+     */
+    public Map<String, Object> checkBalances(String aggregateName, List<String> balanceNames, Map<String, Object> draft) {
+        CompiledAggregate aggregate = findAggregate(aggregateName);
+        Map<String, Object> rootDraft = draft == null ? new LinkedHashMap<>() : new LinkedHashMap<>(draft);
+        Map<String, Object> report = new LinkedHashMap<>();
+        for (String balanceName : balanceNames == null ? List.<String>of() : balanceNames) {
+            CompiledAggregateBalance balance = aggregate.balances().stream()
+                    .filter(candidate -> candidate.name() != null && candidate.name().equalsIgnoreCase(balanceName))
+                    .findFirst()
+                    .orElse(null);
+            if (balance == null) {
+                continue;
+            }
+            List<BalanceEvaluator.GroupResult> results = BalanceEvaluator.evaluate(balance, rootDraft);
+            boolean balanced = results.stream().allMatch(BalanceEvaluator.GroupResult::balanced);
+            List<Map<String, Object>> groups = new ArrayList<>();
+            for (BalanceEvaluator.GroupResult result : results) {
+                Map<String, Object> group = new LinkedHashMap<>();
+                group.put("group", result.groupKey());
+                group.put("leftTotal", result.leftTotal());
+                group.put("rightTotal", result.rightTotal());
+                group.put("delta", result.delta());
+                group.put("balanced", result.balanced());
+                group.put("message", result.message());
+                groups.add(group);
+            }
+            Map<String, Object> ruleReport = new LinkedHashMap<>();
+            ruleReport.put("balanced", balanced);
+            ruleReport.put("groups", groups);
+            report.put(balance.name(), ruleReport);
+        }
+        rootDraft.put("__balances", report);
+        return rootDraft;
+    }
+
+    /**
+     * Session 1: throws naming every unbalanced group's message if any of the aggregate's declared
+     * balances[] rules has a group out of balance -- the same shape {@link #assertAggregateInvariants}
+     * already throws, evaluated in the same pre-commit slot.
+     */
+    private void assertAggregateBalances(CompiledAggregate aggregate, Map<String, Object> rootDraft) {
+        if (aggregate.balances().isEmpty()) {
+            return;
+        }
+        List<String> violations = new ArrayList<>();
+        for (CompiledAggregateBalance balance : aggregate.balances()) {
+            for (BalanceEvaluator.GroupResult result : BalanceEvaluator.evaluate(balance, rootDraft)) {
+                if (!result.balanced()) {
+                    violations.add(result.message());
+                }
+            }
+        }
+        if (!violations.isEmpty()) {
+            throw new IllegalStateException(
+                    "Aggregate " + aggregate.name() + " balance(s) violated: " + String.join("; ", violations));
+        }
+    }
+
+    /**
+     * Session 1: runs every distinct {@code lookupFields[].query} declared anywhere in the
+     * aggregate's collection tree exactly ONCE (not once per row, and not once per nested-collection
+     * call, even though {@link #loadCollection} recurses once per parent row for a depth-2
+     * collection) -- the query is unparameterized (no runtime query-parameter binding exists
+     * anywhere in the platform's query-execution path, {@code ConceptQueryPredicateCompiler
+     * .compileToConceptQueryFilters(query.where())}, the same one a procedure's {@code runQuery}
+     * step uses), so every row of a given query's result is identical regardless of which draft row
+     * is asking. Returns raw {@link ConceptRecord}s, keyed by normalized query name; {@link
+     * #loadCollection} joins them to rows in memory by each lookup field's own {@code joinField}.
+     */
+    private Map<String, List<ConceptRecord>> runLookupQueries(
+            List<CompiledAggregateCollection> collections, ConceptGateway gateway, ExecutionContext context) {
+        Set<String> queryNames = new LinkedHashSet<>();
+        collectLookupQueryNames(collections, queryNames);
+        if (queryNames.isEmpty()) {
+            return Map.of();
+        }
+        CompiledModel model = modelHolder.get();
+        List<CompiledQuery> declaredQueries = model == null ? List.of() : model.getQueries();
+        Map<String, List<ConceptRecord>> out = new LinkedHashMap<>();
+        for (String queryName : queryNames) {
+            CompiledQuery query = declaredQueries.stream()
+                    .filter(candidate -> candidate.name() != null && normalize(candidate.name()).equals(queryName))
+                    .findFirst()
+                    .orElse(null);
+            if (query == null) {
+                out.put(queryName, List.of());
+                continue;
+            }
+            List<ConceptQuery.Filter> filters;
+            try {
+                filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(query.where());
+            } catch (ConceptQueryPredicateCompiler.UnsupportedPredicateException unsupported) {
+                out.put(queryName, List.of());
+                continue;
+            }
+            List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
+            int limit = query.limit() != null && query.limit() > 0 ? query.limit() : ConceptQuery.MAX_LIMIT;
+            ConceptPage page = gateway.query(
+                    new ConceptQueryRequest(query.concept(), new ConceptQuery(filters, sorts, 0, limit)), context);
+            out.put(queryName, page.items());
+        }
+        return out;
+    }
+
+    private static void collectLookupQueryNames(
+            List<CompiledAggregateCollection> collections, Set<String> out) {
+        for (CompiledAggregateCollection collection : collections) {
+            for (CompiledAggregateCollectionLookupField lookupField : collection.lookupFields()) {
+                if (lookupField.query() != null) {
+                    out.add(normalize(lookupField.query()));
+                }
+            }
+            collectLookupQueryNames(collection.collections(), out);
+        }
+    }
+
     private void commitCollections(
             List<CompiledAggregateCollection> collections,
             Map<String, Object> parentDraft,
@@ -297,6 +443,13 @@ public class AggregateRuntime {
         for (CompiledAggregateCollection collection : collections) {
             List<Map<String, Object>> draftRows = asRowList(parentDraft.get(collection.name()));
             Set<String> grandKeys = collectionNames(collection.collections());
+            // Session 1: a declared lookupField is attached at load time and never persisted --
+            // exclude it from the write payload the same way a nested collection's own key is.
+            for (CompiledAggregateCollectionLookupField lookupField : collection.lookupFields()) {
+                if (lookupField.name() != null) {
+                    grandKeys.add(normalize(lookupField.name()));
+                }
+            }
             Set<String> keptIds = new LinkedHashSet<>();
             for (Map<String, Object> row : draftRows) {
                 String childId = idOrNew(row.get("id"));
@@ -369,21 +522,56 @@ public class AggregateRuntime {
             CompiledAggregateCollection collection,
             String parentId,
             ConceptGateway gateway,
-            ExecutionContext context
+            ExecutionContext context,
+            Map<String, List<ConceptRecord>> lookupQueryResults
     ) {
         List<ConceptRecord> children = gateway.list(
                 new ConceptListRequest(collection.concept(), null, collection.childField(), parentId),
                 context);
+        // Session 1: one join index per declared lookupField, built once for this collection call
+        // (not once per row) from the query results already fetched by runLookupQueries.
+        List<CompiledAggregateCollectionLookupField> lookupFields = collection.lookupFields();
+        List<Map<String, Object>> lookupIndexes = new ArrayList<>(lookupFields.size());
+        for (CompiledAggregateCollectionLookupField lookupField : lookupFields) {
+            lookupIndexes.add(buildLookupIndex(
+                    lookupQueryResults.getOrDefault(normalize(lookupField.query()), List.of()), lookupField));
+        }
         List<Map<String, Object>> rows = new ArrayList<>();
         for (ConceptRecord child : children) {
             Map<String, Object> row = new LinkedHashMap<>();
             putRecord(row, child);
+            for (int i = 0; i < lookupFields.size(); i++) {
+                CompiledAggregateCollectionLookupField lookupField = lookupFields.get(i);
+                Object joinValue = row.get(lookupField.joinField());
+                // Never persisted -- scalarFields() excludes every declared lookupField name from
+                // the commit payload the same way __children/collection keys already are.
+                row.put(lookupField.name(),
+                        joinValue == null ? null : lookupIndexes.get(i).get(String.valueOf(joinValue)));
+            }
             for (CompiledAggregateCollection nested : collection.collections()) {
-                row.put(nested.name(), loadCollection(nested, child.id(), gateway, context));
+                row.put(nested.name(), loadCollection(nested, child.id(), gateway, context, lookupQueryResults));
             }
             rows.add(row);
         }
         return rows;
+    }
+
+    /** {@code joinField} value (from each fetched query row) -> {@code valueField} value, so
+     *  attaching a lookup to a draft row is an O(1) map lookup with zero extra queries. */
+    private static Map<String, Object> buildLookupIndex(
+            List<ConceptRecord> queryRows, CompiledAggregateCollectionLookupField lookupField) {
+        Map<String, Object> index = new LinkedHashMap<>();
+        for (ConceptRecord queryRow : queryRows) {
+            Object joinValue = fieldValue(queryRow, lookupField.joinField());
+            if (joinValue != null) {
+                index.put(String.valueOf(joinValue), fieldValue(queryRow, lookupField.valueField()));
+            }
+        }
+        return index;
+    }
+
+    private static Object fieldValue(ConceptRecord record, String fieldName) {
+        return "id".equalsIgnoreCase(fieldName) ? record.id() : record.data().get(fieldName);
     }
 
     /** Flatten a record into the row map: id at the top, then its data fields. */
