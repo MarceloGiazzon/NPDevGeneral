@@ -5,7 +5,8 @@ title: >-
   Session 2's AI loop, not caused by it
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
+closed: 2026-09-14
 opened: 2026-09-14
 source: >-
   NPDEV_MEGA_ROADMAP.md Session 2 (closing the AI authoring loop). The loop's live proof needed a
@@ -45,5 +46,93 @@ detail: |
   `D:\WorkSpace\NPDev\Build\ai-loop-verify-app\logs\ops-build-finalapp-*.log` (two runs) and the app
   itself at `D:\WorkSpace\NPDev\Build\ai-loop-verify-app` (throwaway, safe to delete once triaged).
 
-  Done when: root-caused and either fixed, or confirmed environment-specific and closed with that
-  evidence.
+  2026-09-14 (Session 2 proof retry): reproduced again live with an otherwise CLEAN library state
+  (compileJava + bootJar succeeded; no orphan-jar duplicate classes -- RUN-34's cache fix confirmed
+  effective), same three test names. The suite CONCLUDED ~7.5 min after the failures ("There were
+  failing tests", 23:11:47Z) with zero results written mid-run until the very end (binary result
+  files stay 0-byte until task completion -- an earlier "hung for 8+ minutes" observation here was
+  WRONG, retracted: the 872-test suite is simply slow on this memory-pressured machine, which also
+  shows recurring "paging file is too small" JVM OOM warnings in the gate logs). The test worker's
+  JVM args carried pinned Testcontainers npipe config (`~/.testcontainers.properties` +
+  `docker.client.strategy=NpipeSocketClientProviderStrategy`, mirrored by the generated build.gradle
+  lines ~788 and ~842 when DOCKER_HOST is unset), but the known Docker-dependent test classes are
+  excluded from the plain `test` task by design (generatedRuntimeIntegrationTestSources routing +
+  `excludeTags 'integration'`), so Testcontainers config is dormant in the `test` run -- not the
+  cause.
+
+  2026-09-14 (RUN-32 triage, same session): root-caused. The failures split into two independent
+  defects:
+
+  (1) SchemaPromotionControllerStandaloneTest + SchemaAcknowledgmentControllerTest (both fail even
+  in ISOLATION) -- a test-vs-assembled-app contract contradiction. The 503 they assert is the
+  `manifest == null || !manifest.physicalDatabase()` branch (SchemaPromotionController.requireManifest,
+  ~line 109); they pass only in apps whose schema-realization-manifest.json declares NO physical
+  database. npdev-canary / npdev-init-default-seed apps declare `physicalDatabase: true` (verified in
+  the verification app's manifest) so requireManifest passes and the endpoint proceeds to 409
+  (`succeeded() ? 200 : 409`, observed "Status expected:<503> but was:<409>"). The tests' Javadoc
+  premise -- "no schema-realization-manifest.json on the classpath" -- holds only in a bare-template
+  checkout, where they do NOT compile (com.npdev.generated.* imports; excluded by the mount-absent
+  compile guard). They thus run exactly in the context where their premise is false. WHY THE GATE
+  STAYED GREEN: the default gate sample (simple-contact-intake, and dsl-conformance-max before it)
+  generates apps whose manifest declares NO physical database, so the !physicalDatabase() branch
+  yields the expected 503 there -- the gate's sample choice structurally masks the defect; any
+  physical-DB app (the mainstream case) trips it. Fix direction: make the two tests hermetic to the
+  app's real manifest via a loadManifest test seam (stub null / no-physical-DB regardless of the
+  assembled app), same intent (prove the auth gate + refusal wiring) without depending on the app's
+  manifest state.
+
+  (2) ConversionHookRunnerDeclaredConversionsTest.lookupConversionSetsTheForeignKey... (suite-order-
+  dependent: passes in isolation, with its class, with schema-family + manifest-test classes; fails
+  only under the full 872-test suite) -- an idempotency-rerun pollution: the second run() re-selects
+  and re-applies the lookup hook (5 history rows) instead of returning false with empty history, so
+  `unresolvedItemKeys` / `tightenedColumnStillClaimed` (TIGHTEN_NOT_NULL reclassification) /
+  `hasIncompletePhaseActivity` re-fire in the suite context but not in isolation. No static mutable
+  state exists in the runner or schemastate package, so the polluting JVM state comes from an
+  earlier suite class NOT yet isolated; deterministic across suite runs (3x reproduced). Impact: only
+  a full build of a generated app. Fix direction: isolate the specific earlier-suite interferer
+  (bisect), then harden the test (e.g., assert on the hook's real rerun outcome rather than empty
+  history, or run the class in a dedicated fork).
+
+  Secondary observation on the way: this machine shows recurring "paging file is too small" JVM OOM
+  warnings (errno 1455) across gate logs, and the 872-test suite takes ~7-8 min here (gradle writes
+  test results only at task end -- activity probes mid-run read as "no progress"). The 15:36Z gate
+  run's report (runtimehost-gate-report.json, runId runtimehost-gate-20260914-122829196) is confirmed
+  genuinely green: assembled-app test exitCode 0, runtimehost-core:test BUILD SUCCESSFUL, coverage
+  ratchet OK; the only red block is the ADVISORY runtimeSecurityConsistency report, which the gate
+  tolerates -- cadence's "passed" record is correct, not a recording bug. 4th reproduction of the 3
+  failures confirmed under a full `gradlew test` (the run then STALLED ~18 min past the failures with
+  the worker burning almost no CPU -- consistent with pagefile thrashing once multiple Gradle daemons
+  accumulate on this machine; re-running the suite after killing all java returns it to the ~7.5 min
+  baseline, as run #1's completion showed).
+
+  Done when: tests #1/#2 made hermetic to the app's manifest state, the #3 suite-interferer isolated
+  and the rerun assertion hardened -- then re-confirm a full generated-app build goes green.
+
+  2026-09-14 (fix session): ALL THREE FIXED and live-verified. Working-tree changes:
+  (1) `SchemaPromotionController` and `SchemaAcknowledgmentController` gained a package-private
+  `loadManifest()` test seam (every manifest read in the class routes through it; default is the
+  unchanged static call), and the two 503 tests now subclass the controller stubbing the seam to
+  null -- hermetic to whatever schema-realization-manifest.json the assembled app ships, so they
+  exercise the refusal branch in BOTH a bare template checkout and any physical-DB app.
+  (2) The lookup-rerun failure was PROVEN to be an ambient-`SqlDialects.active()` suite-order leak,
+  not a runner defect: an in-app probe (copy of the failing test with `SqlDialects.setActive(
+  H2Dialect.INSTANCE)` pinned) reproduced the exact failure signature ("a fully-converged conversion
+  must write zero history" with 5 history rows = HOOK_STARTED + HOOK_PHASES_APPLIED + HOOK_VERIFIED +
+  HOOK_APPLIED + RESOLVED). Mechanism: with a transactional-DDL dialect active (Postgres, the
+  lazily-resolved default) hooks run RAW and the split journal never exists, so the idempotent rerun
+  truly re-diffs to nothing; classes earlier in the suite that drive the real
+  `SchemaLifecycleExecutor.migrate(Flyway, manifest)` entry point call `pinDialectFromManifest`,
+  which mutates the GLOBAL `SqlDialects.active()` to H2 without restoring it, and under the H2 split
+  default the first run journaled phases so `hasIncompletePhaseActivity` re-selects the hook on rerun.
+  FIX: `ConversionHookRunnerDeclaredConversionsTest` now pins `PostgresDialect` in setUp +
+  `resetActiveForTesting()` in tearDown (deterministic raw-path semantics regardless of ambient
+  state), and the four migrate()-driving test classes that leaked the H2 pin
+  (`SchemaLifecycleExecutorMigrationClaimTest`, `MigrationLockConcurrentBootTest`,
+  `SchemaLifecycleExecutorProofMatrixTest`, `SchemaLifecycleExecutorNewTableOnExistingDbTest`) now
+  restore the global in tearDown, per `SchemaManifestWithEngineTest`'s documented rule.
+  LIVE VERIFICATION: full `gradlew test` on the re-assembled canary-based verify app
+  (D:\WorkSpace\NPDev\Build\ai-loop-verify-app) -- BUILD SUCCESSFUL in 7m 3s, all result XMLs show
+  failures="0", the same run that reproduced all 3 failures before the fix. Note: only the 4
+  `migrate()`-driving classes were given the restore; other classes that call `migrate()` with a
+  Postgres manifest (e.g. `SchemaLifecycleExecutorExternallyManagedTest`) pin the default dialect and
+  were left untouched. RUN-32 done.

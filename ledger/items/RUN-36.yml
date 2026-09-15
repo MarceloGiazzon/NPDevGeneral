@@ -1,0 +1,63 @@
+id: RUN-36
+title: >-
+  ai_loop's wait_for_healthy treats the Monitor probe's `stopped` verdict during the app's
+  ~20-second boot window as an instant terminal failure -- a freshly started generated app is
+  reported boot-failed while still coming up, and the actually-booting app left running held
+  `_ops` so the next iteration's regenerate aborted the whole run with a Windows file-in-use error
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-15
+closed: 2026-09-15
+source: >-
+  Found while live-verifying Session 2's AILoop (NPDEV_MEGA_ROADMAP.md) with the freshly
+  verified-working provider model moonshotai/kimi-k3 -- the run got past the provider, validation,
+  apply, generate and build (BUILD SUCCESSFUL, full 872-test suite), then reported
+  iteration-failed class "boot" health "stopped" one second after start-done, three separate times
+  (run-2026-09-15T14-10-56Z.jsonl line 66-68; run-2026-09-15T14-36-38Z.jsonl line 60-62; the latter
+  then aborted at line 69 with `npdev generate app failed: ... FileSystemException: ...\app\_ops:
+  O arquivo j est sendo usado por outro processo`). Root-caused by reading the ops logs the
+  spawn itself writes (logs/ops-run-finalapp-20260915T144826Z.log): the app DID boot -- "The
+  following 1 profile is active: dev", "Tomcat started on port 8103", "Started FinalExecApplication
+  in 18.41 seconds" -- 21 seconds AFTER the loop had already declared it dead.
+surface: NPDevManager/src/ai_loop.rs (wait_for_healthy, health_verdict, the boot-Failed and
+  PortConflict arms of run())
+detail: |
+  The Monitor's probe (npdev_monitor.py probe_app) reports "stopped" whenever nothing is listening
+  on the app's port. A generated app takes ~15-25s to open that port (the probe's own comment says
+  ~24s and distinguishes "starting" for port-open-but-not-UP). So the health state sequence during
+  a normal boot is stopped -> starting -> running, and the loop treated the first "stopped" sample
+  (taken ~1s after spawn) as terminal. Two consequences: (a) every iteration boot was false-failed
+  and the loop reprompted the LLM with a bogus "app failed to start" diagnostic; (b) the app was
+  actually still booting (and did boot), so the `monitor ops run-finalapp` wrapper stayed alive
+  holding `_ops` as its working directory, and the NEXT iteration's generate -- which calls
+  FinalAppAssembler.deleteTree on `_ops` -- died with a Windows file-in-use FileSystemException,
+  aborting the loop entirely.
+
+  Excluded by evidence before fixing: the "starter env missing" theory. Direct `java -jar` of the
+  built jar without the launcher env fails at ~13s with "npdev.auth.api-keys must define at least
+  one mapping" (StartupValidator), and the same jar WITH the launcher env (SPRING_PROFILES_ACTIVE
+  + NPDEV_AUTH_APIKEYS, as Run-FinalApp.ps1's Ensure-NpdevApiKey provisions) boots cleanly in
+  12s -- proving the launch pipeline was fine and the failures were the health check's.
+
+  Fix (loop-side only; the probe's "stopped" contract for its other consumers is untouched):
+  health_verdict -- a new pure decision function -- treats "stopped" as KeepPolling while the
+  spawn tree the loop started is still alive and elapsed < timeout, and only as terminal once that
+  tree is gone (the one state where "nothing is listening" cannot mean "not yet"). "port-conflict"
+  and "error" stay terminal. Plus, the boot-Failed and PortConflict arms now stop (remove from the
+  registry + stop_running_process) the tree the loop spawned BEFORE reprompting or aborting, so a
+  false/failed boot can never leave a process holding `_ops` for the next iteration.
+
+  Verified: 5 new unit tests on health_verdict (all 46 NPDevManager tests green); binary rebuilt;
+  live proof run-2026-09-15T15-52-47Z.jsonl -- start-done 16:03:36, health-result
+  "running" 16:03:57 (21s later, the boot window now polled instead of failed), loop-done
+  outcome "booted" -- Session 2's done-when, first ever booted transcript.
+
+  Residual note (not fixed here, deliberately): after the headless --ai-loop CLI process exits at
+  loop-done, the Windows Job Object it assigned the spawn tree to (kill-on-close) reaps the
+  booted app, so a CLI-driven proof does not leave the app serving past the driver's lifetime.
+  The UI path (long-lived Manager process) leaves it running. Keep-alive for the CLI path is a
+  separate decision.
+  Done when: an iteration whose app boots records health-result "running" and outcome "booted"
+  rather than an instant boot-failure (proven live), and a failed boot leaves no spawn tree
+  holding the app's _ops (no FileSystemException on the following iteration).
