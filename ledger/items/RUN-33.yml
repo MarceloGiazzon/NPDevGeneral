@@ -1,0 +1,39 @@
+id: RUN-33
+title: >-
+  The Manager spawns `npdev generate app` with NPDEV_BUILD_ROOT=%LOCALAPPDATA%\NPDev, so every
+  Manager-driven generation (GUI or the headless --ai-loop CLI) stages its runtime jars from the
+  Manager's OWN AppData runtimehost-libs cache, which this repo's documented restage workflow never
+  refreshes -- the AppData cache rots silently and Manager-built apps fail with stale/missing
+  platform jars while direct CLI builds keep working
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-14
+source: >-
+  Found while live-verifying Session 2's AILoop (NPDEV_MEGA_ROADMAP.md): the --ai-loop proof kept
+  failing with missing modules in the generated app's build. NPDevManager/src/npdev.rs:177 sets
+  `NPDEV_BUILD_ROOT` to `crate::state::manager_home()` (= %LOCALAPPDATA%\NPDev, deliberate -- see
+  the comment there) for EVERY command the Manager spawns; FinalAppAssembler.resolveRuntimeHostLibsDir
+  resolves that to <NPDEV_BUILD_ROOT>/runtimehost-libs long before script defaults. The documented
+  dev workflow (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars, CLAUDE.md) only ever
+  refreshes D:\WorkSpace\NPDev\Build\runtimehost-libs, so in a local dev setup only THAT cache is
+  fresh; the Manager's AppData copy had been stuck at 2026-08-12 and was missing entire modules
+  (e.g. runtimehost-core-0.1.0.jar).
+surface: NPDevManager/src/npdev.rs (NPDEV_BUILD_ROOT wiring), %LOCALAPPDATA%\NPDev\runtimehost-libs, FinalAppAssembler.resolveRuntimeHostLibsDir
+detail: |
+  `npdev.rs:177` (`cmd.env("NPDEV_BUILD_ROOT", crate::state::manager_home())`) makes the generator
+  resolve its runtimehost-libs dir to %LOCALAPPDATA%\NPDev\runtimehost-libs via the
+  NPDEV_BUILD_ROOT branch of resolveRuntimeHostLibsDir (checked in code: env NPDEV_RUNTIMEHOST_LIBS_DIR
+  first, then NPDEV_BUILD_ROOT, then <repo-parent>/Build). The repo's own maintenance workflow never
+  writes there, so the Manager's cache only changes when someone manually mirrors it.
+
+  Fixed this session as a MANUAL WORKAROUND only (mirrored Build\runtimehost-libs ->
+  %LOCALAPPDATA%\NPDev\runtimehost-libs and confirmed both lists match). Not fixed in code.
+
+  Candidate designs for the real fix (needs a decision): (a) when manager.json's use_local_repo/
+  local_repo_path is set, point NPDEV_BUILD_ROOT's runtimehost-libs at the same root
+  sync-runtimehost-libs.ps1 targets, or (b) add a Manager-side restage step for local-repo mode
+  that refreshes the AppData cache from the shared one. Note the AppData cache EXISTS on purpose
+  (jars survive an `npdev` version switch), so removing it entirely is not the answer.
+  Done when: a Manager-spawned generate stages jars no older than current source on a machine whose
+  AppData cache was never manually mirrored, without breaking the version-independent-cache property.

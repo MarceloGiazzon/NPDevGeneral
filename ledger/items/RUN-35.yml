@@ -1,0 +1,76 @@
+id: RUN-35
+title: >-
+  ai_loop.rs's classify_build trusts run_ops_script_capture's done.exitCode, which the
+  `npdev monitor ops` wrapper reports as 0 even when gradle's build actually failed -- a real
+  build-finalapp failure is recorded as build-done, the loop proceeds to start, and the failure is
+  misclassified as a BOOT failure ("Unable to access jarfile ...") with a wrong reprompt to the LLM
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-09-14
+closed: 2026-09-15
+source: >-
+  Confirmed on a live transcript during Session 2's AILoop verification
+  (D:\WorkSpace\NPDev\Build\ai-loop-verify-app\logs\ai-loop\run-2026-09-14T20-25-21Z.jsonl) -- the
+  build output clearly showed "BUILD FAILED in 25s" / "> Task :compileJava FAILED", yet the loop
+  classified the iteration as a boot failure. First suspected at the end of that session (Handoff
+  section 2.5), now confirmed by reading the code against the transcript. A SECOND live instance
+  from the same day (run-2026-09-14T22-59-26Z.jsonl, 23:11:47-48Z) shows the same shape on the
+  RUN-32 test failures: `build-done` + `start-done` recorded on a failed build, then
+  iteration-failed class "boot" with the reprompt falsely telling the LLM "Your previous model.json
+  built successfully but the app FAILED TO START ... Unable to access jarfile" -- the run-1 build's
+  bootJar had succeeded but `gradlew build` had failed on the 3 tests, so the jar the boot step
+  referenced was stale/absent.
+surface: NPDevManager/src/ai_loop.rs (classify_build, ~line 146; build step ~line 543), NPDevManager/src/npdev.rs (run_ops_script_capture, ~line 1440)
+detail: |
+  Transcript evidence (run-2026-09-14T20-25-21Z.jsonl, iteration 1):
+    - line 488: ops-line "BUILD FAILED in 25s"; line 100/104: "> Task :compileJava FAILED" and
+      "FAILURE: Build failed with an exception."
+    - line 490: the wrapper's done event: {"exitCode":0,"logFile":null,"script":"build-finalapp"}
+      -- gradle failed, the exit code reports success.
+    - line 491-492: the loop records build-done then start-done (it trusted the exit code).
+    - line 493: iteration-failed class "boot", health "stopped", app log line
+      "Error: Unable to access jarfile D:\\WorkSpace\\NPDev\\Build\\ai-loop-verify-app\\build\\libs\\FinalExec-0.1.0.jar"
+      -- the misclassification: no jar existed because the build had failed.
+    - line 494: the LLM was reprompted with the wrong failure class.
+
+  Code path: npdev.rs run_ops_script_capture forwards the wrapper's last JSON line verbatim as
+  done (exitCode from `last.exitCode`, logFile null when the wrapper omits it). ai_loop.rs
+  classify_build returns None immediately when exitCode == 0, and its only log source is
+  done.logFile -- which is null -- so even a non-zero exit would yield "(could not read the build
+  log)" and NO scan of the streamed ops lines (which the loop itself faithfully puts in the
+  transcript via the on_line closure). The loop never looks at its own captured build output.
+
+  Related: RUN-32 lives in the same area (build-finalapp reliability); the wrapper's lying exit
+  code is presumably the same root defect RUN-32's investigation touched. This item is about
+  ai_loop.rs not defending against it.
+
+  2026-09-14 (same session): confirmed against the code (npdev.rs forwards the wrapper's done
+  verbatim; classify_build returned None on ANY exitCode 0 without ever reading the streamed lines,
+  and done.logFile is null so even a non-zero path yielded "(could not read the build log)") and
+  FIXED in the working tree: classify_build now takes the captured ops lines, scans them for
+  gradle's own failure markers ("BUILD FAILED" / "FAILURE: Build failed with an exception.") even
+  when exitCode is 0, and builds the Compile log tail from those lines. Three new unit tests replay
+  the exact transcript shape (exitCode 0, logFile null, lines containing compileJava FAILED /
+  BUILD FAILED); all 41 NPDevManager unit tests pass. NOT yet live-verified (the verification run
+  in flight uses the freshly rebuilt binary) and NOT yet committed. Related observation walking the
+  hang in RUN-32: the loop's build step has NO timeout -- run_ops_script_capture awaits the gradle
+  command forever, so a hung build (see RUN-32's 2026-09-14 note) blocks the run indefinitely and
+  no iteration budget can end it. A build-step timeout (e.g. a generous upper bound + aborting the
+  run with a distinct failure class) is a follow-up. Same class of gap on the provider side:
+  prompter_generate_via_http uses `reqwest::Client::new()` with no `.timeout()` (main.rs ~1984), so
+  a provider that accepts the connection but stalls holds the run indefinitely too -- observed live
+  on 2026-09-14 (a single model call sat in flight for 8+ minutes with no ai-call-done).
+
+  Done when: classify_build treats a build as failed when the captured ops output contains a
+  gradle failure marker ("BUILD FAILED" or "FAILURE: Build failed with an exception.") even when
+  exitCode is 0 (unit-tested), and the Compile failure's log tail comes from the captured lines,
+  not the null logFile.
+
+  CLOSED 2026-09-15: shipped in the binary that produced the first-ever booted transcript
+  (run-2026-09-15T15-52-47Z.jsonl, outcome=booted; 46/46 manager unit tests including the 3
+  classify_build replay tests). The 2026-09-15 session additionally root-caused and fixed the
+  adjacent false-BOOT failure -- the health probe's "stopped" during the app's boot window -- as
+  RUN-36, and recorded the no-timeout gaps (build step and provider call) as follow-ups within
+  that item's notes; the build/provider timeouts themselves remain open work (see RUN-36's "not
+  fixed here" and this item's "no timeout" observations).

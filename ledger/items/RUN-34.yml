@@ -1,0 +1,46 @@
+id: RUN-34
+title: >-
+  FinalAppAssembler.stageRuntimeHostLibsIntoApp copies source runtimehost-libs jars into the app's
+  libs/npdev-runtime with REPLACE_EXISTING but NEVER deletes a jar that used to exist -- after a
+  module rename, the old jar sits next to the new one, both define the same classes, and Gradle
+  resolves them nondeterministically: scattered "cannot find symbol" compile errors that look like
+  intermittent staleness but are a fixed consequence of the duplicate
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-14
+source: >-
+  Found while live-verifying Session 2's AILoop (NPDEV_MEGA_ROADMAP.md) -- this was the actual root
+  cause behind hours of seemingly-random generated-app build failures. Both the Manager's AppData
+  cache and the verification app had accumulated orphaned jars after module renames:
+  dsl-0.1.0.jar (old) beside npdev-dsl-0.1.0.jar (current) -- both define com.npdev.dsl.v1.compiled.
+  {CompiledDocument,CompiledModel,...}, but the old classes lack methods current generated code calls
+  (aggregate(), bands(), logo(), findWebhookBySource(...), getLabelLocales(), labelLocales()); an
+  old expression-cel-0.1.0.jar also bundled its own stale GeneratedCrudRuntimeSupport (5-arg
+  auditCrudMutation) beside the current runtime-support-0.1.0.jar. Not the same bug as RUN-32
+  (build-finalapp's 3 failed bundled tests) -- do not conflate; both live in the under-tested
+  "runtimehost-libs handling" area.
+surface: NPDevGenerator/generator/src/main/java/com/npdev/generator/assembly/FinalAppAssembler.java (stageRuntimeHostLibsIntoApp, ~line 984), any generated app's libs/npdev-runtime
+detail: |
+  stageRuntimeHostLibsIntoApp lists every .jar in the source runtimehost-libs and copies each into
+  <app>/libs/npdev-runtime with Files.copy(..., REPLACE_EXISTING). A jar that used to be in the
+  source but no longer is (module renamed) is never removed from the destination, because the copy
+  loop has no delete/diff pass. When two jars define the same class, whichever javac/Gradle sees
+  first wins -- and it does not consistently favor the newer jar, so different runs produce
+  different "cannot find symbol"/"method cannot be applied" errors. The symptom is deterministic,
+  not intermittent; it masquerades as cache staleness.
+
+  Verify a cache is clean:
+    ls <cache-dir> | grep -i dsl                      # ONLY npdev-dsl-0.1.0.jar, never dsl-0.1.0.jar
+    jar tf <cache-dir>/expression-cel-0.1.0.jar | grep GeneratedCrudRuntimeSupport   # EMPTY
+
+  Fixed this session as a MANUAL WORKAROUND only (fully deleted, not just overwrote, the AppData
+  cache and the app's libs/npdev-runtime, then regenerated from the cleaned shared cache -- the
+  re-confirmation build is pending provider flakiness). Not fixed in code.
+
+  Real fix: delete the destination directory's contents (or diff and remove orphans) before the
+  copy in stageRuntimeHostLibsIntoApp. This can silently corrupt ANY generated app's build, not
+  just this verification app.
+  Done when: stageRuntimeHostLibsIntoApp removes orphaned jars from libs/npdev-runtime before
+  copying (unit-tested or verified by generating with a stale dsl-0.1.0.jar planted in the source
+  cache and asserting the app gets ONLY npdev-dsl-0.1.0.jar).
