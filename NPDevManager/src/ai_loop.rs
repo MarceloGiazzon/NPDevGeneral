@@ -142,18 +142,35 @@ fn classify_validation(report: &Value) -> Option<FailureClass> {
     Some(FailureClass::Validation { layer, diagnostics })
 }
 
-/// `run_ops_script_capture`'s final `{kind: "done", exitCode, logFile}` value, classified.
-fn classify_build(done: &Value) -> Option<FailureClass> {
+/// `run_ops_script_capture`'s final `{kind: "done", exitCode, logFile}` value, classified. The
+/// exit code is cross-checked against the captured ops lines: the wrapper reports `exitCode: 0`
+/// even when gradle failed (RUN-35 -- its `done` event is not a trustworthy success signal), so a
+/// zero code alone is not proof of a clean build.
+fn classify_build(done: &Value, captured_lines: &[String]) -> Option<FailureClass> {
     let exit_code = done.get("exitCode").and_then(|v| v.as_i64()).unwrap_or(0);
-    if exit_code == 0 {
+    let log_tail = captured_tail(captured_lines, 200)
+        .or_else(|| {
+            done.get("logFile")
+                .and_then(|v| v.as_str())
+                .and_then(|p| read_log_tail(Path::new(p), 200))
+        })
+        .unwrap_or_else(|| "(could not read the build log)".to_string());
+    let gradle_reported_failure = captured_lines.iter().any(|line| {
+        line.contains("BUILD FAILED") || line.contains("FAILURE: Build failed with an exception.")
+    });
+    if exit_code != 0 || gradle_reported_failure {
+        Some(FailureClass::Compile { log_tail })
+    } else {
+        None
+    }
+}
+
+fn captured_tail(lines: &[String], max_lines: usize) -> Option<String> {
+    if lines.is_empty() {
         return None;
     }
-    let log_tail = done
-        .get("logFile")
-        .and_then(|v| v.as_str())
-        .and_then(|p| read_log_tail(Path::new(p), 200))
-        .unwrap_or_else(|| "(could not read the build log)".to_string());
-    Some(FailureClass::Compile { log_tail })
+    let start = lines.len().saturating_sub(max_lines);
+    Some(lines[start..].join("\n"))
 }
 
 fn read_log_tail(path: &Path, max_lines: usize) -> Option<String> {
@@ -388,22 +405,68 @@ enum HealthOutcome {
     Failed(String),
 }
 
+/// One probe sample's decision, pure so it can be unit-tested.
+///
+/// The Monitor's probe cannot tell "launched moments ago, still booting" from "down": while nothing
+/// is bound to the app's port yet it reports `stopped`, and a generated app takes ~15-25s to come
+/// up (RUN-36 -- this false `stopped` also aborted iterations and left the booted spawn tree alive,
+/// which then held `_ops` and aborted the next iteration's regenerate with a file-in-use error).
+/// `stopped` is therefore only terminal once the spawn tree the loop started is actually gone --
+/// the only state where "nothing is listening" cannot mean "not yet". `port-conflict` and `error`
+/// stay terminal: a wrong process on the port is not going to become this app, and a port that is
+/// open while /actuator/health answers non-UP is a started-but-unhealthy app waiting would not fix.
+#[derive(Debug)]
+enum HealthVerdict {
+    Running,
+    PortConflict,
+    Failed(String),
+    KeepPolling,
+}
+
+fn health_verdict(health: &str, proc_alive: bool, elapsed: Duration, timeout: Duration) -> HealthVerdict {
+    match health {
+        "running" => HealthVerdict::Running,
+        "port-conflict" => HealthVerdict::PortConflict,
+        "stopped" if proc_alive && elapsed < timeout => HealthVerdict::KeepPolling,
+        "stopped" => HealthVerdict::Failed("stopped".to_string()),
+        "error" => HealthVerdict::Failed("error".to_string()),
+        _ => HealthVerdict::KeepPolling, // "starting" / "unknown"
+    }
+}
+
 async fn wait_for_healthy(
     python_exe: &Path,
     npdev_cli: &Path,
     java_home: Option<&str>,
     app_dir: &str,
     timeout: Duration,
+    app_state: &AppState,
 ) -> HealthOutcome {
     let start = Instant::now();
     loop {
         if let Ok(probe) = npdev::run_monitor_probe(python_exe, npdev_cli, java_home, app_dir, false).await {
             let health = probe.get("health").and_then(|v| v.as_str()).unwrap_or("unknown");
-            match health {
-                "running" => return HealthOutcome::Running,
-                "port-conflict" => return HealthOutcome::PortConflict,
-                "stopped" | "error" => return HealthOutcome::Failed(health.to_string()),
-                _ => {} // "starting" / "unknown" -- keep polling
+            // The tracked `monitor ops run-finalapp` wrapper stays up exactly as long as the app's
+            // own JVM does, so it is the right liveness signal for the "booting" reading of
+            // "stopped". `try_wait` needs `&mut Child`, so the process is moved out of the registry
+            // for the (fast, non-blocking) check and put straight back. A transport error reading
+            // it is treated as alive so a probe hiccup cannot manufacture a false boot failure.
+            let proc_alive = {
+                let mut guard = app_state.running.lock().expect("lock poisoned");
+                match guard.remove(app_dir) {
+                    Some(mut proc) => {
+                        let alive = proc.child.try_wait().ok().flatten().is_none();
+                        guard.insert(app_dir.to_string(), proc);
+                        alive
+                    }
+                    None => false, // not in the registry at all: nothing of ours is running
+                }
+            };
+            match health_verdict(health, proc_alive, start.elapsed(), timeout) {
+                HealthVerdict::Running => return HealthOutcome::Running,
+                HealthVerdict::PortConflict => return HealthOutcome::PortConflict,
+                HealthVerdict::Failed(h) => return HealthOutcome::Failed(h),
+                HealthVerdict::KeepPolling => {} // keep polling
             }
         }
         if start.elapsed() >= timeout {
@@ -540,20 +603,33 @@ pub async fn run(app_state: &AppState, config: LoopConfig, sink: Sink, cancel: A
         emit(json!({"kind": "generate-done", "iteration": iteration}));
 
         // --- build ---
+        // The wrapper's `done` event reports exitCode 0 even when gradle failed (RUN-35), so the
+        // captured ops lines are the loop's only trustworthy record of whether the build actually
+        // succeeded -- collect them here and cross-check in `classify_build`.
+        // `run_ops_script_capture`'s callback is `Fn` and the future must be `Send`, so the buffer
+        // goes in a Mutex (the calls are synchronous on this task, the lock is never contended).
+        let build_lines = std::sync::Mutex::new(Vec::<String>::new());
         let build_done = npdev::run_ops_script_capture(
             python_exe.clone(),
             npdev_cli.clone(),
             java_home.clone(),
             app_dir.clone(),
             "build-finalapp".to_string(),
-            |line| emit_event(&sink, &transcript_path, json!({"kind": "ops-line", "iteration": iteration, "raw": line})),
+            |line| {
+                emit_event(&sink, &transcript_path, json!({"kind": "ops-line", "iteration": iteration, "raw": line}));
+                if line.get("kind").and_then(|k| k.as_str()) == Some("line") {
+                    if let Some(text) = line.get("text").and_then(|t| t.as_str()) {
+                        build_lines.lock().expect("lock poisoned").push(text.to_string());
+                    }
+                }
+            },
         )
         .await;
         let build_done = match build_done {
             Ok(v) => v,
             Err(e) => break json!({"outcome": "aborted", "reason": e, "iteration": iteration}),
         };
-        if let Some(failure) = classify_build(&build_done) {
+        if let Some(failure) = classify_build(&build_done, build_lines.lock().expect("lock poisoned").as_slice()) {
             emit(json!({"kind": "iteration-failed", "iteration": iteration, "class": failure.label()}));
             match decide(iteration, max_iterations) {
                 Decision::Retry => {
@@ -584,12 +660,20 @@ pub async fn run(app_state: &AppState, config: LoopConfig, sink: Sink, cancel: A
         emit(json!({"kind": "start-done", "iteration": iteration}));
 
         // --- wait-healthy (the smoke-check) ---
-        match wait_for_healthy(&python_exe, &npdev_cli, java_home.as_deref(), &app_dir, Duration::from_secs(90)).await {
+        match wait_for_healthy(&python_exe, &npdev_cli, java_home.as_deref(), &app_dir, Duration::from_secs(90), app_state).await {
             HealthOutcome::Running => {
                 emit(json!({"kind": "health-result", "iteration": iteration, "health": "running"}));
                 break json!({"outcome": "booted", "iteration": iteration});
             }
             HealthOutcome::PortConflict => {
+                // The loop spawned this app, and it is NOT the one serving -- stop it so it cannot
+                // linger holding `_ops` or a half-bound port after the loop aborts.
+                {
+                    let owned = app_state.running.lock().expect("lock poisoned").remove(&app_dir);
+                    if let Some(proc) = owned {
+                        let _ = npdev::stop_running_process(proc).await;
+                    }
+                }
                 emit(json!({"kind": "iteration-failed", "iteration": iteration, "class": "engine", "detail": "port-conflict"}));
                 break json!({
                     "outcome": "aborted",
@@ -598,6 +682,16 @@ pub async fn run(app_state: &AppState, config: LoopConfig, sink: Sink, cancel: A
                 });
             }
             HealthOutcome::Failed(health) => {
+                // RUN-36: tear the spawn tree down BEFORE going back to the model -- a booted-but-
+                // unfelt app left running holds `_ops` (its monitor wrapper's cwd) and the next
+                // iteration's regenerate dies with a Windows file-in-use error. The app already
+                // failed this iteration's smoke check; nothing this loop can do wants it up.
+                {
+                    let owned = app_state.running.lock().expect("lock poisoned").remove(&app_dir);
+                    if let Some(proc) = owned {
+                        let _ = npdev::stop_running_process(proc).await;
+                    }
+                }
                 let log_tail = npdev::run_monitor_logs(&python_exe, &npdev_cli, java_home.as_deref(), &app_dir, "app", 200)
                     .await
                     .map(|r| tail_from_monitor_logs(&r))
@@ -692,7 +786,43 @@ mod tests {
 
     #[test]
     fn classify_build_ignores_a_clean_exit() {
-        assert!(classify_build(&json!({"exitCode": 0})).is_none());
+        assert!(classify_build(&json!({"exitCode": 0}), &[]).is_none());
+    }
+
+    #[test]
+    fn classify_build_ignores_clean_gradle_output_even_with_lines() {
+        let lines = vec![
+            "> Task :compileJava".to_string(),
+            "BUILD SUCCESSFUL in 42s".to_string(),
+        ];
+        assert!(classify_build(&json!({"exitCode": 0, "logFile": null}), &lines).is_none());
+    }
+
+    #[test]
+    fn classify_build_flags_a_failed_build_even_when_the_wrapper_reports_exit_code_zero() {
+        // RUN-35 shape: gradle failed but `npdev monitor ops`'s done event said exitCode 0 with no
+        // logFile -- the class must come from the captured lines, and the tail must be theirs.
+        let lines = vec![
+            "> Task :compileJava FAILED".to_string(),
+            "FAILURE: Build failed with an exception.".to_string(),
+            "BUILD FAILED in 25s".to_string(),
+        ];
+        match classify_build(&json!({"exitCode": 0, "logFile": null}), &lines) {
+            Some(FailureClass::Compile { log_tail }) => {
+                assert!(log_tail.contains("compileJava FAILED"));
+                assert!(log_tail.contains("BUILD FAILED in 25s"));
+            }
+            other => panic!("expected a Compile failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn classify_build_uses_captured_lines_over_a_missing_log_file() {
+        let lines = vec!["BUILD FAILED in 9s".to_string()];
+        match classify_build(&json!({"exitCode": 1, "logFile": null}), &lines) {
+            Some(FailureClass::Compile { log_tail }) => assert_eq!(log_tail, "BUILD FAILED in 9s"),
+            other => panic!("expected a Compile failure, got {other:?}"),
+        }
     }
 
     #[test]
@@ -700,6 +830,52 @@ mod tests {
         assert!(matches!(decide(1, 5), Decision::Retry));
         assert!(matches!(decide(4, 5), Decision::Retry));
         assert!(matches!(decide(5, 5), Decision::ExhaustedBudget));
+    }
+
+    #[test]
+    fn health_verdict_treats_started_but_booting_apps_as_non_terminal() {
+        // RUN-36: while the app is still booting, the Monitor's probe reports "stopped" (nothing is
+        // on the port yet) even though the app's JVM is alive and coming up. While the spawn tree
+        // the loop started is alive, "stopped" must mean "keep polling", not "failed".
+        match health_verdict("stopped", true, Duration::from_secs(5), Duration::from_secs(90)) {
+            HealthVerdict::KeepPolling => {}
+            other => panic!("boot-window stopped must keep polling, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn health_verdict_is_terminal_once_the_spawn_tree_is_gone() {
+        // The spawn tree died: "stopped" really means down.
+        match health_verdict("stopped", false, Duration::from_secs(5), Duration::from_secs(90)) {
+            HealthVerdict::Failed(h) => assert_eq!(h, "stopped"),
+            other => panic!("dead spawn tree + stopped must fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn health_verdict_stops_polling_stopped_after_the_timeout() {
+        match health_verdict("stopped", true, Duration::from_secs(90), Duration::from_secs(90)) {
+            HealthVerdict::Failed(h) => assert_eq!(h, "stopped"),
+            other => panic!("stopped past the timeout must fail, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn health_verdict_keeps_running_and_port_conflict_terminal_regardless_of_liveness() {
+        assert!(matches!(health_verdict("running", true, Duration::ZERO, Duration::from_secs(90)), HealthVerdict::Running));
+        assert!(matches!(health_verdict("running", false, Duration::ZERO, Duration::from_secs(90)), HealthVerdict::Running));
+        assert!(matches!(health_verdict("port-conflict", true, Duration::ZERO, Duration::from_secs(90)), HealthVerdict::PortConflict));
+        assert!(matches!(health_verdict("error", true, Duration::ZERO, Duration::from_secs(90)), HealthVerdict::Failed(_)));
+    }
+
+    #[test]
+    fn health_verdict_keeps_polling_starting_and_unknown() {
+        for health in ["starting", "unknown"] {
+            match health_verdict(health, false, Duration::ZERO, Duration::from_secs(90)) {
+                HealthVerdict::KeepPolling => {}
+                other => panic!("{health} must keep polling, got {other:?}"),
+            }
+        }
     }
 
     #[test]
