@@ -10,6 +10,7 @@ import com.npdev.generator.dbconfig.GeneratedDatabasePlan;
 import com.npdev.generator.dbconfig.SchemaLifecyclePolicy;
 import com.npdev.generator.dbconfig.SchemaLifecycleStrategy;
 import com.npdev.generator.dbconfig.SchemaRealizationEmitter;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -71,6 +72,10 @@ class SchemaLifecycleExecutorNewTableOnExistingDbTest {
 
     @AfterEach
     void tearDown() throws SQLException {
+        // RUN-32: this class drives the real migrate(Flyway, manifest) entry point, whose
+        // pinDialectFromManifest mutates the GLOBAL SqlDialects.active() (H2Local manifest -> H2)
+        // -- restore it so the pin cannot leak into a sibling test running later in the same JVM.
+        SqlDialects.resetActiveForTesting();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP ALL OBJECTS");
         }

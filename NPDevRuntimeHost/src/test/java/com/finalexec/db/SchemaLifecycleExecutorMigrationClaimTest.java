@@ -1,6 +1,7 @@
 package com.finalexec.db;
 
 import com.finalexec.boundary.BoundaryBootException;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +53,11 @@ class SchemaLifecycleExecutorMigrationClaimTest {
 
     @AfterEach
     void tearDown() throws SQLException {
+        // RUN-32: this class drives the real migrate(Flyway, manifest) entry point, whose
+        // pinDialectFromManifest mutates the GLOBAL SqlDialects.active() (H2Local manifest -> H2)
+        // -- restore it so the pin cannot leak into a sibling test running later in the same JVM
+        // (the suite-order failure that broke ConversionHookRunnerDeclaredConversionsTest).
+        SqlDialects.resetActiveForTesting();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP ALL OBJECTS");
         }

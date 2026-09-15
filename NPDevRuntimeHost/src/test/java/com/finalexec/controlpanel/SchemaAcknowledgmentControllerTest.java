@@ -84,14 +84,33 @@ class SchemaAcknowledgmentControllerTest {
         when(runtimeContextService.currentContext(any()))
                 .thenReturn(ExecutionContext.of("acme", "tester").withRoles(Set.of("SUPERUSER")));
 
-        // Proves the auth gate passes and the manifest precondition is reached (and enforced) for
-        // both endpoints -- OwnershipAdoption's own preview/apply logic is unit-tested directly in
-        // OwnershipAdoptionTest, against a real manifest, which this controller-level test cannot
-        // construct without a generated schema-realization-manifest.json on the classpath.
+        // RUN-32: this branch-under-test is requireManifest()'s "no manifest / no physical
+        // database" 503 -- SchemaLifecycleExecutor.loadManifest() reads
+        // npdev/db/schema-realization-manifest.json off the ASSEMBLED app's classpath, and a
+        // generated app declares physicalDatabase: true, which makes the real endpoint proceed past
+        // the refusal (to a 409 or a real preview), not 503. Stub the loadManifest seam to "no
+        // manifest" so the auth gate + manifest precondition are proven hermetically, the same way
+        // they are in a bare template checkout (where no manifest exists to trip the premise).
+        SchemaAcknowledgmentController controller = new SchemaAcknowledgmentController(
+                dataSourceProvider(), runtimeContextService) {
+            @Override
+            com.finalexec.db.SchemaLifecycleExecutor.SchemaManifest loadManifest() {
+                return null;
+            }
+        };
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+
         mockMvc.perform(get("/api/admin/schema-migration/ownership/preview"))
                 .andExpect(status().isServiceUnavailable());
         mockMvc.perform(post("/api/admin/schema-migration/ownership/adopt"))
                 .andExpect(status().isServiceUnavailable());
+    }
+
+    @SuppressWarnings("unchecked")
+    private ObjectProvider<DataSource> dataSourceProvider() {
+        ObjectProvider<DataSource> dataSourceProvider = Mockito.mock(ObjectProvider.class);
+        when(dataSourceProvider.getIfAvailable()).thenReturn(dataSource);
+        return dataSourceProvider;
     }
 
     /** Minimal {@link DataSource} over {@link DriverManager} (no H2-specific compile dependency). */

@@ -299,7 +299,7 @@ public class SchemaAcknowledgmentController {
         DataSource dataSource = requireDataSource();
 
         List<String> tablesInSnapshot = SchemaDropSnapshotRestorer.tablesInSnapshot(snapshot);
-        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        SchemaLifecycleExecutor.SchemaManifest manifest = loadManifest();
         Map<String, List<SchemaLifecycleExecutor.ForeignKeyDecl>> foreignKeys =
                 manifest != null ? manifest.businessTableForeignKeys() : Map.of();
         SchemaDropSnapshotRestorePlan.Plan plan = SchemaDropSnapshotRestorePlan.resolve(
@@ -447,12 +447,25 @@ public class SchemaAcknowledgmentController {
     }
 
     private SchemaLifecycleExecutor.SchemaManifest requireManifest() {
-        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        SchemaLifecycleExecutor.SchemaManifest manifest = loadManifest();
         if (manifest == null || !manifest.physicalDatabase()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Promotion requires a physical database source -- this app is running InMemory.");
         }
         return manifest;
+    }
+
+    /**
+     * RUN-32 test seam: package-private (visible to the same-package standalone-MockMvc test) so
+     * {@code SchemaAcknowledgmentControllerTest} (and any sibling) can drive the no-manifest/
+     * InMemory refusal branch hermetically, regardless of what
+     * {@code npdev/db/schema-realization-manifest.json} the assembled app actually carries on its
+     * classpath. Default behavior is unchanged: read the real manifest. Every manifest read in this
+     * class routes through this one seam so a stubbed manifest affects the whole controller
+     * uniformly, never a subset of endpoints.
+     */
+    SchemaLifecycleExecutor.SchemaManifest loadManifest() {
+        return SchemaLifecycleExecutor.loadManifest();
     }
 
     /**
@@ -467,7 +480,7 @@ public class SchemaAcknowledgmentController {
     public Map<String, Object> surplusPreview(HttpServletRequest httpRequest) {
         requireSuperUser(httpRequest);
         DataSource dataSource = requireDataSource();
-        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        SchemaLifecycleExecutor.SchemaManifest manifest = loadManifest();
         if (manifest == null || !manifest.physicalDatabase()) {
             // HashMap, not Map.of(...): the honest empty answer carries a NULL dropToken, and
             // Map.of rejects null values with an NPE -- the branch was never exercised in the
@@ -515,7 +528,7 @@ public class SchemaAcknowledgmentController {
             @RequestBody(required = false) SurplusDropRequest request, HttpServletRequest httpRequest) {
         requireSuperUser(httpRequest);
         DataSource dataSource = requireDataSource();
-        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        SchemaLifecycleExecutor.SchemaManifest manifest = loadManifest();
         if (manifest == null || !manifest.physicalDatabase()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Surplus drop requires a physical database source -- this app is running InMemory.");
