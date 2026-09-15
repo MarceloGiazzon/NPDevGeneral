@@ -2226,6 +2226,48 @@ fn main() {
         std::process::exit(rt.block_on(selftest::run()));
     }
 
+    // Headless counterpart to `save_prompter_profile`'s `api_key` param: lets a prompter
+    // credential be provisioned without opening the GUI (CI, this CLI, a fresh machine). Reads the
+    // key from stdin rather than argv, the same "never put a secret in a command line" rule
+    // `--api-key` vs. `NPDEV_AI_API_KEY` already documents below -- argv is visible to any other
+    // process on the box via the process list; stdin is not.
+    if let Some(pos) = std::env::args().position(|a| a == "--set-secret") {
+        let profile_id = std::env::args().nth(pos + 1);
+        std::process::exit(match profile_id {
+            Some(profile_id) => {
+                let mut key = String::new();
+                match std::io::stdin().read_line(&mut key) {
+                    Ok(_) => {
+                        let key = key.trim_end_matches(['\r', '\n']);
+                        if key.is_empty() {
+                            eprintln!("--set-secret {profile_id}: no key read from stdin");
+                            2
+                        } else {
+                            match secrets::set_secret(&profile_id, key) {
+                                Ok(()) => {
+                                    println!("credential stored for profile '{profile_id}'");
+                                    0
+                                }
+                                Err(e) => {
+                                    eprintln!("--set-secret {profile_id}: {e}");
+                                    1
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("--set-secret {profile_id}: could not read stdin: {e}");
+                        1
+                    }
+                }
+            }
+            None => {
+                eprintln!("--set-secret requires a profile id: --set-secret <profile_id> (key on stdin)");
+                2
+            }
+        });
+    }
+
     // Session 2 (NPDEV_MEGA_ROADMAP.md): "headless and scriptable first, UI second" -- this drives
     // the EXACT SAME `ai_loop::run` the `run_ai_loop` Tauri command below calls, mirroring
     // `--selftest`'s own precedent for a no-window entry point on this binary. Assumes the Manager's
