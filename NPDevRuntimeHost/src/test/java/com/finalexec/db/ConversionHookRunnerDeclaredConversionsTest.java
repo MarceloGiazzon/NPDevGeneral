@@ -1,5 +1,7 @@
 package com.finalexec.db;
 
+import com.npdev.kernel.storage.sql.PostgresDialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,6 +44,13 @@ class ConversionHookRunnerDeclaredConversionsTest {
 
     @BeforeEach
     void setUp() {
+        // RUN-32: the rerun-no-op assertions encode the RAW (single-transaction) path -- hooks that
+        // mix DDL+verify on an implicit-commit engine (H2/MySQL) enter the journaled split path by
+        // default, and the split journal makes the rerun re-select the hook (spurious history rows),
+        // which is exactly the suite-order failure this class hit under the full 872-test suite when
+        // an earlier class left SqlDialects pinned to H2. Pin a transactional-DDL dialect so this
+        // class deterministically exercises the raw path regardless of ambient suite state.
+        SqlDialects.setActive(PostgresDialect.INSTANCE);
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime() + ";DB_CLOSE_DELAY=-1";
         dataSource = new UrlDataSource(url);
         history = new ArrayList<>();
@@ -50,6 +59,7 @@ class ConversionHookRunnerDeclaredConversionsTest {
 
     @AfterEach
     void tearDown() throws SQLException {
+        SqlDialects.resetActiveForTesting();
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.execute("DROP ALL OBJECTS");
         }

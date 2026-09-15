@@ -106,12 +106,22 @@ public class SchemaPromotionController {
     }
 
     private SchemaLifecycleExecutor.SchemaManifest requireManifest() {
-        SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+        SchemaLifecycleExecutor.SchemaManifest manifest = loadManifest();
         if (manifest == null || !manifest.physicalDatabase()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Promotion requires a physical database source -- this app is running InMemory.");
         }
         return manifest;
+    }
+
+    /**
+     * RUN-32 test seam: package-private (visible to the same-package standalone-MockMvc test) so
+     * {@code SchemaPromotionControllerStandaloneTest} can stub the refusal branch hermetically,
+     * regardless of what {@code npdev/db/schema-realization-manifest.json} the assembled app actually
+     * carries on its classpath. Default behavior is unchanged: read the real manifest.
+     */
+    SchemaLifecycleExecutor.SchemaManifest loadManifest() {
+        return SchemaLifecycleExecutor.loadManifest();
     }
 
     private DataSource requireDataSource() {

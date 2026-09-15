@@ -1,5 +1,6 @@
 package com.finalexec.api;
 
+import com.finalexec.db.SchemaLifecycleExecutor;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import org.junit.jupiter.api.BeforeEach;
@@ -84,13 +85,25 @@ class SchemaPromotionControllerStandaloneTest {
 
     @Test
     void promoteRefusesWhenNoSchemaRealizationManifestIsOnTheClasspath() throws Exception {
-        // This bare template repo's own test run carries no npdev/db/schema-realization-manifest.json
-        // (that resource is emitted per-app by the generator) -- SchemaLifecycleExecutor.loadManifest()
-        // returns null here exactly like it does for every other *Main/*Controller test in this class's
-        // family (see SchemaVerifyMainTest's own documented split for the same reason).
+        // RUN-32: the refusal-under-test is requireManifest()'s "no manifest / no physical
+        // database" branch -- SchemaLifecycleExecutor.loadManifest() reads
+        // npdev/db/schema-realization-manifest.json off the ASSEMBLED app's classpath, and a
+        // generated app declares physicalDatabase: true (npdev-canary and npdev-init default seeds
+        // do), which makes the real endpoint proceed to 409, not 503. This class proves the
+        // controller wiring hermetically by stubbing the loadManifest seam to "no manifest" -- same
+        // intent as the original test (prove the auth gate + refusal wiring), without depending on
+        // which manifest the app that runs this test happens to ship.
         when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
         DataSource dataSource = freshH2();
         when(dataSourceProvider.getIfAvailable()).thenReturn(dataSource);
+
+        SchemaPromotionController controller = new SchemaPromotionController(dataSourceProvider, runtimeContextService) {
+            @Override
+            SchemaLifecycleExecutor.SchemaManifest loadManifest() {
+                return null;
+            }
+        };
+        mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         mockMvc.perform(post("/api/v1/admin/schema/promote")
                         .contentType("application/json")
