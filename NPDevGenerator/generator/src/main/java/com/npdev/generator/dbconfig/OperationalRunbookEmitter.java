@@ -117,6 +117,39 @@ if (Test-Path -LiteralPath $secretsEnv) {
 """;
 
     /**
+     * SEC-11 (NPDEV_MEGA_ROADMAP.md Session 3b): load {@code <app>/secrets/oauth-google.env} into
+     * the launcher's environment, the same transport the Google OAuth client id/secret travel in.
+     * The file is launcher-written (or operator-written), NEVER generator-written -- the generator
+     * only emits the {@code .example} shape -- because the secret's source of truth is the OS
+     * credential store (Manager keyring), not any file the model or generator touched. Its only
+     * sibling is {@code SECRETS_ENV_LOADER}; the two blocks stay separate exactly like the
+     * documented agent-proxy/api-key split, so each file's writer guarantee stays local.
+     */
+    private static final String OAUTH_SECRET_ENV_LOADER = """
+
+# Google OAuth injected by the launcher from the OS credential store (Manager keyring) at
+# NPDEV_OAUTH_GOOGLE_CLIENT_ID / NPDEV_OAUTH_GOOGLE_CLIENT_SECRET. Absent on every app that has not
+# provisioned an OAuth client, and absent is not an error -- the login screen hides the button.
+$oauthEnv = Join-Path $appRoot 'secrets/oauth-google.env'
+if (Test-Path -LiteralPath $oauthEnv) {
+  $loadedNames = @()
+  foreach ($rawLine in (Get-Content -LiteralPath $oauthEnv)) {
+    $line = $rawLine.Trim()
+    if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+      $parts = $line.Split('=', 2)
+      $name = $parts[0].Trim()
+      if ($name) {
+        Set-Item -Path ("env:" + $name) -Value $parts[1].Trim()
+        $loadedNames += $name
+      }
+    }
+  }
+  # NAMES only -- never values (the same discipline SECRETS_ENV_LOADER documents).
+  Write-Host ("Loaded " + $loadedNames.Count + " secret(s) from " + $oauthEnv + ": " + ($loadedNames -join ', '))
+}
+""";
+
+    /**
      * R7 Stage C (SEC-1): give every generated app a real, per-app, randomly-generated admin API
      * key instead of the universal {@code dev-key}/{@code api-dev} literal Stage A left the {@code
      * dev} profile shipping.
@@ -279,6 +312,36 @@ load_npdev_agent_proxy_env() {
       esac
     done < "$secrets_env"
     echo "Loaded secret(s) from $secrets_env: $loaded_names"
+  fi
+}
+""";
+
+    /**
+     * SEC-11: the POSIX twin of {@link #OAUTH_SECRET_ENV_LOADER} -- loads
+     * {@code secrets/oauth-google.env} when present (launcher-written, never generator-written).
+     */
+    private static final String OAUTH_SECRET_ENV_LOADER_SH = """
+
+load_npdev_oauth_google_env() {
+  app_root="$1"
+  oauth_env="$app_root/secrets/oauth-google.env"
+  if [ -f "$oauth_env" ]; then
+    loaded_names=''
+    while IFS= read -r raw_line || [ -n "$raw_line" ]; do
+      line=$(printf '%s' "$raw_line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+      case "$line" in
+        ''|'#'*) ;;
+        *=*)
+          name=${line%%=*}
+          value=${line#*=}
+          if [ -n "$name" ]; then
+            export "$name=$value"
+            if [ -n "$loaded_names" ]; then loaded_names="$loaded_names, $name"; else loaded_names="$name"; fi
+          fi
+          ;;
+      esac
+    done < "$oauth_env"
+    echo "Loaded secret(s) from $oauth_env: $loaded_names"
   fi
 }
 """;
@@ -596,6 +659,7 @@ npdev_resolve_app_relative() {
     private static void writeSecretsEnvExample(Path finalAppRoot) throws Exception {
         Path secretsDir = finalAppRoot.resolve("secrets");
         Files.createDirectories(secretsDir);
+        writeOauthGoogleExample(secretsDir);
         write(secretsDir.resolve("agent-proxy.env.example"), """
 # agent-proxy.env.example -- copy to `agent-proxy.env` in this directory and fill in ONE provider key.
 #
@@ -629,6 +693,36 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
 # type into it, so this only changes the suggestion.
 # NPDEV_EXTERNALAI_HTTP_ANTHROPIC_MODEL=claude-opus-5
 # NPDEV_EXTERNALAI_HTTP_OPENAI_MODEL=gpt-4o-mini
+""");
+    }
+
+    /**
+     * SEC-11: emit {@code <app>/secrets/oauth-google.env.example} -- never the real file. Same
+     * discipline as {@code agent-proxy.env.example}: fixed text (deterministic generation), the
+     * real file is written by the operator/launcher from the OS credential store, and the example
+     * only documents the exact shape the launcher's oauth loader reads. The values here are
+     * placeholders -- a real client id/secret must never reach a generated file.
+     */
+    private static void writeOauthGoogleExample(Path secretsDir) throws Exception {
+        write(secretsDir.resolve("oauth-google.env.example"), """
+# oauth-google.env.example -- copy to `oauth-google.env` in this directory and fill in Google's
+# OAuth 2.0 client credentials for this app (Cloud Console -> Credentials -> OAuth client).
+#
+# What this enables: both the sign-in and create-account screens of this app show "Continue with
+# Google". The login flow exchanges the provider's redirect code here, maps the verified Google
+# identity onto an identity::User (signup/link/login), and issues the same JWT session the
+# username/password login already uses -- tokenVersion revocation included.
+#
+# The REAL secret is stored in the OS credential store (NPDev Manager keyring; `npdev-manager.exe
+# --set-secret`), and the launcher writes this file from it at boot -- the app process receives the
+# values as environment variables. This file must never be committed (`.gitignore` already covers
+# `secrets/`). Starting the jar yourself (`java -jar ...`) does NOT read this file; set the same
+# variables in your shell first, or provision the file exactly like `_ops` does.
+#
+# Lines are KEY=VALUE. `#` starts a comment. Blank lines are ignored.
+
+NPDEV_OAUTH_GOOGLE_CLIENT_ID=replace-me.apps.googleusercontent.com
+NPDEV_OAUTH_GOOGLE_CLIENT_SECRET=replace-me
 """);
     }
 
@@ -1699,7 +1793,7 @@ $logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yy
 Write-Host "Logging this run to $logFile"
 """ + API_KEY_PROVISIONER + """
 Ensure-NpdevApiKey -AppRoot $appRoot
-""" + SECRETS_ENV_LOADER + """
+""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + """
 
 # 2>&1 merges the JVM's stderr into the same stream, because a stack trace on stderr is exactly what
 # the person reading this file is looking for. Tee keeps the console live -- a run that only writes
@@ -1758,7 +1852,8 @@ LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
 echo "Logging this run to $LOG_FILE"
 """ + API_KEY_PROVISIONER_SH + """
 ensure_npdev_api_key "$APP_ROOT"
-""" + SECRETS_ENV_LOADER_SH + """
+""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + """
+load_npdev_oauth_google_env "$APP_ROOT"
 load_npdev_agent_proxy_env "$APP_ROOT"
 
 # 2>&1 merges the JVM's stderr into the same stream, and tee keeps the console live -- a run that
@@ -1838,7 +1933,7 @@ $errFile = Join-Path $PSScriptRoot 'app.stderr.log'
 
 """ + API_KEY_PROVISIONER + """
 Ensure-NpdevApiKey -AppRoot $appRoot
-""" + SECRETS_ENV_LOADER + """
+""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + """
 
 $jar = Get-ChildItem -LiteralPath $appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
        Where-Object { $_.FullName -like '*\\build\\libs\\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
@@ -1945,7 +2040,8 @@ ERR_FILE="$SCRIPT_DIR/app.stderr.log"
 
 """ + API_KEY_PROVISIONER_SH + """
 ensure_npdev_api_key "$APP_ROOT"
-""" + SECRETS_ENV_LOADER_SH + """
+""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + """
+load_npdev_oauth_google_env "$APP_ROOT"
 load_npdev_agent_proxy_env "$APP_ROOT"
 
 JAR=$(find "$APP_ROOT" -path '*/build/libs/*' -name 'FinalExec-*.jar' ! -name '*-plain.jar' 2>/dev/null | head -n 1)

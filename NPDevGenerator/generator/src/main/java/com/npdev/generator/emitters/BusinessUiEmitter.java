@@ -361,7 +361,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             auth.put("devKeyHint", "api-dev");
         }
         String loginPath = settingResolver.value(NpdevSettings.AUTH_LOGIN_PATH, SettingTarget.app());
-        auth.put("loginPath", loginPath == null ? "" : loginPath.trim());
+        if (loginPath == null || loginPath.isBlank()) {
+            // SEC-11 (Session 3b): the platform emits its own jwt-mode login screen (LoginPageEmitter
+            // writes static/login.html), so an app that did not hand-author a login page gets the
+            // shell's unauthenticated redirect pointed at it instead of silently disabled.
+            loginPath = jwtMode ? "/login.html" : "";
+        }
+        auth.put("loginPath", loginPath.trim());
         root.put("auth", auth);
 
         GuidePageDefaults.Result guidePages = GuidePageDefaults.withBuiltins(model == null ? List.of() : model.getGuidePages());

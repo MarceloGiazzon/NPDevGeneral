@@ -14,6 +14,7 @@ import com.npdev.generator.emitters.EntityEmitter;
 import com.npdev.generator.emitters.ExtensionInventoryEmitter;
 import com.npdev.generator.emitters.GeneratedFolderSignatureEmitter;
 import com.npdev.generator.emitters.InfoPageEmitter;
+import com.npdev.generator.emitters.LoginPageEmitter;
 import com.npdev.generator.emitters.MetadataManifestAssetEmitter;
 import com.npdev.generator.emitters.ModelAuthoringEmitter;
 import com.npdev.generator.emitters.ModelSurfaceEmitter;
@@ -357,6 +358,11 @@ public final class GeneratorFacade {
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
             new BusinessUiEmitter(templates, writer).emit(
                     appOwnedSourceModel, superUserRole, settingResolver, extensionFieldOrigins);
+            // SEC-11 (Session 3b): the jwt-mode login/signup screen, emitted only when the app
+            // authenticates with JWT (apiKey apps sign in through the inline key field instead).
+            new LoginPageEmitter(templates, writer).emit(
+                    model == null ? "" : model.getNamespace(),
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
             // since they are only reachable through its super-user admin nav.
             // P3.3: also computes and attaches each specialized concept's lineage (parent,

@@ -43,6 +43,10 @@ verified list-free (jar discovery). If you consciously exclude a new adapter, ad
 - `audit-*`, `events-inproc`, `eventstore-postgres`, `flowinstance-*`, `idempotency-*`,
   `tracestore-postgres`, `tracing-inproc`: not imported unconditionally by the RuntimeHost template.
 - `postgres-test-support`: test-support module, never packaged.
+- `idp-google` (2026-09-16, SEC-11): the Google identity provider is imported only by
+  runtimehost-core's compiled OAuth classes (a staged runtimehost-libs jar), never by generated-app
+  source, so the proof tests need not build it from source; apps receive the jar via the staged
+  runtimehost-libs fileTree exactly like runtimehost-core itself.
 
 ## For a capable agent (future work, not part of this checklist)
 
