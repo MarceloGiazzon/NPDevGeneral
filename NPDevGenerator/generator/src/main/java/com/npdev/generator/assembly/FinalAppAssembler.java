@@ -19,6 +19,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -997,14 +998,67 @@ public final class FinalAppAssembler {
         if (jars.isEmpty()) {
             return false;
         }
+        Path manifest = runtimeHostLibsDir.resolve("runtimehost-libs-manifest.json");
+        // RUN-34: requiredStagedJars is the authoritative set of jars the CURRENT source tree
+        // produces -- sync-runtimehost-libs.ps1 derives it from the freshly built outputs and, by
+        // design, never deletes the stale jars a module rename leaves behind in the cache (they are
+        // only ever reported under the sync report's externalOrMissing, never removed). Copying
+        // every cache jar verbatim therefore stages old + new copies of the same classes
+        // (dsl-0.1.0.jar beside npdev-dsl-0.1.0.jar) into the app, and Gradle resolves the
+        // duplicate nondeterministically -- scattered "cannot find symbol" compile errors that
+        // masquerade as intermittent staleness. Filter the copy by the manifest. When the manifest
+        // is absent, keep the legacy copy-everything behavior: verifyNpdevRuntimeHostLibs in the
+        // assembled build already fails loud about that case, and this method's own warning below
+        // names it.
+        com.fasterxml.jackson.databind.node.ObjectNode manifestNode = null;
+        Set<String> requiredJarNames = null;
+        if (Files.isRegularFile(manifest)) {
+            manifestNode = (com.fasterxml.jackson.databind.node.ObjectNode) OBJECT_MAPPER.readTree(manifest.toFile());
+            Set<String> required = new LinkedHashSet<>();
+            for (JsonNode entry : manifestNode.path("requiredStagedJars")) {
+                if (entry.isTextual() && !entry.asText().isBlank()) {
+                    required.add(entry.asText());
+                }
+            }
+            if (!required.isEmpty()) {
+                requiredJarNames = required;
+            }
+        }
+
         boolean manifestCopied = false;
         Path appOwnedLibsDir = options.finalAppRoot().resolve("libs").resolve("npdev-runtime");
         Files.createDirectories(appOwnedLibsDir);
+
+        Set<String> namesToStage = new LinkedHashSet<>();
         for (Path jar : jars) {
-            Files.copy(jar, appOwnedLibsDir.resolve(jar.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+            String name = jar.getFileName().toString();
+            if (requiredJarNames == null || requiredJarNames.contains(name)) {
+                namesToStage.add(name);
+            }
         }
-        Path manifest = runtimeHostLibsDir.resolve("runtimehost-libs-manifest.json");
-        if (Files.isRegularFile(manifest)) {
+
+        // RUN-34 (destination half): the app-owned dir can also carry jars from a PREVIOUS
+        // generation -- the deleteBeforeMount=false regeneration path reuses it, so a jar that is
+        // no longer staged (module renamed/removed upstream) would otherwise sit beside the current
+        // one forever. Remove anything there that is not about to be (re)staged, so even a clean
+        // source cache cannot leave a stale duplicate behind.
+        try (var stream = Files.list(appOwnedLibsDir)) {
+            for (Path stale : stream
+                    .filter(p -> p.getFileName().toString().endsWith(".jar"))
+                    .filter(Files::isRegularFile)
+                    .toList()) {
+                if (!namesToStage.contains(stale.getFileName().toString())) {
+                    Files.deleteIfExists(stale);
+                }
+            }
+        }
+
+        for (Path jar : jars) {
+            if (namesToStage.contains(jar.getFileName().toString())) {
+                Files.copy(jar, appOwnedLibsDir.resolve(jar.getFileName()), StandardCopyOption.REPLACE_EXISTING);
+            }
+        }
+        if (manifestNode != null) {
             // PORT-1 (Cold Clone Audit follow-up, 2026-08-28): sync-runtimehost-libs.ps1's manifest
             // carries a "sourceDiscoveredJars" field with the ABSOLUTE build-machine path each jar
             // was copied from -- meaningful provenance where the manifest normally lives (the
@@ -1014,7 +1068,6 @@ public final class FinalAppAssembler {
             // meant to travel with the app -- exactly the portability leak D1 exists to close.
             // Strip it before the copy; the app-owned manifest keeps every field the build actually
             // reads.
-            var manifestNode = (com.fasterxml.jackson.databind.node.ObjectNode) OBJECT_MAPPER.readTree(manifest.toFile());
             manifestNode.remove("sourceDiscoveredJars");
             OBJECT_MAPPER.writerWithDefaultPrettyPrinter()
                     .writeValue(appOwnedLibsDir.resolve(manifest.getFileName()).toFile(), manifestNode);
@@ -1027,7 +1080,7 @@ public final class FinalAppAssembler {
                     + "runtimehost-libs-manifest.json; the app's self-contained copy will fail "
                     + "verifyNpdevRuntimeHostLibs until the manifest is present.");
         }
-        System.out.println("npdev generate app: staged " + jars.size() + " NPDev platform jar(s) "
+        System.out.println("npdev generate app: staged " + namesToStage.size() + " NPDev platform jar(s) "
                 + "into the app at libs/npdev-runtime/ -- this app now builds without the staging "
                 + "directory (" + runtimeHostLibsDir + ")");
         return true;
