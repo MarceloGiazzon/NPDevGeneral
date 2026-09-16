@@ -548,6 +548,75 @@ class FinalAppAssemblerTest {
     }
 
     /**
+     * RUN-34: a stale jar the source cache accumulated after a module rename (dsl-0.1.0.jar beside
+     * npdev-dsl-0.1.0.jar, both defining the same com.npdev.dsl classes) must NOT be staged into a
+     * freshly generated app -- the manifest's requiredStagedJars is the authoritative set of jars
+     * the current source tree produces, and both jars on the compile classpath would make Gradle
+     * resolve the duplicate classes nondeterministically. Also asserts the destination half: a jar
+     * left in the app-owned libs/npdev-runtime dir by a PREVIOUS generation (the
+     * deleteBeforeMount=false regeneration path) is removed when it is not being restaged.
+     */
+    @Test
+    void stagesOnlyManifestDeclaredJarsAndDropsOrphanedAppOwnedJars() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-run34-");
+        Path host = workspace.resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path finalApp = workspace.resolve("FinalExec");
+        Path stagedLibs = workspace.resolve("staged").resolve("runtimehost-libs");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+        // The cache holds the CURRENT jar plus the stale pre-rename one; the manifest --
+        // freshly written by sync-runtimehost-libs.ps1 -- declares only the current one.
+        write(stagedLibs.resolve("dsl-0.1.0.jar"), "stale duplicate of the npdev-dsl classes");
+        write(stagedLibs.resolve("npdev-dsl-0.1.0.jar"), "current dsl");
+        write(stagedLibs.resolve("runtimehost-libs-manifest.json"),
+                "{\"requiredStagedJars\":[\"npdev-dsl-0.1.0.jar\"]}\n");
+
+        withRuntimeHostLibsDir(stagedLibs, () -> {
+            try {
+                return new FinalAppAssembler().assemble(
+                        new FinalAppAssembler.Options(
+                                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null
+                        )
+                );
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        });
+
+        Path appOwned = finalApp.resolve("libs").resolve("npdev-runtime");
+        assertTrue(Files.isRegularFile(appOwned.resolve("npdev-dsl-0.1.0.jar")));
+        assertFalse(Files.exists(appOwned.resolve("dsl-0.1.0.jar")),
+                "a stale cache jar must not be staged when the manifest does not declare it (RUN-34)");
+        assertTrue(Files.isRegularFile(appOwned.resolve("runtimehost-libs-manifest.json")),
+                "the manifest must still travel with the staged jars");
+
+        // Destination half: plant an orphan as if a previous deleteBeforeMount=false generation
+        // left it behind, regenerate WITHOUT the wipe (deleteBeforeMount=false), and assert the
+        // orphan is gone while the current jar survives and is refreshed.
+        write(appOwned.resolve("expression-cel-0.1.0.jar"), "orphan from a previous generation");
+        withRuntimeHostLibsDir(stagedLibs, () -> {
+            try {
+                new FinalAppAssembler().assemble(
+                        new FinalAppAssembler.Options(
+                                host, artifact, finalApp, null, "npdev-generated", "npdev-meta", false, 17, null
+                        )
+                );
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            return null;
+        });
+
+        assertFalse(Files.exists(appOwned.resolve("expression-cel-0.1.0.jar")),
+                "an app-owned jar not being restaged must be removed before the copy (RUN-34)");
+        assertTrue(Files.isRegularFile(appOwned.resolve("npdev-dsl-0.1.0.jar")),
+                "the current jar must survive a deleteBeforeMount=false regeneration");
+    }
+
+    /**
      * Pin {@code NPDEV_RUNTIMEHOST_LIBS_DIR} for the duration of a run and restore it afterwards --
      * the assembler's D1 copy and REG-128 bake both read that var, so the test must own its value
      * rather than inherit an ambient one from the machine running Gradle. Routes through the

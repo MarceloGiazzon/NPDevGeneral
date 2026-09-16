@@ -7,7 +7,8 @@ title: >-
   intermittent staleness but are a fixed consequence of the duplicate
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
+closed: 2026-09-16
 opened: 2026-09-14
 source: >-
   Found while live-verifying Session 2's AILoop (NPDEV_MEGA_ROADMAP.md) -- this was the actual root
@@ -44,3 +45,31 @@ detail: |
   Done when: stageRuntimeHostLibsIntoApp removes orphaned jars from libs/npdev-runtime before
   copying (unit-tested or verified by generating with a stale dsl-0.1.0.jar planted in the source
   cache and asserting the app gets ONLY npdev-dsl-0.1.0.jar).
+
+  2026-09-16 (fix session): FIXED in code, both mechanisms. The root chain is now fully mapped:
+  Sync-NPDevJars (sync-runtimehost-libs.ps1) copies source build outputs into the runtimehost-libs
+  cache and collects jars that are "external or missing" (orphans a module rename left behind) under
+  the sync report's externalOrMissing -- but NEVER deletes them, and the fresh manifest it writes
+  each run declares ONLY the current jars (requiredStagedJars, derived from the just-discovered
+  source outputs). stageRuntimeHostLibsIntoApp then copied every *.jar in the cache verbatim, so a
+  stale dsl-0.1.0.jar beside npdev-dsl-0.1.0.jar (same classes) landed in every app generated from
+  that cache.
+  Changes (FinalAppAssembler.java, stageRuntimeHostLibsIntoApp): (1) when the staging manifest
+  exists, the copy is now FILTERED to requiredStagedJars -- a stale cache jar the manifest no longer
+  declares is never staged, which is what makes a fresh app correct even when the cache itself is
+  never cleaned (the done-when's exact scenario); manifest-absent keeps the legacy copy-everything
+  behavior (verifyNpdevRuntimeHostLibs already fails loud about that state). (2) Before the copy,
+  any *.jar already in the app-owned libs/npdev-runtime that is not about to be restaged is deleted
+  -- this closes the deleteBeforeMount=false regeneration path, where the destination dir survives
+  and a jar that is no longer staged would otherwise sit beside the current one forever.
+  VERIFIED: new unit test stagesOnlyManifestDeclaredJarsAndDropsOrphanedAppOwnedJars in
+  FinalAppAssemblerTest replays the done-when (dsl-0.1.0.jar planted in the source cache with a
+  manifest declaring only npdev-dsl-0.1.0.jar -> the app gets ONLY npdev-dsl-0.1.0.jar) and the
+  destination half (orphan planted in the app-owned dir, deleteBeforeMount=false regeneration
+  removes it while the current jar survives). Both FinalAppAssemblerTest and
+  FinalAppAssemblerRegenerationConflictTest classes green (:generator:test, Gradle 9.5.1). The
+  packaged-app proof suite (:generator:packagedProofTest) exercises the same method against the real
+  machine cache in CI and was not run locally (gated, unchanged env contract). RUN-33's AppData
+  cache (a stale cache with MISSING jars) is a separate, still-open item; note the manifest filter
+  also mitigates RUN-33's missing-jar symptom for generated apps whose source cache manifest is
+  fresh, but does not restage the Manager's own AppData copy.
