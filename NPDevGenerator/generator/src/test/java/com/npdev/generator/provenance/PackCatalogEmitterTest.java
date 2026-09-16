@@ -32,7 +32,7 @@ final class PackCatalogEmitterTest {
         assertTrue(root.path("discoverable").asBoolean());
 
         JsonNode identity = findPack(root.path("packs"), "identity");
-        assertEquals("1.1.0", identity.path("version").asText());
+        assertEquals("1.2.0", identity.path("version").asText());
         assertTrue(identity.path("conceptCount").asInt() >= 3);
         assertTrue(identity.path("included").asBoolean());
 
@@ -72,7 +72,7 @@ final class PackCatalogEmitterTest {
     @Test
     void flagsVersionDriftWhenOriginPackHasMovedOnSinceTheForkWasDeclared() throws Exception {
         // project-tracker-demo declares forkedFrom identity v0.9.0 (real fixture, see pack.json) --
-        // the real identity pack is at v1.1.0, so this is a genuine, permanent drift case, not a
+        // the real identity pack is at v1.2.0, so this is a genuine, permanent drift case, not a
         // synthetic/mocked one.
         GeneratedSourceWriter writer = new GeneratedSourceWriter(tempDir, new RegenerationPolicy());
         new PackCatalogEmitter().emit(writer, true);
@@ -81,7 +81,7 @@ final class PackCatalogEmitterTest {
         JsonNode fork = findPack(root.path("packs"), "project-tracker-demo");
         assertEquals("identity", fork.path("forkedFrom").path("pack").asText());
         assertTrue(fork.path("forkedFromExists").asBoolean());
-        assertEquals("1.1.0", fork.path("forkedFromCurrentVersion").asText());
+        assertEquals("1.2.0", fork.path("forkedFromCurrentVersion").asText());
         assertTrue(fork.path("forkedFromVersionDrift").asBoolean());
     }
 

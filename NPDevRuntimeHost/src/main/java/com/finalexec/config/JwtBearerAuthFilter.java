@@ -80,6 +80,22 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
                 || uri.equals("/api/auth/password-reset/confirm") || uri.equals("/api/v1/auth/password-reset/confirm")) {
             return true;
         }
+        // SEC-11 (OAuth browser round trip): the provider redirects the browser back to
+        // /api/auth/oauth/google/callback WITHOUT any NPDev credential for the signup/login legs
+        // (that is the whole point of the flow), so those paths must be reachable when the request
+        // carries neither an Authorization header nor a session cookie. The authenticated account-
+        // LINK leg starts from a same-site navigation that DOES carry the npdev_jwt cookie, and a
+        // cookie-bearing request falls through to the normal JWT validation below exactly like any
+        // other -- a link attempt with a stale or missing session is refused here with the ordinary
+        // missing_bearer_token, never silently accepted. The /oauth/config probe is unconditional
+        // (it only reports whether OAuth is enabled; the login screen fetches it pre-credential).
+        if (uri.equals("/api/auth/oauth/config") || uri.equals("/api/v1/auth/oauth/config")) {
+            return true;
+        }
+        if (uri.equals("/api/auth/oauth/google/authorize") || uri.equals("/api/v1/auth/oauth/google/authorize")
+                || uri.equals("/api/auth/oauth/google/callback") || uri.equals("/api/v1/auth/oauth/google/callback")) {
+            return normalize(request.getHeader("Authorization")) == null && sessionCookieValue(request) == null;
+        }
         // R6.2: an inbound webhook door has its OWN independent authentication -- an HMAC-SHA256
         // signature WebhookInboundController itself verifies, using a secret named per-webhook in
         // the model. A third party posting e.g. a payment confirmation holds no NPDev bearer token
