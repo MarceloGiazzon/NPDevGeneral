@@ -103,7 +103,7 @@ final class SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest {
 
         // 1. Seal the REAL identity pack into a real jar -- the same tested API
         // SealedPackJarBuilderTest proves byte-identical across independent builds.
-        Path sealedJar = sealedJarsRoot.resolve("identity-1.0.0.jar");
+        Path sealedJar = sealedJarsRoot.resolve("identity-1.1.0.jar");
         SealedPackJarBuilder.JarResult sealed = new SealedPackJarBuilder().sealToJar(identityPackFile, sealedJar);
         LinkedSealedPack identityLink = new LinkedSealedPack("identity", sealed.manifest());
 
@@ -151,7 +151,7 @@ final class SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest {
                         + "Generated mount: " + assemblyResult.generatedMount() + System.lineSeparator()
                         + "Sealed pack package: " + sealed.manifest().packageName() + System.lineSeparator(),
                 StandardCharsets.UTF_8);
-        assertTrue(Files.isRegularFile(finalAppRoot.resolve("libs/sealed-packs/identity-1.0.0.jar")),
+        assertTrue(Files.isRegularFile(finalAppRoot.resolve("libs/sealed-packs/identity-1.1.0.jar")),
                 "the sealed identity jar must be linked into the assembled app, not regenerated");
 
         Path runtimeHostLibs = ensureRuntimeHostLibs(evidenceRoot);
