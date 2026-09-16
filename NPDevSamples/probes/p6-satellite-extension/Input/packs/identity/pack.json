@@ -1,8 +1,8 @@
 {
-  "$schema": "../../../../../../NPDevContract/schemas/pack.schema.json",
+  "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "identity",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "namespace": "com.npdev.identity",
   "description": "Built-in NPDev identity model: users, roles, and their assignments. Intended as the persistent backing for in-app super-user administration and per-user preferences.",
   "category": "security",
@@ -64,6 +64,20 @@
       ],
       "indexes": [
         { "name": "ux_user_role_permission", "fields": ["userRoleId", "permission"], "unique": true }
+      ]
+    },
+    {
+      "name": "ExternalIdentity",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true,
+          "reference": { "target": "User", "onDelete": "cascade" } },
+        { "name": "provider", "type": "string", "required": true, "maxLength": 40 },
+        { "name": "providerSubject", "type": "string", "required": true, "maxLength": 255 },
+        { "name": "linkedAt", "type": "datetime", "required": false }
+      ],
+      "indexes": [
+        { "name": "ux_external_identity_provider_subject", "fields": ["provider", "providerSubject"], "unique": true }
       ]
     }
   ]

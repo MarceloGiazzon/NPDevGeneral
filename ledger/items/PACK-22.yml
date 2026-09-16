@@ -1,0 +1,30 @@
+id: PACK-22
+title: >-
+  Identity pack 1.2.0: add ExternalIdentity (userId + provider + providerSubject unique linkage)
+  so a User can be linked to external identity providers (Google first, SEC-8) without polluting
+  User with provider-specific columns
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-16
+source: >-
+  Session 3b (NPDEV_MEGA_ROADMAP.md) -- SEC-8's account-linking requirement needs persistent
+  storage of "this identity::User is linked to <provider>/<subject>". The pack is the right home
+  (it is the persistent backing for identity state); a User-field approach would make the User
+  concept provider-specific, which contradicts SEC-8's provider abstraction. Additive-only (new
+  optional concept, nothing renamed/removed) so the enforced ADDITIVE contract allows a minor
+  bump 1.1.0 -> 1.2.0 (major stays 1, sealed package name unchanged).
+surface: NPDevContract/packs/identity/pack.json, pack sealing/assembly, sample probe copies,
+  version-pinned tests (same machinery PACK-21 exercised)
+detail: |
+  Proposed concept: ExternalIdentity { id uuid PK, userId reference User (cascade), provider
+  string max 40 required, providerSubject string max 255 required, linkedAt datetime }
+  with a unique index on (provider, providerSubject) -- the provider-side lookup key for "log in
+  with this external account". No per-provider columns; SEC-8's adapter owns the provider id.
+  Mechanical steps (proven by PACK-21): pack diff gate must classify ADDITIVE; probe copy at
+  NPDevSamples/probes/p6-satellite-extension must be synced with a refreshed npdev.lock digest;
+  version-pinned test assertions (sealed jar name -> identity-1.2.0.jar, forkedFrom drift
+  reports) must track the derived reality.
+  Done when: npdev pack diff classifies the 1.1.0 -> 1.2.0 change ADDITIVE; a generated app
+  composing identity 1.2.0 persists ExternalIdentity rows and enforces the unique
+  (provider, providerSubject) index; probe lock digest refreshed.

@@ -7,8 +7,8 @@
       "sourcePath" : "packs/clinical/pack.json"
     },
     "identity" : {
-      "resolvedVersion" : "1.1.0",
-      "digest" : "sha256:92ffa4cb39acf5b89e55122493eec02d8d04947d84a7d001229ee060cd942670",
+      "resolvedVersion" : "1.2.0",
+      "digest" : "sha256:f5acae79f76ddddc9acb2690b4a321cfda2c9df4f7287e949ec4d5a19ae11889",
       "sourcePath" : "packs/identity/pack.json"
     }
   }

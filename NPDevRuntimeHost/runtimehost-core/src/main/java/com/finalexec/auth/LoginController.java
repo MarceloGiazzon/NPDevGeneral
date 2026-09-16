@@ -297,7 +297,7 @@ public class LoginController {
         return request.getRemoteAddr();
     }
 
-    private static String readKeyFile(ResourceLoader resourceLoader, String path) throws Exception {
+    static String readKeyFile(ResourceLoader resourceLoader, String path) throws Exception {
         if (path.startsWith("classpath:")) {
             Resource resource = resourceLoader.getResource(path);
             try (var inputStream = resource.getInputStream()) {

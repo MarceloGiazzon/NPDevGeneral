@@ -1,0 +1,58 @@
+id: SEC-11
+title: >-
+  Google identity-provider abstraction (NPDEV_MEGA_ROADMAP.md Session 3b): kernel IdP seam +
+  idp-google adapter + RuntimeHost OAuth flows (signup / link / login) mapped onto the existing
+  JWT+tokenVersion revocation, client secret in the OS credential store, generated-app
+  "Continue with Google" on signup and login
+type: FEATURE
+severity: HIGH
+status: OPEN
+opened: 2026-09-16
+source: >-
+  NPDEV_MEGA_ROADMAP.md Session 3b -- "the largest genuinely-new platform capability on the list"
+  (correction #6: zero OAuth anywhere in the tree). 3a (identity pack 1.1.0 profile fields) is
+  DONE (PACK-21). Recon confirmed the JWT side is ALREADY built and reusable: LoginController
+  mints via JwtSigner.sign(tenantId, username, roles, tokenVersion); JwtBearerAuthFilter enforces
+  signature/issuer/audience and the token_version revocation check (LNCH-4); kernel ports
+  AuthenticatedContextResolver / ApiKeyCredentialResolver show the port style; the launcher
+  (OperationalRunbookEmitter's _ops/Run-FinalApp.ps1) already injects secrets via
+  secrets/*.env; Manager secrets.rs is a keyring wrapper (service "NPDev Manager", account
+  prompter/<profile>) with a headless --set-secret CLI.
+surface: NPDevKernel/kernel/ports/IdentityProvider (new), NPDevKernel/adapters/idp-google (new),
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth (new OAuth controller+service),
+  NPDevContract/packs/identity/pack.json (ExternalIdentity, see PACK-22), OperationalRunbookEmitter
+  (OAuth secret provisioning), generated-app login/signup UI emission, NPDevManager/src/secrets.rs
+detail: |
+  DESIGN DECISIONS (settled per the roadmap's mandate, all confirmed with the owner on
+  2026-09-16):
+  1. Seam placement: KERNEL, per the roadmap's recommendation -- a new IdentityProvider port
+     (authorizationUrl(state, redirectUri) / resolveIdentity(code, redirectUri) -> claims), one
+     adapter module per provider (idp-google first), so tracing/authz/ControlPanel can all see the
+     resulting identity. providerId() ("google") is the stable key in stored linkages and endpoint
+     paths.
+  2. Email-collision policy: BLOCK + REQUIRE EXPLICIT LINK. A Google account whose verified email
+     matches an existing identity_users row that has NO google linkage returns a distinct
+     error (email_exists_requires_link) and never auto-links; the account owner signs in with
+     password and links Google from their profile (the authenticated link flow). No silent account
+     takeover vector.
+  3. Secret architecture: LAUNCHER-INJECTED ENV. The Google client id/secret live only in the OS
+     credential store (Manager keyring, secrets.rs); the emitted launcher reads them and injects
+     NPDEV_OAUTH_GOOGLE_CLIENT_ID/SECRET into the app process env at boot (same mechanism the
+     api-key.env loader uses). Never in manager.json, never in .env, never in the model.
+  4. Token mapping: the Google-resolved identity resolves to an identity::User (created on
+     fresh signup, linked via ExternalIdentity), and the session is minted with the SAME
+     JwtSigner using the user row's token_version -- so revocation via tokenVersion continues to
+     invalidate Google-linked sessions with zero new revocation machinery.
+  Three flows to prove: (a) sign up fresh with Google (creates User + ExternalIdentity), (b) link
+  Google to an existing username/password account (authenticated), (c) log in with Google
+  thereafter (ExternalIdentity lookup -> login). Account linkage persisted in a new identity pack
+  concept ExternalIdentity (provider, providerSubject, userId) -- see PACK-22.
+  Verification plan: unit tests per layer; live local proof with a FAKE Google provider (local
+  authorize/token endpoints) exercising all three flows + a token_version bump killing a
+  Google-linked session (proves the revocation mapping without external creds); the REAL Google
+  browser run needs an actual Google Cloud OAuth client + test account from the owner (external,
+  asked for when the local proof is green).
+  Done when: a generated sample app offers "Continue with Google" on both signup and login; all
+  three flows work end-to-end in a real browser (real Google, or the local fake-Google run plus
+  the real client provisioned by the owner); the client secret is in the OS credential store and
+  never in manager.json/.env; tokenVersion revocation invalidates a Google-linked session.

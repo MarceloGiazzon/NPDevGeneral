@@ -370,7 +370,7 @@ class FinalAppAssemblerTest {
         );
         new FinalAppAssembler().assemble(options);
 
-        Path linkedJar = finalApp.resolve("libs/sealed-packs/identity-1.1.0.jar");
+        Path linkedJar = finalApp.resolve("libs/sealed-packs/identity-1.2.0.jar");
         assertTrue(Files.isRegularFile(linkedJar), "expected the sealed pack jar to be copied into libs/sealed-packs/");
         assertArrayEqualsBytes(Files.readAllBytes(sealedJar), Files.readAllBytes(linkedJar));
 
