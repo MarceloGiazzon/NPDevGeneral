@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in — {{appName}}</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --ink: #1f2430; --muted: #6b7280;
+    --accent: #2563eb; --accent-ink: #ffffff; --line: #e2e5ea;
+    --error: #b91c1c; --error-bg: #fef2f2; --ok: #15803d; --ok-bg: #f0fdf4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+         background: var(--bg); color: var(--ink);
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .card { width: 22rem; max-width: calc(100vw - 2rem); background: var(--card);
+          border: 1px solid var(--line); border-radius: 10px; padding: 1.5rem 1.5rem 1.75rem;
+          box-shadow: 0 6px 24px rgba(16, 24, 40, .07); }
+  h1 { font-size: 1.15rem; margin: 0 0 1.1rem; font-weight: 600; }
+  .tabs { display: flex; gap: .25rem; margin-bottom: 1.1rem; }
+  .tab { flex: 1; padding: .45rem .5rem; border: 1px solid var(--line); background: #f9fafb;
+         border-radius: 7px; cursor: pointer; color: var(--muted); font-size: .9rem; }
+  .tab.active { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .pane.hidden, .hidden { display: none; }
+  label { display: block; margin-bottom: .85rem; font-size: .85rem; color: var(--muted); }
+  input { width: 100%; margin-top: .3rem; padding: .55rem .6rem; border: 1px solid var(--line);
+          border-radius: 7px; font-size: .95rem; }
+  input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); border-color: var(--accent); }
+  .primary { width: 100%; padding: .6rem; border: 0; border-radius: 7px; background: var(--accent);
+             color: var(--accent-ink); font-size: .95rem; cursor: pointer; }
+  .primary:hover { filter: brightness(1.05); }
+  .divider { display: flex; align-items: center; gap: .6rem; margin: 1.1rem 0; color: var(--muted); font-size: .8rem; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  .google { width: 100%; padding: .6rem; border: 1px solid var(--line); border-radius: 7px;
+            background: #fff; cursor: pointer; font-size: .95rem; display: flex; align-items: center;
+            justify-content: center; gap: .5rem; }
+  .google svg { width: 18px; height: 18px; }
+  .google:hover { background: #f9fafb; }
+  .note { font-size: .85rem; color: var(--muted); margin: 0 0 .9rem; line-height: 1.45; }
+  .banner { margin-top: 1rem; padding: .6rem .7rem; border-radius: 7px; font-size: .85rem; line-height: 1.4; }
+  .banner.error { background: var(--error-bg); color: var(--error); }
+  .banner.ok { background: var(--ok-bg); color: var(--ok); }
+</style>
+</head>
+<body>
+<main class="card">
+  <h1>{{appName}}</h1>
+
+  <div class="tabs" role="tablist">
+    <button id="tabSignin" class="tab active" type="button" role="tab" aria-selected="true">Sign in</button>
+    <button id="tabSignup" class="tab" type="button" role="tab" aria-selected="false">Create account</button>
+  </div>
+
+  <form id="signinForm" class="pane" autocomplete="on">
+    <label>Username
+      <input id="username" name="username" autocomplete="username" required>
+    </label>
+    <label>Password
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="primary" type="submit">Sign in</button>
+  </form>
+
+  <section id="signupPane" class="pane hidden">
+    <p class="note">Create an account with Google — your verified Google email becomes your username.</p>
+  </section>
+
+  <div class="divider hidden" id="divider"><span>or</span></div>
+
+  <button id="googleButton" class="google hidden" type="button">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15A10.97 10.97 0 0 0 12 1 11 11 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"/></svg>
+    Continue with Google
+  </button>
+
+  <p id="errorBanner" class="banner error hidden"></p>
+  <p id="linkedBanner" class="banner ok hidden"></p>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var params = new URLSearchParams(window.location.search);
+  var returnUrl = params.get("next") || "/";
+  // Mirror of the server's open-redirect guard: only same-origin relative paths survive.
+  if (returnUrl.charAt(0) !== "/" || returnUrl.charAt(1) === "/" || returnUrl.indexOf("://") !== -1
+      || returnUrl.indexOf("\\") !== -1) { returnUrl = "/"; }
+
+  var errorBanner = document.getElementById("errorBanner");
+  var linkedBanner = document.getElementById("linkedBanner");
+  var googleButton = document.getElementById("googleButton");
+  var divider = document.getElementById("divider");
+  var tabSignin = document.getElementById("tabSignin");
+  var tabSignup = document.getElementById("tabSignup");
+  var signinPane = document.getElementById("signinForm");
+  var signupPane = document.getElementById("signupPane");
+
+  var MESSAGES = {
+    invalid_credentials: "Incorrect username or password.",
+    too_many_attempts: "Too many attempts. Wait a moment and try again.",
+    email_exists_requires_link: "This email already has an account. Sign in with your password, then link Google from your profile.",
+    oauth_state_invalid: "That Google sign-in request expired or was already used. Start again.",
+    oauth_unverified_email: "Google did not verify this email address, so it cannot be used to sign in.",
+    oauth_provider_refused: "Google could not complete the sign-in. Try again.",
+    oauth_link_already_used: "That Google account is already linked to a different account here.",
+    oauth_link_requires_session: "Sign in first, then link Google from your profile.",
+    oauth_already_linked: "This Google account is already linked to your profile.",
+    oauth_link_email_mismatch: "The Google email does not match this account's email.",
+    oauth_inactive_user: "This account is disabled. Contact the administrator.",
+    oauth_missing_email: "Google did not provide a usable email address for this account."
+  };
+
+  function showError(code) {
+    errorBanner.textContent = MESSAGES[code] || "Sign-in failed (" + code + ").";
+    errorBanner.classList.remove("hidden");
+  }
+  var initialError = params.get("error");
+  if (initialError) { showError(initialError); }
+  if (params.has("linked")) {
+    linkedBanner.textContent = "Google linked successfully.";
+    linkedBanner.classList.remove("hidden");
+  }
+
+  function setTabs(active) {
+    var signin = active === "signin";
+    tabSignin.classList.toggle("active", signin);
+    tabSignup.classList.toggle("active", !signin);
+    tabSignin.setAttribute("aria-selected", String(signin));
+    tabSignup.setAttribute("aria-selected", String(!signin));
+    signinPane.classList.toggle("hidden", !signin);
+    signupPane.classList.toggle("hidden", signin);
+  }
+  tabSignin.addEventListener("click", function () { setTabs("signin"); });
+  tabSignup.addEventListener("click", function () { setTabs("signup"); });
+
+  // The button appears only when the server says OAuth is configured (no secret ever leaves it).
+  fetch("/api/auth/oauth/config").then(function (r) { return r.json(); }).then(function (cfg) {
+    if (cfg && cfg.enabled) {
+      googleButton.classList.remove("hidden");
+      divider.classList.remove("hidden");
+      googleButton.addEventListener("click", function () {
+        window.location.href = cfg.authorizePath + "?purpose=login&next=" + encodeURIComponent(returnUrl);
+      });
+    }
+  }).catch(function () { /* OAuth unreachable: keep the button hidden. */ });
+
+  document.getElementById("signinForm").addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var username = document.getElementById("username").value.trim();
+    var password = document.getElementById("password").value;
+    if (!username || !password) { return; }
+    fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: username, password: password })
+    }).then(function (r) {
+      return r.json().then(function (body) { return { status: r.status, body: body }; });
+    }).then(function (res) {
+      if (res.status === 200 && res.body.token) {
+        // Same keys shell.js's findToken() reads: a login lands directly in the SPA session.
+        localStorage.setItem("npdev.shell.token", res.body.token);
+        localStorage.setItem("npdev.businessUi.apiKey", res.body.token);
+        window.location.href = returnUrl;
+      } else {
+        showError(res.body && res.body.error ? res.body.error : "sign_in_failed");
+      }
+    }).catch(function () { showError("sign_in_failed"); });
+  });
+})();
+</script>
+</body>
+</html>
