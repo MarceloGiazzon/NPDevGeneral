@@ -1,0 +1,73 @@
+id: PACK-21
+title: >-
+  Identity pack profile fields: harden the User concept for external consumption with avatarUrl,
+  locale, timezone, lastLoginAt, createdAt, updatedAt (1.0.0 -> 1.1.0, additive-only)
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-15
+closed: 2026-09-15
+verification: VERIFIED_LIVE
+source: >-
+  Session 3a (NPDEV_MEGA_ROADMAP.md "3a -- Promote identity to the published User pack ... profile
+  fields, versioning"). Recon showed the pack-lifecycle machinery the roadmap predicted as the
+  edge-case territory (version load-bearing MVS + npdev.lock digest pinning, migration-chain
+  renamedFrom synthesis, deprecation path, version-qualified table resolution, stale-copy
+  validation) is already DONE -- PACK-4/6/7, W3.1, REG-177/179/39 -- so the remaining 3a work was
+  the content hardening: identity::User carried only id/username/displayName/email/active/
+  tokenVersion and no consumer had pushed profile fields back into the pack.
+surface: NPDevContract/packs/identity/pack.json, pack sealing/assembly, sample probe copies
+files:
+  - NPDevContract/packs/identity/pack.json
+  - NPDevSamples/probes/p6-satellite-extension/Input/packs/identity/pack.json
+  - NPDevSamples/probes/p6-satellite-extension/Input/npdev.lock
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/packs/SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/assembly/FinalAppAssemblerTest.java
+  - NPDevGenerator/generator/src/test/java/com/npdev/generator/provenance/PackCatalogEmitterTest.java
+detail: |
+  Added six OPTIONAL fields to identity::User, all additive (nothing renamed/removed, so no
+  migration-chain hop is needed and existing apps are covered by the repeatable "npdev schema
+  additive columns" realization): avatarUrl (string, max 2048), locale (string, max 35), timezone
+  (string, max 64), lastLoginAt (datetime), createdAt (datetime), updatedAt (datetime).
+  1.0.0 -> 1.1.0 (minor bump, as the enforced ADDITIVE contract requires; major stays 1 so the
+  sealed pack package name is unchanged).
+
+  Verified, per the evidence file list:
+  1. The platform's OWN semver gate (PACK-7/PackDiffEngine) classifies the diff as
+     "overallClassification": "ADDITIVE" with exactly the six new fields as findings
+     (`npdev pack diff` between HEAD's committed pack.json and the working copy) -- the bump
+     satisfies the enforced contract (ADDITIVE requires >= minor).
+  2. The probe copy in NPDevSamples/probes/p6-satellite-extension was kept in sync (the repo's
+     copy convention) AND its npdev.lock refreshed: resolvedVersion 1.0.0 -> 1.1.0 with the
+     recomputed pack.json digest sha256:92ffa4cb39acf5b89e55122493eec02d8d04947d84a7d001229ee060cd942670
+     (the lock digest is a SHA-256 of pack.json's own bytes -- editing the pack without refreshing
+     the lock would leave that probe flagging drift/refusing).
+  3. Test expectations pinning the real pack's version were updated to the derived reality:
+     the sealed-jar name becomes identity-1.1.0.jar (FinalAppAssembler resolves it from the ABI
+     manifest as packId + "-" + packVersion + ".jar") in
+     SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest and FinalAppAssemblerTest;
+     PackCatalogEmitterTest's version + forkedFromCurrentVersion assertions track the real pack
+     (project-tracker-demo's forkedFrom 0.9.0 drift is now reported against 1.1.0).
+     BuiltinPackComposerTest / PackAbi*Test construct synthetic manifests and needed no change
+     (major v1 untouched).
+  4. Generator + dsl pack unit tests green (26 tests: :NPDevContract:dsl:test --tests "*pack*",
+     FinalAppAssemblerTest, BuiltinPackComposerTest, PackAbi*Test, SealedPackJarBuilderTest,
+     PackCatalogEmitterTest; PackCatalogEmitterTest was the only casualty of the bump -- two
+     version-pinned assertions -- and is green after the update).
+  5. LIVE proof: a real generated app composing identity 1.1.0 via internal.tables=true (7
+     internal concepts), H2Local:
+     - `npdev generate app` clean (staged 49 jars, BUILD SUCCESSFUL; schema fingerprint
+       sha256:da8398b04fef72e100ef23cd344727cd327b8328620cbe951a041bd4f3768de8);
+     - bootJar build clean (36s);
+     - boot: health UP with db component H2 UP, SUPER_USER key written;
+     - POST /api/identity_users carrying avatarUrl/locale/timezone/lastLoginAt/createdAt/updatedAt
+       -> 200 with all six persisted (id 81f01018-904b-49e5-958a-58976d6d4905, tenantId dev);
+       GET /api/identity_users/{id} -> identical values read back. The generated
+       IdentityUser entity and IdentityUserCreateRequest DTO both carry the six fields.
+  Deferred to CI (not run locally): :generator:packagedProofTest (the packaged-app proof suite is
+  gated behind -PincludePackagedProofs AND a separate task -- invoking it through :generator:test
+  reports "No tests found") and the deterministic-generation / corpus gates.
+  Done when: an app composing the identity pack exposes the six profile fields on its User CRUD
+  surface and persists/reads them through a real generate -> build -> boot cycle (proven above),
+  and the pack's own diff gate classifies the change as ADDITIVE with a conforming minor bump
+  (proven above).
