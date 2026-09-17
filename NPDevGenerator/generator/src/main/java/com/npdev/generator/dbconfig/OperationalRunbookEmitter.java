@@ -119,17 +119,23 @@ if (Test-Path -LiteralPath $secretsEnv) {
     /**
      * SEC-11 (NPDEV_MEGA_ROADMAP.md Session 3b): load {@code <app>/secrets/oauth-google.env} into
      * the launcher's environment, the same transport the Google OAuth client id/secret travel in.
-     * The file is launcher-written (or operator-written), NEVER generator-written -- the generator
+     * The file is OPERATOR-provisioned (from the OS credential store -- {@code npdev-manager.exe
+     * --set-secret}, per {@code oauth-google.env.example}), NEVER generator-written -- the generator
      * only emits the {@code .example} shape -- because the secret's source of truth is the OS
-     * credential store (Manager keyring), not any file the model or generator touched. Its only
-     * sibling is {@code SECRETS_ENV_LOADER}; the two blocks stay separate exactly like the
-     * documented agent-proxy/api-key split, so each file's writer guarantee stays local.
+     * credential store (Manager keyring), not any file the model or generator touched. The launcher
+     * only CONSUMES the file when present: automated keyring-to-file transport is not implemented
+     * yet (ledger REG-212). Its only sibling is {@code SECRETS_ENV_LOADER}; the two blocks stay
+     * separate exactly like the documented agent-proxy/api-key split, so each file's writer
+     * guarantee stays local.
      */
     private static final String OAUTH_SECRET_ENV_LOADER = """
 
-# Google OAuth injected by the launcher from the OS credential store (Manager keyring) at
-# NPDEV_OAUTH_GOOGLE_CLIENT_ID / NPDEV_OAUTH_GOOGLE_CLIENT_SECRET. Absent on every app that has not
-# provisioned an OAuth client, and absent is not an error -- the login screen hides the button.
+# Google OAuth: loads <app>/secrets/oauth-google.env into the process env at
+# NPDEV_OAUTH_GOOGLE_CLIENT_ID / NPDEV_OAUTH_GOOGLE_CLIENT_SECRET. The file is provisioned by the
+# operator from the OS credential store (npdev-manager.exe --set-secret; see
+# oauth-google.env.example) -- the launcher only consumes it, it never reads the keyring itself.
+# Absent on every app that has not provisioned an OAuth client, and absent is not an error -- the
+# login screen hides the button.
 $oauthEnv = Join-Path $appRoot 'secrets/oauth-google.env'
 if (Test-Path -LiteralPath $oauthEnv) {
   $loadedNames = @()
@@ -318,7 +324,8 @@ load_npdev_agent_proxy_env() {
 
     /**
      * SEC-11: the POSIX twin of {@link #OAUTH_SECRET_ENV_LOADER} -- loads
-     * {@code secrets/oauth-google.env} when present (launcher-written, never generator-written).
+     * {@code secrets/oauth-google.env} when present (operator-provisioned from the OS credential
+     * store, never generator-written).
      */
     private static final String OAUTH_SECRET_ENV_LOADER_SH = """
 
@@ -713,11 +720,14 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
 # identity onto an identity::User (signup/link/login), and issues the same JWT session the
 # username/password login already uses -- tokenVersion revocation included.
 #
-# The REAL secret is stored in the OS credential store (NPDev Manager keyring; `npdev-manager.exe
-# --set-secret`), and the launcher writes this file from it at boot -- the app process receives the
-# values as environment variables. This file must never be committed (`.gitignore` already covers
-# `secrets/`). Starting the jar yourself (`java -jar ...`) does NOT read this file; set the same
-# variables in your shell first, or provision the file exactly like `_ops` does.
+# The REAL secret is stored in the OS credential store (NPDev Manager keyring;
+# `npdev-manager.exe --set-secret <profile_id>`, key on stdin). The launcher below only CONSUMES
+# this file when present -- automated keyring-to-file transport is not implemented yet (plan gap,
+# ledger REG-212) -- so an operator provisions the file from the keyring (or by copying this
+# example) before the first launch. The app process receives the values as environment variables.
+# This file must never be committed (`.gitignore` already covers `secrets/`). Starting the jar
+# yourself (`java -jar ...`) does NOT read this file; set the same variables in your shell first,
+# or launch through `_ops` exactly as this file documents.
 #
 # Lines are KEY=VALUE. `#` starts a comment. Blank lines are ignored.
 
