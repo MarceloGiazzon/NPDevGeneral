@@ -53,9 +53,10 @@ class SealedPackBuilderTest {
         assertEquals(KernelAbi.CURRENT_ABI_VERSION, result.manifest().kernelAbiVersion());
         assertEquals("com.npdev.pack.identity.v1", result.manifest().packageName());
 
-        // Five concepts declared in identity/pack.json: User, Role, UserRole, PasswordResetToken,
-        // UserRolePermission -- all five must be sealed and emitted, none silently dropped.
-        assertEquals(5, result.concepts().size());
+        // Six concepts declared in identity/pack.json: User, Role, UserRole, PasswordResetToken,
+        // UserRolePermission, ExternalIdentity -- all six must be sealed and emitted, none silently
+        // dropped.
+        assertEquals(6, result.concepts().size());
 
         Path userEntity = outputRoot.resolve("src/main/java/com/npdev/pack/identity/v1/User.java");
         assertTrue(Files.isRegularFile(userEntity), "expected " + userEntity + " to exist");
