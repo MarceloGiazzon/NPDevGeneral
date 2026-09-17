@@ -6,6 +6,7 @@ import com.npdev.adapters.idp.google.GoogleIdentityProvider;
 import com.npdev.kernel.ports.IdentityProvider;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -67,6 +68,7 @@ public class OAuthGoogleController {
     private final long expirySeconds;
     private final boolean configured;
 
+    @Autowired
     public OAuthGoogleController(
             DataSource dataSource,
             ObjectMapper objectMapper,
