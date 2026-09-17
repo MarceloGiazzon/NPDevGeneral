@@ -56,3 +56,35 @@ detail: |
   three flows work end-to-end in a real browser (real Google, or the local fake-Google run plus
   the real client provisioned by the owner); the client secret is in the OS credential store and
   never in manager.json/.env; tokenVersion revocation invalidates a Google-linked session.
+
+  M7 LIVE PROOF (fake-Google, 2026-09-17): DONE -- 28/28 checks PASS over real HTTP against a
+  freshly generated jwt-mode canary app (internal.tables + identity 1.2.0 + a `Usuario` credential
+  concept), harness in Build/3b-oauth-proof/ (fake_google.py + run_oauth_proof.py, report
+  proof-report.json; app at Build/3b-oauth-proof-app on :8106). Covered: config probe enabled;
+  fresh Google signup (User + ExternalIdentity created, session minted and usable); Google login
+  on the linked account (no duplicate user); email collision with an unlinked account ->
+  email_exists_requires_link with NO session issued; unverified email -> oauth_unverified_email;
+  authenticated link (positive, no error) and email-mismatch negative (oauth_link_email_mismatch);
+  login-after-link resolves via the stored ExternalIdentity; token_version bump
+  (POST /api/admin/tenants/dev/users/{u}/revoke-sessions with the X-Super-User-Key) turns the
+  previously-valid Google session into a 401.
+  Two REAL bugs caught by this live boot that no unit test could:
+  (1) OAuthGoogleController declared TWO constructors (production + package-private test seam) with
+      no @Autowired, so Spring failed the app context with "No default constructor found" when the
+      bean was component-scanned -- fixed by annotating the production constructor (the package-
+      private seam and all module unit tests are untouched; runtimehost-core suite still green).
+  (2) The staged runtimehost-core-0.1.0.jar in BOTH runtimehost-libs caches (Build\runtimehost-libs
+      and %LOCALAPPDATA%\NPDev\runtimehost-libs) predated the OAuth commit, so the assembled app
+      had no OAuth controller at all (RUN-33 rot mechanism; the 2026-09-16 restage refreshed
+      kernel + idp-google but not runtimehost-core). Rebuilt from repo source and restaged into
+      both caches + regenerated apps (see the runtimehost-libs-restaging project memory).
+  REG-211 filed for the substrate gap found on the way: a jwt-mode app composed from
+  internal.tables ONLY has no password-credential table, so bootstrap-admin/create-user/login 500
+  on the default `usuarios` until the model binds a credential concept -- the proof binds the
+  WmsOffice-sanctioned `Usuario` shape because the collision/link flows need an existing password
+  account to collide-with/link-to.
+  Remaining for the done-when: the REAL-Google browser run (needs the owner's Google Cloud OAuth
+  client id/secret + a test account) and the client secret in the OS credential store via the
+  Manager keyring (launcher transport already emitted; end-to-end keyring provisioning is the
+  runner-up step).
+verification: LOCAL_PROOF_DONE (fake-Google, 28/28 checks); real-Google browser run PENDING owner-provided credentials

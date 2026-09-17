@@ -1,0 +1,57 @@
+id: REG-211
+title: >-
+  A jwt-mode app composed only from internal tables has no password-credential table --
+  bootstrap-admin / create-user / login 500 on the default `usuarios` literal
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-17
+verification: VERIFIED_LIVE
+source: >-
+  Found LIVE by the SEC-11 M7 fake-Google proof (2026-09-17) against a freshly generated jwt-mode
+  canary app (internal.tables=true, identity pack 1.2.0): POST /api/auth/bootstrap-admin answered
+  500 {"error":"bootstrap_failed"}, and the app's H2 trace file showed the cause directly --
+  JdbcSQLSyntaxErrorException: Table "usuarios" not found on "INSERT INTO usuarios (id, user_id,
+  senha_hash, tenant_id)". Reproduced against the REAL generated schema (Build/3b-oauth-proof-app),
+  not reasoned about.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth (LoginController,
+  BootstrapAdminController, CreateUserController -- the @Value("${npdev.auth.login.credential-*}
+  :usuarios/user_id/senha_hash") defaults), generated-app schema-realization (identity pack 1.2.0
+  composes no credential-bearing concept), NPDevGenerator (nothing emits an
+  npdev.auth.login.credential-table override)
+detail: |
+  The identity pack (1.2.0) composes User / Role / UserRole / UserRolePermission /
+  PasswordResetToken / ExternalIdentity -- no password-credential bearer. The jwt-mode auth stack's
+  credential-table defaults (`npdev.auth.login.credential-table=usuarios`,
+  `credential-user-id-column=user_id`, `credential-password-column=senha_hash`) are WmsOffice
+  literals, and a repo-wide grep finds NO generator/mustache-template wiring that ever sets an
+  override for a real generated app (the same "related, wider pattern" REG-177's own note flagged
+  for the identity_users/username family -- this item is the LIVE confirmation of the credential
+  side). Consequences, all live-observed in the proof run:
+
+  - POST /api/auth/bootstrap-admin   -> 500 bootstrap_failed (INSERT into missing `usuarios`)
+  - POST /api/auth/create-user       -> 500 create_user_failed (same INSERT)
+  - POST /api/auth/login             -> decoy-rejects (SELECT senha_hash FROM usuarios ... fails;
+    LoginController's REG-18 decoy keeps the response shape indistinguishable, so it surfaces as
+    invalid_credentials rather than 500)
+
+  Impact: a jwt-mode app built purely from internal.tables CANNOT create password accounts at all.
+  The external-provider flows themselves still work (Google signup / login via ExternalIdentity --
+  the M7 proof passed those), but SEC-11's email-collision case and the authenticated LINK flow
+  require an existing username/password account to collide-with / link-to, so in the generic
+  generated app that substrate is missing.
+
+  Workaround demonstrated by the proof (the WmsOffice-sanctioned shape, NOT a fix): bind a
+  credential concept in the model -- `Usuario` with fields id (uuid), userId (uuid), senhaHash
+  (string) maps to table `usuarios` with columns id/user_id/senha_hash/tenant_id, matching the
+  defaults exactly.
+
+  Fix candidates for a deliberate decision (not silently patched here): (a) the generator emits an
+  npdev.auth.login.credential-table override when the model binds a matching concept (WmsOffice
+  already does implicitly), or (b) the identity pack gains a first-class credential concept /
+  schema-realization for `usuarios` so internal.tables compose one, or (c) fail fast at generation
+  time when jwt-mode + no credential-bearing concept is requested, instead of shipping an app whose
+  own bootstrap 500s. Also note: the ControlPanel's SUPERUSER key path (SuperUserBootstrapper) is
+  unaffected -- its X-Super-User-Key flow resolves its own credential registry, which is why the
+  M7 revocation leg still worked.
