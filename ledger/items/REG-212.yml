@@ -1,0 +1,51 @@
+id: REG-212
+title: >-
+  The SEC-11 OAuth client-secret transport from the OS credential store to the app is
+  unimplemented -- the launchers only CONSUME secrets/oauth-google.env, and the emitted
+  docs/example falsely claim "the launcher writes this file from it at boot"
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-17
+verification: VERIFIED_LIVE
+source: >-
+  Found while completing the SEC-11 done-when leg "the client secret is in the OS credential store
+  and never in manager.json/.env" (2026-09-17, after the M7 fake-Google proof). Grep over the whole
+  repo finds exactly SEVEN references to oauth-google.env, all in NPDevGenerator's
+  OperationalRunbookEmitter (the two launcher loaders + the javadocs + the .example). Nothing
+  anywhere WRITES the real file: the emitted _ops/Run-FinalApp.ps1, Start-App.ps1 and
+  run-final-app.sh contain only a Test-Path/-f loader that exports KEY=VALUE lines into the process
+  env when the file exists; NPDevManager (Rust) has no oauth-google reference at all; and the
+  Manager's headless CLI exposes --set-secret <profile_id> (secret on stdin) but no --get-secret or
+  --delete-secret (get_secret exists only as an internal function used by other flows).
+surface: >-
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/OperationalRunbookEmitter.java
+  (OAUTH_SECRET_ENV_LOADER, OAUTH_SECRET_ENV_LOADER_SH, writeOauthGoogleExample),
+  NPDevManager/src/main.rs --set-secret CLI, secrets.rs (service "NPDev Manager", account
+  prompter/<profile_id>)
+detail: |
+  The SEC-11 architecture (decision 3: "the client id/secret live only in the OS credential store
+  ... Never in manager.json, never in .env, never in the model") has a missing hop. What EXISTS:
+  the storage side (secrets.rs set/get/delete/has + the --set-secret headless CLI) and the consumer
+  side (both launchers export secrets/oauth-google.env into the app process env when the file is
+  present). What is MISSING: any code path that reads the OS credential store and materializes
+  secrets/oauth-google.env (or injects the env directly). Live-verified against the M7 proof app's
+  own emitted _ops: the launchers never touch the keyring, and the generator never writes the real
+  file (only .example). The emitted .example text AND the loader javadocs claimed "the launcher
+  writes this file from it at boot" -- a false claim corrected in the same session (any regenerated
+  app now says the file is operator-provisioned and that automated transport is not implemented).
+
+  Two design questions this leaves open for the owner (recorded, not silently resolved):
+  1. TRANSPORT: (a) add a headless --get-secret to the Manager and have the launcher materialize
+     oauth-google.env when absent; (b) have the launcher read the keyring directly (pwsh CredRead /
+     secret-tool) and set process env only -- the design's literal "never in .env"; or (c) accept
+     the operator manual copy as the documented behavior and adjust the done-when wording.
+  2. FILE vs DESIGN: SEC-11 decision 3 says "never in .env", but the implemented consumer contract
+     PERSISTS an app-local secrets/oauth-google.env. Either the .env-file contract is a sanctioned
+     deviation (then "never in .env" needs rewording) or the launcher must avoid persisting it.
+
+  Impact: a NEW jwt-mode app has no end-to-end path from `npdev-manager.exe --set-secret` to a
+  running app with OAuth enabled -- an operator must copy-and-fill the example by hand, exactly the
+  manual step SEC-11's architecture was meant to remove. The M7 local proof worked because the
+  harness injected NPDEV_OAUTH_GOOGLE_* env directly (the same values the launcher would export),
+  which is why this leg's absence went unnoticed until now.

@@ -83,8 +83,10 @@ detail: |
   on the default `usuarios` until the model binds a credential concept -- the proof binds the
   WmsOffice-sanctioned `Usuario` shape because the collision/link flows need an existing password
   account to collide-with/link-to.
-  Remaining for the done-when: the REAL-Google browser run (needs the owner's Google Cloud OAuth
-  client id/secret + a test account) and the client secret in the OS credential store via the
-  Manager keyring (launcher transport already emitted; end-to-end keyring provisioning is the
-  runner-up step).
+  Remaining for the done-when: (a) the REAL-Google browser run (needs the owner's Google Cloud
+  OAuth client id/secret + a test account); (b) the keyring-to-app secret TRANSPORT, which turned
+  out to be unimplemented -- the launchers only consume secrets/oauth-google.env, nothing reads the
+  OS credential store for them (REG-212, with the false "the launcher writes this file at boot"
+  claim corrected in the emitted docs); and (c) the REG-211 decision (jwt-mode apps need a bound
+  credential concept for the password half of the flows).
 verification: LOCAL_PROOF_DONE (fake-Google, 28/28 checks); real-Google browser run PENDING owner-provided credentials
