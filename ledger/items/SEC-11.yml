@@ -84,9 +84,10 @@ detail: |
   WmsOffice-sanctioned `Usuario` shape because the collision/link flows need an existing password
   account to collide-with/link-to.
   Remaining for the done-when: (a) the REAL-Google browser run (needs the owner's Google Cloud
-  OAuth client id/secret + a test account); (b) the keyring-to-app secret TRANSPORT, which turned
-  out to be unimplemented -- the launchers only consume secrets/oauth-google.env, nothing reads the
-  OS credential store for them (REG-212, with the false "the launcher writes this file at boot"
-  claim corrected in the emitted docs); and (c) the REG-211 decision (jwt-mode apps need a bound
-  credential concept for the password half of the flows).
+  OAuth client id/secret + a test account); (b) REG-212's design question 2 -- the keyring-to-app
+  secret TRANSPORT is now IMPLEMENTED and live-verified (npdev-manager --get-secret +
+  launcher materialization of secrets/oauth-google.env, option (a)), but the persisted app-local
+  env file technically deviates from decision 3's literal "never in .env", which the owner must
+  sanction or change; and (c) the REG-211 decision (jwt-mode apps need a bound credential concept
+  for the password half of the flows).
 verification: LOCAL_PROOF_DONE (fake-Google, 28/28 checks); real-Google browser run PENDING owner-provided credentials

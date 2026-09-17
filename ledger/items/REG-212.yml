@@ -1,8 +1,8 @@
 id: REG-212
 title: >-
-  The SEC-11 OAuth client-secret transport from the OS credential store to the app is
-  unimplemented -- the launchers only CONSUME secrets/oauth-google.env, and the emitted
-  docs/example falsely claim "the launcher writes this file from it at boot"
+  The SEC-11 OAuth client-secret transport from the OS credential store to the app was
+  unimplemented -- fixed 2026-09-17 (option a: launchers materialize secrets/oauth-google.env via
+  a new --get-secret CLI), live-verified against the real Windows Credential Manager
 type: BUG
 severity: HIGH
 status: OPEN
@@ -49,3 +49,28 @@ detail: |
   manual step SEC-11's architecture was meant to remove. The M7 local proof worked because the
   harness injected NPDEV_OAUTH_GOOGLE_* env directly (the same values the launcher would export),
   which is why this leg's absence went unnoticed until now.
+
+  UPDATE 2026-09-17 (option (a) IMPLEMENTED + LIVE-VERIFIED):
+  - NPDevManager gains headless --get-secret <profile> and --delete-secret <profile> (twins of the
+    existing --set-secret; value on stdout only on success, errors on stderr, empty value is not
+    printed as success; the read-window security tradeoff is documented at the code site).
+  - Both emitted launchers (Run-FinalApp.ps1/Start-App.ps1 and run-final-app.sh/start-app.sh) now
+    MATERIALIZE secrets/oauth-google.env when absent and npdev-manager is reachable: profiles
+    '<base>.client-id' / '<base>.client-secret', base = NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE
+    (default 'oauth-google'), binary overridable via NPDEV_MANAGER_EXE. Absent file AND absent
+    Manager binary -> app boots with OAuth disabled (login screen hides the button).
+  - Verification (real Windows Credential Manager, fake values, all cleaned up after):
+    --set-secret/--get-secret round trip clean; missing profile -> exit 1 with clear stderr;
+    --delete-secret idempotent; the BYTE-FOR-BYTE EMITTED sh function ran the rebuilt
+    npdev-manager.exe and wrote the env file ('Materialized oauth-google.env ...'); the app then
+    booted with OAuth enabled using ONLY the materialized values (config probe enabled:true) while
+    the no-file/no-keyring boot reported enabled:false; both fake keyring profiles deleted after.
+  - Generator contract test OperationalRunbookOauthEnvContractTest pins the materialize+load
+    contract on all four launchers; full generator suite green (534 tests).
+
+  REMAINING (kept OPEN -- design question 2, owner decision): option (a) PERSISTS an app-local
+  secrets/oauth-google.env with the secret in plaintext, which technically deviates from SEC-11
+  decision 3's literal "never in .env". Either sanction the .env-file contract (and reword the
+  decision) or move later to option (b) (launcher reads the keyring directly and only sets process
+  env, no persisted file). REG-211 (jwt-mode credential table) and the real-Google browser run are
+  the other remaining SEC-11 items.
