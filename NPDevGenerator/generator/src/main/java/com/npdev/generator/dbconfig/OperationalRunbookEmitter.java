@@ -117,26 +117,48 @@ if (Test-Path -LiteralPath $secretsEnv) {
 """;
 
     /**
-     * SEC-11 (NPDEV_MEGA_ROADMAP.md Session 3b): load {@code <app>/secrets/oauth-google.env} into
-     * the launcher's environment, the same transport the Google OAuth client id/secret travel in.
-     * The file is OPERATOR-provisioned (from the OS credential store -- {@code npdev-manager.exe
-     * --set-secret}, per {@code oauth-google.env.example}), NEVER generator-written -- the generator
-     * only emits the {@code .example} shape -- because the secret's source of truth is the OS
-     * credential store (Manager keyring), not any file the model or generator touched. The launcher
-     * only CONSUMES the file when present: automated keyring-to-file transport is not implemented
-     * yet (ledger REG-212). Its only sibling is {@code SECRETS_ENV_LOADER}; the two blocks stay
-     * separate exactly like the documented agent-proxy/api-key split, so each file's writer
-     * guarantee stays local.
+     * SEC-11 (NPDEV_MEGA_ROADMAP.md Session 3b): materialize + load {@code <app>/secrets/oauth-
+     * google.env} into the launcher's environment, the transport the Google OAuth client id/secret
+     * travel in. REG-212 implemented 2026-09-17: when the file is absent the launcher reads the
+     * Manager keyring directly via {@code npdev-manager.exe --get-secret} (profiles
+     * {@code <base>.client-id} / {@code <base>.client-secret}, base defaulting to {@code
+     * oauth-google}) and writes the file, then loads it. When neither the file nor the Manager
+     * binary exists the app boots with OAuth disabled. The generator NEVER writes the real file --
+     * only the {@code .example} shape -- because the secret's source of truth is the OS credential
+     * store (Manager keyring), not any file the model or generator touched. Its only sibling is
+     * {@code SECRETS_ENV_LOADER}; the two blocks stay separate exactly like the documented
+     * agent-proxy/api-key split, so each file's writer guarantee stays local.
      */
     private static final String OAUTH_SECRET_ENV_LOADER = """
 
-# Google OAuth: loads <app>/secrets/oauth-google.env into the process env at
-# NPDEV_OAUTH_GOOGLE_CLIENT_ID / NPDEV_OAUTH_GOOGLE_CLIENT_SECRET. The file is provisioned by the
-# operator from the OS credential store (npdev-manager.exe --set-secret; see
-# oauth-google.env.example) -- the launcher only consumes it, it never reads the keyring itself.
-# Absent on every app that has not provisioned an OAuth client, and absent is not an error -- the
-# login screen hides the button.
+# Google OAuth: materializes <app>/secrets/oauth-google.env from the OS credential store (Manager
+# keyring) when the file is absent and npdev-manager.exe is reachable, then loads it into the
+# process env at NPDEV_OAUTH_GOOGLE_CLIENT_ID / NPDEV_OAUTH_GOOGLE_CLIENT_SECRET. Keyring profile
+# base: NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE (default 'oauth-google'); the id and secret live under
+# '<base>.client-id' / '<base>.client-secret' (npdev-manager.exe --set-secret <profile>, key on
+# stdin). NPDEV_MANAGER_EXE overrides the binary location. When neither the file nor the Manager
+# binary exists the app simply runs with OAuth disabled -- absent is not an error, the login screen
+# hides the button.
 $oauthEnv = Join-Path $appRoot 'secrets/oauth-google.env'
+if (-not (Test-Path -LiteralPath $oauthEnv)) {
+  $npdevManager = if ($env:NPDEV_MANAGER_EXE) { $env:NPDEV_MANAGER_EXE }
+                  else { (Get-Command npdev-manager.exe -ErrorAction SilentlyContinue).Source }
+  if ($npdevManager) {
+    $oauthProfile = if ($env:NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE) { $env:NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE } else { 'oauth-google' }
+    $oauthClientId = (& $npdevManager --get-secret "$oauthProfile.client-id" 2>$null)
+    $clientIdOk = $LASTEXITCODE -eq 0
+    $oauthClientSecret = (& $npdevManager --get-secret "$oauthProfile.client-secret" 2>$null)
+    $secretOk = $LASTEXITCODE -eq 0
+    if ($clientIdOk -and $secretOk -and $oauthClientId -and $oauthClientSecret) {
+      New-Item -ItemType Directory -Force -Path (Split-Path -Parent $oauthEnv) | Out-Null
+      Set-Content -LiteralPath $oauthEnv -Value @(
+        'NPDEV_OAUTH_GOOGLE_CLIENT_ID=' + $oauthClientId,
+        'NPDEV_OAUTH_GOOGLE_CLIENT_SECRET=' + $oauthClientSecret
+      ) -Encoding UTF8
+      Write-Host ("Materialized oauth-google.env from the OS credential store (profile base '" + $oauthProfile + "').")
+    }
+  }
+}
 if (Test-Path -LiteralPath $oauthEnv) {
   $loadedNames = @()
   foreach ($rawLine in (Get-Content -LiteralPath $oauthEnv)) {
@@ -323,15 +345,30 @@ load_npdev_agent_proxy_env() {
 """;
 
     /**
-     * SEC-11: the POSIX twin of {@link #OAUTH_SECRET_ENV_LOADER} -- loads
-     * {@code secrets/oauth-google.env} when present (operator-provisioned from the OS credential
-     * store, never generator-written).
+     * SEC-11: the POSIX twin of {@link #OAUTH_SECRET_ENV_LOADER} -- materializes
+     * {@code secrets/oauth-google.env} from the OS credential store via
+     * {@code npdev-manager --get-secret} when the file is absent, then loads it. Never
+     * generator-written.
      */
     private static final String OAUTH_SECRET_ENV_LOADER_SH = """
 
 load_npdev_oauth_google_env() {
   app_root="$1"
   oauth_env="$app_root/secrets/oauth-google.env"
+  if [ ! -f "$oauth_env" ]; then
+    if [ -n "$NPDEV_MANAGER_EXE" ]; then npdev_manager="$NPDEV_MANAGER_EXE"
+    else npdev_manager=$(command -v npdev-manager 2>/dev/null || true); fi
+    if [ -n "$npdev_manager" ]; then
+      oauth_base="${NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE:-oauth-google}"
+      client_id=$("$npdev_manager" --get-secret "$oauth_base.client-id" 2>/dev/null) && client_id_ok=1 || client_id_ok=0
+      client_secret=$("$npdev_manager" --get-secret "$oauth_base.client-secret" 2>/dev/null) && client_secret_ok=1 || client_secret_ok=0
+      if [ "$client_id_ok" = "1" ] && [ "$client_secret_ok" = "1" ] && [ -n "$client_id" ] && [ -n "$client_secret" ]; then
+        mkdir -p "$(dirname "$oauth_env")"
+        printf 'NPDEV_OAUTH_GOOGLE_CLIENT_ID=%s\\nNPDEV_OAUTH_GOOGLE_CLIENT_SECRET=%s\\n' "$client_id" "$client_secret" > "$oauth_env"
+        echo "Materialized oauth-google.env from the OS credential store (profile base '$oauth_base')."
+      fi
+    fi
+  fi
   if [ -f "$oauth_env" ]; then
     loaded_names=''
     while IFS= read -r raw_line || [ -n "$raw_line" ]; do
@@ -720,14 +757,16 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
 # identity onto an identity::User (signup/link/login), and issues the same JWT session the
 # username/password login already uses -- tokenVersion revocation included.
 #
-# The REAL secret is stored in the OS credential store (NPDev Manager keyring;
-# `npdev-manager.exe --set-secret <profile_id>`, key on stdin). The launcher below only CONSUMES
-# this file when present -- automated keyring-to-file transport is not implemented yet (plan gap,
-# ledger REG-212) -- so an operator provisions the file from the keyring (or by copying this
-# example) before the first launch. The app process receives the values as environment variables.
-# This file must never be committed (`.gitignore` already covers `secrets/`). Starting the jar
-# yourself (`java -jar ...`) does NOT read this file; set the same variables in your shell first,
-# or launch through `_ops` exactly as this file documents.
+# The REAL secret lives in the OS credential store (NPDev Manager keyring; `npdev-manager.exe
+# --set-secret <profile>`, key on stdin) -- never in manager.json. The `_ops` launchers
+# materialize this file from it at boot when `npdev-manager.exe` is reachable and the file is
+# absent: profiles `<base>.client-id` and `<base>.client-secret`, base =
+# NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE (default `oauth-google`). No launcher available (or nothing
+# stored)? Copy this file to `oauth-google.env` and fill in the values yourself -- the launchers
+# load whatever is present. The app process receives the values as environment variables. This
+# file must never be committed (`.gitignore` already covers `secrets/`). Starting the jar yourself
+# (`java -jar ...`) does NOT read this file; set the same variables in your shell first, or
+# launch through `_ops` exactly as this file documents.
 #
 # Lines are KEY=VALUE. `#` starts a comment. Blank lines are ignored.
 
