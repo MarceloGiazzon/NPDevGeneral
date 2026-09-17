@@ -2268,6 +2268,63 @@ fn main() {
         });
     }
 
+    // Headless read/remove twins of --set-secret (REG-212): the emitted app launchers materialize
+    // secrets/*.env from the OS credential store at boot by calling --get-secret <profile>, and CI
+    // or an operator can delete an entry without the GUI. Security posture is stated here, next to
+    // the code: --get-secret puts a stored value on STDOUT, so it opens a read window the
+    // "never returns one to the UI" rule deliberately kept closed -- justified because the same
+    // user who stores the key is the one the launcher runs as, and the app must receive the value
+    // to start. The value still never crosses a command line (stdout, not argv), missing entries
+    // and store failures exit nonzero with the message on stderr, and an empty value is never
+    // printed as success.
+    if let Some(pos) = std::env::args().position(|a| a == "--get-secret") {
+        let profile_id = std::env::args().nth(pos + 1);
+        std::process::exit(match profile_id {
+            Some(profile_id) => match secrets::get_secret(&profile_id) {
+                Ok(Some(value)) => {
+                    if value.is_empty() {
+                        eprintln!("--get-secret {profile_id}: credential is empty");
+                        1
+                    } else {
+                        println!("{value}");
+                        0
+                    }
+                }
+                Ok(None) => {
+                    eprintln!("--get-secret {profile_id}: no credential stored for this profile");
+                    1
+                }
+                Err(e) => {
+                    eprintln!("--get-secret {profile_id}: {e}");
+                    1
+                }
+            },
+            None => {
+                eprintln!("--get-secret requires a profile id: --get-secret <profile_id>");
+                2
+            }
+        });
+    }
+    if let Some(pos) = std::env::args().position(|a| a == "--delete-secret") {
+        let profile_id = std::env::args().nth(pos + 1);
+        std::process::exit(match profile_id {
+            Some(profile_id) => match secrets::delete_secret(&profile_id) {
+                Ok(()) => {
+                    println!("credential deleted for profile '{profile_id}'");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("--delete-secret {profile_id}: {e}");
+                    1
+                }
+            },
+            None => {
+                eprintln!("--delete-secret requires a profile id: --delete-secret <profile_id>");
+                2
+            }
+        });
+    }
+
     // Session 2 (NPDEV_MEGA_ROADMAP.md): "headless and scriptable first, UI second" -- this drives
     // the EXACT SAME `ai_loop::run` the `run_ai_loop` Tauri command below calls, mirroring
     // `--selftest`'s own precedent for a no-window entry point on this binary. Assumes the Manager's
