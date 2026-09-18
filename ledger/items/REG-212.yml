@@ -5,8 +5,9 @@ title: >-
   a new --get-secret CLI), live-verified against the real Windows Credential Manager
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-17
+closed: 2026-09-18
 verification: VERIFIED_LIVE
 source: >-
   Found while completing the SEC-11 done-when leg "the client secret is in the OS credential store
@@ -74,3 +75,12 @@ detail: |
   decision) or move later to option (b) (launcher reads the keyring directly and only sets process
   env, no persisted file). REG-211 (jwt-mode credential table) and the real-Google browser run are
   the other remaining SEC-11 items.
+
+  RESOLUTION (2026-09-18): option (b) implemented. Both launcher families (PowerShell + POSIX sh)
+  now read the Google OAuth client id/secret directly from the OS credential store via
+  npdev-manager --get-secret and inject them into the process environment (Set-Item -Path env: /
+  export). No file is written or loaded -- the secrets/oauth-google.env file path, the
+  materialize-when-absent logic, and the load-from-file block are all removed. The .example file
+  now documents the keyring path and the direct-env fallback, not a copy-and-fill operation.
+  SEC-11 decision 3 ("never in .env") is now literally satisfied. Contract test updated.
+  Generator suite 534 green.

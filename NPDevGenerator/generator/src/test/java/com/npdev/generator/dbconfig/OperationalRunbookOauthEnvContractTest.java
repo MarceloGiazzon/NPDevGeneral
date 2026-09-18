@@ -11,17 +11,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * SEC-11 (Session 3b): pins the OAuth secret transport contract in the emitted launchers after
- * REG-212 was implemented (2026-09-17) -- the launchers MATERIALIZE
- * {@code secrets/oauth-google.env} from the OS credential store via
- * {@code npdev-manager --get-secret} when the file is absent, otherwise they only load whatever is
- * present; the generator itself only ever emits the {@code .example} shape. If the transport
- * mechanism changes again, this test forces the emitted launchers and the example docs to move
- * together.
+ * REG-212 option (b) was implemented (2026-09-18) -- the launchers read the Google OAuth
+ * client id/secret directly from the OS credential store via
+ * {@code npdev-manager --get-secret} and inject them into the process environment.
+ * No file is persisted anywhere, in compliance with SEC-11 decision 3 ("never in .env").
+ * If the transport mechanism changes again, this test forces the emitted launchers and the
+ * example docs to move together.
  */
 class OperationalRunbookOauthEnvContractTest {
 
-    private static final String FALSE_WRITER_CLAIM = "injected by the launcher from the OS credential store";
-    private static final String STALE_GAP_MARKER = "automated keyring-to-file transport is not implemented yet";
+    private static final String OBSOLETE_MATERIALIZE_CLAIM = "Materialized oauth-google.env";
+    private static final String OBSOLETE_ENV_FILE_REFERENCE = "secrets/oauth-google.env";
 
     private static Path emit(@TempDir Path tempDir) throws Exception {
         Path definitionPath = tempDir.resolve("src").resolve("db.definition.json");
@@ -43,34 +43,35 @@ class OperationalRunbookOauthEnvContractTest {
         return Files.readString(root.resolve(relative));
     }
 
-    /** The bits every emitted launcher must carry: materialize-when-absent, then load. */
+    /** The bits every emitted launcher must carry: direct keyring injection, no file. */
     private static void assertTransportContract(String launcher, String launcherName, boolean isPs1) {
-        assertTrue(launcher.contains("secrets/oauth-google.env"), launcherName + " must target secrets/oauth-google.env");
+        // Must read from keyring directly.
         assertTrue(launcher.contains("--get-secret"), launcherName + " must read the keyring via --get-secret");
         assertTrue(launcher.contains("NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE"),
                 launcherName + " must honor NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE");
         assertTrue(launcher.contains("oauth-google"),
                 launcherName + " must default the keyring profile base to oauth-google");
-        assertFalse(launcher.contains(FALSE_WRITER_CLAIM), launcherName + " must use the REG-212 wording, not the old claim");
+        // Must inject directly into process env.
         if (isPs1) {
-            assertTrue(launcher.contains("-not (Test-Path -LiteralPath $oauthEnv)"),
-                    launcherName + " must attempt materialization when the file is absent (REG-212)");
-            assertTrue(launcher.contains("$oauthProfile.client-id") && launcher.contains("$oauthProfile.client-secret"),
-                    launcherName + " must derive the client-id/client-secret profile pair from the base");
-            assertTrue(launcher.contains("if (Test-Path -LiteralPath $oauthEnv)"),
-                    launcherName + " must load the file when present");
+            assertTrue(launcher.contains("Set-Item -Path env:NPDEV_OAUTH_GOOGLE_CLIENT_ID"),
+                    launcherName + " must inject client id into process env");
+            assertTrue(launcher.contains("Set-Item -Path env:NPDEV_OAUTH_GOOGLE_CLIENT_SECRET"),
+                    launcherName + " must inject client secret into process env");
         } else {
-            assertTrue(launcher.contains("[ ! -f \"$oauth_env\" ]"),
-                    launcherName + " must attempt materialization when the file is absent (REG-212)");
-            assertTrue(launcher.contains("$oauth_base.client-id") && launcher.contains("$oauth_base.client-secret"),
-                    launcherName + " must derive the client-id/client-secret profile pair from the base");
-            assertTrue(launcher.contains("if [ -f \"$oauth_env\" ]"),
-                    launcherName + " must load the file when present");
+            assertTrue(launcher.contains("export NPDEV_OAUTH_GOOGLE_CLIENT_ID"),
+                    launcherName + " must export client id into process env");
+            assertTrue(launcher.contains("export NPDEV_OAUTH_GOOGLE_CLIENT_SECRET"),
+                    launcherName + " must export client secret into process env");
         }
+        // Must NOT write to or load from a persisted file.
+        assertFalse(launcher.contains(OBSOLETE_MATERIALIZE_CLAIM),
+                launcherName + " must not materialize an env file (option b: keyring only)");
+        assertFalse(launcher.contains(OBSOLETE_ENV_FILE_REFERENCE),
+                launcherName + " must not reference a persisted env file (option b: keyring only)");
     }
 
     @Test
-    void emitsExampleAndMaterializingTransportContract(@TempDir Path tempDir) throws Exception {
+    void emitsExampleAndKeyringTransportContract(@TempDir Path tempDir) throws Exception {
         Path opsRoot = emit(tempDir);
 
         Path example = opsRoot.getParent().resolve("secrets").resolve("oauth-google.env.example");
@@ -80,16 +81,18 @@ class OperationalRunbookOauthEnvContractTest {
         assertTrue(exampleText.contains("NPDEV_OAUTH_GOOGLE_KEYRING_PROFILE"),
                 "example must document the keyring profile base override");
         assertTrue(exampleText.contains("client-id") && exampleText.contains("client-secret"),
-                "example must document the id/secret profile pair it materializes from");
-        assertFalse(exampleText.contains(STALE_GAP_MARKER),
-                "example must not still claim the transport is unimplemented (REG-212)");
+                "example must document the id/secret profile pair");
+        assertFalse(exampleText.contains("Copy this file to"),
+                "example must not tell operators to copy a file (option b: keyring only)");
+        assertFalse(exampleText.contains(OBSOLETE_MATERIALIZE_CLAIM),
+                "example must not reference obsolete materialize claim");
 
         assertTransportContract(read(opsRoot, "Run-FinalApp.ps1"), "Run-FinalApp.ps1", true);
         assertTransportContract(read(opsRoot, "Start-App.ps1"), "Start-App.ps1", true);
     }
 
     @Test
-    void posixTwinsCarryTheSameMaterializingContract(@TempDir Path tempDir) throws Exception {
+    void posixTwinsCarryTheSameKeyringContract(@TempDir Path tempDir) throws Exception {
         Path opsRoot = emit(tempDir);
 
         assertTransportContract(read(opsRoot, "run-final-app.sh"), "run-final-app.sh", false);
