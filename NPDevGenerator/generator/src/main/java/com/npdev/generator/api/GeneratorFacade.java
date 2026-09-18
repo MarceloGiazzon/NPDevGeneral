@@ -37,6 +37,7 @@ import com.npdev.generator.dbconfig.SchemaLifecycleStrategy;
 import com.npdev.generator.output.GeneratedSourceWriter;
 import com.npdev.generator.provenance.BoxManifestEmitter;
 import com.npdev.generator.provenance.PackCatalogEmitter;
+import com.npdev.generator.provenance.ProvenanceIndexEmitter;
 import com.npdev.generator.settings.SettingsManifestEmitter;
 import com.npdev.generator.templates.TemplateEngine;
 
@@ -425,6 +426,12 @@ public final class GeneratorFacade {
         // that previously reported zero unconditionally.
         new ExtensionInventoryEmitter(writer).emit(model, resolvedModelSource, modelSourcePath, outRoot,
                 untrustedExtensionGeneratedPaths, webAssetsRoot);
+
+        // S14 (Track B): the spec-node -> emitted-artifact provenance index, emitted before the
+        // folder signature so the signature's tree hash covers it too (a non-deterministic index
+        // would fail check-deterministic-generation.ps1 exactly like any other non-deterministic
+        // artifact).
+        new ProvenanceIndexEmitter().emit(model, outRoot);
 
         new GeneratedFolderSignatureEmitter().emit(outRoot);
 
