@@ -1,0 +1,74 @@
+id: WMS-12
+title: >-
+  S7/S8 browser verification via ScrapForAI: wmsoffice-browser boots (synced packs + B30-clean
+  plugin) and the login -> seeded-panels scenario passes in a real browser
+type: FEATURE
+severity: HIGH
+status: OPEN
+opened: 2026-09-18
+verification: LOCAL_PROOF_DONE
+source: >-
+  WmsOffice browser test vehicle per "Use o projeto D:\WorkSpace\ScrapForAILegacy para testar em
+  browser": generate -> build -> boot the 3-pack WmsOffice clone (D:\WorkSpace\NPDev\Build\
+  wmsoffice-browser, port 8100, jwt mode) and run a Playwright scenario against it. Completes the
+  verify-in-browser half of WMS-7's done-when for the (a)-verdict screens.
+surface: >-
+  Build/wmsoffice-browser (clone, not git), Build/generated-finalapps/wmsoffice-browser (generated
+  app), ScrapForAI (D:\WorkSpace\ScrapForAILegacy, runner on 127.0.0.1:3000), seeds under
+  definition/seeds/, NPDevContract packs (canonical copies).
+detail: |
+  PIPELINE (all live-run): npdev generate app (CLI) -> gradlew bootJar -> java -jar
+  FinalExec-0.1.0.jar --spring.profiles.active=dev,trial,wmsoffice --server.port=8100
+  --npdev.runtime.plugin-package-directory=<abs npdev-generated plugin-packages>, keys via
+  NPDEV_WMSOFFICE_KEYS_DIR=Build/3b-oauth-proof/jwt-keys.
+
+  BLOCKERS CLEARED (each a real defect, this order):
+  1. B30 plugin gate: AllocationCapability used LambdaMetafactory lambdas/method-refs. Converted
+     the 3 Comparator.comparing(..).thenComparing(..) chains and the min-select stream in
+     sugerirDestino to anonymous Comparator classes; added the missing helpers
+     compareDestinoPreference/compareOrigemPreference/toInt (semantics recovered 1:1 from the
+     AppGen original). Boot jar bytecode verified free of LambdaMetafactory.
+  2. Stale built-in-pack copies (REG-39 class): clone packs were workspace 1.0.0 (runtimehost
+     WorkspaceMenuSeeder expects seedKey/seedOrigin/seedFingerprint/overrideOf -> boot crashed
+     'Column "seed_key" not found') and identity 1.0.0 (missing tokenVersion family +
+     ExternalIdentity). Synced the clone to NPDevContract's workspace 1.1.0 + identity 1.2.0
+     (tracing already 1.0.2). Boot then migrated schema cleanly (Flyway V1 + additive columns).
+  3. REG-213 (ledger/items/REG-213.yml): credential detector mispointed login/bootstrap at
+     identity_v1_password_reset_tokens; fixed in the generator emitter. This turned
+     bootstrap-admin from 500 into a working account creation flow and login from 401 into 200.
+
+  SEEDING (tenant dev, via the app's own /api/admin/seeds endpoints): wmsoffice-demo-user seed
+  (identity::User admin + identity::Role ADMIN + UserRole bond + app Usuario with PBKDF2 hash of
+  demo1234) and warehouse-a-small (1 entidade, 1 armazem, 5 areas, 13 ruas, 190 LocalArmazenagem,
+  15 produtos, 1 perfil, 7 ranking rows = 233 records). Verified visible to tenant dev via
+  /api/admin/export?tenantId=dev.
+
+  BROWSER SCENARIO (ScrapForAI POST /v1/explorations/run, Bearer SCRAPFORAI_API_KEY, target
+  http://localhost:8100/npdev-business-ui/index.html, ALLOW_EVALUATE=true):
+  goto -> shell bounces jwt-mode unauthenticated visitor to /login.html?next=... -> fill
+  #username/#password (admin/demo1234) -> submit -> business UI -> #concept-Area visible ->
+  assert "Area Recebimento" -> evaluate location.hash='#concept-Produto' -> #concept-Produto
+  visible -> assert "Produto Demo 1" -> screenshot -> collect evidence. RESULT: passed, all 12
+  steps green, HTTP 200. Screenshot
+  artifacts/job_qwItz5qdll-b/screenshots/wmsoffice-produto-panel.png shows the app logged in as
+  "admin (ADMIN)" with the full WmsOffice sidebar and the Produto grid rendering the seeded rows.
+
+  OBSERVED, NOT BLOCKING: /api/me and /api/properties 401 on the FIRST (unauthenticated) page hit
+  before the shell bounces to login -- benign pre-auth probes; the panels and PropertyValues
+  loaded fine after login ("Workspace PropertyValues loaded" banner).
+
+  OPEN FOLLOW-UPS (next phase):
+  - Sync the OFFICIAL AppGen WmsOffice definition/packs (identity 1.0.0, workspace 1.0.0) to the
+    NPDevContract versions, same as the clone -- its next boot will hit the same seed_key crash
+    (REG-39 class, and the StartupValidator identity-pack check).
+  - WMS-7 inventory (b) entries still platform gaps: novo-estabelecimento, relatorios,
+    excluir-estabelecimento (S9 sweep targets); (a) entries to convert + verify: analytics,
+    mapa-armazem, seed-data PAGE targets.
+  - The generated CLI path (npdev generate app) does NOT copy definition/seeds/* into the app's
+    npdev-seed/data-seeds classpath folder the way Build-NpdevApp.ps1 step 4d does -- the seeds
+    were staged manually this phase (Build/stage-seeds.py). Candidate CLI gap for a follow-up.
+guard:
+  kind: live
+  ref: ScrapForAI run D:\WorkSpace\NPDev\Build\wmsoffice-scenario.json against http://localhost:8100
+  asserts: job status passed, steps including wait-area + assert-area-data + assert-produto-data green
+  provenRed: false
