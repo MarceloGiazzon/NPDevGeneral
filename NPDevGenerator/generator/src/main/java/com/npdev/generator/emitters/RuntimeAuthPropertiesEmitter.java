@@ -30,8 +30,15 @@ public final class RuntimeAuthPropertiesEmitter {
 
     public static final String RELATIVE_PATH = "src/main/resources/application-npdev-auth.properties";
 
-    /** Field-name suffixes that suggest a password-hash column (lowercased). */
-    private static final Set<String> HASH_FIELD_SUFFIXES = Set.of("senhahash", "passwordhash", "hash", "senha", "password");
+    /**
+     * Field-name suffixes that suggest a PASSWORD hash column (lowercased). Deliberately excludes
+     * the bare "hash" suffix: a reset-token column like {@code tokenHash} (identity pack's
+     * PasswordResetToken) ends in "hash" but is NOT a login credential -- including it let the
+     * detector mispoint {@code npdev.auth.login.credential-*} at the password-reset-token table
+     * for any jwt-mode app composing the identity pack (the WmsOffice failure that shipped
+     * bootstrap-admin 500s and login 401s despite a correct `usuarios` credential concept).
+     */
+    private static final Set<String> HASH_FIELD_SUFFIXES = Set.of("senhahash", "passwordhash", "senha", "password");
 
     private final GeneratedSourceWriter writer;
 

@@ -190,7 +190,7 @@ class RuntimeAuthPropertiesEmitterTest {
 
     @Test
     void findCredentialConceptDetectsHashFieldBySuffix() {
-        for (String hashFieldName : List.of("senhaHash", "passwordHash", "hash", "senha", "password")) {
+        for (String hashFieldName : List.of("senhaHash", "passwordHash", "senha", "password")) {
             CompiledConcept concept = new CompiledConcept(
                     "Credential", "Credential", "",
                     List.of(
@@ -204,6 +204,59 @@ class RuntimeAuthPropertiesEmitterTest {
             assertNotNull(RuntimeAuthPropertiesEmitter.findCredentialConcept(model),
                     "should match hash field: " + hashFieldName);
         }
+    }
+
+    /**
+     * REG-211 regression (live WmsOffice): the identity pack's {@code PasswordResetToken} concept
+     * (userId reference + {@code tokenHash} string) is NOT a login credential, but its field ended
+     * in the old bare "hash" suffix and won the detector's first-match race over the app's own
+     * {@code Usuario} concept -- shipping {@code credential-table=identity_v1_password_reset_tokens}
+     * and breaking bootstrap-admin (500s) and login (401s) on jwt-mode apps composing the identity
+     * pack. A reset-token hash, like an api-key hash, must not be mistaken for a password hash.
+     */
+    @Test
+    void findCredentialConceptIgnoresResetTokenHashField() {
+        CompiledConcept resetToken = new CompiledConcept(
+                "identity::PasswordResetToken", "identity::PasswordResetToken", "",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("userId", "reference", "java.util.UUID", false, true, false,
+                                List.of(), "identity::User"),
+                        new CompiledField("tokenHash", "string", "String", false, true, false)
+                )
+        );
+        assertNull(RuntimeAuthPropertiesEmitter.findCredentialConcept(modelWith(resetToken)),
+                "a password-reset-token table can never be the login credential table");
+    }
+
+    @Test
+    void jwtWithIdentityPackAndUsuarioPrefersUsuario() {
+        CompiledConcept resetToken = new CompiledConcept(
+                "identity::PasswordResetToken", "identity::PasswordResetToken", "",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("userId", "reference", "java.util.UUID", false, true, false,
+                                List.of(), "identity::User"),
+                        new CompiledField("tokenHash", "string", "String", false, true, false)
+                )
+        );
+        CompiledConcept usuario = new CompiledConcept(
+                "Usuario", "Usuario", "",
+                List.of(
+                        new CompiledField("id", "uuid", "java.util.UUID", true, true, false),
+                        new CompiledField("userId", "reference", "java.util.UUID", false, true, false,
+                                List.of(), "identity::User"),
+                        new CompiledField("senhaHash", "string", "String", false, true, false)
+                )
+        );
+        CompiledModel model = new CompiledModel("test", "1.0.0", "1.0.0", Map.of(
+                "identity::PasswordResetToken", resetToken,
+                "Usuario", usuario
+        ));
+        String properties = RuntimeAuthPropertiesEmitter.properties("jwt", model);
+        assertTrue(properties.contains("npdev.auth.login.credential-table=usuarios"), properties);
+        assertTrue(properties.contains("npdev.auth.login.credential-password-column=senha_hash"), properties);
+        assertFalse(properties.contains("password_reset_tokens"), properties);
     }
 
     @Test
