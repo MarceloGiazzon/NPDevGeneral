@@ -1,0 +1,91 @@
+id: WMS-9
+title: >-
+  S9 (NPDEV_MEGA_ROADMAP.md): WmsOffice screen parity sweep -- seven remaining screens scored
+  against WMSOFFICE_SCREEN_PARITY_CHECKLIST.md Part 2.2-2.8
+type: FEATURE
+severity: HIGH
+status: OPEN
+opened: 2026-09-18
+verification: LOCAL_PROOF_DONE
+source: >-
+  NPDEV_MEGA_ROADMAP.md Session 9 done-when: "every checklist line is PASS or has a recorded
+  ledger item naming its blocker." App under audit: D:\WorkSpace\NPDev\AppGen\apps\_official\
+  WmsOffice (external corpus, not a git repo -- this ledger item is the record, same as WMS-7).
+surface: >-
+  AppGen/apps/_official/WmsOffice/definition/model.json (panels + aggregate workbenches),
+  definition/menu.json, definition/pages.json, web/*.html (hand-rolled legacy).
+detail: |
+  Each screen below is scored against its checklist section. Verdict per screen: what the declared
+  declarative surface already covers (PASS by declaration), what is blocked, and which checklist
+  lines remain browser-unverified (the S9 done-when's other half, same as S8: needs the app
+  generated + booted + verify-in-browser).
+
+  2.2 ALTERACAO DE ENDERECAMENTO (A1-A13). Declared: OcupacaoLocalPanel (/locais/ocupacao, query
+  TodasOcupacoes, table of local/lote/quantidade) + the Movimento workbench's SugerirOrigem/
+  SugerirDestino + Recalcular Saldos actions. The PerfilAlocacao/RankingRua concepts back the
+  allocation rules (P12 surface). PASS by declaration: A4 (recalc verb), A7 (Salvar e sair via
+  workbench commit). BLOCKER (b): the dedicated per-rua allocation editor the original screen IS
+  (edit-mode toggle P1, zero-to-remove P3, dynamic CD option P12) is not a declared panel -- the
+  OcupacaoLocalPanel is read-only table + workbench covers movement, not per-rua addressing. Record
+  as screen-level blocker: P1/P3/P12 per-rua editing surface absent. A1-A3, A5-A6, A8-A13 remain
+  browser-unverified (declaration gap recorded above).
+
+  2.3 RECEBIMENTO (R1-R23). Declared: RecebimentoWorkbench (aggregate Recebimento -> lotes,
+  ParseNfeProcedure/import actions), ConferenciaRecebimentoPanel (/recebimentos/conferencia, query
+  RecebimentosPendentes, table+conference fields). Concepts Recebimento/RecebimentoLote carry
+  estagio/situacao stages. PASS by declaration: R1 (menu target), R15-R16 (estagio-driven
+  alloc pipeline via RecebimentoWorkbench), R22 (estagio transition). BLOCKER (b): the item-level
+  wizard (R6-R12: Adicionar Itens selection panel P2, default-1-position P9, row clone P8,
+  duplicate-product refusal P7, computed Total P6) is not declared on RecebimentoWorkbench --
+  Record: P2/P6/P7/P8/P9 editing sub-panel absent on Recebimento. R4-R5, R13-R14, R17-R21, R23
+  remain browser-unverified.
+
+  2.4 EXPEDICAO (E1-E18). Declared: ExpedicaoWorkbench (aggregate Expedicao -> itens), 
+  ExpedicaoDemandaPanel (/expedicoes/demanda, query ExpedicoesPendentes, ConfirmarSaida flow
+  action, Estagio transition). PASS by declaration: E1 (menu target), E7 (Gerar Demanda via
+  workbench transition), E15 (Confirmar Saida via ExpedicaoDemandaPanel action). BLOCKER (b):
+  E17-E18 (CrossDocking interlock -- cancel refusal / confirm-wait until receipt conferida) has a
+  ConcluirCrossDockingProcedure/CancelarCrossDockingProcedure but no cross-aggregate precondition
+  the panel enforces -- the interlock is procedure-side only. Record: P11 cross-aggregate
+  precondition not exposed as a UI refusal on Expedicao. E2-E6, E8-E14, E16 remain
+  browser-unverified.
+
+  2.5 CROSSDOCKING (C1-C10). Declared: CrossDockingConsolePanel (/crossdocking), flujos
+  ConcluirCrossDockingProcedure/CancelarCrossDockingProcedure + CrossDocking concept + fiscal
+  capability (DocumentoFiscalAggregateWorkbench for NF-e/Romaneio import). PASS by declaration:
+  C1-C4 (import surfaces via workbenches), C9 (procedures exist). BLOCKER (b): C6-C7 (CD option
+  appears when a matching outbound exists, and routing bay-to-bay) and C10 (cancel restores both
+  records) are procedure+capability territory with no declared UI affordance -- Record: P12 dynamic
+  CD option + cross-record restore not surfaced declaratively. C5, C8 remain browser-unverified.
+
+  2.6 INVENTARIO INICIAL (I1-I8). Declared: InventarioArquivoAggregateWorkbench (import wizard:
+  gerarTemplate procedure, Importar Contagem procedure, export/download resultAs), 
+  InventarioHistoricoPanel (/inventario/historico). Concepts InventarioArquivo/InventarioArquivoLinha
+  with divergente flag (I7). PASS by declaration: I3-I6 (rua selection, arquivo gen, upload grid,
+  review), I7 (divergente per-row). I1-I2, I8 browser-unverified (print PDF is a hand task; I8
+  commit via workbench).
+
+  2.7 NOVO ARMAZEM (N1-N8). Declared: seed machinery (warehouse-a-small.json is a 1:1 port of
+  web/novo-estabelecimento.html's default topology: 1 entidade, 1 armazem, 5 areas, 13 ruas,
+  ~190 positions, 15 products, 1 profile, 7 ranking rows) + Google sign-in + Novo-Armazem.html
+  PAGE (hand-rolled, verdict (b) in WMS-7). PASS by declaration: N1 (seeded environment), N7
+  (seeds browsable). N2-N6, N8 remain browser-unverified; the first-run UI (N2/N3/N5) is still the
+  hand-rolled PAGE -- Browser-verify N1/N7 and treat N2-N6/N8 as the S9-note design review.
+
+  2.8 RESET (Z1-Z6). Declared: nothing (no Reset panel or procedure in the model; the hand-rolled
+  web has no reset.html either -- Reset was a GeneXus-era dev action). BLOCKER (b): Z1-Z6 have no
+  declared surface; destructive reset is a deliberate-op only. Record: Reset surface absent -- needs
+  a Dev-console panel with double-confirm (Z2 semantics) if pursued in a later sweep.
+
+  AGGREGATE S9 VERDICT: 2.6 Inventario is the strongest (wizard already declared, mostly PASS by
+  declaration). 2.2/2.3/2.4/2.5 share the same recurring blocker -- the wizard-grade editing
+  sub-panels (P2 selection-add, P8 row clone, P9 default-on-add, P10 per-field-group stage locks,
+  P11 cross-aggregate interlock, P12 computed option set) are not declared for the per-screen
+  editors; the single Screen-2.1/2.2 balancing path (S8's work) is the exception. 2.7/2.8 are
+  first-run/destructive ops needing dedicated surfaces (Novo Armazem has the seed half done).
+  Browser verification of the PASS-by-declaration halves remains, same as S8.
+guard:
+  kind: validate
+  ref: npdev_cli.py validate model (composed WmsOffice model)
+  asserts: composed model with all panels/workbenches validates with 0 errors
+  provenRed: false
