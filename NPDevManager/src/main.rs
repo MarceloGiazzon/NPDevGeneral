@@ -1589,6 +1589,92 @@ fn delete_prompter_profile(state: State<'_, AppState>, id: String) -> Result<(),
     Ok(())
 }
 
+// -------------------------------------------------------------------------------------------
+// S17b (NPDEV_MEGA_ROADMAP.md): DB/deploy secret profiles with per-environment isolation.
+// Same discipline as prompter_profiles above, restated for the scoped registry: the UI is told
+// NAMES and an existence flag, never a value. The value lives in the OS credential store under
+// account "<scope>/<env>/<id>" (secrets.rs); the manager.json registry (secret_profile_keys)
+// holds only the names so a window can render them.
+// -------------------------------------------------------------------------------------------
+
+/// Lists DB/deploy credential keys. `scope`/`env` filter the registry (empty = all scopes/envs).
+/// Every returned entry carries `hasCredential` -- whether the OS store HAS a value -- and never
+/// the value itself. The same rule as prompter_profiles: a window that can read a key back is a
+/// window that can leak it into a screenshot.
+#[tauri::command]
+fn secret_profiles(state: State<'_, AppState>, scope: Option<String>, env: Option<String>) -> Value {
+    let manager = state.manager.lock().expect("lock poisoned");
+    let scope_filter = scope.as_deref().unwrap_or("").trim();
+    let env_filter = env.as_deref().unwrap_or("").trim();
+    let keys = manager.secret_profile_keys.iter().filter(|k| {
+        (scope_filter.is_empty() || k.scope == scope_filter)
+            && (env_filter.is_empty() || k.env == env_filter)
+    });
+    let entries: Vec<Value> = keys.map(|k| {
+        serde_json::json!({
+            "scope": k.scope,
+            "env": k.env,
+            "profileId": k.profile_id,
+            "label": k.label,
+            "hasCredential": secrets::has_secret_scoped(&k.scope, Some(&k.env), &k.profile_id),
+        })
+    }).collect();
+    serde_json::json!({ "profiles": entries, "scopes": secrets::SCOPES, "environments": secrets::ENVIRONMENTS })
+}
+
+/// Records a DB/deploy credential: value to the OS store, name to the registry. The credential is
+/// stored BEFORE the registry save -- the same order prompter_profiles uses, so a refusing store
+/// leaves the configuration unchanged instead of a registry entry pointing at nothing.
+#[tauri::command]
+fn save_secret_profile(
+    state: State<'_, AppState>,
+    scope: String,
+    env: String,
+    profile_id: String,
+    label: Option<String>,
+    value: Option<String>,
+) -> Result<(), String> {
+    let scope = scope.trim();
+    let env = env.trim();
+    let profile_id = profile_id.trim();
+    if scope.is_empty() || env.is_empty() || profile_id.is_empty() {
+        return Err("a secret profile needs scope, env and profile id".to_string());
+    }
+    if let Some(v) = value.filter(|v| !v.is_empty()) {
+        secrets::set_secret_scoped(scope, Some(env), profile_id, &v)?;
+    }
+    let mut manager = state.manager.lock().expect("lock poisoned");
+    let key = state::SecretProfileKey {
+        scope: scope.to_string(),
+        env: env.to_string(),
+        profile_id: profile_id.to_string(),
+        label: label.unwrap_or_default().trim().to_string(),
+    };
+    match manager.secret_profile_keys.iter_mut().find(|k| *k == &key) {
+        Some(existing) => *existing = key.clone(),
+        None => manager.secret_profile_keys.push(key),
+    }
+    log::info(format!("secret profile saved: scope={scope} env={env} id={profile_id}"));
+    manager.save().map_err(|e| e.to_string())
+}
+
+/// Removes a DB/deploy credential: registry entry first (saved), then the OS-store value -- the
+/// same order delete_prompter_profile uses, so a failed registry save cannot strand a profile that
+/// points at a credential which no longer exists.
+#[tauri::command]
+fn delete_secret_profile(state: State<'_, AppState>, scope: String, env: String, profile_id: String) -> Result<(), String> {
+    {
+        let mut manager = state.manager.lock().expect("lock poisoned");
+        manager.secret_profile_keys.retain(|k| {
+            !(k.scope == scope && k.env == env && k.profile_id == profile_id)
+        });
+        manager.save().map_err(|e| e.to_string())?;
+    }
+    secrets::delete_secret_scoped(&scope, Some(&env), &profile_id)?;
+    log::info(format!("secret profile deleted: scope={scope} env={env} id={profile_id}"));
+    Ok(())
+}
+
 /// The app model that goes into the prompt as context.
 ///
 /// Prefers `app-tree.json` (concepts WITH fields) over the probe's inlined `info.json` (names only),
@@ -2216,6 +2302,29 @@ async fn run_ai_loop_cli() -> i32 {
     0
 }
 
+/// S17b: parses the three positional args after a `--*-secret-env` flag (`<scope> <env> <profile
+/// id>`) and runs `action` with them, mapping arg-count failures to the SAME exit-2 "bad usage"
+/// contract the unscoped flags use. The action returns the process exit code.
+fn env_secret_triplet(flag_pos: usize, action: impl FnOnce(&str, &str, &str) -> i32) -> i32 {
+    let args: Vec<String> = std::env::args().collect();
+    let flag = &args[flag_pos];
+    let get = |i: usize| args.get(flag_pos + i + 1).map(|s| s.as_str());
+    match (get(0), get(1), get(2)) {
+        (Some(scope), Some(env), Some(id)) => {
+            if scope.is_empty() || env.is_empty() || id.is_empty() {
+                eprintln!("{flag} requires a scope, an environment and a profile id: {flag} <scope> <env> <profile_id>");
+                2
+            } else {
+                action(scope, env, id)
+            }
+        }
+        _ => {
+            eprintln!("{flag} requires a scope, an environment and a profile id: {flag} <scope> <env> <profile_id>");
+            2
+        }
+    }
+}
+
 fn main() {
     // I1 (CLOSEOUT_PLAN.md): a headless proof the whole install path works with no window, so
     // "does the Manager work on a clean machine" can be checked by a container on every change
@@ -2323,6 +2432,80 @@ fn main() {
                 2
             }
         });
+    }
+
+    // S17b (NPDEV_MEGA_ROADMAP.md): headless twins of the three flags above, scoped to a
+    // DB/deploy credential kind and an environment: --set-secret-env/--get-secret-env/
+    // --delete-secret-env <scope> <env> <profile_id>. The same contracts hold verbatim -- key on
+    // stdin for set (never argv), value on stdout only for get (the app launcher's read window),
+    // empty value never printed as success, missing store entries exit nonzero -- with the account
+    // key widened to "<scope>/<env>/<id>" so provisioning a dev/staging/prod credential from CI is
+    // one command and cannot collide across environments.
+    if let Some(pos) = std::env::args().position(|a| a == "--set-secret-env") {
+        std::process::exit(env_secret_triplet(pos, |scope, env, id| {
+            let mut key = String::new();
+            match std::io::stdin().read_line(&mut key) {
+                Ok(_) => {
+                    let key = key.trim_end_matches(['\r', '\n']);
+                    if key.is_empty() {
+                        eprintln!("--set-secret-env {scope} {env} {id}: no key read from stdin");
+                        2
+                    } else {
+                        match secrets::set_secret_scoped(scope, Some(env), id, key) {
+                            Ok(()) => {
+                                println!("credential stored for {scope}/{env}/{id}");
+                                0
+                            }
+                            Err(e) => {
+                                eprintln!("--set-secret-env {scope} {env} {id}: {e}");
+                                1
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("--set-secret-env {scope} {env} {id}: could not read stdin: {e}");
+                    1
+                }
+            }
+        }));
+    }
+    if let Some(pos) = std::env::args().position(|a| a == "--get-secret-env") {
+        std::process::exit(env_secret_triplet(pos, |scope, env, id| {
+            match secrets::get_secret_scoped(scope, Some(env), id) {
+                Ok(Some(value)) => {
+                    if value.is_empty() {
+                        eprintln!("--get-secret-env {scope} {env} {id}: credential is empty");
+                        1
+                    } else {
+                        println!("{value}");
+                        0
+                    }
+                }
+                Ok(None) => {
+                    eprintln!("--get-secret-env {scope} {env} {id}: no credential stored for this profile");
+                    1
+                }
+                Err(e) => {
+                    eprintln!("--get-secret-env {scope} {env} {id}: {e}");
+                    1
+                }
+            }
+        }));
+    }
+    if let Some(pos) = std::env::args().position(|a| a == "--delete-secret-env") {
+        std::process::exit(env_secret_triplet(pos, |scope, env, id| {
+            match secrets::delete_secret_scoped(scope, Some(env), id) {
+                Ok(()) => {
+                    println!("credential deleted for {scope}/{env}/{id}");
+                    0
+                }
+                Err(e) => {
+                    eprintln!("--delete-secret-env {scope} {env} {id}: {e}");
+                    1
+                }
+            }
+        }));
     }
 
     // S15 (NPDEV_MEGA_ROADMAP.md, Track B): the Impact explorer's data source -- the generated
@@ -2497,6 +2680,10 @@ the blast radius needs a baseline to diff against"
             prompter_profiles,
             save_prompter_profile,
             delete_prompter_profile,
+            // S17b (Track B): DB/deploy secret profiles with per-environment isolation
+            secret_profiles,
+            save_secret_profile,
+            delete_secret_profile,
             validate_prompter_model,
             apply_prompter_model,
             generate_app_from_model,

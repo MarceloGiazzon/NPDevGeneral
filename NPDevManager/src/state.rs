@@ -123,6 +123,13 @@ pub struct ManagerState {
     /// store under service "NPDev Manager", account "prompter/<id>" -- never here. See `secrets.rs`.
     #[serde(default)]
     pub prompter_profiles: Vec<PrompterProfile>,
+    /// S17b: NON-SECRET registry of DB/deploy credential keys. Each entry names a credential that
+    /// exists SOMEWHERE (scope, environment, profile id, human label) -- the VALUE lives in the OS
+    /// credential store under service "NPDev Manager", account "<scope>/<env>/<id>" (secrets.rs).
+    /// A list of names is not a list of secrets: this is what the UI renders, and it is the only
+    /// thing it ever renders.
+    #[serde(default)]
+    pub secret_profile_keys: Vec<SecretProfileKey>,
     /// A local NPDev repo checkout to run directly from -- the same source a platform developer
     /// already builds from in a terminal, no download/tag round-trip. Remembered independently of
     /// `use_local_repo` so toggling back on later does not require re-picking the folder.
@@ -189,6 +196,22 @@ pub struct AssistantConfig {
     pub api_key: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
+}
+
+/// S17b: one NON-SECRET registry entry naming a DB/deploy credential. The value lives in the OS
+/// credential store (service "NPDev Manager", account "<scope>/<env>/<id>"); this struct exists so
+/// the UI can render names and existence flags without ever holding (or asking the store for) the
+/// value itself.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct SecretProfileKey {
+    /// Credential kind: "db" or "deploy" (secrets.rs SCOPES).
+    pub scope: String,
+    /// Environment segment: "dev"/"staging"/"prod", or a custom name an operator typed.
+    pub env: String,
+    /// Slug, unique within (scope, env). The credential-store account key suffix.
+    pub profile_id: String,
+    #[serde(default)]
+    pub label: String,
 }
 
 impl ManagerState {
