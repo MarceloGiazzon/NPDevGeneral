@@ -1,0 +1,68 @@
+id: WMS-7
+title: >-
+  S7 (NPDEV_MEGA_ROADMAP.md): WmsOffice declares three packs (Tracing added) and the hand-rolled
+  HTML inventory is recorded with a per-file verdict
+type: FEATURE
+severity: HIGH
+status: OPEN
+opened: 2026-09-18
+verification: LOCAL_PROOF_DONE
+source: >-
+  NPDEV_MEGA_ROADMAP.md Session 7 done-when: "WmsOffice declares three packs, the hand-rolled
+  inventory is recorded in ledger/ with a per-file verdict, and every file with verdict (a) is
+  converted and verified in a browser." App under audit:
+  D:\WorkSpace\NPDev\AppGen\apps\_official\WmsOffice (NOT a git repo -- AppGen is an external
+  corpus; edits there are on-disk only and this ledger item is the record).
+surface: >-
+  AppGen/apps/_official/WmsOffice/definition/model.json (packs[]), definition/menu.json,
+  web/*.html (hand-rolled screens), NPDevContract/packs/tracing/pack.json (the pack added;
+  corrected to a schema-valid shape while verifying).
+detail: |
+  PACK #3 (DONE this item): WmsOffice now declares packs identity + workspace + TRACING. The
+  tracing pack was copied from NPDevContract/packs/tracing into definition/packs/tracing and its
+  $ref added to model.json. VERIFYING the composed model through `npdev validate model` exposed a
+  REAL defect in the tracing pack written at S4: its `panels` block used a fictitious shape
+  (kind/source/filters/columns) that no schema accepts, and its `settings` block is not a model-root
+  key. Both broke structural validation the moment a real app composed the pack (the S4 built-in
+  tests never ran the pack through the model schema). The pack was corrected to 1.0.1: the viewer is
+  now a schema-valid `autoPanels` entry (Trace Viewer over TraceEntry) and the two runtime settings
+  (tracing.enabled / tracing.retentionDays) are `properties` with the model's property shape
+  (name/type/default/settableAt/label). `npdev validate model` on the composed WmsOffice model now
+  returns 0 errors (44 ux-metadata label warnings, pre-existing style warnings only); generator
+  suite green with pack 1.0.1.
+
+  HAND-ROLLED INVENTORY (web/ of the WmsOffice app; verdict per file):
+
+  (a) = now expressible declaratively -> convert + verify in browser
+  (b) = not yet expressible -> platform gap, record which primitive is missing
+
+  | web/ file | Serves (menu) | Declarative equivalent already in model | Verdict |
+  |---|---|---|---|
+  | movimentacao-livre.original.html | (archived) | MovimentoLivrePanel (/movimentacao-livre) + MovimentoWorkbench | **(a) partial** -- S8 adds the missing depth-2 (posicoes) + balance to the panel; original archived |
+  | centro-trabalho.original.html | (archived) | MovimentoWorkbench (depth-2 aggregate) | **(a) partial** -- S8 parity pass on the workbench; original archived |
+  | conferencia-fiscal.original.html | (archived) | DocumentoFiscalAggregateWorkbench + RomaneioAggregateWorkbench | (a) converted; original archived |
+  | crossdocking.original.html | (archived) | CrossDockingConsolePanel | (a) converted; original archived |
+  | inventario.original.html | (archived) | InventarioArquivoAggregateWorkbench | (a) converted; original archived |
+  | usuarios-roles.original.html | (archived) | identity pack's User/Role admin surfaces | (a) -- verify in browser; original archived |
+  | analytics.html + .original.html | PAGE (Consultas > Analytics) | AnalyticsDashboard guidePage (kpis/bar/table gadgets) | **(a) convert** -- replace the PAGE target with the guidePage surface |
+  | mapa-armazem.html | PAGE (Consultas > Mapa do Armazem) | /locais/ocupacao panel (OccupationPanel-ish) | **(a) convert** -- verify the ocupacao panel covers the map; PAGE -> __panel-...__ |
+  | novo-estabelecimento.html | PAGE (Cadastros > Novo Estabelecimento) | none yet | (b) gap -- first-run/new-warehouse construction is bespoke; S9 N-line target |
+  | relatorios.html | PAGE (Consultas > Relatorios) | none yet | (b) gap -- report pages are hand-served static today |
+  | excluir-estabelecimento.html | PAGE (Dev > Excluir Estabelecimento) | none yet | (b) gap -- destructive delete needs its own declarative surface |
+  | seed-data.html | PAGE (Dev > Seed Data) | seeds[] machinery + seeded model | (a) convert -- data is already model-seeded; retire the PAGE |
+  | login.html | PAGE (auth) | LoginPageEmitter (jwt login.html + Google button) | (a) converted by platform; verify in browser |
+
+  Browser verification of the (a) files is the remaining half of the done-when -- needs the app
+  generated + running (verify-in-browser / S13 tooling). Menu PAGE entries that still target the
+  hand-rolled html: novo-estabelecimento, mapa-armazem, analytics, relatorios, excluir-
+  estabelecimento, seed-data, login.
+
+  Files with verdict (b) (novo-estabelecimento, relatorios, excluir-estabelecimento) carry the
+  Session 9 checklist lines they block (N1-N8, I-series, Z-series respectively); the platform gaps
+  they expose are the S9 sweep value, recorded here so S9 knows which hand-rolled screens are
+  intentional scope and which are pure debt.
+guard:
+  kind: validate
+  ref: npdev_cli.py validate model (composed WmsOffice model)
+  asserts: composed model with 3 packs validates with 0 structural/semantic errors
+  provenRed: false
