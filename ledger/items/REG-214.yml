@@ -1,0 +1,52 @@
+id: REG-214
+title: >-
+  OAuth Google signup/link writes the ExternalIdentity linkage row in tenant 'default' instead
+  of the ACTOR's tenant -- breaks tenant-scoped uniqueness for the same Google account
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-09-18
+closed: 2026-09-18
+verification: VERIFIED_LIVE
+source: >-
+  Found LIVE by the first real-Google sign-in (SEC-11/S3b done-when, user's Google account):
+  after a successful Continue-with-Google login on localhost:8084, identity_v1_users gained the
+  new user in tenant 'dev' (username/email mgiazzon@puntoexe.com.uy) but
+  identity_v1_external_identitys gained the linkage row (provider=google,
+  provider_subject=111760263778664129158, linked_at) with tenant_id=default.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/OAuthGoogleAuthService.java
+  (insertLink both overloads + the signUp and linkToAuthenticatedUser call sites), test
+  OAuthGoogleAuthServiceTest.java
+detail: |
+  insertLink's INSERT listed (id, user_id, provider, provider_subject, linked_at) and omitted
+  tenant_id, so the platform column default 'default' filled it while the identity::User created
+  in the same signup went to the tenant the controller passed (resolveAndSignIn(code, uri, "dev")
+  -> signUp(tables, claims, "dev")). Live DB evidence after the user's first real Google login:
+  User tenant=dev, ExternalIdentity tenant=default.
+
+  Why it matters: schema-realization declares UNIQUE (tenant_id, provider, provider_subject) on
+  identity_v1_external_identitys. With every linkage row landing in 'default', the SAME Google
+  account signing up in a SECOND tenant would collide on that unique index instead of getting its
+  own tenant-scoped linkage -- and the signup path maps a 23505 on the linkage insert to
+  EMAIL_EXISTS_REQUIRES_LINK (wrong error for a cross-tenant case). The login lookup does NOT
+  compound it (findLinkOwner is provider/subject-only, then the USERS table is tenant-checked --
+  which is why the user's own re-login keeps working), but tenant-scoped writes are the platform
+  invariant everywhere else.
+
+  FIX: thread the actor's tenantId through both insertLink overloads and include tenant_id in the
+  INSERT; signUp passes its signup tenant, linkToAuthenticatedUser passes the logged-in actor's
+  tenant. Null/blank tenant falls back to "dev" (the same normalization resolveAndSignIn/
+  linkToAuthenticatedUser already apply). Tests: the test schema gained the tenant_id column; the
+  signup test asserts the linkage row's tenant_id == the signup tenant; the link test asserts the
+  same for the link leg. OAuthGoogleAuthServiceTest green.
+
+  LIVE: verified the defect state (rows above) via the H2 file while the app ran; fix verified at
+  unit level (regression assertions); the running 8084 app was redeployed with the fixed
+  runtimehost-core jar. The user's pre-existing linkage row (tenant=default) stays valid for login
+  (subject-based lookup) until the account is deleted; new signups/links now write tenant 'dev'.
+guard:
+  kind: test
+  ref: gradlew -p NPDevRuntimeHost/runtimehost-core test --tests "*OAuthGoogleAuthServiceTest"
+  asserts: freshEmailSignsUpAndPersistsUserPlusLinkage + linkRecordsLinkageWhenGoogleEmailMatchesTheAccount assert linkage tenant == actor tenant
+  provenRed: true

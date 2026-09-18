@@ -53,7 +53,8 @@ class OAuthGoogleAuthServiceTest {
                     + "username VARCHAR(120) UNIQUE, display_name VARCHAR(200), email VARCHAR(200), "
                     + "active BOOLEAN, token_version INT, avatar_url VARCHAR(2048), "
                     + "last_login_at TIMESTAMP, created_at TIMESTAMP, updated_at TIMESTAMP)");
-            s.execute("CREATE TABLE identity_external_identity (id UUID PRIMARY KEY, user_id UUID, "
+            s.execute("CREATE TABLE identity_external_identity (id UUID PRIMARY KEY, tenant_id VARCHAR(120), "
+                    + "user_id UUID, "
                     + "provider VARCHAR(40), provider_subject VARCHAR(255), linked_at TIMESTAMP, "
                     + "CONSTRAINT ux_provider_subject UNIQUE (provider, provider_subject))");
         }
@@ -122,11 +123,16 @@ class OAuthGoogleAuthServiceTest {
                 assertEquals("http://avatar/new.png", rs.getString("avatar_url"));
             }
             try (ResultSet rs = s.executeQuery(
-                    "SELECT provider, provider_subject FROM identity_external_identity WHERE user_id = "
+                    "SELECT provider, provider_subject, tenant_id FROM identity_external_identity WHERE user_id = "
                             + "(SELECT id FROM identity_users WHERE username = 'new@example.com')")) {
                 assertTrue(rs.next());
                 assertEquals(PROVIDER, rs.getString("provider"));
                 assertEquals("sub-new", rs.getString("provider_subject"));
+                // REG-214: the linkage row must live in the ACTOR's tenant (the signup tenant),
+                // not fall back to the platform 'default' -- tenant-scoped uniqueness
+                // (tenant_id, provider, provider_subject) is what lets the same Google account
+                // sign up in two tenants without colliding.
+                assertEquals(TENANT, rs.getString("tenant_id"));
             }
         }
     }
@@ -200,10 +206,12 @@ class OAuthGoogleAuthServiceTest {
         assertEquals(OAuthGoogleAuthService.Outcome.LINKED, ticket.outcome());
         assertNull(ticket.errorCode());
         try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
-            try (ResultSet rs = s.executeQuery("SELECT provider_subject FROM identity_external_identity WHERE "
+            try (ResultSet rs = s.executeQuery("SELECT provider_subject, tenant_id FROM identity_external_identity WHERE "
                     + "user_id = UUID '55555555-5555-5555-5555-555555555555'")) {
                 assertTrue(rs.next());
                 assertEquals("sub-owner", rs.getString("provider_subject"));
+                // REG-214: the link leg also records the linkage in the ACTOR's tenant.
+                assertEquals(TENANT, rs.getString("tenant_id"));
             }
         }
     }

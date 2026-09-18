@@ -188,7 +188,7 @@ public final class OAuthGoogleAuthService {
             return SessionTicket.error(Outcome.LINK_ALREADY_USED, "oauth_link_already_used");
         }
 
-        if (!insertLink(tables, owner.id(), verified.subject())) {
+        if (!insertLink(tables, owner.id(), verified.subject(), normalizedTenant)) {
             return SessionTicket.error(Outcome.LINK_ALREADY_USED, "oauth_link_already_used");
         }
         return SessionTicket.error(Outcome.LINKED, null);
@@ -254,7 +254,7 @@ public final class OAuthGoogleAuthService {
                     ps.setTimestamp(11, Timestamp.from(Instant.now()));
                     ps.executeUpdate();
                 }
-                insertLink(connection, tables, userId, claims.subject());
+                insertLink(connection, tables, userId, claims.subject(), tenantId);
                 connection.commit();
                 SessionTicket minted = mint(tenantId, username, 0);
                 return new SessionTicket(Outcome.SIGNUP, null, minted.token(), minted.tenantId(),
@@ -381,24 +381,25 @@ public final class OAuthGoogleAuthService {
         }
     }
 
-    private boolean insertLink(Tables tables, String userId, String subject) {
+    private boolean insertLink(Tables tables, String userId, String subject, String tenantId) {
         try (Connection connection = dataSource.getConnection()) {
-            return insertLink(connection, tables, userId, subject);
+            return insertLink(connection, tables, userId, subject, tenantId);
         } catch (SQLException ex) {
             return false;
         }
     }
 
-    private boolean insertLink(Connection connection, Tables tables, String userId, String subject) throws SQLException {
+    private boolean insertLink(Connection connection, Tables tables, String userId, String subject, String tenantId) throws SQLException {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT INTO " + tables.externalIdentityTable()
-                        + " (id, user_id, provider, provider_subject, linked_at)"
-                        + " VALUES (?, ?, ?, ?, ?)")) {
+                        + " (id, tenant_id, user_id, provider, provider_subject, linked_at)"
+                        + " VALUES (?, ?, ?, ?, ?, ?)")) {
             ps.setObject(1, UUID.randomUUID());
-            ps.setObject(2, UUID.fromString(userId));
-            ps.setString(3, identityProvider.providerId());
-            ps.setString(4, subject);
-            ps.setTimestamp(5, Timestamp.from(Instant.now()));
+            ps.setString(2, tenantId == null || tenantId.isBlank() ? "dev" : tenantId.trim());
+            ps.setObject(3, UUID.fromString(userId));
+            ps.setString(4, identityProvider.providerId());
+            ps.setString(5, subject);
+            ps.setTimestamp(6, Timestamp.from(Instant.now()));
             ps.executeUpdate();
             return true;
         }
