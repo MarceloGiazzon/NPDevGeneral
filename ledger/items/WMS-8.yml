@@ -1,0 +1,56 @@
+id: WMS-8
+title: >-
+  S8 (NPDEV_MEGA_ROADMAP.md): Origem/Destino parity -- the MVL screen's balancing and max-bound
+  requirements expressed declaratively on the Movimento aggregate workbench
+type: FEATURE
+severity: HIGH
+status: OPEN
+opened: 2026-09-18
+verification: LOCAL_PROOF_DONE
+source: >-
+  NPDEV_MEGA_ROADMAP.md Session 8: the flagship WmsOffice screen (Movimento Livre) meets the
+  WMSOFFICE_SCREEN_PARITY_CHECKLIST Part 2.1 bar. Working tree is the WmsOffice app at
+  D:\WorkSpace\NPDev\AppGen\apps\_official\WmsOffice (external corpus, not a git repo -- on-disk
+  model edits; this ledger item is the record, same as WMS-7).
+surface: >-
+  AppGen/apps/_official/WmsOffice/definition/model.json (Movimento aggregate + autoPanel
+  MovimentoWorkbench), definition/concepts/MovimentoItemPosicao.json, definition/menu.json
+  (Movimento (Panel) vs Movimento (Workbench)).
+detail: |
+  Baseline found: the depth-2 Movimento -> itens -> posicoes nesting WAS already declared and the
+  workbench had SugerirOrigem/SugerirDestino actions with applyTo appendRow (Session 1 primitives
+  already wired by the WmsOffice model) -- but the MVL checklist's balancing and max-bound halves
+  (B1-B4, H1-H3) were absent: no grouped balance rule, no query-sourced per-row bound, no
+  Recalcular-Saldos affordance.
+
+  ADDED this session (validated: `npdev validate model` on the composed model -> 0 errors, 44
+  pre-existing ux-metadata warnings only):
+
+  1. MovimentoItemPosicao gained denormalized group-by fields produtoId (required reference to
+     Produto), loteId (optional reference to Lote), and maxQuantity (optional long, the
+     lookupFields sink) -- the position rows must carry the product/lot themselves for the balance
+     rule's groupBy, matching the StockTransfer fixture's own sku/validity denormalization.
+  2. Movimento aggregate: `balances[].OrigemDestinoBalance` (collection itens.posicoes, groupBy
+     [produtoId, loteId], discriminatorField papel, Origem vs Destino, message naming the product)
+     -- checklist B1/B3/B4; `itens.posicoes.lookupFields[].maxQuantity` backed by the new
+     OcupacaoDisponivelQuery over LocalArmazenagemLote -- checklist H1/H2 (per-row maximum from the
+     occupied quantity at that location); new invariant PosicaoDentroDoMaximo
+     (quantidade <= maxQuantity) -- checklist H3 (business-language refusal).
+  3. autoPanel MovimentoWorkbench transaction.actions: new Recalcular Saldos action declaring
+     checkBalances: [OrigemDestinoBalance] -- checklist B1 (the on-demand, non-persisting check).
+
+  CHECKLIST STATUS (WMSOFFICE_SCREEN_PARITY_CHECKLIST.md Part 2.1, MVL):
+
+  - PASS by declaration: X1 (screen is the generated MovimentoWorkbench; movimentacao-livre.html
+    is archived as .original only, not the active target), B1/B3/B4 (balance rule + per-product
+    grouping + explicit check action), H1/H2 (query-sourced maxQuantity), H3 (invariant refusal).
+  - PENDING browser verification (needs the app generated + booted + verify-in-browser): L1-L5,
+    O1-O5, H4-H6, D1-D5, S1-S6 -- the workbench already renders depth-2 and the actions exist,
+    but pass/fail evidence for the interactive rows is the remaining half of the S8 done-when.
+  - The derivedFields origemTotal/destinoTotal (pre-existing) cover the balance-banner display
+    side; the check action covers the explicit Recalcular-Saldos semantics.
+guard:
+  kind: validate
+  ref: npdev_cli.py validate model (composed WmsOffice model)
+  asserts: composed model with balances[] + lookupFields[] + checkBalances action validates with 0 errors
+  provenRed: false
