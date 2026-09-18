@@ -391,7 +391,7 @@ public final class GeneratorFacade {
         // Auth: when the model personalizes auth.mode, emit the runtime auth properties that drive it.
         ResolvedSetting<String> authMode = settingResolver.resolve(NpdevSettings.AUTH_MODE, SettingTarget.app());
         if (authMode.isOverridden()) {
-            new RuntimeAuthPropertiesEmitter(writer).emit(authMode.value());
+            new RuntimeAuthPropertiesEmitter(writer).emit(authMode.value(), model);
         }
 
         // Logging: when the model personalizes log.enabled/log.level, emit the real

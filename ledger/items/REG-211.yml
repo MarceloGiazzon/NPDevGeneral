@@ -4,8 +4,9 @@ title: >-
   bootstrap-admin / create-user / login 500 on the default `usuarios` literal
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-17
+closed: 2026-09-18
 verification: VERIFIED_LIVE
 source: >-
   Found LIVE by the SEC-11 M7 fake-Google proof (2026-09-17) against a freshly generated jwt-mode
@@ -55,3 +56,14 @@ detail: |
   own bootstrap 500s. Also note: the ControlPanel's SUPERUSER key path (SuperUserBootstrapper) is
   unaffected -- its X-Super-User-Key flow resolves its own credential registry, which is why the
   M7 revocation leg still worked.
+
+  RESOLUTION (2026-09-18): option (a) + (c) combined. RuntimeAuthPropertiesEmitter now scans the
+  compiled model for a credential-bearing concept (a reference field targeting User/*::User + a
+  string hash field matching {senhaHash, passwordHash, hash, senha, password}) and emits
+  npdev.auth.login.credential-table / credential-user-id-column / credential-password-column
+  overrides into application-npdev-auth.properties. When jwt-mode + no matching concept exists,
+  generation fails fast with a clear IllegalArgumentException listing the number of concepts
+  scanned. The old emit(String)/properties(String) API is preserved (null model -> no credential
+  check), so existing apiKey-mode callers are unaffected. Generator suite 534 green.
+  Identity pack 1.3.0 (a first-class Credential concept) remains a follow-up; the fail-fast +
+  auto-detection already works for any model that defines its own credential concept.
