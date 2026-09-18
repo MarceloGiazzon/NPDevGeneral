@@ -1,0 +1,184 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\model.schema.json",
+  "namespace": "pigmentampas",
+  "dslVersion": "1.0.0",
+  "version": "1.0",
+  "metadata": {
+    "purpose": "S6 (NPDEV_MEGA_ROADMAP.md): smallest honest end-to-end proof -- a greenfield pigment/paint store modeled from scratch, composed with the identity (User) and tracing packs via internal.tables, jwt-mode auth (Google signup/link/login + username/password), and every screen generated declaratively with zero hand-authored HTML."
+  },
+  "bindings": [
+    { "adapter": "repository", "capability": "persistence" },
+    { "adapter": "inproc", "capability": "eventBus" }
+  ],
+  "capabilities": [
+    {
+      "name": "persistence",
+      "operations": ["save", "findById"],
+      "type": "PersistenceCapability"
+    }
+  ],
+  "concepts": [
+    {
+      "name": "PigmentCategory",
+      "ui": { "label": "Pigment category" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "maxLength": 80, "unique": true,
+          "ui": { "label": "Name" } },
+        { "name": "description", "type": "string", "required": false, "maxLength": 280,
+          "ui": { "label": "Description" } }
+      ]
+    },
+    {
+      "name": "Pigment",
+      "ui": { "label": "Pigment" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "maxLength": 120, "unique": true,
+          "ui": { "label": "Name" } },
+        { "name": "colorCode", "type": "string", "required": true, "maxLength": 9,
+          "ui": { "label": "Color code" } },
+        { "name": "categoryId", "type": "reference", "required": true,
+          "ui": { "label": "Category" },
+          "reference": { "target": "PigmentCategory", "displayField": "name" } },
+        { "name": "pricePerKg", "type": "decimal", "required": true,
+          "ui": { "label": "Price per kg" } },
+        { "name": "description", "type": "string", "required": false, "maxLength": 500,
+          "ui": { "label": "Description" } },
+        { "name": "active", "type": "boolean", "required": true,
+          "ui": { "label": "Active" } }
+      ]
+    },
+    {
+      "name": "Supplier",
+      "ui": { "label": "Supplier" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "companyName", "type": "string", "required": true, "maxLength": 120, "unique": true,
+          "ui": { "label": "Company name" } },
+        { "name": "contactEmail", "type": "string", "required": true, "maxLength": 200,
+          "ui": { "label": "Contact email" } },
+        { "name": "phone", "type": "string", "required": false, "maxLength": 40,
+          "ui": { "label": "Phone" } }
+      ]
+    },
+    {
+      "name": "PigmentSupplier",
+      "ui": { "label": "Pigment supplier" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "pigmentId", "type": "reference", "required": true,
+          "ui": { "label": "Pigment" },
+          "reference": { "target": "Pigment", "displayField": "name" } },
+        { "name": "supplierId", "type": "reference", "required": true,
+          "ui": { "label": "Supplier" },
+          "reference": { "target": "Supplier", "displayField": "companyName" } }
+      ],
+      "indexes": [
+        { "name": "ux_pigment_supplier", "fields": ["pigmentId", "supplierId"], "unique": true }
+      ]
+    },
+    {
+      "name": "StockEntry",
+      "ui": { "label": "Stock entry" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "pigmentId", "type": "reference", "required": true,
+          "ui": { "label": "Pigment" },
+          "reference": { "target": "Pigment", "displayField": "name" } },
+        { "name": "quantityKg", "type": "decimal", "required": true,
+          "ui": { "label": "Quantity (kg)" } },
+        { "name": "location", "type": "string", "required": false, "maxLength": 80,
+          "ui": { "label": "Location" } },
+        { "name": "updatedAt", "type": "datetime", "required": true,
+          "ui": { "label": "Updated at" } }
+      ],
+      "indexes": [
+        { "name": "idx_stock_pigment", "fields": ["pigmentId"] }
+      ]
+    },
+    {
+      "name": "Order",
+      "ui": { "label": "Order" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "orderNumber", "type": "string", "required": true, "maxLength": 40, "unique": true,
+          "ui": { "label": "Order number" } },
+        { "name": "customerName", "type": "string", "required": true, "maxLength": 120,
+          "ui": { "label": "Customer" } },
+        { "name": "status", "type": "enum", "required": true,
+          "enumValues": ["OPEN", "PAID", "SHIPPED", "CANCELLED"],
+          "ui": { "label": "Status" } },
+        { "name": "totalAmount", "type": "decimal", "required": true,
+          "ui": { "label": "Total amount" } },
+        { "name": "placedAt", "type": "datetime", "required": true,
+          "ui": { "label": "Placed at" } }
+      ]
+    },
+    {
+      "name": "OrderItem",
+      "ui": { "label": "Order item" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "orderId", "type": "reference", "required": true,
+          "ui": { "label": "Order" },
+          "reference": { "target": "Order", "displayField": "orderNumber" } },
+        { "name": "pigmentId", "type": "reference", "required": true,
+          "ui": { "label": "Pigment" },
+          "reference": { "target": "Pigment", "displayField": "name" } },
+        { "name": "quantityKg", "type": "decimal", "required": true,
+          "ui": { "label": "Quantity (kg)" } },
+        { "name": "unitPrice", "type": "decimal", "required": true,
+          "ui": { "label": "Unit price" } }
+      ],
+      "indexes": [
+        { "name": "idx_order_item_order", "fields": ["orderId"] }
+      ]
+    }
+  ],
+  "autoPanels": [
+    { "name": "Pigments", "concept": "Pigment", "route": "/pigments",
+      "surfaces": ["selection", "detail", "transaction"] },
+    { "name": "Categories", "concept": "PigmentCategory", "route": "/categories",
+      "surfaces": ["selection", "detail", "transaction"] },
+    { "name": "Suppliers", "concept": "Supplier", "route": "/suppliers",
+      "surfaces": ["selection", "detail", "transaction"] },
+    { "name": "Pigment suppliers", "concept": "PigmentSupplier", "route": "/pigment-suppliers",
+      "surfaces": ["selection", "detail", "transaction"] },
+    { "name": "Stock", "concept": "StockEntry", "route": "/stock",
+      "surfaces": ["selection", "detail", "transaction"] },
+    { "name": "Orders", "concept": "Order", "route": "/orders",
+      "surfaces": ["selection", "detail", "transaction"] },
+    { "name": "Order items", "concept": "OrderItem", "route": "/order-items",
+      "surfaces": ["selection", "detail", "transaction"] }
+  ],
+  "seeds": [
+    {
+      "concept": "PigmentCategory",
+      "alias": "cat_organic",
+      "data": { "name": "Organic", "description": "Plant- and mineral-derived organic pigments" }
+    },
+    {
+      "concept": "PigmentCategory",
+      "alias": "cat_synthetic",
+      "data": { "name": "Synthetic", "description": "Chemically synthesized pigments" }
+    },
+    {
+      "concept": "PigmentCategory",
+      "alias": "cat_metallic",
+      "data": { "name": "Metallic", "description": "Metallic-effect pigments" }
+    },
+    {
+      "concept": "Pigment",
+      "data": { "name": "Ultramarine Blue", "colorCode": "#120A8F", "categoryId": "$ref:cat_organic", "pricePerKg": 42.5, "active": true }
+    },
+    {
+      "concept": "Pigment",
+      "data": { "name": "Cadmium Yellow", "colorCode": "#FFF600", "categoryId": "$ref:cat_synthetic", "pricePerKg": 38.0, "active": true }
+    },
+    {
+      "concept": "Pigment",
+      "data": { "name": "Titanium White", "colorCode": "#FFFFFF", "categoryId": "$ref:cat_metallic", "pricePerKg": 24.9, "active": true }
+    }
+  ]
+}
