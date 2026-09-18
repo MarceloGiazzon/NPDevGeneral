@@ -1,0 +1,54 @@
+{
+  "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
+  "configVersion": "1.0",
+  "scenario": {
+    "name": "pigmentampas",
+    "description": "S6 (NPDEV_MEGA_ROADMAP.md): greenfield pigment store -- minimal end-to-end proof. internal.tables composes identity + workspace + tracing packs; auth.mode=jwt gives Google signup/link/login plus username/password; every screen is declaratively generated (zero hand-authored HTML).",
+    "outputRoot": "..\\Output"
+  },
+  "generator": {
+    "failIfModelMissing": true,
+    "failIfConfigMissing": true,
+    "cleanOutputBeforeGenerate": true,
+    "emitPluginAssets": true,
+    "emitRuntimeAssets": true,
+    "emitUiAssets": true
+  },
+  "bootstrap": {
+    "root": "..\\..\\NPDevRuntimeHost",
+    "mergeStrategy": "clean-copy"
+  },
+  "artifact": {
+    "root": "..\\Output\\ArtifactNP",
+    "generatedFolderName": "npdev-generated",
+    "libsFolderName": "libs",
+    "metaFolderName": "npdev-meta"
+  },
+  "finalExec": {
+    "root": "..\\Output\\App",
+    "deleteBeforeMount": true
+  },
+  "database": {
+    "provider": "h2-local",
+    "database": "pigmentampas",
+    "resetMode": "reset"
+  },
+  "runtime": {
+    "springProfile": "dev,step0,trial",
+    "serverPort": 8084,
+    "javaArgs": [],
+    "gradleTask": "bootRun"
+  },
+  "defaults": {
+    "internal.tables": true,
+    "auth.mode": "jwt"
+  },
+  "trialDefaults": {
+    "recommendedProfiles": "dev,step0,trial",
+    "runtimeUrl": "http://localhost:8084/",
+    "databaseMode": "step0-h2",
+    "notes": [
+      "S6 Pigmentampas: jwt-mode greenfield proof app on port 8084."
+    ]
+  }
+}
