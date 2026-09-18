@@ -467,6 +467,18 @@
           <span class="subtitle" id="prompter-loop-status" style="margin-left:auto">—</span>
         </div>
         <pre class="runout" id="prompter-loop-log" style="max-height:360px;margin-top:10px"></pre>
+
+        <!-- S17c (NPDEV_MEGA_ROADMAP.md): the Reflection Loop Console -- replay of PAST loop runs.
+             The live run above streams; this renders the persisted transcripts
+             (<app>/logs/ai-loop/run-*.jsonl) as per-iteration timelines, failures highlighted. -->
+        <div class="statusbar" style="margin-top:12px">
+          <button class="btn ghost" id="reflect-refresh">⟳ LOOP HISTORY</button>
+          <span class="subtitle" id="reflect-status" style="margin-left:auto">—</span>
+        </div>
+        <div id="reflect-runs" class="reflect-runs" style="margin-top:8px">
+          <p class="subtitle">No runs listed yet — press Loop History, or run a loop above.</p>
+        </div>
+        <div id="reflect-timeline" hidden style="margin-top:12px"></div>
       </div>
 
       <div class="pane" style="margin-top:14px" id="prompter-answer-pane" hidden>

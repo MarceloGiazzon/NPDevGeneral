@@ -2325,6 +2325,25 @@ fn env_secret_triplet(flag_pos: usize, action: impl FnOnce(&str, &str, &str) -> 
     }
 }
 
+/// S17c: reads one AI-loop transcript (a `.jsonl` of structured events) into a Vec<Value>, skipping
+/// malformed lines rather than failing the whole read -- a truncated run (killed mid-write) must
+/// still replay as far as it got. Caps at 10_000 events so a runaway ops-line stream cannot balloon
+/// a replay call.
+fn read_ai_loop_transcript(path: &std::path::Path) -> Result<Vec<Value>, String> {
+    let text = std::fs::read_to_string(path)
+        .map_err(|e| format!("could not read loop transcript {}: {e}", path.display()))?;
+    let mut events = Vec::new();
+    for line in text.lines() {
+        if let Ok(value) = serde_json::from_str::<Value>(line) {
+            events.push(value);
+            if events.len() >= 10_000 {
+                break;
+            }
+        }
+    }
+    Ok(events)
+}
+
 fn main() {
     // I1 (CLOSEOUT_PLAN.md): a headless proof the whole install path works with no window, so
     // "does the Manager work on a clean machine" can be checked by a container on every change
@@ -2572,6 +2591,63 @@ the blast radius needs a baseline to diff against"
                               &baseline.to_string_lossy(), &proposed_model, Some(&app_dir)).await
     }
 
+    /// S17c (NPDEV_MEGA_ROADMAP.md): the Reflection Loop Console's data source -- the persisted
+    /// transcripts of past AI-loop runs (`<app>/logs/ai-loop/run-*.jsonl`, written by ai_loop.rs).
+    /// Lists the runs for an app: file name, event count, and the loop outcome decoded from the
+    /// trailing `loop-done` event. No decision lives here; the UI renders the timeline.
+    #[tauri::command]
+    fn ai_loop_runs(app_dir: String) -> Result<Value, String> {
+        let logs_dir = PathBuf::from(&app_dir).join("logs").join("ai-loop");
+        if !logs_dir.is_dir() {
+            return Ok(serde_json::json!({ "runs": [] }));
+        }
+        let mut runs: Vec<Value> = Vec::new();
+        for entry in std::fs::read_dir(&logs_dir).map_err(|e| format!("could not list loop runs: {e}"))? {
+            let entry = entry.map_err(|e| format!("could not list loop runs: {e}"))?;
+            let path = entry.path();
+            if path.extension().map(|e| e != "jsonl").unwrap_or(true) {
+                continue;
+            }
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+            let events = match read_ai_loop_transcript(&path) {
+                Ok(events) => events,
+                Err(_) => continue,
+            };
+            if events.is_empty() {
+                continue;
+            }
+            runs.push(serde_json::json!({
+                "runId": name.trim_end_matches(".jsonl"),
+                "file": name,
+                "eventCount": events.len(),
+                "iterations": events.iter().filter(|e| e.get("kind").and_then(|k| k.as_str()) == Some("iteration-start")).count(),
+                "outcome": events.iter().rev().find_map(|e| {
+                    if e.get("kind").and_then(|k| k.as_str()) == Some("loop-done") {
+                        Some(e.get("outcome").and_then(|o| o.as_str()).unwrap_or("?").to_string())
+                    } else { None }
+                }).unwrap_or_else(|| "?".to_string()),
+                "summary": events.iter().rev().find_map(|e| {
+                    if e.get("kind").and_then(|k| k.as_str()) == Some("loop-done") {
+                        Some(e.get("summary").and_then(|s| s.as_str()).unwrap_or("").to_string())
+                    } else { None }
+                }).unwrap_or_default(),
+            }));
+        }
+        runs.sort_by(|a, b| b.get("file").and_then(|f| f.as_str()).unwrap_or("").cmp(
+            a.get("file").and_then(|f| f.as_str()).unwrap_or("")));
+        Ok(serde_json::json!({ "runs": runs }))
+    }
+
+    /// S17c: reads one persisted transcript and returns its structured events in order. A hard cap
+    /// guards a pathological run -- the window renders the timeline, it does not pull megabytes of
+    /// ops-line noise into the UI.
+    #[tauri::command]
+    fn ai_loop_replay(app_dir: String, run_id: String) -> Result<Value, String> {
+        let path = PathBuf::from(&app_dir).join("logs").join("ai-loop").join(format!("{run_id}.jsonl"));
+        let events = read_ai_loop_transcript(&path)?;
+        Ok(serde_json::json!({ "runId": run_id, "events": events }))
+    }
+
     // Session 2 (NPDEV_MEGA_ROADMAP.md): "headless and scriptable first, UI second" -- this drives
     // the EXACT SAME `ai_loop::run` the `run_ai_loop` Tauri command below calls, mirroring
     // `--selftest`'s own precedent for a no-window entry point on this binary. Assumes the Manager's
@@ -2696,6 +2772,9 @@ the blast radius needs a baseline to diff against"
             // S15/S16 (Track B): Impact/provenance explorer + blast radius
             app_provenance_index,
             impact_blast_radius,
+            // S17c (Track B): Reflection Loop Console -- persisted AI-loop transcripts
+            ai_loop_runs,
+            ai_loop_replay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the NPDev Manager");
