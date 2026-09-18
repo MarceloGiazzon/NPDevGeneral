@@ -2,10 +2,10 @@
   "$schema": "../../schemas/pack.schema.json",
   "dslVersion": "1.0.0",
   "pack": "tracing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "namespace": "com.npdev.tracing",
   "description": "Built-in NPDev tracing pack: declarative trace retention, a human-readable trace viewer panel, and safe redaction defaults. Wraps the existing kernel tracing adapters (tracing-inproc, tracestore-postgres, tracing-redaction-default) so an app author can toggle tracing on and an app user can actually read the log.",
-  "category": "observability",
+  "category": "other",
   "author": "NPDev",
   "concepts": [
     {
@@ -34,42 +34,34 @@
       ]
     }
   ],
-  "panels": [
+  "autoPanels": [
     {
       "name": "Trace Viewer",
-      "kind": "panel",
-      "source": {
-        "concept": "TraceEntry",
-        "mode": "list",
-        "filters": [
-          { "field": "flowName", "label": "Flow" },
-          { "field": "outcome", "label": "Outcome" },
-          { "field": "actorName", "label": "Actor" },
-          { "field": "startedAt", "label": "From", "type": "dateRange" }
-        ],
-        "defaultSort": { "field": "startedAt", "direction": "desc" },
-        "columns": [
-          { "field": "startedAt", "label": "When", "format": "relative" },
-          { "field": "flowName", "label": "Flow" },
-          { "field": "actorName", "label": "Who" },
-          { "field": "outcome", "label": "Outcome", "format": "badge" },
-          { "field": "summary", "label": "Summary" }
-        ]
-      }
+      "concept": "TraceEntry",
+      "route": "/trace-entries",
+      "surfaces": ["selection", "detail"]
     }
   ],
-  "settings": [
+  "properties": [
     {
-      "key": "tracing.enabled",
+      "name": "tracing.enabled",
       "type": "boolean",
-      "defaultValue": true,
-      "description": "Whether execution tracing is active for this app."
+      "default": true,
+      "settableAt": ["tenant"],
+      "label": {
+        "default": "Execution tracing",
+        "en": "Execution tracing"
+      }
     },
     {
-      "key": "tracing.retentionDays",
+      "name": "tracing.retentionDays",
       "type": "int",
-      "defaultValue": 30,
-      "description": "Number of days to keep trace entries before pruning."
+      "default": 30,
+      "settableAt": ["tenant"],
+      "label": {
+        "default": "Trace retention (days)",
+        "en": "Trace retention (days)"
+      }
     }
   ]
 }
