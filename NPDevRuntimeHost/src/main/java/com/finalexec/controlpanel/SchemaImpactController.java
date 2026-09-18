@@ -6,6 +6,7 @@ import com.finalexec.db.ExpressionBackfillPreview;
 import com.finalexec.db.ImpactReportJson;
 import com.finalexec.db.SchemaImpactFacade;
 import com.finalexec.db.SchemaLifecycleExecutor;
+import com.finalexec.db.SchemaVaultStore;
 import com.finalexec.db.ExpressionBackfillPreviewJson;
 import com.finalexec.config.ModelHolder;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -138,6 +139,60 @@ public class SchemaImpactController {
             + "document.getElementById('out').textContent=lines.join('\\n');"
             + "document.getElementById('st').textContent='';};</script></body></html>";
         return ResponseEntity.ok().header("Content-Type", "text/html; charset=utf-8").body(html);
+    }
+
+    /**
+     * S17a (NPDEV_MEGA_ROADMAP.md): the Artifact Vault's read surface. Lists every schema snapshot
+     * this database has actually reached ({@code npdev_schema_snapshot}, written by the schema
+     * lifecycle at the end of every successful migration), newest first: fingerprint, when it was
+     * recorded, and how many tables it describes. Metadadata only -- the vault body is never
+     * shipped to this window; the restore path is the plan endpoint, and execution stays inside the
+     * existing migration-acknowledgment machinery.
+     */
+    @GetMapping(value = "/vault", produces = "application/json")
+    public Object vault(HttpServletRequest httpRequest) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        java.util.List<SchemaVaultStore.VaultEntry> entries = SchemaVaultStore.list(dataSource);
+        java.util.List<Map<String, Object>> encoded = new java.util.ArrayList<>();
+        for (SchemaVaultStore.VaultEntry entry : entries) {
+            Map<String, Object> e = new LinkedHashMap<>();
+            e.put("fingerprint", entry.fingerprint());
+            e.put("recordedAtUtc", entry.recordedAtUtc());
+            e.put("tableCount", entry.tableCount());
+            encoded.add(e);
+        }
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("snapshots", encoded);
+        body.put("currentFingerprint", currentFingerprintQuiet());
+        return body;
+    }
+
+    /**
+     * S17a: the restore plan -- what would change to take the LIVE schema back to a vaulted
+     * fingerprint. Descriptive, never executable: tables only in the target ("must be recreated"),
+     * tables only live ("would be dropped -- the destructive half"), and the common set. The actual
+     * rebuild routes through the same schema-lifecycle machinery every other change does.
+     */
+    @GetMapping(value = "/vault/restore-plan", produces = "application/json")
+    public Object vaultRestorePlan(HttpServletRequest httpRequest,
+                                   @org.springframework.web.bind.annotation.RequestParam("vaultFingerprint") String vaultFingerprint) {
+        requireSuperUser(httpRequest);
+        DataSource dataSource = requireDataSource();
+        if (vaultFingerprint == null || vaultFingerprint.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "vaultFingerprint query parameter is required");
+        }
+        return SchemaVaultStore.restorePlan(dataSource, vaultFingerprint.trim());
+    }
+
+    private String currentFingerprintQuiet() {
+        try {
+            SchemaLifecycleExecutor.SchemaManifest manifest = SchemaLifecycleExecutor.loadManifest();
+            return manifest == null ? null : manifest.schemaFingerprint();
+        } catch (Exception exception) {
+            return null;
+        }
     }
 
     private DataSource requireDataSource() {
