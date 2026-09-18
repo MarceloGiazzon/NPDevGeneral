@@ -2351,6 +2351,44 @@ fn main() {
         ))
     }
 
+    /// S16 (NPDEV_MEGA_ROADMAP.md, Track B): blast radius -- given the app's CURRENT model as the
+    /// baseline and an edited/candidate model, run `npdev impact --app` so the caller sees which
+    /// tables, generated classes, routes and components change or break BEFORE any build, with
+    /// destructive changes flagged. Thin pipe: the decision of what is destructive lives in the
+    /// CLI's join (and the generator's migration plan behind it), never here.
+    #[tauri::command]
+    async fn impact_blast_radius(
+        state: State<'_, AppState>,
+        app_dir: String,
+        proposed_model: String,
+    ) -> Result<Value, String> {
+        let baseline_model = model_dir_of_app(&app_dir).map(|dir| {
+            PathBuf::from(dir).join("model.json")
+        }).filter(|p| p.is_file());
+        let baseline = match baseline_model {
+            Some(path) => path,
+            None => return Err(format!(
+                "Could not find the app's current model.json for {app_dir} -- \
+the blast radius needs a baseline to diff against"
+            )),
+        };
+        let proposed = PathBuf::from(&proposed_model);
+        if !proposed.is_file() {
+            return Err(format!("Proposed model not found: {proposed_model}"));
+        }
+        let java_home = resolve_java_home(&state);
+        if npdev::fake_mode() {
+            return npdev::run_impact_cli(
+                &PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+                java_home.as_deref(), &baseline.to_string_lossy(), &proposed_model, Some(&app_dir),
+            ).await;
+        }
+        let python = resolve_python_exe(&state).await?;
+        let cli = resolve_npdev_cli(&state)?;
+        npdev::run_impact_cli(&python, &cli, java_home.as_deref(),
+                              &baseline.to_string_lossy(), &proposed_model, Some(&app_dir)).await
+    }
+
     // Session 2 (NPDEV_MEGA_ROADMAP.md): "headless and scriptable first, UI second" -- this drives
     // the EXACT SAME `ai_loop::run` the `run_ai_loop` Tauri command below calls, mirroring
     // `--selftest`'s own precedent for a no-window entry point on this binary. Assumes the Manager's
@@ -2468,8 +2506,9 @@ fn main() {
             stop_ai_loop,
             assistant_compose,
             assistant_generate,
-            // S15 (Track B): Impact/provenance explorer
+            // S15/S16 (Track B): Impact/provenance explorer + blast radius
             app_provenance_index,
+            impact_blast_radius,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the NPDev Manager");

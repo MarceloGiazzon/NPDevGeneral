@@ -1255,6 +1255,33 @@ pub async fn run_pack_why(
     run_json(python_exe, npdev_cli, &args, java_home, "pack why").await
 }
 
+/// S16 (NPDEV_MEGA_ROADMAP.md, Track B): `npdev impact --baseline <old> --current <new> --app <d>`
+/// -- the one-command blast-radius preview. The CLI joins the migration plan with the app's own
+/// provenance-index.json (S14), destructive first, before any build; this function only shells out
+/// and returns the typed report, same thin shape as `run_pack_why`.
+pub async fn run_impact_cli(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    baseline_model: &str,
+    current_model: &str,
+    app_dir: Option<&str>,
+) -> Result<Value, String> {
+    let mut args = vec![
+        "impact".to_string(),
+        "--baseline".to_string(), baseline_model.to_string(),
+        "--current".to_string(), current_model.to_string(),
+        "--timeout".to_string(), "180".to_string(),
+    ];
+    if let Some(app) = app_dir {
+        if !app.trim().is_empty() {
+            args.push("--app".to_string());
+            args.push(app.trim().to_string());
+        }
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "impact").await
+}
+
 pub async fn run_monitor_logs(
     python_exe: &Path,
     npdev_cli: &Path,
