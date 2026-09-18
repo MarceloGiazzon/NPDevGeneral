@@ -1,0 +1,54 @@
+id: REG-213
+title: >-
+  REG-211 follow-up: the credential-concept detector's bare "hash" suffix matches
+  PasswordResetToken.tokenHash -- jwt apps composing the identity pack get
+  credential-table=identity_v1_password_reset_tokens and their bootstrap-admin 500s + login 401s
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-18
+closed: 2026-09-18
+verification: VERIFIED_LIVE
+source: >-
+  Found LIVE bootstrapping the WmsOffice browser clone (D:\WorkSpace\NPDev\Build\wmsoffice-browser
+  -> generated-finalapps\wmsoffice-browser, port 8100): POST /api/auth/bootstrap-admin answered
+  500 {"error":"bootstrap_failed"} and POST /api/auth/login answered 401 invalid_credentials even
+  though identity_v1_users / usuarios rows with a Java-verified PBKDF2 hash existed for tenant
+  'dev'. Diagnosed by diffing the generated application-npdev-auth.properties:
+  npdev.auth.login.credential-table=identity_v1_password_reset_tokens (not usuarios).
+surface: >-
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/RuntimeAuthPropertiesEmitter.java
+  (HASH_FIELD_SUFFIXES), generator test RuntimeAuthPropertiesEmitterTest.java
+detail: |
+  REG-211's resolver scans the compiled model for a "credential-bearing concept" (a reference
+  field targeting User/*::User + a string field whose lowercased name ends with one of
+  {senhahash, passwordhash, hash, senha, password}). The bare "hash" suffix matches the identity
+  pack's PasswordResetToken (userId reference + tokenHash string), which iterates BEFORE the app's
+  own Usuario concept in the compiled-model order, so WmsOffice shipped with
+  credential-table=identity_v1_password_reset_tokens / credential-password-column=token_hash.
+  Consequences, all live-observed on the running app:
+
+  - /api/auth/bootstrap-admin -> 500 bootstrap_failed (INSERT INTO identity_v1_password_reset_tokens
+    (id, user_id, token_hash, tenant_id) -- the reset-token table is not the app's credential row)
+  - /api/auth/login -> 401 invalid_credentials (SELECT token_hash FROM ... finds the Usuario row
+    nowhere; REG-18 decoy keeps it indistinguishable from a bad password)
+  - The direct-concept seed path (DataSeedAdminController -> ConceptGateway.save) still worked,
+    which is what made the rows look "correct but unreachable".
+
+  A password-reset-token hash (like an api-key hash) is NOT a login credential. Fix: drop the bare
+  "hash" suffix, keeping only password-suggesting suffixes {senhahash, passwordhash, senha,
+  password}; a corpus grep confirms no AppGen app relies on a bare "hash" field for credentials
+  (WmsOffice's Usuario uses senhaHash). Regression tests added: PasswordResetToken-shaped concept
+  is NOT a credential; a model with both PasswordResetToken and Usuario resolves to usuarios.
+  Generator module test run green (22s, ":generator:test").
+
+  LIVE VERIFICATION: regenerated wmsoffice-browser with the fixed emitter ->
+  application-npdev-auth.properties now emits credential-table=usuarios/user_id/senha_hash ->
+  POST /api/auth/login 200 with token, roles [ADMIN], npdev_jwt Set-Cookie; GET
+  /api/v1/runtime/metadata/ui/bundle?concept=Entidade 200 with the token. Browser scenario via
+  ScrapForAI (login form -> panels) passed end-to-end (see WMS-12).
+guard:
+  kind: test
+  ref: NPDevGenerator :generator:test --tests "*RuntimeAuthPropertiesEmitterTest"
+  asserts: findCredentialConceptIgnoresResetTokenHashField + jwtWithIdentityPackAndUsuarioPrefersUsuario green
+  provenRed: true
