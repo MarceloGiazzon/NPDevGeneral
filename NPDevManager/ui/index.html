@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="hosting.css" />
 <link rel="stylesheet" href="verification.css" />
 <link rel="stylesheet" href="packs.css" />
+<link rel="stylesheet" href="provenance.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -35,6 +36,7 @@
     <button class="tab" data-screen="prompter">Prompter</button>
     <button class="tab" data-screen="verification">Verification</button>
     <button class="tab" data-screen="packs">Packs</button>
+    <button class="tab" data-screen="provenance">Impact</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -539,6 +541,29 @@
       <div id="packs-list"></div>
       <div id="packs-why" hidden></div>
     </section>
+
+    <!-- S15 (NPDEV_MEGA_ROADMAP.md, Track B): Impact explorer -- the interactive view over S14's
+         provenance-index.json. Click a concept node; its generated classes, schema migration and
+         frontend route highlight; click an artifact to jump back to its spec node. -->
+    <section id="screen-provenance" class="screen" hidden>
+      <h1>▚ IMPACT <span class="dim">// spec node → emitted artifact</span></h1>
+      <p class="subtitle">
+        What each concept in your model generated: the Spring classes, the schema migration and the
+        frontend route that exist BECAUSE of it, from <code>provenance-index.json</code>. Click a
+        node on the left; its artifacts highlight on the right.
+      </p>
+
+      <div class="packs-toolbar">
+        <label id="provenance-app-label" hidden>App <select id="provenance-app-picker"></select></label>
+        <button class="btn" id="provenance-refresh">⟳ REFRESH</button>
+        <span id="provenance-status" class="status-line"></span>
+      </div>
+
+      <div class="prov-layout">
+        <div class="prov-nodes" id="provenance-nodes"><p class="status-line">Pick an app to load its provenance index.</p></div>
+        <div class="prov-detail" id="provenance-detail"><p class="status-line">Select a concept node to see what it produced.</p></div>
+      </div>
+    </section>
   </main>
 
   <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
@@ -695,6 +720,7 @@
   <script src="prompter.js"></script>
   <script src="verification.js"></script>
   <script src="packs.js"></script>
+  <script src="provenance.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these
@@ -705,6 +731,7 @@
     try { window.__npdevInitPrompter(); } catch (e) { console.error("Prompter init failed", e); }
     try { window.__npdevInitVerification(); } catch (e) { console.error("Verification init failed", e); }
     try { window.__npdevInitPacks(); } catch (e) { console.error("Packs init failed", e); }
+    try { window.__npdevInitProvenance(); } catch (e) { console.error("Impact init failed", e); }
   </script>
 </body>
 </html>

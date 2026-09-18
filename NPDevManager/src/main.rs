@@ -2325,6 +2325,32 @@ fn main() {
         });
     }
 
+    // S15 (NPDEV_MEGA_ROADMAP.md, Track B): the Impact explorer's data source -- the generated
+    // app's provenance-index.json (S14), resolved through the SAME model_dir_of_app convention
+    // the prompter uses (a generated app lives in the sibling `<model-dir>-app`). Returns the
+    // index verbatim; the UI owns what to render. No decision lives here.
+    #[tauri::command]
+    async fn app_provenance_index(app_dir: String) -> Result<Value, String> {
+        let mut candidates: Vec<PathBuf> = Vec::new();
+        if let Some(model_dir) = model_dir_of_app(&app_dir) {
+            let trimmed = model_dir.trim_end_matches(['/', '\\']);
+            candidates.push(PathBuf::from(format!("{trimmed}-app/src/main/resources/npdev/provenance-index.json")));
+            candidates.push(PathBuf::from(format!("{trimmed}/src/main/resources/npdev/provenance-index.json")));
+        }
+        // Direct app-folder probe as a last resort (an app dir may BE the generated root).
+        candidates.push(PathBuf::from(&app_dir).join("src/main/resources/npdev/provenance-index.json"));
+        for candidate in candidates {
+            if let Ok(text) = std::fs::read_to_string(&candidate) {
+                if let Ok(index) = serde_json::from_str::<Value>(&text) {
+                    return Ok(index);
+                }
+            }
+        }
+        Err(format!(
+            "No provenance index found for app at {app_dir} -- generate the app with a current NPDev generator first"
+        ))
+    }
+
     // Session 2 (NPDEV_MEGA_ROADMAP.md): "headless and scriptable first, UI second" -- this drives
     // the EXACT SAME `ai_loop::run` the `run_ai_loop` Tauri command below calls, mirroring
     // `--selftest`'s own precedent for a no-window entry point on this binary. Assumes the Manager's
@@ -2442,6 +2468,8 @@ fn main() {
             stop_ai_loop,
             assistant_compose,
             assistant_generate,
+            // S15 (Track B): Impact/provenance explorer
+            app_provenance_index,
         ])
         .run(tauri::generate_context!())
         .expect("error while running the NPDev Manager");
