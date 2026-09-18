@@ -1,0 +1,57 @@
+id: WMS-11
+title: >-
+  S11 (NPDEV_MEGA_ROADMAP.md): workbench interaction polish -- platform-side deltas already in the
+  emitted template are inventoried; browser verification of the keyboard-only MVL run is the
+  remaining half
+type: FEATURE
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-18
+verification: LOCAL_PROOF_DONE
+source: >-
+  NPDEV_MEGA_ROADMAP.md Session 11 done-when: "an operator completes a full MVL entry -- multi-
+  origin, multi-destination, rebalanced -- keyboard-only, without a validation message that names a
+  field path instead of a business term."
+surface: >-
+  NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+  (the emitted aggregate workbench) + the S8 balance/lookup declarations in the WmsOffice model.
+detail: |
+  Inventory of what the emitted workbench template ALREADY delivers against S11's bullet list
+  (all pre-existing, verified by reading workbench-page.html.mustache -- R7.9 keyboard-first grid
+  navigation, C8 per-region revert, R7.9/R7.10 focus management):
+
+  - Inline editing that does not lose focus/scroll on recalculation: the activeFocusKey/
+    restoreFocus mechanism restores the caret to the cell being edited after a debounced
+    recompute-triggered re-render (lines ~258-259, 1147-1152); the change-listener patch path
+    re-renders with restoreFocus=true (line ~396).
+  - Validation messages in business language: S8 (WMS-8) added the balance rule message ("Faltam
+    {delta} unidade(s) do produto {produtoId} no destino") and the invariant message ("A quantidade
+    de uma posicao nao pode exceder a quantidade disponivel no local") -- both name the product /
+    the location, not a field path.
+  - Keyboard-first grid entry: cellKeydown/gridCellKeydown/headerCellKeydown navigate cells with
+    arrows, Enter adds a row and lands in its first cell, Shift+Arrow is left to the browser,
+    Tab is native DOM order (lines ~261-371); the band picker is a real role=dialog modal with a
+    focus trap and Escape (lines ~1162-1268).
+  - Undo on destructive row actions: per-region revert (regionRevert, C8) restores a section/band
+    to baseline; deleteRow/editBandRow are staged in the draft store (baseline snapshot, line ~160)
+    and revertible before commit.
+  - Bulk selection: the band picker's multi-select modal (lines ~1277-1311) covers the
+    "select many" case; row-level drag/bulk-select beyond that was not a manual requirement.
+
+  Remaining (browser verification, same half as S8/S9 -- requires the app generated + booted +
+  verify-in-browser, which does NOT depend on Google credentials):
+
+  - Prove the keyboard-only multi-origin/multi-destination MVL run end-to-end in a real browser:
+    the S8 declarations (checkBalances action, origemTotal/destinoTotal derived fields) plus the
+    template keyboard paths above must be exercised for the checklist P4/P5 verbs with the balance
+    banner and the maxQuantity read-only column visible and refusing over-quantity.
+  - Commit-time business messages: verify the server-side invariant refusal surfaces verbatim (the
+    template renders server-composed messages through textContent), not as a field-path string.
+  - The optimistic-feedback rollback visual (a failed commit leaves the draft intact) is
+    structural in the draft-store design; confirm the visible behaviour in browser.
+guard:
+  kind: validate
+  ref: NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
+  asserts: template contains the R7.9 keyboard handlers, regionRevert/restoreFocus mechanics, and
+          the S8 business-language message strings render textContent-only
+  provenRed: false
