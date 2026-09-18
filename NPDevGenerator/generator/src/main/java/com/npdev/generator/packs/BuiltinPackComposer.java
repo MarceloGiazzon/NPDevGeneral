@@ -36,7 +36,7 @@ public final class BuiltinPackComposer {
      * Concepts contributed by these packs ({@code identity::*}, {@code workspace::*}) are the
      * "internal NPDev tables" surfaced behind the super-user role in the Business UI.
      */
-    public static final List<String> BUILTIN_PACK_ALIASES = List.of("identity", "workspace");
+    public static final List<String> BUILTIN_PACK_ALIASES = List.of("identity", "workspace", "tracing");
 
     /** Loads and compiles the concepts contributed by a single built-in pack file. */
     public List<CompiledConcept> loadPackConcepts(Path packFile, String alias) {

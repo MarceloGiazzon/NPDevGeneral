@@ -19,6 +19,7 @@ import com.npdev.adapters.tracestore.PersistentExecutionTracer;
 import com.npdev.adapters.tracestore.jdbc.JdbcTraceStore;
 import com.npdev.adapters.tracing.inproc.InProcExecutionTracer;
 import com.finalexec.db.JdbcBusinessConceptStore;
+import com.finalexec.tracing.TracingPackBridge;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
 import com.npdev.kernel.ports.AuditLogStore;
@@ -147,6 +148,18 @@ public class NpdevRuntimeModeConfig {
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
     public ExecutionTracer jdbcExecutionTracer(TraceStore traceStore) {
         return new PersistentExecutionTracer(traceStore);
+    }
+
+    /**
+     * S4 (Tracing pack): bridges kernel execution traces into the tracing pack's
+     * {@code trace_entries} business table so the trace viewer panel can display them.
+     * Best-effort: a missing table (pack not composed) is silently ignored inside the bridge,
+     * and the bean can be disabled entirely via {@code npdev.tracing.pack-bridge.enabled=false}.
+     */
+    @Bean
+    @ConditionalOnProperty(name = "npdev.tracing.pack-bridge.enabled", havingValue = "true", matchIfMissing = true)
+    public TracingPackBridge tracingPackBridge(DataSource dataSource) {
+        return new TracingPackBridge(dataSource);
     }
 
     @Bean
