@@ -378,6 +378,22 @@ dl.kv dd small { opacity: .6; }
 }
 .pane h3 { font-family: var(--font-mono); font-size: 12px; letter-spacing: 2px; color: var(--muted);
            text-transform: uppercase; margin: 0 0 10px; }
+
+/* ============ Reflection Loop Console (S17c) ============ */
+.reflect-runs { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+.reflect-runs .prow { cursor: pointer; }
+.reflect-runs .prow:hover { border-color: #2c5236; }
+.reflect-iteration {
+  border: 1px solid #1f242b; border-radius: 8px; padding: 8px 12px; margin-top: 6px;
+}
+.reflect-iteration.failed { border-color: #4a2230; background: #1a1115; }
+.reflect-iteration.booted { border-color: #1d4028; background: #101b14; }
+.reflect-event {
+  font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  padding: 2px 0;
+}
+.reflect-event.err { color: var(--err); }
+#reflect-timeline h4 { margin: 0 0 8px; font-size: 13px; color: var(--text); }
 .enginechip {
   display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-mono);
   font-size: 12px; padding: 5px 12px; border-radius: 20px; border: 1px solid #2a323b; color: var(--muted);

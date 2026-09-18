@@ -437,6 +437,111 @@ function renderLoopEvent(payload) {
 
 pListen("ai-loop-event", (event) => renderLoopEvent(event.payload || {}));
 
+// ---- S17c: Reflection Loop Console ---------------------------------------------
+// The live run streams above; this replays the PERSISTED transcripts of past runs
+// (<app>/logs/ai-loop/run-*.jsonl) as per-iteration timelines, failures highlighted. Thinner
+// pipe, same standing rule as the Impact tab: what each event means was decided by ai_loop.rs --
+// this window only renders the transcript, never re-derives an outcome.
+
+function reflectStatus(text, bad) {
+  const el = document.getElementById("reflect-status");
+  if (!el) return;
+  el.textContent = text || "";
+  el.style.color = bad ? "var(--err)" : "var(--muted)";
+}
+
+// Event kinds that mark a real phase boundary the timeline shows; ops-line/build noise is trimmed.
+const REFLECT_PHASE_KINDS = new Set([
+  "prompt-composed", "ai-call-done", "validate-result", "apply-done", "generate-done",
+  "start-done", "health-result", "iteration-failed", "reprompt", "loop-done",
+]);
+
+function outcomeClass(outcome) {
+  if (outcome === "booted") return "pbadge verified";
+  if (outcome === "exhausted" || outcome === "aborted") return "pbadge unknown";
+  return "pbadge local";
+}
+
+async function refreshLoopHistory() {
+  const appDir = prompterState.appDir;
+  const box = document.getElementById("reflect-runs");
+  if (!appDir) {
+    box.innerHTML = `<p class="subtitle">Select an app first, then press Loop History.</p>`;
+    return;
+  }
+  reflectStatus("reading transcripts…");
+  try {
+    const result = await pInvoke("ai_loop_runs", { appDir });
+    const runs = result.runs || [];
+    document.getElementById("reflect-timeline").hidden = true;
+    if (runs.length === 0) {
+      box.innerHTML = `<p class="subtitle">No loop transcripts found for this app yet — run a loop above, or point the Prompter at an app that has.</p>`;
+      reflectStatus("");
+      return;
+    }
+    box.innerHTML = runs.map((r) => `
+      <div class="prow" data-run="${pEsc(r.runId)}" title="${pEsc(r.summary || "")}">
+        <div class="prow-main">
+          <span class="pname">${pEsc(r.file)}</span>
+          <span class="pversion">${r.iterations} iteration(s) · ${r.eventCount} event(s)</span>
+          <span class="${outcomeClass(r.outcome)}">${pEsc(r.outcome)}</span>
+        </div>
+      </div>`).join("");
+    box.querySelectorAll("[data-run]").forEach((row) =>
+      row.addEventListener("click", () => replayRun(row.dataset.run)));
+    reflectStatus(`${runs.length} run(s)`);
+  } catch (error) {
+    reflectStatus(`could not list runs: ${error}`, true);
+    box.innerHTML = `<p class="status-line err">${pEsc(error)}</p>`;
+  }
+}
+
+async function replayRun(runId) {
+  const appDir = prompterState.appDir;
+  const timeline = document.getElementById("reflect-timeline");
+  reflectStatus(`replaying ${runId}…`);
+  try {
+    const result = await pInvoke("ai_loop_replay", { appDir, runId });
+    const events = result.events || [];
+    const iterations = new Map();
+    for (const e of events) {
+      if (e.kind === "iteration-start") iterations.set(e.iteration, []);
+    }
+    for (const e of events) {
+      if (e.kind === "iteration-start") continue;
+      if (!REFLECT_PHASE_KINDS.has(e.kind)) continue;
+      if (iterations.has(e.iteration)) iterations.get(e.iteration).push(e);
+    }
+    let html = `<h4>Run ${pEsc(runId)}</h4>`;
+    if (iterations.size === 0) {
+      html += `<p class="subtitle">Transcript has no iteration events to render.</p>`;
+    } else {
+      for (const [iter, evts] of iterations) {
+        const failed = evts.find((e) => e.kind === "iteration-failed");
+        const booted = evts.find((e) => e.kind === "loop-done" && e.outcome === "booted");
+        html += `
+          <div class="reflect-iteration${failed ? " failed" : ""}${booted ? " booted" : ""}">
+            <div class="prow-main"><span class="pname">iteration ${iter}</span></div>
+            ${evts.map((e) => {
+              let note = e.kind;
+              if (e.kind === "validate-result") note = `validate: ${e.report?.status} (${e.report?.summary?.errors ?? 0} err, ${e.report?.summary?.warnings ?? 0} warn)`;
+              else if (e.kind === "iteration-failed") note = `✗ ${e.class}${e.health ? ` (health: ${e.health})` : ""}`;
+              else if (e.kind === "ai-call-done") note = `response (${e.response?.length ?? 0} chars)`;
+              else if (e.kind === "prompt-composed") note = `prompt (${e.prompt?.length ?? 0} chars)`;
+              else if (e.kind === "health-result") note = `health: ${e.health}`;
+              return `<div class="reflect-event ${e.kind === "iteration-failed" ? "err" : ""}">${pEsc(note)}</div>`;
+            }).join("")}
+          </div>`;
+      }
+    }
+    timeline.innerHTML = html;
+    timeline.hidden = false;
+    reflectStatus("");
+  } catch (error) {
+    reflectStatus(`could not replay ${runId}: ${error}`, true);
+  }
+}
+
 async function runLoop() {
   if (!prompterState.appDir) {
     loopStatus("no app selected");
@@ -709,6 +814,8 @@ function initPrompter() {
   document.getElementById("prompter-loop-stop").addEventListener("click", stopLoop);
   document.getElementById("prompter-validate").addEventListener("click", validatePrompterAnswer);
   document.getElementById("prompter-apply").addEventListener("click", applyPrompterModel);
+  // S17c: the Reflection Loop Console -- replay of persisted AI-loop transcripts.
+  document.getElementById("reflect-refresh").addEventListener("click", refreshLoopHistory);
 
   const modal = document.getElementById("prompter-modal");
   document.getElementById("prompter-providers").addEventListener("click", () => {
