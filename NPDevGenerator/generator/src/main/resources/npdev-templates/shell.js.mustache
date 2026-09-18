@@ -1242,6 +1242,21 @@
     container.appendChild(box);
   }
 
+  // S10 (NPDEV_MEGA_ROADMAP.md): the sixth shared state -- offline. context: { retry } -- retry is
+  // an optional { label, onClick } pair rendered as the same state action every other state uses.
+  // Never guessed: the caller detects the network condition and decides whether a retry is
+  // meaningful; this only gives the notice a consistent, visually-distinct box. (A websocket-loss
+  // in the Monitor or a failed ui/bundle fetch that the shell's own degradation path already
+  // handles are the natural callers -- it must exist so no surface invents a fourth spelling.)
+  function renderOffline(container, context) {
+    var ctx = context || {};
+    container.innerHTML = "";
+    var box = stateBox("offline");
+    appendStateLine(box, "npdev-shell-state-message", ctx.message || "You're offline. Reconnect to continue.");
+    appendStateAction(box, ctx.retry);
+    container.appendChild(box);
+  }
+
   function applyGuidePage(manifest, name) {
     var page = findGuidePage(manifest, name || (manifest && manifest.defaultGuidePage));
     if (!page) return;
@@ -1921,12 +1936,13 @@
     // R7.7: registers a flow-backed invocation that returned WAITING/202 for polling; see
     // trackExecution() above for the descriptor shape.
     trackExecution: trackExecution,
-    // W1.5: the shared loading/empty/error/permission-denied state primitives -- see the "shared
-    // states" section above for what each context object accepts.
+    // W1.5 + S10 (design system): the shared loading/empty/error/permission-denied/offline state
+    // primitives -- see the "shared states" section above for what each context object accepts.
     renderLoading: renderLoading,
     renderEmpty: renderEmpty,
     renderError: renderError,
     renderDenied: renderDenied,
+    renderOffline: renderOffline,
     mount: function (options) {
       state.hostMode = true;
       state.deriveNativeGroups = options && options.deriveNativeGroups;

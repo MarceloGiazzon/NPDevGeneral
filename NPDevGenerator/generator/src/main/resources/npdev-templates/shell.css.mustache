@@ -275,6 +275,13 @@ body.npdev-shell-rightbar-collapsed .npdev-shell-rightbar { width: 0; padding: 0
 .npdev-shell-state-action:hover { background: var(--np-bg); }
 .npdev-shell-state-error .npdev-shell-state-message { color: var(--np-negative); }
 .npdev-shell-state-denied .npdev-shell-state-message { color: var(--np-warning); }
+/* S10 (design system): the offline state completes the W1.5 matrix (loading/empty/error/denied +
+   <no-results>/offline). Same box, same token discipline -- a distinct muted treatment so a
+   disconnected surface reads differently from an empty or denied one. */
+.npdev-shell-state-offline .npdev-shell-state-message {
+  color: var(--np-text-muted); border: 1px dashed var(--np-border); border-radius: var(--np-radius);
+  padding: 10px 18px;
+}
 .npdev-shell-state-loading .npdev-shell-state-message::before {
   content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 8px;
   border-radius: 50%; border: 2px solid var(--np-border); border-top-color: var(--np-accent);

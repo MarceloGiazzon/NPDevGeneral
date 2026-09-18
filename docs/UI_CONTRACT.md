@@ -211,12 +211,12 @@ literal string `"system"`) — that is what lets the `prefers-color-scheme` medi
 `applyThemeMode()`/`applyDensity()` in `shell.js.mustache` are the one place this logic lives; extend
 them rather than re-deriving the cascade elsewhere.
 
-## Shared global states (W1.5)
+## Shared global states (W1.5 + S10)
 
-Four states every surface needs -- loading, empty, error, permission-denied -- are owned in ONE
-place, `shell.js.mustache`, and exposed on `window.NPDevShell` so any surface (including an
-Untrusted Extension page) renders the same visual language instead of hand-rolling its own
-placeholder:
+Six states every surface needs -- loading, empty, error, permission-denied, no-results, offline --
+are owned in ONE place, `shell.js.mustache`, and exposed on `window.NPDevShell` so any surface
+(including an Untrusted Extension page) renders the same visual language instead of hand-rolling
+its own placeholder:
 
 - `renderLoading(container, { message })`
 - `renderEmpty(container, { filtered, message, action: { label, onClick } })` -- `filtered` says
@@ -232,6 +232,9 @@ placeholder:
   Extending it to a PanelAction's own `available:false` + `denial` object is a known next step, not
   done yet -- the bundle's `actions` catalog is still not consumed anywhere in the shell (see "The
   shell now also consumes this contract's bundle endpoint" below).
+- `renderOffline(container, { message, retry: { label, onClick } })` -- S10: the disconnected
+  surface. `message` and `retry` are caller-supplied; this only gives the notice a consistent,
+  visually-distinct box (dashed border, muted), never guesses the network condition.
 
 All four render through `stateBox`/`appendStateLine` helpers that only ever set `textContent`, and
 are styled purely from the density/theme tokens documented above (`.npdev-shell-state*` in
