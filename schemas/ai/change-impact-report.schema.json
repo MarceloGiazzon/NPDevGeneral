@@ -8,7 +8,7 @@
   "required": [
     "schemaVersion", "subjectKind", "baseline", "current", "of",
     "migrationClassification", "xrefUsage", "packDiff", "authoringGate",
-    "limitations", "problemsFound"
+    "artifactImpact", "limitations", "problemsFound"
   ],
   "properties": {
     "schemaVersion": { "const": "npdev-impact-report.v1" },
@@ -37,6 +37,10 @@
     "authoringGate": {
       "$ref": "#/$defs/section",
       "description": "model pairs: AuthoringDiffGate's report (status/diagnostics/merge), identical to `npdev author diff-gate --previous=baseline --submitted=current`'s own output. Always attempted for a model pair, manifest or not -- with no --manifest it reports the same AUTHORING_MANIFEST_MISSING refusal `author diff-gate` itself would (see this section's own `reason` when that happens). pack pairs: notApplicable."
+    },
+    "artifactImpact": {
+      "$ref": "#/$defs/section",
+      "description": "S16 (blast radius): the same migrationClassification report joined with the generated app's provenance-index.json (when --app names an app that has one). report.joined true/false; report.tables lists, per affected table, the plan items that touch it and the emitted artifacts (generated classes / schema migration / frontend routes) it would change or break, destructive entries sorted first; report.destructiveCount is the number of destructively-affected tables. Always 'ran' for a model pair (with joined:false when no provenance index was found), 'notApplicable' for a pack pair."
     },
     "limitations": {
       "type": "array",

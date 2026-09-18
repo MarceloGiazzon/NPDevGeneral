@@ -11122,6 +11122,104 @@ def _impact_section(status: str, reason: str | None, report: dict | None) -> dic
     return {"status": status, "reason": reason, "report": report}
 
 
+# -------------------------------------------------------------------------------------------------
+# S16 (NPDEV_MEGA_ROADMAP.md, Track B): blast radius -- join the migration plan with the S14
+# provenance index, so each affected table lists the generated classes / schema migration /
+# frontend routes it would change or break, with destructive changes kept visually distinct.
+# No NEW diffing logic: the plan came from ModelChangeClassifierMain (via
+# _classify_model_change_report), the artifacts came from the generator's own
+# provenance-index.json. This only joins the two.
+# -------------------------------------------------------------------------------------------------
+
+def _load_app_provenance_index(app_dir) -> dict:
+    """Loads a generated app's provenance-index.json (S14), probing the same sibling-app layout
+    the rest of the CLI uses (model dir + '-app'), plus the app dir itself and npdev-generated.
+    Returns {} (never raises) when no index is found -- the join is an enrichment, not a gate."""
+    candidates = []
+    if app_dir:
+        base = Path(app_dir).expanduser().resolve()
+        candidates.append(base / "src" / "main" / "resources" / "npdev" / "provenance-index.json")
+        candidates.append(base / "npdev-generated" / "src" / "main" / "resources" / "npdev" / "provenance-index.json")
+        # The `npdev init <d>` convention: the generated app lives in the sibling `<d>-app`.
+        sibling = Path(str(base).rstrip("/\\") + "-app")
+        candidates.append(sibling / "src" / "main" / "resources" / "npdev" / "provenance-index.json")
+        candidates.append(Path(app_dir).expanduser().resolve().parent / "ArtifactNP" /
+                          "src" / "main" / "resources" / "npdev" / "provenance-index.json")
+    for candidate in candidates:
+        try:
+            if candidate.is_file():
+                parsed = json.loads(candidate.read_text(encoding="utf-8"))
+                if isinstance(parsed, dict) and "specNodes" in parsed:
+                    return parsed
+        except (OSError, ValueError):
+            continue
+    return {}
+
+
+def _artifact_impact(migration_report: dict | None, provenance_index: dict) -> dict:
+    """Joins one migration plan with one provenance index: for every table the plan touches, the
+    concept's emitted artifacts (classes / migration / routes) plus whether the change is
+    destructive. Tables in the plan that the index does not know (internal tables, brand-new
+    tables) still appear, with an empty artifact list -- 'no artifact listed' is honest, not
+    fabricated."""
+    plan_items = []
+    if isinstance(migration_report, dict):
+        raw_items = migration_report.get("items") or migration_report.get("migrationItems") or []
+        if isinstance(raw_items, list):
+            for it in raw_items:
+                if isinstance(it, dict) and it.get("table"):
+                    plan_items.append(it)
+    spec_nodes = provenance_index.get("specNodes") or {}
+    # 'joined' means the JOIN happened: the plan had table-level items AND a provenance index was
+    # actually loaded. A plan alone (no index) still reports its tables -- the artifacts column is
+    # just empty -- but that is an enrichment miss, not a joined answer.
+    if not plan_items:
+        return {"joined": False, "tables": []}
+    joined = bool(spec_nodes)
+    by_table: dict[str, dict] = {}
+    for item in plan_items:
+        table = str(item.get("table", ""))
+        if not table:
+            continue
+        entry = by_table.setdefault(table, {
+            "table": table,
+            "concept": None,
+            "destructive": False,
+            "items": [],
+            "affected": [],
+        })
+        item_kind = item.get("kind") or "?"
+        if item.get("destructive"):
+            entry["destructive"] = True
+        entry["items"].append({
+            "kind": item_kind,
+            "column": item.get("column"),
+            "destructive": bool(item.get("destructive")),
+            "description": item.get("description"),
+        })
+
+    # Match each affected table to its provenance spec node (S14 records table per concept).
+    for table, entry in by_table.items():
+        for name, node in spec_nodes.items():
+            if isinstance(node, dict) and node.get("table") == table:
+                entry["concept"] = name
+                artifacts = node.get("artifacts") or []
+                entry["affected"] = [
+                    {
+                        "type": a.get("type"),
+                        "path": a.get("path"),
+                        "digest": a.get("digest"),
+                        "note": a.get("note"),
+                    }
+                    for a in artifacts if isinstance(a, dict) and a.get("path")
+                ]
+                break
+
+    tables = sorted(by_table.values(), key=lambda t: (not t["destructive"], t["table"]))
+    return {"joined": joined, "destructiveCount": sum(1 for t in by_table.values() if t["destructive"]),
+            "tables": tables}
+
+
 def run_impact(args: argparse.Namespace) -> int:
     """R1.6: `npdev impact --baseline <p> --current <p> [--of <target>] [--manifest <j>]` -- ONE
     typed report composing the four separate "what breaks if I change this?" invocations that used
@@ -11235,6 +11333,17 @@ def run_impact(args: argparse.Namespace) -> int:
             "directly with `npdev pack diff`.",
             None,
         )
+        # S16 (Track B): when --app names a generated app with a provenance index, join the
+        # migration plan above with the emitted artifacts so each affected table lists what would
+        # change or break, destructive first. This is an enrichment -- a missing index reports
+        # joined:false in the section rather than failing the preview.
+        artifact_impact = _artifact_impact(
+            migration_report,
+            _load_app_provenance_index(getattr(args, "app", None)),
+        )
+        artifact_section = _impact_section("ran", None, artifact_impact)
+        if artifact_impact.get("destructiveCount"):
+            problems_found = True
     else:
         pack_report = _pack_diff_report(baseline_path, current_path, None)
         pack_section = _impact_section("ran", None, pack_report)
@@ -11247,6 +11356,12 @@ def run_impact(args: argparse.Namespace) -> int:
         migration_section = _impact_section("notApplicable", not_applicable_reason, None)
         xref_section = _impact_section("notApplicable", not_applicable_reason, None)
         authoring_section = _impact_section("notApplicable", not_applicable_reason, None)
+        artifact_section = _impact_section(
+            "notApplicable",
+            "--baseline/--current are pack.json, not model.json -- provenance joining needs a "
+            "migration plan, and pack diff has no table-level items to join.",
+            None,
+        )
 
     result = {
         "schemaVersion": IMPACT_SCHEMA_VERSION,
@@ -11258,6 +11373,7 @@ def run_impact(args: argparse.Namespace) -> int:
         "xrefUsage": xref_section,
         "packDiff": pack_section,
         "authoringGate": authoring_section,
+        "artifactImpact": artifact_section,
         "limitations": limitations,
         "problemsFound": problems_found,
     }
@@ -14482,6 +14598,13 @@ def build_parser() -> argparse.ArgumentParser:
     impact.add_argument("--output")
     impact.add_argument("--timeout", type=float, default=300.0,
                          help="Overall budget in seconds for the Gradle-backed legs (default 300).")
+    impact.add_argument(
+        "--app",
+        help="Model.json pairs only: a generated app directory whose provenance-index.json "
+             "(S14) should be joined with the migration plan, so each affected table lists the "
+             "generated classes / schema migration / frontend routes it would change or break "
+             "(S16 blast radius). No effect when the app has no provenance index.",
+    )
 
     generate = subparsers.add_parser(
         "generate", help="Generate a complete, runnable app (or a single screen) from a model."
