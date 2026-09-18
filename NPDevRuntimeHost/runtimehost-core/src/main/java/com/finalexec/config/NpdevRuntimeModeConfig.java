@@ -19,6 +19,7 @@ import com.npdev.adapters.tracestore.PersistentExecutionTracer;
 import com.npdev.adapters.tracestore.jdbc.JdbcTraceStore;
 import com.npdev.adapters.tracing.inproc.InProcExecutionTracer;
 import com.finalexec.db.JdbcBusinessConceptStore;
+import com.finalexec.tracing.ChainedExecutionTracer;
 import com.finalexec.tracing.TracingPackBridge;
 import com.npdev.kernel.capability.CapabilityPolicyOverrides;
 import com.npdev.kernel.inproc.InMemoryConceptStore;
@@ -58,8 +59,8 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
-    public InProcExecutionTracer inProcExecutionTracer() {
-        return new InProcExecutionTracer();
+    public ExecutionTracer inProcExecutionTracer(ObjectProvider<TracingPackBridge> tracingBridge) {
+        return chained(new InProcExecutionTracer(), tracingBridge);
     }
 
     @Bean
@@ -146,8 +147,20 @@ public class NpdevRuntimeModeConfig {
 
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
-    public ExecutionTracer jdbcExecutionTracer(TraceStore traceStore) {
-        return new PersistentExecutionTracer(traceStore);
+    public ExecutionTracer jdbcExecutionTracer(TraceStore traceStore, ObjectProvider<TracingPackBridge> tracingBridge) {
+        return chained(new PersistentExecutionTracer(traceStore), tracingBridge);
+    }
+
+    /**
+     * S4: composes the storage-mode tracer with the optional tracing-pack bridge into a single
+     * {@link ExecutionTracer} bean, so the kernel binder's sole injection point never sees two
+     * candidates. The bridge is registered separately (see {@link #tracingPackBridge}) but is NOT
+     * itself an {@code ExecutionTracer} -- {@link #chained} wraps it into the chain only when
+     * present.
+     */
+    private static ExecutionTracer chained(ExecutionTracer primary, ObjectProvider<TracingPackBridge> tracingBridge) {
+        TracingPackBridge bridge = tracingBridge.getIfAvailable();
+        return bridge == null ? primary : new ChainedExecutionTracer(primary, bridge);
     }
 
     /**
