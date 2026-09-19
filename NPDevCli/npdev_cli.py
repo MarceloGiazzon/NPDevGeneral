@@ -2387,6 +2387,46 @@ def _emit_static_pages(repo_root_path: Path, final_app_out: Path, config_path: P
         print(f"npdev: emitted {label}", file=sys.stderr)
 
 
+def stage_seeds_into_final_app(definition_dir: Path, final_app_out: Path) -> int:
+    """WMS-12 follow-up 3: `definition/seeds/*.json` -> the final app's
+    `src/main/resources/npdev-seed/data-seeds/` classpath folder, with an index.json manifest --
+    the exact parity of Build-NpdevApp.ps1 step 4d, so a CLI-generated app's
+    `/api/admin/seeds` works without a manual copy (SeedDataService reads
+    `classpath:npdev-seed/data-seeds/index.json`). id must match the filename stem (same
+    fail-fast as the PS builder); kind defaults to 'smart'; index.json is always a JSON array
+    (REG-189: the PS writer's ConvertTo-Json single-element collapse is a PowerShell quirk this
+    Python port does not reproduce). Returns the number of seeds staged; 0 when no seeds/ dir.
+
+    Note: seeds are staged into the FINAL APP's source tree, so the next `gradlew bootJar`
+    embeds them -- not into the generator's artifact output.
+    """
+    seeds_src = definition_dir / "seeds"
+    if not seeds_src.is_dir():
+        return 0
+    dst = final_app_out / "src" / "main" / "resources" / "npdev-seed" / "data-seeds"
+    dst.mkdir(parents=True, exist_ok=True)
+    manifest: list[dict[str, object]] = []
+    for seed_file in sorted(seeds_src.glob("*.json")):
+        seed = json.loads(seed_file.read_text(encoding="utf-8"))
+        seed_id = seed.get("id")
+        if not seed_id:
+            raise CliError(f"Seed file {seed_file} is missing required 'id'.")
+        if seed_id != seed_file.stem:
+            raise CliError(
+                f"Seed file {seed_file}: 'id' ({seed_id}) must match the filename stem.")
+        shutil.copy2(seed_file, dst / seed_file.name)
+        manifest.append({
+            "id": seed_id,
+            "label": seed.get("label"),
+            "description": seed.get("description"),
+            "kind": seed.get("kind", "smart"),
+        })
+    (dst / "index.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(f"npdev: staged {len(manifest)} data seed(s) into {dst}", file=sys.stderr)
+    return len(manifest)
+
+
 def run_generate(args: argparse.Namespace) -> None:
     root = repo_root()
     generator_root = root / "NPDevGenerator"
@@ -2452,6 +2492,10 @@ def run_generate(args: argparse.Namespace) -> None:
             ("Generation OK.", "[3/4] emitting the application ..."),
             ("Final app assembly OK.", "[4/4] assembling the final app ..."),
         ])
+
+    # WMS-12 follow-up 3: definition/seeds/* -> final app npdev-seed/data-seeds (Build-NpdevApp
+    # .ps1 step 4d parity) so a CLI-generated app's /api/admin/seeds works without a manual copy.
+    stage_seeds_into_final_app(config.parent, final_app_out)
 
     _emit_static_pages(root, final_app_out, config)
 

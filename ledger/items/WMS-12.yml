@@ -68,9 +68,14 @@ detail: |
   - WMS-7 inventory (b) entries still platform gaps: novo-estabelecimento, relatorios,
     excluir-estabelecimento (S9 sweep targets); (a) entries to convert + verify: analytics,
     mapa-armazem, seed-data PAGE targets.
-  - The generated CLI path (npdev generate app) does NOT copy definition/seeds/* into the app's
-    npdev-seed/data-seeds classpath folder the way Build-NpdevApp.ps1 step 4d does -- the seeds
-    were staged manually this phase (Build/stage-seeds.py). Candidate CLI gap for a follow-up.
+  - [DONE 2026-09-18] The generated CLI path (npdev generate app) now copies definition/seeds/*
+    into the app's npdev-seed/data-seeds classpath folder -- new npdev_cli.stage_seeds_into_final_app
+    (Build-NpdevApp.ps1 step 4d parity: id==stem fail-fast, kind default smart, index.json always
+    a JSON array per REG-189), called in run_generate after assembly. Unit tests
+    (NPDevCli/tests/test_generate_stages_seeds.py, 4 tests) green; LIVE-verified by regenerating
+    wmsoffice-browser with NO manual staging: "npdev: staged 4 data seed(s)", bootJar rebuilt,
+    and /api/admin/seeds lists the 4 seeds via an ADMIN JWT. The ad-hoc Build/stage-seeds.py is
+    obsolete for CLI-generated apps.
 guard:
   kind: live
   ref: ScrapForAI run D:\WorkSpace\NPDev\Build\wmsoffice-scenario.json against http://localhost:8100
