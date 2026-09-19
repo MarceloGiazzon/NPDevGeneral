@@ -80,19 +80,25 @@ detail: |
   2.9 RELATORIOS (out of the roadmap's S9 checklist -- from WMS-7's (b) inventory; web/relatorios
   .html, PAGE "Consultas > Relatorios", still hand-served). Declared: nothing; four reports mirror
   the Phase-6 declared queries (LotesEmEstoque, ProdutosAtivos, divergencias de inventario, + 1).
-  BLOCKER (b), named by the screen itself: the declared queries' WHERE clauses are NEVER evaluated
-  server-side -- relatorios.html's own comment: readonly "the query's 'where' clause is never
-  evaluated when the query is only reachable through a declared Panel's dataSources
-  (PanelRuntime.loadDataSource resolves just the query's concept, not its filter -- confirmed
-  live, no dedicated query-execution endpoint exists either). Rather than add that filter
-  evaluation to the platform, each report fetches the full concept list over the existing generic
-  CRUD REST endpoints and filters/sorts here." So the missing platform primitive is: executable
-  DECLARED QUERIES server-side (a query-execution endpoint for a declared query + dataSource
-  filter evaluation), which would let relatorios (and the same pattern in other hand-rolled
-  screens) be a declared query-backed surface instead of a full-concept-fetch + client-side
-  filter. The client-side workaround also makes these reports NON-scoped by tenant-permission
-  rows (they filter post-fetch), a secondary concern for the same primitive. Record: declared-
-  query execution absent (QueryExecutionEndpoint) -- the relatorios blocker.
+  BLOCKER (b), named by the screen itself: relatorios.html's comment claimed declared queries' WHERE
+  clauses are NEVER evaluated server-side, so it fetches the full concept list over generic CRUD and
+  filters/sorts in JS. RESOLVED (2026-09-18, WMS-12 follow-up): the premise was STALE -- the app
+  corpus predates the generator-emitted query-execution endpoint:
+  GET /api/queries/{queryName} (business-ui-query-controller.mustache, Move 10 B1) routes through
+  ConceptGateway.query/aggregate with full tenant/permission/row scoping since commit e917c628.
+  The endpoint's REAL gaps were closed in this phase's change: (1) v2 grammar (or/in/contains/
+  startsWith) via compileToConceptQueryFilters -- a v2-only predicate previously threw
+  UnsupportedPredicateException -> 500; (2) declared :param binding from the request query-string
+  (X0: unbound declared parameter -> 400, never an unfiltered 200); (3) offset/limit pagination
+  (capped at ConceptQuery.MAX_LIMIT, echoed in the response). Template contract test
+  (GeneratedQueryControllerTemplateContractTest, 6 tests) green; LIVE-verified on :8084 with the
+  ADMIN JWT, 18/18 checks: ProdutosAtivos total=15 + offset/limit echo (back-compat), limit=5 &
+  offset=5 paginate disjoint pages, v2-only OR query (ProdutosPorCodigoOr) returns exactly
+  codigo 323/324 (pre-upgrade 500), ProdutosAtivosPorFlag?flag=true -> 15 / flag=false -> 0 /
+  missing flag -> 400, unknown query -> 404. relatorios.html can now drop its full-concept-fetch +
+  client-side filter for /api/queries/{LotesEmEstoque|ProdutosAtivos|...} directly (a (a)-conversion
+  follow-up, still on the WMS-7 table); the tenant-permission row-scoping concern it carried is
+  gone since the endpoint scopes every row through the gateway.
 
   AGGREGATE S9 VERDICT: 2.6 Inventario is the strongest (wizard already declared, mostly PASS by
   declaration). 2.2/2.3/2.4/2.5 share the same recurring blocker -- the wizard-grade editing

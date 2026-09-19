@@ -3,6 +3,7 @@ package {{controllerPackage}};
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.CompiledAggregateFunction;
 import com.npdev.dsl.v1.compiled.CompiledGroupByField;
+import com.npdev.dsl.v1.compiled.CompiledProcedureParameter;
 import com.npdev.dsl.v1.compiled.CompiledQuery;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
@@ -57,9 +58,83 @@ public class GeneratedQueryController {
         ExecutionContext context = runtimeContextService.currentContext(request);
         CompiledQuery query = findQuery(queryName);
         try {
-            return query.isAggregate() ? runAggregate(query, context) : runPlain(query, context);
+            Map<String, Object> bound = bindParameters(request, query.parameters());
+            return query.isAggregate()
+                    ? runAggregate(query, context, bound)
+                    : runPlain(query, context, bound, request);
         } catch (ConceptGatewayAccessDeniedException denied) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, denied.getMessage());
+        } catch (ConceptQueryPredicateCompiler.UnsupportedPredicateException predicate) {
+            // X0: a predicate outside the v2 grammar, or an unbound :param, surfaces as a 400 --
+            // never as an unfiltered (or 500) response.
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, predicate.getMessage());
+        }
+    }
+
+    /**
+     * WMS-12 (QueryExecutionEndpoint gaps): binds the query's declared {@code parameters[]} from
+     * request query-string values. Per X0 an unbound declared parameter is REFUSED (400) rather
+     * than defaulted to null or dropped from the filter -- an unfiltered result is never served
+     * for a query that declares a bound placeholder. Values are coerced by shape (boolean /
+     * integer / decimal / string) so the compiled filter literal matches the stored column type.
+     */
+    private static Map<String, Object> bindParameters(
+            HttpServletRequest request, List<CompiledProcedureParameter> parameters) {
+        Map<String, Object> bound = new LinkedHashMap<>();
+        for (CompiledProcedureParameter parameter : parameters) {
+            String raw = request.getParameter(parameter.name());
+            if (raw == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Query parameter '" + parameter.name() + "' is required (declared in this "
+                                + "query's parameters[] but not supplied).");
+            }
+            bound.put(parameter.name(), coerceLiteral(raw));
+        }
+        return bound;
+    }
+
+    private static Object coerceLiteral(String raw) {
+        String trimmed = raw.trim();
+        if ("true".equalsIgnoreCase(trimmed)) {
+            return Boolean.TRUE;
+        }
+        if ("false".equalsIgnoreCase(trimmed)) {
+            return Boolean.FALSE;
+        }
+        try {
+            return Long.parseLong(trimmed);
+        } catch (NumberFormatException ignored) {
+            // not an integer -- fall through
+        }
+        try {
+            return Double.parseDouble(trimmed);
+        } catch (NumberFormatException ignored) {
+            // not a number -- keep the raw string
+        }
+        return raw;
+    }
+
+    private static int parseOffset(HttpServletRequest request) {
+        String raw = request.getParameter("offset");
+        if (raw == null || raw.isBlank()) {
+            return 0;
+        }
+        try {
+            return Math.max(0, Integer.parseInt(raw.trim()));
+        } catch (NumberFormatException malformed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "offset must be a non-negative integer");
+        }
+    }
+
+    private static int parseLimit(HttpServletRequest request, int declaredLimit) {
+        String raw = request.getParameter("limit");
+        if (raw == null || raw.isBlank()) {
+            return declaredLimit;
+        }
+        try {
+            return Math.min(Math.max(1, Integer.parseInt(raw.trim())), ConceptQuery.MAX_LIMIT);
+        } catch (NumberFormatException malformed) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "limit must be a positive integer");
         }
     }
 
@@ -72,8 +147,10 @@ public class GeneratedQueryController {
         throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown query: " + queryName);
     }
 
-    private Map<String, Object> runAggregate(CompiledQuery query, ExecutionContext context) {
-        List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compile(query.where());
+    private Map<String, Object> runAggregate(
+            CompiledQuery query, ExecutionContext context, Map<String, Object> bound) {
+        List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
+                query.where(), query.parameters(), bound);
         List<ConceptAggregateQuery.GroupByField> groupBy = new ArrayList<>();
         for (CompiledGroupByField field : query.groupBy()) {
             groupBy.add(new ConceptAggregateQuery.GroupByField(field.field(), field.bucket()));
@@ -83,7 +160,8 @@ public class GeneratedQueryController {
             aggregates.add(new ConceptAggregateQuery.AggregateFunction(
                     aggregate.name(), aggregate.fn(), aggregate.field()));
         }
-        List<ConceptQuery.Filter> having = ConceptQueryPredicateCompiler.compile(query.having());
+        List<ConceptQuery.Filter> having = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
+                query.having(), query.parameters(), bound);
         List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
 
         ConceptAggregateQuery aggregateQuery = new ConceptAggregateQuery(
@@ -115,11 +193,15 @@ public class GeneratedQueryController {
         return body;
     }
 
-    private Map<String, Object> runPlain(CompiledQuery query, ExecutionContext context) {
-        List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compile(query.where());
+    private Map<String, Object> runPlain(
+            CompiledQuery query, ExecutionContext context, Map<String, Object> bound, HttpServletRequest request) {
+        List<ConceptQuery.Filter> filters = ConceptQueryPredicateCompiler.compileToConceptQueryFilters(
+                query.where(), query.parameters(), bound);
         List<ConceptQuery.Sort> sorts = ConceptQueryPredicateCompiler.compileOrderBy(query.orderBy());
-        int limit = query.limit() != null && query.limit() > 0 ? query.limit() : ConceptQuery.DEFAULT_LIMIT;
-        ConceptQuery conceptQuery = new ConceptQuery(filters, sorts, 0, limit);
+        int declaredLimit = query.limit() != null && query.limit() > 0 ? query.limit() : ConceptQuery.DEFAULT_LIMIT;
+        int offset = parseOffset(request);
+        int limit = parseLimit(request, declaredLimit);
+        ConceptQuery conceptQuery = new ConceptQuery(filters, sorts, offset, limit);
         ConceptPage page = conceptGateway.query(new ConceptQueryRequest(query.concept(), conceptQuery), context);
 
         List<Map<String, Object>> rows = new ArrayList<>();
@@ -131,6 +213,8 @@ public class GeneratedQueryController {
         body.put("aggregate", false);
         body.put("rows", rows);
         body.put("total", page.total());
+        body.put("offset", offset);
+        body.put("limit", limit);
         return body;
     }
 }
