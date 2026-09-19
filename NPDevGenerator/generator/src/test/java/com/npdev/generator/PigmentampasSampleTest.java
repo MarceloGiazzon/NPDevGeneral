@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PigmentampasSampleTest {
 
     private static final Path SAMPLE_MODEL = Path.of(
-            "..", "..", "NPDevSamples", "pigmentampas", "model.json").normalize();
+            "..", "..", "NPDevSamples", "pigmentampas", "Input", "model.json").normalize();
 
     @Test
     void pigmentampasModelParsesValidatesAndGenerates() throws Exception {
@@ -45,8 +45,8 @@ class PigmentampasSampleTest {
 
         CompiledConcept pigment = compiled.findConcept("Pigment").orElse(null);
         assertNotNull(pigment, "Pigment concept must compile");
-        assertEquals(7, compiled.getConcepts().size(),
-                "Pigmentampas must compile exactly seven concepts (pigment store domain)");
+        assertEquals(8, compiled.getConcepts().size(),
+                "Pigmentampas must compile exactly eight concepts (pigment store domain + Credential for jwt-mode auth)");
 
         Path out = Files.createTempDirectory("npdev-pigmentampas-");
         Path migrations = Files.createTempDirectory("npdev-pigmentampas-migrations-");

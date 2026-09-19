@@ -69,6 +69,7 @@
     "NPDevSamples/npdev-init-seed": "showcase",
     "NPDevSamples/pack9-role-binding-a": "repro-case",
     "NPDevSamples/pack9-role-binding-b": "repro-case",
+    "NPDevSamples/pigmentampas": "showcase",
     "NPDevSamples/probes/engine-probe": "probe",
     "NPDevSamples/probes/lib-probe": "probe",
     "NPDevSamples/probes/p1-minimal": "probe",

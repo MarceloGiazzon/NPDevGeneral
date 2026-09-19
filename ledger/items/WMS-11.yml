@@ -49,6 +49,33 @@ detail: |
     template renders server-composed messages through textContent), not as a field-path string.
   - The optimistic-feedback rollback visual (a failed commit leaves the draft intact) is
     structural in the draft-store design; confirm the visible behaviour in browser.
+
+  2026-09-19 (partial browser verification, roadmap sweep): the underlying page this item's
+  mechanisms are attached to is now LIVE-PROVEN functional (see WMS-8, DONE): the dedicated
+  MovimentoWorkbench page loads its empty shell, "+ add row" reveals the depth-2 itens/posicoes
+  bands, and "Recalcular Saldos" returns "Balanced." with no console/network errors. This confirms
+  the template these keyboard/focus/revert mechanics live in is genuinely reachable and working end
+  to end, not just present in source. A direct arrow-key/Enter keyboard-navigation probe was
+  attempted (click a grid cell, press ArrowRight, inspect document.activeElement) but the initial
+  cell selector (`table input[type=text]`) did not match the actual grid markup -- not retried this
+  session (time-boxed; the selector needs to be derived from the real DOM, e.g. via an evaluate
+  dump of the itens grid's actual input elements, before a `press` step can target it correctly).
+  Retried with a corrected selector (`table input >> nth=0`, since the grid's inputs have no
+  literal `type="text"` attribute for the earlier selector to match): the click landed, but the
+  ArrowRight press result was AMBIGUOUS -- `document.activeElement` after the key stayed on an
+  INPUT whose value was unchanged ("new-awrsn9v4", the same id-field value), which is consistent
+  with either "the custom grid-navigation handler is not active in this state" or "arrow-right just
+  moved the text caret within the same field" -- cannot distinguish from outside without reading
+  cellKeydown's actual activation condition. The following Enter press did not visibly add a new
+  itens row (count stayed "1 rows"). NOT recorded as a pass or a fail -- genuinely inconclusive,
+  reported honestly rather than claimed either way. Time-boxed rather than pursued further this
+  session (risk of chasing an unfamiliar 4300+-line generated JS file blind).
+
+  Still NOT done: a full keyboard-only multi-origin/multi-destination MVL entry (this item's actual
+  done-when bar) was not completed. Remaining: read cellKeydown's real activation condition (does
+  grid-arrow-nav require a prior Escape/select-mode step distinct from a fresh click?), then drive
+  a real keyboard-only populate-and-commit run; verify the commit-time business message and
+  optimistic-rollback visual.
 guard:
   kind: validate
   ref: NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache

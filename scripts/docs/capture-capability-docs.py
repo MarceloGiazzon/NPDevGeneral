@@ -34,7 +34,7 @@ CAPABILITIES = [
             "maximums come from a queried value, and after commit the screen goes read-only. "
             "Shown here against the generated sample's order workbench."
         ),
-        "routes": ["/orders"],
+        "routes": ["/widget-orders"],
     },
     {
         "id": "google-signin",
@@ -54,7 +54,7 @@ CAPABILITIES = [
             "app a TraceEntry concept and a viewer; the identity pack gives User/Role. Consumed by "
             "declaring packs[].from with a versioned coordinate (git or OCI)."
         ),
-        "routes": ["/trace_entries"],
+        "routes": ["/trace-entries"],
     },
 ]
 

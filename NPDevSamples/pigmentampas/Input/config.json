@@ -3,7 +3,7 @@
   "configVersion": "1.0",
   "scenario": {
     "name": "pigmentampas",
-    "description": "S6 (NPDEV_MEGA_ROADMAP.md): greenfield pigment store -- minimal end-to-end proof. internal.tables composes identity + workspace + tracing packs; auth.mode=jwt gives Google signup/link/login plus username/password; every screen is declaratively generated (zero hand-authored HTML).",
+    "description": "S6 (NPDEV_MEGA_ROADMAP.md): greenfield pigment store -- minimal end-to-end proof. Explicit packs[] composes identity + workspace + tracing (WmsOffice's proven pattern -- internal.tables composes AFTER semantic validation, so a user concept referencing a pack concept, like Credential -> identity::User, cannot validate under that mechanism); auth.mode=jwt gives Google signup/link/login plus username/password via the Credential concept; every screen is declaratively generated (zero hand-authored HTML).",
     "outputRoot": "..\\Output"
   },
   "generator": {
@@ -40,7 +40,6 @@
     "gradleTask": "bootRun"
   },
   "defaults": {
-    "internal.tables": true,
     "auth.mode": "jwt"
   },
   "trialDefaults": {
