@@ -96,6 +96,16 @@ class BusinessUiEmitterShellVersionTest {
     }
 
     @Test
+    void shellTopbarCarriesALiveClock(@TempDir Path tempDir) throws Exception {
+        // WMS-9 N4: the shell chrome had no live date/time anywhere -- a generic, platform-wide gap,
+        // not app-specific.
+        Path out = emit(tempDir, MODEL_A);
+        String shellJs = Files.readString(out.resolve("src/main/resources/static/shell.js"));
+        assertTrue(shellJs.contains("npdev-shell-clock"), "topbar should carry a clock element");
+        assertTrue(shellJs.contains("setInterval(updateClock"), "clock should tick on an interval");
+    }
+
+    @Test
     void shellFilesAreByteIdenticalAcrossDifferentModels(@TempDir Path tempDirA, @TempDir Path tempDirB) throws Exception {
         Path outA = emit(tempDirA, MODEL_A);
         Path outB = emit(tempDirB, MODEL_B);

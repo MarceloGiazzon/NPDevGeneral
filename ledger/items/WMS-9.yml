@@ -472,6 +472,19 @@ detail: |
   CSV wizard, REG-218's original repro) end-to-end: `InventarioArquivoAggregateWorkbench.html?id=new`,
   same CSV payload, "linhas" grid rendered "1 rows" with the real parsed values, screenshot
   `...\job_YChWZX_pokaJ\screenshots\inventario_after_import.png`.
+
+  2026-09-19 (N4 partial fix -- live clock): the date/time half of N4's shell-chrome gap ("no live
+  company/Entidade name and no current date/time anywhere in the shell chrome") is fixed at the
+  platform level -- `shell.js.mustache`'s `buildTopbar()` now renders a `.npdev-shell-clock` span
+  (ticking every 30s via `updateClock()`) in every generated app's topbar, next to the existing
+  identity/logout chrome. Deliberately NOT attempted: the company/Entidade-name half, which is
+  genuinely ambiguous (which Entidade is "the" one to show in a potentially multi-tenant app) and
+  needs a design call, unlike the clock which has no such ambiguity. Regression test
+  `BusinessUiEmitterShellVersionTest.shellTopbarCarriesALiveClock` (green); the existing
+  byte-identical-across-models and version-stamp tests in the same suite still pass unmodified,
+  since the clock's displayed value is computed client-side at runtime, not baked into the emitted
+  file text. N5/N6/C5/C6/C7/Z1-Z6 remain open per the verdicts above -- each still needs an owner
+  scope decision before any platform work starts.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
