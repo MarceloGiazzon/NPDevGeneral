@@ -77,6 +77,23 @@ detail: |
   declared surface; destructive reset is a deliberate-op only. Record: Reset surface absent -- needs
   a Dev-console panel with double-confirm (Z2 semantics) if pursued in a later sweep.
 
+  2.9 RELATORIOS (out of the roadmap's S9 checklist -- from WMS-7's (b) inventory; web/relatorios
+  .html, PAGE "Consultas > Relatorios", still hand-served). Declared: nothing; four reports mirror
+  the Phase-6 declared queries (LotesEmEstoque, ProdutosAtivos, divergencias de inventario, + 1).
+  BLOCKER (b), named by the screen itself: the declared queries' WHERE clauses are NEVER evaluated
+  server-side -- relatorios.html's own comment: readonly "the query's 'where' clause is never
+  evaluated when the query is only reachable through a declared Panel's dataSources
+  (PanelRuntime.loadDataSource resolves just the query's concept, not its filter -- confirmed
+  live, no dedicated query-execution endpoint exists either). Rather than add that filter
+  evaluation to the platform, each report fetches the full concept list over the existing generic
+  CRUD REST endpoints and filters/sorts here." So the missing platform primitive is: executable
+  DECLARED QUERIES server-side (a query-execution endpoint for a declared query + dataSource
+  filter evaluation), which would let relatorios (and the same pattern in other hand-rolled
+  screens) be a declared query-backed surface instead of a full-concept-fetch + client-side
+  filter. The client-side workaround also makes these reports NON-scoped by tenant-permission
+  rows (they filter post-fetch), a secondary concern for the same primitive. Record: declared-
+  query execution absent (QueryExecutionEndpoint) -- the relatorios blocker.
+
   AGGREGATE S9 VERDICT: 2.6 Inventario is the strongest (wizard already declared, mostly PASS by
   declaration). 2.2/2.3/2.4/2.5 share the same recurring blocker -- the wizard-grade editing
   sub-panels (P2 selection-add, P8 row clone, P9 default-on-add, P10 per-field-group stage locks,
