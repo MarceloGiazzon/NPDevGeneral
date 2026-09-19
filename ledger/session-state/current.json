@@ -1,20 +1,18 @@
 {
-  "closedAt": "2026-09-18T23:45:00.0000000Z",
+  "closedAt": "2026-09-19T02:27:29.8712625Z",
   "branch": "main",
-  "head": "473eca07",
-  "headSubject": "fix(runtimehost): REG-214 OAuth linkage row must live in the ACTOR's tenant, not 'default'",
-  "summary": "Real-Google OAuth (SEC-11/3b) run with the owner's client: secrets in the OS credential store (npdev-manager --set-secret, injected via --get-secret per REG-212 option b), app on :8084 matching the registered redirect_uri. LIVE-PROVEN by the owner's browser: signup + login with Google (identity::User mgiazzon@puntoexe.com.uy created in dev, ExternalIdentity google + sub 111760263778664129158 linked, session JWT). Found + fixed REG-214 (linkage row tenant 'default' vs actor 'dev'; insertLink omitted tenant_id; unique is tenant+provider+subject) -- fix + tests + redeploy, commit 473eca07. LINK leg: authorize/state/Google-redirect verified server-side, but the final Google consent is blocked by GOOGLE's browser-flagging for the harness (bundled Chromium AND real Edge via PLAYWRIGHT_CHANNEL=msedge both rejected 'browser or app may not be secure'); owner's browser passes for the same client, so this is Google-side, not an app defect -- unit + M7 28/28 cover the link machinery; owner said 'desista' and will optionally do the last click from their own browser. Ledger SEC-11 updated with full status; harness changes documented there.",
-  "nextStep": "Optional close of the 3b done-when LINK leg (owner's browser, ~1 min): login admin/demo1234 at :8084, open http://localhost:8084/api/auth/oauth/google/authorize?purpose=link&next=/npdev-business-ui/index.html, consent with Google; then verify identity_v1_external_identitys has provider=google for admin's user_id (f801aeb6-...) in tenant dev. Then: official AppGen WmsOffice pack sync (WMS-12 follow-up), WMS-7 (b) gaps (S9 sweep), seeds-copy CLI gap, and the REG-211 decision. App: :8084 (jwt+OAuth), :8100 retired; harness :3000 (PLAYWRIGHT_CHANNEL=msedge, allowlist + 8084/google).",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\roadmap-2026-09-14\\NPDEV_MEGA_ROADMAP.md (S3b live leg mostly done; S7/S8 verified; S9+ sweep next)",
-  "blocked": "Google's disallowed_browser-style flag blocks the harness (bundled Chromium AND real Edge) from the OAuth consent for this client; the LINK leg's final click therefore needs the owner's browser or a Google-accepted environment. REG-211 decision (jwt-mode credential concept requirement) still open.",
-  "verified": "real-Google signup+login LIVE (owner browser, 19:57, DB rows + callback log + JWT); authorize 302 URL exact (client_id/redirect_uri/state/scope); config enabled; REG-214 fix: OAuthGoogleAuthServiceTest green (incl. tenant asserts), bootJar bytecode contains the fixed INSERT, app redeployed and healthy on 8084; harness probes: Chromium HeadlessChrome UA rejected by Google, PLAYWRIGHT_CHANNEL=msedge real-Edge UA also rejected (Google-side).",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
-  "unpushed": 42,
-  "landedCommits": [
-    "473eca07 fix(runtimehost): REG-214 OAuth linkage row must live in the ACTOR's tenant, not 'default'",
-    "86fbfed6 chore(ledger): WMS-12 browser verification passed via ScrapForAI; REG-213 credential-detector regression (S7/S8)",
-    "1bd1a2cd fix(runtimehost): S4 chain the tracing-pack bridge into one ExecutionTracer bean; tracing pack 1.0.2",
-    "10cd4912 fix(generator): REG-213 credential detector must not match PasswordResetToken.tokenHash"
-  ]
+  "head": "bdabe896",
+  "headSubject": "chore(ledger): WMS-7 correct stale mapa-armazem.html verdict -- (b) platform gap, not (a) cleanup",
+  "summary": "Continued the mega roadmap: converted relatorios.html's four reports to GET /api/queries/{name} (browser-verified live on WmsOffice :8084 via ScrapForAI), confirmed analytics.html was already converted, retired seed-data.html (menu/pages/file/provenance manifest removed, REST capability untouched, verified live), corrected a stale (a)-verdict on mapa-armazem.html to (b) matching WMS-9's own analysis, installed Playwright+Chromium and real-captured the S13 google-signin capability doc against the live app, and caught/corrected a stale handoff claim that REG-211 was still open when the ledger already showed it DONE.",
+  "nextStep": "Queue item 6 remainder: generate+build+boot NPDevSamples/dsl-conformance-max and NPDevSamples/pigmentampas, then re-run 'python scripts/docs/capture-capability-docs.py --base-url http://localhost:<port>' against each to fill in the depth2-workbench (/orders) and packs (/trace_entries) capability docs (Playwright is now installed, no setup needed there). Alternative next targets from the same handoff queue: item 3 (wizard sub-panel primitives P2/P8/P9/P10/P11/P12, the recurring blocker across WMS-9 2.2-2.5) or item 4 (S11 workbench interaction polish browser-verification). Item 7 (S3b Google link-consent click) is owner-only.",
+  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\roadmap-2026-09-14\\MEGA_ROADMAP_HANDOFF.md",
+  "blocked": "",
+  "verified": "relatorios.html live browser render via ScrapForAI (job_SiPYkik3neBq, screenshot confirms Produtos Ativos 15/15 + correct empty states); seed-data.html curl-verified 404, GET /api/admin/seeds still lists 4 seeds, 'seed' absent from GET /api/workspace/menu; google-signin screenshot shows the real Continue-with-Google button live. No full quality gate run this session (doc/ledger + one hand-rolled HTML page + one generated-app regen, not a platform code change).",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
+  "unpushed": 51,
+  "landedCommits": []
 }
