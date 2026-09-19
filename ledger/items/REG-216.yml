@@ -1,0 +1,64 @@
+id: REG-216
+title: >-
+  An aggregate root's auto-synthesized Selection panel "New" button eagerly attempts a blank
+  conceptMutation create, which can never succeed once the root concept has any required field
+  beyond id -- the working mechanism (open the paired Workbench's own empty-shell "new" page) is
+  already proven live one click away and unused by this button
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found live alongside REG-215 while browser-verifying NPDEV_MEGA_ROADMAP.md Session 8/11 against
+  WmsOffice (:8084). After REG-215 fixed the id-merge bug, MovimentoSelection's "New" button still
+  fails (now on Movimento.entidadeId, a real required business field) because it always tries to
+  persist a fully-blank record in one shot.
+surface: >-
+  NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiler/AutoPanelExpander.java
+  (newRecordAction/selectionPanel, ~lines 240-244), NPDevGenerator's business-ui-app.mustache
+  (renderDeclaredPanel's per-action button loop, app.js ~line 1905: executeDeclaredPanelAction).
+detail: |
+  The WORKING flow already exists and was verified live in the same session: navigating directly
+  to /npdev-workbench/MovimentoWorkbench.html and clicking ITS OWN "New" button loads
+  ?id=new -- an empty editable shell (header fields + itens/posicoes bands + Save/Sugerir
+  Destino/Sugerir Origem/Recalcular Saldos), matching PanelRuntime.loadWorkbench's documented
+  "no id -> empty descriptor" contract (com.finalexec.npdev.service.PanelRuntime:819-853) and
+  workbench-page.html.mustache's openRow("new") (wbId = "" for the "new" id). Adding a row and
+  clicking "Recalcular Saldos" genuinely returns "Balanced." -- the whole depth-2/balance primitive
+  works end-to-end THROUGH THIS PAGE.
+
+  The auto-generated Selection panel (MovimentoSelection, rendered inside the generic
+  npdev-business-ui shell, NOT the dedicated workbench page) is a SEPARATE, parallel surface for
+  the same aggregate root. Its "New" button was wired by AutoPanelExpander to the generic
+  conceptMutation "new" action (newRecordAction) -- the same mechanism an ordinary flat concept's
+  Selection panel uses successfully via openForm's inline create-then-submit form (see
+  business-ui-app.mustache ~line 3134) -- but Movimento (and presumably every aggregate root with
+  more than an id) can never satisfy a blank create, by design: the whole point of an aggregate is
+  that its required shape is filled in across the multi-band editor, not a flat form.
+
+  WHAT WOULD CLOSE IT: give the Selection panel's compiled metadata a link to its paired workbench
+  (mirroring the WORKBENCH panel's own `metadata.put("selectionPanel", selectionPanelName)` at
+  AutoPanelExpander.java:227, but in reverse -- e.g. `metadata.put("workbenchPanel", base +
+  "Workbench")` on the selectionPanel built at line 240-244), and either (a) drop
+  newRecordAction from the aggregate-root Selection panel entirely, replacing its "New" button with
+  a plain client-side navigation to the paired workbench's own url (the same
+  `panelMeta.workbenchUrl` field renderDeclaredPanel already reads at app.js:1855, applied to just
+  the button instead of the whole panel body), or (b) special-case action.name === "new" in the
+  per-action button loop (app.js ~1905-1911) to navigate instead of calling
+  executeDeclaredPanelAction whenever panelMeta.workbenchPanel is present. (a) is more consistent
+  with the existing workbenchUrl precedent and needs no new client dispatch branch beyond reusing
+  the link-rendering the Workbench panel already has.
+
+  Deliberately NOT attempted in the same session as REG-215: this touches the DSL compiler AND the
+  169KB generated-per-app business-ui-app.mustache (CLAUDE.md: do not full-read, high blast radius
+  across every generated app) -- a considered two-layer change, not a narrow bug patch. REG-215's
+  fix stands on its own (a real, general defect, fully fixed and verified); this item is the
+  correctly-scoped follow-on for the remaining UX gap.
+  Done when: clicking "New" on an aggregate root's Selection panel (e.g. MovimentoSelection) lands
+  the user on the paired Workbench's empty-shell editor, with no server round-trip attempting a
+  blank create.
+guard:
+  kind: live
+  ref: ScrapForAI click "New" on http://localhost:8084 MovimentoSelection (job_7otCE9C02yKL)
+  asserts: currently still 500s on Movimento.entidadeId; fix should route to /npdev-workbench/MovimentoWorkbench.html?id=new instead
+  provenRed: true
