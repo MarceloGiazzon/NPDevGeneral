@@ -7,8 +7,10 @@ title: >-
   called from any production path" guard actually runs against real trusted-action output
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-19
+verification: VERIFIED_LIVE
 source: >-
   Found while verifying the REG-219 fix (adding the ByteArrayInputStream/ByteArrayOutputStream
   exemption to UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS) by regenerating
@@ -81,16 +83,47 @@ detail: |
   confirmed working in isolation (unit tests + the forbidden-ByteArrayInputStream error no longer
   appears in the generator log), but end-to-end regeneration of wmsoffice-browser remains blocked by
   this new, unrelated guard until REG-220 is resolved.
+
+  FIX APPLIED 2026-09-19: applied fix candidate (1) exactly -- `GeneratedProjectionGuard` now checks
+  each `new ...Adapter(`/`new ...CapabilityAdapter(` match's simple class name against a new
+  `KNOWN_SAFE_ADAPTER_CLASSES` exemption set (currently just `GeneratedActionCapabilityAdapter`)
+  before recording a violation, mirroring the exemption-list precedent REG-219 established in
+  `UntrustedExtensionBytecodeInspector`. The other two forbidden patterns (`adapterId` conditionals,
+  `capability...adapter` conditionals) are untouched -- this only narrows the adapter-instantiation
+  check, and only for this one exact platform-authored class name. Extended
+  `GeneratedProjectionGuardTest.java` with `allowsGeneratedActionCapabilityAdapterInstantiation`
+  (proves the exemption works); the existing `rejectsDirectAdapterInstantiation` test (which asserts
+  `new NotificationCapabilityAdapter()` -- a hypothetical per-plugin choice -- still fails) proves the
+  exemption stays narrow, since that class name is deliberately NOT in the allowlist. Both tests pass
+  (`gradlew -p NPDevGenerator/generator test --tests
+  com.npdev.generator.guard.GeneratedProjectionGuardTest`, BUILD SUCCESSFUL, 33 tasks).
+
+  LIVE VERIFICATION: with both REG-219 and this fix in place (kernel + generator-runtime caches
+  refreshed via the rebuild-app skill), `Rebuild-And-Restage.ps1 -AppFolder
+  D:\WorkSpace\NPDev\AppGen\apps\_official\WmsOffice -SkipLibs` generated, compiled, and built
+  wmsoffice end to end for the first time this session: generator log shows "Generator succeeded."
+  with no forbidden-pattern/thin-projection exception, and the Gradle build reports "BUILD SUCCESSFUL"
+  producing a runnable FinalExec-0.1.0.jar. The wrapper's subsequent boot step failed on an unrelated,
+  expected setup gap, not a regression: this specific build root (`Build\generated-finalapps\wmsoffice`)
+  is a fresh scratch directory used only for this fix-verification pass, never bootstrapped with a
+  JWT keypair (`NoSuchFileException: .\wmsoffice-keys\jwt-private-pkcs8.pem` in
+  `LoginController.readKeyFile`) the way the long-running `wmsoffice-browser` app (this session's real
+  target, with its own established secrets/data) already has. Both REG-219 and REG-220 are closed;
+  regenerating the actual `wmsoffice-browser` app (which keeps its `secrets/` directory across
+  regeneration per the platform's spared-directories rule) to pick up both fixes and continue the
+  WMS-9 sweep is the natural next step, not part of this item's own scope.
 guard:
   kind: local
   ref: >-
     pwsh -File scripts/appgen/Build-AppGenApp.ps1 -App _official/WmsOffice (generation log:
     D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\_logs\generator-direct-java.log), with
-    REG-219 already fixed and definition/untrusted-extension-manifest.json already populated
+    REG-219 already fixed and definition/untrusted-extension-manifest.json already populated; unit
+    guard: gradlew -p NPDevGenerator/generator test --tests
+    com.npdev.generator.guard.GeneratedProjectionGuardTest
   asserts: >-
-    currently always fails generation with "Generated projection violates thin-projection guard"
+    previously always failed generation with "Generated projection violates thin-projection guard"
     naming GeneratedActionCapabilityDispatcherFactory.java and
-    GeneratedActionCapabilityRegistryContributor.java; fix should let generation proceed to
-    completion without weakening the guard's actual intent (catching a genuinely hardcoded
-    per-plugin adapter choice, which this is not)
-  provenRed: true
+    GeneratedActionCapabilityRegistryContributor.java; now generates and builds successfully, while
+    the guard's actual intent (catching a genuinely hardcoded per-plugin adapter choice) is proven
+    still enforced by the unchanged NotificationCapabilityAdapter regression test
+  provenRed: false

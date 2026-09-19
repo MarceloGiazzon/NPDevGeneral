@@ -48,6 +48,27 @@ class GeneratedProjectionGuardTest {
     }
 
     @Test
+    void allowsGeneratedActionCapabilityAdapterInstantiation(@TempDir Path tempDir) throws Exception {
+        // REG-220: GeneratedActionCapabilityAdapter is the platform's own single, always-identical
+        // trusted-action bridge class (TrustedActionSupportTemplates) -- constructing it is not a
+        // per-plugin adapter SELECTION, unlike NotificationCapabilityAdapter above.
+        Path javaFile = tempDir.resolve("src/main/java/com/npdev/generated/trusted/GeneratedActionCapabilityDispatcherFactory.java");
+        Files.createDirectories(javaFile.getParent());
+        Files.writeString(javaFile, """
+                package com.npdev.generated.trusted;
+
+                public final class GeneratedActionCapabilityDispatcherFactory {
+                    public static Object create() {
+                        GeneratedActionCapabilityAdapter adapter = new GeneratedActionCapabilityAdapter();
+                        return adapter;
+                    }
+                }
+                """);
+
+        assertDoesNotThrow(() -> new GeneratedProjectionGuard().assertThinProjection(tempDir));
+    }
+
+    @Test
     void rejectsAdapterConditionalSelection(@TempDir Path tempDir) throws Exception {
         Path javaFile = tempDir.resolve("src/main/java/com/npdev/generated/services/UserService.java");
         Files.createDirectories(javaFile.getParent());
