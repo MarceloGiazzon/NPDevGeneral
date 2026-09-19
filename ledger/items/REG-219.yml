@@ -8,8 +8,10 @@ title: >-
   InputStream/InputSource) can never generate
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-19
+verification: VERIFIED_LIVE
 source: >-
   Found while resuming NPDEV_MEGA_ROADMAP.md Session 9's WMS-9 sweep: attempting to regenerate
   wmsoffice-browser from its current AppGen/apps/_official/WmsOffice model.json (needed because the
@@ -78,14 +80,48 @@ detail: |
   ByteArrayInputStream, a worse workaround since the class is legitimately safe). CrossDocking C4/C5
   (which depend on the Romaneio import wizard existing at all) are recorded against this SAME
   build-staleness constraint in WMS-9.yml, not as a fresh design/runtime verdict.
+
+  FIX APPLIED 2026-09-19: added `"java/io/ByteArrayInputStream"` and `"java/io/ByteArrayOutputStream"`
+  to `UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS`'s `"java/io/"` entry,
+  exactly as the fix candidate above proposed. Extended `UntrustedExtensionBytecodeInspectorTest.java`
+  with `acceptsByteArrayStreamsOverInMemoryBuffers` (proves both classes now pass) and
+  `refusesFileInputStreamDespiteByteArrayStreamExemption` (proves the exemption stays narrow --
+  `FileInputStream`, which touches a real file descriptor, is still refused). Both tests pass
+  (`gradlew -p NPDevKernel/kernel test --tests
+  com.npdev.kernel.security.UntrustedExtensionBytecodeInspectorTest`, BUILD SUCCESSFUL). Because
+  `PluginJavaSourcePolicyVisitor.FORBIDDEN_IMPORT_PREFIX_EXEMPTIONS` derives directly from this same
+  map (confirmed by reading its source: a `.stream()` copy of
+  `UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS`), no generator-side change
+  was needed -- the fix closes both the generation-time AST gate and the boot-time bytecode gate from
+  one place, as designed.
+
+  LIVE VERIFICATION: after refreshing the kernel/generator-runtime jar caches (`rebuild-app` skill --
+  `Rebuild-And-Restage.ps1 -AppFolder D:\WorkSpace\NPDev\AppGen\apps\_official\WmsOffice`) and
+  re-running `pwsh -File scripts/appgen/Build-AppGenApp.ps1 -App _official/WmsOffice`, the exact
+  repro error ("forbidden import java.io.ByteArrayInputStream") no longer occurs -- generation now
+  proceeds past FiscalImportCapability.java's plugin Java source check entirely. Regeneration then
+  hit two further, unrelated pre-existing gaps surfaced only because this one no longer blocks first:
+  (1) WmsOffice's AppGen source was missing `definition/untrusted-extension-manifest.json` outright
+  (only the ephemeral Build/wmsoffice-browser/definition/ snapshot had one) -- fixed in the same pass
+  by adding a widget entry for `widgets/armazem-location-map.js` with its real sha256, propagating
+  the file back to the AppGen source-of-truth layer as the platform layering rules require; (2) the
+  generator's own thin-projection guard false-positives on its own trusted-action bridge class
+  `GeneratedActionCapabilityAdapter` -- filed separately as REG-220, not fixed here (a different
+  guard, unrelated to this item's scope, and "never previously called from any production path" per
+  its own adjacent code comment, so not a regression this fix caused). REG-219 itself -- the
+  ByteArrayInputStream/ByteArrayOutputStream false-positive refusal -- is fixed and verified; full
+  end-to-end regeneration of wmsoffice-browser remains blocked by REG-220 until that item is
+  resolved.
 guard:
   kind: local
   ref: >-
     pwsh -File scripts/appgen/Build-AppGenApp.ps1 -App _official/WmsOffice (generation log:
-    D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\_logs\generator-direct-java.log)
+    D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\_logs\generator-direct-java.log); unit
+    guard: gradlew -p NPDevKernel/kernel test --tests
+    com.npdev.kernel.security.UntrustedExtensionBytecodeInspectorTest
   asserts: >-
-    currently always fails generation with "Forbidden plugin Java source use ... forbidden import
-    java.io.ByteArrayInputStream" for FiscalImportCapability.java; fix should let generation proceed
-    to completion (ByteArrayInputStream/ByteArrayOutputStream exempted, every other java.io class
-    still forbidden)
-  provenRed: true
+    previously always failed generation with "Forbidden plugin Java source use ... forbidden import
+    java.io.ByteArrayInputStream" for FiscalImportCapability.java; now proceeds past that check
+    (ByteArrayInputStream/ByteArrayOutputStream exempted, every other java.io class still forbidden,
+    proven by the new FileInputStream regression test)
+  provenRed: false

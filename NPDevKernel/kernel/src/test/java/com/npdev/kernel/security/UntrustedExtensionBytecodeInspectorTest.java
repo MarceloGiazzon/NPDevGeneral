@@ -227,6 +227,57 @@ class UntrustedExtensionBytecodeInspectorTest {
     }
 
     @Test
+    void acceptsByteArrayStreamsOverInMemoryBuffers() throws Exception {
+        // ByteArrayInputStream/ByteArrayOutputStream wrap/produce an in-memory byte[] only -- no
+        // file descriptor, socket, or OS resource -- exempted from the java/io/ ban (REG-219).
+        Path compiled = compile(
+                "com/npdev/generated/plugin/clean/ByteBufferAdapter.java",
+                """
+                package com.npdev.generated.plugin.clean;
+
+                import java.io.ByteArrayInputStream;
+                import java.io.ByteArrayOutputStream;
+
+                public final class ByteBufferAdapter {
+                    public byte[] roundTrip(byte[] data) throws Exception {
+                        ByteArrayInputStream in = new ByteArrayInputStream(data);
+                        ByteArrayOutputStream out = new ByteArrayOutputStream();
+                        int b;
+                        while ((b = in.read()) != -1) {
+                            out.write(b);
+                        }
+                        return out.toByteArray();
+                    }
+                }
+                """
+        );
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        assertTrue(result.passed(), "ByteArrayInputStream/ByteArrayOutputStream must pass: " + result.violations());
+    }
+
+    @Test
+    void refusesFileInputStreamDespiteByteArrayStreamExemption() throws Exception {
+        // The ByteArrayInputStream/ByteArrayOutputStream exemption must stay narrow: FileInputStream
+        // touches a real file descriptor and every other java/io/* class must still be refused.
+        Path compiled = compile(
+                "com/npdev/generated/plugin/evil/FileReadPlugin.java",
+                """
+                package com.npdev.generated.plugin.evil;
+
+                import java.io.FileInputStream;
+
+                public final class FileReadPlugin {
+                    public int read() throws Exception {
+                        return new FileInputStream("/etc/passwd").read();
+                    }
+                }
+                """
+        );
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        assertFalse(result.passed(), "FileInputStream must still be refused: " + result.violations());
+    }
+
+    @Test
     void refusesReflectiveClassLoading() throws Exception {
         Path compiled = compile(
                 "com/npdev/generated/plugin/evil/ReflectivePlugin.java",
