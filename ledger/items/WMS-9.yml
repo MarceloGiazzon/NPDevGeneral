@@ -310,6 +310,23 @@ detail: |
   reasoning, and the live repro (real seeded data left in place for a fix-verification retest). I5-I8
   not attempted this pass (the Importar Contagem paste-CSV path is a separate action from the one
   that crashed; deprioritized after finding REG-217 to get it filed precisely rather than rushed).
+
+  2026-09-19 (Novo Armazem N1/N7 browser-verified): ScrapForAI job_qnwgDIbHLOro confirmed the seeded
+  warehouse-a-small topology is genuinely present and browsable through the real business-ui shell
+  (not just the DB) -- #concept-Area lists 5 rows, #concept-Rua lists 13 rows, matching the seed's
+  own documented shape (5 areas, 13 ruas) from the prior session's handoff notes; #concept-
+  LocalArmazenagem showed 20 rows on its first page (default page size, not the full ~190 --
+  pagination not exercised further, not a discrepancy). N1 (seeded environment) and N7 (seeds
+  browsable) both CONFIRMED. N2-N6/N8 remain the S9-note design review (first-run UI is still the
+  hand-rolled Novo-Armazem.html PAGE, out of this pass's declarative-surface scope, per the existing
+  2.7 verdict above).
+
+  SESSION 9 SWEEP CLOSED FOR THIS PASS -- verified this session: R15/R22 PASS, R16 FAIL (browser);
+  E7 PASS (browser), E1 PASS/E15 FAIL (source); I3/I4 FAIL + REG-217 filed (platform bug, browser);
+  N1/N7 PASS (browser); A7 re-verdicted BLOCKED(model defect, root-caused, browser+source). Not
+  attempted: I5-I8, N2-N6/N8, C5/C8, Z1-Z6 (2.5/2.8 sections untouched this pass) -- next sweep
+  session should pick up there, plus decide whether R16/E15/REG-217 warrant their own fix items
+  beyond this sweep's recording.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
