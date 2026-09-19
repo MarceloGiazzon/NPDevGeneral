@@ -289,6 +289,27 @@ detail: |
   Movimento" first, out of scope for this pass) since the source read already settles the claim.
   Verdict: E1 PASS (same caveat as R1), E7 PASS (browser-verified), E15 FAIL (declaration gap,
   source-verified).
+
+  2026-09-19 (Inventario I3/I4 -- REAL PLATFORM BUG found, filed as REG-217): browser-tested
+  InventarioArquivoAggregateWorkbench (no rua-selection UI on the workbench itself, matching R16's
+  shape) then InventarioHistoricoPanel's "Gerar Template de Contagem" action (ScrapForAI
+  job_S3hbxKEVDqsd / job_RgvpnYtx85ZG) with entidadeId=961034ea-... and the Lote/LocalArmazenagemLote
+  rows seeded earlier this session. I3 FAIL (source-verified): GerarTemplateContagemProcedure's only
+  declared inputField is entidadeId (model.json:3000-3002) -- there is no rua concept anywhere in its
+  input or steps, so "opens rua selection; selecting none means all" has no UI to open, it always
+  and unconditionally operates over every location. I4 FAIL, but for a much bigger reason than
+  missing UI: the action doesn't just lack a nice download link, it genuinely CRASHES --
+  "Action gerarTemplate completed: FAILED", PLUGIN_EXECUTION_FAILED,
+  "Plugin IPC value 'invoke.args[1]' is not JSON-safe: java.util.ArrayList". Root-caused in source
+  (not just observed) and filed as REG-217: DslTypeCoercionSupport.normalizeFieldValue coerces every
+  uuid/reference concept field to a native java.util.UUID, and PluginIpcJsonSafeValues.isJsonSafe has
+  no UUID case, so the "lotes"/"ocupacoes" lists this procedure builds via listConcepts+mapList can
+  never cross the plugin-process-isolation IPC boundary. This is a PLATFORM bug with broad blast
+  radius (any procedure of this shape, in any app, once its capability runs isolated), not a
+  WmsOffice model-authoring gap like R16/E15 -- see REG-217.yml for full root cause, blast-radius
+  reasoning, and the live repro (real seeded data left in place for a fix-verification retest). I5-I8
+  not attempted this pass (the Importar Contagem paste-CSV path is a separate action from the one
+  that crashed; deprioritized after finding REG-217 to get it filed precisely rather than rushed).
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
