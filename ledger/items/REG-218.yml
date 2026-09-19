@@ -1,0 +1,98 @@
+id: REG-218
+title: >-
+  ManifestDrivenJavaSourcePluginHandler.invoke does a case-exact Map.get(call.operation()) against
+  java-source-runtime-refs.json's methodByOperation, whose keys the generator always writes
+  lowercased -- InventoryFileCapability.importarContagem (a camelCase operation, like every other
+  operation in this codebase) is permanently unbound via the isolated plugin path, while its
+  sibling gerarTemplate operation on the SAME capability class reaches invocation successfully in
+  the same app, so the failure mode is real but not yet fully explained by case alone
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found live while resuming NPDEV_MEGA_ROADMAP.md Session 9's WMS-9 sweep (Inventario I5-I8, the
+  Importar Contagem paste-CSV wizard) against WmsOffice (:8084), the section the prior pass
+  deprioritized after finding REG-217. Clicking "Importar Contagem (Parse)" on
+  InventarioArquivoAggregateWorkbench.html?id=new with a real-shaped CSV payload
+  (ScrapForAI job_wBwGg-lLKhL1, retried and reproduced identically on a second job) returns
+  "Failed: Procedure ImportarContagemProcedure failed: JAVA_SOURCE_OPERATION_NOT_BOUND Java source
+  capability operation is not bound: importarContagem" -- the wizard fails at the FIRST step
+  (parse), before any grid/divergence UI ever renders (the linhas table stays at "0 rows").
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/.../service/pluginipc/ManifestDrivenJavaSourcePluginHandler.java
+  (invoke, line 61: `entry.methodByOperation().get(call.operation())`, an exact-case Map.get);
+  NPDevRuntimeHost/runtimehost-core/.../service/pluginipc/JavaSourceRuntimeRefManifestLoader.java
+  (line 59: `methodByOperation.put(field.getKey(), field.getValue().asText())`, no case
+  normalization at load time, yet the emitted JSON key IS always lowercase -- so the lowercasing
+  happens generator-side, not here); NPDevGenerator's RuntimeApiEmitter.java (~lines 1354-1379,
+  writes the manifest's methodByOperation entries from a descriptor whose own key casing was not
+  traced further this pass); live artifact confirmed by extracting
+  BOOT-INF/classes/npdev/plugin-runtime/java-source-runtime-refs.json directly from the running
+  wmsoffice-browser FinalExec-0.1.0.jar (built 2026-09-19 01:00, the same jar the :8084 process
+  (PID 25392, started 01:00:58) is actually serving) -- its inventoryFile entry already contains
+  all three operations, lowercased: {"analisararquivorecebimento": "analisarArquivoRecebimento",
+  "gerartemplate": "gerarTemplate", "importarcontagem": "importarContagem"}.
+detail: |
+  WHAT IS PROVEN: (1) the manifest embedded in the currently-serving jar is NOT missing the
+  importarContagem entry -- ruling out the obvious "stale build" explanation, since the source file
+  (InventoryFileCapability.java, confirmed identical between definition/capabilities/inventoryFile
+  and the app's bundled npdev-generated copy) already implements importarContagem and the manifest
+  already lists it. (2) The failure is fully deterministic, not a cold-start/first-call race:
+  reproduced identically across two independent ScrapForAI jobs against the same running process.
+  (3) model.json's own capabilityCall steps use identical camelCase convention for both operations
+  in question -- "operation": "gerarTemplate" (GerarTemplateContagemProcedure, line 1417) and
+  "operation": "importarContagem" (ImportarContagemProcedure, line 1779) -- so a difference in
+  authoring-time casing between the two procedures is NOT the explanation.
+
+  WHAT IS NOT YET EXPLAINED: REG-217's own repro (same session, same app, same InventoryFileCapability
+  class) shows gerarTemplate's capabilityCall step DID reach method invocation -- it failed on
+  PluginIpcJsonSafeValues rejecting a java.util.UUID INSIDE the method's returned/passed data, which
+  can only happen after `pluginClass.getMethod(...)` + `method.invoke(...)` already succeeded at
+  ManifestDrivenJavaSourcePluginHandler.java line 77-78. If this handler's line 61 lookup is a raw
+  case-exact Map.get() against a manifest whose keys are ALWAYS lowercased ("gerartemplate"), that
+  lookup should fail identically for gerarTemplate's call.operation() of "gerarTemplate" (mixed
+  case) -- yet it evidently did not fail, since REG-217 got past it. Two live capability calls on
+  the SAME class, using the SAME calling convention, went through this SAME handler class with
+  DIFFERENT binding outcomes; this item does not resolve that inconsistency (candidate reasons not
+  yet checked: whether GerarTemplateContagemProcedure's failing call in REG-217 actually went
+  through the LEGACY in-process ArtifactLocalJavaSourceCapabilityHandler rather than this
+  manifest-driven isolated one, whether the pooled worker process serving each call differs, or
+  whether call.operation() is normalized inconsistently somewhere upstream of this handler
+  depending on call site). Whoever picks this up should instrument or trace call.operation()'s
+  actual runtime value for both calls before assuming the case-mismatch theory is the true root
+  cause, rather than just patching line 61 to `.get(call.operation().toLowerCase(Locale.ROOT))`
+  and declaring it fixed -- that patch may well be correct, but the open discrepancy above means it
+  has not been proven sufficient, only plausible.
+
+  BLAST RADIUS: unknown until the above is resolved, but at minimum it blocks 100% of the Inventario
+  Importar Contagem paste-CSV wizard (I5-I8 in WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.6) -- the
+  workbench's "Importar Contagem (Parse)" action can never succeed in its current state, so I5-I8
+  are recorded FAIL (platform bug), not browser-unverified.
+
+  SEPARATE DESIGN-DECLARATION GAP noted in passing (not a bug, a checklist-vs-declaration mismatch):
+  I5's checklist wording is "Selecionar Arquivo com os Dados da Conferencia uploads the filled
+  sheet" -- the actual declared surface has no file-upload `<input type=file>` anywhere on this
+  workbench; ImportarContagemProcedure's only inputField is a plain `texto` textarea (paste-CSV,
+  confirmed live: `textarea[placeholder="texto"]`), and its sibling Recebimento-por-Arquivo action
+  is the same shape (`textarea[placeholder="csvText"]`). Even once REG-218 is fixed, I5 will PASS
+  only under a "paste text" reading, never a literal file-picker reading -- record this alongside
+  the fix, do not silently reinterpret the checklist line.
+
+  Real repro payload for a fix-verification retest (uses the same live seeded data REG-217 left in
+  place): CSV `00860991-27fb-45d2-98f2-6ab707ce4645;8972dd84-37d5-4f0a-9f8e-ec86e6a6d95a;
+  47caecb3-9943-4c6d-b0fa-14d55e479733;20;20` (matching row, not divergent) plus a second line
+  swapping the first field to `0387d2a3-3fb6-498c-8a71-1addd394a10c` and the last count to `15`
+  (divergent row) -- pasted into the Importar Contagem textarea on
+  http://127.0.0.1:8084/npdev-workbench/InventarioArquivoAggregateWorkbench.html?id=new, clicking
+  "Importar Contagem (Parse)" should populate the linhas grid with 2 rows, the second flagged
+  divergente=true, once JAVA_SOURCE_OPERATION_NOT_BOUND stops firing.
+guard:
+  kind: live
+  ref: >-
+    ScrapForAI jobs job_wBwGg-lLKhL1 (full I5-I8 attempt incl. Save) and a same-day retry job
+    against http://127.0.0.1:8084/npdev-workbench/InventarioArquivoAggregateWorkbench.html?id=new
+  asserts: >-
+    currently always fails with JAVA_SOURCE_OPERATION_NOT_BOUND on the "Importar Contagem (Parse)"
+    action; fix should populate a 2-row linhas grid (one divergente=true) instead
+  provenRed: true

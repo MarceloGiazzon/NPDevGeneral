@@ -1,0 +1,91 @@
+id: REG-219
+title: >-
+  PluginJavaSourcePolicy (and its boot-time twin, PluginBytecodeBootGate) forbid the entire
+  java.io.* prefix for plugin:java-source capabilities with only java.io.PrintStream exempted --
+  java.io.ByteArrayInputStream/ByteArrayOutputStream do zero real filesystem/network I/O (pure
+  in-memory byte[] buffers) yet are blocked too, so any plugin that needs to hand an in-memory byte
+  array to a Stream-based API (e.g. javax.xml.parsers.DocumentBuilder.parse, which requires an
+  InputStream/InputSource) can never generate
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found while resuming NPDEV_MEGA_ROADMAP.md Session 9's WMS-9 sweep: attempting to regenerate
+  wmsoffice-browser from its current AppGen/apps/_official/WmsOffice model.json (needed because the
+  RUNNING build predates ParseRomaneioProcedure -- see this item's own detail -- so CrossDocking
+  checklist lines C4/C5 could not be assessed against a current build at all) via
+  `pwsh -File scripts/appgen/Build-AppGenApp.ps1 -App _official/WmsOffice` failed generation outright:
+  "Exception in thread \"main\" java.lang.IllegalStateException: Forbidden plugin Java source use in
+  src/main/java/com/wmsoffice/capabilities/fiscal/FiscalImportCapability.java: forbidden import
+  java.io.ByteArrayInputStream; forbidden qualified use java.io.ByteArrayInputStream" (full log:
+  D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\_logs\generator-direct-java.log).
+surface: >-
+  NPDevKernel/kernel/src/main/java/com/npdev/kernel/security/UntrustedExtensionBytecodeInspector.java
+  (line ~63: "java/io/" in the prefix-ban list; lines 79-86:
+  `FORBIDDEN_OWNER_PREFIX_EXEMPTIONS = Map.of("java/io/", Set.of("java/io/PrintStream"))` -- the ONLY
+  java.io exemption); NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/
+  pluginsource/policy/PluginJavaSourcePolicyVisitor.java (derives its own
+  FORBIDDEN_IMPORT_PREFIX_EXEMPTIONS straight from the kernel inspector's map, by design, "so the
+  source gate and the boot gate cannot drift apart" per PluginJavaSourcePolicy's own class javadoc);
+  live repro surface: AppGen/apps/_official/WmsOffice/definition/capabilities/fiscalImport/src/main/
+  java/com/wmsoffice/capabilities/fiscal/FiscalImportCapability.java line 10 (import) / line 62
+  (`builder.parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)))`, needed because
+  DocumentBuilder.parse has no byte[]-accepting overload).
+detail: |
+  WHY THIS IS A FALSE POSITIVE, NOT A CORRECT REFUSAL: the policy's own stated purpose (per
+  PluginJavaSourcePolicy's class javadoc) is refusing "capability escapes (filesystem/network IO,
+  process/system control, reflection, dynamic loading, threads, scripting, detached async work, JVM
+  internals)". A `ByteArrayInputStream`/`ByteArrayOutputStream` wraps or produces an in-memory
+  `byte[]` ONLY -- it has no constructor or method that touches a file descriptor, socket, or any
+  OS resource; it is exactly as safe as `java.io.PrintStream` writing to the already-exempted
+  in-memory-backed `System.out`, arguably safer since a ByteArray stream cannot even reach an
+  external sink. The existing PrintStream exemption already establishes the precedent that
+  "java.io.*-named but not actually capable of I/O" classes get individually allow-listed rather
+  than blanket-banned; ByteArrayInputStream/ByteArrayOutputStream simply were never added to that
+  set, most likely because no plugin needed byte-buffer-backed Stream adaptation until
+  FiscalImportCapability's NF-e XML parser did (DocumentBuilder.parse(InputStream) is the standard
+  JDK API for parsing an XML string already read into memory; there is no byte[]-native overload,
+  so SOME Stream wrapper is unavoidable for this exact library call).
+
+  BLAST RADIUS: every plugin:java-source capability in every generated app that needs to feed an
+  in-memory byte array to any Stream/Reader-based JDK API (XML/JSON DOM parsers, ImageIO, ZipInputStream
+  over an in-memory archive, MessageDigest-adjacent buffering, etc.) hits this exact wall. This is not
+  a WmsOffice-only or FiscalImportCapability-only concern; it is a platform-wide generation blocker
+  for an entire class of legitimate, safe plugin code.
+
+  CONCRETE, NARROWLY-SCOPED FIX CANDIDATE (not applied here -- this is a shared security policy also
+  used by the boot-time bytecode gate, so it deserves its own considered change, not a rushed patch
+  mid-sweep): add `"java/io/ByteArrayInputStream"` and `"java/io/ByteArrayOutputStream"` to
+  `UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS`'s `"java/io/"` entry
+  alongside the existing `PrintStream`. Because `PluginJavaSourcePolicyVisitor` derives its own
+  exemption set from this SAME map (its own javadoc guarantee), a single kernel-side change should
+  close both the generation-time AST gate (this repro) and the boot-time bytecode gate symmetrically,
+  with no template/emitter change needed. `UntrustedExtensionBytecodeInspectorTest.java` is the
+  existing test class to extend with the two new exemptions plus a regression case proving
+  `ByteArrayInputStream`/`ByteArrayOutputStream` pass while every other `java.io.*` class (e.g.
+  `File`, `FileInputStream`) still correctly fails.
+
+  CONSEQUENCE FOR THIS SWEEP: wmsoffice-browser (the app under audit for WMS-9) cannot currently be
+  regenerated at all from its own current model.json + capability sources while
+  FiscalImportCapability.java keeps its NF-e XML-parsing code as-is -- meaning the RUNNING
+  wmsoffice-browser build is now KNOWN-STALE relative to its own declared model (it predates
+  ParseRomaneioProcedure's addition to RomaneioAggregate's transaction.actions -- confirmed absent
+  from the running build's compiled-metadata.json/panels, browser-verified: the Romaneio workbench at
+  /npdev-workbench/RomaneioAggregateWorkbench.html?id=new renders only header fields + "+ add row"/
+  "Save", no "Importar (Parse Romaneio)" action button at all) and CANNOT be refreshed to close that
+  gap until REG-219 is fixed (or FiscalImportCapability.java's XML parsing is rewritten to avoid
+  ByteArrayInputStream, a worse workaround since the class is legitimately safe). CrossDocking C4/C5
+  (which depend on the Romaneio import wizard existing at all) are recorded against this SAME
+  build-staleness constraint in WMS-9.yml, not as a fresh design/runtime verdict.
+guard:
+  kind: local
+  ref: >-
+    pwsh -File scripts/appgen/Build-AppGenApp.ps1 -App _official/WmsOffice (generation log:
+    D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\_logs\generator-direct-java.log)
+  asserts: >-
+    currently always fails generation with "Forbidden plugin Java source use ... forbidden import
+    java.io.ByteArrayInputStream" for FiscalImportCapability.java; fix should let generation proceed
+    to completion (ByteArrayInputStream/ByteArrayOutputStream exempted, every other java.io class
+    still forbidden)
+  provenRed: true
