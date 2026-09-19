@@ -199,6 +199,52 @@ detail: |
   editors; the single Screen-2.1/2.2 balancing path (S8's work) is the exception. 2.7/2.8 are
   first-run/destructive ops needing dedicated surfaces (Novo Armazem has the seed half done).
   Browser verification of the PASS-by-declaration halves remains, same as S8.
+
+  2026-09-19 (A7 ROOT CAUSE CORRECTED -- real bug found, not an environment-data gap): seeded real
+  occupancy to retest A7 properly. Created a Lote (produto codigo 323, id
+  47caecb3-9943-4c6d-b0fa-14d55e479733) via POST /api/concepts/lotes, then registered
+  LocalArmazenagemLote occupancy of quantidade=20 at BOTH local_armazenagem ids the A7 draft uses --
+  00860991-27fb-45d2-98f2-6ab707ce4645 (Origem) and 0387d2a3-3fb6-498c-8a71-1addd394a10c (Destino) --
+  via POST /api/concepts/local_armazenagem_lotes. Confirmed live via GET
+  /api/queries/OcupacaoDisponivelQuery that both rows are genuinely present with quantidade=20.
+  Re-ran the exact A7 browser flow (ScrapForAI, job_5eq8HQG56Byh): entidade=Warehouse A, one
+  MovimentoItem (produto codigo 323, qty 10), Origem posicao at 00860991... qty 10, Destino posicao
+  at 0387d2a3... qty 10. "Recalcular Saldos" -> "Balanced." (as before). Save -> STILL FAILED, same
+  message: "Aggregate Movimento invariant(s) violated: PosicaoDentroDoMaximo -- A quantidade de uma
+  posicao nao pode exceder a quantidade disponivel no local" -- and the screenshot
+  (r06_02_after_recalcular.png) shows BOTH posicao rows' (readonly) maxQuantity column rendering
+  BLANK despite real quantidade=20 rows existing at both referenced locations. This disproves the
+  prior "BLOCKED (data)" verdict -- the failure is NOT missing stock.
+
+  Root-caused in source, not just observed: Movimento.itens.posicoes declares lookupField
+  maxQuantity as { query: OcupacaoDisponivelQuery, joinField: localArmazenagemId, valueField:
+  disponivel } (model.json:217-224). OcupacaoDisponivelQuery (model.json:996-1002) is a BARE
+  concept query over LocalArmazenagemLote with no select/computed fields -- its rows only ever carry
+  LocalArmazenagemLote's own fields (id, localArmazenagemId, loteId, quantidade, version), confirmed
+  live above -- there is no field named "disponivel" anywhere in that shape. The runtime lookup
+  (AggregateRuntime.java:607-613, buildLookupIndex) does exactly what's declared:
+  `fieldValue(queryRow, lookupField.valueField())` -> `record.data().get("disponivel")` ->
+  always null, for every row, unconditionally. So MovimentoItemPosicao.maxQuantity resolves to null
+  for EVERY posicao regardless of how much real stock exists, and the invariant expression
+  `p.quantidade <= p.maxQuantity` never passes for any nonzero quantity. This is a WmsOffice corpus
+  MODEL AUTHORING BUG (the runtime is doing exactly what the declaration says), not a platform
+  runtime defect -- but it means A7's underlying save/lifecycle mechanism has never been exercisable
+  in ANY environment, seeded or not, since the field this lookupField depends on was never declared
+  by its own source query.
+
+  Not a one-line rename either: renaming valueField to "quantidade" would fix ORIGEM semantics
+  (can't remove more than what's currently there) but is semantically wrong for DESTINO (whose real
+  max should be remaining CAPACITY at that bin, i.e. some pallet/slot capacity minus quantidade --
+  LocalArmazenagem.json has no capacity field at all; the only capacity-shaped value in this corpus
+  is Produto.qtdCaixasPorPallet, used by AllocationCapability.alocarRecebimento's greedy allocator,
+  never joined into this query). The single shared lookupField cannot correctly serve both roles
+  without either a real computed "disponivel" (capacity-aware) field or a role-conditional
+  maxQuantity source -- a small design decision, not just a typo fix. Filing as a corpus-model defect
+  under WMS-9 rather than a new REG (same class as the menu-grouping finding above: reframes a verdict
+  rather than describing a fresh platform gap) -- flag for the item owner if a dedicated fix item is
+  wanted. Re-verdict: A7 -> BLOCKED (model defect, root-caused), superseding the prior BLOCKED (data).
+  Real stock (Lote 47caecb3.../two LocalArmazenagemLote rows) is left seeded in wmsoffice-browser for
+  any follow-up retest once the lookupField is fixed.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
