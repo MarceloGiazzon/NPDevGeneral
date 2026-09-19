@@ -74,7 +74,22 @@ detail: |
   auto-stage at generation time (WMS-12 CLI change) and running one is a one-off dev/ops action, not
   a business-user surface. Regenerated + rebuilt + rebooted on :8084; verified live: seed-data.html
   -> 404, GET /api/admin/seeds still lists all 4 seeds, "seed" no longer appears in
-  GET /api/workspace/menu. Remaining (a) item: mapa-armazem.html -> ocupacao panel (unconfirmed).
+  GET /api/workspace/menu.
+
+  RECLASSIFIED (2026-09-19): mapa-armazem.html's WMS-7 table row above ("(a) convert -- verify the
+  ocupacao panel covers the map") is STALE and contradicted by this item's own later, more careful
+  WMS-9 2.2 analysis. Read in full: the page joins 10 concept collections (Armazem/Area/Rua/
+  LocalArmazenagem/LocalArmazenagemLote/Lote/Produto/Movimento/MovimentoItem/
+  MovimentoItemPosicao) client-side to render a spatial per-rua position grid (color-coded
+  occupancy buckets, hover tooltips with lot/product text, a legend, corredor/situacao/produto
+  filters, an hour-stepper stub for point-in-time replay). This is NOT the client-side
+  filter-a-full-fetch anti-pattern relatorios.html had (a single concept, filtered/sorted in JS,
+  fixable by pointing at a declared query) -- it is a genuinely bespoke cross-aggregate spatial
+  visualization with no declarative panel primitive that produces a grid layout, per-cell color
+  buckets, or hover tooltips. WMS-9 2.2 already named the exact same gap correctly as BLOCKER (b):
+  "the dedicated per-rua allocation editor ... is not a declared panel". Verdict corrected to (b),
+  matching WMS-9; no conversion attempted here. If pursued later it is a platform-feature request
+  (a spatial/grid panel primitive), not a WMS-7/9 cleanup task.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
