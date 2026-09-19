@@ -136,6 +136,62 @@ detail: |
   multi-hour sweep, not rushed alongside WMS-7/8's closure, per this item's own "highest-yield gap
   detector" framing (each line deserves a real look, not a rubber stamp).
 
+  2026-09-19 (A7 attempted full browser save, corrected verdict): tried to complete the A7 claim
+  ("Salvar Movto saves and exits edit mode in one action") by actually building and saving a
+  balanced MVL draft on MovimentoWorkbench.html?id=new against the live wmsoffice-browser (:8084) --
+  entidade=Warehouse A, produto=Produto Demo 1 (codigo 323), one item (qty 10), one Origem posicao
+  and one Destino posicao (qty 10 each, different local_armazenagems). "Recalcular Saldos" correctly
+  reported balanced (empty .msg, no error -- OrigemDestinoBalance only checks Origem==Destino sums).
+  Clicking Save then failed: "Failed: Aggregate Movimento invariant(s) violated: PosicaoDentroDoMaximo
+  -- A quantidade de uma posicao nao pode exceder a quantidade disponivel no local" -- the workbench
+  never reached a saved/exited-edit-mode state, so A7 is NOT confirmed as declared. Root cause is an
+  ENVIRONMENT-DATA gap, not (yet) a proven platform bug: OcupacaoDisponivelQuery (the lookupField
+  MovimentoItemPosicao.maxQuantity resolves through) returns 0 rows for every localArmazenagemId in
+  this wmsoffice-browser instance -- there is no seeded occupancy/stock anywhere, so ANY posicao
+  (Origem or Destino, any quantity) fails PosicaoDentroDoMaximo unconditionally. This means the prior
+  S8 "flagship... returns 'Balanced.'" evidence was Recalcular-Saldos-only (a real result, but it
+  never implies a save would succeed -- checkBalances and the aggregate's own onValidate/invariants
+  are separate server calls, confirmed from the template source: checkBalancesAction hits
+  POST .../check-balances/{names}; Save hits the aggregate commit path with its own onValidate
+  procedure + invariants). A7 cannot be genuinely browser-verified in this environment until real
+  stock exists at some location -- which itself depends on a working Recebimento (2.3) commit,
+  scoped as this sweep's next screen. Re-verdict: A7 -> BLOCKED (data), not PASS-by-declaration;
+  the underlying save/lifecycle mechanism (dirty-chip clears, EDITABLE recomputed from the response's
+  situacao) was never exercised to completion. One incidental positive: PosicaoDentroDoMaximo's
+  refusal DID fire correctly and in business language, though the message does not name the specific
+  product/location (relevant to H3's stricter wording, out of this item's declared scope).
+
+  2026-09-19 (cross-cutting reachability finding, affects EVERY "reachable from Demandas -> X"
+  checklist line, not just Recebimento): the checklist's premise that these screens are reached
+  through a grouped "Demanda" menu (per definition/menu.json's BUSINESS-kind hierarchy with
+  ordinals/groups, mirroring the original GeneXus screen's own menu) does NOT hold at runtime.
+  Verified by querying the live wmsoffice-browser DB directly: GET /api/concepts/workspace_menus
+  returns 0 rows (totalElements:0) -- the workspace::Menu table workspace-menu-seed.json feeds is
+  completely empty. Traced to the generator source, not a stale-build artifact: WmsOffice's own
+  generated workspace-menu-seed.json IS present but is a literal `[]` -- because
+  BusinessUiEmitter.menuSeedJson() (NPDevGenerator/generator/.../emitters/BusinessUiEmitter.java:245)
+  unconditionally `return "[]"`, by deliberate design (its own doc comment explains why: an earlier
+  version auto-derived one Menu row per concept/panel, which DUPLICATED the native nav's own
+  "every concept + every panel, unconditionally" listing -- confirmed live at the time, per that
+  comment). workspace::Menu's real and ONLY job, by that same design, is an *overlay* for
+  hand-authored PAGE-kind companion pages from definition/pages.json (written by
+  Build-NpdevApp.ps1 into a SEPARATE seed file) -- never for BUSINESS-kind grouping. Net effect:
+  definition/menu.json's "Demanda"/"Cadastros" grouping (ordinals, named groups, BUSINESS targets)
+  is authoring-only decoration with NO generator consumer that turns it into runtime nav structure --
+  it was written to mirror the GeneXus original's menu shape but nothing in the current platform
+  wires it up. The REAL, current reachability path for every BUSINESS-kind screen (Recebimento,
+  Expedicao, CrossDocking, Movimento, etc.) is the flat, ungrouped native nav business-ui-app.mustache
+  always renders (confirmed live: GET /npdev-business-ui/ sidenav dump lists "Recebimento" under a
+  flat "DADOS" heading and "Conferencia de Recebimento" under "PAINEIS" -- present and clickable,
+  just never grouped under "Demanda"). Corrected verdict: R1 (and every sibling "Reachable from
+  Demandas -> X" line: A-screen's own menu framing, E1, and 2.7's menu-adjacent items) -> PASS for
+  bare reachability (the target IS in the nav), but the checklist's literal "-> Demandas ->" menu
+  PATH does not exist as a runtime feature for BUSINESS targets -- this is either (a) a platform gap
+  worth its own item if grouped BUSINESS-kind menus are wanted, or (b) the checklist's own wording
+  should be read as "reachable from the main nav" rather than literally through a Demanda submenu.
+  Not filing a new REG/platform item for this yet -- recording here since it reframes the "PASS by
+  declaration" verdict basis for this whole reachability class rather than describing a new defect.
+
   AGGREGATE S9 VERDICT: 2.6 Inventario is the strongest (wizard already declared, mostly PASS by
   declaration). 2.2/2.3/2.4/2.5 share the same recurring blocker -- the wizard-grade editing
   sub-panels (P2 selection-add, P8 row clone, P9 default-on-add, P10 per-field-group stage locks,
