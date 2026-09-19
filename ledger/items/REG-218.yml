@@ -5,7 +5,10 @@ title: >-
   lowercased -- InventoryFileCapability.importarContagem (a camelCase operation, like every other
   operation in this codebase) is permanently unbound via the isolated plugin path, while its
   sibling gerarTemplate operation on the SAME capability class reaches invocation successfully in
-  the same app, so the failure mode is real but not yet fully explained by case alone
+  the same app, so the failure mode is real but not yet fully explained by case alone. NOT
+  InventoryFileCapability-specific: re-verification 2026-09-19 found the identical failure on
+  FiscalImportCapability.importarRomaneio too (CrossDocking C4's "Importar (Parse Romaneio)"), so
+  this blocks at least two unrelated capability classes' camelCase operations.
 type: BUG
 severity: HIGH
 status: OPEN
@@ -87,12 +90,51 @@ detail: |
   http://127.0.0.1:8084/npdev-workbench/InventarioArquivoAggregateWorkbench.html?id=new, clicking
   "Importar Contagem (Parse)" should populate the linhas grid with 2 rows, the second flagged
   divergente=true, once JAVA_SOURCE_OPERATION_NOT_BOUND stops firing.
+
+  RE-VERIFIED 2026-09-19 ON A FRESH BUILD (after REG-222 closed, unblocking regeneration): rebuilt
+  wmsoffice-browser-v2 clean (REG-219/220/221/222 all applied, brand-new jar, brand-new empty DB) and
+  rebooted it. Bypassed the DB-seeding requirement by replicating the EXACT REST call the real
+  workbench button makes (confirmed by reading InventarioArquivoAggregateWorkbench.html's own
+  `invokeActionAfterGuard`, line ~1055: `POST /api/runtime/aggregate/{aggregate}/invoke/{procedure}`
+  with body `Object.assign({}, store.toDraft(), extraInput)`) -- this is a faithful repro, not a
+  REST-level shortcut that bypasses UI logic, because REG-218's failure is a pure server-side
+  method-binding error that fires identically regardless of payload content or seeded data, unlike
+  the UI state-reactivity bugs [[scrapforai_browser_testing]] warns REST-level tests can miss.
+  `POST /api/runtime/aggregate/InventarioArquivoAggregate/invoke/ImportarContagemProcedure` with
+  `{"texto": "..."}` returned the BYTE-IDENTICAL error message: "Procedure ImportarContagemProcedure
+  failed: JAVA_SOURCE_OPERATION_NOT_BOUND Java source capability operation is not bound:
+  importarContagem". Confirms this bug is unrelated to and unaffected by REG-219/220/221/222 --
+  survives a fully fresh build, generator run, and jar.
+
+  BLAST RADIUS WIDER THAN ORIGINALLY SCOPED: the same probe against RomaneioAggregate's "Importar
+  (Parse Romaneio)" action (`POST .../invoke/ParseRomaneioProcedure` with `{"numero":"R-1",
+  "texto":"COD1;10"}`) returned the SAME error shape for a DIFFERENT capability class:
+  "Procedure ParseRomaneioProcedure failed: JAVA_SOURCE_OPERATION_NOT_BOUND Java source capability
+  operation is not bound: importarRomaneio" -- FiscalImportCapability.importarRomaneio, not
+  InventoryFileCapability.importarContagem. So this is not an InventoryFileCapability-specific
+  issue; it also blocks WMS-9's CrossDocking checklist item C4 ("Importar (Parse Romaneio)"), whose
+  action button itself is now confirmed present in the fresh build (`GET
+  /api/runtime/metadata/ui/panels/RomaneioAggregateWorkbench`'s `workbench.actions` array lists it) --
+  C4's prior "BLOCKER: build-staleness, action absent from the rendered page" verdict is resolved by
+  this regeneration, but the action now fails for a DIFFERENT reason: this same bug. Record C4 as
+  FAIL (blocked by REG-218), not BLOCKER, in any future WMS-9 sweep update.
 guard:
   kind: live
   ref: >-
     ScrapForAI jobs job_wBwGg-lLKhL1 (full I5-I8 attempt incl. Save) and a same-day retry job
-    against http://127.0.0.1:8084/npdev-workbench/InventarioArquivoAggregateWorkbench.html?id=new
+    against http://127.0.0.1:8084/npdev-workbench/InventarioArquivoAggregateWorkbench.html?id=new.
+    Re-verified 2026-09-19 against a fresh wmsoffice-browser-v2 build (empty DB, no ScrapForAI needed
+    this pass -- direct REST calls replicating the workbench's own `invokeActionAfterGuard` fetch,
+    proven equivalent by reading its source): `POST
+    /api/runtime/aggregate/InventarioArquivoAggregate/invoke/ImportarContagemProcedure`
+    `{"texto":"..."}`, and additionally `POST
+    /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure`
+    `{"numero":"R-1","texto":"COD1;10"}` (new: confirms the same bug also blocks CrossDocking C4).
   asserts: >-
-    currently always fails with JAVA_SOURCE_OPERATION_NOT_BOUND on the "Importar Contagem (Parse)"
-    action; fix should populate a 2-row linhas grid (one divergente=true) instead
+    Original: always fails with JAVA_SOURCE_OPERATION_NOT_BOUND on the "Importar Contagem (Parse)"
+    action; fix should populate a 2-row linhas grid (one divergente=true) instead. Re-verify (fresh
+    build): byte-identical error message reproduced for ImportarContagemProcedure/importarContagem;
+    the SAME error shape also reproduced for ParseRomaneioProcedure/importarRomaneio (previously
+    untested) -- confirms this is a general isolated-plugin-path defect, not specific to one
+    capability class or operation.
   provenRed: true
