@@ -61,6 +61,20 @@ detail: |
   Session 9 checklist lines they block (N1-N8, I-series, Z-series respectively); the platform gaps
   they expose are the S9 sweep value, recorded here so S9 knows which hand-rolled screens are
   intentional scope and which are pure debt.
+
+  (a)-CONVERSIONS CLOSED (2026-09-19): relatorios.html now calls GET /api/queries/{name} for all
+  four reports (see WMS-9 2.9, browser-verified). analytics.html was checked and found ALREADY
+  converted -- it is a thin stub (`<meta name="npdev-guide-page" content="AnalyticsDashboard">`)
+  pointing at the declared AnalyticsDashboard guidePage (model.json line ~3065); no further work
+  needed, the WMS-7 table row above is stale. seed-data.html RETIRED per this table's own verdict:
+  removed from menu.json (Desenvolvimento > Seed Data) and pages.json, file + its
+  seed-data.panel.json provenance manifest deleted from web/; the underlying capability
+  (POST /api/admin/seeds/{id}/run, GET /api/admin/seeds) is untouched and still the correct way to
+  run a named seed -- only the redundant hand-rolled browse+click UI is gone, since seeds now
+  auto-stage at generation time (WMS-12 CLI change) and running one is a one-off dev/ops action, not
+  a business-user surface. Regenerated + rebuilt + rebooted on :8084; verified live: seed-data.html
+  -> 404, GET /api/admin/seeds still lists all 4 seeds, "seed" no longer appears in
+  GET /api/workspace/menu. Remaining (a) item: mapa-armazem.html -> ocupacao panel (unconfirmed).
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
