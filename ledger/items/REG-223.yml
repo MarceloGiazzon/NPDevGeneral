@@ -1,0 +1,98 @@
+id: REG-223
+title: >-
+  ManifestDrivenJavaSourcePluginHandler.invoke hardcoded pluginClass.getMethod(methodName,
+  Map.class) + method.invoke(target, call.input()) -- a single-Map-arg method lookup that only ever
+  passes the FIRST call argument. Any plugin capability method with a same-named multi-arg overload
+  (e.g. FiscalImportCapability.importarRomaneio's real 1-arg/3-arg pair) silently resolved the WRONG
+  overload and silently dropped every argument past the first, with no error raised at all.
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-19
+closed: 2026-09-19
+source: >-
+  Found live while re-verifying REG-218's fix (this session) against wmsoffice-browser-v2. Once
+  REG-218's operation-name-casing fix let ParseRomaneioProcedure's capabilityCall actually reach
+  method resolution, the response was missing `dataEmissao` (present only in
+  FiscalImportCapability's 3-arg importarRomaneio overload, not its 1-arg sibling), and the
+  procedure's own next step then failed with `REF_UNRESOLVABLE ... $parseResult.dataEmissao: no
+  such path`. Reading ManifestDrivenJavaSourcePluginHandler.invoke directly (not guessed) showed why:
+  `pluginClass.getMethod(methodName, Map.class)` can only ever match a method with EXACTLY one
+  `Map` parameter, and `method.invoke(target, call.input())` only ever passes `call.args().get(0)`
+  -- so a 3-arg capabilityCall (`args={input, numerosJaImportados, produtosConhecidos}`, matching
+  the model's own declaration at model.json's `call-fiscal-import` step) silently resolved
+  FiscalImportCapability's UNRELATED 1-arg overload instead, and silently dropped the other two
+  arguments -- no exception, no error code, just a plausible-looking but semantically wrong result.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/pluginipc/ManifestDrivenJavaSourcePluginHandler.java
+  (invoke, was line 82-83: `pluginClass.getMethod(methodName, Map.class)` +
+  `method.invoke(target, call.input())`). Compare
+  NPDevRuntimeHost/runtimehost-core/.../service/ArtifactLocalJavaSourceCapabilityHandler.java
+  (resolveMethod, lines 84-93), which already resolves by (methodName, argCount) across
+  `target.getClass().getMethods()` and invokes with the FULL `args.toArray()` -- the isolated
+  plugin-ipc handler was supposed to mirror this dispatch (its own class javadoc says so) but never
+  actually did for the multi-arg case.
+detail: |
+  FIXED same session as found, alongside REG-218 (both live in the same method, both blocked the
+  same live repro from completing, so fixing them together was the pragmatic order -- REG-218 had
+  to be fixed first before this one could even surface, since the operation-name lookup failed
+  before reflection was ever attempted).
+
+  FIX: replaced the hardcoded `getMethod(methodName, Map.class)` + `call.input()` pair with a new
+  private `resolveMethod(Class<?>, String methodName, int argCount)` that scans
+  `pluginClass.getMethods()` for a method whose name matches AND whose parameter count matches
+  `call.args().size()` (skipping methods declared on `Object`) -- the exact same algorithm
+  `ArtifactLocalJavaSourceCapabilityHandler.resolveMethod` already uses for the in-process path.
+  Invocation now passes `args.toArray()` (all arguments) rather than a single value, with a
+  zero-arg-method branch added for parity with the sibling class's own `getParameterCount() == 0`
+  check (no current java-source capability method is zero-arg, but the sibling handles it and there
+  is no reason this one shouldn't too).
+
+  BLAST RADIUS: every `plugin:java-source` mount routed through the ISOLATED/plugin-ipc dispatch
+  path (ManifestDrivenJavaSourcePluginHandler, used by pooled child-process workers) whose model
+  declares a capabilityCall with 0 args or 2+ args was affected -- either a silent wrong-overload
+  call (if a same-named overload with a different arg count existed, as with importarRomaneio) or a
+  hard NoSuchMethodException-wrapped JAVA_SOURCE_CAPABILITY_DISPATCH_ERROR (if no 1-arg overload of
+  that name existed at all). The in-process ArtifactLocalJavaSourceCapabilityHandler path was never
+  affected -- it already had the correct arg-count-aware resolution.
+
+  WHY THIS WASN'T CAUGHT BY EXISTING COVERAGE: the only existing real-plugin proof exercising this
+  handler, PluginIpcChildProcessPoolRealPluginTest, calls `auditLog.record` with exactly ONE
+  argument -- the exact shape the old hardcoded single-Map-arg lookup already handled correctly, so
+  it could never have caught either this bug or REG-218's case-sensitivity bug (its operation name,
+  "record", is also already all-lowercase). Both bugs needed a camelCase multi-word operation name
+  (REG-218) and a same-named multi-arg overload (REG-223) to surface -- neither property the
+  existing fixture had.
+
+  REGRESSION TEST: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/pluginipc/
+  ManifestDrivenJavaSourcePluginHandlerTest.java (new file, shared with REG-218's own regression
+  test in the same class -- both bugs live in the same method and are proven together), using a new
+  fixture NPDevRuntimeHost/runtimehost-core/src/test/java/com/npdev/pluginfixture/
+  CaseSensitivityFixturePlugin.java with two overloads of `doThing` (one-arg and two-arg, mirroring
+  importarRomaneio's real shape) -- a fully self-contained fixture manifest + a real compiled
+  test-classpath plugin class, isolated from whatever sample app happens to be assembled via a
+  platform-classloader-parented URLClassLoader swapped into the thread context classloader for just
+  the manifest resource lookup.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/runtimehost-core: gradlew test --tests
+    com.finalexec.pluginipc.ManifestDrivenJavaSourcePluginHandlerTest (run with
+    -PnpdevRuntimeHostLibsDir pointed at the synced Build/runtimehost-libs, per
+    feedback_runtimehost_never_build_standalone -- the top-level NPDevRuntimeHost template project
+    cannot compileJava standalone at all, but runtimehost-core is its own buildable Gradle module).
+    Also live-verified end-to-end against a freshly rebuilt+rebooted wmsoffice-browser-v2 (same app
+    REG-218/REG-221/REG-222 were verified against): POST
+    /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure
+    {"numero":"R-1","texto":"COD1;10"} before this fix returned REF_UNRESOLVABLE on
+    $parseResult.dataEmissao (the 1-arg overload's result, missing that field); after this fix
+    (same rebuild cycle as REG-218's, both fixes staged together) returns a full success payload
+    with dataEmissao:"2026-09-19" and the correctly-resolved itens/todosRegistrados fields from the
+    REAL 3-arg overload.
+  asserts: >-
+    BUILD SUCCESSFUL, 3/3 tests green (0 failures, 0 errors), test-results XML confirmed via
+    tests="3" skipped="0" failures="0" errors="0". resolvesTheMatchingOverloadByArgCountAndPassesAllArguments
+    proves the two-arg overload is selected (not the one-arg one sharing its name) and both
+    arguments pass through intact; the other two tests cover REG-218's own case-normalization and
+    confirm a genuinely-unbound operation still correctly fails.
+  provenRed: true

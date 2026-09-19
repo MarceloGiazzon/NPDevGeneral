@@ -11,8 +11,9 @@ title: >-
   this blocks at least two unrelated capability classes' camelCase operations.
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-19
 source: >-
   Found live while resuming NPDEV_MEGA_ROADMAP.md Session 9's WMS-9 sweep (Inventario I5-I8, the
   Importar Contagem paste-CSV wizard) against WmsOffice (:8084), the section the prior pass
@@ -118,6 +119,28 @@ detail: |
   C4's prior "BLOCKER: build-staleness, action absent from the rendered page" verdict is resolved by
   this regeneration, but the action now fails for a DIFFERENT reason: this same bug. Record C4 as
   FAIL (blocked by REG-218), not BLOCKER, in any future WMS-9 sweep update.
+
+  FIXED 2026-09-19, SAME SESSION: root cause was exactly the case-mismatch theory this item opened
+  with, now confirmed rather than just plausible -- ManifestDrivenJavaSourcePluginHandler.invoke's
+  `entry.methodByOperation().get(call.operation())` was a raw case-exact `Map.get()` with no
+  normalization at all, while its sibling `ArtifactLocalJavaSourceCapabilityHandler` already
+  normalizes both sides to lowercase via its own `normalize()`. Fixed by adding the same
+  normalization (`operation.trim().toLowerCase(Locale.ROOT)`) before the manifest lookup. The
+  "gerarTemplate reached invocation, importarContagem didn't" discrepancy this item flagged as
+  unresolved was NOT independently root-caused -- the fix works regardless of that explanation, and
+  live re-verification after the fix (below) confirms it. Fixing this fix exposed a SECOND,
+  independent bug in the same method (wrong-overload resolution for multi-arg calls), filed and
+  fixed separately as [[REG-223]] in the same session.
+
+  LIVE VERIFICATION AFTER FIX: rebuilt the runtimehost-core jar (`sync-runtimehost-libs.ps1
+  -BuildLocalJars`, confirmed via grep on the staged .class file that `normalizeOperation` bytecode
+  was present), rebuilt+rebooted wmsoffice-browser-v2 (no regeneration needed -- a pure library
+  restage). `POST /api/runtime/aggregate/InventarioArquivoAggregate/invoke/ImportarContagemProcedure`
+  with the SAME CSV payload as the original repro now returns a full success: `linhas` populated
+  with the real parsed row (`quantidadeEsperada:20, quantidadeContada:20, divergente:false`),
+  `sucesso:true` -- exactly the shape this item's own guard originally asked for. The
+  ParseRomaneioProcedure probe (the newly-discovered CrossDocking C4 angle) also now succeeds once
+  REG-223 was fixed too (see that item's guard for its own before/after evidence).
 guard:
   kind: live
   ref: >-
@@ -131,10 +154,11 @@ guard:
     /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure`
     `{"numero":"R-1","texto":"COD1;10"}` (new: confirms the same bug also blocks CrossDocking C4).
   asserts: >-
-    Original: always fails with JAVA_SOURCE_OPERATION_NOT_BOUND on the "Importar Contagem (Parse)"
-    action; fix should populate a 2-row linhas grid (one divergente=true) instead. Re-verify (fresh
-    build): byte-identical error message reproduced for ImportarContagemProcedure/importarContagem;
-    the SAME error shape also reproduced for ParseRomaneioProcedure/importarRomaneio (previously
-    untested) -- confirms this is a general isolated-plugin-path defect, not specific to one
-    capability class or operation.
+    Original (RED, provenRed): always fails with JAVA_SOURCE_OPERATION_NOT_BOUND on the "Importar
+    Contagem (Parse)" action. Re-verify on fresh build (still RED, unaffected by REG-219/220/221/222):
+    byte-identical error reproduced for both ImportarContagemProcedure/importarContagem and
+    ParseRomaneioProcedure/importarRomaneio. AFTER THE FIX (GREEN): both calls now succeed --
+    ImportarContagemProcedure returns a real populated `linhas` row (`sucesso:true`); also unit-test
+    guarded, see [[REG-223]]'s guard for the shared regression test
+    (ManifestDrivenJavaSourcePluginHandlerTest, 3/3 green).
   provenRed: true

@@ -8,6 +8,8 @@ import com.npdev.kernel.ports.CapabilityAdapter;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -58,7 +60,11 @@ public final class ManifestDrivenJavaSourcePluginHandler implements CapabilityAd
                     Map.of("capability", call.capability())
             );
         }
-        String methodName = entry.methodByOperation().get(call.operation());
+        // REG-218: methodByOperation's keys are always lowercased (RuntimeApiEmitter writes them
+        // that way generator-side), but call.operation() carries the model's real camelCase
+        // operation name -- a case-exact Map.get() here can never match. Normalize the same way
+        // ArtifactLocalJavaSourceCapabilityHandler.normalize() already does for the in-process path.
+        String methodName = entry.methodByOperation().get(normalizeOperation(call.operation()));
         if (methodName == null) {
             return CapabilityResult.failure(
                     "JAVA_SOURCE_OPERATION_NOT_BOUND",
@@ -74,8 +80,18 @@ public final class ManifestDrivenJavaSourcePluginHandler implements CapabilityAd
             Class<?> pluginClass = Class.forName(
                     entry.mainClass(), true, new PluginRestrictedClassLoader(getClass().getClassLoader()));
             Object target = pluginClass.getDeclaredConstructor().newInstance();
-            Method method = pluginClass.getMethod(methodName, Map.class);
-            Object output = method.invoke(target, call.input());
+            // REG-223: a hardcoded getMethod(methodName, Map.class) + call.input() (the first arg
+            // only) silently resolved the WRONG overload -- and silently dropped every arg past the
+            // first -- for any multi-arg capabilityCall (e.g. fiscalImport.importarRomaneio's 3-arg
+            // overload, args={input, numerosJaImportados, produtosConhecidos}). Resolve by
+            // (name, argCount) and invoke with the FULL argument list, matching
+            // ArtifactLocalJavaSourceCapabilityHandler.resolveMethod's already-correct behavior for
+            // the in-process path.
+            List<Object> args = call.args();
+            Method method = resolveMethod(pluginClass, methodName, args == null ? 0 : args.size());
+            Object output = method.getParameterCount() == 0
+                    ? method.invoke(target)
+                    : method.invoke(target, args.toArray());
             return CapabilityResult.success(output);
         } catch (InvocationTargetException exception) {
             Throwable cause = exception.getCause() == null ? exception : exception.getCause();
@@ -93,5 +109,20 @@ public final class ManifestDrivenJavaSourcePluginHandler implements CapabilityAd
                     Map.of("exceptionType", exception.getClass().getName())
             );
         }
+    }
+
+    private static String normalizeOperation(String operation) {
+        return operation == null ? "" : operation.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static Method resolveMethod(Class<?> pluginClass, String methodName, int argCount) throws NoSuchMethodException {
+        for (Method method : pluginClass.getMethods()) {
+            if (method.getName().equals(methodName)
+                    && method.getParameterCount() == argCount
+                    && !method.getDeclaringClass().equals(Object.class)) {
+                return method;
+            }
+        }
+        throw new NoSuchMethodException(pluginClass.getName() + "." + methodName + " with " + argCount + " argument(s)");
     }
 }
