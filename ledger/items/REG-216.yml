@@ -6,8 +6,10 @@ title: >-
   already proven live one click away and unused by this button
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-19
+verification: VERIFIED_LIVE
 source: >-
   Found live alongside REG-215 while browser-verifying NPDEV_MEGA_ROADMAP.md Session 8/11 against
   WmsOffice (:8084). After REG-215 fixed the id-merge bug, MovimentoSelection's "New" button still
@@ -57,8 +59,58 @@ detail: |
   Done when: clicking "New" on an aggregate root's Selection panel (e.g. MovimentoSelection) lands
   the user on the paired Workbench's empty-shell editor, with no server round-trip attempting a
   blank create.
+
+  FIX APPLIED 2026-09-19: applied option (a) from the candidates above, close to the letter --
+  `AutoPanelExpander.aggregateWorkbench()` (NPDevContract/dsl/.../compiler/AutoPanelExpander.java,
+  ~line 240) now stamps the aggregate-root Selection panel's own metadata with
+  `workbenchPanel: <base>Workbench` (the reverse of the Workbench panel's existing
+  `metadata.selectionPanel` back-reference at line 227). `BusinessUiEmitter.panelNodes()`
+  (NPDevGenerator/.../emitters/BusinessUiEmitter.java) reads that key and emits a
+  `newWorkbenchUrl: /npdev-workbench/<Workbench>.html?id=new` field on the panel's boot-manifest
+  node whenever it's present -- the same `?id=new` convention the Workbench page's own "New" button
+  already uses, not a new one. `business-ui-app.mustache`'s per-action button loop
+  (`renderDeclaredPanel`) special-cases `action.name === "new"` when `panelMeta.newWorkbenchUrl` is
+  set: instead of the generic `executeDeclaredPanelAction` (a conceptMutation POST), it renders the
+  same-styled button wired to a plain `window.location.href` navigation -- zero server round-trip.
+  The plain (non-aggregate) Selection panel helper used for ordinary flat concepts
+  (`AutoPanelExpander.selectionPanel()`, ~line 889) is untouched, so the new behavior cannot leak
+  onto a concept that has no paired Workbench.
+
+  Regression tests added on both sides of the plumbing: `AggregateWorkbenchExpansionTest` (DSL)
+  asserts `selection.metadata().get("workbenchPanel")` equals `"ExpedicaoWorkbench"`;
+  `BusinessUiEmitterWorkbenchTest` (generator) asserts the emitted
+  `generated-ui-manifest.json` contains
+  `"newWorkbenchUrl":"/npdev-workbench/ExpedicaoWorkbench.html?id=new"`. Both green
+  (`AggregateWorkbenchExpansionTest`: 11/11, 0 failures/errors;
+  `BusinessUiEmitterWorkbenchTest`: 3/3, 0 failures/errors -- verified via each suite's own
+  test-results XML, not just gradle exit code). An independent code-review pass (code-review skill,
+  medium effort, no findings) confirmed the client-side special-case sits after the existing
+  `scope==="row"`/`visibleWhen` guards, returns early so it can't fall through to the generic
+  action-button path, and computes its `disabled` state the same way the generic path does.
+
+  LIVE VERIFICATION (real browser, not REST): regenerated+rebuilt a fresh `wmsoffice` FinalApp
+  (`D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice`, port 8100, fresh empty H2) via
+  `Rebuild-And-Restage.ps1 -AppFolder D:\WorkSpace\NPDev\Build\wmsoffice-browser -SkipLibs`
+  (generator-runtime cache refreshed; runtimehost-libs untouched since this fix has no
+  kernel/adapter changes). The scratch build root had no `wmsoffice-keys/` (regeneration doesn't
+  spare it, same known gap as REG-220's follow-up note) -- worked around identically to that prior
+  session by generating a fresh throwaway dev RSA keypair via `openssl genpkey`/`openssl rsa
+  -pubout`. Bootstrapped a fresh ADMIN user via the app's own self-disabling
+  `POST /api/auth/bootstrap-admin` (only works while the identity tables are empty), then a real
+  `POST /api/auth/login` for a JWT. Drove the app through ScrapForAI (headless Chromium):
+  navigated to `/npdev-business-ui/`, injected the JWT into `localStorage['npdev.shell.token']`
+  (the same key `login.html` itself writes), re-navigated so the shell picked it up, hash-routed to
+  `#concept-__panel-MovimentoSelection__`, and clicked the panel's real "New" button. RESULT:
+  the browser navigated to `http://127.0.0.1:8100/npdev-workbench/MovimentoWorkbench.html?id=new`
+  -- the Workbench's genuine empty-shell editor (blank Header fields, `itens` grid at "0 rows",
+  Save/Sugerir Destino/Sugerir Origem/Recalcular Saldos buttons all present) -- with zero
+  `pageErrors` and zero console errors of any kind. Screenshots:
+  `D:\WorkSpace\NPDev\Build\scrapforai-artifacts\job_RI7J05ZlzjrI\screenshots\before_click_new.png`
+  (MovimentoSelection panel, "New" button visible) and `...\after_click_new.png` (the landed
+  Workbench empty-shell page). This is the exact scenario the guard below was proven red against
+  pre-fix (job_7otCE9C02yKL, a 500 on Movimento.entidadeId) -- now green, no server call at all.
 guard:
   kind: live
-  ref: ScrapForAI click "New" on http://localhost:8084 MovimentoSelection (job_7otCE9C02yKL)
-  asserts: currently still 500s on Movimento.entidadeId; fix should route to /npdev-workbench/MovimentoWorkbench.html?id=new instead
+  ref: ScrapForAI click "New" on http://127.0.0.1:8100 MovimentoSelection (job_RI7J05ZlzjrI)
+  asserts: clicking "New" navigates client-side to /npdev-workbench/MovimentoWorkbench.html?id=new with zero server round-trip and zero page/console errors
   provenRed: true
