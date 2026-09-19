@@ -1,0 +1,66 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "tracing",
+  "version": "1.0.2",
+  "namespace": "com.npdev.tracing",
+  "description": "Built-in NPDev tracing pack: declarative trace retention, a human-readable trace viewer panel, and safe redaction defaults. Wraps the existing kernel tracing adapters (tracing-inproc, tracestore-postgres, tracing-redaction-default) so an app author can toggle tracing on and an app user can actually read the log.",
+  "category": "other",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "TraceEntry",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "executionId", "type": "string", "required": true, "maxLength": 64 },
+        { "name": "correlationId", "type": "string", "required": true, "maxLength": 64 },
+        { "name": "flowName", "type": "string", "required": true, "maxLength": 200 },
+        { "name": "actorId", "type": "string", "required": false, "maxLength": 80 },
+        { "name": "actorName", "type": "string", "required": false, "maxLength": 200 },
+        { "name": "outcome", "type": "enum", "required": true, "enumValues": ["SUCCESS", "FAILURE", "CANCELLED", "PENDING"] },
+        { "name": "startedAt", "type": "datetime", "required": true },
+        { "name": "endedAt", "type": "datetime", "required": false },
+        { "name": "summary", "type": "string", "required": false, "maxLength": 500 }
+      ],
+      "indexes": [
+        { "name": "ux_trace_entry_execution", "fields": ["executionId"], "unique": true },
+        { "name": "idx_trace_entry_correlation", "fields": ["correlationId"] },
+        { "name": "idx_trace_entry_flow", "fields": ["flowName"] },
+        { "name": "idx_trace_entry_outcome", "fields": ["outcome"] },
+        { "name": "idx_trace_entry_started", "fields": ["startedAt"] },
+        { "name": "idx_trace_entry_actor", "fields": ["actorId"] },
+        { "name": "idx_trace_entry_tenant_started", "fields": ["tenantId", "startedAt"] }
+      ]
+    }
+  ],
+  "autoPanels": [
+    {
+      "name": "Trace Viewer",
+      "concept": "TraceEntry",
+      "route": "/trace-entries",
+      "surfaces": ["selection", "detail"]
+    }
+  ],
+  "properties": [
+    {
+      "name": "tracing.enabled",
+      "type": "boolean",
+      "default": true,
+      "settableAt": ["tenant"],
+      "label": {
+        "default": "Execution tracing",
+        "en": "Execution tracing"
+      }
+    },
+    {
+      "name": "tracing.retentionDays",
+      "type": "int",
+      "default": 30,
+      "settableAt": ["tenant"],
+      "label": {
+        "default": "Trace retention (days)",
+        "en": "Trace retention (days)"
+      }
+    }
+  ]
+}

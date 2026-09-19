@@ -1,0 +1,50 @@
+{
+  "$schema": "../../schemas/pack.schema.json",
+  "dslVersion": "1.0.0",
+  "pack": "workspace",
+  "version": "1.1.0",
+  "namespace": "com.npdev.workspace",
+  "description": "Built-in NPDev workspace tables: navigation Menus (internal NPDev UI, business UIs, and hand-authored companion pages) and the scoped-property cascade's storage (PropertyValue -- one row per (scopeType, scopeId, propKey), row PRESENCE is the is-set signal against the declared properties[]/propertyScopes[] cascade; see RC-A3's PropertyResolver). Generic by design so they can evolve with system maturity. userId / parentMenuId / requiredRole are soft references (plain strings) to the identity pack and to other menus; they harden into bonds when the built-in packs compose into an app. Menu.kind: INTERNAL targets a fixed platform surface (preferences/store/boxview/promotion), BUSINESS targets a concept or declared Panel by name, PAGE targets a literal relative URL to a hand-authored static page, GROUP is a non-navigable label node whose children (via parentMenuId) form a submenu -- its target is unused and seeds as an empty string. seedKey/seedOrigin/seedFingerprint/overrideOf (1.1.0, W1.2) are row-provenance columns WorkspaceMenuSeeder's reconcile mode uses to tell a platform-managed (origin=generated) row from one an app author created directly via generic CRUD (origin=user, seedKey null); overrideOf links a preserved-edit clone back to the generated row it diverged from -- see WORKSPACE-MENU-AND-GUIDEPAGES.md's \"Seeder modes\".",
+  "category": "web-ui",
+  "author": "NPDev",
+  "concepts": [
+    {
+      "name": "Menu",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "label", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "target", "type": "string", "required": true, "maxLength": 400 },
+        { "name": "kind", "type": "enum", "required": true, "enumValues": ["INTERNAL", "BUSINESS", "PAGE", "GROUP"] },
+        { "name": "parentMenuId", "type": "string", "required": false, "maxLength": 64 },
+        { "name": "requiredRole", "type": "string", "required": false, "maxLength": 80 },
+        { "name": "ordinal", "type": "int", "required": true },
+        { "name": "visible", "type": "boolean", "required": true },
+        { "name": "seedKey", "type": "string", "required": false, "maxLength": 300 },
+        { "name": "seedOrigin", "type": "enum", "required": false, "enumValues": ["generated", "user"] },
+        { "name": "seedFingerprint", "type": "string", "required": false, "maxLength": 64 },
+        { "name": "overrideOf", "type": "string", "required": false, "maxLength": 300 }
+      ]
+    },
+    {
+      "name": "PropertyValue",
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "scopeType", "type": "string", "required": true, "maxLength": 40 },
+        { "name": "scopeId", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "propKey", "type": "string", "required": true, "maxLength": 120 },
+        { "name": "propValue", "type": "string", "required": false, "maxLength": 2000 }
+      ],
+      "indexes": [
+        { "name": "ux_property_value_scope_key", "fields": ["scopeType", "scopeId", "propKey"], "unique": true }
+      ]
+    }
+  ],
+  "migrations": {
+    "1.0.0 -> 1.1.0": [
+      { "op": "addField", "concept": "Menu", "field": "seedKey" },
+      { "op": "addField", "concept": "Menu", "field": "seedOrigin" },
+      { "op": "addField", "concept": "Menu", "field": "seedFingerprint" },
+      { "op": "addField", "concept": "Menu", "field": "overrideOf" }
+    ]
+  }
+}

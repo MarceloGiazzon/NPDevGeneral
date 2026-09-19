@@ -1,0 +1,64 @@
+id: REG-215
+title: >-
+  PanelRuntime.executeConceptMutation's auto-generated id for a panel-scoped "new" (create) action
+  never joined the `data` map it validates and saves, so any aggregate root's auto-synthesized
+  Selection panel's "New" button failed every click with "Required concept field is missing:
+  <Concept>.id"
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-19
+closed: 2026-09-19
+verification: VERIFIED_LIVE
+source: >-
+  Found live while browser-verifying NPDEV_MEGA_ROADMAP.md Session 8/11 (WMS-8/WMS-11) against
+  WmsOffice (wmsoffice-browser, :8084): clicking "New" on the Movimento aggregate's auto-generated
+  Selection panel (AutoPanelExpander.newRecordAction, binding conceptMutation / operation create)
+  produced an "Internal Server Error" banner with zero form fields ever rendered. App log showed
+  com.npdev.kernel.concepts.ConceptGatewaySemanticException: Required concept field is missing:
+  Movimento.id on every attempt.
+surface: >-
+  NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PanelRuntime.java
+  (executeConceptMutation), NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeNewRecordActionTest.java (new)
+detail: |
+  ROOT CAUSE: executeConceptMutation generates a fresh UUID for `id` when the caller's input has
+  none (line ~666-669, needed because the client sends a genuinely empty `{}` body for this
+  PANEL-scoped action -- resolveRowScopedInput, which merges a fresh row read including its own id,
+  only runs for scope="row" actions, and this one is panel-scoped). That generated id was passed
+  to ConceptWriteRequest as a separate constructor argument but never inserted into the `data` map.
+  ConfiguredConceptGatewaySemanticPolicy.normalizeAndValidate only ever inspects `request.data()`
+  for required-field checks (DefaultConceptGateway.saveWithinTransaction builds the
+  ConceptGatewayRequestContext from request.data() verbatim, with no id/data merge at any layer) --
+  so a concept's own `id` field (required:true by convention on every concept) failed validation
+  every time the caller didn't already put an id inside `data` itself. This is the exact class of
+  gap G2/G4 (docs/MOVE2_PANEL_ACTIONS_PLAN.md, see PanelRuntimeRowScopedActionTest) fixed for the
+  ROW-scoped case; the PANEL-scoped "new" action was a distinct, unreached instance of the same
+  defect until an aggregate root's Selection "New" button was clicked in a real browser for the
+  first time.
+
+  FIX: after resolving `id` (generated or caller-supplied), unconditionally `data.put("id", id)`
+  on a mutable copy of `data` before calling save -- covers both the empty-body branch and a
+  data-carrying caller who should also get the freshly-generated id reflected in what gets saved.
+
+  VERIFIED LIVE: restaged, regenerated wmsoffice-browser, rebuilt, rebooted on :8084. Re-clicking
+  "New" on MovimentoSelection: the error changed from "Required concept field is missing:
+  Movimento.id" to "Required concept field is missing: Movimento.entidadeId" -- proving the id-merge
+  gap is closed (id now validates and would persist); the NEW error is a different, expected
+  business-rule rejection (Movimento has other required fields a truly blank create can never
+  satisfy) -- see REG-216 for that follow-on UX gap, deliberately not conflated with this fix.
+
+  Regression test added: PanelRuntimeNewRecordActionTest (a real, non-noop
+  ConfiguredConceptGatewaySemanticPolicy, same discipline as PanelRuntimeRowScopedActionTest's G4
+  case) asserts a panel-scoped conceptMutation "new" action with an EMPTY body persists a record
+  whose stored id matches the id returned in the response. Not yet run through the full
+  runtimehost gate in this session (NPDevRuntimeHost cannot build standalone -- template only
+  compiles once assembled into a real app; live re-reproduction above is the equivalent proof) --
+  run-runtimehost-gate.ps1 will compile and execute it at the next phase boundary.
+guard:
+  kind: live
+  ref: >-
+    ScrapForAI click "New" on http://localhost:8084 MovimentoSelection, before/after app.log
+    comparison (job_ygFSTuSmgO-A pre-fix 500/Movimento.id, job_7otCE9C02yKL post-fix
+    500/Movimento.entidadeId)
+  asserts: the id-required-field rejection is gone; a different, expected field-requirement error remains
+  provenRed: true
