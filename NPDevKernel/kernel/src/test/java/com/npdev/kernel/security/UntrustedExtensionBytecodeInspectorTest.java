@@ -278,6 +278,62 @@ class UntrustedExtensionBytecodeInspectorTest {
     }
 
     @Test
+    void acceptsInMemoryBufferPassedAsAbstractStreamParameter() throws Exception {
+        // REG-221: the original REG-219 exemption matched only the concrete ByteArrayInputStream
+        // class name, but javax.xml.parsers.DocumentBuilder#parse(InputStream) -- the exact API
+        // REG-219's own comment named as the motivating case -- has no byte[] overload, so javac's
+        // invoke descriptor encodes the CALLEE's declared parameter type java/io/InputStream (the
+        // abstract supertype), not the concrete ByteArrayInputStream actually constructed. That
+        // descriptor string does not contain "ByteArrayInputStream", so it slipped past the
+        // narrower exemption and refused real plugin code doing nothing but in-memory XML parsing.
+        Path compiled = compile(
+                "com/npdev/generated/plugin/clean/XmlBufferParser.java",
+                """
+                package com.npdev.generated.plugin.clean;
+
+                import java.io.ByteArrayInputStream;
+                import javax.xml.parsers.DocumentBuilderFactory;
+                import org.w3c.dom.Document;
+
+                public final class XmlBufferParser {
+                    public Document parse(byte[] xml) throws Exception {
+                        ByteArrayInputStream in = new ByteArrayInputStream(xml);
+                        return DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(in);
+                    }
+                }
+                """
+        );
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        assertTrue(result.passed(), "ByteArrayInputStream passed as InputStream-typed parameter must pass: " + result.violations());
+    }
+
+    @Test
+    void refusesFileInputStreamPassedAsAbstractStreamParameter() throws Exception {
+        // The InputStream/OutputStream supertype exemption (REG-221) must not open a loophole for
+        // a real file descriptor smuggled through an InputStream-typed local/parameter: the
+        // FileInputStream constructor call itself is still an exact-class match and still refused,
+        // regardless of what abstract type the reference is later held or passed as.
+        Path compiled = compile(
+                "com/npdev/generated/plugin/evil/FileViaAbstractParam.java",
+                """
+                package com.npdev.generated.plugin.evil;
+
+                import java.io.FileInputStream;
+                import java.io.InputStream;
+
+                public final class FileViaAbstractParam {
+                    public int read() throws Exception {
+                        InputStream in = new FileInputStream("/etc/passwd");
+                        return in.read();
+                    }
+                }
+                """
+        );
+        UntrustedExtensionBytecodeInspector.BytecodeInspectionResult result = inspector.inspect(compiled);
+        assertFalse(result.passed(), "FileInputStream must still be refused even when upcast to InputStream: " + result.violations());
+    }
+
+    @Test
     void refusesReflectiveClassLoading() throws Exception {
         Path compiled = compile(
                 "com/npdev/generated/plugin/evil/ReflectivePlugin.java",

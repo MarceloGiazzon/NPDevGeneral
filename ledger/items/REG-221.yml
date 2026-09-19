@@ -1,0 +1,89 @@
+id: REG-221
+title: >-
+  REG-219's ByteArrayInputStream/ByteArrayOutputStream exemption matched only the two concrete class
+  names, not the abstract java/io/InputStream and java/io/OutputStream supertypes -- so plugin code
+  passing an in-memory buffer to any JDK API typed to the abstract stream class (e.g.
+  DocumentBuilder.parse(InputStream), the exact motivating API REG-219's own comment named) still
+  trips the boot-time bytecode gate, because javac's invoke-method-descriptor constant encodes the
+  CALLEE's declared parameter type, not the concrete class actually constructed
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-19
+closed: 2026-09-19
+verification: VERIFIED_LIVE
+source: >-
+  Found while carrying out this session's carried-over NEXT (regenerate the live wmsoffice-browser
+  app to pick up REG-219/REG-220, then re-verify REG-218 and CrossDocking C4/C5). Generation and the
+  Gradle build succeeded cleanly for a fresh build root (wmsoffice-browser-v2, built from a
+  scenario-name-patched scratch copy of AppGen/apps/_official/WmsOffice so the real live
+  wmsoffice-browser's seeded repro data was never put at risk), but boot failed with
+  `B30:plugin_bytecode_violation: ... FiscalImportCapability.class: forbidden owner java/io/` --
+  the exact same repro shape REG-219 was supposed to have already fixed.
+surface: >-
+  NPDevKernel/kernel/src/main/java/com/npdev/kernel/security/UntrustedExtensionBytecodeInspector.java
+  (FORBIDDEN_OWNER_PREFIX_EXEMPTIONS map, "java/io/" entry); the same map is read directly by
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/pluginsource/policy/PluginJavaSourcePolicyVisitor.java
+  (FORBIDDEN_IMPORT_PREFIX_EXEMPTIONS derives from it via .stream()), so this one fix closes both the
+  AST-level generation-time gate and the bytecode-level boot-time gate, exactly as REG-219 did;
+  regression tests added to
+  NPDevKernel/kernel/src/test/java/com/npdev/kernel/security/UntrustedExtensionBytecodeInspectorTest.java;
+  live repro/fix proof at
+  D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice-browser-v2\App\logs\app-20260919T103653Z.log
+  (before) vs app-20260919T140716Z.log (after).
+detail: |
+  WHY REG-219's FIX FELL SHORT: FiscalImportCapability.java constructs a `ByteArrayInputStream` (the
+  concrete, now-exempted class) but passes it straight into
+  `DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(in)` --
+  `DocumentBuilder#parse(InputStream)`, which has no `byte[]` overload. javac compiles that call site
+  to an `INVOKEVIRTUAL` whose method-descriptor constant-pool entry is
+  `(Ljava/io/InputStream;)Lorg/w3c/dom/Document;` -- the CALLEE's declared parameter type
+  (`java/io/InputStream`, the abstract supertype), not `java/io/ByteArrayInputStream` (the concrete
+  type actually constructed a few bytecode instructions earlier). REG-219's own code comment already
+  named `DocumentBuilder.parse(InputStream)` as the motivating use case in prose, but the exemption
+  set (`Set.of("java/io/PrintStream", "java/io/ByteArrayInputStream", "java/io/ByteArrayOutputStream")`)
+  only matched concrete class names by substring, so it never covered the descriptor string that
+  actually appears at this exact call site. The UntrustedExtensionBytecodeInspector's Raw-Utf8 sweep
+  (which scans every constant-pool UTF8 string, including method descriptors, for a
+  forbidden-prefix/exemption match) is a per-STRING check: whichever prefix/exemption text physically
+  appears in a given descriptor determines the outcome for that whole descriptor, independent of what
+  object was actually constructed and passed at the call site.
+
+  FIX APPLIED 2026-09-19: added `java/io/InputStream` and `java/io/OutputStream` (the abstract
+  supertypes) to the `java/io/` prefix's exemption set in
+  `UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS`. Safety argument: the
+  abstract `InputStream`/`OutputStream` classes declare no concrete I/O capability themselves --
+  every method that could touch a file descriptor, socket, or other OS resource is abstract on these
+  types and only becomes real when a CONCRETE dangerous subclass is constructed (e.g.
+  `java/io/FileInputStream`), and that `NEW`/`<init>` constant-pool reference is untouched by this
+  change -- it is an exact-substring match against the concrete class name, which
+  `java/io/InputStream`/`java/io/OutputStream` are not substrings of (`"java/io/FileInputStream"` does
+  not contain the substring `"java/io/InputStream"`, since after `java/io/` the next characters are
+  `File`, not `Input`). Regression tests added:
+  `acceptsInMemoryBufferPassedAsAbstractStreamParameter` reproduces the exact
+  `DocumentBuilder.parse(InputStream)`-over-`ByteArrayInputStream` shape and proves it now passes;
+  `refusesFileInputStreamPassedAsAbstractStreamParameter` proves the obvious loophole concern (a real
+  `FileInputStream` held/passed through an `InputStream`-typed local) is closed -- the concrete
+  constructor call is still refused regardless of what abstract type the reference is later held or
+  passed as. Both new tests plus the full existing suite pass (`gradlew -p NPDevKernel/kernel test
+  --tests com.npdev.kernel.security.UntrustedExtensionBytecodeInspectorTest`, BUILD SUCCESSFUL).
+
+  LIVE VERIFICATION: regenerated wmsoffice-browser-v2 (restaged kernel libs, no generator change
+  needed) and rebooted it. The `forbidden owner java/io/` violation on
+  `FiscalImportCapability.class` is gone from the boot log entirely. The app still refuses to boot,
+  but now ONLY on a separate, pre-existing, deliberately-designed boundary (B30: plugin bytecode may
+  not reference `java/lang/invoke/LambdaMetafactory` at all -- both `AllocationCapability.java` and
+  `FiscalImportCapability.java` use lambdas/method references throughout their source, unrelated to
+  this fix) -- filed separately as REG-222, not fixed here per explicit scope decision (this item was
+  approved for a same-session fix; the lambda rewrite was explicitly deferred).
+guard:
+  kind: test
+  ref: >-
+    gradlew -p NPDevKernel/kernel test --tests
+    com.npdev.kernel.security.UntrustedExtensionBytecodeInspectorTest
+  asserts: >-
+    acceptsInMemoryBufferPassedAsAbstractStreamParameter (new) proves ByteArrayInputStream passed to
+    an InputStream-typed parameter now passes; refusesFileInputStreamPassedAsAbstractStreamParameter
+    (new) proves a real FileInputStream upcast to InputStream is still refused; all pre-existing tests
+    in the class (including the REG-219 regression pair) remain green
+  provenRed: true

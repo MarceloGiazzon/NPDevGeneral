@@ -85,10 +85,24 @@ public final class UntrustedExtensionBytecodeInspector {
      * in-memory {@code byte[]} ONLY -- no constructor or method touches a file descriptor, socket,
      * or any OS resource -- so a plugin needing to adapt an in-memory buffer to a Stream-based JDK
      * API (e.g. {@code DocumentBuilder.parse(InputStream)}, which has no {@code byte[]} overload)
-     * is not doing filesystem/network escape (REG-219).
+     * is not doing filesystem/network escape (REG-219). That adaptation is exactly where the
+     * original REG-219 fix fell short: passing a {@code ByteArrayInputStream} to a parameter typed
+     * {@code InputStream} makes javac emit the CALLEE's declared parameter type -- {@code
+     * java/io/InputStream}, the abstract supertype, not the concrete class actually constructed --
+     * into the invoke's method-descriptor constant, which the original exemption (matched only
+     * against the two concrete class names) did not cover. {@code java/io/InputStream}/{@code
+     * java/io/OutputStream} are exempted here for the same reason as the concrete buffer classes:
+     * the abstract types carry no I/O capability themselves (every OS-touching method they declare
+     * is abstract), so referencing them is not itself an escape -- only construction of a concrete
+     * dangerous subclass (still an exact-string match, e.g. {@code java/io/FileInputStream}, and so
+     * still refused) is (REG-221).
      */
     public static final Map<String, Set<String>> FORBIDDEN_OWNER_PREFIX_EXEMPTIONS = Map.of(
-            "java/io/", Set.of("java/io/PrintStream", "java/io/ByteArrayInputStream", "java/io/ByteArrayOutputStream")
+            "java/io/", Set.of(
+                    "java/io/PrintStream",
+                    "java/io/ByteArrayInputStream", "java/io/ByteArrayOutputStream",
+                    "java/io/InputStream", "java/io/OutputStream"
+            )
     );
 
     /** Owners refused by exact-class match (boundary-checked). */
