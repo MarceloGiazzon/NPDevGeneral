@@ -268,6 +268,11 @@
     return content;
   }
 
+  function updateClock() {
+    if (!el.clock) return;
+    el.clock.textContent = new Date().toLocaleString();
+  }
+
   function buildTopbar() {
     var bar = document.createElement("div");
     bar.className = "npdev-shell-topbar";
@@ -333,6 +338,15 @@
     executionsPanel.setAttribute("aria-label", "Recent flow executions");
     bar.appendChild(executionsPanel);
     el.executionsPanel = executionsPanel;
+
+    // WMS-9 N4: the shell chrome previously showed no live date/time anywhere -- a generic gap,
+    // not app-specific. Ticks every 30s (plenty for a clock, no point re-rendering every second).
+    var clock = document.createElement("span");
+    clock.className = "npdev-shell-clock";
+    bar.appendChild(clock);
+    el.clock = clock;
+    updateClock();
+    setInterval(updateClock, 30000);
 
     var identity = document.createElement("span");
     identity.className = "npdev-shell-identity";
