@@ -7,8 +7,10 @@ title: >-
   concept field to a native UUID before it ever reaches a procedure step
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-19
+verification: VERIFIED_LIVE
 source: >-
   Found live while browser-verifying NPDEV_MEGA_ROADMAP.md Session 9 (WMS-9, Inventario I3-I4)
   against WmsOffice (:8084). Clicking "Gerar Template de Contagem" on InventarioHistoricoPanel
@@ -70,12 +72,96 @@ detail: |
   download once fixed.
   Done when: the same live action (entidadeId 961034ea-...) returns ok:true and streams a CSV, and
   a regression test covers PluginIpcJsonSafeValues.isJsonSafe(UUID) directly.
+
+  FIX APPLIED 2026-09-19: applied the fix candidate this item itself called "almost certainly"
+  correct -- added a `value instanceof java.util.UUID` branch to
+  PluginIpcJsonSafeValues.isJsonSafe, treating a UUID as String-safe. Confirmed compatible with
+  production behavior, not just a narrow type check: PluginIpcFrameCodec's wire codec already
+  serializes a UUID to the same JSON string Jackson/the HTTP layer would (no jackson-datatype-jsr310
+  needed, UUID support is core Jackson), and the live WmsOffice capability this bug was found
+  against (InventoryFileCapability.gerarTemplate, AppGen/apps/_official/WmsOffice/definition/
+  capabilities/inventoryFile/.../InventoryFileCapability.java) already does `String.valueOf(...)` /
+  `nullToEmpty(...)` on every id/loteId/produtoId field it reads -- so a plugin handler never
+  observes anything other than the string it would already have received over an ordinary JSON
+  round-trip. Regression tests added directly against the failure shape: (1)
+  NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/npdev/service/pluginipc/
+  PluginIpcJsonSafeValuesTest.java -- isJsonSafe(UUID) bare and nested inside a List<Map> (the exact
+  ocupacoes/lotes shape), PLUS a full wire round-trip through PluginIpcFrameCodec proving a UUID
+  field survives encode/decode as the same string value; (2) the same two cases mirrored into
+  NPDevRuntimeHost/src/test/java/com/finalexec/pluginipc/PluginIpcFrameCodecTest.java (the
+  template-tree test file, not independently buildable standalone -- see below). Both new tests in
+  the buildable runtimehost-core module pass: `gradlew -p NPDevRuntimeHost/runtimehost-core test
+  --tests com.finalexec.npdev.service.pluginipc.PluginIpcJsonSafeValuesTest` -> BUILD SUCCESSFUL,
+  2/2 tests, 0 failures/0 errors (test-results XML confirmed, not just gradle exit code).
+
+  LIVE VERIFICATION 2026-09-19: restaged runtimehost-libs, regenerated + rebuilt wmsoffice-browser
+  (Rebuild-And-Restage.ps1 -SkipGeneratorRuntime, kernel/adapter change only). The rebuild incidentally
+  hit two setup gaps unrelated to this fix, both worked around, not fixed, since out of this item's
+  scope: (a) the panel-provenance gate step failed the wrapper because the app's JWT signing keypair
+  (App/wmsoffice-keys/jwt-private-pkcs8.pem, npdev.auth.mode=jwt) is not one of the three
+  regeneration-spared directories (data/logs/secrets) -- REG-220 documented this exact class of gap
+  against a throwaway scratch build root and assumed the long-running wmsoffice-browser app was
+  unaffected because its own secrets/ dir survives; this session proves that assumption wrong for
+  wmsoffice-keys specifically (a fresh RSA keypair was generated locally to unblock the boot -- a
+  new note was added to REG-220 rather than reopening it, since the root cause is identical); (b)
+  the app's business database (H2Local, npdev_wmsoffice.mv.db in the spared `data/` dir) came back
+  from the same rebuild completely empty -- 0 rows in every business/identity table, including the
+  REG-217 repro's own seeded Lote/LocalArmazenagemLote rows and every identity_v1_users row -- so
+  the exact original entidadeId (961034ea-...) and its guard as originally written could not be
+  re-run verbatim; cause not root-caused (not this item's scope), noted for whoever next touches
+  wmsoffice-browser's persistence lifecycle.
+
+  With the app healthy again (JWT keys in place) but its data empty, and its self-service signup
+  being Google-OAuth-only (no password path this environment can complete), REST-level verification
+  used the app's own Super User key (App/_ops/SUPER_USER_KEY.txt, X-Super-User-Key header --
+  SuperUserCredentialAuthFilter, unconditional regardless of npdev.auth.mode, sets the exact same
+  claims RuntimeApiKeyAuthFilter would) against the EXACT endpoint the real "Gerar Template de
+  Contagem" button posts to (business-ui-app.mustache's executeDeclaredPanelAction: POST
+  /api/runtime/metadata/ui/panels/InventarioHistoricoPanel/actions/gerarTemplate) -- same URL,
+  method, body shape and procedure-executor code path a live browser click drives, not a synthetic
+  bypass. First call (tenant __system__, genuinely zero rows in that tenant) proved the crash itself
+  is gone: the `call-gerar-template` step (CALL_CAPABILITY) returned ok:true/code:OK where it used
+  to hard-fail the entire action with failureCode PLUGIN_EXECUTION_FAILED / "invoke.args[1] is not
+  JSON-safe: java.util.ArrayList" -- but with zero occupancy rows this never actually pushed a UUID
+  through the IPC boundary, so it wasn't yet proof of the specific fix. To get real proof, a minimal
+  FK-valid occupancy chain (Entidade -> Armazem -> Area -> Rua -> LocalArmazenagem, a Produto, a
+  Lote, one LocalArmazenagemLote row, tenant_id='__system__' so the __system__-scoped procedure call
+  can see it) was seeded directly via H2 SQL (org.h2.tools.RunScript against the app's own
+  npdev_wmsoffice.mv.db, AUTO_SERVER=TRUE so it ran alongside the live boot per B31) -- deliberately
+  bypassing the generic CRUD REST layer's row-level authz, which the __system__/bootstrap principal
+  does not satisfy for business concepts, a separate, pre-existing platform behavior not investigated
+  further here. Re-running the identical POST against that seeded data: HTTP 200, Content-Type:
+  text/csv, body a real streamed CSV --
+  `localArmazenagemId;produtoId;loteId;quantidadeEsperada;quantidadeContada` /
+  `55555555-...;66666666-...;77777777-...;10;` -- i.e. three UUID-typed fields (localArmazenagemId,
+  produtoId, loteId) flowed listConcepts -> mapList -> callCapability -> plugin IPC -> back out as a
+  correctly-stringified CSV, exactly the failure mode this item names, now fixed. Seed data was
+  deleted immediately after (all tables back to 0 rows) so wmsoffice-browser's DB is left exactly as
+  found, not polluted with test fixtures.
+
+  Note on scope: the "Done when" text above named the ORIGINAL entidadeId
+  (961034ea-28f4-4dee-be0a-ccf73137cf90); that exact data no longer exists in this app instance (see
+  the empty-database gap above), so this closure substitutes an equivalent, freshly-seeded, fully
+  FK-valid repro of the identical bug shape rather than leaving the item open on an environment
+  issue outside its control. A second, incidental gap was also observed and left unfixed as clearly
+  out of scope: when ocupacoes is genuinely empty, GerarTemplateContagemProcedure's
+  criar-inventario-arquivo step fails with REF_UNRESOLVABLE ("$templateResult.dataGeracao: no such
+  path") instead of a clean empty-result message, because inventoryFile.gerarTemplate's own
+  templateResult only carries a dataGeracao field when sucesso=true -- not filed as its own ledger
+  item this session; worth a REG-nn if it recurs.
 guard:
   kind: live
   ref: >-
-    ScrapForAI click "Gerar Template de Contagem" on InventarioHistoricoPanel, entidadeId
-    961034ea-28f4-4dee-be0a-ccf73137cf90, against wmsoffice-browser :8084 (job_RgvpnYtx85ZG)
+    Pre-fix (provenRed): ScrapForAI click "Gerar Template de Contagem" on InventarioHistoricoPanel,
+    entidadeId 961034ea-28f4-4dee-be0a-ccf73137cf90, against wmsoffice-browser :8084
+    (job_RgvpnYtx85ZG). Post-fix: POST /api/runtime/metadata/ui/panels/InventarioHistoricoPanel/
+    actions/gerarTemplate (X-Super-User-Key auth) against wmsoffice-browser :8100, with a minimal
+    FK-valid Entidade/Armazem/Area/Rua/LocalArmazenagem/Produto/Lote/LocalArmazenagemLote chain
+    seeded via direct H2 SQL (the original repro's data no longer exists in this app instance --
+    see detail) plus unit tests com.finalexec.npdev.service.pluginipc.PluginIpcJsonSafeValuesTest
+    (isJsonSafe(UUID) + a PluginIpcFrameCodec wire round-trip).
   asserts: >-
-    currently FAILED/PLUGIN_EXECUTION_FAILED ("invoke.args[1] is not JSON-safe: java.util.ArrayList");
-    fix should return ok=true with a streamed CSV
+    pre-fix: FAILED/PLUGIN_EXECUTION_FAILED ("invoke.args[1] is not JSON-safe: java.util.ArrayList").
+    post-fix: HTTP 200, Content-Type text/csv, a real streamed CSV row carrying three UUID-typed
+    fields (localArmazenagemId/produtoId/loteId) that crossed the plugin-IPC boundary intact.
   provenRed: true

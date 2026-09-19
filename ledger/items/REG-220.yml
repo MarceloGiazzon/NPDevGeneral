@@ -112,6 +112,20 @@ detail: |
   regenerating the actual `wmsoffice-browser` app (which keeps its `secrets/` directory across
   regeneration per the platform's spared-directories rule) to pick up both fixes and continue the
   WMS-9 sweep is the natural next step, not part of this item's own scope.
+
+  FOLLOW-UP 2026-09-19 (REG-217 session): the assumption above -- that the long-running
+  wmsoffice-browser app was unaffected because its secrets/ survives regeneration -- turned out
+  wrong for THIS specific file. `App/wmsoffice-keys/` is a separate directory from `secrets/`, not
+  one of the three regeneration-spared directories (data/logs/secrets per CLAUDE.md), so a genuine
+  full `Rebuild-And-Restage.ps1` of wmsoffice-browser itself (not just the scratch dir this item
+  tested against) hit the exact same `NoSuchFileException: .\wmsoffice-keys\jwt-private-pkcs8.pem`
+  in `LoginController.readKeyFile`. Worked around by generating a fresh local dev-only RSA keypair
+  directly (openssl genpkey/rsa -pubout into App/wmsoffice-keys/), not fixed at the platform level --
+  either `wmsoffice-keys` (or wherever `npdev.auth.jwt.*-key-path` resolves for a given app) should
+  join the spared-directory list, or the rebuild wrapper should regenerate a throwaway keypair
+  automatically when JWT mode is active and no keypair exists, the same way it already handles a
+  missing admin API key. Not fixed here -- flagging for whoever next owns the rebuild-wrapper /
+  spared-directories contract.
 guard:
   kind: local
   ref: >-
