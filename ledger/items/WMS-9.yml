@@ -445,6 +445,18 @@ detail: |
   entry) as platform-wide npdev-business-ui improvements rather than WmsOffice-specific patches, since
   none of N4-N6 are WmsOffice authoring gaps; and whether Z1-Z6's Reset is worth building at all for a
   pre-1.0 platform (it is explicitly a GeneXus-era dev convenience, not a proven end-user need here).
+
+  2026-09-19 FOLLOW-UP (REG-219/220/221/222 all closed this session, wmsoffice-browser-v2 now
+  regenerates and boots clean past the build-staleness that blocked C4 above): C4's VERDICT CHANGES
+  from "BLOCKED (build-staleness)" to FAIL. Confirmed via `GET
+  /api/runtime/metadata/ui/panels/RomaneioAggregateWorkbench` on the fresh build that the "Importar
+  (Parse Romaneio)" action IS now declared (`workbench.actions` lists `ParseRomaneioProcedure`,
+  matching model.json) -- the build-staleness cause is resolved, the button exists. But invoking it
+  (`POST /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure`) fails with
+  `JAVA_SOURCE_OPERATION_NOT_BOUND ... importarRomaneio` -- REG-218's same bug, now confirmed to also
+  affect FiscalImportCapability (previously only InventoryFileCapability was implicated; see
+  REG-218.yml's 2026-09-19 update). C4 is therefore FAIL, blocked by REG-218, not a staleness
+  artifact. C5 unchanged (source-confirmed design gap, independent of build state, not re-tested).
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
