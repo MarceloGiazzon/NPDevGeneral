@@ -1,0 +1,87 @@
+id: REG-222
+title: >-
+  WmsOffice's plugin capability source (AllocationCapability.java, FiscalImportCapability.java) uses
+  lambdas/method references throughout, which the boot-time bytecode gate refuses outright
+  (B30: java/lang/invoke/LambdaMetafactory is an exact-match forbidden owner, by design) -- but the
+  generation-time AST gate (PluginJavaSourcePolicyVisitor) does not check for lambda syntax at all,
+  so generation succeeds and the app only discovers it cannot boot after a full generate+build cycle
+type: GAP
+severity: HIGH
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found live-verifying REG-221 (this session): once the java/io/ supertype exemption gap was fixed
+  and wmsoffice-browser-v2 was rebuilt/rebooted, the ONLY remaining boot failure was
+  `B30:plugin_bytecode_violation: com/wmsoffice/capabilities/alocacao/AllocationCapability.class:
+  forbidden owner java/lang/invoke/LambdaMetafactory; com/wmsoffice/capabilities/fiscal/
+  FiscalImportCapability.class: forbidden owner java/lang/invoke/LambdaMetafactory`. This is not a
+  platform bug -- UntrustedExtensionBytecodeInspector's own doc comment (line ~50) states the
+  LambdaMetafactory ban is deliberate ("author-controllable method-handle classes and
+  LambdaMetafactory are banned exact... the denylist's intended [behavior]"), and the boot error
+  itself names it as "a designed limit (boundary B30), not a crash in NPDev itself" (`npdev why B30`).
+  The live WmsOffice app (wmsoffice-browser, port 8084) has been unable to boot at all since
+  generation first got past REG-219/REG-220 this session -- it was stopped mid-session and has not
+  been restarted; wmsoffice-browser-v2 (this session's clean rebuild target, holds no real
+  data/secrets yet) is built and has a fresh JWT keypair but also cannot boot until this is resolved.
+surface: >-
+  App-definition side (the actual violating code, not platform code):
+  D:\WorkSpace\NPDev\AppGen\apps\_official\WmsOffice\definition\capabilities\alocacao\src\main\java\com\wmsoffice\capabilities\alocacao\AllocationCapability.java
+  (Comparator.comparing/thenComparing lambdas and a `Long::sum` method reference, lines ~23-25,
+  50-51, 122-124, 191) and
+  D:\WorkSpace\NPDev\AppGen\apps\_official\WmsOffice\definition\capabilities\fiscalImport\src\main\java\com\wmsoffice\capabilities\fiscal\FiscalImportCapability.java
+  (`.stream().anyMatch(...)`/`.allMatch(...)` lambdas, lines ~76, 117, 188, 218).
+  Platform-side gap (the gate asymmetry worth its own look):
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/pluginsource/policy/PluginJavaSourcePolicyVisitor.java
+  (the AST-level generation-time gate -- checks imports/forbidden-owner text only, has no rule for
+  lambda expressions or method-reference syntax) vs.
+  NPDevKernel/kernel/src/main/java/com/npdev/kernel/security/UntrustedExtensionBytecodeInspector.java
+  (the bytecode-level boot-time gate -- correctly refuses LambdaMetafactory, per its FORBIDDEN_OWNERS
+  exact-class list).
+detail: |
+  TWO SEPARATE THINGS BUNDLED IN THIS ITEM, DELIBERATELY NOT SPLIT YET:
+
+  (1) THE IMMEDIATE APP-SIDE FIX (unblocks the live app): rewrite AllocationCapability.java and
+  FiscalImportCapability.java to avoid lambdas/method references entirely -- explicit
+  Comparator implementations (anonymous classes or named static methods) in place of
+  `.comparing(...)`/`.thenComparing(...)`, explicit for-loops in place of `.stream().anyMatch(...)`/
+  `.allMatch(...)`, and an explicit accumulator loop in place of `Long::sum` in the `.merge(...)`
+  call. This is an app-definition change (AppGen/apps layer), not a platform code change -- no kernel
+  or generator fix is needed for THIS half. Not done in this item because it was explicitly deferred
+  by scope decision mid-session (REG-221 was approved for an immediate fix; this was not).
+
+  (2) THE PLATFORM-SIDE GATE ASYMMETRY (worth its own consideration, independent of whether the app
+  code above ever gets rewritten): PluginJavaSourcePolicyVisitor -- the generation-time AST gate --
+  has no check at all for lambda expressions or method-reference syntax, so ANY plugin capability
+  source using lambdas sails through generation successfully, and the author only discovers the
+  B30 refusal after a full generate+build+boot cycle (minutes, not seconds) -- exactly what happened
+  this session. If lambda-freedom is truly a hard boundary for untrusted extension code (which B30's
+  own bytecode-level enforcement says it is), catching it at the AST level -- at generation time,
+  in seconds, with a clear source-line pointer -- would be a strictly better author experience than
+  discovering it at boot time via a bytecode dump with no source-line information. Whether to add
+  that AST-level check is an open design question, not decided here.
+
+  WHY THIS DIDN'T SURFACE UNTIL NOW: WmsOffice could never reach this gate before this session --
+  REG-219 (forbidden ByteArrayInputStream import, generation-time) and REG-220 (thin-projection guard
+  false positive) both blocked generation outright, and then REG-221 (this session, java/io/
+  supertype exemption gap) blocked BOOT before the bytecode inspector ever got past the java/io/
+  check to report the LambdaMetafactory violation underneath it. Each fix peeled back one layer and
+  revealed the next; this is the first layer that requires an app-definition change rather than a
+  platform fix to get past.
+
+  CURRENT LIVE STATE: the original live wmsoffice-browser (port 8084) was stopped this session (to
+  safely attempt a regeneration without risking its data) and has NOT been restarted -- it is still
+  on its pre-REG-219 build and would still work if restarted as-is (its data/logs/secrets are
+  untouched), but restarting it would mean running with none of this session's three fixes.
+  wmsoffice-browser-v2 (D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice-browser-v2) is a clean
+  build with REG-219/REG-220/REG-221 all applied, a freshly generated JWT keypair
+  (App\wmsoffice-keys\), but an EMPTY database (no repro data) and cannot boot until this item's
+  app-side fix (or a decision to accept/rewrite differently) is applied. REG-218 and CrossDocking
+  C4/C5 (this session's original re-verification target) remain unverified pending this.
+guard:
+  kind: none
+  ref: >-
+    No guard yet -- this item is OPEN, not fixed. When the app-side rewrite lands, the guard should be
+    a live boot of wmsoffice-browser-v2 showing zero B30 violations plus the REG-218/CrossDocking C4-C5
+    re-verification this was blocking.
+  asserts: n/a
+  provenRed: false
