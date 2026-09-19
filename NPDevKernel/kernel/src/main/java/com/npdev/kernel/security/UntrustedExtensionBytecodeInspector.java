@@ -81,9 +81,14 @@ public final class UntrustedExtensionBytecodeInspector {
      * filesystem IO -- the shipped lib-probe capability logs a diagnostic line to the app log this
      * way. It stays safe because a PrintStream instance can only come from {@code System.out/err}
      * or by wrapping a banned stream class (whose own references ARE caught).
+     * {@code java/io/ByteArrayInputStream}/{@code java/io/ByteArrayOutputStream} wrap or produce an
+     * in-memory {@code byte[]} ONLY -- no constructor or method touches a file descriptor, socket,
+     * or any OS resource -- so a plugin needing to adapt an in-memory buffer to a Stream-based JDK
+     * API (e.g. {@code DocumentBuilder.parse(InputStream)}, which has no {@code byte[]} overload)
+     * is not doing filesystem/network escape (REG-219).
      */
     public static final Map<String, Set<String>> FORBIDDEN_OWNER_PREFIX_EXEMPTIONS = Map.of(
-            "java/io/", Set.of("java/io/PrintStream")
+            "java/io/", Set.of("java/io/PrintStream", "java/io/ByteArrayInputStream", "java/io/ByteArrayOutputStream")
     );
 
     /** Owners refused by exact-class match (boundary-checked). */

@@ -1,0 +1,96 @@
+id: REG-220
+title: >-
+  GeneratedProjectionGuard's thin-projection regex (\bnew\s+[A-Za-z0-9_$.]*(Adapter|CapabilityAdapter)\s*\()
+  false-positives on the platform's own trusted-action bridge class GeneratedActionCapabilityAdapter --
+  every app whose model has any capabilityCall action (the ordinary trusted-action dispatch mechanism,
+  not per-plugin adapter selection) fails generation outright the first time this "never previously
+  called from any production path" guard actually runs against real trusted-action output
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found while verifying the REG-219 fix (adding the ByteArrayInputStream/ByteArrayOutputStream
+  exemption to UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS) by regenerating
+  wmsoffice-browser end to end via `pwsh -File scripts/appgen/Build-AppGenApp.ps1 -App _official/WmsOffice`.
+  With REG-219 fixed and a genuine app-definition gap also fixed in the same pass (WmsOffice's
+  AppGen source was missing definition/untrusted-extension-manifest.json entirely -- only a copy
+  under the ephemeral Build/wmsoffice-browser/definition/ snapshot had it, never propagated back to
+  the source-of-truth AppGen/apps layer; fixed by adding a widget entry for
+  widgets/armazem-location-map.js with its real sha256, mirroring the existing
+  trusted-source-manifest.json entry for the same file), generation proceeded further than it ever
+  had before and hit THIS guard for the first time: "Generated projection violates thin-projection
+  guard: ... GeneratedActionCapabilityDispatcherFactory.java matches forbidden pattern ...
+  GeneratedActionCapabilityRegistryContributor.java matches forbidden pattern".
+surface: >-
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/guard/GeneratedProjectionGuard.java
+  (line 21: the forbidden-pattern regex; line 26: assertThinProjection, walks every .java file under
+  outRoot/src/main/java); NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java
+  line 441 (`new GeneratedProjectionGuard().assertThinProjection(outRoot)`, whose own adjacent comment
+  admits "the Stage 0 constitutional guardrail (never previously called from any production path) now
+  runs after every emission" -- Path A / P0.2); the two files it flags,
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/TrustedActionSupportTemplates.java
+  (generatedActionCapabilityDispatcherFactorySource / generatedActionCapabilityRegistryContributorSource
+  / generatedActionCapabilityAdapterSource -- all three imported and invoked by UntrustedExtensionEmitter.java),
+  which together always emit exactly one class per app named `GeneratedActionCapabilityAdapter` and then
+  `new` it in both the factory and the registry contributor; live repro output at
+  D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\ArtifactNP\src\main\java\com\npdev\generated\trusted\
+  GeneratedActionCapabilityDispatcherFactory.java line 19 and
+  GeneratedActionCapabilityRegistryContributor.java line 23.
+detail: |
+  WHY THIS IS A FALSE POSITIVE, NOT A CORRECT REFUSAL: the guard's own javadoc states its purpose as
+  "generated Java must stay thin glue over [the model], never hardcode adapter/plugin selection" --
+  i.e. it means to catch generated code that picks a SPECIFIC third-party/plugin implementation by
+  name (e.g. choosing `new PostgresAdapter()` vs `new MySqlAdapter()` based on some condition baked
+  into the generated file). `GeneratedActionCapabilityAdapter` is not that: it is the platform's own
+  single, always-identically-named, always-identically-shaped trusted-action bridge class that
+  TrustedActionSupportTemplates emits for every app with any capabilityCall action, wired to the SAME
+  CapabilityRegistry the whole rest of the kernel already treats as the actual pluggable-adapter
+  seam. Instantiating it is exactly as safe as the platform's own generated CRUD controllers
+  instantiating their own generated service classes -- there is no plugin/adapter CHOICE happening in
+  either flagged file, just construction of the one class the template always produces. The regex's
+  `(Adapter|CapabilityAdapter)` alternation is also redundant (every string ending in
+  "CapabilityAdapter" already ends in "Adapter"), suggesting the author's intent when writing this
+  was probably narrower than what the pattern actually matches today.
+
+  WHY IT WAS NEVER CAUGHT BEFORE: GeneratorFacade's own comment says the guard was "never previously
+  called from any production path" before Path A / P0.2 wired it into `generate()` after every
+  emission. Whether any existing sample/canary app both (a) declares a capabilityCall action (the
+  ordinary trusted-action dispatch path, which is common) and (b) has actually completed a full
+  generation run since P0.2 landed is the open question -- WmsOffice reaching this guard at all
+  required first fixing REG-219 (forbidden ByteArrayInputStream import) and a separate missing-manifest
+  gap (this session), both of which blocked generation from ever getting this far. If no CI-gated
+  sample app exercises this exact combination, this guard could be failing 100% of real
+  trusted-action-using apps today with nothing catching it -- BLAST RADIUS is platform-wide for any
+  app with a capabilityCall action, not WmsOffice-specific, pending confirmation that at least one
+  gate-covered sample app has capabilityCall actions AND has completed generation since P0.2 shipped.
+
+  CONCRETE FIX CANDIDATES (not applied here -- deserves its own considered change, not a rushed
+  mid-verification patch): (1) narrow the regex to exclude the platform's own known-safe generated
+  class name(s), e.g. add a name-based allowlist the same way
+  UntrustedExtensionBytecodeInspector.FORBIDDEN_OWNER_PREFIX_EXEMPTIONS allowlists specific classes
+  inside an otherwise-banned prefix (REG-219's own fix is the direct precedent); (2) scope
+  assertThinProjection to skip files under the com/npdev/generated/trusted/ package the platform's own
+  TrustedActionSupportTemplates writes, since those are generator-authored, not model/plugin-authored;
+  (3) rename GeneratedActionCapabilityAdapter to a name that does not end in "Adapter" -- weakest
+  option, since it just dodges the pattern rather than fixing its overbreadth, and the name is
+  accurate to what the class actually is.
+
+  CONSEQUENCE FOR THE REG-219 VERIFICATION PASS: with this guard now blocking, WmsOffice still cannot
+  complete a full regeneration; REG-219's own fix (the kernel bytecode inspector exemption) is
+  confirmed working in isolation (unit tests + the forbidden-ByteArrayInputStream error no longer
+  appears in the generator log), but end-to-end regeneration of wmsoffice-browser remains blocked by
+  this new, unrelated guard until REG-220 is resolved.
+guard:
+  kind: local
+  ref: >-
+    pwsh -File scripts/appgen/Build-AppGenApp.ps1 -App _official/WmsOffice (generation log:
+    D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\_logs\generator-direct-java.log), with
+    REG-219 already fixed and definition/untrusted-extension-manifest.json already populated
+  asserts: >-
+    currently always fails generation with "Generated projection violates thin-projection guard"
+    naming GeneratedActionCapabilityDispatcherFactory.java and
+    GeneratedActionCapabilityRegistryContributor.java; fix should let generation proceed to
+    completion without weakening the guard's actual intent (catching a genuinely hardcoded
+    per-plugin adapter choice, which this is not)
+  provenRed: true
