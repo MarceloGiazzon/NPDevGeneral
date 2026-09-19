@@ -268,6 +268,27 @@ detail: |
   and A7 findings above: a checklist line assumed a generated behavior that was never wired.
   Re-verdict: R15 PASS (browser-verified), R16 FAIL (no computation occurs, was wrongly marked PASS
   by declaration), R22 PASS (browser-verified, both transitions + guard behavior).
+
+  2026-09-19 (Expedicao E1/E7/E15): E7 BROWSER-VERIFIED (ScrapForAI job_e3QBn-o23fMG): created a real
+  Expedicao (id=99cd211b-61fb-4487-b134-373789ba8075, entidade=Warehouse A) via
+  ExpedicaoWorkbench.html?id=new, same generic transition-button pattern as Recebimento -- Save
+  revealed "-> DemandaGerada", clicking it succeeded ("-> DemandaGerada.", chip flipped to
+  "Demanda Gerada"), confirming the PreExpedicao -> DemandaGerada transition genuinely works.
+  E1 (reachable from Demandas) carries the SAME caveat as R1/the cross-cutting reachability finding
+  above -- Expedicao/ExpedicaoDemandaPanel are both present in the flat native nav, never grouped
+  under a "Demanda" submenu; not re-verified separately, same root cause. E15 ("Confirmar Saida
+  requires an explicit second confirmation naming the listed items") -- SOURCE-VERIFIED FAIL, same
+  shape as R16: read ExpedicaoDemandaPanel (model.json:2394-2440) and its bound flow
+  ConfirmarSaidaExpedicao (model.json:681-716) end to end -- the panel action is a plain one-click
+  flow invocation with zero confirmation step, and the flow itself only runs an invariantCheck
+  (ExpedicaoMovimentoRequiredWhenConfirmada) + updateConcept + emitEvent, no read-back-and-confirm
+  step and no item-listing anywhere. There is no declared mechanism, client or server, that could
+  produce "an explicit second confirmation naming the listed items" -- this is original-screen UX
+  (a native confirm() dialog) that was never carried into the declarative Panel model. Not
+  browser-driven to the SaidaConfirmada terminal state itself (needs a movimentoId via "Criar
+  Movimento" first, out of scope for this pass) since the source read already settles the claim.
+  Verdict: E1 PASS (same caveat as R1), E7 PASS (browser-verified), E15 FAIL (declaration gap,
+  source-verified).
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
