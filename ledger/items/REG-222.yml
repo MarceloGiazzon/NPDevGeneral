@@ -7,8 +7,9 @@ title: >-
   so generation succeeds and the app only discovers it cannot boot after a full generate+build cycle
 type: GAP
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-19
 source: >-
   Found live-verifying REG-221 (this session): once the java/io/ supertype exemption gap was fixed
   and wmsoffice-browser-v2 was rebuilt/rebooted, the ONLY remaining boot failure was
@@ -40,14 +41,18 @@ surface: >-
 detail: |
   TWO SEPARATE THINGS BUNDLED IN THIS ITEM, DELIBERATELY NOT SPLIT YET:
 
-  (1) THE IMMEDIATE APP-SIDE FIX (unblocks the live app): rewrite AllocationCapability.java and
-  FiscalImportCapability.java to avoid lambdas/method references entirely -- explicit
-  Comparator implementations (anonymous classes or named static methods) in place of
-  `.comparing(...)`/`.thenComparing(...)`, explicit for-loops in place of `.stream().anyMatch(...)`/
-  `.allMatch(...)`, and an explicit accumulator loop in place of `Long::sum` in the `.merge(...)`
-  call. This is an app-definition change (AppGen/apps layer), not a platform code change -- no kernel
-  or generator fix is needed for THIS half. Not done in this item because it was explicitly deferred
-  by scope decision mid-session (REG-221 was approved for an immediate fix; this was not).
+  (1) THE IMMEDIATE APP-SIDE FIX (unblocks the live app) -- DONE 2026-09-19: rewrote
+  AllocationCapability.java and FiscalImportCapability.java to avoid lambdas/method references
+  entirely. `Comparator.comparing/thenComparing` chains replaced with anonymous `Comparator<...>`
+  implementations (three call sites: `sugerirDestino`, `sugerirOrigem`, `alocarComCandidatos`'s
+  eligibility sort); `.stream().anyMatch(...)`/`.allMatch(...)` replaced with explicit for-loops
+  (four call sites across both files, two `allMatch` sites folded into one new private
+  `todosRegistrados(List)` helper in FiscalImportCapability); `posDisponiveisPorRua.merge(ruaId, 1L,
+  Long::sum)` replaced with an explicit get/put accumulator. Anonymous inner classes were used
+  deliberately over named static Comparator methods -- they compile to a real class file via
+  `invokespecial`, not `invokedynamic`/`LambdaMetafactory`, so they satisfy B30 while keeping the
+  chained-comparison logic inline and readable. This is an app-definition change (AppGen/apps layer,
+  not this repo) -- no kernel or generator fix was needed for THIS half.
 
   (2) THE PLATFORM-SIDE GATE ASYMMETRY (worth its own consideration, independent of whether the app
   code above ever gets rewritten): PluginJavaSourcePolicyVisitor -- the generation-time AST gate --
@@ -78,10 +83,18 @@ detail: |
   app-side fix (or a decision to accept/rewrite differently) is applied. REG-218 and CrossDocking
   C4/C5 (this session's original re-verification target) remain unverified pending this.
 guard:
-  kind: none
+  kind: live
   ref: >-
-    No guard yet -- this item is OPEN, not fixed. When the app-side rewrite lands, the guard should be
-    a live boot of wmsoffice-browser-v2 showing zero B30 violations plus the REG-218/CrossDocking C4-C5
-    re-verification this was blocking.
-  asserts: n/a
-  provenRed: false
+    Regenerated wmsoffice-browser-v2 from the rewritten definition (scenario-renamed scratch copy of
+    AppGen/apps/_official/WmsOffice/definition, same pattern REG-221 used), rebuilt the jar (BUILD
+    SUCCESSFUL, confirming both rewritten files compile clean with zero lambda/method-reference
+    syntax), regenerated its JWT keypair (wiped by regeneration since wmsoffice-keys/ is not one of
+    the three spared directories -- data/logs/secrets), and rebooted it.
+  asserts: >-
+    App reaches "UP" on /actuator/health (HikariPool, Flyway, JPA EntityManagerFactory, LoginController
+    bean, Tomcat on :8084 all initialize with no exception). grep for "forbidden owner", "B30",
+    "LambdaMetafactory", "java/io/" across the fresh boot log returns zero matches -- both this item's
+    LambdaMetafactory violations and REG-221's java/io/ violation are gone. (REG-218 and CrossDocking
+    C4-C5 re-verification, the original ask this boot was unblocking, still pending -- the DB is
+    empty, no repro data seeded yet.)
+  provenRed: true
