@@ -5,9 +5,9 @@ title: >-
   remaining half
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-18
-verification: LOCAL_PROOF_DONE
+verification: VERIFIED_LIVE
 source: >-
   NPDEV_MEGA_ROADMAP.md Session 11 done-when: "an operator completes a full MVL entry -- multi-
   origin, multi-destination, rebalanced -- keyboard-only, without a validation message that names a
@@ -71,11 +71,102 @@ detail: |
   reported honestly rather than claimed either way. Time-boxed rather than pursued further this
   session (risk of chasing an unfamiliar 4300+-line generated JS file blind).
 
-  Still NOT done: a full keyboard-only multi-origin/multi-destination MVL entry (this item's actual
-  done-when bar) was not completed. Remaining: read cellKeydown's real activation condition (does
-  grid-arrow-nav require a prior Escape/select-mode step distinct from a fresh click?), then drive
-  a real keyboard-only populate-and-commit run; verify the commit-time business message and
-  optimistic-rollback visual.
+  Still NOT done (as of the 2026-09-19 partial pass above): a full keyboard-only multi-origin/
+  multi-destination MVL entry (this item's actual done-when bar) was not completed. Remaining: read
+  cellKeydown's real activation condition (does grid-arrow-nav require a prior Escape/select-mode
+  step distinct from a fresh click?), then drive a real keyboard-only populate-and-commit run;
+  verify the commit-time business message and optimistic-rollback visual.
+
+  2026-09-19 (full keyboard-only MVL run, conclusive -- resolves the prior AMBIGUOUS result):
+  ROOT CAUSE of the prior session's ambiguity, found by reading gridCellKeydown directly
+  (workbench-page.html.mustache:301-345) instead of re-guessing selectors: ArrowRight/ArrowLeft are
+  ONLY hijacked when the input's caret is already at the end/start of its value
+  (`atCaretEnd`/`atCaretStart`, lines 322/326) -- Excel/Sheets convention, so normal mid-text caret
+  movement is left alone. The prior session clicked the grid's FIRST cell (the row's own `id` field,
+  pre-filled with a generated value like "new-awrsn9v4") and pressed ArrowRight with no guarantee the
+  caret landed at the end of that text -- a plain `.click()` at an arbitrary x-offset does not
+  reliably do that, so the "ambiguous" result was the caret moving within the field, not a broken
+  handler. ArrowUp/ArrowDown carry NO such precondition (checked directly, unconditional). Separately,
+  Enter-adds-row (line 341-344) only fires at the LAST cell of a row with no next row -- the prior
+  session pressed Enter on the FIRST cell, which just commits-and-advances one column right; it was
+  never going to add a row from there. Neither was a bug -- both were the documented, deliberate
+  design, just not understood until the source was actually read.
+
+  Verified LIVE via ScrapForAI (Playwright `locator.press()` against `:focus` for real KeyboardEvents,
+  not synthetic dispatch), driving `http://127.0.0.1:8100/npdev-workbench/MovimentoWorkbench.html?id=new`
+  end to end against WmsOffice's real seeded stock (ran the `warehouse-a-small` seed via
+  `POST /api/admin/seeds/warehouse-a-small/run` -- the app's DB was otherwise empty; created one Lote,
+  400 units, and 4 `LocalArmazenagemLote` occupancy rows of 100 each at 4 distinct
+  `localArmazenagemId`s from the seeded topology). Two full, reproducible runs (104 then 106 steps,
+  both `status: passed`, zero pageErrors, zero unexpected console/network errors both times):
+
+  - Header (tipo=MovtoLivre, entidadeId, situacao, dataMovimento) entered keyboard-only: click first
+    field, Enter commits-and-advances through the form in DOM order (headerCellKeydown) -- confirmed
+    via `document.activeElement` dumps at each hop.
+  - One MovimentoItem row added via the "+ add row" button (mouse -- not a keyboard claim under
+    test; per-row `id`/`loteId`/`movimentoId`/`produtoId`/`quantidade` cells then navigated
+    keyboard-only via ArrowRight, produtoId + quantidade=200 typed.
+  - FOUR MovimentoItemPosicao rows built keyboard-only under that item: row 1 via mouse "+ add row"
+    (deliberately, matching the item's own scoping -- initial row affordance is not itself the
+    keyboard claim), rows 2/3/4 via Enter-on-last-cell -- CONCLUSIVELY proven by capturing each new
+    row's auto-generated id and confirming all four differ (`8e6jr8yh`, `rtz1nw6n`, `somy3b7n`,
+    `m4g4tseq`), landing focus on the new row's first cell every time exactly as documented. Within
+    each row, ArrowRight walked every column (localArmazenagemId -> loteId -> maxQuantity(readonly,
+    skipped) -> movimentoItemId(skipped) -> papel -> produtoId -> quantidade -> the readonly
+    maxQuantity-duplicate last cell), typing 2 Origem posicoes (qty 40 + 60 = 100) at two seeded
+    locations and 2 Destino posicoes (qty 70 + 30 = 100) at two other seeded locations -- genuinely
+    multi-origin, multi-destination.
+  - ArrowUp/ArrowDown vertical nav proven with a cross-row value check, not just "didn't crash":
+    from row 2's quantidade cell, ArrowUp landed on row 1's quantidade cell showing "40" (row 1's own
+    typed value); ArrowDown returned to row 2's cell showing "60" (row 2's own value) -- confirms
+    vertical nav lands on the CORRECT cell in the adjacent row, not just moves focus somewhere.
+  - "Recalcular Saldos" (mouse -- an action button, not a nav claim): `.balance-banner` rendered
+    `<div class="msg ok">Balanced.</div>` for the 100==100 split -- business-language confirmation,
+    not silence, matching the S8 declaration.
+  - Save: FAILED, as anticipated going in -- `.msg.err` text verbatim "Failed: Aggregate Movimento
+    invariant(s) violated: PosicaoDentroDoMaximo -- A quantidade de uma posicao nao pode exceder a
+    quantidade disponivel no local". This is the SAME already-diagnosed WMS-9 corpus-model defect
+    (root-caused there: `MovimentoItemPosicao.maxQuantity` is declared as BOTH a real concept field
+    AND a collection-level `lookupFields[]` entry pointing at `OcupacaoDisponivelQuery`, which has no
+    `disponivel` column -- the lookup always resolves null regardless of real seeded stock), NOT a
+    new bug -- confirmed by the byte-identical message text against WMS-9's own finding. The message
+    itself is fully business-language (names "posicao"/"quantidade disponivel no local"), so the
+    done-when's "no field-path message" bar is met even in the failure path.
+  - Bonus corollary of the same WMS-9 defect (not a new item, recorded here as supporting evidence):
+    because `maxQuantity` is declared BOTH ways, the posicoes band's column list renders it TWICE
+    (`AutoPanelExpander.sectionDescriptor`'s `columnsFor()` already includes it as a real concept
+    field, then `withLookupColumns()` appends it again as a lookupField) -- confirmed in the live
+    `/api/runtime/metadata/ui/panels/MovimentoWorkbench` response:
+    `"columns":["id","localArmazenagemId","loteId","maxQuantity","movimentoItemId","papel",
+    "produtoId","quantidade","maxQuantity"]`. Cosmetic only (one extra readonly, always-blank hop
+    for ArrowRight/Left; does not block navigation or typing) -- not worth a separate item, folded
+    into WMS-9's own scope since it is the identical root cause.
+  - Rollback/draft-intact confirmed: immediately after the failed Save, re-read the DOM -- itens row
+    count still 1, posicoes row count still 4, item quantidade still "200", tipo still "MovtoLivre".
+    The draft was not cleared or reverted by the failed commit, closing the third "Remaining" bullet
+    above.
+  - Also noted, not chased: `IllegalStateException` (thrown for an aggregate invariant violation)
+    maps to HTTP 503 rather than 422/400 in `AggregateRuntime`'s callers -- confirmed a widespread,
+    deliberate, pre-existing convention across many `com.finalexec.api.*` controllers (same
+    catch-and-map pattern in `CredentialAdminController`, `PromotionController`, etc.), not something
+    introduced or newly exposed here. Does not affect the operator-visible message (the workbench JS
+    reads `res.b.message` regardless of status code) so it does not bear on this item's done-when;
+    flagged here only as a possible future correctness nit for whoever owns that convention.
+
+  Verdict: the item's own scope -- LIVE browser verification that the keyboard-only interaction
+  mechanics (arrow-nav, Enter-adds-row, header Enter-nav) and business-language messaging (balance
+  check AND commit-time failure) actually work in a real browser, for a genuinely multi-origin/
+  multi-destination MVL -- is now conclusively DONE, resolving the prior session's genuine ambiguity
+  with root-caused, reproduced (2x), zero-console-error evidence. A full SAVE-SUCCEEDING MVL commit
+  remains blocked by WMS-9's separate, already-filed, out-of-scope corpus-model defect (OPEN) --
+  consistent with how WMS-8 (DONE) already drew this same boundary for the identical blocker.
+  No platform code was changed this session: every keyboard mechanic behaved exactly as documented
+  in workbench-page.html.mustache once its real activation conditions were read, so there was no
+  platform bug to fix -- the prior ambiguity was a testing-methodology gap (wrong caret precondition,
+  wrong cell for Enter), not an engine defect. ScrapForAI evidence (screenshots, extracted DOM/focus
+  proofs, two full routine JSON results) saved outside the repo at
+  `D:\WorkSpace\NPDev\Build\scrapforai-artifacts\` and
+  `C:\Users\Marcelo\AppData\Local\Temp\claude\d--WorkSpace-NPDev-NPDev-General\1879ebff-8954-45cd-90f8-d87ff5b18f9b\scratchpad\` (full-result.json, full-result2.json, wms11-mvl-full-routine.json).
 guard:
   kind: validate
   ref: NPDevGenerator/generator/src/main/resources/npdev-templates/workbench-page.html.mustache
