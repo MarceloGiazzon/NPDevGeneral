@@ -94,5 +94,10 @@ guard:
     tests="3" skipped="0" failures="0" errors="0". resolvesTheMatchingOverloadByArgCountAndPassesAllArguments
     proves the two-arg overload is selected (not the one-arg one sharing its name) and both
     arguments pass through intact; the other two tests cover REG-218's own case-normalization and
-    confirm a genuinely-unbound operation still correctly fails.
+    confirm a genuinely-unbound operation still correctly fails. REAL-BROWSER CONFIRMATION
+    (ScrapForAI, same session): clicked the actual "Importar (Parse Romaneio)" button on
+    RomaneioAggregateWorkbench.html?id=new (numero=R-1, texto=COD1;10) -- the `itens` grid section
+    rendered "1 rows" with quantidade:10, proving the correctly-resolved 3-arg overload's result
+    reaches the real page, not just the REST invoke path. Zero console/page errors. Screenshot:
+    D:\WorkSpace\NPDev\Build\scrapforai-artifacts\job_RJj8iQZ6Ve74\screenshots\romaneio_after_import.png
   provenRed: true

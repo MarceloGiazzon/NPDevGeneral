@@ -462,11 +462,16 @@ detail: |
   the same handler) are both FIXED and live-verified this session. `POST
   /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure` with the same payload now
   returns `sucesso:true` with `dataEmissao` populated and a real parsed `itens` row. C4's verdict
-  moves from FAIL to PASS at the REST/procedure level. NOT yet re-confirmed through an actual
-  browser click on the workbench UI this pass (button visibility was already confirmed via the
-  panel manifest above; the parse-and-render round trip through the real page was handed to a
-  background verification pass -- check REG-218.yml/REG-223.yml for whether that landed before
-  trusting a browser-level PASS here).
+  moves to a full PASS, now confirmed through a REAL BROWSER CLICK (ScrapForAI, not just REST):
+  navigated to `RomaneioAggregateWorkbench.html?id=new`, confirmed the "Importar (Parse Romaneio)"
+  button renders with its inline numero/texto textareas, filled numero=R-1/texto=COD1;10, clicked
+  it, and the "itens" grid section rendered a real "1 rows" row (quantidade:10) with zero
+  JAVA_SOURCE_OPERATION_NOT_BOUND text anywhere on the page and zero console/page errors.
+  Screenshot: `D:\WorkSpace\NPDev\Build\scrapforai-artifacts\job_RJj8iQZ6Ve74\screenshots\
+  romaneio_after_import.png`. The same browser pass also re-confirmed I5 (Importar Contagem paste-
+  CSV wizard, REG-218's original repro) end-to-end: `InventarioArquivoAggregateWorkbench.html?id=new`,
+  same CSV payload, "linhas" grid rendered "1 rows" with the real parsed values, screenshot
+  `...\job_YChWZX_pokaJ\screenshots\inventario_after_import.png`.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
