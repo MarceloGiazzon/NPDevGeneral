@@ -327,6 +327,124 @@ detail: |
   attempted: I5-I8, N2-N6/N8, C5/C8, Z1-Z6 (2.5/2.8 sections untouched this pass) -- next sweep
   session should pick up there, plus decide whether R16/E15/REG-217 warrant their own fix items
   beyond this sweep's recording.
+
+  2026-09-19 (SESSION 10, resuming the sweep -- I5-I8, C5/C8, N2-N6, Z1-Z6):
+
+  I5-I8 (Importar Contagem paste-CSV wizard): FAIL, a NEW platform bug, filed as REG-218. Pasting a
+  real-shaped CSV (using the same seeded Lote/LocalArmazenagemLote rows REG-217 left in place) into
+  the "texto" textarea on InventarioArquivoAggregateWorkbench.html?id=new and clicking "Importar
+  Contagem (Parse)" fails every time with JAVA_SOURCE_OPERATION_NOT_BOUND for operation
+  "importarContagem" (ScrapForAI job_wBwGg-lLKhL1 + a same-day retry, both identical) -- the wizard
+  fails at the FIRST step, the linhas grid never gets real rows, so I5-I8 could not be exercised at
+  all. Root-caused as far as this pass could confirm: the manifest embedded in the actually-running
+  jar (extracted directly from BOOT-INF/classes/npdev/plugin-runtime/java-source-runtime-refs.json)
+  DOES contain a correct importarcontagem->importarContagem entry, ruling out "stale build" as the
+  cause -- yet ManifestDrivenJavaSourcePluginHandler.invoke's exact-case Map.get(call.operation())
+  against that always-lowercased-key manifest should, by the same reasoning, ALSO have failed for
+  gerarTemplate (REG-217's own repro on the same class), which instead reached real invocation. That
+  inconsistency is NOT resolved by this pass -- see REG-218.yml for the exact open question, left for
+  whoever picks up the fix to trace rather than assume. Separately (not a bug, a checklist-wording
+  gap): I5's checklist line says "uploads the filled sheet" but the declared UI is a paste-CSV
+  textarea, no file picker anywhere -- record this alongside REG-218's fix, don't reinterpret it away.
+
+  C4/C5/C8/C10 (CrossDocking): the prior pass's "PASS by declaration: C1-C4" is CORRECTED for C4 --
+  browser-verified (not just declared) that RomaneioAggregateWorkbench.html?id=new renders ONLY
+  header fields (dataEmissao/entidadeId/expedicaoId/id/numero/situacao) + itens grid + "+ add
+  row"/"Save"; the "Importar (Parse Romaneio)" action button the model declares
+  (RomaneioAggregate transaction.actions, model.json ~line 508) is completely ABSENT from the
+  rendered page and from every compiled-metadata/panel-manifest file grepped in the build -- the
+  RUNNING wmsoffice-browser build predates this action's addition to the model. Attempted to
+  regenerate to get a current build (needed for C4/C5 at all): BLOCKED. `Build-AppGenApp.ps1 -App
+  _official/WmsOffice` fails generation outright on FiscalImportCapability.java's
+  `java.io.ByteArrayInputStream` (used for in-memory XML parsing) being caught by
+  PluginJavaSourcePolicy's forbidden-import gate -- filed as REG-219 (a real generator/security-policy
+  false positive: ByteArrayInputStream does zero actual I/O, unlike the java.io classes the policy is
+  actually trying to stop). Until REG-219 is fixed, wmsoffice-browser cannot be regenerated at all, so
+  C4 is recorded BLOCKED (build-staleness, cause identified and filed), not a fresh pass/fail verdict.
+
+  C5 ("Gerar Expedicao / Enderecar Expedicao honoured", the Expedicao-side mirror of C2): BLOCKER,
+  confirmed by source (does not depend on the stale-build issue above). Romaneio.json's own lifecycle
+  declares an Importado->ExpedicaoGerada transition and an invariant
+  (RomaneioExpedicaoRequiredWhenGerada: situacao != 'ExpedicaoGerada' || expedicaoId != null), but
+  grepping the model for every "onCommit" hook (only Movimento and InventarioArquivoAggregate have
+  one) and every Expedicao-generating procedure name confirms NOTHING ever populates Romaneio's own
+  expedicaoId field or performs the transition -- there is no GerarExpedicao/EnderecarExpedicao
+  procedure at all, unlike Recebimento's side. The only way to satisfy the invariant today would be a
+  user manually pasting an already-existing Expedicao's UUID into the header field themselves, which
+  is not "Gerar Expedicao" in any real sense. Record: P-shape gap symmetric to C6/C7, no declared
+  auto-generation surface.
+
+  C8 ("the link is visible from BOTH the receipt and shipment sides"): BLOCKER, confirmed live.
+  Browser-verified (ScrapForAI) that RecebimentoWorkbench.html?id=new and ExpedicaoWorkbench.html?id=
+  new both render a plain `crossDockingAtivo` boolean field in their headers and NOTHING else
+  cross-docking-related -- no recebimentoId-on-Expedicao or expedicaoId-on-Recebimento, no navigable
+  reference to the counterpart document. Source-confirmed why: Recebimento.json/Expedicao.json's own
+  crossDockingAtivo field is a bare boolean (Recebimento.json:41, Expedicao.json:41), not a reference.
+  The actual recebimentoId+expedicaoId pairing IS shown together, but only in CrossDockingConsolePanel's
+  own table (model.json ~line 2589: layout.fields includes both ids side by side) -- a THIRD screen,
+  not either side's own document. Record: from the receipt or shipment's own screen, a user can tell
+  a cross-dock is active but not which counterpart record it links to.
+
+  C10 ("cancelling a CD restores both records to a consistent state"): CORRECTED from the prior
+  pass's blanket "BLOCKER: C6-C7, C10" to PASS, source + declaration verified. That prior verdict
+  conflated three checklist lines that don't share a verdict: C6/C7 (dynamic CD-eligibility offer,
+  bay-to-bay routing) genuinely have no declared UI, but C10 does -- CrossDockingConsolePanel declares
+  real row-scoped "Concluir"/"Cancelar" action buttons (model.json ~lines 2640-2665, binding:procedure,
+  visibleWhen situacao=='Ativo') wired to ConcluirCrossDockingProcedure/CancelarCrossDockingProcedure,
+  and CancelarCrossDockingProcedure's own steps (model.json ~1731-1769) are a single patchConcept on
+  CrossDocking (situacao->Cancelado) plus two more patchConcept steps clearing crossDockingAtivo=false
+  on BOTH the linked Recebimento and Expedicao by id -- exactly the "restore both records" contract
+  C10 asks for, already a real button on a real panel, not just "procedures exist" as previously
+  recorded. Not re-verified live this pass (no code change needed, so no new browser click was
+  necessary to trust the read) but the declaration is unambiguous and matches the panel action's own
+  visibleWhen-gated row-button shape already proven clickable elsewhere in this sweep.
+
+  N2-N6 (Novo Armazem / novo-estabelecimento.html, source-reviewed per this item's own framing --
+  design review, not a browser bug hunt): N2 PASS -- a single "Criar Estabelecimento" action drives a
+  real progress bar (#progressFill, width animated by step count) plus a per-step text log ("Criando
+  Entidade...", "Criando Armazem...", etc., lines ~197-260). N3 PASS -- on success with an optional
+  new-user pair filled in, it creates the login and prints "...volte a tela de login para entrar com
+  essas credenciais" (line ~75), a clear, explicit hand-off message. N4 BLOCKER -- the generic
+  npdev-business-ui shell header (confirmed live via DOM dump) shows only the static app title
+  ("WmsOffice"), a breadcrumb, "logado como <user> (<ROLE>)", and "Sair" -- no live company/Entidade
+  name and no current date/time anywhere in the shell chrome; this is a platform-shell gap, not
+  WmsOffice-specific. N5 BLOCKER/PARTIAL -- no distinct quick-access bar exists beyond the DADOS/
+  PAINEIS sidebar nav itself; the sidebar trivially satisfies "reachable from the menu" by being the
+  menu, but there is no separate quick-access affordance the checklist line implies. N6 BLOCKER --
+  grepped the full menu.json for "login"/"senha"/"credencia": zero matches. "Cadastros" exists as a
+  real top-level menu (ordinal 20, containing Novo Estabelecimento/Entidades/Armazens/Topologia) but
+  has no "Alterar Dados de Login" child anywhere; a PasswordResetController.java does exist in
+  NPDevRuntimeHost but was not traced further this pass to confirm whether it is even the right
+  self-service (logged-in change-my-password) shape or a forgot-password/reset-token flow for
+  logged-out users -- record as a gap either way, since nothing surfaces it in this app's menu.
+
+  Z1-Z6 (Reset): BLOCKER, but the prior pass's "the hand-rolled web has no reset.html either" premise
+  is corrected -- excluir-estabelecimento.html DOES exist and literally titles itself "Excluir /
+  Resetar Estabelecimento" (its own comment: "esta tela e um reset..."), so this is not a from-scratch
+  gap, it is a WRONG-SHAPE existing tool. Read end to end: it deletes an Entidade and its entire
+  structure deepest-first (RankingRua->LocalArmazenagem->Rua->Area->Armazem->Entidade), i.e. it
+  destroys exactly the MASTER DATA AND STORAGE STRUCTURE Z4 requires to SURVIVE, while its own comment
+  says it deliberately does NOT touch Produto or other cross-referenced concepts -- the inverse shape
+  of what Z1-Z6 wants (wipe receipts/shipments/movements/stock, keep master data+structure). It also
+  has no confirmation dialog at all (grepped for confirm/prompt/"digite" -- zero matches), so it
+  doesn't even give Z2 a reusable double-confirmation precedent. Recommendation for whoever picks this
+  up: a genuine Z1-Z6 Reset needs new purpose-built work (a Dev-console panel/procedure doing targeted
+  deletes of Recebimento+RecebimentoLote, Expedicao+ExpedicaoItem, Movimento+MovimentoItem+
+  MovimentoItemPosicao, and LocalArmazenagemLote occupancy, while leaving Entidade/Armazem/Area/Rua/
+  LocalArmazenagem/Produto/PerfilAlocacao/RankingRua alone), not a repurposing of
+  excluir-estabelecimento.html, which is a different, already-working, correctly-scoped tool for a
+  different job (decommissioning a whole establishment) and should not be confused with a "soft
+  reset" -- record this decision here rather than leaving Z1-Z6 an unexplained blank.
+
+  SESSION 10 SWEEP CLOSED: every checklist line in 2.3-2.8 now has either a PASS/FAIL/BLOCKER verdict
+  or a filed platform-bug ledger item (REG-217, REG-218, REG-219). Remaining open decisions, not
+  attempted this pass: whether to actually fix REG-217/218/219 (all three are precisely scoped, none
+  are one-line patches without a design call per their own items); whether to build the C5/C6/C7
+  Expedicao-side auto-generation + dynamic-CD-offer surfaces; whether to build N4/N5/N6's shell
+  gaps (company name/clock in the shell header, a quick-access bar, a self-service login-change menu
+  entry) as platform-wide npdev-business-ui improvements rather than WmsOffice-specific patches, since
+  none of N4-N6 are WmsOffice authoring gaps; and whether Z1-Z6's Reset is worth building at all for a
+  pre-1.0 platform (it is explicitly a GeneXus-era dev convenience, not a proven end-user need here).
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
