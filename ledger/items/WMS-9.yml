@@ -100,6 +100,19 @@ detail: |
   follow-up, still on the WMS-7 table); the tenant-permission row-scoping concern it carried is
   gone since the endpoint scopes every row through the gateway.
 
+  2.9 (a)-CONVERSION DONE (2026-09-19): web/relatorios.html rewritten -- all four report loaders
+  (loadLotesEmEstoque/loadProdutosAtivos/loadDivergenciasInventario/loadHistoricoMovimentacao) now
+  call GET /api/queries/{name}?limit=1000 and render body.rows/body.total instead of fetching the
+  full concept list and filtering/sorting in JS; only the produto/local/movimento id->name join
+  lookups still use generic CRUD (a legitimate denormalization use, not the filtering concern the
+  blocker named). Synced into the Build\wmsoffice-browser clone, app regenerated + bootJar rebuilt +
+  reboot on :8084, BROWSER-VERIFIED via ScrapForAI (job_SiPYkik3neBq): real login.html sign-in ->
+  relatorios.html renders status "ok", "Produtos Ativos 15 de 15 produto(s)" with correct columns
+  (Nome/NCM/Caixas per Pallet/Dias Validade Padrao) sourced from /api/queries/ProdutosAtivos, and
+  the three currently-unseeded reports (Lotes/Divergencias/Historico) correctly show their empty
+  hint text -- screenshot confirms. Next queue item 2 (WMS-9/handoff): analytics.html,
+  mapa-armazem.html, seed-data.html (a)-conversions remain.
+
   AGGREGATE S9 VERDICT: 2.6 Inventario is the strongest (wizard already declared, mostly PASS by
   declaration). 2.2/2.3/2.4/2.5 share the same recurring blocker -- the wizard-grade editing
   sub-panels (P2 selection-add, P8 row clone, P9 default-on-add, P10 per-field-group stage locks,
