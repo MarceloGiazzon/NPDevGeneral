@@ -2,6 +2,7 @@ package com.finalexec.npdev.service.pluginipc;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Validates the "JSON-safe subset" a plugin IPC frame's args/value/contextState must be restricted to
@@ -10,6 +11,14 @@ import java.util.Map;
  * object graph -- today's in-process plugin behavior -- cannot cross the process boundary Model B
  * introduces. Record types are trusted without recursing into their fields: Jackson's own record support
  * is the round-trip guarantee the design calls for, not a hand-rolled field walk here.
+ *
+ * <p>{@link UUID} is accepted alongside the JSON primitives (REG-217): every uuid/reference-typed concept
+ * field is coerced to a native {@code UUID} well before a procedure step ever sees it
+ * ({@code DslTypeCoercionSupport.normalizeFieldValue}), so any {@code listConcepts -> mapList ->
+ * callCapability} chain that copies an id field would otherwise always fail here. This is not a widening
+ * of what crosses the boundary: {@link PluginIpcFrameCodec} already serializes a {@code UUID} to the same
+ * JSON string Jackson (and the HTTP layer) would produce for it, so a plugin handler never observes
+ * anything other than the string it would have received over JSON regardless.
  */
 public final class PluginIpcJsonSafeValues {
 
@@ -21,6 +30,7 @@ public final class PluginIpcJsonSafeValues {
                 || value instanceof String
                 || value instanceof Boolean
                 || value instanceof Number
+                || value instanceof UUID
                 || value instanceof Record) {
             return true;
         }

@@ -10,6 +10,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -100,5 +101,39 @@ class PluginIpcFrameCodecTest {
     void jsonSafeValuesRejectsAnArbitraryObjectAndANonStringKeyedMap() {
         assertFalse(PluginIpcJsonSafeValues.isJsonSafe(new Object()));
         assertFalse(PluginIpcJsonSafeValues.isJsonSafe(Map.of(1, "value")));
+    }
+
+    @Test
+    void jsonSafeValuesAcceptsAUuidBareAndNestedInsideMapsAndLists() {
+        // REG-217: every uuid/reference-typed concept field is a native UUID in ConceptRecord.data()
+        // (DslTypeCoercionSupport.normalizeFieldValue), so a listConcepts -> mapList -> callCapability
+        // chain that copies an id field always builds args shaped like this.
+        UUID id = UUID.randomUUID();
+        assertTrue(PluginIpcJsonSafeValues.isJsonSafe(id));
+        assertTrue(PluginIpcJsonSafeValues.isJsonSafe(
+                List.of(Map.of("loteId", id, "produtoId", UUID.randomUUID()))
+        ));
+    }
+
+    @Test
+    void roundTripsAnInvokeFrameCarryingAUuidValuedField() throws IOException {
+        UUID loteId = UUID.randomUUID();
+        PluginIpcFrame.InvokeFrame frame = new PluginIpcFrame.InvokeFrame(
+                "req-1", "inventoryFile", "InventoryFileCapability", "inventoryfile-inproc", "gerarTemplate",
+                List.of(List.of(Map.of("loteId", loteId, "quantidade", 3))),
+                "corr-1", null, Map.of(), null
+        );
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        PluginIpcFrameCodec.writeInvoke(buffer, frame);
+
+        PluginIpcFrame decoded = PluginIpcFrameCodec.readFrame(new ByteArrayInputStream(buffer.toByteArray()));
+
+        assertInstanceOf(PluginIpcFrame.InvokeFrame.class, decoded);
+        PluginIpcFrame.InvokeFrame invoke = (PluginIpcFrame.InvokeFrame) decoded;
+        List<?> ocupacoes = (List<?>) invoke.args().get(0);
+        Map<?, ?> ocupacao = (Map<?, ?>) ocupacoes.get(0);
+        // Same string a plugin's String.valueOf(...)/nullToEmpty(...) would already have produced from
+        // the raw UUID in the in-process path -- the wire round-trip changes representation, not value.
+        assertEquals(loteId.toString(), ocupacao.get("loteId"));
     }
 }
