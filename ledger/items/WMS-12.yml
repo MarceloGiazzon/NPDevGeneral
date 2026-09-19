@@ -58,9 +58,13 @@ detail: |
   loaded fine after login ("Workspace PropertyValues loaded" banner).
 
   OPEN FOLLOW-UPS (next phase):
-  - Sync the OFFICIAL AppGen WmsOffice definition/packs (identity 1.0.0, workspace 1.0.0) to the
-    NPDevContract versions, same as the clone -- its next boot will hit the same seed_key crash
-    (REG-39 class, and the StartupValidator identity-pack check).
+  - [DONE 2026-09-18] Sync the OFFICIAL AppGen WmsOffice definition/packs to the NPDevContract
+    versions -- identity 1.0.0 -> 1.2.0 (tokenVersion family + ExternalIdentity), workspace
+    1.0.0 -> 1.1.0 (seedKey/seedOrigin/seedFingerprint + overrideOf); tracing already 1.0.2.
+    `npdev validate model` on the composed official model: 0 errors, 58 warnings, all
+    ux-metadata label warnings (pre-existing style class; the count grew 44->58 because the
+    bumped packs added fields). The official app's next boot no longer hits the
+    workspace_v1_menus.seed_key crash.
   - WMS-7 inventory (b) entries still platform gaps: novo-estabelecimento, relatorios,
     excluir-estabelecimento (S9 sweep targets); (a) entries to convert + verify: analytics,
     mapa-armazem, seed-data PAGE targets.
