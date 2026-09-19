@@ -680,7 +680,21 @@ public class PanelRuntime {
             // resolveRowScopedInput now feeds this method for a scope="row" conceptMutation action --
             // failed with "Required concept field is missing: <Concept>.id" every time.
             data = new LinkedHashMap<>(input);
+        } else {
+            data = new LinkedHashMap<>(data);
         }
+        // Found live verifying an aggregate root's auto-synthesized "new" action (AutoPanelExpander
+        // .newRecordAction, binding conceptMutation/create) in a real browser: its client call sends a
+        // genuinely empty body ({}), which is panel-scoped -- not row-scoped -- so resolveRowScopedInput
+        // never runs and neither branch above ever puts anything in `data`. The `id` generated just
+        // above stayed a constructor-only argument to ConceptWriteRequest, never joining `data` itself,
+        // so ConceptGatewaySemanticPolicy's required-field check (which only ever looks at `data`, never
+        // at the request's separate `id`) rejected every such create with "Required concept field is
+        // missing: <Concept>.id" -- the same class of gap G2/G4 fixed for the row-scoped case, just
+        // unreached until an aggregate-root Selection's "New" button was actually clicked. Setting it
+        // unconditionally (not just when absent) also protects a data-carrying caller who reuses this
+        // freshly-generated id as the record's own id.
+        data.put("id", id);
         ConceptRecord saved = requireConceptGateway().save(new ConceptWriteRequest(conceptName, id, null, data), context);
         return toRecordMap(saved);
     }

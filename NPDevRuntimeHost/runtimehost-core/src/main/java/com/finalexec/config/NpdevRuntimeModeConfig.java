@@ -88,6 +88,19 @@ public class NpdevRuntimeModeConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
+    public TraceStore inProcTraceStore() {
+        // Unlike its sibling ports (EventStore, FlowInstanceStore, ...), TraceStore never had an
+        // in-memory bean -- only jdbcTraceStore below, gated on npdev.storage.mode=jdbc. Any app
+        // booted with the default (unset/in-memory) storage mode failed at startup with
+        // "No qualifying bean of type 'com.npdev.kernel.ports.TraceStore'" because KernelFacade
+        // requires TraceStore unconditionally. TraceStore.noop() already existed for exactly this
+        // case but was never wired into Spring config. Found booting NPDevSamples/dsl-conformance-max
+        // (an InMemory-engine model) under the step0 trial profile.
+        return TraceStore.noop();
+    }
+
+    @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
     public TraceStore jdbcTraceStore(DataSource dataSource) {
         return new JdbcTraceStore(dataSource);

@@ -4,9 +4,10 @@ title: >-
   plugin) and the login -> seeded-panels scenario passes in a real browser
 type: FEATURE
 severity: HIGH
-status: OPEN
+status: DONE
+closed: 2026-09-19
 opened: 2026-09-18
-verification: LOCAL_PROOF_DONE
+verification: VERIFIED_LIVE
 source: >-
   WmsOffice browser test vehicle per "Use o projeto D:\WorkSpace\ScrapForAILegacy para testar em
   browser": generate -> build -> boot the 3-pack WmsOffice clone (D:\WorkSpace\NPDev\Build\
@@ -67,7 +68,15 @@ detail: |
     workspace_v1_menus.seed_key crash.
   - WMS-7 inventory (b) entries still platform gaps: novo-estabelecimento, relatorios,
     excluir-estabelecimento (S9 sweep targets); (a) entries to convert + verify: analytics,
-    mapa-armazem, seed-data PAGE targets.
+    mapa-armazem, seed-data PAGE targets. [DONE 2026-09-19: all closed under WMS-7, now DONE.]
+
+  CLOSING THIS ITEM (2026-09-19): this item's own title/done-when -- wmsoffice-browser boots and
+  the login -> seeded-panels scenario passes in a real browser -- was already met (RESULT above:
+  12/12 steps green). It stayed OPEN only as bookkeeping; both "OPEN FOLLOW-UPS" above are marked
+  DONE, and the remaining WMS-7 inventory items now live and closed under WMS-7 itself. The same
+  wmsoffice-browser infrastructure this item stood up was reused successfully throughout the
+  2026-09-19 roadmap sweep (WMS-7/WMS-8 browser verification, REG-215 bug discovery+fix) --
+  continued proof it is solid, not a one-off.
   - [DONE 2026-09-18] The generated CLI path (npdev generate app) now copies definition/seeds/*
     into the app's npdev-seed/data-seeds classpath folder -- new npdev_cli.stage_seeds_into_final_app
     (Build-NpdevApp.ps1 step 4d parity: id==stem fail-fast, kind default smart, index.json always

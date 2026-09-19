@@ -7,7 +7,8 @@ title: >-
   platform jars while direct CLI builds keep working
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
+closed: 2026-09-19
 opened: 2026-09-14
 source: >-
   Found while live-verifying Session 2's AILoop (NPDEV_MEGA_ROADMAP.md): the --ai-loop proof kept
@@ -37,3 +38,20 @@ detail: |
   (jars survive an `npdev` version switch), so removing it entirely is not the answer.
   Done when: a Manager-spawned generate stages jars no older than current source on a machine whose
   AppData cache was never manually mirrored, without breaking the version-independent-cache property.
+
+  2026-09-19 (fix, roadmap sweep): implemented candidate (a), scoped precisely. `build_command`
+  (npdev.rs) now reads `ManagerState::load()` (the same cheap, already-established free-function
+  disk read `manager_home()` itself uses -- no function-signature threading needed across the 14
+  call sites) and skips the `NPDEV_BUILD_ROOT=manager_home()` override when `use_local_repo` is
+  true and `local_repo_path` is set. In that mode, npdev_cli.py's own unset-env default
+  (`repo_root().parent / "Build"`) resolves to exactly the shared location
+  `scripts/runtimehost/sync-runtimehost-libs.ps1` restages into (repo_root() IS the local checkout),
+  so a Manager-spawned generate in local-repo mode now reads the SAME jars a terminal restage just
+  wrote -- no separate cache, nothing to rot. The downloaded-tag path is completely untouched: for
+  an ordinary installed version, `use_local_repo` is false and the override still applies exactly as
+  before, preserving the version-independent AppData cache the comment there explains is
+  deliberate. Verified: `cargo check` clean. Not live-verified against a running Manager GUI in this
+  session (would need a manual local-repo-mode generate click-through); the fix is a narrow,
+  single-branch change with a directly-traced root cause, not new logic needing its own test seam --
+  npdev.rs has no existing unit-test harness for build_command to extend (fake_mode/stub-mode covers
+  UI-facing behavior, not this env-wiring branch).

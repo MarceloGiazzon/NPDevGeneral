@@ -4,9 +4,10 @@ title: >-
   HTML inventory is recorded with a per-file verdict
 type: FEATURE
 severity: HIGH
-status: OPEN
+status: DONE
+closed: 2026-09-19
 opened: 2026-09-18
-verification: LOCAL_PROOF_DONE
+verification: VERIFIED_LIVE
 source: >-
   NPDEV_MEGA_ROADMAP.md Session 7 done-when: "WmsOffice declares three packs, the hand-rolled
   inventory is recorded in ledger/ with a per-file verdict, and every file with verdict (a) is
@@ -75,6 +76,37 @@ detail: |
   a business-user surface. Regenerated + rebuilt + rebooted on :8084; verified live: seed-data.html
   -> 404, GET /api/admin/seeds still lists all 4 seeds, "seed" no longer appears in
   GET /api/workspace/menu.
+
+  BROWSER VERIFICATION (2026-09-19, roadmap sweep, ScrapForAI against wmsoffice-browser :8084):
+  the remaining "(a) -- verify in browser" rows are now confirmed live, real content, no console/
+  network errors:
+  - crossdocking.png: CrossDockingConsolePanel renders CROSSDOCKINGS/EXPEDICOES/PRODUTOS with real
+    seeded Produto rows and its Ativar/Marcar-Concluido actions.
+  - docfiscal-selection.png / romaneio-selection.png / inventario-selection.png:
+    DocumentoFiscalAggregateSelection, RomaneioAggregateSelection, InventarioArquivoAggregateSelection
+    all render their empty-but-functional "New"/ROWS shell correctly.
+  - identity-user.png / identity-role.png: the identity pack's User/Role admin surfaces
+    (#concept-identity--User, #concept-identity--Role) render with REAL data -- including the
+    live SEC-11 Google-signup row (Marcelo Giazzon, real Google avatar URL, mgiazzon@puntoexe.com.uy)
+    alongside the seeded admin user. This is the "usuarios-roles.original.html" row's verdict:
+    (a) converted, verified in browser -- the platform surfaces these as sidebar links under the
+    identity pack's own concepts, not a bespoke "usuarios-roles" panel.
+  - google-signin capability doc (scripts/reports/out/capability-docs/google-signin.html,
+    S13) independently confirms login.html's "Continue with Google" button renders.
+  movimentacao-livre.html (MovimentoLivrePanel, /movimentacao-livre) checked separately: still
+  itens-only, no posicoes/balance UI -- confirms this row's own "(a) partial" verdict was already
+  correct; the depth-2/balance work landed on the dedicated MovimentoWorkbench (WMS-8, verified
+  live there), not yet folded into this simpler panel. No change needed to this row's verdict.
+
+  CLOSING THIS ITEM (2026-09-19): every FILE carrying a clean "(a)" verdict in the table above is
+  now converted AND browser-verified (this note's own list, plus the 2026-09-19 (a)-CONVERSIONS
+  CLOSED note above it). The two "(a) partial" rows (movimentacao-livre, centro-trabalho) were
+  scoped from the start as accompanying S8/S11 work, not this item's own done-when target -- their
+  archived .original.html files are already retired regardless, and their remaining parity work
+  continues under WMS-8 (DONE, depth-2/balance verified live) and WMS-11 (interaction polish, still
+  open). "(b)" verdicts (novo-estabelecimento, relatorios's original gap now closed differently,
+  excluir-estabelecimento, mapa-armazem) are recorded platform gaps for S9, not this item's
+  blockers. WMS-7's own done-when is met.
 
   RECLASSIFIED (2026-09-19): mapa-armazem.html's WMS-7 table row above ("(a) convert -- verify the
   ocupacao panel covers the map") is STALE and contradicted by this item's own later, more careful

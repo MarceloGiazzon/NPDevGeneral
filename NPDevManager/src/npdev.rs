@@ -174,7 +174,23 @@ fn build_command(python_exe: &Path, npdev_cli: &Path, args: &[&str], java_home: 
     // each version's own parent instead of the one shared location SPEC.md's disk layout names
     // (`<manager_home>/runtimehost-libs`) -- setup would then rebuild the jars from scratch on
     // every version switch instead of sharing them where compatible.
-    cmd.env("NPDEV_BUILD_ROOT", crate::state::manager_home());
+    //
+    // RUN-33: EXCEPT in local-repo dev mode. There, repo_root() IS the platform developer's own
+    // checkout, so npdev_cli.py's unset-env default (repo_root().parent / "Build") already lands
+    // on exactly the shared restage target scripts/runtimehost/sync-runtimehost-libs.ps1 writes to
+    // -- the same jars a terminal build restages. Overriding it to the Manager's separate AppData
+    // cache instead made every Manager-spawned generate in local-repo mode stage from a cache the
+    // repo's own restage workflow never touches, so it rotted silently the moment kernel/adapter
+    // Java changed (found live: SEC-11's OAuth controller missing from an assembled app because the
+    // AppData cache predated the commit that added it, restaged-but-not-mirrored). The downloaded-
+    // version case below is unaffected -- version-independent jar sharing there is still the point.
+    let local_repo_dev_mode = {
+        let state = crate::state::ManagerState::load();
+        state.use_local_repo && state.local_repo_path.as_deref().is_some_and(|p| !p.trim().is_empty())
+    };
+    if !local_repo_dev_mode {
+        cmd.env("NPDEV_BUILD_ROOT", crate::state::manager_home());
+    }
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }

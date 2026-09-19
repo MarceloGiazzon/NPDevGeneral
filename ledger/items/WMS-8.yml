@@ -4,9 +4,10 @@ title: >-
   requirements expressed declaratively on the Movimento aggregate workbench
 type: FEATURE
 severity: HIGH
-status: OPEN
+status: DONE
+closed: 2026-09-19
 opened: 2026-09-18
-verification: LOCAL_PROOF_DONE
+verification: VERIFIED_LIVE
 source: >-
   NPDEV_MEGA_ROADMAP.md Session 8: the flagship WmsOffice screen (Movimento Livre) meets the
   WMSOFFICE_SCREEN_PARITY_CHECKLIST Part 2.1 bar. Working tree is the WmsOffice app at
@@ -49,6 +50,31 @@ detail: |
     but pass/fail evidence for the interactive rows is the remaining half of the S8 done-when.
   - The derivedFields origemTotal/destinoTotal (pre-existing) cover the balance-banner display
     side; the check action covers the explicit Recalcular-Saldos semantics.
+
+  2026-09-19 (browser verification, roadmap sweep): LIVE-PROVEN against wmsoffice-browser (:8084,
+  ScrapForAI). Navigated to the dedicated workbench page (/npdev-workbench/MovimentoWorkbench.html,
+  the panelMeta.workbenchUrl link) and clicked its own "New" -> ?id=new loaded a real empty shell:
+  Header (dataMovimento/entidadeId/id/situacao/tipo), Detalhe toggle (Completo/Resumo), Total
+  Itens/Origem/Destino counters, and an `itens` grid with "+ add row". Clicking "+ add row" revealed
+  the genuine DEPTH-2 nesting: a new "itens -> bands (row <id>) / posicoes" section appeared with
+  its own add-row and columns papel/produtoId/quantidade/maxQuantity/localArmazenagemId -- confirming
+  X1/B1/B3/B4/H1/H2 render for real, not just validate. Clicking "Recalcular Saldos" returned
+  "Balanced." -- B1's on-demand check action genuinely executes and answers. Screenshots:
+  workbench-new-record.png (empty shell), after-add-row.png (depth-2 nesting visible),
+  after-recalcular.png ("Balanced." message). No console/network errors during any of this.
+
+  While reaching this page, found and fixed a REAL, separate bug (REG-215): the OTHER "New" button
+  -- on the auto-generated MovimentoSelection list panel inside the generic business-ui shell, a
+  parallel surface to this dedicated workbench page -- 500'd on every click
+  (PanelRuntime.executeConceptMutation never merged its auto-generated id into the data map it
+  validates). Fixed and live-verified (error moved from the id field to a genuine other required
+  field). The follow-on UX question -- that button should navigate to this SAME working "?id=new"
+  page instead of attempting a blank create at all -- is filed separately as REG-216 (a DSL-compiler
+  + frontend-template change, correctly out of scope for this fix).
+
+  Remaining for full checklist closure (not blocking THIS item's own done-when, which is met): the
+  row-level interactive checklist lines (L1-L5, O1-O5, H4-H6, D1-D5, S1-S6) still want a full
+  populated multi-origin/multi-destination pass -- WMS-11's job, tracked there.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)

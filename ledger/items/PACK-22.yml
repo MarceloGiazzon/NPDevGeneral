@@ -5,7 +5,8 @@ title: >-
   User with provider-specific columns
 type: FEATURE
 severity: MEDIUM
-status: OPEN
+status: DONE
+closed: 2026-09-19
 opened: 2026-09-16
 source: >-
   Session 3b (NPDEV_MEGA_ROADMAP.md) -- SEC-8's account-linking requirement needs persistent
@@ -28,3 +29,15 @@ detail: |
   Done when: npdev pack diff classifies the 1.1.0 -> 1.2.0 change ADDITIVE; a generated app
   composing identity 1.2.0 persists ExternalIdentity rows and enforces the unique
   (provider, providerSubject) index; probe lock digest refreshed.
+
+  2026-09-19 (closure, roadmap sweep): all three DONE-WHEN criteria formally re-verified. The
+  actual concept landed in commit 504432df (feat(oauth): Google identity-provider abstraction
+  (SEC-11) with identity pack 1.2.0 (PACK-22)) but this ledger item was never flipped to DONE
+  afterward -- pure bookkeeping gap, not missing work. (1) `npdev pack diff` against the 1.1.0
+  pack.json (commit 1dba1780) and the current 1.2.0 one returns overallClassification: ADDITIVE,
+  the sole finding being the new `ExternalIdentity` concept. (2) SEC-11's own M7 fake-Google proof
+  (28/28 checks) and the 2026-09-18 real-Google live run both persisted ExternalIdentity rows
+  (provider=google, providerSubject=<google sub>) and the unique (provider, providerSubject) index
+  held (no duplicate-user creation on repeat login). (3) probe lock digest already current:
+  NPDevSamples/probes/p6-satellite-extension/Input/npdev.lock resolves identity to 1.2.0,
+  digest sha256:f5acae79f76ddddc9acb2690b4a321cfda2c9df4f7287e949ec4d5a19ae11889. PACK-22 done.

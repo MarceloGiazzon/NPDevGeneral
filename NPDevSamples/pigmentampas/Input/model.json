@@ -4,8 +4,12 @@
   "dslVersion": "1.0.0",
   "version": "1.0",
   "metadata": {
-    "purpose": "S6 (NPDEV_MEGA_ROADMAP.md): smallest honest end-to-end proof -- a greenfield pigment/paint store modeled from scratch, composed with the identity (User) and tracing packs via internal.tables, jwt-mode auth (Google signup/link/login + username/password), and every screen generated declaratively with zero hand-authored HTML."
+    "purpose": "S6 (NPDEV_MEGA_ROADMAP.md): smallest honest end-to-end proof -- a greenfield pigment/paint store modeled from scratch, composed with the identity, workspace and tracing packs via explicit packs[] (not internal.tables -- see config.json's scenario.description for why), jwt-mode auth (Google signup/link/login + username/password) backed by a Credential concept referencing identity::User, and every screen generated declaratively with zero hand-authored HTML."
   },
+  "propertyScopes": [
+    { "name": "user", "from": "$user.id" },
+    { "name": "tenant" }
+  ],
   "bindings": [
     { "adapter": "repository", "capability": "persistence" },
     { "adapter": "inproc", "capability": "eventBus" }
@@ -16,6 +20,11 @@
       "operations": ["save", "findById"],
       "type": "PersistenceCapability"
     }
+  ],
+  "packs": [
+    { "$ref": "packs/identity/pack.json", "as": "identity" },
+    { "$ref": "packs/tracing/pack.json", "as": "tracing" },
+    { "$ref": "packs/workspace/pack.json", "as": "workspace" }
   ],
   "concepts": [
     {
@@ -133,6 +142,18 @@
       ],
       "indexes": [
         { "name": "idx_order_item_order", "fields": ["orderId"] }
+      ]
+    },
+    {
+      "name": "Credential",
+      "ui": { "label": "Credential" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "userId", "type": "reference", "required": true, "unique": true,
+          "ui": { "label": "Identity user" },
+          "reference": { "target": "identity::User", "onDelete": "cascade" } },
+        { "name": "passwordHash", "type": "string", "required": true, "maxLength": 200,
+          "ui": { "label": "Password hash" } }
       ]
     }
   ],

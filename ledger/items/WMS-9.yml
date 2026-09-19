@@ -113,6 +113,29 @@ detail: |
   hint text -- screenshot confirms. Next queue item 2 (WMS-9/handoff): analytics.html,
   mapa-armazem.html, seed-data.html (a)-conversions remain.
 
+  2026-09-19 (partial browser verification, roadmap sweep): confirmed live against
+  wmsoffice-browser (:8084) as a byproduct of WMS-7/WMS-8's own verification pass (screenshots in
+  those items' notes) -- these specific PASS-by-declaration lines are now browser-verified, not
+  just declared:
+  - 2.5 CROSSDOCKING C1-C4: CrossDockingConsolePanel renders real CROSSDOCKINGS/EXPEDICOES/PRODUTOS
+    data with working Ativar/Marcar-Concluido actions (crossdocking.png).
+  - 2.2 ALTERACAO DE ENDERECAMENTO A4/A7: the Movimento workbench's Recalcular Saldos action
+    genuinely executes and returns "Balanced." (after-recalcular.png); A7 (Salvar e sair via
+    workbench commit) has the Save button present and wired (not itself clicked/committed this
+    pass).
+  - 2.5/2.6 import surfaces (part of C1-C4/I3-I6): DocumentoFiscalAggregateSelection,
+    RomaneioAggregateSelection, InventarioArquivoAggregateSelection all render their
+    New/ROWS shell correctly (docfiscal-selection.png, romaneio-selection.png,
+    inventario-selection.png).
+  Also found and fixed in passing (REG-215): the generic aggregate-root "New" button (a SEPARATE
+  surface from the dedicated workbench pages these screens use) 500'd on click platform-wide for
+  any aggregate; the follow-on UX fix (route it to the workbench's own working empty-shell page) is
+  REG-216, not yet done.
+  NOT attempted this pass: the remaining dozens of individual checklist lines (A1-A3/A5-A6/A8-A13,
+  R1-R23, E1-E18, C5/C8, I1-I2/I8, N1-N8, Z1-Z6) -- this is deliberately scoped as its own
+  multi-hour sweep, not rushed alongside WMS-7/8's closure, per this item's own "highest-yield gap
+  detector" framing (each line deserves a real look, not a rubber stamp).
+
   AGGREGATE S9 VERDICT: 2.6 Inventario is the strongest (wizard already declared, mostly PASS by
   declaration). 2.2/2.3/2.4/2.5 share the same recurring blocker -- the wizard-grade editing
   sub-panels (P2 selection-add, P8 row clone, P9 default-on-add, P10 per-field-group stage locks,
