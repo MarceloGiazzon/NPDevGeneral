@@ -159,6 +159,11 @@ guard:
     byte-identical error reproduced for both ImportarContagemProcedure/importarContagem and
     ParseRomaneioProcedure/importarRomaneio. AFTER THE FIX (GREEN): both calls now succeed --
     ImportarContagemProcedure returns a real populated `linhas` row (`sucesso:true`); also unit-test
-    guarded, see [[REG-223]]'s guard for the shared regression test
+    guarded, see [[REG-223]]'s guard for the shared regression test. REAL-BROWSER CONFIRMATION
+    (ScrapForAI, same session): clicked the actual "Importar Contagem (Parse)" button on
+    InventarioArquivoAggregateWorkbench.html?id=new with the same CSV -- the `linhas` grid section
+    rendered "1 rows" with the real parsed values, an explicit `assertHidden` for
+    "JAVA_SOURCE_OPERATION_NOT_BOUND" text passed, zero console/page errors. Screenshot:
+    D:\WorkSpace\NPDev\Build\scrapforai-artifacts\job_YChWZX_pokaJ\screenshots\inventario_after_import.png
     (ManifestDrivenJavaSourcePluginHandlerTest, 3/3 green).
   provenRed: true
