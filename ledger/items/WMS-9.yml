@@ -245,6 +245,29 @@ detail: |
   wanted. Re-verdict: A7 -> BLOCKED (model defect, root-caused), superseding the prior BLOCKED (data).
   Real stock (Lote 47caecb3.../two LocalArmazenagemLote rows) is left seeded in wmsoffice-browser for
   any follow-up retest once the lookupField is fixed.
+
+  2026-09-19 (Recebimento R15/R16/R22 browser-verified): created a real Recebimento
+  (id=3f1b79f9-49ee-47ef-868b-43773adc6aa2, entidade=Warehouse A) with one RecebimentoLote row
+  (loteId=47caecb3..., qty 10) via RecebimentoWorkbench.html?id=new (ScrapForAI job_rcNe3ULUsCbZ),
+  using the same data-fkey convention Movimento uses: h:<field> for header, s:itens:<rowId>:<field>
+  for the flat lotes collection. R15 CONFIRMED: at PreRecebimento (chip visible top-of-page) the
+  workbench shows no allocation info anywhere on the page -- there is none to show, matching the
+  checklist claim by simple absence. Save also revealed the workbench DOES carry a generic
+  lifecycle-transition button after all (missed in the prior declaration-only read) -- "-> Enderecado"
+  appeared once saved. R22 CONFIRMED live (job_dM1bv5AvqCwX): clicking "-> Enderecado" flipped
+  estagio and the chip/button set updated to Enderecado/"-> Conferido"; clicking that flipped again to
+  Conferido/"-> Armazenado" -- both transitions succeeded with the exact success messages
+  "-> Enderecado." / "-> Conferido." and the generic lifecycle guard correctly only ever offers the
+  SINGLE next state (never lets you skip Enderecado -> Armazenado directly), matching
+  lifecycle.transitions in Recebimento.json. R16 CORRECTED TO FAIL: verified via
+  GET /api/concepts/local_armazenagem_lotes immediately after both transitions that
+  totalElements stayed at 2 (my two manually-seeded rows, unchanged) -- clicking "-> Enderecado"
+  is a BARE estagio field flip with no side effect; it does NOT call AlocarRecebimento or write any
+  LocalArmazenagemLote row. R16's literal claim ("Enderecamento computes destination positions before
+  goods arrive") has no implementation behind this button at all -- same shape as the menu-grouping
+  and A7 findings above: a checklist line assumed a generated behavior that was never wired.
+  Re-verdict: R15 PASS (browser-verified), R16 FAIL (no computation occurs, was wrongly marked PASS
+  by declaration), R22 PASS (browser-verified, both transitions + guard behavior).
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
