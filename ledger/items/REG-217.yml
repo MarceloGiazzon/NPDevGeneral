@@ -1,0 +1,81 @@
+id: REG-217
+title: >-
+  Any procedure step chain of listConcepts -> mapList (copying a uuid/reference field) ->
+  callCapability crashes with PLUGIN_EXECUTION_FAILED once the target capability runs through
+  plugin-process-isolation IPC, because PluginIpcJsonSafeValues.isJsonSafe has no case for
+  java.util.UUID and DslTypeCoercionSupport.normalizeFieldValue coerces every uuid/reference
+  concept field to a native UUID before it ever reaches a procedure step
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found live while browser-verifying NPDEV_MEGA_ROADMAP.md Session 9 (WMS-9, Inventario I3-I4)
+  against WmsOffice (:8084). Clicking "Gerar Template de Contagem" on InventarioHistoricoPanel
+  (ScrapForAI job_S3hbxKEVDqsd / job_RgvpnYtx85ZG) with real seeded data (a Lote + two
+  LocalArmazenagemLote rows created earlier in the same session for the A7/WMS-9 investigation)
+  returned "Action \"gerarTemplate\" completed: FAILED" with failureCode PLUGIN_EXECUTION_FAILED,
+  failureMessage "Plugin IPC value 'invoke.args[1]' is not JSON-safe: java.util.ArrayList".
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/.../service/pluginipc/PluginIpcJsonSafeValues.java (isJsonSafe,
+  lines 19-44 -- the type whitelist: null/String/Boolean/Number/Record/Map/List, no UUID case);
+  NPDevKernel/adapters/runtime-support/.../crud/valuecoercion/DslTypeCoercionSupport.java
+  (normalizeFieldValue, lines 34-39 -- coerces every "uuid"/"reference" dslType field to a native
+  java.util.UUID); NPDevKernel's DefaultProcedureExecutor.mapList (kernel/.../procedures/
+  DefaultProcedureExecutor.java ~line 585) and the generator's WmsOffice corpus procedure
+  GerarTemplateContagemProcedure (AppGen/apps/_official/WmsOffice/definition/model.json
+  ~lines 1376-1424) as the live reproduction.
+detail: |
+  ROOT CAUSE, fully traced end to end, not just observed: GerarTemplateContagemProcedure runs
+  listConcepts(LocalArmazenagemLote) -> mapList (select localArmazenagemId/loteId/quantidade) ->
+  target "ocupacoes"; listConcepts(Lote) -> mapList (select id/produtoId) -> target "lotes"; then
+  callCapability(inventoryFile.gerarTemplate, args={input,lotes,ocupacoes}). The live failure
+  (job_RgvpnYtx85ZG) shows the full pre-crash state: "lotes": [{"produtoId": "8972dd84-...",
+  "id": "47caecb3-..."}] -- these look like plain strings in the JSON debug dump ONLY because
+  Jackson auto-serializes java.util.UUID to a string when rendering that view. The RAW in-memory
+  values PluginIpcJsonSafeValues checks are never stringified: DslTypeCoercionSupport.
+  normalizeFieldValue (line 36-38) explicitly does `if ("uuid".equals(dslType) ||
+  "reference".equals(dslType)) { UUID uuid = toUuid(rawValue); return uuid == null ? rawValue :
+  uuid; }` -- so every id/loteId/produtoId/localArmazenagemId field a concept record carries is a
+  native java.util.UUID object in ConceptRecord.data(), by design, well before mapList ever touches
+  it. PluginIpcJsonSafeValues.isJsonSafe (line 19-44) recognizes exactly six shapes: null, String,
+  Boolean, Number, Record, and Map/List recursively containing only those -- UUID matches NONE of
+  them, so any Map inside the "lotes"/"ocupacoes" lists containing a UUID-typed field fails
+  isJsonSafe, which fails the whole enclosing List, which throws NotJsonSafeException naming the
+  outer List's own runtime class ("java.util.ArrayList") rather than the actual offending nested
+  field -- a secondary diagnostics gap that made this look like a data-shape problem at first glance
+  rather than a missing-type-case problem.
+
+  BLAST RADIUS: this is not specific to GerarTemplateContagemProcedure or WmsOffice. ANY procedure
+  in ANY generated app that uses listConcepts+mapList to build a list/map containing an id or
+  reference-typed field, then passes that list into callCapability, will hit the exact same crash
+  the moment that capability's plugin runs through the process-isolation IPC boundary
+  (docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 1, which PluginIpcJsonSafeValues
+  itself cites as its contract). Other WmsOffice procedures built on the same documented precedent
+  (ParseNfeProcedure's produtosConhecidos, AnalisarArquivoRecebimentoDraftProcedure, the
+  onCommit-side alocarRecebimentoPorRua callers) are very likely exposed to the identical failure
+  and were NOT individually re-tested in this pass -- flagging as probable, not yet each confirmed.
+
+  NOT a one-line fix without a design call: the correct repair is almost certainly adding a
+  `value instanceof java.util.UUID` branch to PluginIpcJsonSafeValues.isJsonSafe that treats it as
+  String-safe (mirroring how Jackson/the HTTP layer already treats it) -- but whether the coercion
+  should instead happen earlier (mapList/resolveSetValue stringifying reference-typed fields before
+  they ever reach a capability boundary, so plugins never see a raw UUID at all) is a design
+  decision for the item owner, not assumed here.
+
+  Real repro data is left seeded in wmsoffice-browser (Lote 47caecb3-9943-4c6d-b0fa-14d55e479733,
+  LocalArmazenagemLote rows 6626eb84.../69004836...) for a fix-verification retest: re-running the
+  "Gerar Template de Contagem" action on InventarioHistoricoPanel with entidadeId
+  961034ea-28f4-4dee-be0a-ccf73137cf90 should go from FAILED/PLUGIN_EXECUTION_FAILED to a real CSV
+  download once fixed.
+  Done when: the same live action (entidadeId 961034ea-...) returns ok:true and streams a CSV, and
+  a regression test covers PluginIpcJsonSafeValues.isJsonSafe(UUID) directly.
+guard:
+  kind: live
+  ref: >-
+    ScrapForAI click "Gerar Template de Contagem" on InventarioHistoricoPanel, entidadeId
+    961034ea-28f4-4dee-be0a-ccf73137cf90, against wmsoffice-browser :8084 (job_RgvpnYtx85ZG)
+  asserts: >-
+    currently FAILED/PLUGIN_EXECUTION_FAILED ("invoke.args[1] is not JSON-safe: java.util.ArrayList");
+    fix should return ok=true with a streamed CSV
+  provenRed: true
