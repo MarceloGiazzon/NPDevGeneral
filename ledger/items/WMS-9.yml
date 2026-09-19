@@ -457,6 +457,16 @@ detail: |
   affect FiscalImportCapability (previously only InventoryFileCapability was implicated; see
   REG-218.yml's 2026-09-19 update). C4 is therefore FAIL, blocked by REG-218, not a staleness
   artifact. C5 unchanged (source-confirmed design gap, independent of build state, not re-tested).
+
+  SAME-DAY UPDATE: REG-218 (and a second bug it exposed, REG-223 -- wrong-overload/dropped-args on
+  the same handler) are both FIXED and live-verified this session. `POST
+  /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure` with the same payload now
+  returns `sucesso:true` with `dataEmissao` populated and a real parsed `itens` row. C4's verdict
+  moves from FAIL to PASS at the REST/procedure level. NOT yet re-confirmed through an actual
+  browser click on the workbench UI this pass (button visibility was already confirmed via the
+  panel manifest above; the parse-and-render round trip through the real page was handed to a
+  background verification pass -- check REG-218.yml/REG-223.yml for whether that landed before
+  trusting a browser-level PASS here).
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)
