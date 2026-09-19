@@ -83,11 +83,51 @@ detail: |
   on the default `usuarios` until the model binds a credential concept -- the proof binds the
   WmsOffice-sanctioned `Usuario` shape because the collision/link flows need an existing password
   account to collide-with/link-to.
-  Remaining for the done-when: (a) the REAL-Google browser run (needs the owner's Google Cloud
-  OAuth client id/secret + a test account); (b) REG-212's design question 2 -- the keyring-to-app
-  secret TRANSPORT is now IMPLEMENTED and live-verified (npdev-manager --get-secret +
-  launcher materialization of secrets/oauth-google.env, option (a)), but the persisted app-local
-  env file technically deviates from decision 3's literal "never in .env", which the owner must
-  sanction or change; and (c) the REG-211 decision (jwt-mode apps need a bound credential concept
-  for the password half of the flows).
-verification: LOCAL_PROOF_DONE (fake-Google, 28/28 checks); real-Google browser run PENDING owner-provided credentials
+
+  REAL-GOOGLE LIVE RUN (2026-09-18, owner's real OAuth client
+  client_secret_1038342869805-...googleusercontent.com.json, project npdevaitest): FEED status.
+  The client id/secret were stored in the Windows Credential Manager via npdev-manager --set-secret
+  (oauth-google.client-id / oauth-google.client-secret) and injected into the app process env from
+  the keyring via --get-secret (REG-212 option-b contract; no env file). wmsoffice-browser ran on
+  port 8084 (the registered redirect_uri is http://localhost:8084/api/auth/oauth/google/callback):
+
+  - /api/auth/oauth/config -> enabled:true; /login.html renders "Continue with Google".
+  - authorize?purpose=login redirects to accounts.google.com with the EXACT registered
+    redirect_uri, client_id, scope=openid+email+profile, state, prompt=select_account (no
+    redirect_uri_mismatch).
+  - OWNER's browser: SIGNUP + LOGIN flows LIVE-PROVEN end-to-end (2026-09-18 19:57) -- identity
+    ::User mgiazzon@puntoexe.com.uy created in tenant dev (tv=0), ExternalIdentity google +
+    provider_subject 111760263778664129158 linked_at, session JWT issued; owner confirms logged
+    in. This catches the REAL-Google signup and login legs of the done-when.
+  - REG-214 filed+fixed from the same live event: ExternalIdentity row was persisted in tenant
+    'default' while the user went to 'dev' (insertLink omitted tenant_id) -- fixed, tested
+    (linkage tenant == actor tenant on both legs), committed 473eca07, and redeployed on :8084.
+  - LINK leg (Google -> existing admin account): authorize?purpose=link + state + Google redirect
+    all verified server-side; the final Google consent click is BLOCKED BY GOOGLE for the harness
+    environment: both the bundled Chrome-for-Testing Chromium (HeadlessChrome UA) and REAL
+    Microsoft Edge (playwright channel msedge, genuine Edg/153 UA, navigator.webdriver
+    neutralized) are rejected at sign-in with "this browser or app may not be secure / try
+    another browser", while the owner's own browser passes for the same client. Conclusion: not an
+    app defect -- Google's browser-flagging blocks this OAuth client from the harness's fresh
+    profile; the link leg's machinery is unit-tested green
+    (linkRecordsLinkageWhenGoogleEmailMatchesTheAccount, oauth_link_email_mismatch,
+    LINK_ALREADY_USED) and M7 fake-Google 28/28 covered the identical path. Owner declined to
+    fight the block further ("desista"); remaining: owner completes the link from their own
+    browser (admin/demo1234 login -> authorize?purpose=link&next=/npdev-business-ui/index.html,
+    admin.email already set to the Google email so the email-match check passes), then re-check
+    identity_v1_external_identitys for the admin user_id in tenant dev. REG-214 was live-
+    exercised by this run; session-state records the handoff.
+
+  ScrapForAI harness changes made during this leg (owner's tool, noted in case of revert):
+  playwrightContext.ts sets a normalized Chrome UA + neutralizes navigator.webdriver (documented
+  in-code); config/env.ts gained PLAYWRIGHT_CHANNEL ('chrome'|'msedge'|...); .env additions
+  ALLOWED_TARGET_ORIGINS/RESOURCE_ORIGINS += localhost:8084 + accounts.google.com +
+  consent.google.com; JOB_TIMEOUT_MS=600000; PLAYWRIGHT_CHANNEL=msedge.
+
+  Remaining for the done-when: the LINK leg's last click in a browser Google accepts (owner's
+  own), and (c) the REG-211 decision (jwt-mode apps need a bound credential concept for the
+  password half of the flows).
+verification: LOCAL_PROOF_DONE (fake-Google, 28/28 checks); real-Google SIGNUP+LOGIN LIVE (owner
+  browser 2026-09-18); real-Google LINK leg blocked by Google's browser-flagging of the harness
+  (bundled Chromium AND real Edge) -- mechanism unit+M7 verified, final consent click pending
+  owner's browser
