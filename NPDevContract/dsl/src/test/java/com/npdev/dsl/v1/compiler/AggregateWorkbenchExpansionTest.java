@@ -84,6 +84,9 @@ class AggregateWorkbenchExpansionTest {
                 .orElseThrow(() -> new AssertionError("expected a root ExpedicaoSelection panel"));
         assertEquals("table", selection.layout().type());
         assertEquals("/expedicao", selection.route());
+        // REG-216: the Selection panel's "New" button must route to its paired Workbench's own
+        // empty-shell editor, not a blank conceptMutation create the aggregate root can never satisfy.
+        assertEquals("ExpedicaoWorkbench", selection.metadata().get("workbenchPanel"));
 
         CompiledPanel workbench = model.getPanels().stream()
                 .filter(p -> "ExpedicaoWorkbench".equals(p.name())).findFirst()

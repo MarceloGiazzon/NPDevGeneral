@@ -741,6 +741,13 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             if (panel.metadata() != null && "aggregate".equals(panel.metadata().get("dataVia"))) {
                 node.put("workbenchUrl", "/npdev-workbench/" + panel.name() + ".html");
             }
+            // REG-216: an aggregate root's Selection panel carries a link to its paired Workbench
+            // (AutoPanelExpander's metadata.workbenchPanel) -- the client uses this to route the
+            // "New" action to the Workbench's own empty-shell editor instead of a blank
+            // conceptMutation create, which can never satisfy a root with a required field beyond id.
+            if (panel.metadata() != null && panel.metadata().get("workbenchPanel") != null) {
+                node.put("newWorkbenchUrl", "/npdev-workbench/" + panel.metadata().get("workbenchPanel") + ".html?id=new");
+            }
             List<Map<String, Object>> actions = new ArrayList<>();
             for (CompiledPanelAction action : panel.actions()) {
                 Map<String, Object> actionNode = new LinkedHashMap<>();

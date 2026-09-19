@@ -237,11 +237,16 @@ final class AutoPanelExpander {
         List<String> rootColumns = override(autoPanel.selection(), CompiledAutoPanelSurface::columns,
                 columnsFor(fieldsByConcept, rootConcept));
         CompiledPanelLayout selLayout = new CompiledPanelLayout("table", List.of(), rootColumns, Map.of());
+        Map<String, Object> selectionMetadata = surfaceMetadata(base, "selection", rootConcept);
+        // REG-216: a blank conceptMutation create can never satisfy an aggregate root once it has a
+        // required field beyond id -- point the Selection panel's "New" button at the paired
+        // Workbench's own empty-shell editor (mirrors metadata.selectionPanel above, in reverse).
+        selectionMetadata.put("workbenchPanel", base + "Workbench");
         CompiledPanel selectionPanel = new CompiledPanel(
                 selectionPanelName, baseRoute, rootConcept,
                 List.of(conceptDataSource(rootConcept)), selLayout, List.of(), null, null,
                 List.of(newRecordAction(rootConcept, settings)), Map.of(),
-                surfaceMetadata(base, "selection", rootConcept), null);
+                selectionMetadata, null);
 
         return List.of(workbenchPanel, selectionPanel);
     }

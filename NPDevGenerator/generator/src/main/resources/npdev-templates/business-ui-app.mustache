@@ -1884,6 +1884,18 @@
       // G2: scope="row" actions render per row inside renderDeclaredColumnsTable instead -- skip here.
       if (action.scope === "row") { return; }
       if (!evaluateWhen(action.visibleWhen, panelContext)) { return; }
+      // REG-216: an aggregate root's Selection "New" button can never satisfy a blank
+      // conceptMutation create once the root has a required field beyond id -- when the panel
+      // carries a paired workbench (panelMeta.newWorkbenchUrl, ADR-0005), navigate straight to
+      // that workbench's own empty-shell editor instead of invoking the mutation.
+      if (action.name === "new" && panelMeta.newWorkbenchUrl) {
+        const newButton = button(action.label, "primary", function () {
+          window.location.href = panelMeta.newWorkbenchUrl;
+        });
+        newButton.disabled = !panelEnabled || !evaluateWhen(action.enabledWhen, panelContext);
+        section.appendChild(newButton);
+        return;
+      }
       const fieldNames = action.inputFields || [];
       // G3 (docs/MOVE2_PANEL_ACTIONS_PLAN.md): a panel-scoped action with declared inputFields gets
       // an inline "collect input, then invoke" mini-form -- the same shape

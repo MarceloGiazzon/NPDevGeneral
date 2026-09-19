@@ -84,6 +84,13 @@ public class BusinessUiEmitterWorkbenchTest {
         assertTrue(manifest.contains("\"workbenchUrl\":\"/npdev-workbench/ExpedicaoWorkbench.html\"")
                         || manifest.contains("\"workbenchUrl\" : \"/npdev-workbench/ExpedicaoWorkbench.html\""),
                 "manifest should link the workbench panel to its page; got: " + manifest);
+
+        // REG-216: the paired Selection panel's "New" button must route to the Workbench's own
+        // empty-shell editor, not attempt a blank conceptMutation create the root can never satisfy
+        // once it has a required field beyond id.
+        assertTrue(manifest.contains("\"newWorkbenchUrl\":\"/npdev-workbench/ExpedicaoWorkbench.html?id=new\"")
+                        || manifest.contains("\"newWorkbenchUrl\" : \"/npdev-workbench/ExpedicaoWorkbench.html?id=new\""),
+                "manifest should link the Selection panel's New action to the Workbench's empty-shell page; got: " + manifest);
     }
 
     /** Move 6 Move A: the workbench page's STRINGS catalogue merges the platform's English defaults
