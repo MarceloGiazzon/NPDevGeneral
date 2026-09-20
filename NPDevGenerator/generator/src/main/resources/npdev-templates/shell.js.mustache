@@ -85,6 +85,32 @@
     document.head.appendChild(style);
   })();
 
+  // WMS-9 N5: the topbar previously had no quick-access affordance distinct from the sidebar nav
+  // itself -- the sidebar trivially satisfies "reachable from the menu" by being the menu. Same
+  // self-contained JS-injected style pattern as injectExecutionsRailStyle above, and for the same
+  // reason: this script owns the toggle+panel DOM it creates. Always visible (unlike the executions
+  // toggle) since the point is a guaranteed affordance, not a conditional one.
+  (function injectQuickAccessStyle() {
+    if (document.querySelector('style[data-npdev-shell-quickaccess]')) return;
+    var style = document.createElement("style");
+    style.setAttribute("data-npdev-shell-quickaccess", "true");
+    style.textContent =
+      ".npdev-shell-quickaccess-toggle{margin-left:8px;padding:4px 9px;border:1px solid var(--np-border,#d8dee7);" +
+      "border-radius:14px;background:var(--np-surface,#fff);color:var(--np-text,#1c2333);font-size:13px;" +
+      "cursor:pointer;display:inline-flex;align-items:center;gap:4px;}" +
+      ".npdev-shell-quickaccess-panel{display:none;position:fixed;top:44px;left:16px;z-index:70;" +
+      "width:min(280px,calc(100vw - 32px));max-height:360px;overflow-y:auto;background:var(--np-surface,#fff);" +
+      "border:1px solid var(--np-border,#d8dee7);border-radius:8px;box-shadow:0 12px 32px rgba(24,32,42,.22);" +
+      "padding:6px;}" +
+      ".npdev-shell-quickaccess-panel.npdev-shell-quickaccess-panel-open{display:block;}" +
+      ".npdev-shell-quickaccess-panel ul{list-style:none;margin:0;padding:0;}" +
+      ".npdev-shell-quickaccess-panel a{display:block;padding:7px 8px;font-size:13px;" +
+      "color:var(--np-text,#1c2333);text-decoration:none;border-bottom:1px solid var(--np-border,#eef1f5);}" +
+      ".npdev-shell-quickaccess-panel li:last-child a{border-bottom:none;}" +
+      ".npdev-shell-quickaccess-empty{padding:7px 8px;font-size:13px;color:var(--np-text-muted,#6b7280);}";
+    document.head.appendChild(style);
+  })();
+
   // R7.10: the sidebar's small-viewport drawer CSS -- same "JS-injected style block" pattern as
   // injectExecutionsRailStyle above, and for the same reason: this script is the sidebar's only
   // owner (paintSkeleton builds it, the toggle below drives it), so its responsive behaviour lives
@@ -318,6 +344,31 @@
     bar.appendChild(breadcrumb);
     el.breadcrumb = breadcrumb;
 
+    // WMS-9 N5: quick-access toggle -- reuses the same recentItems()/recordRecentItem() localStorage
+    // list the right-rail "recent-items" gadget already reads (docs/UI_CONTRACT.md keeps this a
+    // per-viewer convenience, never a model-owned concept, so no new tracking and no schema change),
+    // just rendered somewhere every app is guaranteed to show it instead of only on GuidePages that
+    // opt into the gadget rail.
+    var quickAccessToggle = document.createElement("button");
+    quickAccessToggle.className = "npdev-shell-quickaccess-toggle";
+    quickAccessToggle.type = "button";
+    quickAccessToggle.title = "Acesso rapido";
+    quickAccessToggle.setAttribute("aria-label", "Acesso rapido");
+    quickAccessToggle.textContent = "★";
+    quickAccessToggle.addEventListener("click", function () {
+      renderQuickAccessPanel();
+      el.quickAccessPanel.classList.toggle("npdev-shell-quickaccess-panel-open");
+    });
+    bar.appendChild(quickAccessToggle);
+    el.quickAccessToggle = quickAccessToggle;
+
+    var quickAccessPanel = document.createElement("div");
+    quickAccessPanel.className = "npdev-shell-quickaccess-panel";
+    quickAccessPanel.setAttribute("role", "region");
+    quickAccessPanel.setAttribute("aria-label", "Acesso rapido");
+    bar.appendChild(quickAccessPanel);
+    el.quickAccessPanel = quickAccessPanel;
+
     // R7.7: recent-executions rail toggle. Stays display:none (see injectExecutionsRailStyle)
     // until the first tracked execution arrives, so an app with no async invocations shows nothing
     // new here at all.
@@ -433,6 +484,17 @@
       var text = document.createElement("span");
       text.textContent = "logado como " + state.actorId + (state.roles.length ? " (" + state.roles.join(", ") + ")" : "");
       el.identity.appendChild(text);
+      // WMS-9 N6: "change my password" is a jwt-mode-only endpoint/page (ChangePasswordController,
+      // change-password.html) -- an apiKey app's "token" is a static dev key with no per-user
+      // credential to change, so the link only renders when the manifest's own auth block (fetched
+      // before this function ever runs, see applyData above) reports the Bearer scheme.
+      if (state.manifest && state.manifest.auth && state.manifest.auth.scheme === "Bearer") {
+        var changePasswordLink = document.createElement("a");
+        changePasswordLink.className = "npdev-shell-change-password";
+        changePasswordLink.href = "/change-password.html";
+        changePasswordLink.textContent = "Alterar senha";
+        el.identity.appendChild(changePasswordLink);
+      }
       var logoutBtn = document.createElement("button");
       logoutBtn.className = "npdev-shell-logout";
       logoutBtn.type = "button";
@@ -741,6 +803,32 @@
     var items = recentItems().filter(function (item) { return item.href !== href; });
     items.unshift({ label: label, href: href });
     writeJsonStorage(localStorage, RECENT_ITEMS_KEY, items.slice(0, 10));
+  }
+
+  // WMS-9 N5: same data as renderRecentItemsGadget below, rendered into the always-present topbar
+  // panel instead of a GuidePage's opt-in gadget rail -- deliberately not a third localStorage key,
+  // just a second reader of recentItems().
+  function renderQuickAccessPanel() {
+    var container = el.quickAccessPanel;
+    container.innerHTML = "";
+    var items = recentItems();
+    if (!items.length) {
+      var empty = document.createElement("div");
+      empty.className = "npdev-shell-quickaccess-empty";
+      empty.textContent = "Nenhum item recente ainda.";
+      container.appendChild(empty);
+      return;
+    }
+    var list = document.createElement("ul");
+    items.forEach(function (item) {
+      var li = document.createElement("li");
+      var a = document.createElement("a");
+      a.href = item.href;
+      a.textContent = item.label;
+      li.appendChild(a);
+      list.appendChild(li);
+    });
+    container.appendChild(list);
   }
 
   function renderRecentItemsGadget(container) {
