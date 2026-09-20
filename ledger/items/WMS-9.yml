@@ -4,8 +4,9 @@ title: >-
   against WMSOFFICE_SCREEN_PARITY_CHECKLIST.md Part 2.2-2.8
 type: FEATURE
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-18
+closed: 2026-09-20
 verification: LOCAL_PROOF_DONE
 source: >-
   NPDEV_MEGA_ROADMAP.md Session 9 done-when: "every checklist line is PASS or has a recorded
@@ -656,6 +657,55 @@ detail: |
   lock contention. Not filed as its own REG item this session (time-boxed) -- worth a dedicated
   repro+file pass, since "raw PUT on a concept with a mode:update flow deadlocks" sounds like it
   could affect any app using this exact shape, not just WmsOffice's Recebimento/Expedicao.
+
+  2026-09-20 (follow-on session -- REG-225 fixed, the raw-PUT deadlock filed with full root cause,
+  N4's company-name half built): picked up from this item's own recorded backlog.
+
+  REG-225: FIXED and verified end-to-end. Two independent bugs, both real: (1) produtoId resolved
+  to null for a real Produto codigo because ParseRomaneioProcedure's produtosConhecidos was keyed
+  ONLY on Produto.nome, not codigo (a deliberate but incomplete choice) -- fixed to try codigo
+  first, then nome (FiscalImportCapability.encontrarProduto), and produtosConhecidos now carries
+  both fields. (2) the itens-grid row's `data-fkey="...undefined..."` symptom and the header fields
+  (numero, any already-picked reference) silently vanishing after Import were BOTH caused by
+  workbench-page.html.mustache's `store.patch` wholesale-REPLACING the draft with any procedure
+  result instead of merging -- correct for a "recompute" action whose procedure reads-and-patches
+  the existing record (GerarExpedicaoProcedure, CriarMovimentoPara*, ConfirmarMovimentacaoExpedicao,
+  all still return the full record, unaffected), wrong for a "propose" action (ParseNfeProcedure,
+  ParseRomaneioProcedure, ImportarContagemProcedure, AnalisarArquivoRecebimentoDraftProcedure -- ALL
+  of which share this exact bug shape, not just Romaneio) that returns a small ad hoc result with no
+  row ids at all. Fixed generically: `store.patch` now merges onto the existing draft and assigns a
+  fresh client-side id (the same `genId()`/`stripClientTempIds` convention `addRow` already uses) to
+  any row that arrives without one -- a platform-level fix, not a WmsOffice patch, so it also closes
+  the identical latent bug in the NFe and InventarioArquivo import wizards. Verified: REST-confirmed
+  produtoId resolution + numero echo via a direct ParseRomaneioProcedure invoke; REST-confirmed a
+  Save with the EXACT draft shape the fixed client now produces (merged header + id-less item row)
+  succeeds end-to-end, creating a real Romaneio + RomaneioItem row. 3 new regression tests (2 in
+  NPDevContract/dsl, 1 in NPDevGenerator), full `:NPDevContract:dsl:test` green, no regressions in
+  the existing canonical-JSON/args-ordering/createIfMissing suites. See REG-225.yml's own DONE entry.
+
+  Raw-PUT deadlock: root-caused FULLY via live reproduction against a freshly rebuilt
+  wmsoffice-browser (fresh H2 database, real bootstrapped ADMIN JWT) -- not simulated. A generic
+  CRUD PUT's own `enforceWithConceptGateway` write (transaction-aware, joins the ambient
+  @Transactional connection) and the concept's update-bound flow's own `updateConcept` write
+  (dispatched through `TimeBoundedPluginExecutionEngine` onto a separate worker thread, NOT
+  transaction-aware) both target the same row within one request and deadlock -- deterministic,
+  reproduces on the first attempt every time, confirmed with full H2 + sandbox-timeout stack traces.
+  NOT fixed here: the real fix is a platform-wide capability-dispatch change (how "persistence"
+  capability writes are routed relative to the plugin sandbox) with a blast radius across every
+  flow/procedure in every generated app -- owner-agreed carve-out to file thoroughly now (done, see
+  REG-231.yml) and fix as its own dedicated, carefully-tested session rather than rush it here.
+
+  N4 (company-name half): BUILT. The platform shell has no generic notion of "the one company the
+  user is logged into" (tenancy is row-level, not one-org-per-session), so rather than guess at a
+  business concept name, the fix is a RESERVED query name -- "ShellCompanyName" -- the same idiom
+  `workspace::Menu` already uses for reserved-name platform overlays. shell.js.mustache's topbar
+  now best-effort-fetches `/api/queries/ShellCompanyName?limit=1` once authenticated and renders the
+  first row's `nome`/`name`/`label` field; an app that doesn't declare this query gets nothing,
+  silently (no error, no schema change, no settings-field plumbing). WmsOffice opts in with a query
+  over Entidade ordered by nome (its own setup wizard creates exactly one active Entidade per
+  deployment in practice, so "first row" is a correct, honest answer for this app's real usage
+  shape). New regression test (ShellTopbarCompanyNameTest) green. N4 is now fully closed (clock +
+  company name); N5/N6/Z1-Z6/C5/C6/C7 were already closed in the prior session.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)

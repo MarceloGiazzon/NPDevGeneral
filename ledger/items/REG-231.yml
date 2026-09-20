@@ -1,0 +1,163 @@
+id: REG-231
+title: >-
+  A generic CRUD PUT on a concept that also has an update-bound flow (input.mode=="update")
+  self-deadlocks: the flow's own updateConcept step writes the same row through a different,
+  thread-hopping, non-transaction-aware persistence path than the PUT's own write, and the two
+  block on each other -- reproduced deterministically, not intermittent.
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-20
+source: >-
+  First observed as an incidental finding during WMS-9's own session-10/11 verification passes
+  (recorded in WMS-9.yml's "Also found, live" note): a raw PUT on Recebimento/Expedicao reliably
+  hit an H2 row-lock timeout when the concept's own update-bound flow (ConfirmarRecebimento /
+  ConfirmarSaidaExpedicao) ran as part of the same request; worked around at the time by calling
+  the flow endpoint directly instead of the generic PUT. Not filed then (time-boxed). Picked up and
+  fully root-caused this session against a live, freshly rebuilt wmsoffice-browser instance
+  (:8100) with a real ADMIN JWT (bootstrapped via /api/auth/bootstrap-admin against a wiped H2
+  database) -- not simulated, not guessed from source reading alone.
+surface: >-
+  NPDevGenerator-emitted service-base.mustache (materializes as e.g.
+  com.npdev.generated.services.RecebimentoServiceBase.enforceWithUpdateFlow /
+  enforceWithConceptGateway / updateFromSource -- generic across every concept declaring an
+  update-bound flow, not Recebimento-specific); com.npdev.kernel.concepts.DefaultConceptGateway +
+  com.finalexec.db.JdbcBusinessConceptStore (the transaction-aware path, LNCH-17,
+  DataSourceUtils.getConnection); com.npdev.kernel.KernelRunner's capability dispatch ->
+  com.npdev.kernel.RegistryCapabilityDispatcher -> com.finalexec.npdev.service.
+  SandboxedCapabilityAdapter -> com.finalexec.npdev.service.TimeBoundedPluginExecutionEngine (the
+  NOT-transaction-aware, cross-thread path) -> com.npdev.adapters.persistence.postgres.
+  PostgresPersistenceCapabilityAdapter.save (bare dataSource.getConnection(), no DataSourceUtils,
+  no explicit commit).
+detail: |
+  ROOT-CAUSED, NOT FIXED (owner decision this session: file thoroughly now, fix as its own
+  dedicated piece of work later -- the correct fix is a platform-wide capability-dispatch change
+  with a blast radius across every flow/procedure in every generated app, not something to rush
+  under this session's remaining budget).
+
+  LIVE REPRODUCTION (2026-09-20, wmsoffice-browser rebuilt from a wiped H2 database, real ADMIN
+  JWT via /api/auth/bootstrap-admin): created a real Entidade ("Warehouse A",
+  fb8afac5-50ed-459b-8ba4-789e2b276bec) and a real Recebimento
+  (d38e93a1-1f9b-4b7e-bd6c-0e27bade5736, estagio=PreRecebimento) via the aggregate workbench
+  commit endpoint (POST /api/runtime/aggregate/Recebimento -- confirmed this path does NOT exhibit
+  the bug, since it never calls enforceWithUpdateFlow at all). Then sent a plain PUT to the GENERIC
+  CRUD endpoint: `PUT /api/concepts/recebimentos/{id}` with only `observacao` changed (estagio left
+  at PreRecebimento, nowhere near the Armazenado state ConfirmarRecebimento's own invariants care
+  about) -- this alone is enough to trigger the deadlock, no special field combination needed,
+  because enforceWithUpdateFlow calls the update-bound flow UNCONDITIONALLY on every PUT
+  regardless of which fields changed. Reproduced identically on the FIRST attempt (not a flaky,
+  intermittent race) and confirmed deterministic by retrying: every subsequent attempt failed the
+  same way (a version-conflict 409 on retries 2-4 confirms the FIRST failed request's own
+  transaction genuinely rolled back with no partial write -- version stayed at its original value,
+  it did not increment).
+
+  EXACT MECHANISM, confirmed from full stack traces in App/logs/app.log (not inferred from source
+  reading alone -- read line by line, cross-referenced against the actual generated
+  RecebimentoServiceBase.java in the rebuilt app):
+
+  1. `RecebimentoServiceBase.updateFromSource` (generated, @Transactional) runs
+     `enforceWithConceptGateway("Recebimento", id, updatePayload)` (service-base.mustache's own
+     LNCH-13/REG-16-resid R2 ordering: an access-control write-check that must see pre-update
+     state, hence runs before the flow). This calls `conceptGateway.save(...)` ->
+     `DefaultConceptGateway` -> `JdbcBusinessConceptStore`, whose `openConnection()` uses
+     `DataSourceUtils.getConnection(dataSource)` (LNCH-17's own fix, exactly for this reason) --
+     since this runs SYNCHRONOUSLY on the same Tomcat request thread as the enclosing
+     `@Transactional` method, it correctly JOINS that ambient Spring transaction. Its own write
+     (the new `observacao` value) lands in the SAME, still-open, uncommitted transaction the outer
+     method will eventually commit -- this is "tx 1" in the H2 exception below, and by design it
+     stays uncommitted (holding the row's write lock) until `updateFromSource` itself returns.
+
+  2. Immediately after, `enforceWithUpdateFlow(crudCtx, id, updatePayload)` runs
+     `kernelRunner.execute("ConfirmarRecebimento", flowInput, crudCtx)`. ConfirmarRecebimento's own
+     `updateConcept` step resolves to the "persistence" CAPABILITY (WmsOffice's own binding:
+     `{"capability": "persistence", "adapter": "repository"}`) -- a COMPLETELY DIFFERENT dispatch
+     path than step 1's ConceptGateway: `KernelRunner` -> `RegistryCapabilityDispatcher` ->
+     `chosenAdapterClass=SandboxedCapabilityAdapter` -> `TimeBoundedPluginExecutionEngine.execute`,
+     which submits the actual save to a POOLED WORKER THREAD (confirmed live in the stack trace:
+     `ThreadPoolExecutor$Worker.run` -> `FutureTask.run` -> `TimeBoundedPluginExecutionEngine.
+     lambda$execute$0` -> `invokeHandler` -> `PostgresPersistenceCapabilityAdapter.save`) and
+     blocks the calling thread on `future.get(timeoutMs)`. `PostgresPersistenceCapabilityAdapter.
+     save` acquires its OWN connection via a BARE `dataSource.getConnection()` (no
+     `DataSourceUtils`, and it would not matter even if it used it: `DataSourceUtils`'s
+     transaction-synchronization lookup is ThreadLocal-keyed, and this call is running on a
+     DIFFERENT thread than the one the outer `@Transactional` bound its transaction to) -- so this
+     is "tx 2", a completely independent transaction, on a completely independent connection, with
+     no way to see tx 1's still-open changes.
+
+  3. tx 2's own `MERGE INTO recebimentos ...` tries to lock the exact same row tx 1 (still open,
+     uncommitted, from step 1) holds. H2 reports it plainly: `org.h2.mvstore.MVStoreException: Map
+     entry <table.213> with key <1> and value (... 'raw put test' ...) 1/9 (... NULL ...) is locked
+     by tx 1 and can not be updated by tx 2 within allocated time interval 2000 ms.` -- the two
+     printed row versions are literally tx 1's pending NEW value (observacao='raw put test') versus
+     the ORIGINAL value (observacao=NULL), proving tx 1 is exactly step 1's own uncommitted write.
+     `TimeBoundedPluginExecutionEngine`'s OWN budget (1000 ms, shorter than H2's 2000 ms lock
+     timeout) fires first, so the caller sees `CAPABILITY_FAILED Sandboxed plugin execution timed
+     out after 1000 ms` well before H2's own timeout would have reported the lock wait directly.
+     `enforceWithUpdateFlow`'s `requireFlowSucceeded` then throws, the whole `@Transactional`
+     method rolls back (confirmed: the row's `version` never actually incremented across four
+     repeated attempts), and the client sees a bare 500 with no useful diagnostic at the REST
+     layer (the browser-visible symptom is just "Internal Server Error").
+
+  BLAST RADIUS: every concept in every generated app that declares BOTH (a) an update-bound flow
+  (`flows[].input == {"concept": X, "mode": "update"}`) AND (b) resolves its own "persistence"
+  capability to an adapter that goes through `SandboxedCapabilityAdapter` (which appears to be
+  EVERY built-in adapter today, not just untrusted `plugin:java-source` ones -- WmsOffice's own
+  binding is `adapter: "repository"`, a first-party, statically-compiled adapter, and it still gets
+  sandboxed identically to a genuinely untrusted plugin). This is NOT specific to WmsOffice,
+  Recebimento, or H2 -- any engine with row-level locking (Postgres, SQL Server, MySQL) would show
+  the same shape, just with that engine's own lock-timeout wording instead of H2's.
+
+  WHY THIS WASN'T CAUGHT BY EXISTING COVERAGE: the aggregate WORKBENCH's own commit path
+  (`POST /api/runtime/aggregate/<Name>`, what every WMS-9 browser verification actually drove for
+  Recebimento/Expedicao -- R15/R22/E7 etc.) never calls `enforceWithUpdateFlow` at all; it is a
+  DIFFERENT generated code path. Every prior WMS-9 lifecycle-transition verification (R15/R22, E7)
+  exercised ONLY the workbench path, so this bug was structurally invisible to that testing --
+  reaching it requires the GENERIC `/api/concepts/{plural}/{id}` CRUD endpoint specifically, which
+  the corpus's own browser routines never touch for a concept that also has an update-bound flow.
+
+  WHY NOT FIXED HERE (owner-agreed carve-out, not a punt): three fix shapes were considered, all
+  with real platform-wide risk:
+    (a) Make `PostgresPersistenceCapabilityAdapter` (and its siblings) use
+        `DataSourceUtils.getConnection` like `JdbcBusinessConceptStore` already does -- INSUFFICIENT
+        alone, since the sandbox dispatch still runs the call on a different thread, where
+        Spring's ThreadLocal transaction binding is invisible regardless.
+    (b) Exempt trusted, first-party, statically-compiled adapters (persistence:repository) from
+        `SandboxedCapabilityAdapter`'s cross-thread dispatch, running them synchronously on the
+        calling thread instead (where fix (a) would then actually help) -- reserving the sandbox
+        for genuinely untrusted `plugin:java-source` capabilities only. This is the most
+        architecturally honest fix, but SEC-6's own `PluginTimeoutHint` mechanism suggests the
+        sandbox may be deliberately blanket-applied for a SECOND reason beyond untrusted-code
+        isolation (a uniform timeout/reliability backstop for ANY capability call, trusted or not)
+        -- removing trusted adapters from it could silently remove a DELIBERATE safety net the
+        original design wanted for every capability, not just plugins. Needs an owner read of
+        SEC-6's own design intent before touching this.
+    (c) Restructure `enforceWithUpdateFlow`/the flow's own `updateConcept` step so the flow does
+        NOT redundantly re-write fields `enforceWithConceptGateway` already wrote, since both
+        write the SAME payload to the SAME row today -- but the flow is also independently
+        invocable via `/api/flows/ConfirmarRecebimento/execute`, where it DOES need to actually
+        write, so this can't be a blanket "skip the write when called from enforceWithUpdateFlow"
+        without a real design decision about what that alternate call path should do instead.
+  All three are genuine platform-wide dispatch/architecture decisions, not a one-file patch --
+  the owner explicitly asked for this to be filed thoroughly and fixed as its own dedicated,
+  carefully-tested piece of work rather than rushed here.
+guard:
+  kind: none
+  ref: >-
+    Repro (used live, still reproducible against a wmsoffice-browser instance with the same shape):
+    1) create any Recebimento (or Expedicao) via POST /api/runtime/aggregate/Recebimento with
+    estagio left at its initial state. 2) PUT /api/concepts/recebimentos/{id} with ANY field
+    changed (e.g. just `observacao`), same id, matching version. Fails every time with HTTP 500,
+    ~1.0-1.3s response time, and `App/logs/app.log` shows the exact
+    "IllegalStateException: Flow "ConfirmarRecebimento" for Recebimento did not complete
+    successfully: CAPABILITY_FAILED Sandboxed plugin execution timed out after 1000 ms" plus the
+    nested H2 "is locked by tx 1 and can not be updated by tx 2" trace this item quotes above.
+  asserts: >-
+    Reproduced 2026-09-20 against a freshly rebuilt wmsoffice-browser (:8100), real ADMIN JWT,
+    fresh H2 database (no stale state): first attempt failed with the exact deadlock signature;
+    three immediate retries all failed on a version-conflict 409 (expected, since the first
+    request's whole transaction rolled back and never incremented `version` -- confirms this is a
+    deterministic, 100%-reproducible failure mode, not an intermittent race). Full stack traces for
+    both the H2 lock exception and the wrapping "Sandboxed plugin execution timed out" exception
+    captured verbatim in this item's own detail section, read directly from App/logs/app.log, not
+    paraphrased from memory.
+  provenRed: true
