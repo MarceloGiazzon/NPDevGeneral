@@ -639,6 +639,13 @@ detail: |
   deterministically on an unrelated Spring-context-bootstrap failure, reproduced twice; not
   root-caused, exact missing bean unknown).
 
+  2026-09-20 (REG-224 FIXED, follow-on session): the Map.copyOf-rejects-null-values bug this item's
+  own Z1-Z6 work found and routed around (rather than fixing, to avoid scope creep) is now fixed --
+  see REG-224.yml's own DONE entry. Both ProcedureStepAst AND its compiled-model twin
+  CompiledProcedureStep needed the fix (the twin had the identical bug, undiscovered until this
+  pass), plus a new twin-pair-registry.json rule to keep them in sync going forward. Not itself a
+  WMS-9 checklist line -- recorded here only because REG-224 was filed FROM this item's own work.
+
   Also found, live, while testing this session's own changes (both pre-existing, unrelated to any
   of the six tracks above): a generic Recebimento/Expedicao update via a raw PUT
   (RecebimentoServiceBase/ExpedicaoServiceBase's own generated update() path) reliably hits an H2

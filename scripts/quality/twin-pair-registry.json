@@ -618,6 +618,20 @@
         "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/HostPlanEmitter.java",
         "docs/HOSTING.md"
       ]
+    },
+    {
+      "id": "procedure-step-null-tolerant-maps",
+      "citedBy": "REG-224",
+      "description": "ProcedureStepAst (parser-level) and CompiledProcedureStep (compiled-model, built by both ModelCompiler and CompiledModelCanonicalJsonReader) each wrap the same five step fields -- data/args/metadata/set/select -- in an immutable map inside their compact constructor. Map.copyOf/Map.ofEntries reject null VALUES (not just null keys), so a procedure step JSON that legitimately declares an explicit null (e.g. patchConcept.set clearing a reference field back to null) threw a bare, contextless NullPointerException. Fixing only the AST record would let the null survive parsing and then re-crash one layer down at compile time with the exact same shape -- the REG-104 'parses/compiles clean, never reaches the runtime on the skipped side' pattern turned inside out (here it is 'parses clean, still crashes one stage later'). Both records now copy via an unmodifiable LinkedHashMap instead of Map.copyOf for these fields.",
+      "kind": "field-in-all-files",
+      "trackedFields": [
+        "npdev-procedure-step-null-tolerant-maps"
+      ],
+      "caseSensitive": true,
+      "files": [
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureStepAst.java",
+        "NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/compiled/CompiledProcedureStep.java"
+      ]
     }
   ]
 }

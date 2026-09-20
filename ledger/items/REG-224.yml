@@ -7,8 +7,9 @@ title: >-
   "NullPointerException" diagnostic instead of a proper structural error, or working at all.
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-20
 source: >-
   Found while building WMS-9 Z1-Z6 (Reset de Ambiente): a new ResetarAmbienteTransacionalProcedure
   needed to clear Romaneio.expedicaoId back to null (patchConcept.set: {"expedicaoId": null,
@@ -43,34 +44,54 @@ surface: >-
   themselves handle a JSON `null` correctly (produce a Java `null` value in the map, no crash) --
   the bug is entirely in `ProcedureStepAst`'s own immutability wrapping, one layer downstream.
 detail: |
-  NOT FIXED this session -- found and root-caused while building an unrelated feature (WMS-9
-  Z1-Z6), routed around by design instead (the new ResetarAmbienteTransacionalProcedure deletes
-  Romaneio outright rather than nulling its Expedicao reference, which is arguably the more
-  correct shape anyway since Romaneio is transactional data). Recorded here rather than fixed
-  inline to avoid scope creep into a five-field platform-wide parser change under time pressure
-  from a different task; a "clear this reference/value back to null via a procedure step" need
-  has apparently never been exercised anywhere in this platform's corpus before (dsl-conformance-max
-  has no such example either), which is why this NPE-on-valid-input bug went uncaught this long.
+  FIXED 2026-09-20 (picked up from the WMS-9 sweep's own recorded backlog). Applied the fix this
+  item's own prior session already identified, plus one thing that prior pass didn't check: the
+  SAME Map.copyOf-rejects-null-values bug exists one layer downstream in CompiledProcedureStep
+  (the compiled-model twin ModelCompiler and CompiledModelCanonicalJsonReader both build a step
+  into), for the exact same four fields (data/metadata/set/select -- `args` on that record was
+  already null-tolerant, fixed earlier for CompiledProcedureStepArgsOrderTest's unrelated ordering
+  reason). Fixing only ProcedureStepAst would have let a null survive PARSING only to re-crash with
+  the identical NPE at COMPILE time instead -- validateModel's own pipeline runs parse then compile,
+  so the original repro would have kept failing even after a parser-only fix.
 
-  LIKELY FIX (not yet implemented or verified): replace `Map.copyOf(x)` with a null-tolerant
-  immutable wrapper, e.g. `Collections.unmodifiableMap(new LinkedHashMap<>(x))`, for all five
-  fields (set/data/args/metadata/select) -- the same pattern `ConceptRecord.copyData` already uses
-  (NPDevKernel/kernel/.../concepts/ConceptRecord.java:32-37) for exactly this reason. Whoever picks
-  this up should also decide whether `ModelValidatorMain.safeMessage` deserves a real fix
-  separately -- a bare "NullPointerException" with no message and no path/field context is a poor
-  diagnostic for ANY future NPE in this pipeline, not just this one; consider at least logging
-  `parseError` (not just its message) when `--out`/`-PreportOut` writes a failed report.
+  FIX: both `ProcedureStepAst` (NPDevContract/dsl/.../ast/ProcedureStepAst.java) and
+  `CompiledProcedureStep` (NPDevContract/dsl/.../compiled/CompiledProcedureStep.java) now copy
+  data/metadata/set/select via `Collections.unmodifiableMap(new LinkedHashMap<>(x))` instead of
+  `Map.copyOf(x)` -- the exact null-tolerant pattern `ConceptRecord.copyData` already used, and the
+  same pattern `args` already used on both records for its own (different) ordering reason.
+  `ModelValidatorMain.safeMessage`'s "bare NullPointerException with no context" diagnostic gap was
+  NOT touched -- separable from this fix, left as a residual since the underlying NPE this bug
+  produced is gone.
+
+  TWIN-PAIR REGISTRY: registered a new rule, `procedure-step-null-tolerant-maps`, in
+  scripts/quality/twin-pair-registry.json (kind `field-in-all-files`, token
+  `npdev-procedure-step-null-tolerant-maps` in both files' comments) so a future edit that
+  reverts one of the two records back to `Map.copyOf` without its twin fails
+  `check-twin-pair-consistency.py` instead of silently reintroducing this exact bug one layer down.
+
+  REGRESSION TESTS (3 new files, all green): `ProcedureStepAstNullSetValueTest` (ast-level,
+  constructs the record directly with a null-valued `set` entry, asserts no throw + the null and
+  immutability both survive); `CompiledProcedureStepNullSetValueTest` (same shape, compiled-model
+  twin); `ProcedurePatchConceptNullSetValueTest` (end-to-end: a real model.json string with
+  `patchConcept.set: {"expedicaoId": null}`, parsed then compiled via the exact
+  `JsonModelParser`+`ModelCompiler` pair `:NPDevContract:dsl:validateModel` itself uses, asserting
+  neither stage throws and the null value reaches the compiled step). Verified no regression: the
+  existing `CompiledProcedureStepArgsOrderTest` (args iteration-order guarantees) and
+  `ProcedurePatchConceptCreateIfMissingValidationTest` (REG-89) both still green, plus the full
+  `:NPDevContract:dsl:test` suite.
 guard:
-  kind: none
+  kind: test
   ref: >-
-    Not yet fixed, so no regression test exists yet. Repro: any procedure step JSON with an
-    explicit `null` value inside `set`/`data`/`args`/`metadata`/`select` (e.g.
-    `{"type":"patchConcept","concept":"X","id":"$y.id","set":{"someField":null}}`) fails
-    `:NPDevContract:dsl:validateModel`/`JsonModelParser.parse` with a bare NullPointerException.
+    NPDevContract/dsl: gradlew :NPDevContract:dsl:test --tests
+    com.npdev.dsl.v1.ast.ProcedureStepAstNullSetValueTest --tests
+    com.npdev.dsl.v1.compiled.CompiledProcedureStepNullSetValueTest --tests
+    com.npdev.dsl.v1.validation.ProcedurePatchConceptNullSetValueTest, plus
+    scripts/quality/check-twin-pair-consistency.py for the new registry rule.
   asserts: >-
-    Reproduced twice by direct bisection on WmsOffice's real model.json (with the null literal:
-    NPE, "errors":1; without it: 0 errors, 58 pre-existing unrelated ux-metadata warnings only) and
-    confirmed via a temporary stack-trace capture pinpointing ProcedureStepAst.java:43's
-    `Map.copyOf(set)` call. No unit test written yet -- the fix and its regression test are both
-    still open work.
+    All 3 new test classes green (0 failures). check-twin-pair-consistency.py: "OK: all 38
+    registered twin-pair rule(s) are consistent" (was 37, this fix added the 38th). No regression:
+    CompiledProcedureStepArgsOrderTest, ProcedurePatchConceptCreateIfMissingValidationTest, and the
+    canonical-JSON round-trip suite (CanonicalJsonIdempotenceTest,
+    CanonicalJsonRoundTripCompletenessTest, CompiledModelCanonicalJsonReaderTest,
+    CompiledModelCanonicalJsonTest) all still green after the CompiledProcedureStep change.
   provenRed: true
