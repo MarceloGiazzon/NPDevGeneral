@@ -1,0 +1,86 @@
+id: REG-226
+title: >-
+  PasswordResetController.bumpTokenVersion hardcodes the literal SQL table name "identity_users"
+  instead of resolving it via IdentityPackTableNames.usersTable() (the pack composes it under a
+  versioned name, e.g. identity_v1_users) -- so on any real app, a password reset's credential
+  update succeeds but the token_version revocation bump silently fails with a table-not-found
+  "identity pack schema mismatch" error, even though the identity pack is NOT actually stale.
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-19
+closed: 2026-09-20
+verification: VERIFIED_LIVE
+source: >-
+  Found while building and live-verifying WMS-9 N6 (ChangePasswordController, a new sibling
+  endpoint). That new controller was ALSO written with the same hardcoded "identity_users" literal
+  (copied from PasswordResetController's own bumpTokenVersion as the reference pattern) and hit the
+  exact same failure live against the running wmsoffice app: `POST /api/auth/change-password` with
+  the correct old password DID update the credential hash (confirmed: old password then rejected by
+  /api/auth/login, new password accepted) but returned `identity_pack_schema_error` with cause
+  `Table "identity_users" not found; SQL statement: UPDATE identity_users SET token_version = ? ...`.
+  `IdentityPackTableNames.java`'s own class javadoc (NPDevContract/dsl/.../compiled/
+  IdentityPackTableNames.java:9) confirms the real convention: tables are composed "under
+  pack-versioned names (e.g. identity_v1_users), not the pre-versioning literals" -- exactly what
+  every OTHER query in both controllers already resolves dynamically via
+  `identityTables.usersTable()` (e.g. PasswordResetController's own `findActiveUserWithEmail`,
+  LoginController's user lookup), except this one bumpTokenVersion method in each class.
+  NEVER CAUGHT BY EXISTING TESTS because PasswordResetControllerTest's own H2 fixture schema
+  hardcodes a table literally named `identity_users` (matching the buggy literal by coincidence,
+  not because that is the real pack convention) -- the exact same "test fixture happens to match
+  the bug" blind spot LoginControllerTest's own comments call out for a different table name
+  question. The SEC-11/REG-39 handling this exception type triggers is itself proof the platform
+  already anticipated the SHAPE of this failure (a stale identity-pack copy missing token_version)
+  without ever considering a hardcoded WRONG table name as its OWN cause.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/PasswordResetController.java
+  (bumpTokenVersion, `"UPDATE identity_users SET token_version = COALESCE(token_version, 0) + 1
+  WHERE id = ? AND tenant_id = ?"`) -- called from confirmReset, which already has
+  `IdentityPackTableNames identityTables` in scope one call frame up (findValidToken/
+  findActiveUserWithEmail take it) but bumpTokenVersion itself is never passed it. Fixed in the
+  NEW ChangePasswordController (same session, WMS-9 N6) by threading `identityTables.usersTable()`
+  through instead -- PasswordResetController's own copy is NOT fixed here (out of scope for that
+  change), just recorded.
+detail: |
+  FIXED 2026-09-20. Also found the ledger's own earlier claim inaccurate while fixing this: the
+  detection note above says `findActiveUserWithEmail` "already resolves dynamically via
+  identityTables.usersTable()" -- direct code read showed that was FALSE, it had the exact same
+  hardcoded "identity_users" literal as bumpTokenVersion. Fixed BOTH call sites, not just the one
+  originally named:
+    - Added a `ModelHolder modelHolder` constructor dependency to `PasswordResetController`
+      (mirroring ChangePasswordController's own wiring).
+    - `requestReset` and `confirmReset` each resolve `IdentityPackTableNames` once via
+      `IdentityPackTableNames.tryResolve(modelHolder.get())` before doing any DB work; `requestReset`
+      treats an unresolved pack as the same generic no-op response it already uses for every other
+      "nothing to reveal" case, `confirmReset` returns 503 `identity_pack_not_composed` (matching
+      ChangePasswordController's own convention for the same condition).
+    - `findActiveUserWithEmail` and `bumpTokenVersion` now take the resolved `IdentityPackTableNames`
+      and interpolate `identityTables.usersTable()` in place of the literal, exactly mirroring
+      ChangePasswordController.bumpTokenVersionTo's already-fixed pattern.
+  Test file updated to match: `PasswordResetControllerTest` gained an `identityModel()` helper
+  (same hand-built-CompiledModel pattern `ChangePasswordControllerTest` already uses) and now passes
+  `new ModelHolder(identityModel())` at all three construction sites.
+
+  BLAST RADIUS was WIDER than originally filed: not just the confirm step's session-revocation bump,
+  but the REQUEST step's own account lookup (`findActiveUserWithEmail`) used the same hardcoded
+  literal -- meaning on any real app the password-reset REQUEST itself would throw on the account
+  lookup, get swallowed by requestReset's existing generic catch-and-log, and silently never send a
+  reset email at all (not just "revocation is cosmetic" as the original filing described, but
+  "password reset is completely non-functional end to end").
+guard:
+  kind: local
+  ref: >-
+    Generator unit tests: `gradlew -p NPDevRuntimeHost/runtimehost-core test` was not the right
+    module (PasswordResetControllerTest lives in the top-level NPDevRuntimeHost module, which
+    requires the generated-runtime mount only run-runtimehost-gate.ps1 sets up -- confirmed by 16
+    other test files in that module referencing com.npdev.generated). Not run as a JUnit test this
+    session for that infra reason; instead verified live.
+  asserts: >-
+    App boots cleanly with PasswordResetController's new ModelHolder constructor dependency
+    (Spring would fail startup outright on a missing/miswired bean, and wmsoffice booted and served
+    traffic normally throughout this session). Live-verified POST /api/auth/password-reset/request
+    against wmsoffice at http://127.0.0.1:8100 (admin user, no email on file) -- returned the normal
+    200 generic response with no WARNING-level "Password reset request failed" logged (the log line
+    that would appear on the pre-fix table-not-found exception), confirming the resolved
+    `identityTables.usersTable()` lookup ran cleanly instead of throwing.
+  provenRed: true
