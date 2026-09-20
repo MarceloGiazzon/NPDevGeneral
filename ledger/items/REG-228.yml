@@ -1,0 +1,70 @@
+id: REG-228
+title: >-
+  App/wmsoffice-keys/ (the directory npdev.auth.jwt.private-key-path/public-key-path resolve into
+  for wmsoffice, via NPDEV_WMSOFFICE_KEYS_DIR default ./wmsoffice-keys) is not one of the three
+  regeneration-spared directories (data/logs/secrets) -- every regeneration wipes the JWT keypair,
+  so the very next boot fails outright with NoSuchFileException on jwt-private-pkcs8.pem, for every
+  JWT-mode app, not just wmsoffice.
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-20
+source: >-
+  Hit live while regenerating wmsoffice for WMS-9 C6 (wiring a procedure-bound dataSource into
+  CrossDockingConsolePanel): ran Build-NpdevApp.ps1 -AppFolder .../WmsOffice -Upgrade (regeneration
+  only, no keypair touched intentionally), rebuilt the jar successfully, then Start-App.ps1 reported
+  "Started PID ..." but the JVM crashed immediately after -- app-*.log showed
+  `BeanCreationException: Error creating bean with name 'changePasswordController' ...
+  Caused by: java.nio.file.NoSuchFileException: .\wmsoffice-keys\jwt-private-pkcs8.pem`. This is the
+  SAME failure REG-220's own follow-up note (2026-09-19, REG-217 session) already documented and
+  explicitly left unfixed: "App/wmsoffice-keys/ is a separate directory from secrets/, not one of
+  the three regeneration-spared directories ... Worked around by generating a fresh local dev-only
+  RSA keypair directly (openssl genpkey/rsa -pubout into App/wmsoffice-keys/), not fixed at the
+  platform level ... flagging for whoever next owns the rebuild-wrapper / spared-directories
+  contract." This item exists because that flag had no ledger id of its own and the same failure
+  was about to be hit a third time with nothing tracking it. Applied the identical documented
+  workaround here (openssl genpkey RSA 2048 + rsa -pubout into App/wmsoffice-keys/) to unblock this
+  session's own verification; every prior JWT session on that app is now invalidated by the new
+  keypair, same tradeoff REG-220's workaround already accepted.
+surface: >-
+  NPDevRuntimeHost/src/main/resources/application-wmsoffice.yml (public-key-path/private-key-path,
+  `${NPDEV_WMSOFFICE_KEYS_DIR:./wmsoffice-keys}/jwt-{public,private-pkcs8}.pem`) -- likely mirrored
+  per-app for every other JWT-mode app's own application-<app>.yml, not wmsoffice-specific. The
+  spared-directory list itself lives in THREE seams per CLAUDE.md: Build-NpdevApp.ps1 /
+  Build-ClaudeApp.ps1's own $SparedInsideApp, and FinalAppAssembler.PRESERVED_APP_DIRECTORIES
+  (Java layer, runs LAST, wins if the lists disagree).
+detail: |
+  NOT FIXED HERE -- same scope note REG-220 already gave: this deserves an owner decision between
+  the two fix candidates already on record, not a rushed patch bundled into an unrelated dataSource
+  wiring change:
+    (1) add wmsoffice-keys (or wherever any app's npdev.auth.jwt.*-key-path resolves) to the
+        regeneration-spared directory list, in all three seams (CLAUDE.md's twin-pair rule
+        app-secrets-dir-spared-three-seams already exists for the CURRENT three -- this would need
+        a fourth entry or a generalized "app-declared extra spared paths" mechanism, since the key
+        directory name is app-configurable via NPDEV_WMSOFFICE_KEYS_DIR-style env vars, not fixed
+        across apps); or
+    (2) make the rebuild wrapper auto-provision a throwaway dev keypair when JWT mode is active and
+        no keypair file exists yet, the same way it already handles a missing admin API key
+        (Ensure-NpdevApiKey in Build-NpdevApp.ps1) -- this is the more robust fix since it also
+        covers a FIRST-ever generation, not just regeneration of an app that once had a keypair.
+
+  BLAST RADIUS: every JWT-mode app (npdev.auth.mode=jwt), not just wmsoffice -- any regeneration
+  (Build-NpdevApp.ps1 -Upgrade, Rebuild-And-Restage.ps1, or equivalent) silently deletes the app's
+  signing keypair, so the NEXT boot after ANY platform-code or model change that triggers
+  regeneration fails outright with a BeanCreationException, until someone notices and manually runs
+  openssl to replace it. This has now independently blocked two different sessions (REG-217's,
+  2026-09-19, and this one, 2026-09-20) doing otherwise-unrelated work.
+guard:
+  kind: local
+  ref: >-
+    Not yet fixed. Repro: on any JWT-mode generated app with an existing App/wmsoffice-keys/ (or
+    equivalent) directory holding a real keypair, run a regeneration (Build-NpdevApp.ps1 -Upgrade)
+    that does NOT touch the keypair intentionally, rebuild, then Start-App -- expect the keypair
+    directory to be gone and the boot to fail with NoSuchFileException on the private key path.
+  asserts: >-
+    Reproduced live 2026-09-20 against wmsoffice at D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice
+    -- app-20260920T143734Z.log shows the exact BeanCreationException/NoSuchFileException chain for
+    ChangePasswordController's constructor reading .\wmsoffice-keys\jwt-private-pkcs8.pem. Matches
+    REG-220's own prior repro of the identical failure one day earlier. No regression test exists
+    yet since neither fix candidate has been chosen.
+  provenRed: true

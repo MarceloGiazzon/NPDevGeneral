@@ -1,0 +1,77 @@
+id: REG-229
+title: >-
+  run-runtimehost-gate.ps1's :test task fails 7 of 882 tests deterministically (2 consecutive
+  identical runs), all with an identical Spring ApplicationContext bootstrap failure
+  (UnsatisfiedDependencyException chained 4 levels deep into a NoSuchBeanDefinitionException) --
+  NonDefaultRuntimeSurfaceProfileIntegrationTest, RuntimeHealthEndpointIT,
+  RuntimePluginFilesystemDiscoveryIntegrationTest, RuntimePluginStatusControllerIntegrationTest,
+  SupportedCoreControllerBlackBoxIntegrationTest (both its tests), and
+  SupportedRuntimeSurfaceAllowlistIntegrationTest.
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-20
+source: >-
+  Found running run-runtimehost-gate.ps1 (sample: simple-contact-intake) to validate this session's
+  own REG-226 fix (PasswordResetController). Ran the gate TWICE in a row (once before, once after
+  an unrelated model.json/AllocationCapability.java edit for WMS-9 C7) -- both runs failed the
+  EXACT SAME 7 tests with the EXACT SAME condensed failure signature: `java.lang.IllegalStateException
+  at DefaultCacheAwareContextLoaderDelegate.java:180`, chained through
+  `UnsatisfiedDependencyException at ConstructorResolver.java:804` four times, then
+  `BeanCreationException at ConstructorResolver.java:657` ->
+  `BeanInstantiationException at SimpleInstantiationStrategy.java:200` -> one more
+  `UnsatisfiedDependencyException` -> `NoSuchBeanDefinitionException at
+  DefaultListableBeanFactory.java:2322`. Determinism across two independent runs (same tests, same
+  line numbers, both times) rules out ordinary test-order flakiness -- this is a real, reproducible
+  context-load failure, not noise. A JVM paging-file warning
+  ("os::commit_memory ... failed; arquivo de paginacao muito pequeno") printed adjacent to the
+  failures in both runs but is very likely coincidental/cosmetic, not causal -- real memory
+  exhaustion would not plausibly fail the exact same 7 tests, in the exact same way, twice in a row.
+  None of the 7 failing test classes have anything to do with this session's actual edits
+  (PasswordResetController/ChangePasswordController auth controllers, WmsOffice's
+  AllocationCapability.java, or model.json flow/procedure changes) -- they are RuntimeHost
+  admin/plugin/health/surface-profile integration tests, an unrelated part of the module.
+surface: >-
+  Not root-caused -- exact missing bean is unknown. Gradle's condensed `--console=plain` failure
+  summary (what run-runtimehost-gate.ps1's own log capture shows) prints only
+  `Caused by: <ExceptionClass> at <File>.java:<line>` for each level of the cause chain, never the
+  exception MESSAGE (which would name the actual missing bean type/qualifier) -- getting that
+  requires either the full JUnit XML report (deleted by the gate's own "Sample output cleanup"
+  step before this was noticed) or a targeted `--tests` rerun preserving
+  `<sample>/Output/App/build/test-results/test/*.xml`, neither attempted yet (out of scope for the
+  four unrelated WMS-9 tasks this session was actually doing). Candidate starting points for whoever
+  picks this up: the 4-deep UnsatisfiedDependencyException chain suggests a bean whose own
+  constructor depends on another bean that itself fails, at least 4 levels into some dependency
+  graph -- likely a shared `@Configuration`/filter-chain bean these six test classes all pull in
+  (they cluster around runtime-surface-profile/plugin-status/health, suggesting a common
+  `RuntimeSurfaceProfile`-adjacent bean, not per-test-class setup).
+detail: |
+  NOT FIXED, NOT ROOT-CAUSED. Repro: `python scripts/ai/run_digest.py -- pwsh -NoProfile -File
+  scripts/quality/run-runtimehost-gate.ps1` (no args, default sample). To get the real exception
+  message instead of the condensed summary, either add `-i --stacktrace` to the gate's own gradle
+  invocation temporarily, or regenerate the same sample via
+  NPDevSamples/scripts/generate-sample-app.ps1 and run
+  `gradlew --no-daemon test --tests "SupportedCoreControllerBlackBoxIntegrationTest"` directly
+  against `<sample>/Output/App` without letting the gate's cleanup step delete the results
+  afterward, then read `build/test-results/test/TEST-*.xml` or
+  `build/reports/tests/test/index.html` for the actual missing-bean message.
+
+  BLAST RADIUS: unknown until root-caused. If this is a genuine Spring wiring regression (not an
+  environmental artifact), it means `run-runtimehost-gate.ps1` -- one of the four T2 gates
+  `run-all-gates.ps1` bundles -- has been red for at least as long as it went unrun; the last
+  several session handoffs before this one explicitly note "No full run-all-gates.ps1 this
+  session," so this could have been broken for multiple sessions without anyone noticing, same
+  failure-mode class as REG-9-style "the gate exists but nobody ran it" gaps this project has hit
+  before.
+guard:
+  kind: local
+  ref: >-
+    pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (no args). Reproduced twice in a
+    row, 2026-09-20, ~10 minutes apart, both BUILD FAILED with identical "882 tests completed, 7
+    failed, 9 skipped" and the identical 7 test names/failure signatures.
+  asserts: >-
+    Both runs' condensed console output (captured to
+    D:\WorkSpace\NPDev\Build\digest-logs\20260920T143405Z-pwsh--NoProfile--File.log and
+    ...20260920T144454Z-pwsh--NoProfile--File.log) show the same 7 FAILED lines with identical
+    exception-class chains. No fix or regression test exists yet -- root cause is still open work.
+  provenRed: true

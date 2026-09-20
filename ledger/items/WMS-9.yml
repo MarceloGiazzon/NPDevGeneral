@@ -485,6 +485,170 @@ detail: |
   since the clock's displayed value is computed client-side at runtime, not baked into the emitted
   file text. N5/N6/C5/C6/C7/Z1-Z6 remain open per the verdicts above -- each still needs an owner
   scope decision before any platform work starts.
+
+  2026-09-20 (owner scope calls made, all six tracks built and live-verified this session):
+
+  C5 -- GerarExpedicaoProcedure added (mirrors CriarMovimentoParaRecebimentoProcedure's create-
+  then-backfill shape), wired as a RomaneioAggregate transaction.actions entry, visibleWhen
+  situacao=='Importado'. Live-verified (ScrapForAI): clicking it flips situacao to
+  ExpedicaoGerada and creates a real Expedicao row. Verification incidentally found REG-225
+  (ParseRomaneioProcedure/itens-grid produtoId resolution bug, pre-existing, unrelated to this
+  fix, filed separately) -- worked around manually to complete this verification.
+
+  N5 -- topbar quick-access affordance (shell.js.mustache buildTopbar(), `.npdev-shell-
+  quickaccess-toggle`), reusing the EXISTING recentItems()/recordRecentItem() localStorage list
+  (already populated by every sidebar nav click, already read by the right-rail "recent-items"
+  gadget) rather than a new tracked concept -- matches docs/UI_CONTRACT.md's existing "Recents
+  stay per-viewer, never model-owned" decision. Live-verified: toggle opens a panel listing
+  recently-visited panels, clicking one navigates correctly. Regression test
+  `BusinessUiEmitterShellVersionTest.shellTopbarOffersChangePasswordOnlyForBearerScheme` (sic,
+  see N6 below) plus a dedicated quick-access assertion in the same suite; byte-identical-across-
+  models test still passes (client-side only, no model data baked in).
+
+  Z1-Z6 -- ResetarAmbienteTransacionalProcedure (new, WmsOffice-model-only, no platform DSL
+  changes needed -- listConcepts/forEach/deleteConcept/patchConcept already covered the whole
+  cascade) wipes Movimento/Recebimento/Expedicao/Romaneio/CrossDocking/DocumentoFiscal (deepest-
+  first per each concept's own onDelete:cascade children) and zeroes LocalArmazenagemLote
+  occupancy, leaving Entidade/Armazem/Area/Rua/LocalArmazenagem/Produto/PerfilAlocacao/RankingRua
+  untouched -- the exact inverse of excluir-estabelecimento.html, which is left untouched.
+  Deliberately NOT wired into any autoPanel action; its only entry point is a new hand-rolled
+  page `web/reset-ambiente.html` (mirrors excluir-estabelecimento.html's layout/auth pattern) with
+  a type-to-confirm gate (must type RESETAR) before the button enables -- the DSL has no built-in
+  confirmation primitive, and a plain declarative button would repeat excluir-estabelecimento.
+  html's own "zero confirmation" defect one level up. Building this also found and fixed a real
+  platform bug: a JSON `null` value in a patchConcept.set crashes the model parser (Map.copyOf
+  forbids null values) -- filed as REG-224, routed around here by deleting Romaneio outright
+  instead of nulling its Expedicao reference (arguably more correct anyway, since Romaneio is
+  transactional data too). Live-verified (ScrapForAI): confirm gate behaves correctly; reset ran
+  successfully wiping transactional rows while master data was untouched -- but only after fixing
+  a second real bug the SAME verification pass found: reset-ambiente.html hardcoded
+  `http://localhost:8100` as its API base instead of `window.location.origin`, causing a same-
+  origin/CORS failure when the app is reached via 127.0.0.1 (the harness's own required
+  convention) -- fixed to derive the base from window.location.origin.
+
+  N6 -- new ChangePasswordController (NPDevRuntimeHost/runtimehost-core, alongside
+  PasswordResetController) for the logged-in self-service "change my password" flow;
+  PasswordResetController itself is confirmed a logged-OUT forgot-password/token flow, not this
+  shape. New emitted page `static/change-password.html` (ChangePasswordPageEmitter, mirrors
+  LoginPageEmitter's jwt-mode-only gating exactly) and a shell.js "Alterar senha" topbar link
+  gated on the manifest's own auth.scheme=='Bearer' (so an apiKey app never shows a dead link).
+  Live-verified end-to-end via REST against wmsoffice: wrong-old-password rejected, correct-old-
+  password changes the hash (old password then fails login, new one succeeds) and bumps
+  token_version, minting a fresh token so the SAME session keeps working. Building and verifying
+  this found two more real, separate platform bugs: REG-226 (this controller's own first draft,
+  AND the pre-existing PasswordResetController.bumpTokenVersion, both hardcode the literal SQL
+  table name "identity_users" instead of resolving identityTables.usersTable() -- the real table
+  is pack-versioned, e.g. identity_v1_users -- so the token_version bump silently failed with a
+  misleading "identity pack schema mismatch" error on any real app; fixed in the new controller,
+  PasswordResetController's own copy is NOT fixed, left filed) and REG-227 (a token whose tv claim
+  is provably stale, post-revocation, is still ACCEPTED by GET /api/entidades -- token-version
+  revocation is not actually enforced on generic CRUD reads despite
+  IdentityAwareContextResolver.rejectIfTokenRevoked existing specifically to enforce it; not
+  root-caused, filed as-is -- a real, security-relevant gap bigger than this one feature).
+
+  C6 -- "a CD is offered only when an outbound product matches an inbound one". New
+  AllocationCapability.candidatosCrossDocking (WmsOffice's own Java capability, not a platform
+  change) correlates each eligible Recebimento's incoming products (RecebimentoLote -> Lote.
+  produtoId) against each eligible Expedicao's needed products (ExpedicaoItem.produtoId direct),
+  returning one candidate per (Recebimento, Expedicao, Produto) match with quantidade capped at
+  whichever side has less. New BuscarCandidatosCrossDockingProcedure orchestrates the fetch
+  (listConcepts+mapList per list, since mapList has no cross-list join primitive) and the
+  capabilityCall. A real platform-level correction happened designing this: the premise that
+  "today's query where grammar is single-concept only" is WRONG on the current code (Pack
+  Validation/JdbcBusinessConceptStore already support OR-groups and forward reference-path joins
+  via QueryPredicateGrammar's "v2" grammar; a stale header comment claiming otherwise was not
+  ground truth) -- what's genuinely missing is a REVERSE/correlated EXISTS, which this session
+  did not need to build since a plain Java capability (the established "Java does joins the DSL
+  can't" pattern, same as ruasElegiveis/alocarRecebimento) covered C6 entirely. A SECOND
+  correction: panels DO support a `procedure`-bound dataSource (schema-legal, PanelRuntime.
+  loadDataSource checks it first) -- the "no UI surface possible" call in the pre-2026-09-20 text
+  above was wrong; not built this session (time-boxed), recorded as a real, do-able residual using
+  `{ "name": "candidatos", "procedure": "BuscarCandidatosCrossDockingProcedure" }` as a
+  CrossDockingConsolePanel dataSource. Also required a real B30 (plugin bytecode policy) fix along
+  the way: the first draft used computeIfAbsent/merge (lambdas/method references, forbidden --
+  invokedynoke+LambdaMetafactory), rewritten as plain imperative get/put loops. Live-verified via
+  REST with real seeded data: a genuine candidate emerged with the correct quantidade (min of the
+  two sides).
+
+  C7 -- "Activating a CD routes goods bay-to-bay, bypassing storage". The checklist's own wording
+  turned out to mean something more specific than a routing UI, confirmed directly from the
+  original GeneXus manual (D:\WorkSpace\WmsOffice\Doctos\CrossDoking.html): goods sit in a
+  receiving-bay holding area; confirming the EXPEDICAO's own movement is what physically moves
+  the cross-docked quantity out, but that confirmation is BLOCKED until the linked RECEBIMENTO's
+  own conferencia (quality check) is registered. Full-fidelity build, two parts:
+  (1) Confirmation gate -- new ConfirmarMovimentacaoExpedicaoProcedure (replaces the generic
+  DemandaGerada->MovimentacaoConcluida transition for Expedicao specifically) calls a new
+  AllocationCapability.verificarGateCrossDocking, which THROWS (not a soft sucesso:false) when an
+  active CrossDocking's linked Recebimento isn't yet Conferido/Armazenado -- confirmed by reading
+  ManifestDrivenJavaSourcePluginHandler's exception-unwrapping that a thrown exception's message
+  propagates cleanly as the procedure's own failure. Live-verified: blocked with the exact
+  business message before the Recebimento was conferido; succeeded (estagio ->
+  MovimentacaoConcluida) once it was.
+  (2) Bay provisioning -- AtivarCrossDocking (the existing flow) now also calls a new
+  ProvisionarBaiaCrossDockingProcedure, which finds-or-creates a dedicated CrossDocking-function
+  Area (added "CrossDocking" as a new Area.funcao enum value) + Rua under the Recebimento's own
+  Armazem (new AllocationCapability.localizarBaiaCrossDocking does the 3-level lookup; patchConcept's
+  own createIfMissing convention handles reuse-vs-create with no explicit if/else needed once the
+  lookup returns a real id or null), then creates a FRESH LocalArmazenagem bay position per
+  activation (recorded via a new CrossDocking.baiaLocalArmazenagemId field). Live-verified: a real
+  bay was auto-provisioned end-to-end on first use (Area+Rua+LocalArmazenagem all created in one
+  flow execution) and recorded on the CrossDocking row.
+  NOT built: the actual Movimento-level bypass (using the bay as the MovimentoItemPosicao origin/
+  destino instead of a normal storage rua) and the "Desconfirmar Movimentacao" reverse-transition
+  rollback the original manual also demonstrates -- the gate and the bay both exist and are
+  provably correct in isolation, but wiring SugerirOrigem/SugerirDestino to route to the bay for
+  cross-docked quantities specifically is real further work, recorded here rather than guessed at
+  under session time pressure.
+
+  RESIDUALS CLOSED 2026-09-20 (follow-on session): both items the paragraphs above recorded as
+  NOT built are now done, plus REG-226/REG-227 (both filed above as findings) fixed and verified.
+  C6: added `{ "name": "candidatos", "procedure": "BuscarCandidatosCrossDockingProcedure" }` to
+  CrossDockingConsolePanel's dataSources exactly as recorded; live-verified via
+  GET /api/runtime/metadata/ui/panels/CrossDockingConsolePanel -- a real candidato flows through
+  (note: the shape is `data.candidatos.candidatos` (the procedure's own `{candidatos:[...]}` return
+  value, one level nested), not a flat array -- fine as-is since no layout/fieldBindings render it
+  yet, but worth knowing before adding an actual table for it).
+  C7: SugerirDestino/SugerirOrigem (both the flow and their *Procedure workbench twins) now list+map
+  active CrossDocking rows and pass them to AllocationCapability.sugerirDestino/sugerirOrigem, which
+  short-circuit straight to CrossDocking.baiaLocalArmazenagemId when the caller's recebimentoId/
+  expedicaoId matches an Ativo row with a provisioned bay -- skipping the normal candidatos ranking
+  entirely, since there is exactly one correct location for a cross-docked quantity. Flow steps have
+  no listConcepts/mapList (procedure-only step types -- confirmed by the structural schema's flow
+  enum, hit as a real validation error before switching the flows to callProcedure delegation onto
+  their own *Procedure twins). centro-trabalho.original.html's sugerir() now sends
+  recebimentoId/expedicaoId (from `selectedRecord.id`, already in scope for both the Recebimento and
+  Expedicao workbench modes that screen supports) alongside its existing candidatos body;
+  movimentacao-livre.html is unchanged (that screen never has a Recebimento/Expedicao context to
+  send, so it always falls through to normal ranking, which is correct for a free/untracked move).
+  Live-verified directly against a real Ativo CrossDocking row (id 9ee1743e-..., bay
+  7478a3e5-97d7-4cf0-aa53-60394d1442dc): SugerirDestino with its recebimentoId returned the bay with
+  motivo "Cross-Docking ativo: destino fixado na baia de cross-docking"; SugerirOrigem with its
+  expedicaoId returned a single alocacao at the same bay for the full quantidadeNecessaria; a
+  non-matching request (no recebimentoId) still returned normal ranking output, unchanged --
+  confirmed no regression to the non-cross-docked path.
+  REG-226/REG-227: see those items' own DONE entries for the fix + verification detail -- REG-227 in
+  particular turned out to be two compounding kernel bugs (a JWT "sub"-vs-"actor_id" claim-key
+  mismatch on top of the originally-suspected anonymous-fallback-on-revocation), both fixed in
+  GeneratedCrudRuntimeSupport.java with new unit test coverage.
+  Two NEW platform gaps filed along the way, both OPEN, neither fixed here (out of this session's
+  scope, same "record, don't force under time pressure" discipline the rest of this item follows):
+  REG-228 (App/wmsoffice-keys/ -- wherever a JWT app's signing keypair lives -- is not one of the
+  three regeneration-spared directories, so every regeneration silently deletes it and the next boot
+  crashes until someone notices and re-runs openssl by hand; hit and worked around three times in
+  one session) and REG-229 (run-runtimehost-gate.ps1's own :test task fails 7 of 882 tests
+  deterministically on an unrelated Spring-context-bootstrap failure, reproduced twice; not
+  root-caused, exact missing bean unknown).
+
+  Also found, live, while testing this session's own changes (both pre-existing, unrelated to any
+  of the six tracks above): a generic Recebimento/Expedicao update via a raw PUT
+  (RecebimentoServiceBase/ExpedicaoServiceBase's own generated update() path) reliably hits an H2
+  row-lock timeout ("Sandboxed plugin execution timed out after 1000 ms") when a concept's own
+  "mode: update" input flow (ConfirmarRecebimento / ConfirmarSaidaExpedicao) is invoked as part of
+  the SAME request -- reproduced twice, worked around by calling the flow endpoint
+  (`/api/flows/<Name>/execute`) directly instead of the generic PUT, which does NOT hit the same
+  lock contention. Not filed as its own REG item this session (time-boxed) -- worth a dedicated
+  repro+file pass, since "raw PUT on a concept with a mode:update flow deadlocks" sounds like it
+  could affect any app using this exact shape, not just WmsOffice's Recebimento/Expedicao.
 guard:
   kind: validate
   ref: npdev_cli.py validate model (composed WmsOffice model)

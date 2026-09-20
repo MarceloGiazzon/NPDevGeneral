@@ -1,0 +1,52 @@
+id: REG-225
+title: >-
+  ParseRomaneioProcedure (WmsOffice) resolves produtoId to null for a real, existing Produto codigo
+  on the parsed RomaneioItem row, and the itens-grid row's data-fkey attribute shows an "undefined"
+  row index -- Save then fails server-side with ConceptGatewaySemanticException: Required concept
+  field is missing: RomaneioItem.produtoId.
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found by a browser-verification agent while proving WMS-9 C5 (GerarExpedicaoProcedure) live in
+  ScrapForAI/Playwright against wmsoffice at http://127.0.0.1:8100. Flow: navigated to
+  /npdev-workbench/RomaneioAggregateWorkbench.html?id=new, filled numero="R-TEST-C5d",
+  texto="268;10" (codigo 268 matches a real "Produto Demo 7" row confirmed via GET /api/produtos),
+  clicked "Importar (Parse Romaneio)". The itens grid populated ("1 rows", quantidade=10, matching
+  REG-223's own precedent exactly), but the row's produtoId came back null rather than the resolved
+  Produto id, and the row's rendered input carries `data-fkey="s:itens:undefined:produtoId"` (an
+  undefined row index, not a real integer) rather than the expected indexed key shape. Clicking Save
+  then threw a genuine server 500 (confirmed in App/logs/app.log): `ConceptGatewaySemanticException:
+  Required concept field is missing: RomaneioItem.produtoId`.
+  Not investigated further -- root cause could be in FiscalImportCapability's codigo->produtoId
+  lookup (the same class REG-218/REG-223 already found two other real bugs in this session, both in
+  its multi-arg dispatch, not this lookup specifically) or in the itens-grid's row-binding/
+  serialization when built from a capabilityCall result rather than a saved record. The
+  `data-fkey="...undefined..."` symptom suggests the row index itself is not being threaded through
+  correctly, which could also explain why produtoId (a value keyed by that same row) comes back
+  empty even if the underlying lookup succeeded.
+surface: >-
+  Likely `FiscalImportCapability.importarRomaneio` (produtoId resolution) or wherever
+  ParseRomaneioProcedure's result rows get mapped into the itens-grid's row-binding (row-index/
+  data-fkey generation) -- exact class/method not yet located, this item records the reproduced
+  symptom for whoever picks it up to trace, not a confirmed root cause.
+detail: |
+  NOT FIXED -- found incidentally while verifying an unrelated feature (WMS-9 C5) in a real browser,
+  and worked around for that verification by manually filling the itens row's produtoId input with a
+  real Produto id before Save (confirmed C5's own new logic works correctly once the record saves).
+  This bug blocks the "Importar (Parse Romaneio)" -> Save path for ANY real codigo, not just this
+  session's specific test value, so it likely affects every real use of Romaneio import today, not
+  just this repro's specific input.
+guard:
+  kind: none
+  ref: >-
+    Not yet fixed, so no regression test exists yet. Repro: on a fresh wmsoffice instance, navigate
+    to RomaneioAggregateWorkbench.html?id=new, fill numero + texto with a codigo matching a real
+    Produto row (e.g. "268;10"), click "Importar (Parse Romaneio)", inspect the itens grid row's
+    produtoId value/data-fkey attribute (or attempt Save and observe the 500).
+  asserts: >-
+    Reproduced once, live, in a real browser (not REST simulation) against wmsoffice at
+    http://127.0.0.1:8100, 2026-09-19. No unit test written yet -- the fix and its regression test
+    are both still open work.
+  provenRed: true

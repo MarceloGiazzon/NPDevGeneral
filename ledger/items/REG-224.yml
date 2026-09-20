@@ -1,0 +1,76 @@
+id: REG-224
+title: >-
+  ProcedureStepAst's constructor wraps every Map<String,Object> step field (set/data/args/
+  metadata/select) via Map.copyOf(...), which throws NullPointerException on any null VALUE --
+  so a procedure step whose JSON legitimately declares an explicit null (e.g. patchConcept.set
+  clearing a reference field back to null) crashes model parsing with an opaque
+  "NullPointerException" diagnostic instead of a proper structural error, or working at all.
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-19
+source: >-
+  Found while building WMS-9 Z1-Z6 (Reset de Ambiente): a new ResetarAmbienteTransacionalProcedure
+  needed to clear Romaneio.expedicaoId back to null (patchConcept.set: {"expedicaoId": null,
+  "situacao": "Importado"}) before deleting the Expedicao it restrict-references. Full semantic
+  validation (`:NPDevContract:dsl:validateModel`) failed with a bare "NullPointerException" and no
+  stack trace (ModelValidatorMain.safeMessage falls back to the exception's simple class name when
+  getMessage() is null/blank, which it was here). Bisected by removing just the null literal --
+  the model then validated cleanly (0 errors) -- confirming the null value was the cause, not
+  deleteConcept or the forEach/listConcepts shapes used alongside it (both already validate fine
+  elsewhere in this exact procedure).
+surface: >-
+  NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/ast/ProcedureStepAst.java (compact constructor,
+  lines 36-46): `set = set == null ? Map.of() : Map.copyOf(set);` -- and the identical pattern for
+  `data` (line 37), `args` (38), `metadata` (42), `select` (45). `Map.copyOf`/`Map.ofEntries`
+  (java.util.Map, JDK) explicitly forbid null keys AND null values, throwing NPE with no message
+  via `Objects.requireNonNull` inside `ImmutableCollections.MapN`'s constructor -- this is a JDK
+  contract these five fields never accounted for. Confirmed by temporarily adding
+  `parseError.printStackTrace()` to ModelValidatorMain.parseCollectingDiagnostics's catch block
+  (NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/cli/ModelValidatorMain.java:133, reverted
+  immediately after capture -- no diagnostic code was left in place) and re-running validateModel:
+
+    java.lang.NullPointerException
+    	at java.base/java.util.Objects.requireNonNull(Objects.java:208)
+    	at java.base/java.util.ImmutableCollections$MapN.<init>(ImmutableCollections.java:1186)
+    	at java.base/java.util.Map.ofEntries(Map.java:1668)
+    	at java.base/java.util.Map.copyOf(Map.java:1734)
+    	at com.npdev.dsl.v1.ast.ProcedureStepAst.<init>(ProcedureStepAst.java:43)
+    	at com.npdev.dsl.v1.parser.JsonModelParser.parseProcedureSteps(JsonModelParser.java:1271)
+    	at com.npdev.dsl.v1.parser.JsonModelParser.parse(JsonModelParser.java:593)
+
+  `JsonModelParser.parseObjectMap`/`parseJsonValue` (JsonModelParser.java:1983-1994, 3038-3071)
+  themselves handle a JSON `null` correctly (produce a Java `null` value in the map, no crash) --
+  the bug is entirely in `ProcedureStepAst`'s own immutability wrapping, one layer downstream.
+detail: |
+  NOT FIXED this session -- found and root-caused while building an unrelated feature (WMS-9
+  Z1-Z6), routed around by design instead (the new ResetarAmbienteTransacionalProcedure deletes
+  Romaneio outright rather than nulling its Expedicao reference, which is arguably the more
+  correct shape anyway since Romaneio is transactional data). Recorded here rather than fixed
+  inline to avoid scope creep into a five-field platform-wide parser change under time pressure
+  from a different task; a "clear this reference/value back to null via a procedure step" need
+  has apparently never been exercised anywhere in this platform's corpus before (dsl-conformance-max
+  has no such example either), which is why this NPE-on-valid-input bug went uncaught this long.
+
+  LIKELY FIX (not yet implemented or verified): replace `Map.copyOf(x)` with a null-tolerant
+  immutable wrapper, e.g. `Collections.unmodifiableMap(new LinkedHashMap<>(x))`, for all five
+  fields (set/data/args/metadata/select) -- the same pattern `ConceptRecord.copyData` already uses
+  (NPDevKernel/kernel/.../concepts/ConceptRecord.java:32-37) for exactly this reason. Whoever picks
+  this up should also decide whether `ModelValidatorMain.safeMessage` deserves a real fix
+  separately -- a bare "NullPointerException" with no message and no path/field context is a poor
+  diagnostic for ANY future NPE in this pipeline, not just this one; consider at least logging
+  `parseError` (not just its message) when `--out`/`-PreportOut` writes a failed report.
+guard:
+  kind: none
+  ref: >-
+    Not yet fixed, so no regression test exists yet. Repro: any procedure step JSON with an
+    explicit `null` value inside `set`/`data`/`args`/`metadata`/`select` (e.g.
+    `{"type":"patchConcept","concept":"X","id":"$y.id","set":{"someField":null}}`) fails
+    `:NPDevContract:dsl:validateModel`/`JsonModelParser.parse` with a bare NullPointerException.
+  asserts: >-
+    Reproduced twice by direct bisection on WmsOffice's real model.json (with the null literal:
+    NPE, "errors":1; without it: 0 errors, 58 pre-existing unrelated ux-metadata warnings only) and
+    confirmed via a temporary stack-trace capture pinpointing ProcedureStepAst.java:43's
+    `Map.copyOf(set)` call. No unit test written yet -- the fix and its regression test are both
+    still open work.
+  provenRed: true
