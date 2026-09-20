@@ -36,7 +36,13 @@ public record CompiledProcedureStep(
         Object right
 ) {
     public CompiledProcedureStep {
-        data = data == null ? Map.of() : Map.copyOf(data);
+        // npdev-procedure-step-null-tolerant-maps (REG-224): Map.copyOf rejects null VALUES, but a
+        // step field like patchConcept.set can legitimately declare an explicit JSON null (e.g.
+        // clearing a reference back to null). data/metadata/set/select are consumed by key, so
+        // order doesn't matter here the way it does for args below -- an unmodifiable LinkedHashMap
+        // is the null-tolerant equivalent, same pattern ConceptRecord.copyData and
+        // ProcedureStepAst.copyMap already use -- keep this fix in sync with that twin.
+        data = data == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(data));
         // Move 5 (docs/MOVE5_CLOSE_ALL_OPEN_PLAN.md, Wave 3A): args -- UNLIKE every other Map field
         // on this record -- is iterated POSITIONALLY: ProcedureRunner/NPDevCliMain's toProcedureStep
         // build a callCapability's argRefs from args.values() to reflectively invoke a multi-param
@@ -56,9 +62,9 @@ public record CompiledProcedureStep(
         thenSteps = thenSteps == null ? List.of() : List.copyOf(thenSteps);
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
         steps = steps == null ? List.of() : List.copyOf(steps);
-        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
-        set = set == null ? Map.of() : Map.copyOf(set);
+        metadata = metadata == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(metadata));
+        set = set == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(set));
         createIfMissing = createIfMissing != null && createIfMissing;
-        select = select == null ? Map.of() : Map.copyOf(select);
+        select = select == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(select));
     }
 }

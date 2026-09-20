@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.ast;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -34,14 +36,28 @@ public record ProcedureStepAst(
         Object right
 ) {
     public ProcedureStepAst {
-        data = data == null ? Map.of() : Map.copyOf(data);
-        args = args == null ? Map.of() : Map.copyOf(args);
+        data = copyMap(data);
+        args = copyMap(args);
         thenSteps = thenSteps == null ? List.of() : List.copyOf(thenSteps);
         elseSteps = elseSteps == null ? List.of() : List.copyOf(elseSteps);
         steps = steps == null ? List.of() : List.copyOf(steps);
-        metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
-        set = set == null ? Map.of() : Map.copyOf(set);
+        metadata = copyMap(metadata);
+        set = copyMap(set);
         createIfMissing = createIfMissing != null && createIfMissing;
-        select = select == null ? Map.of() : Map.copyOf(select);
+        select = copyMap(select);
+    }
+
+    /**
+     * npdev-procedure-step-null-tolerant-maps: Map.copyOf/Map.ofEntries reject null values, but a
+     * step field like patchConcept.set can legitimately declare an explicit JSON null (e.g.
+     * clearing a reference back to null) -- see REG-224. Same null-tolerant copy pattern as
+     * ConceptRecord.copyData. CompiledProcedureStep (the compiled-model twin this AST record
+     * compiles into) carries the identical fix under the same token -- keep them in sync.
+     */
+    private static Map<String, Object> copyMap(Map<String, Object> input) {
+        if (input == null || input.isEmpty()) {
+            return Map.of();
+        }
+        return Collections.unmodifiableMap(new LinkedHashMap<>(input));
     }
 }
