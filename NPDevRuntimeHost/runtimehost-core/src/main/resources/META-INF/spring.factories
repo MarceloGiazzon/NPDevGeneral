@@ -2,4 +2,5 @@ org.springframework.boot.diagnostics.FailureAnalyzer=\
 com.finalexec.boundary.BoundaryBootExceptionFailureAnalyzer
 
 org.springframework.boot.env.EnvironmentPostProcessor=\
-com.finalexec.db.H2LocalBootLockEnvironmentPostProcessor
+com.finalexec.db.H2LocalBootLockEnvironmentPostProcessor,\
+com.finalexec.auth.JwtKeyPairEnvironmentPostProcessor
