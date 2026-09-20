@@ -9,7 +9,7 @@ title: >-
   SupportedRuntimeSurfaceAllowlistIntegrationTest.
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-20
 source: >-
   Found running run-runtimehost-gate.ps1 (sample: simple-contact-intake) to validate this session's
@@ -46,32 +46,73 @@ surface: >-
   (they cluster around runtime-surface-profile/plugin-status/health, suggesting a common
   `RuntimeSurfaceProfile`-adjacent bean, not per-test-class setup).
 detail: |
-  NOT FIXED, NOT ROOT-CAUSED. Repro: `python scripts/ai/run_digest.py -- pwsh -NoProfile -File
-  scripts/quality/run-runtimehost-gate.ps1` (no args, default sample). To get the real exception
-  message instead of the condensed summary, either add `-i --stacktrace` to the gate's own gradle
-  invocation temporarily, or regenerate the same sample via
-  NPDevSamples/scripts/generate-sample-app.ps1 and run
-  `gradlew --no-daemon test --tests "SupportedCoreControllerBlackBoxIntegrationTest"` directly
-  against `<sample>/Output/App` without letting the gate's cleanup step delete the results
-  afterward, then read `build/test-results/test/TEST-*.xml` or
-  `build/reports/tests/test/index.html` for the actual missing-bean message.
+  FIXED 2026-09-20. Root-caused by regenerating simple-contact-intake directly and rerunning the 6
+  failing classes with `--stacktrace`, preserving `build/test-results/test/TEST-*.xml` (the gate's
+  own condensed console log never prints the exception MESSAGE, only the class+line chain -- the XML
+  has the full `Caused by:` chain including the actual missing-bean message).
 
-  BLAST RADIUS: unknown until root-caused. If this is a genuine Spring wiring regression (not an
-  environmental artifact), it means `run-runtimehost-gate.ps1` -- one of the four T2 gates
-  `run-all-gates.ps1` bundles -- has been red for at least as long as it went unrun; the last
-  several session handoffs before this one explicitly note "No full run-all-gates.ps1 this
-  session," so this could have been broken for multiple sessions without anyone noticing, same
-  failure-mode class as REG-9-style "the gate exists but nobody ran it" gaps this project has hit
-  before.
+  ROOT CAUSE (bug #1, the one this item was filed for): `NpdevRuntimeModeConfig.tracingPackBridge`
+  (NPDevRuntimeHost/runtimehost-core/.../config/NpdevRuntimeModeConfig.java) declared a
+  `DataSource dataSource` constructor parameter but, unlike every other JDBC-backed bean in that
+  same file, was gated ONLY by `@ConditionalOnProperty(npdev.tracing.pack-bridge.enabled,
+  matchIfMissing=true)` -- not also by `npdev.storage.mode=jdbc`. simple-contact-intake's model
+  resolves to the InMemory engine, which bakes
+  `spring.autoconfigure.exclude=...DataSourceAutoConfiguration...` into the generated
+  application-npdev-db.properties (loaded via spring.config.import, highest precedence) -- so no
+  DataSource bean exists at all. The 6 failing test classes are plain `@SpringBootTest`s that (unlike
+  AbstractScenarioIntegrationTest subclasses) never restore `spring.autoconfigure.exclude`, so
+  Spring tried and failed to construct tracingPackBridge, throwing UnsatisfiedDependencyException ->
+  ... -> NoSuchBeanDefinitionException for javax.sql.DataSource, chained 4 levels deep through
+  `inProcExecutionTracer`'s own `ObjectProvider<TracingPackBridge>#getIfAvailable()` call (which does
+  NOT swallow a bean-creation failure the way it swallows a genuinely-absent bean definition).
+  FIX: added the same `@ConditionalOnProperty(npdev.storage.mode=jdbc)` guard every sibling bean in
+  the file already carries, alongside a `@ConditionalOnExpression("${npdev.tracing.pack-bridge.enabled:true}")`
+  to preserve the separate opt-out flag (two `@ConditionalOnProperty` on one method does not compile
+  -- not `@Repeatable` -- so the second condition uses a different annotation type; both are pure
+  Environment-property checks, so neither is evaluation-order-dependent on when
+  DataSourceAutoConfiguration itself runs, unlike `@ConditionalOnBean(DataSource.class)` would have
+  been on this plain, non-auto-configuration `@Configuration` class).
+
+  ROOT CAUSE (bug #2, previously MASKED by bug #1): fixing bug #1 let `inProcExecutionTracer`
+  actually construct successfully for the first time in these contexts, which surfaced a second,
+  independent pre-existing bug: `InProcExecutionTracer` (NPDevKernel adapter class) `implements
+  ExecutionTracer, TraceStore, TraceSummaryStore` -- all three. Once that singleton is instantiated,
+  Spring's type-based lookup also treats it as a `TraceStore` candidate, alongside the dedicated
+  `inProcTraceStore` bean (added earlier for TraceStore.noop() wiring) -> NoUniqueBeanDefinitionException,
+  "found 2: inProcExecutionTracer,inProcTraceStore". FIX: marked `inProcTraceStore` `@Primary`.
+
+  VERIFICATION: (1) narrow repro -- regenerated simple-contact-intake, ran the exact 6 originally-
+  failing test classes directly against the assembled app with `--stacktrace`: all pass, BUILD
+  SUCCESSFUL, exit 0. (2) authoritative repro -- reran the actual
+  `pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1` end-to-end (not a narrowed
+  substitute): its own `enforceSingleSchemaRealizationSource test` step against the freshly
+  regenerated assembled app (the same 882-test run this item was filed against) is now BUILD
+  SUCCESSFUL, 8/8 tasks, no failures -- REG-229's specific 7 failures are gone. The gate's overall
+  run still exits failed, but ONLY on the separate `runtimehost-core:test` task's 4 pre-existing
+  OAuthGoogleControllerTest failures (196 tests, 4 failed, 3 skipped) -- the exact REG-230 failure
+  signature already isolated via git-stash in the prior session as unrelated to anything touched
+  here. No new failures introduced anywhere in either test run.
+
+  BLAST RADIUS (resolved): tracingPackBridge's bug affected every generated app resolving to the
+  InMemory engine (not just simple-contact-intake) whenever any test/context didn't itself restore
+  spring.autoconfigure.exclude -- likely wider than the 6 classes caught here, just not exercised by
+  gates that only assemble a jdbc/postgres-profile sample. `run-runtimehost-gate.ps1` -- one of the
+  four T2 gates `run-all-gates.ps1` bundles -- is no longer red on this failure mode; REG-230 is the
+  one remaining reason it doesn't report fully green (tracked separately, not started).
 guard:
   kind: local
   ref: >-
-    pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (no args). Reproduced twice in a
-    row, 2026-09-20, ~10 minutes apart, both BUILD FAILED with identical "882 tests completed, 7
-    failed, 9 skipped" and the identical 7 test names/failure signatures.
+    pwsh -NoProfile -File scripts/quality/run-runtimehost-gate.ps1 (no args) -- specifically its
+    `enforceSingleSchemaRealizationSource test` step against the assembled simple-contact-intake app.
   asserts: >-
-    Both runs' condensed console output (captured to
-    D:\WorkSpace\NPDev\Build\digest-logs\20260920T143405Z-pwsh--NoProfile--File.log and
-    ...20260920T144454Z-pwsh--NoProfile--File.log) show the same 7 FAILED lines with identical
-    exception-class chains. No fix or regression test exists yet -- root cause is still open work.
+    RED, reproduced twice 2026-09-20 ~10 minutes apart (digest-logs 20260920T143405Z /
+    20260920T144454Z): identical "882 tests completed, 7 failed, 9 skipped", identical 7 test
+    names/failure signatures both times. GREEN after the fix, reproduced twice more the same day: a
+    narrow rerun of the exact 6 failing classes directly (digest-logs 20260920T175110Z red pre-fix ->
+    20260920T180255Z green post-fix, exit 0) and the full authoritative gate re-run (digest-logs
+    20260920T180457Z) whose `enforceSingleSchemaRealizationSource test` step is BUILD SUCCESSFUL,
+    8/8 tasks -- the gate's remaining overall failure in that same run is entirely the separate,
+    already-tracked REG-230 (runtimehost-core:test's 4 pre-existing OAuthGoogleControllerTest
+    failures), not this item's 7.
   provenRed: true
+  provenGreen: true

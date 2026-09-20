@@ -36,9 +36,11 @@ import com.npdev.kernel.ports.JsonCodec;
 import com.npdev.kernel.ports.TraceStore;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 
 import javax.sql.DataSource;
 
@@ -88,6 +90,7 @@ public class NpdevRuntimeModeConfig {
     }
 
     @Bean
+    @Primary
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
     public TraceStore inProcTraceStore() {
         // Unlike its sibling ports (EventStore, FlowInstanceStore, ...), TraceStore never had an
@@ -97,6 +100,14 @@ public class NpdevRuntimeModeConfig {
         // requires TraceStore unconditionally. TraceStore.noop() already existed for exactly this
         // case but was never wired into Spring config. Found booting NPDevSamples/dsl-conformance-max
         // (an InMemory-engine model) under the step0 trial profile.
+        //
+        // REG-229: @Primary because InProcExecutionTracer (wired below as inProcExecutionTracer's
+        // ExecutionTracer instance) also `implements TraceStore` incidentally -- once that bean is
+        // actually instantiated, Spring's type-based lookup sees it as a second TraceStore candidate
+        // and throws NoUniqueBeanDefinitionException. This was masked until REG-229's DataSource fix
+        // let the ExecutionTracer bean construct successfully in in-memory mode for the first time in
+        // these particular contexts; this bean, not the tracer's incidental interface, is the one
+        // real TraceStore for in-memory storage mode.
         return TraceStore.noop();
     }
 
@@ -181,9 +192,20 @@ public class NpdevRuntimeModeConfig {
      * {@code trace_entries} business table so the trace viewer panel can display them.
      * Best-effort: a missing table (pack not composed) is silently ignored inside the bridge,
      * and the bean can be disabled entirely via {@code npdev.tracing.pack-bridge.enabled=false}.
+     * REG-229: every consumer already treats this bean as optional (injected only through
+     * {@code ObjectProvider<TracingPackBridge>#getIfAvailable()}), but unlike every other
+     * JDBC-backed bean in this class it was missing the {@code npdev.storage.mode=jdbc} guard --
+     * so Spring still tried to construct it, and failed with NoSuchBeanDefinitionException for
+     * DataSource, whenever DataSourceAutoConfiguration is excluded (e.g. an InMemory-engine
+     * generated app, which bakes that exclusion into application-npdev-db.properties). Gated on
+     * storage mode the same way every sibling DataSource-consuming bean in this class is (not
+     * {@code @ConditionalOnBean(DataSource.class)}: this is a plain user {@code @Configuration},
+     * processed before deferred auto-configurations like DataSourceAutoConfiguration register
+     * their bean, so a bean-presence condition here would be evaluation-order-dependent).
      */
     @Bean
-    @ConditionalOnProperty(name = "npdev.tracing.pack-bridge.enabled", havingValue = "true", matchIfMissing = true)
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "jdbc")
+    @ConditionalOnExpression("${npdev.tracing.pack-bridge.enabled:true}")
     public TracingPackBridge tracingPackBridge(DataSource dataSource) {
         return new TracingPackBridge(dataSource);
     }
