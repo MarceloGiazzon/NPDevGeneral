@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.settings.SettingResolver;
 import com.npdev.dsl.v1.settings.SettingStore;
 import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.generator.emitters.BusinessUiEmitter;
+import com.npdev.generator.emitters.ChangePasswordPageEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
 import com.npdev.generator.emitters.EntityEmitter;
@@ -362,6 +363,11 @@ public final class GeneratorFacade {
             // SEC-11 (Session 3b): the jwt-mode login/signup screen, emitted only when the app
             // authenticates with JWT (apiKey apps sign in through the inline key field instead).
             new LoginPageEmitter(templates, writer).emit(
+                    model == null ? "" : model.getNamespace(),
+                    "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+            // WMS-9 N6: logged-in self-service "change my password" screen, same jwt-mode gating
+            // as the login/signup screen above (an apiKey app has no user session to change).
+            new ChangePasswordPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
                     "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,

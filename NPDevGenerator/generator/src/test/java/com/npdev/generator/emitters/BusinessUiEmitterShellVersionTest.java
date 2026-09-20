@@ -106,6 +106,32 @@ class BusinessUiEmitterShellVersionTest {
     }
 
     @Test
+    void shellTopbarCarriesAQuickAccessAffordance(@TempDir Path tempDir) throws Exception {
+        // WMS-9 N5: the topbar previously had no quick-access affordance distinct from the sidebar
+        // nav itself -- reuses the existing recentItems()/recordRecentItem() localStorage list (also
+        // read by the right-rail "recent-items" gadget) rather than introducing a new tracked concept.
+        Path out = emit(tempDir, MODEL_A);
+        String shellJs = Files.readString(out.resolve("src/main/resources/static/shell.js"));
+        assertTrue(shellJs.contains("npdev-shell-quickaccess-toggle"), "topbar should carry a quick-access toggle");
+        assertTrue(shellJs.contains("renderQuickAccessPanel"), "quick-access toggle should render a panel");
+        assertTrue(shellJs.contains("function recentItems()"), "quick-access panel must reuse the existing recentItems() reader, not a new store");
+    }
+
+    @Test
+    void shellTopbarOffersChangePasswordOnlyForBearerScheme(@TempDir Path tempDir) throws Exception {
+        // WMS-9 N6: the identity area had a "Sair" (logout) button but no way to change your own
+        // password without leaving the app. Gated on the manifest's own auth.scheme (not baked in
+        // per-model, so this file stays byte-identical across models per the test below) since an
+        // apiKey app's token is a static dev key with no per-user credential to change.
+        Path out = emit(tempDir, MODEL_A);
+        String shellJs = Files.readString(out.resolve("src/main/resources/static/shell.js"));
+        assertTrue(shellJs.contains("npdev-shell-change-password"), "identity area should carry a change-password link");
+        assertTrue(shellJs.contains("/change-password.html"), "the link must point at the emitted self-service page");
+        assertTrue(shellJs.contains("state.manifest.auth.scheme === \"Bearer\""),
+                "the link must be gated on the jwt-mode (Bearer) scheme, not shown unconditionally");
+    }
+
+    @Test
     void shellFilesAreByteIdenticalAcrossDifferentModels(@TempDir Path tempDirA, @TempDir Path tempDirB) throws Exception {
         Path outA = emit(tempDirA, MODEL_A);
         Path outB = emit(tempDirB, MODEL_B);
