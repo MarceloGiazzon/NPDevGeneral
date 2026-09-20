@@ -1,6 +1,9 @@
 package com.finalexec.auth;
 
+import com.finalexec.config.ModelHolder;
 import com.npdev.adapters.mail.inproc.InProcMailCapabilityAdapter;
+import com.npdev.dsl.v1.compiled.CompiledConcept;
+import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.RegistryCapabilityDispatcher;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +19,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -65,7 +69,7 @@ class PasswordResetControllerTest {
         CapabilityRegistry registry = new CapabilityRegistry();
         registry.register("mail", "EmailCapability", "mail-inproc", mailAdapter);
         return new PasswordResetController(
-                dataSource, registry, new RegistryCapabilityDispatcher(registry),
+                dataSource, registry, new RegistryCapabilityDispatcher(registry), new ModelHolder(identityModel()),
                 "usuarios", "user_id", "senha_hash", ""
         );
     }
@@ -73,9 +77,21 @@ class PasswordResetControllerTest {
     private PasswordResetController controllerWithoutMail() {
         CapabilityRegistry registry = new CapabilityRegistry();
         return new PasswordResetController(
-                dataSource, registry, new RegistryCapabilityDispatcher(registry),
+                dataSource, registry, new RegistryCapabilityDispatcher(registry), new ModelHolder(identityModel()),
                 "usuarios", "user_id", "senha_hash", ""
         );
+    }
+
+    // Same hand-built-CompiledModel pattern ChangePasswordControllerTest uses (REG-226: table names
+    // resolve from the model, not a hardcoded literal).
+    private static CompiledModel identityModel() {
+        Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
+        concepts.put("identity::User", new CompiledConcept("User", "User", "identity_users", List.of()));
+        concepts.put("identity::Role", new CompiledConcept("Role", "Role", "identity_roles", List.of()));
+        concepts.put("identity::UserRole", new CompiledConcept("UserRole", "UserRole", "identity_user_roles", List.of()));
+        concepts.put("identity::UserRolePermission",
+                new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
+        return new CompiledModel("test", "1.0.0", concepts);
     }
 
     @Test
@@ -222,7 +238,7 @@ class PasswordResetControllerTest {
         CapabilityRegistry registry = new CapabilityRegistry();
         registry.register("mail", "EmailCapability", "mail-inproc", mailAdapter);
         PasswordResetController controller = new PasswordResetController(
-                staleDataSource, registry, new RegistryCapabilityDispatcher(registry),
+                staleDataSource, registry, new RegistryCapabilityDispatcher(registry), new ModelHolder(identityModel()),
                 "usuarios", "user_id", "senha_hash", ""
         );
 

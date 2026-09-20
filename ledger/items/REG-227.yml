@@ -1,0 +1,106 @@
+id: REG-227
+title: >-
+  A JWT bearing a STALE "tv" (token_version) claim is still accepted by generic CRUD read
+  endpoints (confirmed: GET /api/entidades) after the real token_version has been bumped --
+  token-version-based session revocation is not actually enforced on that request path, despite
+  IdentityAwareContextResolver.rejectIfTokenRevoked existing specifically to enforce it.
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-19
+closed: 2026-09-20
+verification: VERIFIED_LIVE
+source: >-
+  Found while live-verifying WMS-9 N6 (ChangePasswordController)'s token_version bump against the
+  real running wmsoffice app. Reproduced directly, twice:
+  1. Logged in as admin (tv=0 minted into the JWT).
+  2. Called POST /api/auth/change-password with the correct old password -- response confirmed
+     `ok:true` with a freshly minted token carrying `tv:1`, and a subsequent login confirmed the
+     DB's token_version really did advance (fresh login after minted tv:2 on a second change,
+     tv:1 on a third -- the persisted value tracks exactly as expected across three consecutive
+     changes: 0 -> 1 -> 2).
+  3. Reused the OLD (pre-bump) token -- the one minted with tv=0 -- against `GET /api/entidades`
+     AFTER the DB's token_version had already advanced past it. Expected: 401 (per
+     IdentityAwareContextResolver.rejectIfTokenRevoked's own documented contract, "a JWT with a tv
+     claim is valid only while that claim matches identity_users.token_version"). Actual: HTTP 200
+     with real Entidade data.
+  4. Repeated with a second, independently-minted stale token (this time changing the password
+     back to itself immediately after minting it, to guarantee the DB's token_version had already
+     moved past the token's own embedded tv by the time of the read) -- same result, HTTP 200.
+  This is NOT specific to ChangePasswordController's own bump -- the SAME token_version column and
+  the SAME IdentityAwareContextResolver/IdentityRoleLookup.isTokenRevoked mechanism is what
+  PasswordResetController.confirmReset and the admin revoke-sessions endpoint both rely on for
+  their own "invalidate other sessions" guarantee.
+surface: >-
+  NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
+  (private resolveCurrentExecutionContext(), called by resolveCurrentCrudContext() -- the context
+  every generated {Concept}ServiceBase read/write method resolves via generatedCrudExecutionContext()
+  before checkCrudPermission). NOT IdentityAwareContextResolver (that class's own
+  resolveFromPrincipal/rejectIfTokenRevoked was already correct and unrelated to this bug -- it is
+  RuntimeHost's own admin/business-UI path, never invoked by the generated CRUD controllers, which
+  go through the kernel's own independent context-resolution copy instead, exactly the "two paths"
+  IdentityAwareContextResolver's own javadoc already anticipated but assumed "can never diverge").
+detail: |
+  ROOT-CAUSED AND FIXED -- two compounding bugs in the SAME method, found by tracing the real call
+  chain (GET /api/entidades -> EntidadeController.list() -> EntidadeControllerBase.listBase() ->
+  EntidadeServiceBase.list() -> generatedCrudExecutionContext() ->
+  GeneratedCrudRuntimeSupport.resolveCurrentCrudContext() -> resolveCurrentExecutionContext()):
+
+  BUG 1 (the deeper, actually-causal one): resolveCurrentExecutionContext() read the actor claim
+  under the key "actor_id" -- correct for RuntimeApiKeyAuthFilter's own claims shape (which does set
+  actor_id), but WRONG for JwtBearerAuthFilter, which stashes the RAW JWT payload verbatim, whose
+  actor claim is the standard "sub" (confirmed by decoding a real minted token:
+  {sub, tenant_id, roles, tv, iss, aud, iat, exp} -- no "actor_id" key at all). Every JWT-mode
+  request therefore resolved actorId as null, which ExecutionContext.of(tenantId, null) then
+  normalizes to the literal string "anonymous" -- so the method was NEVER able to identify the real
+  actor for a JWT-authenticated request, regardless of revocation. Fixed by falling back to
+  claims.get("sub") when "actor_id" is absent.
+
+  BUG 2 (what actually made the symptom visible): even once actorId resolves, a revoked token's
+  isTokenRevoked() check downgraded to `return ExecutionContext.anonymous()` instead of rejecting
+  the request. ExecutionContext.anonymous() carries DEFAULT_ROLE "USER" (see
+  NPDevKernel/kernel/.../ExecutionContext.java), not empty roles -- legitimately sufficient for
+  ordinary CRUD reads on any concept with no explicit permission rule -- so even a CORRECTLY
+  detected revocation would have silently let the read through. Fixed by throwing
+  `ResponseStatusException(UNAUTHORIZED, "token_revoked")` instead, mirroring
+  IdentityAwareContextResolver's own behavior on the identical check; added a
+  `catch (ResponseStatusException) { throw; }` ahead of the method's existing
+  `catch (Exception ignored) { return ExecutionContext.anonymous(); }` so the deliberate rejection
+  is not swallowed back into the same fallback it exists to prevent.
+
+  Bug 1 alone would have been enough to explain the symptom (actorId always null -> isTokenRevoked's
+  own `actorId != null` guard never runs -> revocation never checked), but fixing only Bug 1 without
+  Bug 2 would have left the SAME anonymous-fallback trap for the now-correctly-resolved revoked
+  case -- both were required for the live repro to actually turn into a 401.
+
+  BLAST RADIUS (confirmed, not merely suspected): every generated CRUD controller/service
+  (list/get/create/update/delete, all routed through the same generatedCrudExecutionContext()) was
+  affected for every JWT-mode app, not just wmsoffice's GET /api/entidades -- actor identity itself
+  was silently wrong (always "anonymous") for this whole request family, of which the missing
+  revocation enforcement was the one symptom this session's repro happened to catch. Audit records
+  and any actor-scoped permission rule on this path would also have recorded/evaluated against the
+  wrong (or no) actor for every JWT-authenticated CRUD request before this fix.
+guard:
+  kind: local
+  ref: >-
+    NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java
+    -- two new tests: resolveCurrentCrudContext_throws401WhenTokenVersionIsStale (actor_id-keyed
+    claims, H2-backed identity_users fixture) and
+    resolveCurrentCrudContext_throws401ForStaleTokenUsingRealJwtSubClaim (the actual live-repro
+    shape: sub-keyed claims, matching a real JwtBearerAuthFilter request) both assert a
+    ResponseStatusException(401). A third new test,
+    resolveCurrentCrudContext_resolvesNormallyWhenTokenVersionMatches, is the non-revoked regression
+    companion. `gradlew -p NPDevKernel :adapters:runtime-support:test --tests
+    "com.npdev.runtime.support.GeneratedCrudRuntimeSupportKernelPortsTest"` -- BUILD SUCCESSFUL, all
+    7 tests in the class pass.
+  asserts: >-
+    Live-reproduced the exact original repro against wmsoffice at http://127.0.0.1:8100 after
+    restaging the fixed kernel jar (Rebuild-And-Restage.ps1 -SkipGeneratorRuntime) and rebuilding:
+    logged in as admin, confirmed the fresh token reads GET /api/entidades (200), bumped
+    token_version via POST /api/auth/change-password (200, same old/new password to isolate the
+    bump), reused the now-stale token against GET /api/entidades -- result changed from the
+    pre-fix HTTP 200 with real data to HTTP 401 `{"error":"Unauthorized",...}`. A separately minted
+    FRESH token was confirmed to still read normally (200), ruling out an overly broad fix that
+    blocks all reads. Unit tests above cover both claim shapes (actor_id and the real sub) plus the
+    non-revoked regression case.
+  provenRed: true

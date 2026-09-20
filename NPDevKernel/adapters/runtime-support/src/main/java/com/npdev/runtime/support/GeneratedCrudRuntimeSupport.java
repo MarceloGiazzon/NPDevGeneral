@@ -2545,7 +2545,19 @@ public final class GeneratedCrudRuntimeSupport {
 
             Map<String, Object> claims = mapWithStringKeys(rawMap);
             String tenantId = asNonBlankString(claims.get("tenant_id"));
+            // REG-227: RuntimeApiKeyAuthFilter's own claims carry "actor_id", but JwtBearerAuthFilter
+            // stashes the RAW JWT payload -- whose actor claim is the standard "sub", never
+            // "actor_id" (confirmed by decoding a real minted token: {sub, tenant_id, roles, tv, ...},
+            // no actor_id key at all). Without this fallback, actorId was UNCONDITIONALLY null for
+            // every JWT-mode request, so ExecutionContext.of(tenantId, null) normalized to actorId
+            // "anonymous" regardless of who was really authenticated, and the token-revocation check
+            // below (gated on actorId != null) could never even run -- not merely "downgrades on
+            // revocation" as originally diagnosed, but "never identifies a JWT actor at all", of which
+            // the missing revocation enforcement is one visible symptom.
             String actorId = asNonBlankString(claims.get("actor_id"));
+            if (actorId == null) {
+                actorId = asNonBlankString(claims.get("sub"));
+            }
             if (tenantId == null && actorId == null) {
                 return ExecutionContext.anonymous();
             }
@@ -2553,12 +2565,18 @@ public final class GeneratedCrudRuntimeSupport {
             // LNCH-4: a token minted with a 'tv' claim is only valid while it still matches the
             // identity pack's live token_version for this (tenant, actor) -- same revocation contract
             // IdentityAwareContextResolver enforces on the RuntimeHost admin/business-UI path. Only
-            // checked when actorId itself resolved (this path's own claim key, unlike the JWT resolver,
-            // has no 'sub' fallback -- see below); otherwise IdentityRoleLookup.tokenVersion's
+            // checked when actorId itself resolved; otherwise IdentityRoleLookup.tokenVersion's
             // null-actor guard would report version 0 and falsely "revoke" every non-zero-versioned
             // token whose actor didn't resolve here, rather than correctly no-op'ing.
+            // REG-227: a revoked token must be REJECTED, not downgraded to ExecutionContext.anonymous()
+            // -- anonymous() carries DEFAULT_ROLE "USER" (not empty roles), which is legitimately
+            // sufficient for ordinary CRUD reads on any concept with no explicit permission rule, so
+            // the previous "fall back to anonymous" here silently let a revoked JWT keep reading data
+            // through this path indefinitely, diverging from IdentityAwareContextResolver's own
+            // throw-401 behavior on the exact same check despite this method's own doc comment
+            // insisting the two paths "can never diverge".
             if (actorId != null && isTokenRevoked(claims.get("tv"), tenantId, actorId)) {
-                return ExecutionContext.anonymous();
+                throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "token_revoked");
             }
 
             // Identity-backed roles (when the identity pack is populated for this tenant+actor) are
@@ -2571,6 +2589,10 @@ public final class GeneratedCrudRuntimeSupport {
             Set<String> roles = identityRoles.isEmpty() ? parseRoles(claims.get("roles")) : identityRoles;
             ExecutionContext context = ExecutionContext.of(tenantId, actorId);
             return roles.isEmpty() ? context : context.withRoles(roles);
+        } catch (ResponseStatusException statusException) {
+            // REG-227: a deliberate rejection (token_revoked above) must propagate, not be swallowed
+            // into the same anonymous fallback it exists to prevent.
+            throw statusException;
         } catch (Exception ignored) {
             return ExecutionContext.anonymous();
         }

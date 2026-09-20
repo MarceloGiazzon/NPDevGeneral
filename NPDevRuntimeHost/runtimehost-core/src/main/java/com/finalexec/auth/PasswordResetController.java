@@ -1,5 +1,7 @@
 package com.finalexec.auth;
 
+import com.finalexec.config.ModelHolder;
+import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.CapabilityResult;
@@ -24,6 +26,7 @@ import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -60,6 +63,7 @@ public class PasswordResetController {
     private final DataSource dataSource;
     private final CapabilityRegistry capabilityRegistry;
     private final CapabilityDispatcher capabilityDispatcher;
+    private final ModelHolder modelHolder;
     private final String credentialTable;
     private final String credentialUserIdColumn;
     private final String credentialPasswordColumn;
@@ -72,6 +76,7 @@ public class PasswordResetController {
             DataSource dataSource,
             CapabilityRegistry capabilityRegistry,
             CapabilityDispatcher capabilityDispatcher,
+            ModelHolder modelHolder,
             @Value("${npdev.auth.login.credential-table:usuarios}") String credentialTable,
             @Value("${npdev.auth.login.credential-user-id-column:user_id}") String credentialUserIdColumn,
             @Value("${npdev.auth.login.credential-password-column:senha_hash}") String credentialPasswordColumn,
@@ -80,6 +85,7 @@ public class PasswordResetController {
         this.dataSource = dataSource;
         this.capabilityRegistry = capabilityRegistry;
         this.capabilityDispatcher = capabilityDispatcher;
+        this.modelHolder = modelHolder;
         this.credentialTable = credentialTable;
         this.credentialUserIdColumn = credentialUserIdColumn;
         this.credentialPasswordColumn = credentialPasswordColumn;
@@ -111,8 +117,15 @@ public class PasswordResetController {
         }
         resetThrottle.recordFailure(tenantId, username, clientIp);
 
+        Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        if (resolvedIdentityTables.isEmpty()) {
+            LOG.log(Level.WARNING, "Password reset request: identity pack not composed for this app");
+            return ResponseEntity.ok(GENERIC_REQUEST_RESPONSE);
+        }
+        IdentityPackTableNames identityTables = resolvedIdentityTables.get();
+
         try (Connection connection = dataSource.getConnection()) {
-            UserLookup user = findActiveUserWithEmail(connection, tenantId, username);
+            UserLookup user = findActiveUserWithEmail(connection, identityTables, tenantId, username);
             if (user == null) {
                 return ResponseEntity.ok(GENERIC_REQUEST_RESPONSE);
             }
@@ -140,6 +153,12 @@ public class PasswordResetController {
             return ResponseEntity.badRequest().body(Map.of("error", "invalid_request"));
         }
 
+        Optional<IdentityPackTableNames> resolvedIdentityTables = IdentityPackTableNames.tryResolve(modelHolder.get());
+        if (resolvedIdentityTables.isEmpty()) {
+            return ResponseEntity.status(503).body(Map.of("error", "identity_pack_not_composed"));
+        }
+        IdentityPackTableNames identityTables = resolvedIdentityTables.get();
+
         String tokenHash = sha256Hex(token);
         try (Connection connection = dataSource.getConnection()) {
             ResetTokenRecord record = findValidToken(connection, tokenHash, tenantId);
@@ -161,7 +180,7 @@ public class PasswordResetController {
             }
 
             markTokenUsed(connection, record.tokenId());
-            bumpTokenVersion(connection, record.userId(), tenantId);
+            bumpTokenVersion(connection, identityTables.usersTable(), record.userId(), tenantId);
             return ResponseEntity.ok(Map.of("ok", true));
         } catch (IdentityPackSchemaException schemaException) {
             // REG-39: the token_version bump below found a schema mismatch (stale built-in-pack
@@ -188,8 +207,10 @@ public class PasswordResetController {
     private record ResetTokenRecord(UUID tokenId, UUID userId) {
     }
 
-    private UserLookup findActiveUserWithEmail(Connection connection, String tenantId, String username) throws Exception {
-        String sql = "SELECT id, email FROM identity_users WHERE username = ? AND tenant_id = ? AND active = TRUE";
+    private UserLookup findActiveUserWithEmail(Connection connection, IdentityPackTableNames identityTables,
+            String tenantId, String username) throws Exception {
+        String sql = "SELECT id, email FROM " + identityTables.usersTable()
+                + " WHERE username = ? AND tenant_id = ? AND active = TRUE";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, username);
             ps.setString(2, tenantId);
@@ -252,10 +273,14 @@ public class PasswordResetController {
     /**
      * Mirrors {@code ControlPanelTenantUsersController.bumpTokenVersion} -- a successful reset must
      * invalidate every JWT already minted under the old password, or a still-live token keeps
-     * working right through the reset that was supposed to lock it out.
+     * working right through the reset that was supposed to lock it out. REG-226: takes the RESOLVED
+     * users-table name rather than a hardcoded "identity_users" literal, which fails with a
+     * table-not-found "schema mismatch" on any real app (the pack composes it under a
+     * versioned name, e.g. identity_v1_users) -- mirrors the fix in
+     * {@code ChangePasswordController.bumpTokenVersionTo}.
      */
-    private void bumpTokenVersion(Connection connection, UUID userId, String tenantId) {
-        String sql = "UPDATE identity_users SET token_version = COALESCE(token_version, 0) + 1"
+    private void bumpTokenVersion(Connection connection, String usersTable, UUID userId, String tenantId) {
+        String sql = "UPDATE " + usersTable + " SET token_version = COALESCE(token_version, 0) + 1"
                 + " WHERE id = ? AND tenant_id = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setObject(1, userId);
