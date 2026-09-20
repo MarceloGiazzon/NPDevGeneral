@@ -183,11 +183,39 @@
         if (scope === "header") { ((descriptor.header && descriptor.header.fields) || []).forEach(function (f) { draft[f] = clone(baseline[f]); }); var lc = descriptor.lifecycle; if (lc && lc.statusField) draft[lc.statusField] = clone(baseline[lc.statusField]); dirty.header = false; }
         else { draft[c] = clone(baseline[c] || []); dirty.sections[c] = false; }
       },
-      // Replace the working draft with a server-computed tree (invoke/recompute), preserving the baseline.
-      // Marks every region dirty since the whole draft may have shifted; the user reviews and Saves.
+      // REG-225: fold a server-computed result ONTO the working draft (shallow top-level merge),
+      // never wholesale-replace it. A "recompute" action whose procedure reads-and-patches the
+      // EXISTING record (e.g. GerarExpedicaoProcedure returning the full patched record) is
+      // unaffected either way, since its result already carries every field the draft had. But a
+      // "propose" action (ParseNfeProcedure/ParseRomaneioProcedure/ImportarContagemProcedure and
+      // siblings -- none declare afterAction/applyTo, so all fall through to this same path) posts
+      // only {numero: <input>, texto: <input>} and gets back a SMALL ad hoc result shaped like
+      // {itens, sucesso, ...} -- nothing like the aggregate's own field set. A wholesale replace
+      // silently wiped every header field the result didn't happen to name (id, entidadeId,
+      // situacao, an already-picked reference) the instant Import was clicked, discovered live via
+      // WMS-9/REG-225 on RomaneioAggregateWorkbench (produtoId + the whole header vanished, Save
+      // then failed on a field that was never actually missing before Import ran).
+      //
+      // The second half of REG-225: rows returned by a "propose" result are freshly parsed and
+      // structurally have no `id` at all (the capability that built them has no reason to invent
+      // one) -- `view()`'s `id: r.id` then renders `undefined`, producing a broken
+      // `data-fkey="...undefined..."` cell that can never be edited or reliably saved. Any row (or
+      // band row) folded in without an id gets the SAME "new-*" placeholder addRow()/addBandRow()
+      // already use; stripClientTempIds already strips it before commit so the server allocates the
+      // real id, exactly as it does for a manually-added row.
       patch: function (newData) {
-        draft = clone(newData || {});
-        (descriptor.sections || []).forEach(function (s) { if (!Array.isArray(draft[s.collection])) draft[s.collection] = []; dirty.sections[s.collection] = true; });
+        draft = Object.assign({}, draft, clone(newData || {}));
+        (descriptor.sections || []).forEach(function (s) {
+          if (!Array.isArray(draft[s.collection])) draft[s.collection] = [];
+          draft[s.collection].forEach(function (row) {
+            if (row && row.id == null) { row.id = genId(); }
+            (s.bands || []).forEach(function (b) {
+              if (!Array.isArray(row[b.collection])) return;
+              row[b.collection].forEach(function (br) { if (br && br.id == null) { br.id = genId(); } });
+            });
+          });
+          dirty.sections[s.collection] = true;
+        });
         dirty.header = true;
       },
       // Lifecycle gating: the root's current state -> label + editability (terminal/read-only states).

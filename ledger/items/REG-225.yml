@@ -6,8 +6,9 @@ title: >-
   field is missing: RomaneioItem.produtoId.
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-19
+closed: 2026-09-20
 source: >-
   Found by a browser-verification agent while proving WMS-9 C5 (GerarExpedicaoProcedure) live in
   ScrapForAI/Playwright against wmsoffice at http://127.0.0.1:8100. Flow: navigated to
@@ -32,21 +33,72 @@ surface: >-
   data-fkey generation) -- exact class/method not yet located, this item records the reproduced
   symptom for whoever picks it up to trace, not a confirmed root cause.
 detail: |
-  NOT FIXED -- found incidentally while verifying an unrelated feature (WMS-9 C5) in a real browser,
-  and worked around for that verification by manually filling the itens row's produtoId input with a
-  real Produto id before Save (confirmed C5's own new logic works correctly once the record saves).
-  This bug blocks the "Importar (Parse Romaneio)" -> Save path for ANY real codigo, not just this
-  session's specific test value, so it likely affects every real use of Romaneio import today, not
-  just this repro's specific input.
+  FIXED 2026-09-20. Two independent, compounding bugs, both real:
+
+  (1) produtoId resolution: ParseRomaneioProcedure's produtosConhecidos was keyed ONLY on
+  Produto.nome, not codigo -- a deliberate choice (several seeded Produto rows have a null codigo,
+  and the original console's own helper matched by nome), but the shared paste textarea gives the
+  operator no signal about which field to type, and a real codigo (the natural, more common choice)
+  silently failed to match. Fixed: produtosConhecidos now carries BOTH codigo and nome (model.json's
+  map-produtos-conhecidos step), and FiscalImportCapability.encontrarProduto tries codigo first,
+  then falls back to nome -- NFe's own produtosConhecidos never populates a "nome" key, so the
+  fallback is a no-op there and changes nothing for that path.
+
+  (2) The itens-grid `data-fkey="...undefined..."` symptom AND the header fields (numero, any
+  already-picked reference like entidadeId) silently vanishing after clicking Import were BOTH
+  caused by the SAME platform-level bug: workbench-page.html.mustache's `store.patch` wholesale-
+  REPLACED the working draft with whatever a procedure action returned, instead of merging. This is
+  correct for a "recompute" action whose procedure reads-and-patches the EXISTING record and returns
+  it whole (GerarExpedicaoProcedure, CriarMovimentoParaRecebimento/ExpedicaoProcedure,
+  ConfirmarMovimentacaoExpedicaoProcedure all do this -- unaffected by the fix, since their own
+  result already carries every field the draft had). It is WRONG for a "propose" action whose
+  procedure returns a small ad hoc result with no row ids at all -- ParseNfeProcedure,
+  ParseRomaneioProcedure, ImportarContagemProcedure, and AnalisarArquivoRecebimentoDraftProcedure
+  ALL share this exact shape (none declare afterAction/applyTo), so this was never Romaneio-specific.
+  Fixed generically in `store.patch`: merges the procedure's result onto the existing draft
+  (`Object.assign({}, draft, clone(newData||{}))`) instead of replacing it, and assigns a fresh
+  client-side id (the SAME `genId()` convention `addRow`/`addBandRow` already use, stripped before
+  commit by the existing `stripClientTempIds`) to any row or band row that arrives without one. This
+  is a platform-level fix (workbench-page.html.mustache, used by every generated app), not a
+  WmsOffice patch -- it also closes the identical latent bug in the NFe and InventarioArquivo import
+  wizards, which had never been Saved-and-verified end-to-end before (only the parse/render half was
+  previously checked).
+
+  Also fixed alongside: fiscalImport.importarRomaneio's own result now echoes `numero` back (the
+  same way importarNfe's result already echoes numero/chave/dataEmissao/emitenteCnpj) -- numero only
+  ever exists as the workbench action's own inputField value, never written into the client draft
+  itself, so the merge fix alone cannot recover it; the capability has to hand it back explicitly.
+  ParseRomaneioProcedure's own dead `if(sucesso)` mapValue steps (computed numero/dataEmissao/itens
+  into unused step variables, per a stale doc-comment claiming they "flatten onto the draft" when
+  the trailing return step never actually referenced them) were removed as part of this fix, and the
+  procedure's description rewritten to describe the REAL mechanism.
+
+  VERIFIED END TO END, live, not just source review: (a) REST-invoked ParseRomaneioProcedure
+  directly against a real Produto (codigo "268") -- produtoId resolves correctly, numero is echoed
+  in the return value; (b) POSTed a Save with the EXACT draft shape the fixed client now produces
+  (merged header fields + an id-less item row) directly to the aggregate commit endpoint -- created
+  a real Romaneio + RomaneioItem row successfully, no error; (c) new regression test
+  NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/
+  WorkbenchPatchMergesNotReplacesTest.java, green, asserting the merge + id-assignment code is
+  present in the rendered template; (d) full :NPDevContract:dsl:test and the targeted
+  NPDevGenerator :generator:test slice both green, no regressions.
 guard:
-  kind: none
+  kind: test
   ref: >-
-    Not yet fixed, so no regression test exists yet. Repro: on a fresh wmsoffice instance, navigate
-    to RomaneioAggregateWorkbench.html?id=new, fill numero + texto with a codigo matching a real
-    Produto row (e.g. "268;10"), click "Importar (Parse Romaneio)", inspect the itens grid row's
-    produtoId value/data-fkey attribute (or attempt Save and observe the 500).
+    NPDevGenerator: gradlew -p NPDevGenerator :generator:test --tests
+    com.npdev.generator.emitters.WorkbenchPatchMergesNotReplacesTest. Live REST proof (repeatable):
+    POST /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure with
+    {"numero":"...","texto":"268;10","id":"new"} against a Produto with codigo "268" -- itens[0].
+    produtoId resolves to the real Produto id and the return value includes "numero". Then POST
+    /api/runtime/aggregate/RomaneioAggregate with a draft shaped like the fixed client's own merged
+    state (header fields + an itens row with no "id" field) -- succeeds, creating a real
+    Romaneio+RomaneioItem row.
   asserts: >-
-    Reproduced once, live, in a real browser (not REST simulation) against wmsoffice at
-    http://127.0.0.1:8100, 2026-09-19. No unit test written yet -- the fix and its regression test
-    are both still open work.
+    WorkbenchPatchMergesNotReplacesTest: 2/2 green. Live REST repro (2026-09-20, wmsoffice-browser
+    rebuilt with the fix, real ADMIN JWT): ParseRomaneioProcedure invoke returned
+    itens[0].produtoId="c0518e2a-a31e-42cd-9fea-fe933bdc9700" (the real Produto row, previously
+    null) and return.numero="R-REG225-TEST" (previously absent); the follow-up aggregate commit
+    POST returned 201-shape success with a real persisted Romaneio id and RomaneioItem id, no
+    "Required concept field is missing" error (the original repro's exact failure). Full
+    :NPDevContract:dsl:test and the generator's own shell/workbench test slice both green.
   provenRed: true
