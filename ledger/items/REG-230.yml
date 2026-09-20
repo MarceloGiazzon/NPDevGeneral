@@ -1,0 +1,68 @@
+id: REG-230
+title: >-
+  OAuthGoogleControllerTest fails 4 of 8 tests deterministically in runtimehost-core's own standalone
+  `test` task -- every failure traces back to a genuine "identity_pack_schema_error" (an
+  IdentityPackSchemaException) raised while running the OAuth signup/link/state-replay flow against
+  the test's own H2 fixture, despite the fixture's identity_users table matching the compiled model's
+  resolved table name exactly.
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-20
+source: >-
+  Found while verifying REG-228 (JWT signing-keypair auto-provisioning) did not regress
+  runtimehost-core: ran the module's own standalone `test` task (196 tests) after adding
+  JwtKeyPairEnvironmentPostProcessor, saw "196 tests completed, 4 failed, 3 skipped", all 4 in
+  OAuthGoogleControllerTest. Isolated with `git stash` (removing every REG-228 file, including the
+  new class, its test, and the spring.factories registration) and re-ran just
+  OAuthGoogleControllerTest alone -- same 4 failures, same messages, confirming this is pre-existing
+  and unrelated to REG-228's change. (Consistent with that: OAuthGoogleControllerTest is a plain
+  hermetic unit test with no @SpringBootTest/@ExtendWith(SpringExtension) -- it never boots a real
+  ApplicationContext, so an EnvironmentPostProcessor registered via spring.factories can never run
+  during it at all.)
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/OAuthGoogleAuthService.java
+  (not yet read in detail -- the actual query/table access that raises IdentityPackSchemaException
+  is unidentified). The test's own fixture
+  (NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleControllerTest.java,
+  setUp()) creates identity_users/identity_external_identity by hand and declares a matching
+  identityModel() (identity::User -> "identity_users", identity::ExternalIdentity ->
+  "identity_external_identity") -- ruling out the REG-226 class of bug (a hardcoded table-name
+  literal diverging from the resolved name), since here they already agree.
+detail: |
+  NOT ROOT-CAUSED, NOT FIXED -- out of scope for REG-228, recorded rather than chased under time
+  pressure. Four assertion/NPE failures, all downstream of the same schema-mismatch error:
+    - authorizeRedirectsToProviderWithStateAndCallbackRoundTripsASession: "a successful Google
+      signup must hand back the session cookie ==> expected: <true> but was: <false>"
+    - stateIsSingleUse: NullPointerException on HttpHeaders.getFirst("Set-Cookie") returning null
+      (the callback never set the cookie -- same underlying cause as the test above)
+    - linkLegWithSessionLinksGoogleToTheAccount: "a clean link redirects to the caller with no
+      error parameter ==> expected: </profile> but was: </profile?error=oauth_link_already_used>"
+    - authorizedNextSurvivesSanitizationIntoTheSavedState: "a hostile next must fall back to the
+      app root ==> expected: </> but was: </?error=identity_pack_schema_error>" -- this one is the
+      Rosetta stone: the controller's own callback error param literally names the failure class,
+      confirming all four share one root cause (IdentityPackSchemaException thrown somewhere in
+      OAuthGoogleAuthService's callback-handling path), not four independent bugs.
+  linkLegWithoutASessionCookieIsRefused, configReportsEnoughForTheLoginScreen, and
+  nextParamIsOpenRedirectSanitized (the 3 tests that do NOT exercise a full authorize->callback
+  round trip through OAuthGoogleAuthService) all still pass, narrowing the fault to something the
+  round trip touches: token minting, the external-identity upsert, or the token_version bump --
+  candidates for whoever picks this up, not confirmed.
+
+  BLAST RADIUS: unknown until root-caused. If this is a genuine regression in
+  OAuthGoogleAuthService (not a stale test fixture), Google OAuth login/signup/link is currently
+  broken for every JWT-mode app with OAuth enabled, not just in this test.
+guard:
+  kind: local
+  ref: >-
+    NPDevRuntimeHost\runtimehost-core\gradlew.bat --project-dir NPDevRuntimeHost\runtimehost-core
+    --no-daemon --console=plain test --tests "com.finalexec.auth.OAuthGoogleControllerTest"
+    (note: gradlew.bat does not cd into its own directory -- pass --project-dir explicitly or the
+    ROOT NPDev_General settings.gradle, which wires only :NPDevContract:dsl, silently "wins" and
+    reports a misleading "no tests found").
+  asserts: >-
+    Reproduced twice 2026-09-20, both with and without the REG-228 changeset present (git-stash
+    isolated): "8 tests completed, 4 failed" both times, identical failure messages/line numbers.
+    JUnit XML: D:\WorkSpace\NPDev\Build\gradle\runtimehost-core\root\test-results\test\
+    TEST-com.finalexec.auth.OAuthGoogleControllerTest.xml. No fix or root cause exists yet.
+  provenRed: true

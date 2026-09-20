@@ -7,7 +7,7 @@ title: >-
   JWT-mode app, not just wmsoffice.
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-20
 source: >-
   Hit live while regenerating wmsoffice for WMS-9 C6 (wiring a procedure-bound dataSource into
@@ -34,37 +34,71 @@ surface: >-
   Build-ClaudeApp.ps1's own $SparedInsideApp, and FinalAppAssembler.PRESERVED_APP_DIRECTORIES
   (Java layer, runs LAST, wins if the lists disagree).
 detail: |
-  NOT FIXED HERE -- same scope note REG-220 already gave: this deserves an owner decision between
-  the two fix candidates already on record, not a rushed patch bundled into an unrelated dataSource
-  wiring change:
-    (1) add wmsoffice-keys (or wherever any app's npdev.auth.jwt.*-key-path resolves) to the
-        regeneration-spared directory list, in all three seams (CLAUDE.md's twin-pair rule
-        app-secrets-dir-spared-three-seams already exists for the CURRENT three -- this would need
-        a fourth entry or a generalized "app-declared extra spared paths" mechanism, since the key
-        directory name is app-configurable via NPDEV_WMSOFFICE_KEYS_DIR-style env vars, not fixed
-        across apps); or
-    (2) make the rebuild wrapper auto-provision a throwaway dev keypair when JWT mode is active and
-        no keypair file exists yet, the same way it already handles a missing admin API key
-        (Ensure-NpdevApiKey in Build-NpdevApp.ps1) -- this is the more robust fix since it also
-        covers a FIRST-ever generation, not just regeneration of an app that once had a keypair.
+  FIXED 2026-09-20: chose candidate (2), auto-provisioning, over candidate (1) (adding the key
+  directory to the three-seam regeneration-spared list) for the reason already on record here --
+  the key directory's name is app-configurable (NPDEV_WMSOFFICE_KEYS_DIR-style), not fixed across
+  apps, and auto-provisioning also covers a FIRST-ever generation, not just regeneration of an app
+  that once had a keypair.
 
-  BLAST RADIUS: every JWT-mode app (npdev.auth.mode=jwt), not just wmsoffice -- any regeneration
-  (Build-NpdevApp.ps1 -Upgrade, Rebuild-And-Restage.ps1, or equivalent) silently deletes the app's
-  signing keypair, so the NEXT boot after ANY platform-code or model change that triggers
-  regeneration fails outright with a BeanCreationException, until someone notices and manually runs
-  openssl to replace it. This has now independently blocked two different sessions (REG-217's,
-  2026-09-19, and this one, 2026-09-20) doing otherwise-unrelated work.
+  Implementation: new `com.finalexec.auth.JwtKeyPairEnvironmentPostProcessor`
+  (NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/), registered in that
+  module's own META-INF/spring.factories as a second
+  `org.springframework.boot.env.EnvironmentPostProcessor` alongside the existing
+  H2LocalBootLockEnvironmentPostProcessor (same precedent, same reasoning: this Spring Boot SPI
+  runs once the Environment is fully resolved -- profile YAML like application-wmsoffice.yml
+  already merged in -- but strictly BEFORE any bean, including LoginController/
+  ChangePasswordController, is created, which is the one seam early enough to provision the files
+  before anything tries to read them). When npdev.auth.mode=jwt and BOTH the resolved
+  public-key-path and private-key-path point at non-classpath files that do not yet exist, it
+  generates a throwaway RSA-2048 keypair (PKCS8 private / X.509 public, matching exactly what
+  JwtSigner.loadPrivateKey and JwtBearerAuthFilter.loadPublicKey each already parse) and writes
+  both PEM files, logging a WARNING that any token minted under a previous keypair is now invalid.
+  A blank path (verify-only deployment, REG-9) or a classpath: path is left untouched; one key
+  present and the other missing is treated as a real misconfiguration and left alone rather than
+  silently replaced.
+
+  Regression coverage: JwtKeyPairEnvironmentPostProcessorTest (6 tests) -- apikey-mode no-op,
+  blank-path no-op, classpath-path no-op, half-present-pair no-op, a genuine sign-with-private/
+  verify-with-public round trip proving the generated pair is real and matched (not just two
+  independently well-formed files), and a second-run idempotency check (an already-provisioned
+  pair is never regenerated). All 6 pass; full runtimehost-core `test` task run both before and
+  after this change to confirm no regression (196 tests, same 4 pre-existing OAuthGoogleControllerTest
+  failures either way -- filed separately as REG-230, unrelated to this fix, confirmed via
+  git-stash isolation).
+
+  LIVE-VERIFIED 2026-09-20 against wmsoffice: deleted App/wmsoffice-keys/ entirely (exact REG-228
+  repro), restaged runtimehost-libs (scripts/appgen/Rebuild-And-Restage.ps1 -SkipGeneratorRuntime),
+  rebuilt and booted -- app reached `App is UP at http://localhost:8100/actuator/health` instead of
+  crashing with BeanCreationException/NoSuchFileException. Confirmed a genuine fresh keypair was
+  written (App/wmsoffice-keys/jwt-{public,private-pkcs8}.pem, both timestamped from this rebuild).
+  Confirmed BOTH halves are actually usable by the real app, not just present: an unauthenticated
+  request with a bogus Bearer token returned a clean 401 {"error":"missing_bearer_token"} /
+  signature-rejection (not a 500 public-key-parse crash), proving JwtBearerAuthFilter successfully
+  loaded the auto-generated public key; and the app booted at all (LoginController/
+  ChangePasswordController constructors eagerly parse the private key via
+  JwtSigner.loadPrivateKey, which would have thrown BeanCreationException on a malformed key).
+
+  BLAST RADIUS (resolved): every JWT-mode app (npdev.auth.mode=jwt) now self-heals a missing
+  signing keypair on boot instead of crashing outright -- covers both a wiped regeneration and a
+  first-ever generation. Previously blocked two different sessions (REG-217's, 2026-09-19, and the
+  one that filed this item, 2026-09-20) doing otherwise-unrelated work.
 guard:
   kind: local
   ref: >-
-    Not yet fixed. Repro: on any JWT-mode generated app with an existing App/wmsoffice-keys/ (or
-    equivalent) directory holding a real keypair, run a regeneration (Build-NpdevApp.ps1 -Upgrade)
-    that does NOT touch the keypair intentionally, rebuild, then Start-App -- expect the keypair
-    directory to be gone and the boot to fail with NoSuchFileException on the private key path.
+    Unit: NPDevRuntimeHost\runtimehost-core\gradlew.bat --project-dir NPDevRuntimeHost\runtimehost-core
+    --no-daemon --console=plain test --tests "com.finalexec.auth.JwtKeyPairEnvironmentPostProcessorTest".
+    Live: delete App/wmsoffice-keys/ entirely, rebuild via
+    scripts/appgen/Rebuild-And-Restage.ps1 -AppFolder <WmsOffice model dir> -SkipGeneratorRuntime,
+    boot, then GET /actuator/health and send a bogus Bearer token to any /api/* route.
   asserts: >-
-    Reproduced live 2026-09-20 against wmsoffice at D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice
-    -- app-20260920T143734Z.log shows the exact BeanCreationException/NoSuchFileException chain for
-    ChangePasswordController's constructor reading .\wmsoffice-keys\jwt-private-pkcs8.pem. Matches
-    REG-220's own prior repro of the identical failure one day earlier. No regression test exists
-    yet since neither fix candidate has been chosen.
-  provenRed: true
+    Originally reproduced live 2026-09-20 against wmsoffice at
+    D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice -- app-20260920T143734Z.log showed the
+    BeanCreationException/NoSuchFileException chain for ChangePasswordController's constructor
+    reading .\wmsoffice-keys\jwt-private-pkcs8.pem (matches REG-220's own prior repro one day
+    earlier). Fixed and reverified the SAME day: unit test suite green (6/6, including a genuine
+    sign-with-private/verify-with-public round trip); live rebuild after fully deleting
+    wmsoffice-keys/ reached `App is UP` instead of crashing, a fresh matched keypair was written,
+    and a bogus-Bearer-token request returned a clean 401 (proving the public key parses) rather
+    than a 500 (which a malformed auto-generated key would have caused).
+  provenRed: false
+  provenGreen: true
