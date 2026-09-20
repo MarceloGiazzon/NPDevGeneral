@@ -52,7 +52,8 @@ class OAuthGoogleControllerTest {
                     + "username VARCHAR(120) UNIQUE, display_name VARCHAR(200), email VARCHAR(200), "
                     + "active BOOLEAN, token_version INT, avatar_url VARCHAR(2048), "
                     + "last_login_at TIMESTAMP, created_at TIMESTAMP, updated_at TIMESTAMP)");
-            s.execute("CREATE TABLE identity_external_identity (id UUID PRIMARY KEY, user_id UUID, "
+            s.execute("CREATE TABLE identity_external_identity (id UUID PRIMARY KEY, tenant_id VARCHAR(120), "
+                    + "user_id UUID, "
                     + "provider VARCHAR(40), provider_subject VARCHAR(255), linked_at TIMESTAMP, "
                     + "CONSTRAINT ux_provider_subject UNIQUE (provider, provider_subject))");
         }

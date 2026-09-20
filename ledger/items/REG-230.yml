@@ -7,7 +7,7 @@ title: >-
   resolved table name exactly.
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-20
 source: >-
   Found while verifying REG-228 (JWT signing-keypair auto-provisioning) did not regress
@@ -30,28 +30,45 @@ surface: >-
   "identity_external_identity") -- ruling out the REG-226 class of bug (a hardcoded table-name
   literal diverging from the resolved name), since here they already agree.
 detail: |
-  NOT ROOT-CAUSED, NOT FIXED -- out of scope for REG-228, recorded rather than chased under time
-  pressure. Four assertion/NPE failures, all downstream of the same schema-mismatch error:
-    - authorizeRedirectsToProviderWithStateAndCallbackRoundTripsASession: "a successful Google
-      signup must hand back the session cookie ==> expected: <true> but was: <false>"
-    - stateIsSingleUse: NullPointerException on HttpHeaders.getFirst("Set-Cookie") returning null
-      (the callback never set the cookie -- same underlying cause as the test above)
-    - linkLegWithSessionLinksGoogleToTheAccount: "a clean link redirects to the caller with no
-      error parameter ==> expected: </profile> but was: </profile?error=oauth_link_already_used>"
-    - authorizedNextSurvivesSanitizationIntoTheSavedState: "a hostile next must fall back to the
-      app root ==> expected: </> but was: </?error=identity_pack_schema_error>" -- this one is the
-      Rosetta stone: the controller's own callback error param literally names the failure class,
-      confirming all four share one root cause (IdentityPackSchemaException thrown somewhere in
-      OAuthGoogleAuthService's callback-handling path), not four independent bugs.
-  linkLegWithoutASessionCookieIsRefused, configReportsEnoughForTheLoginScreen, and
-  nextParamIsOpenRedirectSanitized (the 3 tests that do NOT exercise a full authorize->callback
-  round trip through OAuthGoogleAuthService) all still pass, narrowing the fault to something the
-  round trip touches: token minting, the external-identity upsert, or the token_version bump --
-  candidates for whoever picks this up, not confirmed.
+  FIXED 2026-09-20. Root cause: a STALE TEST FIXTURE, not a production defect -- Google OAuth
+  login/signup/link was never actually broken in any real generated app.
 
-  BLAST RADIUS: unknown until root-caused. If this is a genuine regression in
-  OAuthGoogleAuthService (not a stale test fixture), Google OAuth login/signup/link is currently
-  broken for every JWT-mode app with OAuth enabled, not just in this test.
+  `OAuthGoogleControllerTest.setUp()`'s hand-rolled `CREATE TABLE identity_external_identity (id,
+  user_id, provider, provider_subject, linked_at, ...)` was missing a `tenant_id` column.
+  `OAuthGoogleAuthService.insertLink` (production code) inserts `tenant_id` into that table --
+  correctly: `SchemaRealizationEmitter` injects a `tenant_id VARCHAR(120) NOT NULL DEFAULT
+  'default'` column into EVERY generated business table unconditionally (platform-reserved column,
+  same treatment as `version` -- see SchemaRealizationEmitterTenantColumnTest, and
+  NPDevContract/packs/identity/pack.json's ExternalIdentity concept, which likewise omits
+  tenant_id from its own `fields[]` because it's injected separately, exactly like `identity_users`
+  does for the same reason). The sibling test in the same package/directory,
+  OAuthGoogleAuthServiceTest.java, already had the correct DDL (`tenant_id VARCHAR(120)` present)
+  -- only OAuthGoogleControllerTest's own copy had drifted.
+
+  So H2 genuinely threw "column tenant_id not found" (SQLState 42122) on the INSERT inside
+  `insertLink`/`signUp` -- a REAL schema mismatch, just one confined to this one test's own
+  hand-authored fixture, not to any real generated schema. `SqlSchemaErrors.isSchemaMismatch`
+  correctly classified it as SQLState-42, `findUserByEmailOrUsername`/`findUserByUsername` (which
+  ALSO run in some of these flows) correctly escalate a schema mismatch to
+  IdentityPackSchemaException-shaped failure per their REG-39 posture, and the controller correctly
+  reported `identity_pack_schema_error` -- every layer behaved exactly as designed; the fixture was
+  just wrong. Traced by reading OAuthGoogleAuthService.java's full callback path (signInExistingUser/
+  signUp/linkToAuthenticatedUser/insertLink/findUserBy*), finding `findUserByEmailOrUsername` and
+  `findUserByUsername` are the two methods that escalate a schema-mismatch SQLException into an
+  unchecked IdentityPackSchemaException-class failure (not `IdentityPackSchemaException` itself,
+  which turned out to live only in PasswordResetController/ChangePasswordController/
+  ControlPanelTenantUsersController -- the OAuth path uses its own equivalent
+  "identity_pack_schema_error" string constant, thrown from 3 separate call sites in
+  OAuthGoogleAuthService.java), then diffing the test's own CREATE TABLE against the pack's
+  ExternalIdentity concept and the schema-realization contract test to find the missing column.
+
+  FIX: added `tenant_id VARCHAR(120)` to OAuthGoogleControllerTest.setUp()'s
+  `identity_external_identity` DDL, matching OAuthGoogleAuthServiceTest's already-correct copy and
+  the real generator output.
+
+  BLAST RADIUS (resolved, was never live): confined entirely to this one test file's own fixture.
+  No production code changed. Google OAuth login/signup/link was never actually broken for any real
+  generated app.
 guard:
   kind: local
   ref: >-
@@ -61,8 +78,12 @@ guard:
     ROOT NPDev_General settings.gradle, which wires only :NPDevContract:dsl, silently "wins" and
     reports a misleading "no tests found").
   asserts: >-
-    Reproduced twice 2026-09-20, both with and without the REG-228 changeset present (git-stash
-    isolated): "8 tests completed, 4 failed" both times, identical failure messages/line numbers.
-    JUnit XML: D:\WorkSpace\NPDev\Build\gradle\runtimehost-core\root\test-results\test\
-    TEST-com.finalexec.auth.OAuthGoogleControllerTest.xml. No fix or root cause exists yet.
+    RED, reproduced twice 2026-09-20, both with and without the REG-228 changeset present
+    (git-stash isolated): "8 tests completed, 4 failed" both times, identical failure
+    messages/line numbers. GREEN after the fix, same day: the same targeted command (digest-logs
+    20260920T183427Z) is BUILD SUCCESSFUL, all 8 OAuthGoogleControllerTest tests pass; the full
+    runtimehost-core `test` task (digest-logs 20260920T183506Z) is also BUILD SUCCESSFUL --
+    tallied all 36 TEST-*.xml files directly (not just the console summary): 196 tests, 0
+    failures, 0 errors, 3 skipped (pre-existing, unrelated).
   provenRed: true
+  provenGreen: true
