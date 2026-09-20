@@ -399,6 +399,21 @@
     updateClock();
     setInterval(updateClock, 30000);
 
+    // WMS-9 N4 (company-name half): the platform has no generic notion of "the one company the
+    // user is logged into" -- tenancy here is row-level (tenant_id), not "one org per session" the
+    // way a typical SaaS shell assumes, so the shell cannot hard-code a concept/field name. Opt-in
+    // via a RESERVED query name instead (same idiom as workspace::Menu's reserved-concept-name
+    // overlay): an app that declares a query literally named "ShellCompanyName" gets its first row
+    // rendered here; an app that doesn't gets an empty, hidden element and nothing else changes.
+    // Deliberately not a settings-schema field -- that would need the full parser/compiler/
+    // ModelResolver/canonical-writer-reader four-place wiring (CLAUDE.md's ast-compiled-four-place
+    // rule) for what is, at most, one optional cosmetic string.
+    var company = document.createElement("span");
+    company.className = "npdev-shell-company";
+    company.style.display = "none";
+    bar.appendChild(company);
+    el.company = company;
+
     var identity = document.createElement("span");
     identity.className = "npdev-shell-identity";
     identity.textContent = "carregando...";
@@ -508,6 +523,22 @@
     } else {
       el.identity.textContent = "nao autenticado";
     }
+  }
+
+  // WMS-9 N4: best-effort only -- a query named "ShellCompanyName" is entirely optional. A 404
+  // (query not declared), a 400/empty-rows result, or any network failure all resolve to "show
+  // nothing," never an error the visitor sees; this is cosmetic chrome, not a required feature.
+  function applyCompanyName() {
+    if (!state.token) return;
+    fetchJson("/api/queries/ShellCompanyName?limit=1", state.token).then(function (body) {
+      var rows = (body && body.rows) || [];
+      if (!rows.length) return;
+      var row = rows[0];
+      var label = row.nome || row.name || row.label || null;
+      if (!label) return;
+      el.company.textContent = label;
+      el.company.style.display = "";
+    }).catch(function () { /* no ShellCompanyName query declared, or it failed -- show nothing */ });
   }
 
   // ------------------------------------------------------- executions rail ----
@@ -1459,6 +1490,7 @@
     if (maybeRedirectToLogin(manifest)) return;
 
     applyIdentity();
+    applyCompanyName();
     renderSidebar();
     applyAppTheme(manifest);
     applyGuidePage(manifest, currentGuidePageName());
