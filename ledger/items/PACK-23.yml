@@ -38,6 +38,12 @@ detail: |
   slash (`git+file://D:/...`) and is misleading; not fixed here (cosmetic, the script's own docstring
   example already has it right), worth a one-line correction if anyone is touching that file again.
 
+  FOLLOW-UP (2026-09-21, EXT-11 of the external-readiness roadmap): fixed the cosmetic gap noted
+  above. publish-pack-repo.py's printed hint now builds the path with a literal git+file:/// prefix
+  and strips any leading slash from Path.as_posix() before appending it, so both a Windows drive
+  path and a POSIX absolute path render with exactly three slashes, matching the docstring example
+  and Path.toUri().
+
   Re-resolved via `python NPDevCli/npdev_cli.py pack update --model
   NPDevSamples/pigmentampas/Input/model.json --allow-unsigned` (the local packs are unsigned, hence
   the flag) -- all three packs resolved cleanly into npdev.lock and the content-addressed cache
