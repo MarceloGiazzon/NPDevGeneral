@@ -94,7 +94,7 @@ class ScheduledEventDrainRunnerIT {
 
         RecordingEventStore events = new RecordingEventStore();
         GeneratedCrudRuntimeSupport runtimeSupport = new GeneratedCrudRuntimeSupport(
-                new CompiledModel("drain-it", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
+                () -> new CompiledModel("drain-it", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
                 new KernelRunner(events, (entityName, payload) -> List.of()),
                 null,
                 null,

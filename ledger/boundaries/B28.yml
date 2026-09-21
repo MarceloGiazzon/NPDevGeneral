@@ -39,6 +39,24 @@ codeLinkedNote: >-
   fix to `GeneratedCrudRuntimeSupport` would follow; not attempted this session, out of scope given
   this package's size relative to the packages still ahead of it in the same plan.
 
+  2026-09-21 (D1, server-driven UI structural rewrite Phase 1, `ledger/items/REG-235.yml`): closed
+  ONE of the four residuals named just above. `GeneratedCrudRuntimeSupport` took a raw
+  `CompiledModel` in its constructor and cached it in a `final` field -- the one straggler that
+  violated `ModelHolder`'s own documented convention (every other model-consuming bean holds a live
+  reference and calls `.get()` fresh). Converted to hold a `Supplier<CompiledModel>` (not
+  `ModelHolder` itself -- this class lives in a `:kernel` adapter, which cannot depend on
+  `NPDevRuntimeHost`; `NpdevCapabilityBindingConfig` now wires `modelHolder::get`) and read it live
+  at all 7 internal use sites. Proven by
+  `GeneratedCrudRuntimeSupportModelReloadTest#aConceptAddedAfterConstructionIsVisibleWithoutRebuildingTheInstance`:
+  construct once, swap the model, confirm the SAME instance sees a newly-added concept immediately.
+  Still needs a restart, unchanged by this fix (Phase 2, not attempted): `CelInvariantEngine` (no
+  in-place rebuild for a new invariant rule), `ConceptGateway`'s semantic-policy component,
+  `propertyResolver`, and `KernelRunner`'s flow-definition provider are all still built once from a
+  model snapshot with no reload listener. A brand-new CONCEPT (not just a new field) still needs a
+  restart regardless (Phase 3, not attempted) -- live DDL has no runtime code path at all today
+  (`SchemaLifecycleExecutor` only runs at boot), and `GeneratedConceptCrudController`'s per-concept
+  `register_*` methods are baked in at generation time.
+
   2026-08-25 (remediation plan W2.4a). `ModelHolder.java` (AtomicReference<CompiledModel> +
   ReadWriteLock) and `MetadataHotSwapController`'s `POST /api/admin/runtime/metadata-hotswap/
   model-reload` both exist and give only a PARTIAL swap -- only `ModelHolder.get()` consumers

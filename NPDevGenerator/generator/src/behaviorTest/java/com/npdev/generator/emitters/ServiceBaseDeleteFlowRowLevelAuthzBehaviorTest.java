@@ -255,7 +255,7 @@ final class ServiceBaseDeleteFlowRowLevelAuthzBehaviorTest {
                         );
 
                         GeneratedCrudRuntimeSupport runtimeSupport =
-                                new GeneratedCrudRuntimeSupport(dummyCompiledModel(), kernelRunner)
+                                new GeneratedCrudRuntimeSupport(() -> dummyCompiledModel(), kernelRunner)
                                         .withConceptGateway(conceptGateway);
 
                         WidgetServiceBase service = new WidgetServiceBase(

@@ -1,0 +1,93 @@
+id: REG-235
+title: >-
+  GeneratedCrudRuntimeSupport cached a CompiledModel snapshot at construction, so a live model
+  reload's new field/capability/binding was invisible to it without a restart
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-09-21
+closed: 2026-09-21
+source: >-
+  D1 (server-driven UI structural rewrite), Phase 1. The owner overrode the Session 18 spike's
+  recommendation against the "structural" half of server-driven UI
+  (NPDev_General__OutsideRepo/roadmap-2026-09-14/SESSION_18_SPIKE_UI_STUDIO.md) and asked to
+  greenlight it. Research (reading SchemaLifecycleExecutor.java, GeneratedCrudRuntimeSupport.java,
+  RuntimeApiEmitter/BusinessUiEmitter, ModelHolder.java, and ledger/boundaries/B28.yml) found the
+  spike's framing too pessimistic: the barrier B28.yml names for "a new field's CRUD-write
+  reachability" was not a fundamental JVM/compiled-class limitation but one specific, already
+  self-documented bug -- GeneratedCrudRuntimeSupport was the one class in the whole codebase that
+  violated REG-208's own established ModelHolder convention (hold a live reference, read fresh --
+  never cache a CompiledModel snapshot). NpdevCapabilityBindingConfig.java's own comment on this
+  bean already called it a known, un-fixed "residual."
+surface: NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java,
+  NPDevRuntimeHost/.../config/NpdevCapabilityBindingConfig.java, ledger/boundaries/B28.yml
+detail: |
+  FIXED: GeneratedCrudRuntimeSupport's constructor chain (6 overloads) now takes a
+  `Supplier<CompiledModel> modelSupplier` instead of a raw `CompiledModel`, and all 7 internal
+  usage sites read `modelSupplier.get()` live instead of a cached field. A plain JDK
+  `java.util.function.Supplier`, not `ModelHolder` itself, because this class lives in a `:kernel`
+  adapter module (`NPDevKernel/adapters/runtime-support`), which depends only on `:kernel`/`:dsl`
+  and cannot depend on `NPDevRuntimeHost` (where `ModelHolder` lives, `com.finalexec.config`) --
+  RuntimeHost depends on kernel adapters, never the reverse. `NpdevCapabilityBindingConfig`'s
+  `generatedCrudRuntimeSupport` bean (which already receives a `ModelHolder` parameter) now passes
+  `modelHolder::get` instead of the premature `modelHolder.get()` it used before.
+
+  One deliberate exception preserved exactly as before: `identityTables`
+  (`IdentityPackTableNames.tryResolve(...)`, REG-177) and `initializeOrchestrationSubscribers()`
+  are both genuinely one-time construction-time resolutions (documented as such in the class's own
+  comments) -- both now call `modelSupplier.get()` ONCE inside the constructor, preserving identical
+  behavior. Making orchestration subscribers themselves reload-aware is a separate, Phase 2 concern
+  (KernelRunner's flow-definition provider, named in B28.yml as still needing a restart) -- not
+  touched here.
+
+  12 call sites needed a one-line update to wrap their `CompiledModel` argument in a
+  `() -> ...` lambda: `NpdevCapabilityBindingConfig.java` (production wiring) and 11 test files
+  across `NPDevKernel/adapters/runtime-support`, `NPDevKernel/adapters/resume-bootstrap-spring`, and
+  `NPDevGenerator/generator` (behaviorTest sourceset).
+
+  New test proving the actual fix (not just that it compiles):
+  `GeneratedCrudRuntimeSupportModelReloadTest#aConceptAddedAfterConstructionIsVisibleWithoutRebuildingTheInstance`
+  -- constructs GeneratedCrudRuntimeSupport once against an AtomicReference-backed
+  Supplier<CompiledModel> whose initial model has NO "Widget" concept, calls the public
+  `validateEntity` and confirms it reports "unknown_entity"; swaps the underlying reference to a
+  model that DOES have "Widget" (no reconstruction of the GeneratedCrudRuntimeSupport instance);
+  calls `validateEntity` again and confirms "unknown_entity" is gone -- the live proof
+  ledger/boundaries/B28.yml's own text said was missing.
+
+  Verified: `:adapters:runtime-support:test` and `:adapters:resume-bootstrap-spring:test` both green
+  (84 tests total, including the new one) from NPDevKernel's own root.
+  `:generator:compileBehaviorTestJava` green from NPDevGenerator's own root.
+  `scripts/quality/run-runtimehost-gate.ps1` green end-to-end (assembles + boots + tests a real
+  sample app, simple-contact-intake) -- confirms NpdevCapabilityBindingConfig's wiring change
+  compiles and boots correctly in a real generated app, not just in isolation.
+
+  HONEST SCOPE LIMIT, not verified this session: this fixes GeneratedCrudRuntimeSupport's OWN
+  internal model-freshness (invariant/event/capability/binding/orchestration lookups it performs
+  directly). It does NOT by itself prove a brand-new FIELD is reachable end-to-end through the
+  literal `/api/concepts/{conceptName}` generated REST controller -- that controller
+  (GeneratedConceptCrudController, business-concept-crud-controller.mustache) bakes its own
+  per-concept FieldMetadata into generated `register_*` methods at generation time, a SEPARATE
+  caching surface this fix does not touch. Whether that controller-layer metadata is ALSO a
+  blocker for a live-reloaded field, or whether it already delegates enough to
+  GeneratedCrudRuntimeSupport/ConceptGateway to see the reload, is unverified -- a live-boot
+  curl-based proof (generate+boot a probe app, add a field, hit model-reload, curl the concept
+  endpoint) was not performed this session (D1's Phase 3 scope). Do not claim full REST reachability
+  from this item alone.
+
+  NOT attempted, explicitly deferred (D1 Phases 2 and 3, each its own future session):
+  Phase 2 -- the same Supplier/listener conversion for CelInvariantEngine, ConceptGateway's
+  semantic-policy component, propertyResolver, and KernelRunner's flow-definition provider (B28.yml's
+  other 3 named still-needs-restart beans). Phase 3 -- a brand-new CONCEPT working live: needs live
+  DDL (SchemaLifecycleExecutor only runs at boot today, no runtime CREATE TABLE/ADD COLUMN path
+  exists), GeneratedConceptCrudController's register_* methods becoming model-driven instead of
+  generation-time-baked, and generated-ui-manifest.json becoming a live-rebuildable artifact instead
+  of a static generation-time file.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportModelReloadTest.java#aConceptAddedAfterConstructionIsVisibleWithoutRebuildingTheInstance
+  asserts: >-
+    constructing GeneratedCrudRuntimeSupport once, then swapping the underlying
+    Supplier<CompiledModel>'s value to a model with a newly-added concept, makes that concept
+    immediately visible to the SAME instance's validateEntity call -- no reconstruction, no restart
+  provenRed: false

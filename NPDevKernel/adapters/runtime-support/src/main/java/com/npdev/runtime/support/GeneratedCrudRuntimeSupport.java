@@ -246,7 +246,16 @@ public final class GeneratedCrudRuntimeSupport {
         }
     }
 
-    private final CompiledModel compiledModel;
+    // D1 (Phase 1 of the server-driven-UI structural rewrite, REG-208 convention): holds a
+    // Supplier<CompiledModel> and reads modelSupplier.get() fresh on every use, rather than
+    // caching a CompiledModel snapshot at construction -- this class used to be the one straggler
+    // that violated ModelHolder's own documented convention (its class Javadoc, in
+    // NPDevRuntimeHost/runtimehost-core/.../config/ModelHolder.java -- not importable HERE, since
+    // this is a :kernel adapter and RuntimeHost depends on adapters, never the reverse; a plain
+    // JDK Supplier is the dependency-direction-safe substitute, with the RuntimeHost wiring
+    // passing modelHolder::get), which is exactly why a model-reload's new field was invisible to
+    // the generated CRUD REST surface (B28.yml).
+    private final Supplier<CompiledModel> modelSupplier;
     private final KernelRunner kernelRunner;
     private final EntityManager entityManager;
     private final CapabilityDispatcher capabilityDispatcher;
@@ -273,30 +282,30 @@ public final class GeneratedCrudRuntimeSupport {
         return this;
     }
 
-    public GeneratedCrudRuntimeSupport(CompiledModel compiledModel, KernelRunner kernelRunner) {
-        this(compiledModel, kernelRunner, null, null, null, null);
+    public GeneratedCrudRuntimeSupport(Supplier<CompiledModel> modelSupplier, KernelRunner kernelRunner) {
+        this(modelSupplier, kernelRunner, null, null, null, null);
     }
 
     public GeneratedCrudRuntimeSupport(
-            CompiledModel compiledModel,
+            Supplier<CompiledModel> modelSupplier,
             KernelRunner kernelRunner,
             EntityManager entityManager
     ) {
-        this(compiledModel, kernelRunner, entityManager, null, null, null);
+        this(modelSupplier, kernelRunner, entityManager, null, null, null);
     }
 
     public GeneratedCrudRuntimeSupport(
-            CompiledModel compiledModel,
+            Supplier<CompiledModel> modelSupplier,
             KernelRunner kernelRunner,
             EntityManager entityManager,
             CapabilityDispatcher capabilityDispatcher,
             CapabilityRegistry capabilityRegistry
     ) {
-        this(compiledModel, kernelRunner, entityManager, capabilityDispatcher, capabilityRegistry, null);
+        this(modelSupplier, kernelRunner, entityManager, capabilityDispatcher, capabilityRegistry, null);
     }
 
     public GeneratedCrudRuntimeSupport(
-            CompiledModel compiledModel,
+            Supplier<CompiledModel> modelSupplier,
             KernelRunner kernelRunner,
             EntityManager entityManager,
             CapabilityDispatcher capabilityDispatcher,
@@ -304,7 +313,7 @@ public final class GeneratedCrudRuntimeSupport {
             DataSource dataSource
     ) {
         this(
-                compiledModel,
+                modelSupplier,
                 kernelRunner,
                 entityManager,
                 capabilityDispatcher,
@@ -317,7 +326,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     public GeneratedCrudRuntimeSupport(
-            CompiledModel compiledModel,
+            Supplier<CompiledModel> modelSupplier,
             KernelRunner kernelRunner,
             EntityManager entityManager,
             CapabilityDispatcher capabilityDispatcher,
@@ -327,7 +336,7 @@ public final class GeneratedCrudRuntimeSupport {
             OrchestrationExecutionRegistry orchestrationExecutionRegistry
     ) {
         this(
-                compiledModel,
+                modelSupplier,
                 kernelRunner,
                 entityManager,
                 capabilityDispatcher,
@@ -340,7 +349,7 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     public GeneratedCrudRuntimeSupport(
-            CompiledModel compiledModel,
+            Supplier<CompiledModel> modelSupplier,
             KernelRunner kernelRunner,
             EntityManager entityManager,
             CapabilityDispatcher capabilityDispatcher,
@@ -350,13 +359,13 @@ public final class GeneratedCrudRuntimeSupport {
             OrchestrationExecutionRegistry orchestrationExecutionRegistry,
             RuntimeInvariantEngineFactory runtimeInvariantEngineFactory
     ) {
-        this(compiledModel, kernelRunner, entityManager, capabilityDispatcher, capabilityRegistry,
+        this(modelSupplier, kernelRunner, entityManager, capabilityDispatcher, capabilityRegistry,
                 dataSource, runtimeClock, orchestrationExecutionRegistry, runtimeInvariantEngineFactory,
                 null, null, null);
     }
 
     public GeneratedCrudRuntimeSupport(
-            CompiledModel compiledModel,
+            Supplier<CompiledModel> modelSupplier,
             KernelRunner kernelRunner,
             EntityManager entityManager,
             CapabilityDispatcher capabilityDispatcher,
@@ -369,13 +378,13 @@ public final class GeneratedCrudRuntimeSupport {
             PermissionEvaluator permissionEvaluator,
             IdempotencyStore idempotencyStore
     ) {
-        if (compiledModel == null) {
-            throw new IllegalArgumentException("compiledModel is required");
+        if (modelSupplier == null) {
+            throw new IllegalArgumentException("modelSupplier is required");
         }
         if (kernelRunner == null) {
             throw new IllegalArgumentException("kernelRunner is required");
         }
-        this.compiledModel = compiledModel;
+        this.modelSupplier = modelSupplier;
         this.kernelRunner = kernelRunner;
         this.entityManager = entityManager;
         this.capabilityDispatcher = capabilityDispatcher;
@@ -391,7 +400,7 @@ public final class GeneratedCrudRuntimeSupport {
         this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
         this.permissionEvaluator = permissionEvaluator == null ? PermissionEvaluator.allowAll() : permissionEvaluator;
         this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
-        this.identityTables = IdentityPackTableNames.tryResolve(compiledModel);
+        this.identityTables = IdentityPackTableNames.tryResolve(modelSupplier.get());
         initializeOrchestrationSubscribers();
         // R2.4: the kernel's scheduleEvent flow step needs the durable table this class owns, and
         // :kernel cannot depend on this adapter. Registered here rather than in a Spring @Bean for
@@ -1147,7 +1156,7 @@ public final class GeneratedCrudRuntimeSupport {
         if (eventName == null || eventName.isBlank() || payload == null) {
             return;
         }
-        Optional<CompiledEvent> eventOpt = compiledModel.getEvents().stream()
+        Optional<CompiledEvent> eventOpt = modelSupplier.get().getEvents().stream()
                 .filter(event -> event != null && eventName.equals(event.getName()))
                 .findFirst();
         if (eventOpt.isEmpty()) {
@@ -1209,11 +1218,16 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private List<String> initializeOrchestrationSubscribers() {
-        if (compiledModel.getOrchestrationRules().isEmpty()) {
+        // D1 Phase 1 note: called once from the constructor (line ~400), before any reload could
+        // occur, so a single modelSupplier.get() here preserves the exact prior behavior. Making
+        // orchestration subscribers themselves reload-aware is Phase 2 (KernelRunner's flow
+        // provider), not this fix.
+        CompiledModel modelAtConstruction = modelSupplier.get();
+        if (modelAtConstruction.getOrchestrationRules().isEmpty()) {
             return List.of();
         }
         List<String> subscribers = new ArrayList<>();
-        for (CompiledOrchestration orchestration : compiledModel.getOrchestrationRules()) {
+        for (CompiledOrchestration orchestration : modelAtConstruction.getOrchestrationRules()) {
             RuntimeOrchestration runtimeOrchestration = toRuntimeOrchestration(orchestration);
             if (runtimeOrchestration == null) {
                 continue;
@@ -1991,7 +2005,7 @@ public final class GeneratedCrudRuntimeSupport {
             return null;
         }
         String requested = normalize(capabilityName);
-        for (var capability : compiledModel.getCapabilities()) {
+        for (var capability : modelSupplier.get().getCapabilities()) {
             if (capability != null && normalize(capability.getName()).equals(requested)) {
                 return capability.getType();
             }
@@ -2010,7 +2024,7 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
         String requested = normalize(capabilityName);
-        for (var binding : compiledModel.getBindings()) {
+        for (var binding : modelSupplier.get().getBindings()) {
             if (binding != null
                     && normalize(binding.getCapability()).equals(requested)
                     && binding.getAdapter() != null
@@ -3207,12 +3221,13 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private Optional<CompiledConcept> findEntity(String name) {
-        Optional<CompiledConcept> exact = compiledModel.findConcept(name);
+        CompiledModel currentModel = modelSupplier.get();
+        Optional<CompiledConcept> exact = currentModel.findConcept(name);
         if (exact.isPresent()) {
             return exact;
         }
         String normalized = normalize(name);
-        for (CompiledConcept entity : compiledModel.getConcepts()) {
+        for (CompiledConcept entity : currentModel.getConcepts()) {
             if (normalize(entity.getName()).equals(normalized)) {
                 return Optional.of(entity);
             }

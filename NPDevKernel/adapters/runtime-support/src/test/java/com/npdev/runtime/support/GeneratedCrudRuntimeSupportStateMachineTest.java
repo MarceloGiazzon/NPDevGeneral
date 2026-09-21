@@ -117,7 +117,7 @@ class GeneratedCrudRuntimeSupportStateMachineTest {
         });
 
         return new GeneratedCrudRuntimeSupport(
-                compiledModel,
+                () -> compiledModel,
                 kernelRunner,
                 stubEntityManager(previousStatus),
                 null,

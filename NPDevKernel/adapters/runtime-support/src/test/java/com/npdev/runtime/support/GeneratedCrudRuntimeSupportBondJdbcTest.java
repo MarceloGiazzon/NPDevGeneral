@@ -38,7 +38,7 @@ class GeneratedCrudRuntimeSupportBondJdbcTest {
         }
 
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
-                compiledModel(),
+                () -> compiledModel(),
                 kernelRunner(),
                 null,
                 null,
