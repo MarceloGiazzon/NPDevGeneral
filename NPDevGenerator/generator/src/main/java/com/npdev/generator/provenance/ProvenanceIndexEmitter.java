@@ -22,11 +22,18 @@ import java.util.regex.Pattern;
 
 /**
  * S14 (NPDEV_MEGA_ROADMAP.md, Track B -- "the one new engine"): emits
- * {@code npdev/provenance-index.json}, the spec-node → emitted-artifact map that
+ * {@code npdev/provenance-index.json} (contract {@code npdev-provenance-index.v1}, schema
+ * {@code schemas/ai/provenance-index.schema.json}), the spec-node → emitted-artifact map that
  * {@code model-xref.json} (semantic edges, model→model) never had. For each persisted concept it
  * records the generated Spring classes, the schema migration, and the frontend route derived from
  * it -- so a query "what did this spec node produce?" has one answer, and Sessions 15 (impact
  * graph explorer) and 16 (diff/blast radius) have their graph to walk.
+ *
+ * <p>Join key: a {@code specNodes} key is the concept's qualified name, spelled exactly as
+ * {@code model-xref.json}'s {@code edges[].toName} spells it for a {@code toKind: "concept"} edge,
+ * and exactly as {@code box-manifest.json}'s {@code boxes[].graphName} spells it for a box with
+ * {@code graphKind: "concept"} -- the three documents describe the same node under the same name,
+ * so a consumer can join them without renormalizing anything.
  *
  * <p>Deterministic by construction: no timestamps, stable ordering (spec node, then artifact type
  * + path), and every artifact's digest is the SHA-256 of its emitted bytes. Re-running generation
