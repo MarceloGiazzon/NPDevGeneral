@@ -136,3 +136,17 @@ detail: |
   `migrate()`-driving classes were given the restore; other classes that call `migrate()` with a
   Postgres manifest (e.g. `SchemaLifecycleExecutorExternallyManagedTest`) pin the default dialect and
   were left untouched. RUN-32 done.
+guard:
+  kind: script
+  ref: >-
+    com.finalexec.api.SchemaPromotionControllerStandaloneTest
+    com.finalexec.controlpanel.SchemaAcknowledgmentControllerTest
+    com.finalexec.db.ConversionHookRunnerDeclaredConversionsTest
+  asserts: >-
+    the three methods this item's own detail names --
+    promoteRefusesWhenNoSchemaRealizationManifestIsOnTheClasspath,
+    superUserWithNoManifestOnTheClasspathGetsServiceUnavailable, and
+    lookupConversionSetsTheForeignKeyFromTheMatchedRow_thenIsANoOpOnRerun -- pass, both in
+    isolation and under the full 872-test suite, after the loadManifest test seam and the
+    PostgresDialect pin/restore fix
+  provenRed: true

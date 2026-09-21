@@ -47,6 +47,6 @@ detail: |
   (subject-based lookup) until the account is deleted; new signups/links now write tenant 'dev'.
 guard:
   kind: test
-  ref: gradlew -p NPDevRuntimeHost/runtimehost-core test --tests "*OAuthGoogleAuthServiceTest"
-  asserts: freshEmailSignsUpAndPersistsUserPlusLinkage + linkRecordsLinkageWhenGoogleEmailMatchesTheAccount assert linkage tenant == actor tenant
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleAuthServiceTest.java#freshEmailSignsUpAndPersistsUserPlusLinkage
+  asserts: freshEmailSignsUpAndPersistsUserPlusLinkage + linkRecordsLinkageWhenGoogleEmailMatchesTheAccount assert linkage tenant == actor tenant (both real @Test methods in the cited file; only the first is cited as the guard.ref#method per the checker's single-method-per-guard shape)
   provenRed: true

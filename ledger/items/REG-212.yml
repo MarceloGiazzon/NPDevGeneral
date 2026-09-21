@@ -84,3 +84,14 @@ detail: |
   now documents the keyring path and the direct-env fallback, not a copy-and-fill operation.
   SEC-11 decision 3 ("never in .env") is now literally satisfied. Contract test updated.
   Generator suite 534 green.
+guard:
+  kind: test
+  ref: >-
+    NPDevGenerator/generator/src/test/java/com/npdev/generator/dbconfig/OperationalRunbookOauthEnvContractTest.java#emitsExampleAndKeyringTransportContract
+  asserts: >-
+    the emitted launcher's OAuth secret transport reads the client id/secret directly from the OS
+    credential store via npdev-manager --get-secret and injects them into the process environment,
+    with no oauth-google.env file materialized or loaded -- the option (b) resolution this item's
+    2026-09-18 RESOLUTION describes; the POSIX twin is posixTwinsCarryTheSameKeyringContract in the
+    same class
+  provenRed: true

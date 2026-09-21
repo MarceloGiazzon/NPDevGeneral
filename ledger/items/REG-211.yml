@@ -67,3 +67,14 @@ detail: |
   check), so existing apiKey-mode callers are unaffected. Generator suite 534 green.
   Identity pack 1.3.0 (a first-class Credential concept) remains a follow-up; the fail-fast +
   auto-detection already works for any model that defines its own credential concept.
+guard:
+  kind: test
+  ref: >-
+    NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/RuntimeAuthPropertiesEmitterTest.java#jwtWithUsuarioConceptEmitsCredentialOverrides
+  asserts: >-
+    jwt-mode generation with a Usuario concept (a reference field targeting identity::User plus a
+    senhaHash field) emits npdev.auth.login.credential-table=usuarios /
+    credential-user-id-column=user_id / credential-password-column=senha_hash overrides -- the
+    exact fix this item's RESOLUTION describes; the companion fail-fast path (jwt-mode + no
+    credential-bearing concept) is jwtWithoutCredentialConceptThrows in the same class
+  provenRed: true

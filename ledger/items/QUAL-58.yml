@@ -5,8 +5,10 @@ title: >-
   masking a real 17-item guard backlog underneath
 type: PROCESS
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-09-21
+closed: 2026-09-21
+verification: VERIFIED_LIVE
 source: >-
   Found while closing REG-231 and spot-auditing NPDEV_MEGA_ROADMAP.md session status: ran the full
   static AI-knowledge gate (`run-ai-knowledge-gate.ps1`) to confirm today's changes hadn't broken
@@ -81,9 +83,63 @@ detail: |
   not a rubber stamp). None are attempted here; this item exists so the next session doesn't have to
   re-discover the backlog from scratch, and doesn't mistake "the checker ran clean" for "guard
   coverage is caught up" the way PACK-21's silent abort let everyone do for six days.
+
+  RESOLVED -- see PART 3 in status_reasoning below for the full backlog closure.
+guard:
+  kind: script
+  ref: scripts/quality/check-done-item-guards.py --calibrate
+  asserts: >-
+    check-done-item-guards.py run with no args reports "0 blocking finding(s)" against the real
+    ledger (was 16 at PART 2's close); --calibrate's own real-ledger control ("real repo (must be
+    clean...)") passes silently; frozenCount (168) equals len(legacy.ids) exactly.
+  provenRed: true
 status_reasoning: >-
-  PARTIAL, not DONE: the load-blocking bug (the actual thing that made this checker unusable) is
-  genuinely fixed and verified. The 17-item guard backlog it uncovered is real, scoped, and
-  recorded, but not resolved -- leaving this DONE would misrepresent guard coverage as caught up.
-  PARTIAL, not OPEN: the part that was actually reported as broken (the checker itself) is fixed;
-  reopening the whole item as OPEN would understate what changed today.
+  PARTIAL, not DONE (superseded below): the load-blocking bug (the actual thing that made this
+  checker unusable) is genuinely fixed and verified. The 17-item guard backlog it uncovered is
+  real, scoped, and recorded, but not resolved -- leaving this DONE would misrepresent guard
+  coverage as caught up. PARTIAL, not OPEN: the part that was actually reported as broken (the
+  checker itself) is fixed; reopening the whole item as OPEN would understate what changed today.
+
+  PART 3 -- RESOLVED same-day (2026-09-21, later session): all 16 of PART 2's remaining backlog
+  items got a genuine resolution, each individually judged rather than bulk-processed:
+    - 8 items (REG-213, REG-214, REG-221, REG-223, REG-224, REG-225, REG-226, plus RUN-32 from the
+      no-guard bucket sharing the same real-test-citation fix shape) had their existing `guard:`
+      blocks reformatted -- most were `kind: test` citing a PROSE gradle command line
+      (`resolve_test` requires `ref` to be a literal file path, optionally + `#method` + a trailing
+      `(parenthetical)`, and rejects anything else as a nonexistent path) where the real fix was
+      reclassifying to `kind: script`/`kind: local` (which tokenizes `ref` and accepts a
+      fully-qualified Java class name or a `:Module:sub:task` Gradle path found anywhere in the
+      prose) -- REG-221/223/224 already had a real, resolvable FQCN embedded in their existing ref
+      prose and needed only the kind change; REG-213/214 had a `--tests "*ClassName"` WILDCARD
+      filter with no real FQCN and needed the actual class name substituted in; REG-225's ref used
+      a `:generator:test` Gradle task path missing its module-directory prefix (resolves module
+      segments from repo ROOT, so `:generator:test` looked for a nonexistent top-level `generator/`
+      dir instead of `NPDevGenerator/generator`) and needed the full `:NPDevGenerator:generator:test`
+      path; REG-226 (kind: local, ref genuinely names no resolvable script/class -- a live-only
+      proof) was reclassified to `kind: manual`, which -- unlike `local`/`script` -- tolerates a ref
+      with no anchor at all, exactly the checker's own error message's suggested fix.
+    - 8 of the 9 no-guard items (PACK-21, PACK-22, REG-211, REG-212, RUN-32, RUN-34, RUN-35, RUN-36)
+      gained a genuine, freshly-verified `guard:` block citing a real, already-existing regression
+      test each item's own `detail:` text names -- every cited file/method was independently
+      grepped and read (not trusted from the item's prose) to confirm it is a real `@Test`/`#[test]`
+      matching what the item claims it proves. RUN-35/RUN-36 (Rust) used `kind: test` rather than
+      `kind: script`, deliberately: `resolve_script`'s file-anchor regex only accepts
+      `.py`/`.ps1`/`.sh`, so a bare `.rs` path is invisible to it, while `resolve_test` has no
+      extension restriction and, for a non-`.java` file, falls back to a plain word-boundary
+      identifier match -- which a Rust `#[test] fn ...` satisfies cleanly.
+    - RUN-33 (the 9th no-guard item) got NO fabricated guard: `npdev.rs`'s `build_command` (the
+      function RUN-33 actually fixed) has no test module at all (`grep "mod tests"` in that file:
+      zero matches, confirmed, not assumed), and the item's own fix note already says so plainly
+      ("no existing unit-test harness ... not live-verified against a running Manager GUI either").
+      This is genuine, honestly-labeled pre-existing debt -- backfilled into
+      `scripts/policy/done-item-guard-policy.json`'s `legacy.ids` (167 -> 168) rather than invented
+      a guard that would misrepresent what was actually proven. This is exactly the "not a rubber
+      stamp" case PART 2 warned about: 15 of 16 items got a REAL guard on individual investigation;
+      only the one item with a genuinely, verifiably absent test fell back to the exemption list.
+  VERIFIED: `python scripts/quality/check-done-item-guards.py` -- 0 blocking findings (was 16);
+  `--calibrate` -- all controls pass, including the real-ledger control. Guarded-item count 301 ->
+  309 (exactly the 8 items that gained a NEW guard among the no-guard bucket; the 7
+  unresolvable-guard items already carried a `guard:` block, so reclassifying/fixing their `ref`
+  does not change that count). `frozenCount` 167 -> 168 matches `legacy.ids`' new length exactly.
+  DONE, not PARTIAL: every part of this item's own scope (the load-blocker AND the backlog it
+  uncovered) is now genuinely resolved and verified, not just recorded.

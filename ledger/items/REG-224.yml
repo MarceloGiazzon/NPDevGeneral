@@ -80,7 +80,7 @@ detail: |
   `ProcedurePatchConceptCreateIfMissingValidationTest` (REG-89) both still green, plus the full
   `:NPDevContract:dsl:test` suite.
 guard:
-  kind: test
+  kind: script
   ref: >-
     NPDevContract/dsl: gradlew :NPDevContract:dsl:test --tests
     com.npdev.dsl.v1.ast.ProcedureStepAstNullSetValueTest --tests

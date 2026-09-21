@@ -61,3 +61,13 @@ detail: |
   Done when: an iteration whose app boots records health-result "running" and outcome "booted"
   rather than an instant boot-failure (proven live), and a failed boot leaves no spawn tree
   holding the app's _ops (no FileSystemException on the following iteration).
+guard:
+  kind: test
+  ref: >-
+    NPDevManager/src/ai_loop.rs#health_verdict_treats_started_but_booting_apps_as_non_terminal
+  asserts: >-
+    health_verdict treats a "stopped" probe reading as KeepPolling (not terminal) while the spawn
+    tree the loop started is still alive and within the timeout -- the fix for the false
+    boot-failure during a generated app's ~20s startup window that this item's own RUN-36 code
+    comment in the test names
+  provenRed: true

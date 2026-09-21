@@ -73,3 +73,13 @@ detail: |
   cache (a stale cache with MISSING jars) is a separate, still-open item; note the manifest filter
   also mitigates RUN-33's missing-jar symptom for generated apps whose source cache manifest is
   fresh, but does not restage the Manager's own AppData copy.
+guard:
+  kind: test
+  ref: >-
+    NPDevGenerator/generator/src/test/java/com/npdev/generator/assembly/FinalAppAssemblerTest.java#stagesOnlyManifestDeclaredJarsAndDropsOrphanedAppOwnedJars
+  asserts: >-
+    stageRuntimeHostLibsIntoApp stages ONLY the jars the staging manifest declares (a stale
+    dsl-0.1.0.jar planted in the source cache is never copied) and deletes an orphaned jar already
+    sitting in the app-owned libs/npdev-runtime before a deleteBeforeMount=false regeneration --
+    exactly this item's done-when
+  provenRed: true
