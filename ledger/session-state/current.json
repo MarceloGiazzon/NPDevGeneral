@@ -1,17 +1,24 @@
 {
-  "closedAt": "2026-09-21T14:37:12.7358464Z",
+  "closedAt": "2026-09-21T18:29:08.0871453Z",
   "branch": "main",
-  "head": "fd8c55c4",
-  "headSubject": "chore(ledger): session handoff -- QUAL-58/SEC-12/REG-232 closed, backlog exhausted",
-  "summary": "Closed all 3 autonomously-actionable ledger items from last session's handoff: QUAL-58 (16-item done-item-guard backlog -- 7 items reclassified from an unresolvable guard.kind:test citing a prose gradle command to script/manual, 9 no-guard items given real test-citing guards except RUN-33 which was honestly backfilled to the legacy-exemption list), SEC-12 (all 25 untriaged security-pattern-sweep hits individually traced to source and verdicted SAFE, zero genuine findings), and REG-232 (a real LOW-severity bug found in passing -- a NOT NULL orchestration failure surfaced as a raw JDBC stack trace instead of a clean required_field_missing classification; fixed with real unit + integration test coverage in NPDevKernel/adapters/runtime-support). Used two parallel background agents for QUAL-58 and SEC-12 per explicit user instruction, independently spot-verifying every agent claim before committing.",
-  "nextStep": "No autonomously-actionable ledger work remains -- ledger/session-state/open-state.md shows only 3 non-DONE items, all out of reach this way: SEC-11 (HIGH, needs the OWNER's own real browser for the Google OAuth account-link leg -- every automated browser tried gets rejected by Google's bot detection) and QUAL-40/QUAL-41 (both WONTFIX -- owner already accepted their coverage-floor baselines on 2026-08-31, re-opening them to chase a fractional aggregate number would be the exact disproportionate effort that WONTFIX was written to prevent). Next session should ask the user what to work on rather than assume more ledger backlog exists; if the user wants ledger work anyway, SEC-11 needs THEM to drive a real browser through the Google linking flow with Claude assisting, not another automated attempt.",
-  "plan": "None -- this was ledger/quality hygiene closing out last session's own handoff, not a new roadmap plan. See memory project_mega_roadmap_status_2026_09_21.md for the underlying roadmap's (already-shipped) status.",
-  "blocked": "SEC-11's Google-account-link leg needs the owner's own real browser (Google's bot-detection rejects every automated browser tried) -- not blocking any other work.",
-  "verified": "check-done-item-guards.py: 16 -> 0 blocking findings. security-pattern-sweep.py: 25 -> 0 needing triage. REG-232: new GeneratedCrudRuntimeSupportNotNullViolationTest (7 cases, all 4 DB engines) + GeneratedCrudRuntimeSupportCreateOrchestrationNotNullTest (real H2-backed integration repro of the exact wmsoffice-browser bug) both green; full :adapters:runtime-support:test and kernelQualityGate (kernel + 36+ adapters:*:test) green. Full run-ai-knowledge-gate.ps1 (39 checks) reconfirmed green after the QUAL-58/SEC-12 fixes. check-done-item-guards.py --calibrate: all controls pass. Noted, not chased: kernelQualityGate's separate coverage-ratchet step shows a residual 0.054pt aggregate dip against a floor already flagged non-actionable by QUAL-40 (narrowed from 0.45pt after adding real REG-232 test coverage; an identical unrelated pre-existing gap in the same report, 'scripts', unchanged before/after, confirms this isn't attributable to REG-232's fix). All work committed and pushed: 982d3537, 9c1c7f14, fd8c55c4 on origin/main.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "head": "c2ee4d54",
+  "headSubject": "chore(ledger): session handoff -- confirm QUAL-58/SEC-12/REG-232 closed, all pushed",
+  "summary": "Closed SEC-11 (Google OAuth signup/login/link), the last open item on the mega roadmap: found and fixed REG-233 (npdev_jwt session cookie was SameSite=Strict, silently breaking the account-LINK flow for every real browser since it gets dropped on the cross-site-initiated redirect back from accounts.google.com), then live-proved all three OAuth flows end-to-end in the owner's real browser against a real Google Cloud OAuth client on wmsoffice-browser (:8084) -- including catching a stale-email false negative (oauth_link_email_mismatch) along the way and correcting the test account's on-file email. Verified the ExternalIdentity linkage row was actually created via direct DB query, not just trusting the redirect.",
+  "nextStep": "Nothing autonomously-actionable remains on the ledger (SEC-11 was the last item). FIRST, before anything else: commit and push the uncommitted REG-233 fix -- 'git add NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/LoginController.java NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/OAuthGoogleController.java NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleControllerTest.java NPDevRuntimeHost/src/test/java/com/finalexec/auth/LoginControllerTest.java ledger/items/SEC-11.yml ledger/items/REG-233.yml' then commit and push -- this is real, tested, live-verified platform code sitting uncommitted in the working tree. After that, ask the user what to work on next; there is no more backlog to assume.",
+  "plan": "",
+  "blocked": "",
+  "verified": "check-done-item-guards.py: 0 blocking findings (fixed a real path-formatting bug in REG-233's own guard.ref along the way, where multi-line YAML folding had inserted spaces into file paths). run-ai-knowledge-gate.ps1 (39 checks): ran FAILED, but solely on the pre-existing NPDevKernel/kernel coverage floor dip (64.2618% vs 64.3158% floor) already covered by WONTFIX ledger item QUAL-40 -- confirmed this session touched nothing under NPDevKernel/kernel, so this is not a new regression. runtimehost-core's own OAuthGoogleControllerTest suite green (9/9) per the background agent that made the REG-233 fix; not independently re-run this session beyond the live HTTP/DB verification below. Live verification (not a gate, but real): curl-confirmed Set-Cookie SameSite=Lax on the running app; direct H2 query confirmed a real identity_v1_external_identitys row (provider=google, tenant=dev) was created after the owner's real-browser Google consent flow.",
+  "dirtyCount": 6,
+  "dirtyFiles": [
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/LoginController.java",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/OAuthGoogleController.java",
+    " M NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleControllerTest.java",
+    " M NPDevRuntimeHost/src/test/java/com/finalexec/auth/LoginControllerTest.java",
+    " M ledger/items/SEC-11.yml",
+    "?? ledger/items/REG-233.yml"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "fd8c55c4 chore(ledger): session handoff -- QUAL-58/SEC-12/REG-232 closed, backlog exhausted"
+    "c2ee4d54 chore(ledger): session handoff -- confirm QUAL-58/SEC-12/REG-232 closed, all pushed"
   ]
 }
