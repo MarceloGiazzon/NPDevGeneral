@@ -34,10 +34,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "ai"))
 from npdev_ai_common import build_root  # noqa: E402
 
 REQUIRED_FIELDS = ("id", "title", "type", "severity", "status", "opened", "source", "surface", "detail")
-VALID_TYPES = {"GAP", "BUG", "PROCESS", "BOUNDARY"}
+VALID_TYPES = {"GAP", "BUG", "PROCESS", "BOUNDARY", "FEATURE"}
 VALID_SEVERITIES = {"LOW", "MEDIUM", "HIGH", "P0", "P1", None}
 VALID_STATUSES = {"OPEN", "PARTIAL", "DONE", "WONTFIX", "OBSOLETE"}
-VALID_VERIFICATION = {"NOT_VERIFIED", "UNIT_TESTED", "VERIFIED_LIVE", None}
+VALID_VERIFICATION = {"NOT_VERIFIED", "UNIT_TESTED", "LOCAL_PROOF_DONE", "VERIFIED_LIVE", None}
 
 
 def load_items(ledger_dir: Path) -> list[dict]:
@@ -93,8 +93,9 @@ def validate_guard(guard: object) -> list[str]:
     if not isinstance(guard, dict):
         return ["'guard' must be a mapping with kind/ref/asserts/provenRed"]
     errors = []
-    if guard.get("kind") not in {"test", "script", "manual"}:
-        errors.append(f"guard.kind '{guard.get('kind')}' not in ['test', 'script', 'manual']")
+    if guard.get("kind") not in {"test", "script", "manual", "live", "local", "validate"}:
+        errors.append(f"guard.kind '{guard.get('kind')}' not in "
+                       f"['test', 'script', 'manual', 'live', 'local', 'validate']")
     if not isinstance(guard.get("ref"), str) or not guard.get("ref"):
         errors.append("guard.ref must be a non-empty string")
     if not isinstance(guard.get("asserts"), str) or not guard.get("asserts"):

@@ -9,6 +9,7 @@ type: BUG
 severity: MEDIUM
 status: DONE
 opened: 2026-09-20
+closed: 2026-09-20
 source: >-
   Found while verifying REG-228 (JWT signing-keypair auto-provisioning) did not regress
   runtimehost-core: ran the module's own standalone `test` task (196 tests) after adding

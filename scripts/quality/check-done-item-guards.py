@@ -283,9 +283,23 @@ def resolve_guard(guard: dict, root: Path) -> tuple[bool, str]:
     ref = guard.get("ref", "")
     if kind == "test":
         return resolve_test(ref, root)
-    if kind == "script":
+    if kind in ("script", "local"):
+        # "local" is a synonym for "script" that emerged during the 2026-09 roadmap sweep (a guard
+        # whose ref is a literal local generate/build/test command, e.g. Build-AppGenApp.ps1 +
+        # a gradle test invocation) -- same resolution, kept as a distinct kind so the YAML signals
+        # "run this locally to reproduce", not "verify by reading the file".
         return resolve_script(ref, root)
-    if kind == "manual":
+    if kind in ("manual", "validate"):
+        # "validate" is a synonym for "manual" that emerged during the 2026-09 WmsOffice sweep (a
+        # guard whose ref is a repo-rooted file -- often a template -- whose CONTENT the item's own
+        # `asserts` text describes; resolution here is still existence-only, same honest limit as
+        # "manual", not a content/substring check).
+        return resolve_manual(ref, root)
+    if kind == "live":
+        # Same best-effort resolution as "manual" -- a live/browser/API-session proof's ref is
+        # prose (job ids, HTTP verbs, log excerpts), essentially never a repo-rooted path, so this
+        # tolerates "no anchor" exactly like manual does. Kept as a distinct kind (not folded into
+        # "manual") so the YAML itself signals "proven by a live run", not "verify this by hand".
         return resolve_manual(ref, root)
     return False, f"unknown guard.kind '{kind}'"
 

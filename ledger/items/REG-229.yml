@@ -11,6 +11,7 @@ type: BUG
 severity: HIGH
 status: DONE
 opened: 2026-09-20
+closed: 2026-09-20
 source: >-
   Found running run-runtimehost-gate.ps1 (sample: simple-contact-intake) to validate this session's
   own REG-226 fix (PasswordResetController). Ran the gate TWICE in a row (once before, once after

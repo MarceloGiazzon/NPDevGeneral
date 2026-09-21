@@ -9,6 +9,7 @@ type: BUG
 severity: HIGH
 status: DONE
 opened: 2026-09-20
+closed: 2026-09-20
 source: >-
   Hit live while regenerating wmsoffice for WMS-9 C6 (wiring a procedure-bound dataSource into
   CrossDockingConsolePanel): ran Build-NpdevApp.ps1 -AppFolder .../WmsOffice -Upgrade (regeneration
