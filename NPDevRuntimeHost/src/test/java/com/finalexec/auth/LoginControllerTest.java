@@ -124,6 +124,29 @@ class LoginControllerTest {
     }
 
     @Test
+    void successfulLoginSessionCookieIsSameSiteLaxNotStrict() throws Exception {
+        // REG-233: SameSite=Strict silently dropped this cookie on the top-level GET navigation
+        // that carries a browser back from Google's OAuth consent screen to our own callback
+        // (OAuthGoogleController.handleLinkCallback), which JwtBearerAuthFilter must read (as a
+        // Bearer-header fallback) to authenticate the account-LINK leg. Lax still blocks the
+        // cookie from riding along on cross-site subrequests/form posts, so CSRF exposure is
+        // unchanged; it only additionally permits the cross-site-initiated top-level redirect.
+        createFreshSchema();
+        LoginController controller = controller();
+
+        var response = controller.login(
+                new LoginController.LoginRequest("ada", "correct-horse", TENANT), null);
+
+        String setCookie = response.getHeaders().getFirst("Set-Cookie");
+        assertNotNull(setCookie, "a successful login must set the session cookie");
+        assertTrue(setCookie.contains("SameSite=Lax"),
+                "session cookie must be SameSite=Lax so it survives the cross-site-initiated "
+                        + "top-level OAuth-callback redirect (REG-233): " + setCookie);
+        assertTrue(!setCookie.contains("SameSite=Strict"),
+                "must not regress to Strict, which breaks the OAuth account-link callback: " + setCookie);
+    }
+
+    @Test
     void wrongPasswordAgainstFreshSchemaStaysInvalidCredentials() throws Exception {
         createFreshSchema();
         LoginController controller = controller();

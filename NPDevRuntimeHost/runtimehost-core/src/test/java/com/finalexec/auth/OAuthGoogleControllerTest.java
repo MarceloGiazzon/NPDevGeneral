@@ -102,6 +102,27 @@ class OAuthGoogleControllerTest {
     }
 
     @Test
+    void signupCallbackSessionCookieIsSameSiteLaxNotStrict() throws Exception {
+        // REG-233: this exact callback (redirectWithSession) used to set SameSite=Strict, which
+        // browsers silently drop on the top-level GET navigation that lands here FROM
+        // accounts.google.com -- a cross-site-initiated redirect even though the destination is
+        // same-origin. That broke the account-LINK leg, which depends on JwtBearerAuthFilter
+        // reading this same npdev_jwt cookie back on the very next such redirect. Lax still keeps
+        // the cookie off cross-site subrequests/form posts (CSRF protection unchanged).
+        provider.stub("sub-lax", "lax@example.com", true, "Lax", null);
+        ResponseEntity<Void> authorize = controller.authorize("login", "/", request());
+        String state = stateOf(authorize);
+
+        ResponseEntity<Void> callback = controller.callback("code-lax", state, request());
+
+        String setCookie = callback.getHeaders().getFirst("Set-Cookie");
+        assertTrue(setCookie != null && setCookie.contains("SameSite=Lax"),
+                "OAuth callback session cookie must be SameSite=Lax (REG-233): " + setCookie);
+        assertTrue(setCookie != null && !setCookie.contains("SameSite=Strict"),
+                "must not regress to Strict, which breaks the account-link callback: " + setCookie);
+    }
+
+    @Test
     void unknownStateIsRefusedAndNeverMintsASession() {
         ResponseEntity<Void> callback = controller.callback("code-2", "bogus-state", request());
 
