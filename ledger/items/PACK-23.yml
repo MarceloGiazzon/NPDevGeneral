@@ -1,0 +1,36 @@
+id: PACK-23
+title: >-
+  Pigmentampas (S6 greenfield proof app) consumes identity/tracing/workspace packs via local $ref,
+  not the remote coordinate S6 itself calls for
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-09-21
+source: >-
+  Found during a 2026-09-21 verification spot-check of already-shipped NPDEV_MEGA_ROADMAP.md
+  sessions (prompted by discovering S14's provenance-index.schema.json was missing despite the
+  emitter referencing it -- see the provenance-index schema fix, commit 7b1188ce). Re-read S6's own
+  commit (41d92fd6, "S6 Pigmentampas greenfield proof app") and its bullet list explicitly requires
+  "Consume User + Tracing by remote coordinate" (the whole point being S6 exercises S3-S5 in a
+  low-stakes app before WmsOffice depends on them) -- but
+  NPDevSamples/pigmentampas/Input/model.json's packs[] array uses three local
+  {"$ref": "packs/<name>/pack.json"} entries (identity, tracing, workspace), the same local form
+  WmsOffice already used before the roadmap was written. S5 (pack repo + remote consumption,
+  commit 2122d8fb "S5 publisher -- one command publishes built-in packs to a versioned git repo")
+  is itself shipped, so the remote mechanism this item needs almost certainly already exists --
+  this is a matter of pointing Pigmentampas at it, not building new platform capability.
+surface: NPDevSamples/pigmentampas/Input/model.json (packs[] array), packs[].from remote-coordinate
+  schema support (NPDevContract), scripts/pack-repo/publish-pack-repo.py (S5's publisher)
+detail: |
+  NOT YET INVESTIGATED (recording the gap, not its fix): whether the published pack repo from S5
+  actually has identity/tracing/workspace published at coordinates Pigmentampas could reference, and
+  whether switching Pigmentampas's model.json from $ref to a from: coordinate is a one-line change or
+  surfaces a real integration gap (version pinning, resolution during generation, etc.). Also not
+  checked: whether S6's live-verification bar ("a person who has never seen NPDev signs up with
+  Google and completes a real task") was ever exercised for Pigmentampas at all -- the only commit
+  found (41d92fd6) adds the model/config/db-definition + a generator conformance test
+  (PigmentampasSampleTest.java, 71 lines), no ScrapForAI job or live-browser evidence found by
+  `git log --all -i --grep=pigmentampa`. That Google-signup leg is structurally the same
+  human-required step SEC-11's account-link leg hit (Google's bot-detection rejects automated
+  browsers; only a real human browser gets through) -- flagging here so a future session doesn't
+  attempt to force it through automation.
