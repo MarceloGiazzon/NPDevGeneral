@@ -1,11 +1,35 @@
 {
-  "schemaVersion" : "npdev-lock.v1",
-  "packs" : {
-    "workspace" : {
-      "resolvedVersion" : "1.1.0",
-      "digest" : "sha256:780c03bb61996a6da3ddf6df8282c3f3eeb1a8267844058cca51601f2965dbb1",
-      "sourcePath" : "packs/workspace/pack.json",
-      "migratedVersion" : "1.1.0"
+  "schemaVersion": "npdev-lock.v1",
+  "packs": {
+    "identity": {
+      "resolvedVersion": "1.2.0",
+      "digest": "sha256:8bcdea9f809977c858c0cb5ecbc41778f300046ec4839c3cc0b97d42e8081c8d",
+      "sourcePath": "C:\\Users\\Marcelo\\.npdev\\packs\\sha256\\8bcdea9f809977c858c0cb5ecbc41778f300046ec4839c3cc0b97d42e8081c8d\\pack.json",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/identity@identity-1.2.0",
+      "signature": {
+        "status": "unsigned",
+        "allowedUnsigned": true
+      }
+    },
+    "tracing": {
+      "resolvedVersion": "1.0.2",
+      "digest": "sha256:0e666f641ff21acff2517b6f6bd4573ede4474f0f939190492a38c0021f2b8ed",
+      "sourcePath": "C:\\Users\\Marcelo\\.npdev\\packs\\sha256\\0e666f641ff21acff2517b6f6bd4573ede4474f0f939190492a38c0021f2b8ed\\pack.json",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/tracing@tracing-1.0.2",
+      "signature": {
+        "status": "unsigned",
+        "allowedUnsigned": true
+      }
+    },
+    "workspace": {
+      "resolvedVersion": "1.1.0",
+      "digest": "sha256:9f72e92331f806fac39242f6cf9115d9157d26b0892972440c6acd51f65382c1",
+      "sourcePath": "C:\\Users\\Marcelo\\.npdev\\packs\\sha256\\9f72e92331f806fac39242f6cf9115d9157d26b0892972440c6acd51f65382c1\\pack.json",
+      "from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0",
+      "signature": {
+        "status": "unsigned",
+        "allowedUnsigned": true
+      }
     }
   }
 }

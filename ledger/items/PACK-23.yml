@@ -4,8 +4,10 @@ title: >-
   not the remote coordinate S6 itself calls for
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-09-21
+closed: 2026-09-21
+verification: LOCAL_PROOF_DONE
 source: >-
   Found during a 2026-09-21 verification spot-check of already-shipped NPDEV_MEGA_ROADMAP.md
   sessions (prompted by discovering S14's provenance-index.schema.json was missing despite the
@@ -22,15 +24,51 @@ source: >-
 surface: NPDevSamples/pigmentampas/Input/model.json (packs[] array), packs[].from remote-coordinate
   schema support (NPDevContract), scripts/pack-repo/publish-pack-repo.py (S5's publisher)
 detail: |
-  NOT YET INVESTIGATED (recording the gap, not its fix): whether the published pack repo from S5
-  actually has identity/tracing/workspace published at coordinates Pigmentampas could reference, and
-  whether switching Pigmentampas's model.json from $ref to a from: coordinate is a one-line change or
-  surfaces a real integration gap (version pinning, resolution during generation, etc.). Also not
-  checked: whether S6's live-verification bar ("a person who has never seen NPDev signs up with
-  Google and completes a real task") was ever exercised for Pigmentampas at all -- the only commit
-  found (41d92fd6) adds the model/config/db-definition + a generator conformance test
-  (PigmentampasSampleTest.java, 71 lines), no ScrapForAI job or live-browser evidence found by
-  `git log --all -i --grep=pigmentampa`. That Google-signup leg is structurally the same
-  human-required step SEC-11's account-link leg hit (Google's bot-detection rejects automated
-  browsers; only a real human browser gets through) -- flagging here so a future session doesn't
-  attempt to force it through automation.
+  FIXED (2026-09-21), the remote-coordinate half: published identity/tracing/workspace to the local
+  pack repo (`python scripts/pack-repo/publish-pack-repo.py`, idempotent -- identity-1.2.0 and
+  workspace-1.1.0 were already tagged from an earlier session, tracing-1.0.2 was newly published),
+  then switched Pigmentampas's model.json packs[] from three local `{"$ref": ...}` entries to
+  `{"from": "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/<id>@<id>-<version>", "as":
+  "<id>"}`. Note the required `//packs/<id>` subpath segment -- the publisher lays packs out at
+  `{repo}/packs/<id>/pack.json`, not the repo root, and the coordinate must name that subpath or
+  GitCoordinate resolution fails with "resolves to a directory with no pack.json". Also note the
+  correct git+file form has a LEADING slash before the drive letter (`git+file:///D:/...`, matching
+  `Path.toUri()` and what RemotePackFetcherGitLiveTest actually exercises against the real git
+  binary) -- publish-pack-repo.py's own printed "Published coordinates" hint omits that leading
+  slash (`git+file://D:/...`) and is misleading; not fixed here (cosmetic, the script's own docstring
+  example already has it right), worth a one-line correction if anyone is touching that file again.
+
+  Re-resolved via `python NPDevCli/npdev_cli.py pack update --model
+  NPDevSamples/pigmentampas/Input/model.json --allow-unsigned` (the local packs are unsigned, hence
+  the flag) -- all three packs resolved cleanly into npdev.lock and the content-addressed cache
+  (~/.npdev/packs/sha256/...). Deleted the now-dead local
+  NPDevSamples/pigmentampas/Input/packs/{identity,tracing,workspace}/pack.json copies -- nothing
+  references them anymore, and their continued presence would have been misleading (implying local
+  consumption still mattered).
+
+  This changed the compiled concept count from 8 to 17: the REAL published packs are fuller than the
+  local stand-ins Pigmentampas previously used (identity 1.2.0 alone is 6 concepts -- User, Role,
+  UserRole, PasswordResetToken, UserRolePermission, ExternalIdentity -- not just the one Credential
+  concept the old local copy apparently exposed). Verified this is correct composition, not a
+  collision, by counting each real pack's concepts directly (identity 6 + tracing/TraceEntry 1 +
+  workspace/Menu+PropertyValue 2 = 9, plus Pigmentampas's own 8 domain concepts = 17, exact match).
+  Updated PigmentampasSampleTest.java's hardcoded assertEquals(8, ...) to 17 with a comment
+  explaining the breakdown -- the old number was simply stale, not a spec the fix violated.
+  Re-ran the test clean (`:generator:test --tests
+  com.npdev.generator.PigmentampasSampleTest`, BUILD SUCCESSFUL, full parse+validate+compile+
+  generate pipeline including all 7 domain entity files and all 7 UI manifest routes). Also
+  re-ran `check-pack-coverage.py` and `check-dsl-coverage.py` clean post-change. Did NOT run the
+  full `:generator:test` suite or `run-fast-gate.ps1` -- narrow verification only, matching this
+  session's build-resource-contention caution; a full gate pass is still owed before the next
+  phase boundary.
+
+  NOT fixed here, deliberately out of scope -- the OTHER half of S6's own done-when ("a person who
+  has never seen NPDev signs up with Google and completes a real task"): no ScrapForAI job or
+  live-browser evidence for Pigmentampas exists anywhere (`git log --all -i --grep=pigmentampa`
+  still shows only the original model/test commit and two unrelated REG-215 fixes). That leg is
+  structurally the same human-required step SEC-11's account-link leg hit -- Google's bot-detection
+  rejects every automated browser tried, only a real human browser gets through -- so it is NOT
+  something a future session should attempt via automation. If pursued, it needs the app generated,
+  built, booted, and the owner's own browser completing a real Google signup; file a fresh item for
+  that specifically rather than reopening this one, since the remote-pack-coordinate concern this
+  item was actually about is now genuinely closed.
