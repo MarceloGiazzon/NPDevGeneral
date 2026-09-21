@@ -95,13 +95,16 @@ there is nothing to install on your PATH first.)
 ./npdev dev --model ../my-app/model.json    # build it, run it, and watch it
 ```
 
+**On Windows:** use `npdev.bat` in place of `./npdev` — same arguments throughout.
+
 **→ open http://localhost:8080**
 
 Your app lives **outside** the clone (`../my-app`), and `npdev init` refuses to scaffold inside it —
 an app buried in NPDev's own git history is one nobody else could clone, and one this repo would try
 to track. Every command above runs from the clone, so nothing depends on what you named the folder.
 
-Log in with the key in `SUPER_USER_KEY.txt`, written to that folder on first start.
+Log in with the key in `SUPER_USER_KEY.txt`. It is written on first start into the generated
+app folder — `../my-app-app`, a sibling of the model folder, not the model folder itself.
 
 **Four commands.** You now have list and edit screens, a REST API behind them, a database, and
 authentication.
