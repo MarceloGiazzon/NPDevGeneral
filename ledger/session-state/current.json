@@ -1,27 +1,19 @@
 {
-  "closedAt": "2026-09-21T08:22:50.0330262Z",
+  "closedAt": "2026-09-21T09:12:35.4472741Z",
   "branch": "main",
-  "head": "a28e2e56",
-  "headSubject": "chore(ledger): SEC-12 -- 25 untriaged security-pattern-sweep hits, pre-existing, not triaged here",
-  "summary": "Closed REG-231 (kernel/sandbox self-deadlock: two-layer fix, live-verified twice, committed+pushed). Corrected a wrong roadmap-status assessment (all 17 NPDEV_MEGA_ROADMAP sessions actually shipped) and fixed 2 real gaps found while auditing it: S14's missing provenance-index schema, and PACK-23 (Pigmentampas was faking remote-pack consumption with local stand-ins). Discovered and fixed the ledger's own schema validator (QUAL-58), silently broken since 2026-09-15, which had been masking a 16-item guard backlog. Fixed CI-coverage/script-inventory/panel-manifest hygiene gaps. Found and recorded (deliberately not triaged) 25 pre-existing untriaged security-pattern hits (SEC-12).",
-  "nextStep": "Two independent next tasks, pick either -- neither depends on the other. (1) SEC-12 security triage: scripts/quality's security-pattern sweep flagged 25 untriaged hits (12 sql-string-building, 7 unbounded-caller-input, 3 swallowed-security-exception, 3 read-without-tenant-predicate) across NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/{OAuthGoogleAuthService,PasswordResetController,ChangePasswordController}.java, .../db/SchemaVaultStore.java, .../tracing/TracingPackBridge.java, NPDevKernel/adapters/idp-google/.../GoogleIdentityProvider.java, NPDevKernel/kernel/.../RegistryCapabilityDispatcher.java -- full list+fingerprints in ledger/items/SEC-12.yml. Triage each into docs/SECURITY_PATTERN_SWEEP_2026-07.md as genuine (file a REG-nn)/safe (allowlist fingerprint in scripts/quality/security-pattern-sweep-allowlist.json)/needs-review, then re-run 'python scripts/ai/run_digest.py -- pwsh -NoProfile -File scripts/quality/run-ai-knowledge-gate.ps1' to confirm 0 untriaged. (2) QUAL-58 guard backlog: 16 ledger items need a real guard: block or reclassification -- full list in ledger/items/QUAL-58.yml (PACK-21/22, REG-211/212, RUN-32/33/34/35/36 have none; REG-213/214/221/223/224/225 have kind:test refs that are prose command lines, not real .java paths, likely need kind:local instead; REG-226's ref is bare 'gradlew' with no resolvable task/class). Verify via 'python scripts/quality/check-done-item-guards.py' after each fix.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\roadmap-2026-09-14\\NPDEV_MEGA_ROADMAP.md -- all 17 sessions already shipped per 'git log --grep=MEGA_ROADMAP', see memory project_mega_roadmap_status_2026_09_21.md. This session's work was ledger/quality hygiene surfaced while verifying that, not a new roadmap session.",
-  "blocked": "SEC-11's Google-account-link leg needs the owner's own real browser (Google's bot-detection rejects every automated browser tried) -- not blocking the NextStep above. REG-232 (a WmsOffice null-handling WARN) needs a model-author decision, not a platform fix -- also not blocking.",
-  "verified": "Kernel quality gate: full clean pass (131s, all green incl. the previously-flaky DefaultConceptGatewayDegradedConcurrencyTest). REG-231 live-verified twice against a rebuilt wmsoffice-browser (HTTP 200 x3, durable writes, zero deadlock-trace matches in the post-fix log). Full AI-knowledge gate run 3x this session; final run green except the two deliberately-deferred, documented backlogs (QUAL-58's 16 items, SEC-12's 25 items) -- confirmed both pre-existing via byte-identical counts across runs, not regressions from this session's changes. Individually verified clean: ledger load_items() (483/483 items), check-pack-coverage.py, check-dsl-coverage.py, run-script-inventory-check.ps1, check-ci-adapter-coverage.py, check-panel-provenance-schema.py, check-workflow-yaml-syntax.py, PigmentampasSampleTest, idp-google's standalone test suite, test_publish_pack_repo.py.",
-  "dirtyCount": 2,
-  "dirtyFiles": [
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
-  ],
+  "head": "9c1c7f14",
+  "headSubject": "fix(kernel): REG-232 -- classify NOT NULL orchestration failures cleanly",
+  "summary": "Closed the full ledger backlog surfaced last session: QUAL-58 (16-item guard backlog -- 8 items reformatted from a prose gradle command to a resolvable ref, 8 gained real test-citing guards, 1 honestly backfilled to the legacy list), SEC-12 (all 25 untriaged security-pattern hits individually traced to source and verdicted SAFE, zero genuine findings), and REG-232 (a new, genuinely actionable LOW-severity bug found in passing -- classified NOT NULL orchestration failures cleanly instead of a raw JDBC stack trace, with real unit + integration test coverage). Used two parallel background agents for QUAL-58 and SEC-12 per explicit user instruction; verified every agent claim independently (spot-checked test methods, re-ran the checkers myself) before committing.",
+  "nextStep": "No autonomously-actionable ledger work remains: open-state.md shows 3 items, all either blocked on the owner (SEC-11 needs the owner's own real browser -- Google's bot detection rejects every automated browser tried) or WONTFIX (QUAL-40/41, owner-accepted coverage-floor baselines). Next session should ask the user what to work on rather than assuming more ledger backlog exists.",
+  "plan": "None -- this was ledger/quality hygiene surfaced while auditing prior roadmap work, not itself a new roadmap plan.",
+  "blocked": "",
+  "verified": "check-done-item-guards.py: 0 blocking findings (was 16). security-pattern-sweep.py: 0 needing triage (was 25). REG-232: new GeneratedCrudRuntimeSupportNotNullViolationTest (7 cases) + GeneratedCrudRuntimeSupportCreateOrchestrationNotNullTest (real H2-backed integration repro) both green; full :adapters:runtime-support:test and kernelQualityGate (kernel + 36+ adapters:*:test) green. Full run-ai-knowledge-gate.ps1 (39 checks) reconfirmed green after both ledger fixes. Noted, not chased: kernelQualityGate's separate coverage-ratchet step shows a tiny (0.054pt) aggregate dip against a floor already flagged as noisy/non-actionable by the existing QUAL-40 WONTFIX -- narrowed from 0.45pt after adding real test coverage, and an identical unrelated pre-existing gap in the same report ('scripts', unchanged before/after) confirms it isn't attributable to this session's fix.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "a28e2e56 chore(ledger): SEC-12 -- 25 untriaged security-pattern-sweep hits, pre-existing, not triaged here",
-    "085feae6 fix(ci): wire idp-google's unit tests into both CI workflows (SEC-11 follow-up)",
-    "7b69f887 fix(ledger): QUAL-58 -- unblock check-done-item-guards.py's ledger loader, backfill data gaps",
-    "6a211836 fix(quality): register 3 unclassified roadmap scripts, fix a stale hardcoded pack version in a test",
-    "3fcd71a6 fix(samples): PACK-23 -- Pigmentampas now consumes identity/tracing/workspace by remote coordinate",
-    "22f2775c chore(ledger): PACK-23 -- Pigmentampas uses local pack refs, not S6's own remote-coordinate design",
-    "83d04d3b fix(kernel,runtimehost): REG-231 -- resolve the raw-PUT-vs-update-flow self-deadlock",
-    "7b1188ce docs(generator): add the missing provenance-index.schema.json + clarify its join-key contract"
+    "9c1c7f14 fix(kernel): REG-232 -- classify NOT NULL orchestration failures cleanly",
+    "982d3537 fix(ledger): QUAL-58 -- close 16-item guard backlog; SEC-12 -- triage all 25 hits SAFE",
+    "a1bc11e4 chore(ledger): session handoff -- REG-231 closed, roadmap status corrected, QUAL-58/SEC-12 filed"
   ]
 }
