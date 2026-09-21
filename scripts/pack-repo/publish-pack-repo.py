@@ -103,9 +103,10 @@ def main(argv: list[str]) -> int:
     if not published:
         print("Nothing to publish -- every selected pack is already tagged. Use --force to re-tag.")
     else:
-        print("Published coordinates (git+file:// form for a consumer's packs[].from):")
+        print("Published coordinates (git+file:/// form for a consumer's packs[].from):")
+        repo_path = repo.as_posix().lstrip("/")  # matches Path.toUri(): file:///D:/... or file:///home/...
         for tag in sorted(published):
-            print(f"  git+file://{repo.as_posix()}@{tag}")
+            print(f"  git+file:///{repo_path}@{tag}")
     return 0
 
 
