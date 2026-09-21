@@ -14,6 +14,11 @@ tutorial-only fixture — it's `NPDevSamples/simple-contact-intake/Input/model.j
 that gate runs. If a platform change ever breaks this model or the flow it declares, the gate goes
 red before this tutorial could silently go stale.
 
+**Before you start:** produce the DSL reference once with
+`python scripts/docs/generate_dsl_reference.py`. It renders to the external Build root and is
+gitignored, so a fresh clone won't have `docs/DSL_REFERENCE.md` — referenced twice below — until
+you run that command.
+
 ## What you're building
 
 A contact-intake form: one concept (`ContactMessage`), one flow (`SubmitContactMessage`) that
