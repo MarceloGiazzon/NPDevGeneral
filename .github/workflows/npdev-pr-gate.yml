@@ -150,6 +150,7 @@ jobs:
           ./gradlew \
             :adapters:auth-context-jwt:test \
             :adapters:authz-default:test \
+            :adapters:idp-google:test \
             :adapters:document-render-inproc:test \
             :adapters:document-render-stub:test \
             :adapters:runtime-support:test \
