@@ -212,7 +212,7 @@ detail: |
   `movimentoId` null; caught and logged, does not affect the PUT's 200. Worth its own low-severity
   item if pursued.
 guard:
-  kind: none
+  kind: live
   ref: >-
     Repro (used live, still reproducible against a wmsoffice-browser instance with the same shape):
     1) create any Recebimento (or Expedicao) via POST /api/runtime/aggregate/Recebimento with

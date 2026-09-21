@@ -7,6 +7,7 @@ type: FEATURE
 severity: MEDIUM
 status: DONE
 opened: 2026-09-18
+closed: 2026-09-19
 verification: VERIFIED_LIVE
 source: >-
   NPDEV_MEGA_ROADMAP.md Session 11 done-when: "an operator completes a full MVL entry -- multi-

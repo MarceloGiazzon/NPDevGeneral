@@ -72,3 +72,12 @@ detail: |
   built, booted, and the owner's own browser completing a real Google signup; file a fresh item for
   that specifically rather than reopening this one, since the remote-pack-coordinate concern this
   item was actually about is now genuinely closed.
+guard:
+  kind: test
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/PigmentampasSampleTest.java#pigmentampasModelParsesValidatesAndGenerates
+  asserts: >-
+    the full parse -> validate -> compile -> generate pipeline succeeds against Pigmentampas's
+    model.json with its packs[] resolved by remote git+file:// coordinate (not local $ref), and the
+    compiled concept count (17) plus every domain entity file and UI manifest route this test checks
+    are exactly what PACK-23's own fix produced
+  provenRed: false

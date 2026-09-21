@@ -1,0 +1,89 @@
+id: QUAL-58
+title: >-
+  check-done-item-guards.py has been silently non-functional since PACK-21 (2026-09-15): the
+  ledger's own load-time schema validator rejects it, aborting the check before it ever runs --
+  masking a real 17-item guard backlog underneath
+type: PROCESS
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-09-21
+source: >-
+  Found while closing REG-231 and spot-auditing NPDEV_MEGA_ROADMAP.md session status: ran the full
+  static AI-knowledge gate (`run-ai-knowledge-gate.ps1`) to confirm today's changes hadn't broken
+  anything, and its "check-done-item-guards.py --calibrate" step failed with "real ledger does not
+  even validate: ledger/items/PACK-21.yml: type 'FEATURE' not in ['BOUNDARY', 'BUG', 'GAP',
+  'PROCESS']" -- `generate_open_items.load_items` (the single shared ledger schema validator,
+  reused by check-done-item-guards.py) raises on the FIRST invalid item it encounters in filename
+  order and aborts entirely, so nothing past PACK-21 alphabetically was ever actually checked by
+  this script, for as long as PACK-21 (opened 2026-09-15) has existed with an invalid `type`.
+surface: scripts/quality/generate_open_items.py (VALID_TYPES/VALID_VERIFICATION/guard.kind enums),
+  scripts/quality/check-done-item-guards.py (resolve_guard), ledger/README.md (schema doc),
+  ledger/items/*.yml (17 items with a real, unresolved guard problem -- see detail)
+detail: |
+  PART 1 -- FIXED this session (the load-blocking bug itself): the canonical ledger schema had
+  fallen behind real, already-committed usage across the 2026-09 roadmap-execution wave. Four
+  distinct vocabulary gaps, each affecting a small, bounded cluster of items (all from the same
+  wave, confirmed by checking real usage counts before changing anything -- never assumed a single
+  item was an isolated typo without checking):
+    - `type: FEATURE` (8 items: PACK-21/22, SEC-11, WMS-7/8/9/11/12) -- not in the 4-value
+      GAP/BUG/PROCESS/BOUNDARY enum. None of those four fit a genuine feature-shipped item
+      semantically; added FEATURE as a 5th valid type rather than force-reclassify 8 accurately-typed
+      items into a mismatched bucket.
+    - `verification: LOCAL_PROOF_DONE` (3 items: PACK-23, SEC-11, WMS-9) -- not in the 3-value
+      NOT_VERIFIED/UNIT_TESTED/VERIFIED_LIVE enum. A real, meaningful middle category (proven via a
+      local/offline harness -- e.g. a fake-Google OAuth proof -- short of a genuinely live
+      environment); added it rather than collapsing the distinction.
+    - `guard.kind: live` (6 items) and `guard.kind: local` (7 items) -- not in the 3-value
+      test/script/manual enum, and `resolve_guard()` hard-rejected any unrecognized kind as "unknown
+      guard.kind". `live` resolves identically to `manual` (best-effort path-tolerance -- a
+      live/browser/API-session ref is prose, essentially never a repo-rooted path). `local` resolves
+      identically to `script` (its ref names a real local generate/build/test command, e.g.
+      Build-AppGenApp.ps1 + a gradle test invocation -- genuinely path-anchorable). Kept as distinct
+      kind VALUES from their older synonyms (not folded in) so the YAML itself signals the proof's
+      real shape.
+    - `guard.kind: validate` (4 items: WMS-7/8/9/11) -- same shape as `manual` (a repo-rooted file,
+      usually a template, whose CONTENT the item's own `asserts` text describes; resolution stays
+      existence-only, not a content/substring check -- same honest limit `manual` already has).
+  Also fixed while re-running the full validator repeatedly until it passed clean (481/481 items):
+  REG-228/229/230 and WMS-11 were `status: DONE` with no `closed:` date (backfilled from each item's
+  own fix commit's date, checked via `git show -s --format=%ad`, not guessed); SEC-11's
+  `verification:` field held a full prose sentence instead of a single enum value (the same
+  narrative was already duplicated in its own `detail:` section, so nothing was lost -- reset to
+  `VERIFIED_LIVE`, the stronger of the two proof levels the prose described, since real-Google
+  signup+login genuinely happened live, superseding the fake-Google M7 proof's LOCAL_PROOF_DONE
+  grade for that scope).
+  All four schema/resolver changes were mirrored into `ledger/README.md`'s own schema doc in the
+  same commit (no twin-pair gap left behind). Verified via a direct `load_items()` call against the
+  whole ledger (481/481 items load clean) and by re-running `check-done-item-guards.py` itself,
+  which now genuinely EXECUTES past the point it used to abort at.
+
+  PART 2 -- NOT fixed this session, recorded rather than rushed: once the load-blocker was gone,
+  `check-done-item-guards.py` surfaced a REAL, pre-existing backlog it had never been able to report
+  before. This session's OWN new/closed item, PACK-23 (the Pigmentampas remote-pack fix), showed up
+  in that same run's NO-GUARD list -- fixed immediately (a real `kind: test` guard naming
+  PigmentampasSampleTest#pigmentampasModelParsesValidatesAndGenerates, since that item's own DONE
+  claim came from a session I ran myself and a real guard was one edit away), dropping the count
+  from 17 to 16. The remaining 16 are pre-existing debt from earlier sessions, deliberately left
+  for a dedicated future pass rather than rushed through 16 individual judgment calls here:
+    NO GUARD (status: DONE, no guard: block, not in the frozen legacy list) -- 9 items: PACK-21,
+    PACK-22, REG-211, REG-212, RUN-32, RUN-33, RUN-34, RUN-35, RUN-36.
+    UNRESOLVABLE GUARD (guard: block present but its ref doesn't resolve) -- 8 items: REG-213,
+    REG-214, REG-221, REG-223, REG-224, REG-225 (all `kind: test` whose ref is a prose command line
+    -- "NPDevGenerator :generator:test --tests ..." -- rather than an actual .java file path
+    resolve_test can check; these may need reclassifying to `kind: local`/`script` instead of a
+    resolve_test fix), REG-226 (kind: local, but its ref is apparently bare "gradlew" prose with no
+    specific task/class -- exactly the case resolve_script already refuses on principle, per its own
+    error message: "a bare mention of 'gradlew' with no specific task or class proves nothing").
+
+  Each of the 17 needs individual judgment (construct a real guard: block naming something
+  check-done-item-guards.py can actually resolve, OR make a reviewed case for
+  scripts/policy/done-item-guard-policy.json's `legacy.ids` list -- which is shrink-only, so this is
+  not a rubber stamp). None are attempted here; this item exists so the next session doesn't have to
+  re-discover the backlog from scratch, and doesn't mistake "the checker ran clean" for "guard
+  coverage is caught up" the way PACK-21's silent abort let everyone do for six days.
+status_reasoning: >-
+  PARTIAL, not DONE: the load-blocking bug (the actual thing that made this checker unusable) is
+  genuinely fixed and verified. The 17-item guard backlog it uncovered is real, scoped, and
+  recorded, but not resolved -- leaving this DONE would misrepresent guard coverage as caught up.
+  PARTIAL, not OPEN: the part that was actually reported as broken (the checker itself) is fixed;
+  reopening the whole item as OPEN would understate what changed today.

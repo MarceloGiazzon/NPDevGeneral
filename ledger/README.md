@@ -24,7 +24,7 @@ One YAML file per item, `ledger/items/<ID>.yml`:
 ```yaml
 id: REG-61                      # required, matches the filename
 title: One-line summary          # required
-type: GAP | BUG | PROCESS | BOUNDARY   # required
+type: GAP | BUG | PROCESS | BOUNDARY | FEATURE   # required
 severity: LOW | MEDIUM | HIGH | P0 | P1 | null   # null only for type: BOUNDARY
 status: OPEN | PARTIAL | DONE | WONTFIX | OBSOLETE   # required -- the single source of truth
 opened: 2026-07-28               # required, ISO date
@@ -35,14 +35,23 @@ decision: one-line reason        # required iff status: WONTFIX | OBSOLETE -- WO
                                   # surface it described was removed) -- never used to mean "fixed",
                                   # that's DONE. Optional for any other status to record a deliberate
                                   # deferral or scope decision (PROC-1/R11 first-class decision).
-verification: NOT_VERIFIED | UNIT_TESTED | VERIFIED_LIVE   # optional
+verification: NOT_VERIFIED | UNIT_TESTED | LOCAL_PROOF_DONE | VERIFIED_LIVE   # optional
 source: where/how this was found         # required
 surface: component tag, e.g. runtimehost/schema-lifecycle  # required
 files: [path/one.java, path/two.java]    # optional
 detail: |                        # required -- concise root-cause/fix/verification summary
   Multi-line prose.
 guard:                           # optional -- present iff this item's DONE claim is falsifiable
-  kind: test | script | manual   # what kind of proof backs the claim
+  kind: test | script | manual | live | local | validate   # what kind of proof backs the claim --
+                                  # live and validate resolve exactly like manual (best-effort
+                                  # path-checking, tolerant of a ref with no repo-rooted anchor;
+                                  # validate's ref is typically a template/resource file whose
+                                  # CONTENT the item's own asserts describes -- resolution is still
+                                  # existence-only); local resolves exactly like script (a real
+                                  # repo-rooted .py/.ps1/.sh path, test class or Gradle task must be
+                                  # findable in ref). All are kept as distinct kinds so the YAML
+                                  # itself signals the proof's real shape rather than being folded
+                                  # into an older name.
   ref: path/to/Test.java#method or scripts/proofs/whatever.ps1   # where the proof lives
   asserts: one-line statement of what the proof actually checks
   provenRed: true                # whether a RED reproduction was captured before the fix

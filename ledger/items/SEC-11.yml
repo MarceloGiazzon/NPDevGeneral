@@ -127,7 +127,4 @@ detail: |
   Remaining for the done-when: the LINK leg's last click in a browser Google accepts (owner's
   own), and (c) the REG-211 decision (jwt-mode apps need a bound credential concept for the
   password half of the flows).
-verification: LOCAL_PROOF_DONE (fake-Google, 28/28 checks); real-Google SIGNUP+LOGIN LIVE (owner
-  browser 2026-09-18); real-Google LINK leg blocked by Google's browser-flagging of the harness
-  (bundled Chromium AND real Edge) -- mechanism unit+M7 verified, final consent click pending
-  owner's browser
+verification: VERIFIED_LIVE
