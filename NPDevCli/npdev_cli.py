@@ -10833,6 +10833,135 @@ _BOUNDARY_KIND_QUALIFIED_NOTE = {
 }
 
 
+def _collect_gradle_distribution_urls(root: Path) -> list:
+    """Every gradle-wrapper.properties' distributionUrl under the repo, deduped in first-seen
+    order -- the same source scripts/quality/run-docker-linux-proof.ps1 reads for
+    Dockerfile.ai-beta, reused here for Dockerfile.independent-tester so a wrapper version bump can
+    never silently stop being baked into the tester's image."""
+    urls: list = []
+    for props_path in sorted(root.rglob("gradle-wrapper.properties")):
+        for line in props_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("distributionUrl="):
+                url = line[len("distributionUrl="):].strip().replace("\\:", ":")
+                if url and url not in urls:
+                    urls.append(url)
+    return urls
+
+
+def run_tester(args: argparse.Namespace) -> int:
+    """`npdev tester` -- REG-234 (EXT-9): drives a genuinely independent AI agent through the
+    REG-13/14/17 cold-start claims (author an app with the tools, build the tutorial from docs
+    alone, reproduce the verification) inside a disposable Docker container that clones the PUBLIC
+    repo itself, on its own initiative -- never this host's working tree.
+
+    Deliberately NOT a Claude Code agent: every Claude Code session/subagent auto-loads this
+    repo's own CLAUDE.md as project instructions before it takes a single action, which is exactly
+    the "here's how it really works" knowledge that disqualifies a tester per
+    docs/EXTERNAL_TESTER_COLDSTART.md's own independence rule. Instead this shells out to
+    `docker build`/`docker run` against Dockerfile.independent-tester, which launches
+    NPDevCli/independent_tester/tester_agent.py -- a small driver that calls the Anthropic API
+    directly (Tool Runner) with a minimal, NPDev-free system prompt.
+
+    This function deliberately never imports `anthropic` -- the shipped CLI is stdlib-only (see
+    npdev_jsonschema.py's docstring); the SDK import lives entirely inside tester_agent.py, which
+    only ever runs inside the container where the Dockerfile has already pip-installed it.
+
+    Manual, cost-incurring: not run in CI, not scheduled. See docs/EXTERNAL_TESTER_COLDSTART.md.
+    """
+    root = repo_root()
+    image_tag = "npdev-independent-tester:local"
+    dockerfile = root / "Dockerfile.independent-tester"
+
+    gradle_urls = _collect_gradle_distribution_urls(root)
+    if not gradle_urls:
+        message = "no gradle-wrapper.properties with a distributionUrl found under the repo root"
+        if args.json:
+            print(json.dumps({
+                "schemaVersion": "npdev-cli-result.v1", "command": "tester",
+                "ok": False, "exitCode": 1, "detail": message,
+            }, indent=2))
+        else:
+            print(f"npdev tester: {message}", file=sys.stderr)
+        return 1
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_dir = (_ai_build_root().parent / "NPDev_General__OutsideRepo"
+               / "ext9-independent-tester-kit-2026-09-21" / "runs" / timestamp)
+
+    build_cmd = [
+        "docker", "build", "-f", str(dockerfile),
+        "--build-arg", f"GRADLE_DISTRIBUTION_URLS={' '.join(gradle_urls)}",
+        "-t", image_tag, str(root),
+    ]
+    # "-e NPDEV_TESTER_ANTHROPIC_API_KEY" with no "=value" forwards the CURRENT shell's value into
+    # the container without the key ever appearing in this argv list or any process listing.
+    run_cmd = [
+        "docker", "run", "--rm", "--network", "bridge",
+        "-e", "NPDEV_TESTER_ANTHROPIC_API_KEY",
+        "-e", f"NPDEV_TESTER_TASK={args.task}",
+        "-e", f"NPDEV_TESTER_REF={args.ref}",
+        "-v", f"{run_dir}:/work/output",
+        image_tag,
+    ]
+
+    api_key_present = bool(os.environ.get("NPDEV_TESTER_ANTHROPIC_API_KEY"))
+    if args.dry_run or not api_key_present:
+        if not args.dry_run and not api_key_present:
+            print("npdev tester: NPDEV_TESTER_ANTHROPIC_API_KEY is not set -- showing the "
+                  "assembled commands only (same as --dry-run); set it in your environment to "
+                  "actually run.", file=sys.stderr)
+        result = {
+            "schemaVersion": "npdev-cli-result.v1", "command": "tester",
+            "ok": True, "exitCode": 0, "dryRun": True,
+            "buildCommand": build_cmd, "runCommand": run_cmd,
+            "outputDir": str(run_dir), "apiKeySet": api_key_present,
+        }
+        if args.json:
+            print(json.dumps(result, indent=2))
+        else:
+            print("npdev tester -- dry run (no Docker, no network, no API spend):")
+            print("  build: " + " ".join(build_cmd))
+            print("  run:   " + " ".join(run_cmd))
+            print(f"  output would land in: {run_dir}")
+            if not api_key_present:
+                print("  NOTE: NPDEV_TESTER_ANTHROPIC_API_KEY is not set in this shell.")
+        return 0
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    log_path = run_dir / "docker.log"
+    print(f"npdev tester: building {image_tag} ...")
+    with log_path.open("w", encoding="utf-8") as log:
+        build_proc = subprocess.run(build_cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT)
+        if build_proc.returncode != 0:
+            print(f"npdev tester: docker build failed (exit {build_proc.returncode}); "
+                  f"see {log_path}", file=sys.stderr)
+            return build_proc.returncode
+
+        print(f"npdev tester: running (timeout {args.timeout_minutes}m) ...")
+        log.write("\n--- docker run ---\n")
+        log.flush()
+        try:
+            run_proc = subprocess.run(
+                run_cmd, cwd=root, stdout=log, stderr=subprocess.STDOUT,
+                timeout=args.timeout_minutes * 60,
+            )
+            exit_code = run_proc.returncode
+        except subprocess.TimeoutExpired:
+            print(f"npdev tester: timed out after {args.timeout_minutes} minutes", file=sys.stderr)
+            exit_code = 124
+
+    result = {
+        "schemaVersion": "npdev-cli-result.v1", "command": "tester",
+        "ok": exit_code == 0, "exitCode": exit_code,
+        "outputDir": str(run_dir), "log": str(log_path),
+    }
+    if args.json:
+        print(json.dumps(result, indent=2))
+    else:
+        print(f"npdev tester: done (exit {exit_code}). Friction log + transcript: {run_dir}")
+    return exit_code
+
+
 def run_why(args: argparse.Namespace) -> int:
     """`npdev why <id-or-code>` -- item 2, SUPPORT_FEATURES_PLAN_2026-08-26. Makes the accepted-
     boundaries register reachable from the terminal, where a boundary's code actually appears (a
@@ -13990,6 +14119,33 @@ def build_parser() -> argparse.ArgumentParser:
              "skipped -- a machine with no NPDev app on it is not a broken machine (W5.2).",
     )
 
+    # REG-234 (EXT-9): a genuinely independent cold-start tester -- Docker + the raw Anthropic API,
+    # never Claude Code, so the tester agent never auto-loads this repo's CLAUDE.md. See
+    # run_tester()'s own docstring for the full design.
+    tester_parser = subparsers.add_parser(
+        "tester", help="Run an independent AI agent (no NPDev context) through a fresh clone in a "
+                       "disposable Docker container to reproduce the REG-13/14/17 cold-start "
+                       "claims. Manual, cost-incurring -- see docs/EXTERNAL_TESTER_COLDSTART.md."
+    )
+    tester_parser.add_argument(
+        "--task", choices=["A", "B", "C", "all"], default="all",
+        help="Which brief task(s) to run (default: all three).",
+    )
+    tester_parser.add_argument(
+        "--ref", default="main", metavar="REF",
+        help="Branch/tag the tester agent is told to clone (default: main).",
+    )
+    tester_parser.add_argument(
+        "--timeout-minutes", type=int, default=60, metavar="N",
+        help="Hard wall-clock cap on the whole container run (default: 60).",
+    )
+    tester_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Assemble and print the docker build/run commands without touching Docker, the "
+             "network, or the Anthropic API. Works without NPDEV_TESTER_ANTHROPIC_API_KEY set.",
+    )
+    tester_parser.add_argument("--json", action="store_true")
+
     capabilities_parser = subparsers.add_parser(
         "capabilities", help="Show what each storage engine can do -- read from the dialects, so "
                              "it always matches what the generator refuses."
@@ -15684,6 +15840,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_engines(args)
         if args.command == "doctor":
             return run_doctor(args)
+        if args.command == "tester":
+            return run_tester(args)
         if args.command == "db" and args.db_command == "test-connection":
             return run_db_test_connection(args)
         if args.command == "db" and args.db_command == "verify":
