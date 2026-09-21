@@ -77,7 +77,7 @@ detail: |
   this fix) -- filed separately as REG-222, not fixed here per explicit scope decision (this item was
   approved for a same-session fix; the lambda rewrite was explicitly deferred).
 guard:
-  kind: test
+  kind: script
   ref: >-
     gradlew -p NPDevKernel/kernel test --tests
     com.npdev.kernel.security.UntrustedExtensionBytecodeInspectorTest

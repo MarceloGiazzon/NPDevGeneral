@@ -49,6 +49,6 @@ detail: |
   ScrapForAI (login form -> panels) passed end-to-end (see WMS-12).
 guard:
   kind: test
-  ref: NPDevGenerator :generator:test --tests "*RuntimeAuthPropertiesEmitterTest"
-  asserts: findCredentialConceptIgnoresResetTokenHashField + jwtWithIdentityPackAndUsuarioPrefersUsuario green
+  ref: NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/RuntimeAuthPropertiesEmitterTest.java#findCredentialConceptIgnoresResetTokenHashField
+  asserts: findCredentialConceptIgnoresResetTokenHashField + jwtWithIdentityPackAndUsuarioPrefersUsuario green (both real @Test methods in the cited file; only the first is cited as the guard.ref#method per the checker's single-method-per-guard shape)
   provenRed: true

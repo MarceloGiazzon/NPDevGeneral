@@ -83,9 +83,9 @@ detail: |
   present in the rendered template; (d) full :NPDevContract:dsl:test and the targeted
   NPDevGenerator :generator:test slice both green, no regressions.
 guard:
-  kind: test
+  kind: script
   ref: >-
-    NPDevGenerator: gradlew -p NPDevGenerator :generator:test --tests
+    NPDevGenerator: gradlew :NPDevGenerator:generator:test --tests
     com.npdev.generator.emitters.WorkbenchPatchMergesNotReplacesTest. Live REST proof (repeatable):
     POST /api/runtime/aggregate/RomaneioAggregate/invoke/ParseRomaneioProcedure with
     {"numero":"...","texto":"268;10","id":"new"} against a Produto with codigo "268" -- itens[0].

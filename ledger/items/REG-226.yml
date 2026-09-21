@@ -68,7 +68,7 @@ detail: |
   reset email at all (not just "revocation is cosmetic" as the original filing described, but
   "password reset is completely non-functional end to end").
 guard:
-  kind: local
+  kind: manual
   ref: >-
     Generator unit tests: `gradlew -p NPDevRuntimeHost/runtimehost-core test` was not the right
     module (PasswordResetControllerTest lives in the top-level NPDevRuntimeHost module, which

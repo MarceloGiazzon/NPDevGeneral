@@ -74,3 +74,13 @@ detail: |
   RUN-36, and recorded the no-timeout gaps (build step and provider call) as follow-ups within
   that item's notes; the build/provider timeouts themselves remain open work (see RUN-36's "not
   fixed here" and this item's "no timeout" observations).
+guard:
+  kind: test
+  ref: >-
+    NPDevManager/src/ai_loop.rs#classify_build_flags_a_failed_build_even_when_the_wrapper_reports_exit_code_zero
+  asserts: >-
+    classify_build scans the captured ops lines for gradle's own failure markers and classifies the
+    build as a Compile failure even when the npdev-monitor wrapper's done event reports exitCode 0
+    with logFile null -- the exact transcript shape this item's own RUN-35 code comment in the test
+    reproduces
+  provenRed: true

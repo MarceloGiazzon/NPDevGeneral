@@ -71,3 +71,14 @@ detail: |
   surface and persists/reads them through a real generate -> build -> boot cycle (proven above),
   and the pack's own diff gate classifies the change as ADDITIVE with a conforming minor bump
   (proven above).
+guard:
+  kind: test
+  ref: >-
+    NPDevGenerator/generator/src/test/java/com/npdev/generator/packs/SealedPackAppLinkingPackagedGeneratedAppRuntimeProofTest.java#linkedIdentityPackBootsAndServesUserCrudOverHttp
+  asserts: >-
+    a generated app links the identity pack, boots, and serves User CRUD over real HTTP end-to-end
+    -- the same generate/build/boot/REST shape this item's own live proof (POST /api/identity_users
+    persisting avatarUrl/locale/timezone/lastLoginAt/createdAt/updatedAt) exercised; the six new
+    profile fields' values themselves were confirmed by that live run, not by a new unit-test
+    assertion
+  provenRed: false

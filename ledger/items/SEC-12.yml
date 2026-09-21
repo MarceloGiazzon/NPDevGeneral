@@ -4,8 +4,17 @@ title: >-
   earlier roadmap sessions (SEC-11, S17a, S4) -- never filed as REG items or allowlisted
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-21
+closed: 2026-09-21
+verification: VERIFIED_LIVE
+guard:
+  kind: script
+  ref: scripts/quality/security-pattern-sweep.py
+  asserts: >-
+    `python scripts/quality/security-pattern-sweep.py` reports "0 needing triage" (was 25 before
+    this item's fix); `--self-test` still reports every fixture passing (was 12/12, unchanged).
+  provenRed: true
 source: >-
   Found while running the full static AI-knowledge gate to confirm today's fixes hadn't broken
   anything (unrelated to this finding -- see QUAL-58 for that investigation). Check [6/39],
@@ -60,3 +69,28 @@ detail: |
   session that owns that surface. Re-run `python scripts/ai/run_digest.py -- pwsh -NoProfile -File
   scripts/quality/run-ai-knowledge-gate.ps1` (or the sweep script directly, check [6/39]'s own
   command) after triage to confirm the untriaged count drops to 0.
+
+  RESOLVED 2026-09-21: all 25 traced individually to source (schema files, SqlIdentifierSupport/
+  SqlTypeSupport, admin-gating, exception-direction analysis) -- every one cleared (ii) safe, none
+  were (i) genuine or (iii) needs-review. Verdicts and fingerprints recorded in
+  scripts/quality/security-pattern-sweep-allowlist.json (frozenCount 576 -> 601): the 3
+  read-without-tenant-predicate hits resolve to a schema-declared global-uniqueness index
+  (identity::ExternalIdentity's (provider, providerSubject) unique index in
+  NPDevContract/packs/identity/pack.json), admin-gated schema bookkeeping (existing rule B2,
+  SchemaVaultStore's only caller SchemaImpactController is SUPERUSER-gated), and an
+  already-globally-unique primary-key lookup (TracingPackBridge, actorId is kernel-authenticated,
+  not caller input); the 12 sql-string-building hits all splice a
+  CompiledConcept::getTableName()-resolved identifier (the REG-170/REG-177 safe-by-construction
+  mechanism, SqlIdentifierSupport.toSnake/safeSqlIdentifier) or, for ProvenanceIndexEmitter, text
+  that is never sent anywhere SQL could run; the 3 swallowed-security-exception hits are fail-closed
+  (GoogleIdentityProvider denies login on a provider-unreachable fault, per its own documented port
+  contract -- noted as a minor logging/observability gap, not a security defect) or non-auth
+  (RegistryCapabilityDispatcher's hit only selects a dispatch-timeout mode, explicitly reasoned
+  fail-safe in its own comment); and the 7 unbounded-caller-input hits all persist into columns
+  SqlTypeSupport.varcharType() bounds to a fixed VARCHAR(n) by construction (identity pack maxLength
+  declarations, or the platform's uniformly-injected VARCHAR(120) tenant_id column), the same I3
+  trust boundary as this file's own fingerprint 117a046fa456 -- the REG-36/REG-47 no-bound-anywhere
+  asymmetry does not exist for any of them. Re-ran the sweep after triage:
+  `python scripts/quality/security-pattern-sweep.py` reports "738 hit(s), 738 already cleared, 0
+  needing triage" (was "738 hit(s), 713 already cleared, 25 needing triage"), and
+  `--self-test` still reports 12/12 fixtures passing.

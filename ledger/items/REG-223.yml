@@ -74,7 +74,7 @@ detail: |
   platform-classloader-parented URLClassLoader swapped into the thread context classloader for just
   the manifest resource lookup.
 guard:
-  kind: test
+  kind: script
   ref: >-
     NPDevRuntimeHost/runtimehost-core: gradlew test --tests
     com.finalexec.pluginipc.ManifestDrivenJavaSourcePluginHandlerTest (run with

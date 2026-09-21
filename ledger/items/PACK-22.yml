@@ -41,3 +41,13 @@ detail: |
   held (no duplicate-user creation on repeat login). (3) probe lock digest already current:
   NPDevSamples/probes/p6-satellite-extension/Input/npdev.lock resolves identity to 1.2.0,
   digest sha256:f5acae79f76ddddc9acb2690b4a321cfda2c9df4f7287e949ec4d5a19ae11889. PACK-22 done.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleAuthServiceTest.java#linkRefusesSubjectAlreadyClaimedByAnotherAccount
+  asserts: >-
+    the identity pack's ExternalIdentity concept enforces its unique (provider, providerSubject)
+    linkage -- a Google subject already claimed by one account cannot be re-linked to a second one
+    -- which is the unique-index behavior this item's done-when names; ExternalIdentity row
+    persistence itself is exercised by the same test class's freshEmailSignsUpAndPersistsUserPlusLinkage
+  provenRed: false
