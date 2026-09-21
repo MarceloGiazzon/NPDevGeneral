@@ -1,0 +1,62 @@
+id: SEC-12
+title: >-
+  25 untriaged security-pattern-sweep hits across OAuth/password-reset/vault/tracing code from
+  earlier roadmap sessions (SEC-11, S17a, S4) -- never filed as REG items or allowlisted
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-21
+source: >-
+  Found while running the full static AI-knowledge gate to confirm today's fixes hadn't broken
+  anything (unrelated to this finding -- see QUAL-58 for that investigation). Check [6/39],
+  "Checking for untriaged security-pattern hits" (scripts/quality/... security pattern sweep,
+  allowlist at scripts/quality/security-pattern-sweep-allowlist.json, rule doc
+  docs/SECURITY_PATTERN_SWEEP_2026-07.md), reports "738 hit(s), 713 already cleared, 25 needing
+  triage" -- confirmed this exact count is BYTE-IDENTICAL between the very first full gate run this
+  session (before any of today's changes) and every run after, so none of today's work added or
+  removed a single hit; this is pre-existing debt from earlier sessions, surfaced only because this
+  may be the first full gate run since those sessions shipped.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/{OAuthGoogleAuthService,
+  PasswordResetController,ChangePasswordController}.java, .../db/SchemaVaultStore.java,
+  .../tracing/TracingPackBridge.java, NPDevKernel/adapters/idp-google/.../GoogleIdentityProvider.java,
+  NPDevKernel/kernel/.../RegistryCapabilityDispatcher.java, NPDevGenerator/.../ProvenanceIndexEmitter.java
+detail: |
+  NOT INVESTIGATED PER-FINDING -- recording the gap and its shape, deliberately not triaging 25
+  individual security findings under this session's own time/fatigue pressure (a rushed "looks safe"
+  verdict on a security finding is worse than an honest "not yet reviewed", per this same checker's
+  own framing: "a false 'safe' is worse than a noisy hit").
+
+  Breakdown by pattern (from the checker's own tally, "N total, M new" -- M is the untriaged count
+  within each pattern):
+    - read-without-tenant-predicate: 3 new. OAuthGoogleAuthService.java:316 (SELECT user_id... WHERE
+      provider=?/provider_subject=?), SchemaVaultStore.java:42 (SELECT ... FROM npdev_schema_snapshot
+      ORDER BY recorded_at_utc), TracingPackBridge.java:66 (SELECT display_name FROM
+      identity_v1_users WHERE id=?). Each names no tenant column in its own WHERE clause -- may be
+      genuinely tenant-independent (e.g. schema snapshots, or an id-scoped lookup where the id itself
+      is already globally unique), or may be a real cross-tenant read; needs a per-query judgment
+      call, not a blanket verdict.
+    - sql-string-building: 12 new, all in the OAuth/password auth surface (OAuthGoogleAuthService.java
+      x8, ChangePasswordController.java, PasswordResetController.java x2) plus ONE in today's own
+      neighbourhood: ProvenanceIndexEmitter.java:102 (a generator-emitted CREATE TABLE statement with
+      the table name spliced in). The auth-surface ones all splice a resolved table name
+      (tables.usersTable(), identityTables.usersTable(), tables.externalIdentityTable()) rather than
+      binding it as a parameter -- table names can't be bind parameters in standard SQL, so the real
+      question per-hit is whether that resolved name is ever model-author-reachable (injection) or
+      always a fixed, pack-versioned identifier (safe) -- exactly the judgment call the checker's own
+      message asks for, not assumable from the pattern alone.
+    - swallowed-security-exception: 3 new. GoogleIdentityProvider.java:107/110 (catch
+      InterruptedException/IOException -> Optional.empty(), on the auth path, not logged) and
+      RegistryCapabilityDispatcher.java:250 (catch RuntimeException -> true, non-auth path, not
+      logged) -- REG-39's own shape (an infrastructure fault silently becomes a security verdict the
+      caller can't distinguish from a real one).
+    - unbounded-caller-input: 7 new, all OAuthGoogleAuthService.java -- persisted values (username,
+      email, etc.) with no length bound/digest/truncation anywhere in the method; REG-36's shape.
+
+  Triage protocol per the checker's own instructions (unchanged, just restating so a future session
+  doesn't have to re-find it): each of the 25 needs one of (i) a genuine finding -> rate it and file
+  a REG-nn row, (ii) safe, with reason -> add its fingerprint to
+  scripts/quality/security-pattern-sweep-allowlist.json, or (iii) needs deep review -> hand to the
+  session that owns that surface. Re-run `python scripts/ai/run_digest.py -- pwsh -NoProfile -File
+  scripts/quality/run-ai-knowledge-gate.ps1` (or the sweep script directly, check [6/39]'s own
+  command) after triage to confirm the untriaged count drops to 0.
