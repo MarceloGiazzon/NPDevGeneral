@@ -214,10 +214,19 @@ public class OAuthGoogleController {
             String target,
             HttpServletRequest request
     ) {
+        // SameSite=Lax, not Strict (REG-233): Lax still blocks this cookie from riding along on
+        // cross-site subrequests and form posts -- CSRF protection is preserved -- but it permits
+        // the cookie on a top-level GET navigation that lands here via a cross-site redirect, which
+        // Strict does not. That distinction is required here specifically: the account-LINK leg of
+        // this very flow (handleLinkCallback, above) depends on JwtBearerAuthFilter reading this
+        // same npdev_jwt cookie back on the redirect FROM accounts.google.com to our own callback
+        // URL -- a top-level navigation browsers treat as cross-site-initiated even though the
+        // destination is same-origin. With Strict, the cookie set here on a prior login never rode
+        // along on that hop and the link leg failed with oauth_link_requires_session every time.
         ResponseCookie sessionCookie = ResponseCookie.from("npdev_jwt", ticket.token())
                 .httpOnly(true)
                 .secure(request.isSecure())
-                .sameSite("Strict")
+                .sameSite("Lax")
                 .path("/")
                 .maxAge(expirySeconds)
                 .build();

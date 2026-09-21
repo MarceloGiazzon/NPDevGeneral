@@ -6,8 +6,9 @@ title: >-
   "Continue with Google" on signup and login
 type: FEATURE
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-16
+closed: 2026-09-21
 source: >-
   NPDEV_MEGA_ROADMAP.md Session 3b -- "the largest genuinely-new platform capability on the list"
   (correction #6: zero OAuth anywhere in the tree). 3a (identity pack 1.1.0 profile fields) is
@@ -124,7 +125,68 @@ detail: |
   ALLOWED_TARGET_ORIGINS/RESOURCE_ORIGINS += localhost:8084 + accounts.google.com +
   consent.google.com; JOB_TIMEOUT_MS=600000; PLAYWRIGHT_CHANNEL=msedge.
 
-  Remaining for the done-when: the LINK leg's last click in a browser Google accepts (owner's
-  own), and (c) the REG-211 decision (jwt-mode apps need a bound credential concept for the
-  password half of the flows).
+  Remaining for the done-when (AT THE TIME): the LINK leg's last click in a browser Google accepts
+  (owner's own), and (c) the REG-211 decision (jwt-mode apps need a bound credential concept for
+  the password half of the flows) -- REG-211 closed separately (DONE) using the same
+  wmsoffice-browser app's bound `Usuario` credential concept, so it never blocked this app's own
+  proof.
+
+  REG-233 FILED+FIXED (2026-09-21): the owner's own-browser LINK attempt above ("last click Google
+  accepts") was finally run for real and failed every time with oauth_link_requires_session, despite
+  a valid password-login session. Root cause: LoginController and OAuthGoogleController both minted
+  the npdev_jwt session cookie with SameSite=Strict, which browsers drop on the top-level redirect
+  FROM accounts.google.com back to our own /callback -- a cross-site-initiated navigation even
+  though the destination is same-origin. JwtBearerAuthFilter's cookie-fallback read (the ONLY way
+  handleLinkCallback identifies the linking user) therefore always saw no cookie on that exact
+  request. Fixed by changing both sites to SameSite=Lax (CSRF protection unchanged; Lax still blocks
+  cross-site subrequests/form posts, it only additionally permits this top-level redirect case).
+  Filed as its own REG item rather than folded into this one because it is a genuine regression in
+  already-shipped session-cookie code, distinct from SEC-11's own "needs a human browser" blocker --
+  see ledger/items/REG-233.yml for the full root-cause writeup, the two new regression tests, and the
+  live re-verification against the real wmsoffice-browser app. This is very likely also why the
+  LINK leg's "last click" was never actually confirmed working end-to-end before now: this bug
+  reproduces 100% of the time in a real browser, so no owner attempt using a real browser could ever
+  have succeeded until this fix landed.
+
+  LINK LEG LIVE-PROVEN (2026-09-21, owner's own browser, post-REG-233 fix, real Google account
+  marcelo.giazzon@gmail.com, wmsoffice-browser on :8084): first attempt correctly returned
+  `/?error=oauth_link_email_mismatch` (the bootstrapped admin/dev account's on-file email was a
+  stale value from an earlier test run, mismatching the Google account actually used) -- confirmed
+  server-side via the raw request log line, proving the email-collision policy's negative path is
+  live-correct too. Admin's email corrected to match; owner repeated the exact same
+  authorize?purpose=link&next=%2F URL and landed cleanly on `/` (no error param). Confirmed
+  server-side: `identity_v1_external_identitys` now has one row -- provider=google,
+  provider_subject=109044715739084132456, user_id = the admin user's id, tenant_id=dev,
+  linked_at=2026-09-21 15:00:15-03 -- and the raw callback request log shows no `?error=` redirect
+  for that attempt. All three flows (fresh Google signup, Google login on a linked account,
+  authenticated Google link to an existing password account) are now live-proven end-to-end against
+  a real Google Cloud OAuth client in a real, non-automated browser. SEC-11's done-when is fully
+  met; closing DONE.
+
+  One process note for future sessions: this leg surfaced two more "trust but verify" misses worth
+  naming plainly -- (1) an assistant handed the owner a port (8100) and credential (admin/demo1234)
+  straight from this file's own stale prose without curling the live app first, and only the
+  owner's pushback caught it; (2) the owner twice reported landing on a URL "with no error", and
+  both times the raw app request log showed a `?error=...` query string had in fact been present
+  (oauth_link_requires_session pre-fix, then oauth_link_email_mismatch) -- the owner's paraphrase
+  dropped the query string both times. Cross-checking the server's own access log against what a
+  human reports they saw is now the standing discipline, not just checking the log when something
+  looks wrong.
+guard:
+  kind: manual
+  ref: >-
+    ledger/items/SEC-11.yml#LINK LEG LIVE-PROVEN (2026-09-21) ; unit coverage at
+    NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleControllerTest.java
+    and NPDevKernel/adapters/idp-google/src/test/java/**
+  asserts: >-
+    All three OAuth flows (signup, login, authenticated link) are unit-tested per layer (signup/
+    login/email-collision/link-email-mismatch paths in OAuthGoogleControllerTest; provider claim
+    resolution in idp-google's own suite) AND were live-proven end-to-end against a REAL Google
+    Cloud OAuth client in the owner's own real browser -- not just the fake-Google harness. The link
+    leg specifically is a one-time human action (Google's bot detection rejects every automated
+    browser for this exact step, confirmed repeatedly across this item's history), so it cannot be
+    re-run by a script; re-open this item if a future regression in LoginController,
+    OAuthGoogleController, or JwtBearerAuthFilter's cookie handling is suspected, and re-verify with
+    a fresh manual pass rather than trusting this note indefinitely.
+  provenRed: true
 verification: VERIFIED_LIVE

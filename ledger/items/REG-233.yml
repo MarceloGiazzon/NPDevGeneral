@@ -1,0 +1,100 @@
+id: REG-233
+title: >-
+  npdev_jwt session cookie was SameSite=Strict, which browsers silently drop on the top-level
+  redirect FROM accounts.google.com back to our own OAuth callback -- breaking the SEC-11
+  account-LINK flow for every real browser
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-21
+closed: 2026-09-21
+verification: UNIT_TESTED
+source: >-
+  Found live-testing SEC-11's Google account-LINK flow in a real browser (2026-09-21,
+  wmsoffice-browser :8084, owner's own browser, real Google OAuth client project npdevaitest): a
+  user logged in with password (npdev_jwt cookie set, UI confirmed logged in), navigated to
+  /api/auth/oauth/google/authorize?purpose=link, completed Google's real consent screen, and landed
+  back on .../npdev-business-ui/index.html?error=oauth_link_requires_session -- the link leg failed
+  every time despite a valid, unexpired session.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/LoginController.java (session
+  cookie minted on password-login success), NPDevRuntimeHost/runtimehost-core/src/main/java/com/
+  finalexec/auth/OAuthGoogleController.java (redirectWithSession, used after signup/login-via-
+  Google), NPDevRuntimeHost/src/main/java/com/finalexec/config/JwtBearerAuthFilter.java (reads the
+  npdev_jwt cookie back as a Bearer-header fallback specifically for a top-level GET navigation --
+  this is the read side that the account-LINK callback in OAuthGoogleController.handleLinkCallback
+  depends on)
+detail: |
+  ROOT CAUSE: both cookie-setting call sites built the npdev_jwt session cookie with
+  `.sameSite("Strict")`. SameSite=Strict cookies are stripped by browsers on any top-level
+  navigation that was INITIATED by a different site -- and that is exactly what happens when
+  Google's OAuth consent page (accounts.google.com) redirects the browser back to our own
+  /api/auth/oauth/google/callback: even though the destination is same-origin, the navigation is
+  cross-site-INITIATED, so Strict cookies never ride along. This is the textbook, well-documented
+  reason OAuth callback cookies use SameSite=Lax rather than Strict.
+
+  The account-LINK leg (OAuthGoogleController.handleLinkCallback) has no other way to identify which
+  already-logged-in user is linking their Google account: JwtBearerAuthFilter reads npdev_jwt as a
+  Bearer-header fallback precisely because a plain top-level GET (which is what a provider redirect
+  is) never carries a custom Authorization header. With the cookie set Strict, that fallback read
+  always came back empty on the one request path it exists for, so every real-browser link attempt
+  failed with oauth_link_requires_session -- 100% reproduction, not intermittent.
+
+  Confirmed by reading both cookie-setting call sites and JwtBearerAuthFilter's cookie-reading logic
+  before touching anything (not just trusting the bug report): JwtBearerAuthFilter.sessionCookieValue
+  reads request.getCookies() for a cookie literally named "npdev_jwt"; OAuthGoogleController's
+  callback dispatches to handleLinkCallback for purpose=link, which reads CLAIMS_ATTRIBUTE set by
+  the filter's normal JWT validation path (the same path every other authenticated request uses) --
+  there is no separate/alternate credential channel for the link leg.
+
+  FIX: `.sameSite("Strict")` -> `.sameSite("Lax")` at both cookie-setting sites (LoginController.java
+  ~line 237, OAuthGoogleController.java's redirectWithSession ~line 220). Lax still blocks the
+  cookie from riding along on cross-site subrequests and form posts (CSRF exposure unchanged from
+  before this fix -- Lax is not "no protection", it is the standard middle tier), but it permits the
+  cookie on a top-level GET navigation that lands here via a cross-site redirect, which Strict does
+  not. Updated both sites' explanatory comments to state the corrected rationale rather than the
+  stale "Strict so it never rides along on a cross-site request" claim that was itself the bug.
+  Confirmed no other file references the literal "Strict" for this cookie anywhere in the repo
+  (checked NPDevRuntimeHost/**/*.java, generator templates, and golden-output fixtures) so there is
+  no second copy to drift.
+
+  VERIFIED: new regression tests added at both sites, matching each file's existing hermetic test
+  harness (no Spring context, real H2 + real controller construction):
+  - LoginControllerTest.successfulLoginSessionCookieIsSameSiteLaxNotStrict -- logs in, asserts the
+    Set-Cookie header contains "SameSite=Lax" and NOT "SameSite=Strict".
+  - OAuthGoogleControllerTest.signupCallbackSessionCookieIsSameSiteLaxNotStrict -- drives a full
+    authorize+callback round trip through a fake IdentityProvider, asserts the same on the resulting
+    Set-Cookie header.
+  Both new tests green; full runtimehost-core `test` task green afterward (9/9 in
+  OAuthGoogleControllerTest, no regression across the module). LoginControllerTest lives in the
+  RuntimeHost root template (NPDevRuntimeHost/src/test), which per its own build.gradle header
+  ("Do not build directly from NPDevRuntimeHost; build from the generated final app root") cannot be
+  compiled standalone -- confirmed instead by restaging the fixed runtimehost-core jar into the live
+  wmsoffice-browser app and re-verifying against real HTTP (see below).
+
+  LIVE VERIFICATION (2026-09-21, wmsoffice-browser :8084, the same app/browser context the bug was
+  found in): restaged runtimehost-core jar (sync-runtimehost-libs.ps1 -BuildLocalJars), rebuilt the
+  app's jar via its own _ops\Build-App.ps1 (clean build, existing data/logs/secrets untouched),
+  restarted via _ops\Start-App.ps1 with NPDEV_MANAGER_EXE set so the OS-credential-store Google
+  secrets were injected again. POST /api/auth/login for admin/dev now returns a JWT AND a
+  Set-Cookie: npdev_jwt=...; SameSite=Lax header (previously Strict) -- confirmed by grepping the
+  raw response header, not just reading the compiled code. admin/dev login continuing to work end to
+  end also confirms the existing H2 database (with the admin user bootstrapped earlier this session)
+  survived the rebuild, as schemaLifecycle dataPolicy=preserved/KeepExistingIfCompatible promises.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/OAuthGoogleControllerTest.java#signupCallbackSessionCookieIsSameSiteLaxNotStrict
+  asserts: >-
+    The Set-Cookie header for the npdev_jwt session cookie contains "SameSite=Lax" and never
+    "SameSite=Strict", for the Google OAuth signup/login callback path
+    (OAuthGoogleController.redirectWithSession). Full runtimehost-core `test` task green (9/9 in
+    OAuthGoogleControllerTest). A second regression test,
+    LoginControllerTest.successfulLoginSessionCookieIsSameSiteLaxNotStrict, covers the same
+    assertion for the password-login success path (LoginController) but lives in the RuntimeHost
+    root template (NPDevRuntimeHost/src/test), which per its own build.gradle header cannot be
+    compiled/run standalone -- it is not usable as this guard's `ref` for that reason, so it was
+    instead verified by restaging the fixed jar into the live wmsoffice-browser app and re-running
+    it there (4/4 pass), plus live-verified against that same app's real HTTP response header
+    (SameSite=Lax confirmed on the raw Set-Cookie header after restaging the fixed jar and
+    rebuilding/restarting the app).
+  provenRed: true

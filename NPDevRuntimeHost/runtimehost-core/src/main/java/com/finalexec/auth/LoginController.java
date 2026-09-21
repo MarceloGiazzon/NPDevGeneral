@@ -227,14 +227,20 @@ public class LoginController {
             // which this shared controller cannot special-case) had no way to ever authenticate a
             // top-level GET, even though the JSON token above already made fetch()-driven calls
             // work fine. HttpOnly so client JS/XSS can't read it (the JSON token above still covers
-            // that use case); SameSite=Strict so it never rides along on a cross-site request,
-            // keeping this additive rather than a new CSRF surface; Secure mirrors the inbound
+            // that use case). SameSite=Lax, not Strict (REG-233): Lax still blocks the cookie from
+            // riding along on cross-site subrequests and form posts -- CSRF protection is preserved
+            // -- but it permits the cookie on a top-level GET navigation that lands here via a
+            // cross-site redirect, which Strict does not. That distinction matters because the
+            // Google OAuth account-LINK callback (OAuthGoogleController) needs this exact cookie
+            // to survive a top-level redirect FROM accounts.google.com back to our own callback URL;
+            // browsers treat that as cross-site-initiated even though the destination is same-origin,
+            // and Strict silently dropped the cookie on that hop. Secure mirrors the inbound
             // request's own scheme so local http dev still works while a TLS-terminated deployment
             // gets the flag automatically.
             ResponseCookie sessionCookie = ResponseCookie.from("npdev_jwt", token)
                     .httpOnly(true)
                     .secure(httpRequest != null && httpRequest.isSecure())
-                    .sameSite("Strict")
+                    .sameSite("Lax")
                     .path("/")
                     .maxAge(expirySeconds)
                     .build();
