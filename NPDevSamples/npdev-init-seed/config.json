@@ -2,7 +2,7 @@
   "$schema": "..\\..\\NPDevContract\\schemas\\config.schema.json",
   "configVersion": "1.0",
   "scenario": {
-    "name": "canonical-clinic-demo",
+    "name": "npdev-init-seed-demo",
     "description": "Frozen canonical demo scenario for NPDev projection, generation, and baseline documentation.",
     "outputRoot": "..\\Output"
   },
@@ -32,12 +32,12 @@
     "provider": "docker-postgres",
     "host": "localhost",
     "port": 5432,
-    "database": "canonical_clinic_demo",
+    "database": "npdev_init_seed",
     "username": "finalexec",
     "password": "finalexec",
     "adminDatabase": "postgres",
     "resetMode": "reset",
-    "containerName": "npdev-canonical-clinic-demo"
+    "containerName": "npdev-init-seed-demo"
   },
   "runtime": {
     "springProfile": "dev,step0,trial",

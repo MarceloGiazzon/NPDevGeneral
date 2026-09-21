@@ -4,31 +4,31 @@
   "version": "0.1.0",
   "concepts": [
     {
-      "name": "Patient",
-      "ui": { "label": "Patient" },
+      "name": "Customer",
+      "ui": { "label": "Customer" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
-        { "name": "mrn", "type": "string", "required": true, "ui": { "label": "Medical record number" } },
+        { "name": "customerRef", "type": "string", "required": true, "ui": { "label": "Customer reference number" } },
         { "name": "firstName", "type": "string", "required": true, "ui": { "label": "First name" } },
         { "name": "lastName", "type": "string", "required": true, "ui": { "label": "Last name" } }
       ],
       "invariants": [
-        { "name": "PatientMrnUnique", "type": "unique", "fields": ["mrn"] }
+        { "name": "CustomerRefUnique", "type": "unique", "fields": ["customerRef"] }
       ]
     },
     {
-      "name": "Appointment",
-      "ui": { "label": "Appointment" },
+      "name": "Order",
+      "ui": { "label": "Order" },
       "fields": [
         { "name": "id", "type": "uuid", "id": true, "required": true },
         {
-          "name": "patientId",
+          "name": "customerId",
           "type": "reference",
           "required": true,
-          "ui": { "label": "Patient" },
-          "reference": { "target": "Patient", "displayField": "lastName" }
+          "ui": { "label": "Customer" },
+          "reference": { "target": "Customer", "displayField": "lastName" }
         },
-        { "name": "scheduledAt", "type": "datetime", "required": true, "ui": { "label": "Scheduled at" } }
+        { "name": "orderedAt", "type": "datetime", "required": true, "ui": { "label": "Ordered at" } }
       ]
     }
   ]

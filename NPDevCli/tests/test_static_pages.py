@@ -83,16 +83,16 @@ class StaticPagesFixtureTest(unittest.TestCase):
         self.assertEqual("myapp", doc["appId"])
         concepts = doc["sections"]["Model"]["concepts"]
         names = [c["name"] for c in concepts]
-        self.assertIn("Patient", names)
-        patient = next(c for c in concepts if c["name"] == "Patient")
+        self.assertIn("Customer", names)
+        customer = next(c for c in concepts if c["name"] == "Customer")
         # The exact case a naive PS-parity port could get wrong (STOR-... aside, this is the one
         # this module's own docstring calls out as a favorable divergence from PowerShell's
         # ConvertFrom-Json/ConvertTo-Json single-element-array-collapse quirk): a length-1
         # `invariants` array must stay an array, and `fields` inside it must stay an array too.
-        self.assertIsInstance(patient["invariants"], list)
-        self.assertEqual(1, len(patient["invariants"]))
-        self.assertIsInstance(patient["invariants"][0]["fields"], list)
-        self.assertEqual(["mrn"], patient["invariants"][0]["fields"])
+        self.assertIsInstance(customer["invariants"], list)
+        self.assertEqual(1, len(customer["invariants"]))
+        self.assertIsInstance(customer["invariants"][0]["fields"], list)
+        self.assertEqual(["customerRef"], customer["invariants"][0]["fields"])
 
         self.assertTrue((self.static_dir / "app-files.json").is_file())
         files_doc = json.loads((self.static_dir / "app-files.json").read_text(encoding="utf-8"))
@@ -105,7 +105,7 @@ class StaticPagesFixtureTest(unittest.TestCase):
         doc = json.loads((self.static_dir / "app-tree-v2.json").read_text(encoding="utf-8"))
         self.assertEqual("npdev-app-tree.v3", doc["schemaVersion"])
         concepts = doc["sections"]["Objects"]["Concepts"]["concepts"]
-        self.assertTrue(any(c["name"] == "Patient" for c in concepts))
+        self.assertTrue(any(c["name"] == "Customer" for c in concepts))
         # config.json's own content lands under Configs > Project General > App Config -- this is
         # the ONE regrouping app-tree-v2 does that app-tree (v1) does not.
         self.assertIn("App Config", doc["sections"]["Configs"]["Project General"])

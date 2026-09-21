@@ -1956,9 +1956,10 @@ _README_NO_GIT_SENTENCE = ("git is not installed on this machine, so this direct
 
 def run_init(args: argparse.Namespace) -> int:
     """I3: scaffold a new app directory from a small, corpus-registered seed (NPDevSamples/
-    npdev-init-seed -- 2 concepts + 1 bond, derived from canonical-demo's own Patient/Appointment
-    rather than a hand-written second fixture, so it stays covered by the same DSL-coverage gate
-    canonical-demo is) and give it a git history from the first commit. The model IS the app --
+    npdev-init-seed -- 2 concepts + 1 bond, structurally derived from canonical-demo's own
+    Patient/Appointment shape but renamed to a neutral Customer/Order domain (EXT-4) rather than
+    a hand-written second fixture, so it stays covered by the same DSL-coverage gate canonical-demo
+    is) and give it a git history from the first commit. The model IS the app --
     losing model.json loses the application, so a scaffold with no history is a trap, not a
     convenience (see docs/YOUR_FIRST_APP.md's own step 4 for the same rule stated for a human)."""
     root = repo_root()
@@ -10624,7 +10625,7 @@ def _add_load_exemplar_member(root: Path, kind: str, from_spec: str, new_name: s
 def _add_default_stub(kind: str, name: str, concept: str | None) -> dict:
     """No --from: a minimal, self-contained, schema-AND-semantically-valid member. Every shape
     here is lifted verbatim in structure from a real, currently-passing corpus fixture (`concept`
-    from NPDevSamples/npdev-init-seed/model.json's own Patient; `flow`/`procedure` step shapes from
+    from NPDevSamples/npdev-init-seed/model.json's own Customer; `flow`/`procedure` step shapes from
     NPDevSamples/npdev-canary/Input/model.json's CreateCanaryTask/SaveCanaryTaskProcedure; `panel`
     from dsl-conformance-max's WidgetOrderReviewPanel, which proves a concept-bound dataSource
     needs neither `layout` nor `fieldBindings`) rather than hand-derived from schema alone, so a
