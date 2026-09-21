@@ -2410,7 +2410,13 @@ CapabilityCall call = new CapabilityCall(
         }
         Map<String, Object> finalContextState = Map.copyOf(contextState);
 
-        if (timeoutMs <= 0) {
+        // REG-231: a target that itself doesn't need bounding (see
+        // CapabilityDispatcher#requiresBoundedAsyncDispatch) takes the SAME synchronous path as
+        // timeoutMs<=0 below -- deliberately reusing it rather than adding a parallel branch, since
+        // R2.6's own comment on capabilityInvocationPropagatingCurrentFlow already establishes that
+        // running on the caller's thread with no hop at all is the one case that never needs
+        // currentFlowContext propagation in the first place (there's no thread boundary to cross).
+        if (timeoutMs <= 0 || !capabilityDispatcher.requiresBoundedAsyncDispatch(call)) {
             try {
                 return capabilityDispatcher.invoke(call, finalContextState);
             } catch (RuntimeException runtimeException) {

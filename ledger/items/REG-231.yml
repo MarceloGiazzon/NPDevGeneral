@@ -6,8 +6,10 @@ title: >-
   block on each other -- reproduced deterministically, not intermittent.
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-20
+closed: 2026-09-21
+verification: VERIFIED_LIVE
 source: >-
   First observed as an incidental finding during WMS-9's own session-10/11 verification passes
   (recorded in WMS-9.yml's "Also found, live" note): a raw PUT on Recebimento/Expedicao reliably
@@ -140,6 +142,75 @@ detail: |
   All three are genuine platform-wide dispatch/architecture decisions, not a one-file patch --
   the owner explicitly asked for this to be filed thoroughly and fixed as its own dedicated,
   carefully-tested piece of work rather than rushed here.
+
+  FIXED (2026-09-21), owner-approved shapes (a)+(b) above, extended to a SECOND layer live
+  verification caught that the first pass missed:
+
+  RuntimeHost layer (the fix shapes this item already scoped): (a) the persistence adapters now
+  route through a transaction-aware DataSource (NpdevPluginConfig.java) so a call that DOES stay on
+  the calling thread correctly joins the ambient Spring transaction instead of opening an
+  independent one; (b) `SandboxedCapabilityAdapter` now skips its cross-thread dispatch for trusted,
+  runtime-ref-direct adapters (WmsOffice's `persistence:repository` binding among them),
+  running them synchronously on the calling thread instead -- reserving
+  `TimeBoundedPluginExecutionEngine`'s pooled-worker-thread dispatch for genuinely untrusted
+  `plugin:java-source` capabilities, resolving option (b)'s own open question about SEC-6's
+  `PluginTimeoutHint` intent by scoping the exemption narrowly rather than removing the sandbox
+  backstop wholesale.
+
+  Kernel layer (found DURING live verification of the RuntimeHost-only fix, not anticipated by this
+  item's original three fix shapes): `KernelRunner` has its OWN independent thread-hop
+  (`CAPABILITY_EXECUTOR`, added for unrelated RUN-4/R2.6 reasons) sitting in front of the
+  RuntimeHost-layer dispatch -- fixing only the RuntimeHost layer left this second, independent
+  thread-hop still splitting the transaction. Extended the fix into the kernel's own
+  `CapabilityAdapter`/`CapabilityDispatcher` port interfaces with a new `requiresBoundedAsyncDispatch`
+  signal, implemented by `RegistryCapabilityDispatcher`, so both layers skip their own hop together
+  for the same trusted-adapter case. Tests added at all three layers:
+  `TimeBoundedPluginExecutionEngineTest` (+2), `RegistryCapabilityDispatcherTest` (+4),
+  `KernelRunnerCapabilityPolicyTest` (+2).
+
+  LIVE VERIFICATION, TWO ROUNDS (both against a freshly rebuilt wmsoffice-browser, :8100, real ADMIN
+  JWT, wiped H2 database -- not simulated):
+
+  Round 1 (RuntimeHost-only fix): reproduced the deadlock 3/3 times, identical signature to this
+  item's original repro -- proved the RuntimeHost-layer fix alone was INSUFFICIENT and pinpointed
+  the missing KernelRunner-level hop, triggering the kernel-interface extension above.
+
+  Round 2 (complete two-layer fix, 2026-09-21): created a fresh Recebimento
+  (`7d18fa7a-10e6-4f00-b45d-23a03b40c1f5`) then fired three consecutive
+  `PUT /api/concepts/recebimentos/{id}` with only `observacao` changed -- the exact repro shape
+  below. All three returned **HTTP 200** (was 500). The write durably persisted (not rolled back):
+  a follow-up GET after PUT #3 showed `"observacao":"REG-231 POST-FIX live proof PUT #3"`. Flow log
+  confirms the mechanism directly -- `KernelRunner`: `{"flowName":"ConfirmarRecebimento",...,
+  "outcome":"success","status":"OK","durationMs":127}`; `TimeBoundedPluginExecutionEngine`:
+  `phase=finish status=SUCCESS ... durationMs=7` (then 1ms, 1ms on retries #2/#3) -- same
+  `SandboxedCapabilityAdapter` dispatch path as before the fix, now fast and successful instead of
+  hitting the 1000ms sandbox timeout. Grepped the entire post-fix log for `is locked by tx`,
+  `Sandboxed plugin execution timed out`, `Timeout trying to lock table`: zero matches. The
+  PRE-rebuild log (`app-20260921T011325Z.log`) still shows all three failures under the same
+  correlation pattern, confirming the before/after contrast is real and not an artifact of a
+  different repro shape. Confirmed the rebuilt jars genuinely contained the fix by mtime ordering
+  (fix source files edited before `runtimehost-core-0.1.0.jar`/`kernel-0.1.0.jar`/
+  `FinalExec-0.1.0.jar` were rebuilt, and the tested instance, PID 35060, booted after that rebuild)
+  rather than trusting the build log alone. Evidence:
+  `D:\WorkSpace\NPDev\Build\generated-finalapps\wmsoffice\App\logs\app-20260921T021314Z.log`,
+  lines 2440-2602, correlationId `ef99d8ea-255a-4c98-94b9-ff3439c799c5`. The verification instance
+  (PID 35060, :8100) was stopped afterward via `App/_ops/Stop-App.ps1`; confirmed no WmsOffice
+  instance is running post-verification.
+
+  Gates: `run-kernel-quality-gate.ps1` run clean post-fix (131s, exit 0, all tests including
+  `DefaultConceptGatewayDegradedConcurrencyTest` green) -- the one earlier failure of that same test
+  in an interim run was confirmed unrelated (pre-existing RUN-31 flake, a file this fix's diff never
+  touched) by an isolated re-run and by this later full clean pass. `run-runtimehost-gate.ps1` passed
+  twice (once against the incomplete RuntimeHost-only fix, once against the complete two-layer fix).
+
+  INCIDENTAL, NON-REGRESSION FINDING (not part of this fix, not filed as blocking): round 2's
+  verification surfaced a WARN (`GeneratedCrudRuntimeSupport : Create orchestration action failed`,
+  `org.h2.jdbc.JdbcSQLDataException` on `historico_movimentacaos.movimento_id NOT NULL`) 3x
+  post-fix, 0x pre-fix -- not a regression, but a PRE-EXISTING null-handling gap in a downstream
+  "record movement history" side-effect that never previously ran, because the deadlock always
+  killed the request before reaching it. Fires because the verification's own test payload left
+  `movimentoId` null; caught and logged, does not affect the PUT's 200. Worth its own low-severity
+  item if pursued.
 guard:
   kind: none
   ref: >-
@@ -161,3 +232,10 @@ guard:
     captured verbatim in this item's own detail section, read directly from App/logs/app.log, not
     paraphrased from memory.
   provenRed: true
+  provenGreen: >-
+    2026-09-21: the identical repro (create Recebimento, PUT observacao 3x) run against a freshly
+    rebuilt wmsoffice-browser containing the complete two-layer fix returned HTTP 200 all three
+    times, with the write durably persisted and zero deadlock-signature matches anywhere in the
+    post-fix log. See this item's own detail section, "LIVE VERIFICATION, TWO ROUNDS" / Round 2, for
+    the full evidence trail (correlation id, log path/line range, mtime-based proof the tested jars
+    actually contained the fix).

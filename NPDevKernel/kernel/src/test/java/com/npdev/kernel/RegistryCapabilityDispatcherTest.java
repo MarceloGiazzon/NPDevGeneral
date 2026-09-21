@@ -1,5 +1,6 @@
 package com.npdev.kernel;
 
+import com.npdev.kernel.ports.CapabilityAdapter;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -134,6 +135,94 @@ class RegistryCapabilityDispatcherTest {
         assertEquals("CAPABILITY_INVOCATION_FAILED", result.error().code());
         assertEquals(CapabilityErrorKind.PERMANENT, result.error().kind());
         assertEquals("boom", result.error().message());
+    }
+
+    /**
+     * REG-231: requiresBoundedAsyncDispatch must default to TRUE for anything that doesn't
+     * explicitly opt out, at every level -- a reflective-only adapter (no CapabilityAdapter at
+     * all), a CapabilityAdapter that doesn't override the new default method, and a missing
+     * binding all keep the caller's existing bounded-dispatch behavior unchanged.
+     */
+    @Test
+    void requiresBoundedAsyncDispatchIsTrueForAReflectiveOnlyAdapter() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        registry.register("persistence", "PersistenceCapability", "inmemory", new PersistenceAdapterStub("inmemory"));
+        RegistryCapabilityDispatcher dispatcher = new RegistryCapabilityDispatcher(registry);
+
+        assertTrue(dispatcher.requiresBoundedAsyncDispatch(
+                new CapabilityCall("persistence", "PersistenceCapability", "inmemory", "save", Map.of())));
+    }
+
+    @Test
+    void requiresBoundedAsyncDispatchIsTrueForACapabilityAdapterThatDoesNotOverrideIt() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        registry.register("notification", "NotificationCapability", "inproc", new DefaultBoundedAdapterStub());
+        RegistryCapabilityDispatcher dispatcher = new RegistryCapabilityDispatcher(registry);
+
+        assertTrue(dispatcher.requiresBoundedAsyncDispatch(
+                new CapabilityCall("notification", "NotificationCapability", "inproc", "send", Map.of())));
+    }
+
+    @Test
+    void requiresBoundedAsyncDispatchIsTrueWhenTheBindingIsMissing() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        RegistryCapabilityDispatcher dispatcher = new RegistryCapabilityDispatcher(registry);
+
+        assertTrue(dispatcher.requiresBoundedAsyncDispatch(
+                new CapabilityCall("persistence", "PersistenceCapability", "missing", "save", Map.of())));
+    }
+
+    /**
+     * REG-231: the one case that must return FALSE -- a CapabilityAdapter that explicitly opts
+     * out (the shape SandboxedCapabilityAdapter uses for a "runtime-ref-direct" realization).
+     */
+    @Test
+    void requiresBoundedAsyncDispatchDefersToAnAdapterThatOptsOut() {
+        CapabilityRegistry registry = new CapabilityRegistry();
+        registry.register("persistence", "PersistenceCapability", "repository", new UnboundedAdapterStub());
+        RegistryCapabilityDispatcher dispatcher = new RegistryCapabilityDispatcher(registry);
+
+        assertFalse(dispatcher.requiresBoundedAsyncDispatch(
+                new CapabilityCall("persistence", "PersistenceCapability", "repository", "save", Map.of())));
+    }
+
+    private static final class DefaultBoundedAdapterStub implements CapabilityAdapter {
+        @Override
+        public String adapterId() {
+            return "inproc";
+        }
+
+        @Override
+        public String capability() {
+            return "notification";
+        }
+
+        @Override
+        public CapabilityResult invoke(CapabilityCall call, Map<String, Object> contextState) {
+            return CapabilityResult.success("sent");
+        }
+    }
+
+    private static final class UnboundedAdapterStub implements CapabilityAdapter {
+        @Override
+        public String adapterId() {
+            return "repository";
+        }
+
+        @Override
+        public String capability() {
+            return "persistence";
+        }
+
+        @Override
+        public CapabilityResult invoke(CapabilityCall call, Map<String, Object> contextState) {
+            return CapabilityResult.success("saved");
+        }
+
+        @Override
+        public boolean requiresBoundedAsyncDispatch() {
+            return false;
+        }
     }
 
     private static final class PersistenceAdapterStub {

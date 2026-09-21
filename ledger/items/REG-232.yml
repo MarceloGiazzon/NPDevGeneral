@@ -1,0 +1,28 @@
+id: REG-232
+title: >-
+  GeneratedCrudRuntimeSupport's "record movement history" orchestration action crashes with a raw
+  H2 NOT NULL exception when movimentoId is left null, instead of a clean validation error
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-09-21
+source: >-
+  Surfaced incidentally during REG-231's round-2 live verification (see REG-231.yml's "INCIDENTAL,
+  NON-REGRESSION FINDING" note) -- REG-231's fix let a PUT request reach further than it ever had
+  before (past the deadlock that used to kill it first), exposing a downstream orchestration
+  side-effect that had never actually run against real traffic. Not a REG-231 regression: this gap
+  existed before REG-231's fix, just unreachable.
+surface: >-
+  NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java (Create orchestration
+  action for historico_movimentacaos), the generated Recebimento/Expedicao "record movement history"
+  side-effect that writes historico_movimentacaos.movimento_id
+detail: |
+  Observed live (2026-09-21, wmsoffice-browser :8100): a PUT on Recebimento whose test payload left
+  movimentoId null caused GeneratedCrudRuntimeSupport's "Create orchestration action failed" WARN,
+  root cause org.h2.jdbc.JdbcSQLDataException on historico_movimentacaos.movimento_id NOT NULL.
+  Caught and logged by the orchestration layer (does not fail the enclosing request), so this is a
+  noisy-log / unclear-diagnostic issue, not a correctness or availability bug. Not root-caused
+  further this session (found in passing, not investigated) -- whoever picks this up should decide
+  whether movimentoId ought to be nullable for this history record, or whether the orchestration
+  step should validate and produce a clean business-level error instead of letting a raw JDBC
+  NOT NULL exception surface as a WARN.

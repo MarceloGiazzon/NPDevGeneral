@@ -94,6 +94,43 @@ public final class TimeBoundedPluginExecutionEngine implements AutoCloseable {
 
         long startedAt = System.nanoTime();
         logStart(contribution, realizationSummary, call, effectiveTimeoutMs);
+
+        // REG-231: an adapter realized via RuntimeRefArtifactRealizationProvider ("runtime-ref-direct")
+        // is invoked synchronously, on the CALLING thread, instead of being submitted to the worker
+        // pool below -- so that a persistence write can actually join whatever Spring-managed
+        // transaction the caller is already inside (DataSourceUtils / TransactionAwareDataSourceProxy
+        // bind the ambient transaction by ThreadLocal, invisible from a pooled worker thread -- this
+        // was the exact mechanism of REG-231's self-deadlock: a flow's own updateConcept step raced
+        // the calling request's still-open write for the same row, on two different connections/
+        // threads/transactions). "runtime-ref-direct" is deliberately an ALLOWLIST, not "not
+        // javaSource": RuntimeRefArtifactRealizationProvider.supports() is exactly
+        // "!request.packageBacked()" -- it fires ONLY for adapters wired directly into RuntimeHost's
+        // own Spring config (e.g. NpdevPluginConfig's persistence/notification/mail/webhook beans),
+        // never for anything resolved from a package/artifact. Package-backed realizations --
+        // "artifact-local-java-source" AND ALSO "classpath-artifact"/"filesystem-artifact" bundles --
+        // stay on the pool+timeout path below: a package passing RuntimePluginPackageTrustEvaluator's
+        // admission gate is a provenance check made once at load time, not a promise that its runtime
+        // code is well-behaved, so it still gets the same hostile-in-process-code containment SEC-6
+        // built this engine for (docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md -- the ONLY
+        // reason SandboxedCapabilityAdapter was ever named "Sandboxed"). The policy check above
+        // already ran unconditionally regardless of this branch, so skipping the pool submission for
+        // the allowlisted case changes threading only, never policy enforcement or dispatch shape.
+        if ("runtime-ref-direct".equals(realizationSummary.artifactRealizationStrategy())) {
+            CapabilityResult syncResult = invokeHandler(call, contextState, handler);
+            SandboxedPluginExecutionResult syncExecutionResult = fromCapabilityResult(
+                    contribution,
+                    realizationSummary,
+                    call,
+                    syncResult,
+                    elapsedMs(startedAt),
+                    SandboxedPluginExecutionResult.Status.SUCCESS,
+                    effectiveTimeoutMs
+            );
+            record(syncExecutionResult);
+            logFinish(syncExecutionResult);
+            return syncExecutionResult;
+        }
+
         // REG-4 (2026-07-21): a stray interrupt already pending on the CALLING thread -- e.g. left by
         // an unrelated prior task on the same worker thread under a parallel test/execution run --
         // makes future.get(timeout) throw InterruptedException IMMEDIATELY, before the timeout can
