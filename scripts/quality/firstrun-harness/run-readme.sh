@@ -1189,7 +1189,7 @@ section "7. npdev init -> run app with NO flags (I3, CWD inference)"
 # proves I3's OTHER half: `npdev run app`, given no --model/--config/--output at all, must infer
 # them from the current directory -- the exact promise `npdev init my-app && cd my-app && npdev
 # run app` makes. Uses the DEFAULT seed (no --from), unlike your-first-app which overwrites it --
-# so this is also the one place the harness ever boots the seed's own Patient/Appointment shape.
+# so this is also the one place the harness ever boots the seed's own Customer/Order shape.
 INIT_DIR=/work/init-check-app
 INIT_OUT=/work/init-check-app-app
 

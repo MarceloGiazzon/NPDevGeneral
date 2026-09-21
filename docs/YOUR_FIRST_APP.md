@@ -32,8 +32,8 @@ change.
 
 ## 2. Make it yours
 
-Open `../my-library/model.json`. Replace its `concepts` array — the scaffold's own Patient/
-Appointment example — with two of your own:
+Open `../my-library/model.json`. Replace its `concepts` array — the scaffold's own Customer/
+Order example — with two of your own:
 
 ```json
 "concepts": [
@@ -64,7 +64,7 @@ Appointment example — with two of your own:
 
 **The scaffold's seed is deliberately just concepts — nothing that references them from elsewhere.**
 Replacing the whole array is safe: there is no `domainTypes`/`capabilities`/`flows` block anywhere
-in the scaffold that points back at Patient or Appointment and would break when they disappear.
+in the scaffold that points back at Customer or Order and would break when they disappear.
 
 ## 3. Check it before you build it
 
