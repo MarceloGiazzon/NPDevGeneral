@@ -51,4 +51,17 @@ public final class SandboxedCapabilityAdapter implements CapabilityAdapter {
                 handler
         ).toCapabilityResult();
     }
+
+    /**
+     * REG-231: mirrors exactly the condition TimeBoundedPluginExecutionEngine.execute() uses to
+     * decide whether IT thread-hops -- "runtime-ref-direct" is the one realization that is never
+     * package-backed (RuntimeRefArtifactRealizationProvider.supports() is "!packageBacked()"), so a
+     * caller of THIS adapter (e.g. KernelRunner's own bounded-async wrapper) can skip its own
+     * redundant thread-hop too, letting the whole call -- including whatever ambient transaction the
+     * caller's thread is running under -- stay on the caller's thread end to end.
+     */
+    @Override
+    public boolean requiresBoundedAsyncDispatch() {
+        return !"runtime-ref-direct".equals(realizationSummary.artifactRealizationStrategy());
+    }
 }

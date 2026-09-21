@@ -234,6 +234,27 @@ public final class RegistryCapabilityDispatcher implements CapabilityDispatcher 
         }
     }
 
+    @Override
+    public boolean requiresBoundedAsyncDispatch(CapabilityCall call) {
+        if (call == null) {
+            return true;
+        }
+        String adapterId = call.adapterId();
+        if (adapterId == null || adapterId.isBlank()) {
+            return true;
+        }
+        try {
+            Object adapter = registry.resolve(call.capability(), adapterId, Object.class);
+            return !(adapter instanceof CapabilityAdapter capabilityAdapter)
+                    || capabilityAdapter.requiresBoundedAsyncDispatch();
+        } catch (RuntimeException exception) {
+            // Resolution failing here is not this method's job to report -- invoke() surfaces it
+            // properly as CAPABILITY_BINDING_MISSING/CAPABILITY_DISPATCH_ERROR. Fail safe: keep the
+            // caller's bound so a broken/unknown binding still gets whatever timeout it configured.
+            return true;
+        }
+    }
+
     private void validateCallContract(CapabilityCall call) {
         registry.findContract(call.capability(), call.capabilityType())
                 .ifPresent(contract -> contract.resolveOperation(call.operation()));

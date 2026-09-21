@@ -55,6 +55,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
+import org.springframework.jdbc.datasource.TransactionAwareDataSourceProxy;
 
 import javax.sql.DataSource;
 import java.time.Duration;
@@ -396,7 +397,14 @@ public class NpdevPluginConfig {
                     if (dataSource == null) {
                         throw new IllegalStateException("DataSource is required for postgres persistence adapter");
                     }
-                    return new PostgresPersistenceCapabilityAdapter(dataSource, modelHolder.get());
+                    // REG-231: a transaction-aware proxy so this adapter's own dataSource.getConnection()
+                    // joins the ambient Spring transaction when one is active on the calling thread (same
+                    // mechanism JdbcBusinessConceptStore's DataSourceUtils.getConnection uses) -- applied
+                    // here, not inside the adapter itself, because persistence-postgres is a deliberately
+                    // Spring-free module (see its build.gradle). Only takes effect once the capability
+                    // dispatch that calls this adapter also runs synchronously on that same thread.
+                    return new PostgresPersistenceCapabilityAdapter(
+                            new TransactionAwareDataSourceProxy(dataSource), modelHolder.get());
                 }
         );
     }

@@ -9,6 +9,7 @@ import com.npdev.kernel.capability.IdempotencyRecord;
 import com.npdev.kernel.errors.ErrorKind;
 import com.npdev.kernel.errors.FailureCodes;
 import com.npdev.kernel.ports.BulkheadStore;
+import com.npdev.kernel.ports.CapabilityDispatcher;
 import com.npdev.kernel.ports.CircuitBreakerStateStore;
 import com.npdev.kernel.ports.CorrelationOwnershipStore;
 import com.npdev.kernel.ports.FlowInstanceStore;
@@ -30,6 +31,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class KernelRunnerCapabilityPolicyTest {
@@ -628,6 +630,55 @@ class KernelRunnerCapabilityPolicyTest {
         assertFalse(workerThreadName.get().equals(callerThreadName));
     }
 
+    // ------------------------------------------------------------------------
+    // REG-231 (ledger/items/REG-231.yml): a dispatcher that says it doesn't need bounding lets
+    // KernelRunner skip its own thread-hop entirely, running invoke() on the caller's own thread.
+    // ------------------------------------------------------------------------
+
+    @Test
+    void capabilityRunsOnTheCallingThreadWhenTheDispatcherOptsOutOfBoundedAsyncDispatch() {
+        Thread callerThread = Thread.currentThread();
+        OptedOutCapabilityDispatcher dispatcher = new OptedOutCapabilityDispatcher();
+        // CapabilityExecutionPolicy.defaults() resolves to the kernel-wide 600_000ms backstop (see
+        // undeclaredCapabilityTimeoutResolvesToTheKernelBackstopRatherThanNoDeadline above), so
+        // timeoutMs > 0 here -- a same-thread result therefore proves the NEW
+        // requiresBoundedAsyncDispatch() branch skipped the hop, not the pre-existing timeoutMs<=0
+        // synchronous path.
+        KernelRunner runner = runnerWithCapabilityStep(CapabilityExecutionPolicy.defaults(), dispatcher);
+
+        ExecutionResult result = runner.execute("CreateUser", Map.of("email", "a@b.com"));
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertEquals(callerThread, dispatcher.invokedOnThread.get(),
+                "a dispatcher whose requiresBoundedAsyncDispatch(call) returns false must run invoke() "
+                        + "on the caller's own thread, with no CAPABILITY_EXECUTOR hop");
+    }
+
+    /**
+     * Companion/regression test: a dispatcher that does NOT override
+     * {@code requiresBoundedAsyncDispatch(call)} -- relying on the port's own default of
+     * {@code true} -- must keep the pre-REG-231 behavior exactly unchanged: still hopping onto the
+     * CAPABILITY_EXECUTOR worker pool, never the caller's thread.
+     */
+    @Test
+    void capabilityStillHopsToTheWorkerThreadWhenTheDispatcherDoesNotOptOut() {
+        Thread callerThread = Thread.currentThread();
+        DefaultBoundedCapabilityDispatcher dispatcher = new DefaultBoundedCapabilityDispatcher();
+        KernelRunner runner = runnerWithCapabilityStep(CapabilityExecutionPolicy.defaults(), dispatcher);
+
+        ExecutionResult result = runner.execute("CreateUser", Map.of("email", "a@b.com"));
+
+        assertEquals(ExecutionStatus.OK, result.getStatus());
+        assertNotNull(dispatcher.invokedOnThread.get());
+        assertNotEquals(callerThread, dispatcher.invokedOnThread.get(),
+                "a dispatcher that keeps the default requiresBoundedAsyncDispatch()==true must still be "
+                        + "dispatched via the CAPABILITY_EXECUTOR thread-hop, unchanged");
+        assertTrue(
+                dispatcher.invokedOnThread.get().getName().startsWith("npdev-capability-"),
+                "expected the dedicated npdev-capability worker pool, ran on "
+                        + dispatcher.invokedOnThread.get().getName());
+    }
+
     @Test
     void theFlowContextGuardStillFiresInsideACapabilityRunOnTheWorkerThread() {
         // The concrete reason the timeout branch needs a context-propagating executor rather than
@@ -759,6 +810,37 @@ class KernelRunnerCapabilityPolicyTest {
                 null,
                 metricsSink
         );
+    }
+
+    /** REG-231: opts out of KernelRunner's bounded-async thread-hop; captures the thread invoke() ran on. */
+    private static final class OptedOutCapabilityDispatcher implements CapabilityDispatcher {
+        final AtomicReference<Thread> invokedOnThread = new AtomicReference<>();
+
+        @Override
+        public CapabilityResult invoke(CapabilityCall call, Map<String, Object> state) {
+            invokedOnThread.set(Thread.currentThread());
+            return CapabilityResult.success(Map.of("id", "u-1"));
+        }
+
+        @Override
+        public boolean requiresBoundedAsyncDispatch(CapabilityCall call) {
+            return false;
+        }
+    }
+
+    /**
+     * REG-231 companion: deliberately does NOT override {@code requiresBoundedAsyncDispatch(call)},
+     * so it relies on {@link CapabilityDispatcher}'s own default ({@code true}) -- exactly the shape
+     * of every adapter that hasn't opted in yet.
+     */
+    private static final class DefaultBoundedCapabilityDispatcher implements CapabilityDispatcher {
+        final AtomicReference<Thread> invokedOnThread = new AtomicReference<>();
+
+        @Override
+        public CapabilityResult invoke(CapabilityCall call, Map<String, Object> state) {
+            invokedOnThread.set(Thread.currentThread());
+            return CapabilityResult.success(Map.of("id", "u-1"));
+        }
     }
 
     private static final class RecordingMetricsSink implements MetricsSink {

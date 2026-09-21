@@ -408,6 +408,88 @@ class TimeBoundedPluginExecutionEngineTest {
         }
     }
 
+    /**
+     * REG-231: a "runtime-ref-direct" adapter (RuntimeRefArtifactRealizationProvider's own
+     * strategy string -- the ONLY realization that is NOT package-backed, i.e. wired directly into
+     * RuntimeHost's own Spring config, like PostgresPersistenceCapabilityAdapter) must run
+     * SYNCHRONOUSLY on the calling thread and must NOT be subject to the wall-clock timeout that
+     * every package-backed realization (javaSource, classpath-artifact, filesystem-artifact) still
+     * gets below. Proven two ways at once: the handler captures which thread it ran on (must equal
+     * the test's own thread, not a pooled worker), and the engine is configured with a 10ms budget
+     * against a handler that sleeps 50ms -- under the OLD unconditional pool+timeout behavior this
+     * would reliably TIME_OUT (see timesOutSlowPluginExecution's 25ms-vs-200ms margin); here it must
+     * still report SUCCESS because the timeout wrapper is bypassed entirely for this realization.
+     */
+    @Test
+    void runtimeRefDirectAdapterRunsSynchronouslyAndBypassesTheTimeout() {
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
+                10,
+                allowAllPolicy(),
+                new InMemorySummaryStore()
+        )) {
+            CapabilityCall call = new CapabilityCall(
+                    "persistence",
+                    "PersistenceCapability",
+                    "repository",
+                    "save",
+                    Map.of("id", "row-1")
+            );
+
+            Thread callingThread = Thread.currentThread();
+            ThreadCapturingSlowHandler handler = new ThreadCapturingSlowHandler();
+
+            SandboxedPluginExecutionResult result = engine.execute(
+                    contribution("repository"),
+                    runtimeRefDirectRealizationSummary("repository"),
+                    call,
+                    Map.of(),
+                    handler
+            );
+
+            assertEquals(SandboxedPluginExecutionResult.Status.SUCCESS, result.status(),
+                    () -> "REG-231: a runtime-ref-direct adapter must bypass the wall-clock timeout "
+                            + "entirely (it never submits to the worker pool). Actual: " + result);
+            assertEquals(callingThread, handler.invokedOnThread,
+                    "REG-231: a runtime-ref-direct adapter must run on the CALLING thread, not a "
+                            + "pooled worker, so it can join the caller's ambient Spring transaction");
+        }
+    }
+
+    /**
+     * REG-231: the policy-denial gate (PluginExecutionPolicyEvaluator) runs BEFORE the
+     * runtime-ref-direct synchronous-dispatch branch, unconditionally for every realization -- a
+     * denied first-party adapter must still be denied, never silently allowed through because it
+     * skips the pool.
+     */
+    @Test
+    void policyDenialStillAppliesToARuntimeRefDirectAdapter() {
+        try (TimeBoundedPluginExecutionEngine engine = new TimeBoundedPluginExecutionEngine(
+                250,
+                new PluginExecutionPolicyEvaluator(null, "dev", "", "repository", "", ""),
+                new InMemorySummaryStore()
+        )) {
+            CapabilityCall call = new CapabilityCall(
+                    "persistence",
+                    "PersistenceCapability",
+                    "repository",
+                    "save",
+                    Map.of("id", "row-1")
+            );
+
+            SandboxedPluginExecutionResult result = engine.execute(
+                    contribution("repository"),
+                    runtimeRefDirectRealizationSummary("repository"),
+                    call,
+                    Map.of(),
+                    new ThreadCapturingSlowHandler()
+            );
+
+            assertEquals(SandboxedPluginExecutionResult.Status.DENIED, result.status());
+            assertEquals("PLUGIN_POLICY_DENY_ADAPTER_ID", result.errorCode());
+            assertFalse(result.toCapabilityResult().ok());
+        }
+    }
+
     private static RuntimePluginAdapterRegistry.RegisteredAdapterContribution contribution(String adapterId) {
         return new RuntimePluginAdapterRegistry.RegisteredAdapterContribution(
                 "notification-inproc-plugin",
@@ -445,6 +527,32 @@ class TimeBoundedPluginExecutionEngineTest {
                 "classpath-artifact-provider",
                 "classpath-artifact",
                 "runtimeRefBundle"
+        );
+    }
+
+    /** REG-231 fixture: a RealizationSummaryItem shaped like RuntimeRefArtifactRealizationProvider's
+     * own output -- packageBacked=false, artifactRealizationStrategy="runtime-ref-direct" -- unlike
+     * {@link #realizationSummary} above, which is deliberately package-backed ("classpath-artifact")
+     * and must keep going through the pool+timeout path unchanged. */
+    private static RuntimePluginPackageRealizationService.RealizationSummaryItem runtimeRefDirectRealizationSummary(
+            String adapterId
+    ) {
+        return new RuntimePluginPackageRealizationService.RealizationSummaryItem(
+                "notification-inproc-plugin",
+                "1.0.0",
+                "persistence",
+                "save",
+                adapterId,
+                "notificationInProcCapabilityAdapter",
+                false,
+                "n/a",
+                "n/a",
+                "n/a",
+                "n/a",
+                "built-in://" + adapterId,
+                "runtime-ref-artifact-provider",
+                "runtime-ref-direct",
+                "runtimeRefDirect"
         );
     }
 
@@ -510,6 +618,19 @@ class TimeBoundedPluginExecutionEngineTest {
 
         public Object send(Object payload) {
             return Map.of("status", "queued");
+        }
+    }
+
+    /** REG-231 fixture: captures which thread actually ran {@code save}, and sleeps long enough
+     * that the OLD pool+timeout path would have reported TIMED_OUT (see the 10ms-vs-50ms margin in
+     * {@link #runtimeRefDirectAdapterRunsSynchronouslyAndBypassesTheTimeout}). */
+    static final class ThreadCapturingSlowHandler {
+        volatile Thread invokedOnThread;
+
+        public Object save(Object payload) throws InterruptedException {
+            invokedOnThread = Thread.currentThread();
+            Thread.sleep(50);
+            return Map.of("status", "saved", "payload", payload);
         }
     }
 
