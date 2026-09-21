@@ -67,6 +67,18 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+def _classification_parts(raw: str) -> tuple[str, str]:
+    """Split "LIFTED, PARTIAL" into its group key ("LIFTED") and qualifier ("PARTIAL").
+
+    A classification is grouped by its first comma-separated token so a qualified value
+    (e.g. a partial lift) still lands in the right bucket instead of matching nothing.
+    """
+    parts = [p.strip() for p in str(raw or "").split(",")]
+    primary = parts[0].upper() if parts and parts[0] else ""
+    qualifier = ", ".join(p.upper() for p in parts[1:] if p)
+    return primary, qualifier
+
+
 def _head() -> str:
     try:
         proc = subprocess.run(
@@ -117,19 +129,32 @@ def render(items: list[dict], boundaries: list[dict]) -> str:
     add("")
     add("Deliberate limits, not defects. Prose companion: `docs/ACCEPTED_BOUNDARIES.md`.")
     add("")
+    total_grouped = 0
     for name in ("HITTABLE", "POSTURAL", "LIFTED"):
-        group = [b for b in boundaries if b.get("classification") == name]
+        group = [b for b in boundaries if _classification_parts(b.get("classification"))[0] == name]
         group.sort(key=lambda b: int(re.sub(r"\D", "", str(b.get("id"))) or 0))
+        total_grouped += len(group)
         add(f"### {name} -- {len(group)}")
         add("")
         add(f"_{CLASS_BLURB[name]}_")
         add("")
-        add("| id | boundary | code linked |")
-        add("|---|---|---|")
+        add("| id | boundary | code linked | qualifier |")
+        add("|---|---|---|---|")
         for boundary in group:
             linked = "yes" if boundary.get("codeLinked") else "no"
-            add(f"| {boundary.get('id')} | {_clip(_flat(boundary.get('title')), 150)} | {linked} |")
+            _, qualifier = _classification_parts(boundary.get("classification"))
+            add(
+                f"| {boundary.get('id')} | {_clip(_flat(boundary.get('title')), 150)} "
+                f"| {linked} | {qualifier or '-'} |"
+            )
         add("")
+
+    if total_grouped != len(boundaries):
+        raise AssertionError(
+            f"boundary grouping dropped rows: grouped {total_grouped} of {len(boundaries)} -- "
+            "a classification's first comma-separated token doesn't match "
+            "HITTABLE/POSTURAL/LIFTED"
+        )
     return "\n".join(lines) + "\n"
 
 
