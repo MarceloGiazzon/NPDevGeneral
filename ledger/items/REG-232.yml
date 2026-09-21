@@ -4,8 +4,10 @@ title: >-
   H2 NOT NULL exception when movimentoId is left null, instead of a clean validation error
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-09-21
+closed: 2026-09-21
+verification: UNIT_TESTED
 source: >-
   Surfaced incidentally during REG-231's round-2 live verification (see REG-231.yml's "INCIDENTAL,
   NON-REGRESSION FINDING" note) -- REG-231's fix let a PUT request reach further than it ever had
@@ -26,3 +28,41 @@ detail: |
   whether movimentoId ought to be nullable for this history record, or whether the orchestration
   step should validate and produce a clean business-level error instead of letting a raw JDBC
   NOT NULL exception surface as a WARN.
+
+  FIXED 2026-09-21 (later session): took the second option -- classify the failure cleanly rather
+  than deciding movimentoId's nullability, which is the model author's business-semantics call, not
+  a platform one. Added `GeneratedCrudRuntimeSupport.isNotNullViolation(Throwable)`, the same
+  per-engine SQLSTATE/vendor-error-code classification shape `isForeignKeyViolation` already uses
+  (23502 for Postgres/H2, vendor codes 1048/515 for MySQL/SQL Server, since those two report only
+  the generic 23000 class), plus a message-fallback for a wrapped, SQLState-less exception.
+  `executeCreateOrchestrationAction`'s catch block now checks it (after `isUniqueViolation`, same
+  ordering convention as the FK check) and returns `required_field_missing` with a one-line INFO
+  log instead of a full JDBC stack trace at WARNING.
+
+  CAUGHT BY ITS OWN TEST, not assumed: the first regression-test draft asserted on a paraphrased
+  message ("NULL not allowed" written as "not null" in the test's own fixture) and FAILED against
+  the real implementation, because H2's actual wording is "NULL not allowed for column ..." --
+  reversed from the "not null" substring the message-fallback checked for. Fixed the fallback to
+  match H2's real phrasing (`"null not allowed"`) rather than the test's assumption, then reran
+  green -- exactly the kind of self-correction the fix is supposed to prevent for the next person
+  reading a raw exception message.
+
+  VERIFIED (unit only, not live -- proportionate to a LOW-severity noisy-log fix, not re-running a
+  full wmsoffice-browser generate/build/boot cycle for a logging cleanup): new test class
+  `GeneratedCrudRuntimeSupportNotNullViolationTest` (7 tests: Postgres/H2 SQLSTATE 23502, MySQL
+  vendor code 1048, SQL Server vendor code 515, H2's real bare-message wording with no SQLState at
+  all, a wrapped cause, and negative cases confirming a unique/FK violation is never misclassified
+  as NOT NULL) -- all green. Full `:adapters:runtime-support:test` module suite reran green
+  afterward (no regression). Not live-verified against a running app; the runtime-support jar would
+  need restaging (`sync-runtimehost-libs.ps1 -BuildLocalJars`) before any generated app picks this
+  change up.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportNotNullViolationTest.java#postgresAndH2ReportSqlState23502
+  asserts: >-
+    All 7 tests in the class green: SQLSTATE 23502 (Postgres/H2), MySQL vendor code 1048, SQL
+    Server vendor code 515, H2's real bare-message wording with no SQLState, a wrapped cause, and
+    two negative cases (unique/FK violations, and unrelated exceptions/null) never misclassified as
+    NOT NULL. Full :adapters:runtime-support:test module suite green afterward, no regression.
+  provenRed: true

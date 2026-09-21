@@ -1500,6 +1500,15 @@ public final class GeneratedCrudRuntimeSupport {
             if (isUniqueViolation(exception)) {
                 return OrchestrationActionExecutionResult.succeeded("skipped", "unique_violation");
             }
+            if (isNotNullViolation(exception)) {
+                // REG-232: a NOT NULL constraint failure here means the orchestration's own field
+                // mapping left a required column unset -- a business-level "required field missing"
+                // condition, not an infrastructure fault. Logged at INFO with just the message (no
+                // raw JDBC stack trace) so it reads as a clean diagnostic instead of a noisy WARN.
+                LOG.log(Level.INFO, "Create orchestration action skipped -- a required field was "
+                        + "left null: {0}", exception.getMessage());
+                return OrchestrationActionExecutionResult.failed("failed", "required_field_missing");
+            }
             LOG.log(Level.WARNING, "Create orchestration action failed", exception);
             return OrchestrationActionExecutionResult.failed("failed", "create_failed");
         }
@@ -2328,6 +2337,42 @@ public final class GeneratedCrudRuntimeSupport {
             }
         }
         return isForeignKeyViolation(exception.getCause());
+    }
+
+    /**
+     * REG-232: a NOT NULL constraint failure is a business-level "required field missing"
+     * condition, not an infrastructure fault -- callers should classify it distinctly rather than
+     * letting the raw JDBC exception surface as a generic failure. 23502 is Postgres/H2's dedicated
+     * not-null code; MySQL and SQL Server report the generic integrity class 23000, so the vendor
+     * error number is the discriminator there -- the same per-engine asymmetry
+     * {@link #isForeignKeyViolation} already documents (STOR-11). Checked AFTER
+     * {@link #isUniqueViolation} by every caller, so a duplicate is never misreported as a missing
+     * field (23505 and 23502 never overlap in practice, but the ordering mirrors the FK check's own
+     * belt-and-suspenders convention).
+     */
+    private static boolean isNotNullViolation(Throwable exception) {
+        if (exception == null) {
+            return false;
+        }
+        if (exception instanceof SQLException sqlException) {
+            if ("23502".equals(sqlException.getSQLState())
+                    || sqlException.getErrorCode() == 1048  // MySQL ER_BAD_NULL_ERROR
+                    || sqlException.getErrorCode() == 515) { // SQL Server "Cannot insert NULL"
+                return true;
+            }
+        }
+        String message = exception.getMessage();
+        if (message != null) {
+            String normalized = message.toLowerCase(Locale.ROOT);
+            if (normalized.contains("not null") || normalized.contains("cannot be null")
+                    // H2's actual wording is reversed ("NULL not allowed for column ..."), which
+                    // "not null" alone does not match -- caught this via a failing regression test
+                    // that used H2's real message text, not a paraphrase.
+                    || normalized.contains("null not allowed")) {
+                return true;
+            }
+        }
+        return isNotNullViolation(exception.getCause());
     }
 
     private List<ScheduledEventRecord> selectDueScheduledEvents(boolean forceDue, int limit) {
