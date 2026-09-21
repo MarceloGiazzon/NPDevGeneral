@@ -1,36 +1,23 @@
 {
-  "closedAt": "2026-09-20T15:28:57.7920251Z",
+  "closedAt": "2026-09-21T00:44:45.1470746Z",
   "branch": "main",
-  "head": "97cde12e",
-  "headSubject": "chore(ledger): close session -- REG-216/WMS-9 N4/WMS-11 fixed and verified",
-  "summary": "Picked up all four residuals from the prior handoff (user chose 'all 4, best order'): fixed REG-226 (PasswordResetController's hardcoded identity_users table name -- turned out to affect the request-lookup step too, not just the confirm-bump step as originally filed), wired C6's candidatos procedure-bound dataSource into CrossDockingConsolePanel, built C7's cross-docking bay routing in AllocationCapability.sugerirOrigem/sugerirDestino (flows can't do listConcepts/mapList, had to delegate via callProcedure to their *Procedure twins), and root-caused+fixed REG-227 as two compounding kernel bugs in GeneratedCrudRuntimeSupport (JWT claims use 'sub' but the code only read 'actor_id', and a revoked token silently fell back to an anonymous-but-USER-roled context instead of rejecting). All four live-verified end-to-end against a rebuilt/rebooted wmsoffice at 127.0.0.1:8100. Filed two new gaps found along the way: REG-228 (a JWT app's signing keypair isn't in the regeneration-spared directories, hit and worked around three times this session) and REG-229 (run-runtimehost-gate.ps1 fails 7/882 tests deterministically on an unrelated Spring-context-bootstrap failure, not root-caused).",
-  "nextStep": "Nothing from this session or the prior one is committed -- git status shows PasswordResetController.java, GeneratedCrudRuntimeSupport.java + its test, WMS-9.yml, and six REG-22x ledger items all modified/untracked, plus the still-uncommitted ChangePasswordController work from before. Review the diff and commit if satisfied (no commit was made this session -- not asked to). After that, two freshly-filed, unstarted gaps are open: REG-228 (small and already scoped -- two fix candidates listed in the item: add the key directory to the regeneration-spared list, or auto-provision a throwaway keypair on missing, the same way Build-NpdevApp.ps1 already handles a missing admin API key) and REG-229 (needs root-causing like REG-227 did -- the condensed gradle log never shows the actual missing-bean exception message; get it via a regenerated sample's preserved test-results XML or a full-stacktrace rerun). No single one is THE next step -- ask the user which to pick up, same as this session's own start.",
-  "plan": "C:\\Users\\Marcelo\\plans\\bright-painting-kernighan.md",
-  "blocked": "Nothing externally blocked. REG-229's exact root cause (which Spring bean is missing) is unknown -- the gate's condensed console log never prints exception messages, only class names, and getting the real message needs a rerun that preserves test-results XML before the gate's own cleanup step deletes it.",
-  "verified": "Kernel unit tests: gradlew -p NPDevKernel :adapters:runtime-support:test --tests GeneratedCrudRuntimeSupportKernelPortsTest -- BUILD SUCCESSFUL, all 7 tests pass (3 new for REG-227: stale-token-throws via actor_id claim, stale-token-throws via the real JWT sub claim, and a non-revoked regression check). PasswordResetControllerTest was NOT run as JUnit (same infra gap ChangePasswordControllerTest hit before it -- lives in the top-level NPDevRuntimeHost module, which needs the generated-runtime mount only run-runtimehost-gate.ps1 sets up). run-runtimehost-gate.ps1 run twice: both times BUILD FAILED with the identical 7/882 pre-existing failures now filed as REG-229, unrelated to this session's own edits (confirmed by grepping the deployed jar's bytecode for this session's own fix markers, both present). npdev_cli.py validate model: 0 errors, 58 pre-existing warnings, after every WmsOffice model.json edit. Live REST verification against a rebuilt+rebooted wmsoffice at 127.0.0.1:8100 for all four items: REG-226 (password-reset request completed cleanly, no table-not-found warning in the app log), C6 (GET the panel returns a real candidatos match), C7 (SugerirDestino/SugerirOrigem both route to the CrossDocking bay when active, normal ranking unchanged when not), REG-227 (stale token after a token_version bump: 200 before the fix, 401 after; a freshly minted token still gets 200).",
-  "dirtyCount": 22,
+  "head": "4d8e3224",
+  "headSubject": "chore(ledger): WMS-9 closed; REG-231 filed (raw-PUT deadlock, root-caused)",
+  "summary": "Fixed REG-224 (null-tolerant procedure step maps in AST + compiled twins, with a new twin-pair registry rule); then fixed and live-verified REG-225 (workbench store.patch now merges instead of replacing the draft, plus WmsOffice produtoId/numero fixes -- a platform-level bug also affecting the NFe/InventarioArquivo import wizards); built and browser-verified WMS-9 N4 (live company name in the shell topbar via a reserved ShellCompanyName query); fully root-caused (live repro + stack traces) but deliberately did NOT fix REG-231, a raw-PUT self-deadlock, since the real fix is a platform-wide capability-dispatch change -- filed thoroughly with three candidate fix shapes for an owner decision. WMS-9 closed as DONE. 4 commits pushed to main (82cc81f9..4d8e3224).",
+  "nextStep": "No single next step queued -- ask the user which to pick up: (a) REG-231 (ledger/items/REG-231.yml) -- the raw-PUT deadlock is fully root-caused with three candidate fix shapes already written up (exempt trusted adapters from the plugin sandbox / make PostgresPersistenceCapabilityAdapter transaction-aware / restructure enforceWithUpdateFlow to not redundantly rewrite), needs an owner design decision on which shape before implementing, since it's a platform-wide dispatch change with a wide blast radius; or (b) SEC-11 (Google IdP/OAuth) -- deliberately excluded from this push as a separate, much larger feature that needs a real Google Cloud OAuth client provisioned by the user before end-to-end verification is even possible. Remaining open items besides these two: QUAL-40/QUAL-41 (pre-existing owner-accepted coverage baselines, no action needed).",
+  "plan": "",
+  "blocked": "REG-231's actual fix is blocked on an owner design decision (which of three dispatch-routing fix shapes to take) before any implementation should start -- not blocked on missing information, blocked on a call only the owner should make given the platform-wide blast radius.",
+  "verified": "Full :NPDevContract:dsl:test suite green (REG-224). NPDevGenerator :generator:test targeted slice green (WorkbenchPatchMergesNotReplacesTest, ShellTopbarCompanyNameTest, ResponsiveShellGridFormWorkbenchTest, BusinessUiEmitterShellVersionTest -- no regressions). check-twin-pair-consistency.py: 38/38 rules OK. :NPDevContract:dsl:validateModel on WmsOffice's composed model.json: 0 errors both after the REG-225 procedure/query edits. REG-225 verified live end-to-end against a rebuilt wmsoffice-browser instance: REST-invoked ParseRomaneioProcedure resolved produtoId correctly and echoed numero; a POST matching the fixed client's exact draft shape created a real Romaneio+RomaneioItem row. WMS-9 N4 verified live in a real ScrapForAI/Playwright browser run: the shell topbar rendered 'Warehouse A' (fetched from ShellCompanyName) next to a working clock. REG-231's deadlock reproduced deterministically (4/4 attempts) with full H2 + TimeBoundedPluginExecutionEngine stack traces captured verbatim in the ledger item.",
+  "dirtyCount": 2,
   "dirtyFiles": [
-    " M NPDevGenerator/generator/src/main/java/com/npdev/generator/api/GeneratorFacade.java",
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/shell.css.mustache",
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/shell.js.mustache",
-    " M NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/BusinessUiEmitterShellVersionTest.java",
-    " M NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java",
-    " M NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportKernelPortsTest.java",
-    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/PasswordResetController.java",
-    " M NPDevRuntimeHost/src/test/java/com/finalexec/auth/PasswordResetControllerTest.java",
-    " M ledger/items/WMS-9.yml",
     " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl",
-    "?? NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/ChangePasswordPageEmitter.java",
-    "?? NPDevGenerator/generator/src/main/resources/npdev-templates/change-password-page.html.mustache",
-    "?? NPDevGenerator/generator/src/test/java/com/npdev/generator/emitters/ChangePasswordPageEmitterTest.java",
-    "?? NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/auth/ChangePasswordController.java",
-    "?? NPDevRuntimeHost/src/test/java/com/finalexec/auth/ChangePasswordControllerTest.java",
-    "?? ledger/items/REG-224.yml",
-    "?? ledger/items/REG-225.yml",
-    "?? ledger/items/REG-226.yml",
-    "?? ledger/items/REG-227.yml"
+    " M ledger/session-state/history.jsonl"
   ],
   "unpushed": 0,
-  "landedCommits": []
+  "landedCommits": [
+    "4d8e3224 chore(ledger): WMS-9 closed; REG-231 filed (raw-PUT deadlock, root-caused)",
+    "837f6832 feat(generator): WMS-9 N4 -- live company name in the shell topbar",
+    "b30c403c fix(generator): REG-225 -- workbench store.patch merges instead of replacing the draft",
+    "82cc81f9 fix(dsl): REG-224 -- null-tolerant procedure step maps in AST and compiled twins"
+  ]
 }
