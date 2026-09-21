@@ -56,7 +56,7 @@
     },
     {
       "classification": "canonical",
-      "pattern": "^scripts/(ai|evidence|hygiene|quality|release|runtimehost|samples|security|appgen|ci|docs|external-review|hooks|proofs)/"
+      "pattern": "^scripts/(ai|evidence|hygiene|quality|release|runtimehost|samples|security|appgen|ci|docs|external-review|hooks|proofs|pack-repo)/"
     },
     {
       "classification": "canonical",

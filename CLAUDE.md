@@ -175,6 +175,21 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   each `NPDevSamples/scripts/browser/browser-routines/*-verify-routine.json` is green. Boots a real
   app, so it is T1/T2 (`shell-scenarios-golden-browser` in `verification-cadence.json`), never the
   static `aiKnowledge` gate.
+- **Roadmap reporting/publishing tools, all manual, none gates:** `python
+  scripts/quality/emit-capability-matrix.py` (Session 12) emits the app × capability matrix with a
+  witness column (`--out <dir>` for `matrix.json`/`matrix.html`, default
+  `scripts/reports/out/capability-matrix/`) — deliberately a report, never a gate; a witness hole is
+  a human/future-session decision, not a build failure. `python
+  scripts/pack-repo/publish-pack-repo.py` (Session 5) publishes the built-in packs
+  (`NPDevContract/packs/<id>/pack.json`) into a versioned local git repo (default
+  `Build/npdev-pack-repo`, idempotent per-version tag `<packId>-<version>`) so a model can consume
+  them by `packs[].from` remote coordinate instead of a local `$ref` — the coordinate needs the
+  `//packs/<id>` subpath (`git+file:///<repo>//packs/<id>@<id>-<version>`, leading slash before the
+  drive letter) since that's where the publisher lays each pack out, then `python
+  NPDevCli/npdev_cli.py pack update --model <path> --allow-unsigned` resolves and writes
+  `npdev.lock`. `python scripts/docs/capture-capability-docs.py` (Session 13) points at a running
+  app and a route list, captures screenshots via the `verify-in-browser` skill's ScrapForAI harness,
+  and renders an HTML capability doc — reusable across capabilities, not bespoke per feature.
 - **Local machine resource policy:** `scripts/policy/local-test-profile.json` (read via
   `scripts/quality/test_profile.py`) declares a `checkLevel` and which DB engines are enabled on
   THIS machine — default `enabledEngines: [h2, sqlserver]`, so Postgres/MySQL/Docker are OFF for

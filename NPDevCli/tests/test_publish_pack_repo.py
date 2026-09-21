@@ -1,6 +1,6 @@
 """S5 (NPDEV_MEGA_ROADMAP.md): pins the pack-repo publisher's contract -- one command publishes the
 built-in packs into a git repo under semver tags (`<packId>-<version>`), idempotently, so a consumer
-can lock to a coordinate like `git+file://<repo>@tracing-1.0.0`.
+can lock to a coordinate like `git+file:///<repo>//packs/tracing@tracing-1.0.2`.
 
 Stdlib-only (unittest), same convention as the CLI tests. The publish function shells out to the real
 `git` binary into a throwaway directory -- no network (file:// transport). Run with:
@@ -39,18 +39,28 @@ class PublishContractTest(unittest.TestCase):
         self.addCleanup(self._tmp.cleanup)
 
     def test_publishes_selected_packs_under_semver_tags(self):
+        # Read the REAL built-in packs' own declared versions rather than hardcoding them here --
+        # both have been bumped since this test was written (identity 1.1.0 -> 1.2.0, tracing
+        # 1.0.0 -> 1.0.2 across three later commits), and a hardcoded expectation silently goes
+        # stale every time either pack's version changes again.
+        identity_version = json.loads((publish_mod.PACKS_SOURCE / "identity" / "pack.json")
+                                       .read_text(encoding="utf-8"))["version"]
+        tracing_version = json.loads((publish_mod.PACKS_SOURCE / "tracing" / "pack.json")
+                                      .read_text(encoding="utf-8"))["version"]
+
         published = publish_mod.publish(["identity", "tracing"], self.repo)
 
-        self.assertEqual(["identity-1.2.0", "tracing-1.0.0"], sorted(published))
+        self.assertEqual(sorted([f"identity-{identity_version}", f"tracing-{tracing_version}"]),
+                         sorted(published))
         self.assertTrue((self.repo / "packs" / "identity" / "pack.json").is_file())
         self.assertTrue((self.repo / "packs" / "tracing" / "pack.json").is_file())
-        self.assertEqual("1.2.0",
+        self.assertEqual(identity_version,
                          json.loads((self.repo / "packs" / "identity" / "pack.json")
                                     .read_text(encoding="utf-8"))["version"])
         # Every published version is tagged -- the pin a consumer's packs[].from locks to.
         tags = _git(self.repo, "tag", "-l")
-        self.assertIn("identity-1.2.0", tags)
-        self.assertIn("tracing-1.0.0", tags)
+        self.assertIn(f"identity-{identity_version}", tags)
+        self.assertIn(f"tracing-{tracing_version}", tags)
 
     def test_running_again_is_a_no_op(self):
         publish_mod.publish(["identity"], self.repo)

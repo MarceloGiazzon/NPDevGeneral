@@ -5,6 +5,18 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/quality/emit-capability-matrix.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/pack-repo/publish-pack-repo.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
+    "scripts/docs/capture-capability-docs.py": {
+      "invocation": "manual-runbook",
+      "documentedIn": "CLAUDE.md"
+    },
     "scripts/ai/Invoke-AiRestSmokeVerifier.ps1": {
       "invocation": "orchestrated"
     },
