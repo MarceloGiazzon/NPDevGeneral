@@ -62,7 +62,7 @@
         },
         {
           "type": "prose",
-          "text": "\n**→ open http://localhost:8080**\n\nYour app lives **outside** the clone (`../my-app`), and `npdev init` refuses to scaffold inside it —\nan app buried in NPDev's own git history is one nobody else could clone, and one this repo would try\nto track. Every command above runs from the clone, so nothing depends on what you named the folder.\n\nLog in with the key in `SUPER_USER_KEY.txt`, written to that folder on first start.\n\n**Four commands.** You now have list and edit screens, a REST API behind them, a database, and\nauthentication.\n\nLeave `npdev dev` running. Add a field to `model.json`, save, and watch:\n"
+          "text": "\n**On Windows:** use `npdev.bat` in place of `./npdev` — same arguments throughout.\n\n**→ open http://localhost:8080**\n\nYour app lives **outside** the clone (`../my-app`), and `npdev init` refuses to scaffold inside it —\nan app buried in NPDev's own git history is one nobody else could clone, and one this repo would try\nto track. Every command above runs from the clone, so nothing depends on what you named the folder.\n\nLog in with the key in `SUPER_USER_KEY.txt`. It is written on first start into the generated\napp folder — `../my-app-app`, a sibling of the model folder, not the model folder itself.\n\n**Four commands.** You now have list and edit screens, a REST API behind them, a database, and\nauthentication.\n\nLeave `npdev dev` running. Add a field to `model.json`, save, and watch:\n"
         },
         {
           "type": "fence",
