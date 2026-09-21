@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://npdev.local/schema/ai/provenance-index.schema.json",
+  "title": "NPDev artifact provenance index (npdev-provenance-index.v1)",
+  "version": "1.0.0",
+  "description": "S14 (NPDEV_MEGA_ROADMAP.md, Track B). The spec-node -> emitted-artifact map model-xref.json never had: for each persisted concept, which generated Spring classes, which schema/DB migration statement, and which frontend route were actually produced from it. Produced by com.npdev.generator.provenance.ProvenanceIndexEmitter, which the generator emits into each app as npdev/provenance-index.json, alongside npdev/model-xref.json in the same directory and under the same versioning discipline (an explicit `schemaVersion` const, deterministic emission hashed by scripts/hygiene/check-deterministic-generation.ps1). Artifact discovery is convention-based over the emitted output root; a file that does not exist is omitted, never fabricated. Join key: a `specNodes` key is a concept name spelled exactly as model-xref.json's `edges[].toName` spells it for a `toKind: \"concept\"` edge (or as box-manifest.json's `boxes[].graphName` spells it for a box with `graphKind: \"concept\"`) -- the three documents describe the same node under the same name, so a consumer can join them without renormalizing anything. Consumers: Session 15's impact graph explorer and Session 16's blast-radius/migration-plan join, both walking this index alongside model-xref.json's semantic edges.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "specNodes", "nodeCount"],
+  "properties": {
+    "schemaVersion": {
+      "const": "npdev-provenance-index.v1"
+    },
+    "specNodes": {
+      "type": "object",
+      "description": "One entry per persisted concept, keyed by the concept's qualified name (the same join key model-xref.json and box-manifest.json use for a concept node). Insertion-ordered by that name, ascending -- the order is part of the contract: this file is emitted into every generated app and hashed across two generator runs by scripts/hygiene/check-deterministic-generation.ps1.",
+      "additionalProperties": { "$ref": "#/$defs/specNode" }
+    },
+    "nodeCount": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Always equal to the number of keys in `specNodes` -- lets a consumer size the index without walking it."
+    }
+  },
+  "$defs": {
+    "specNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "table", "artifacts"],
+      "properties": {
+        "kind": {
+          "const": "concept",
+          "description": "The only spec-node kind this index covers today. Same vocabulary as model-xref.json's `toKind`/`fromKind` and box-manifest.json's `graphKind`."
+        },
+        "table": {
+          "type": "string",
+          "description": "The concept's realized table name, as com.npdev.dsl.v1.compiled.SqlIdentifierSupport.tableName computes it -- what the schema-migration artifact's CREATE TABLE statement (when present) actually names."
+        },
+        "artifacts": {
+          "type": "array",
+          "description": "Every artifact this generation run actually produced from the concept, sorted by `type` then `path`. A kind of artifact this concept has no instance of (e.g. no jdbc schema-realization script was emitted at all) is simply absent -- never a placeholder entry.",
+          "items": { "$ref": "#/$defs/artifact" }
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path", "digest"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The kind of emitted artifact. `generated-class` covers every generated Spring class derived from the concept (entity, DTOs, service, controller); `schema-migration` is the Flyway V1 schema-realization script carrying this concept's CREATE TABLE; `frontend-route` is the generated UI manifest entry for the concept's route.",
+          "enum": ["generated-class", "schema-migration", "frontend-route"]
+        },
+        "path": {
+          "type": "string",
+          "description": "Path to the artifact, relative to the generated app's root (the same root npdev/model-xref.json and npdev/box-manifest.json are written under)."
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "description": "SHA-256 of the artifact's emitted bytes at the time this index was written, so a consumer can detect drift between the index and the file on disk without re-deriving the whole tree."
+        },
+        "note": {
+          "type": "string",
+          "description": "Optional human-readable detail distinguishing this artifact instance -- the literal CREATE TABLE statement for a schema-migration artifact, the literal route for a frontend-route artifact. Absent for artifact types (generated-class) where the path alone is unambiguous."
+        }
+      }
+    }
+  }
+}
