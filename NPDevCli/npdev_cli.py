@@ -10812,10 +10812,23 @@ def _match_boundary(token: str, boundaries: list) -> dict | None:
     return None
 
 
+def _boundary_kind_parts(kind: str) -> tuple[str, str]:
+    """Split a "LIFTED, PARTIAL"-shaped kind into its primary token and qualifier, the same
+    grouping rule build_open_state.py uses for ledger/boundaries/*.yml's classification field --
+    a qualified lift must still route through its primary kind's handling, not match nothing."""
+    parts = [p.strip() for p in str(kind or "").split(",")]
+    primary = parts[0].upper() if parts and parts[0] else ""
+    qualifier = ", ".join(p.upper() for p in parts[1:] if p)
+    return primary, qualifier
+
+
 _BOUNDARY_KIND_NOTE = {
     "HITTABLE": "You will see this as an error.",
     "POSTURAL": "This fails silently -- no error names it; it is a real limit with nothing to hit.",
     "LIFTED": "This limit no longer applies -- it has been lifted.",
+}
+_BOUNDARY_KIND_QUALIFIED_NOTE = {
+    "LIFTED": "This limit has been mostly lifted -- a narrower residual still applies, described above.",
 }
 
 
@@ -10858,15 +10871,18 @@ def run_why(args: argparse.Namespace) -> int:
     print(f"{match['id']} -- {match['kind']}")
     print("=" * 60)
     print(match["userFacingText"])
-    if match["kind"] == "POSTURAL" and match.get("enforcingDiagnosticCodes"):
+    kind_primary, kind_qualifier = _boundary_kind_parts(match["kind"])
+    if kind_primary == "POSTURAL" and match.get("enforcingDiagnosticCodes"):
         # BOUNDARY_LIFT_PLAN_2026-09-02.md package 3.4 (B11): the blanket POSTURAL note below assumes
         # "nothing to hit" for every POSTURAL row -- true until B11 gained an opt-in enforced refusal
         # while the underlying engine limitation stayed POSTURAL (permanent, not NPDev's choice). A
         # POSTURAL row that also carries a real code needs its own note, not the blanket one.
         note = ("The underlying limitation itself is permanent and upstream (not NPDev's choice), "
                 "but an opt-in enforcement now exists -- see the diagnostic code(s) below.")
+    elif kind_qualifier:
+        note = _BOUNDARY_KIND_QUALIFIED_NOTE.get(kind_primary, _BOUNDARY_KIND_NOTE.get(kind_primary, ""))
     else:
-        note = _BOUNDARY_KIND_NOTE.get(match["kind"], "")
+        note = _BOUNDARY_KIND_NOTE.get(kind_primary, "")
     if note:
         print(f"\n({note})")
     print(f"\nWorkaround: {match['workaround']}")
