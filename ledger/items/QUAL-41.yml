@@ -4,23 +4,27 @@ title: >-
   raise it -- the module copied verbatim into every generated FinalApp
 type: GAP
 severity: MEDIUM
-status: WONTFIX
+status: PARTIAL
 opened: 2026-08-25
-closed: 2026-08-31
-decision: >-
-  Owner accepted 17.4451% RuntimeHost coverage as the working baseline rather than spending session
-  time on test-writing; the defect-history rationale (PORT-1..5, REG-177) stands as the reason a
-  future dedicated session should target boot-time/first-run paths specifically, not a reason to
-  rush it inline alongside four other items now.
+verification: UNIT_TESTED
 source: >-
   2026-08-25 remediation plan W3.5. Same shape of gap as QUAL-40 (kernel's analogous item), split out
   separately because RuntimeHost's own defect history singles it out: PORT-1..5, the close-the-gaps
   first-run defects, and REG-177's hardcoded table name all landed in boot-time and first-run paths,
   not steady-state CRUD -- the module most in need of real coverage is the one that keeps producing
   live defects nothing caught first.
+
+  2026-09-21 (EXT-10, external readiness roadmap decision D3): owner explicitly approved reopening
+  this item for TARGETED coverage of the exact boot-time/first-run paths named below -- a real
+  decision, not a guess, and distinct from QUAL-40 (kernel's sibling item), which stays WONTFIX and
+  untouched.
 surface: runtimehost, coverage
 files:
   - scripts/policy/coverage-baseline.json
+  - NPDevRuntimeHost/src/test/java/com/finalexec/auth/CreateUserControllerTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelAdminUserControllerTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/IdentityProvisioningTest.java
+  - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/controlpanel/TenantAutoRegistrationRunnerTest.java
 detail: |
   17.4451% of NPDevRuntimeHost's lines execute under test (per the last real run-runtimehost-gate.ps1
   measurement this session, 2026-08-25) -- the lowest-covered module in the platform, and the one
@@ -54,3 +58,129 @@ detail: |
   paths specifically, not something to rush inline alongside four other items in one session, which
   is the same false-green risk this item's own text already warned against. Reopen (or better, start
   fresh with a scoped boot-time-coverage plan) whenever a session's actual focus is this module.
+  (Baseline moved organically again between then and now, 18.0485 -> 18.5374, all from real fixes
+  widening the measured population -- see coverage-baseline.json's own NPDevRuntimeHost note for the
+  full REG-229/230, SEC-5, W1.2 history. None of that was deliberate coverage work either.)
+
+  2026-09-21 (EXT-10): TARGETED first-run coverage added, aimed as this item's own text always said
+  it should be -- named boot/first-run classes, not whatever was easiest to reach. Traced PORT-1..5
+  and REG-177's fix commits first (PORT-1/2/3/5 land in the GENERATOR, not RuntimeHost's own source,
+  and PORT-4 is docs-only -- none of the four gave RuntimeHost classes to target). REG-177 (commit
+  276fff20) is the one squarely inside RuntimeHost and boot/first-run-shaped: an eagerly-throwing
+  `IdentityPackTableNames.resolve()` call in several controllers' constructors that crashed Spring
+  `ApplicationContext` startup for any generated app not composing the identity pack -- a real,
+  live, previously-reproduced packaged-app boot failure (see REG-177's own "2026-08-15 correction"
+  note), fixed by switching to the graceful `tryResolve()` this session's new tests lock in.
+
+  Chose four classes, grepped from REG-177's own file list plus the boot/first-run surface it
+  describes (schema/first-run-credential-bootstrap, tenant auto-registration), each previously at
+  ZERO test coverage (confirmed by grep for a same-directory `*Test.java` before writing anything):
+
+  1. **`CreateUserController`** (`NPDevRuntimeHost/src/main/java/com/finalexec/auth/`) -- the
+     ADMIN-gated "mint another login in my own tenant" path, gated on `npdev.auth.mode=jwt` only,
+     NOT on the identity pack being composed (REG-177's exact regression shape).
+     `CreateUserControllerTest` covers: non-ADMIN caller forbidden (403), identity-pack-absent fails
+     closed with a clean 503 rather than the pre-fix eager crash, missing-required-field (400),
+     username-taken (409), and a full successful-create path verified against a real H2 schema
+     (identity user row, ADMIN role link, hashed credential row, AND the first-run tenant
+     auto-registration side effect -- `npdev_tenant` gains a row as a consequence of provisioning
+     the tenant's first user this way).
+  2. **`ControlPanelAdminUserController`** (`.../controlpanel/`) -- chosen over its sibling
+     `ControlPanelTenantUsersController` (735 lines, much larger surface, NOT attempted this pass)
+     because this is the EXACT class REG-177's own ledger names as the one that reproduced a live
+     `BeanCreationException -> IllegalStateException` packaged-app boot crash: registered
+     UNCONDITIONALLY in every generated app (never gated on the identity pack, unlike
+     `CreateUserController`/`BootstrapAdminController`'s jwt-mode gate), so the pre-fix eager
+     `resolve()` broke boot for ANY app not composing the identity pack, not just jwt-mode ones.
+     `ControlPanelAdminUserControllerTest` covers that exact regression shape (identity-pack-absent
+     -> clean 503), PLUS the InMemory-mode branch (no physical `DataSource` -> 503, a real boot
+     configuration RuntimeHost's own ControlPanel must tolerate) that had no test anywhere, non-
+     SUPERUSER-forbidden (403), missing-required-field (400), username-taken (409), and the same
+     full successful-create + tenant-auto-registration proof as above.
+  3. **`IdentityProvisioning`** (`NPDevRuntimeHost/runtimehost-core/.../auth/`) -- the shared JDBC
+     step library BOTH controllers above (and `BootstrapAdminController`/
+     `ControlPanelTenantUsersController`) delegate every insert to; REG-170/REG-177's own fix
+     target. `IdentityProvisioningTest` (12 cases, real H2, no Spring context) covers
+     `countUsersInTenant`/`usernameTaken` tenant-scoping, `insertIdentityUser` (with/without/blank
+     email, and its `ensureTenantRegistered` side effect), `ensureTenantRegistered`'s reserved-
+     "default"-sentinel skip and idempotency (the belt-and-suspenders real-time companion to
+     `TenantAutoRegistrationRunner`'s boot-time sweep), `findOrCreateRole`'s reuse-vs-create and
+     per-tenant scoping, `insertUserRole`, and `insertCredential`'s blank-vs-populated optional link
+     columns (the one branch REG-16/REG-18's own decoy-hashing precedent made worth checking for a
+     malformed-UUID regression).
+  4. **`TenantAutoRegistrationRunner`** (`.../controlpanel/`) -- the ONE `ApplicationRunner` that
+     fires on EVERY generated app's boot, unconditionally, to reconcile any tenant present in the
+     identity pack's users table but missing from `npdev_tenant`. Chosen because its own javadoc
+     states a hard boot-time contract ("fail-open, best-effort ... this must never block
+     application startup") that had never been tested. `TenantAutoRegistrationRunnerTest` (5 cases)
+     proves exactly that contract: no-op (and the DataSource provider never even touched) when the
+     identity pack is absent, no-op when no physical DataSource is available (InMemory mode),
+     correct reconciliation of an orphaned tenant, correctly skipping the reserved "default" tenant
+     and an already-registered one, and -- the sharpest boot-safety proof -- a genuine SQL failure
+     (a missing table) being swallowed and logged rather than propagating out of `run()`.
+
+  NOT attempted this pass, named so nobody re-derives the same triage: `BootstrapAdminController`
+  (same shape as `CreateUserController`, also runtimehost-core, deprioritized once the two measured,
+  ratchet-visible controllers were covered -- see the coverage-mechanics note below),
+  `ControlPanelTenantUsersController` (735 lines, the largest of the five REG-177 touched; its
+  identity-absent branch is the same shape already proven twice above), and `NpdevAuthConfig`'s
+  REG-156 `matchIfMissing=true` conditional-bean-registration fix (a real boot-time bug shape, but
+  proving it needs a Spring `ApplicationContextRunner` standing up most of that class's ~15 other
+  `@Bean` methods' own dependency graph -- a substantially larger, separately-scoped effort, not a
+  same-pass addition to this one).
+
+  **Coverage mechanics, checked before claiming credit, not assumed:**
+  `NPDevRuntimeHost`'s own coverage-baseline.json note (2026-09-13 entry) already documents that
+  this ratchet's JaCoCo report comes ONLY from `run-runtimehost-gate.ps1`'s assembled-sample-app
+  `test` task -- `runtimehost-core` is a separate Gradle module with no jacoco plugin applied, so a
+  test added there "however thorough, structurally cannot move this number." Confirmed true again
+  here: `CreateUserController`/`ControlPanelAdminUserController` (top-level `src/main`, assembled
+  into the sample app) are what actually moved the measured percentage; `IdentityProvisioning`/
+  `TenantAutoRegistrationRunner` (runtimehost-core) are real regression protection for code every
+  identity-pack-composing app boots through, but contribute zero delta to this specific ratchet by
+  construction -- the same documented, honest limitation, not a new one.
+
+  **Measured, before/after, same mechanism `run-runtimehost-gate.ps1` always uses**
+  (`scripts/reports/out/runtimehost-jacoco-test-report.xml`, `simple-contact-intake` sample,
+  2026-09-21): RuntimeHost LINE coverage moved 18.5374% -> 19.4595%, a real +0.9221pp gain from
+  these two newly-covered top-level classes (previously wholly uncovered), not a side effect of
+  unrelated work. Both the assembled-app `test` task and the standalone `runtimehost-core:test`
+  task were `BUILD SUCCESSFUL` (all four new test files' cases passing) before the ratchet ran.
+  `check-coverage-ratchet.py` ratcheted ONLY `scripts/policy/coverage-baseline.json`'s
+  `NPDevRuntimeHost` entry up to match (18.5374 -> 19.4595); `NPDevKernel/kernel`'s entry (QUAL-40,
+  separately accepted, out of this item's scope) was left untouched, confirmed by `git diff`
+  touching exactly those two lines.
+
+  **The same gate run also reported two UNRELATED coverage regressions** (`NPDevKernel/kernel`
+  64.3158% -> 64.2618%, `scripts` 66.7086% -> 66.5543%), which is why `run-runtimehost-gate.ps1`'s
+  own overall exit code is non-zero for this run. Investigated, not assumed: neither module was
+  touched by this item's changes (`git diff` for this session names only the four new test files
+  and `coverage-baseline.json`, nothing under `NPDevKernel/` or `scripts/`), and both reports'
+  timestamps (kernel: 06:04 that morning; scripts: 16:44 that afternoon) predate this session's own
+  `run-runtimehost-gate.ps1` invocation by hours -- stale evidence left in the shared
+  `D:\WorkSpace\NPDev\Build` root by unrelated earlier work the same day, which
+  `check-coverage-ratchet.py` picks up because it checks every module's baseline whenever it runs,
+  not just the one the calling gate script cares about. `check-coverage-ratchet.py` never LOWERS a
+  floor for a regression (only raises for an improvement), so neither stale regression corrupted
+  either module's recorded floor. Not chased further: fixing an unrelated kernel/scripts regression
+  is QUAL-40's territory (and scripts' own, untracked) -- explicitly out of this item's scope, and
+  its own accepted-WONTFIX status stays untouched.
+
+  **Status is PARTIAL, not DONE**: this closes a first, real slice of the "standing programme" this
+  item's own text always called for -- named boot/first-run classes gained real tests and the floor
+  moved to match what was actually earned, not chased directly. `BootstrapAdminController`,
+  `ControlPanelTenantUsersController`'s own identity-pack-present CRUD paths, and `NpdevAuthConfig`'s
+  REG-156 boot-config regression shape remain untested, so the item stays open for whoever continues
+  the programme.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelAdminUserControllerTest.java#identityPackNotComposedFailsClosedNotEagerCrash
+  asserts: >-
+    ControlPanelAdminUserController (registered unconditionally in every generated app, never gated
+    on the identity pack) resolves IdentityPackTableNames gracefully and returns a clean 503 when
+    the identity pack is absent, rather than the eager, throwing resolve() call REG-177's own
+    "2026-08-15 correction" documents as a real, live packaged-app ApplicationContext boot crash
+    (BeanCreationException -> IllegalStateException) for any generated app that doesn't compose the
+    identity pack. This is the single sharpest boot-time regression proof this item's new coverage
+    added.
+  provenRed: false
