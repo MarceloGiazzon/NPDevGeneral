@@ -547,6 +547,9 @@
     "scripts/quality/linux-plugin-proof/cgroup-delegate-init.sh": {
       "invocation": "orchestrated"
     },
+    "scripts/quality/independent-tester/entrypoint.sh": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/linux-plugin-proof/probe-cgroup-environment.sh": {
       "invocation": "orchestrated"
     },

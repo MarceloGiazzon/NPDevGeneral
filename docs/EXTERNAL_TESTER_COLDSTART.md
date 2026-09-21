@@ -10,6 +10,14 @@
 > entirely unvalidated. The *friction* the outsider hits **is the result** — do not coach them, do not
 > pre-load them with project knowledge, do not let them ask the author for help. A warmed-up agent
 > that already knows the project proves nothing.
+>
+> **Automated runner (REG-234):** `npdev tester` drives this same brief through a genuinely
+> independent agent — the Anthropic API directly (Tool Runner), not Claude Code, inside a disposable
+> Docker container that clones the public repo itself — so it never auto-loads this repo's own
+> CLAUDE.md the way any Claude Code session would. `NPDevCli/independent_tester/brief.json` is the
+> machine-readable mirror of the "Brief to paste" section below; keep the two in sync by hand if you
+> edit either. Manual, cost-incurring (`npdev tester --dry-run` previews the run for free) — see
+> `run_tester()`'s docstring in `NPDevCli/npdev_cli.py` for the full design.
 
 ---
 

@@ -1,0 +1,89 @@
+id: REG-234
+title: >-
+  No way to run a genuinely independent (zero-NPDev-context) AI tester to validate the
+  REG-13/REG-14/REG-17 cold-start claims -- every Claude Code agent auto-loads CLAUDE.md
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-21
+closed: 2026-09-21
+source: >-
+  External-readiness roadmap 2026-09-21 (NPDev_General__OutsideRepo/external-readiness-2026-09-21/
+  NPDEV_EXTERNAL_READINESS_ROADMAP.md, task EXT-9). EXT-9 requires an AI tester with NO NPDev
+  context to re-run REG-13/REG-14/REG-17 (a non-author authoring an app, building the tutorial from
+  docs alone, reproducing the verification on hardware the author doesn't control) -- but any
+  Claude Code session or subagent auto-loads NPDev_General/CLAUDE.md as project instructions before
+  it takes a single action, which is exactly the "here's how it really works" knowledge
+  docs/EXTERNAL_TESTER_COLDSTART.md's own independence rule says disqualifies a tester. That made
+  EXT-9 structurally impossible to satisfy with a one-off Claude Code subagent, no matter how the
+  prompt was worded. The owner asked for a reusable platform feature instead -- its own stored
+  credentials, its own isolated execution path, separate from Claude Code entirely.
+surface: NPDevCli (new `npdev tester` subcommand), Dockerfile.independent-tester,
+  NPDevCli/independent_tester/ (Tool Runner driver), docs/EXTERNAL_TESTER_COLDSTART.md
+detail: |
+  BUILT: `npdev tester` -- a new NPDevCli subcommand that drives a genuinely independent AI agent
+  through the REG-13/14/17 cold-start claims inside a disposable Docker container that clones the
+  PUBLIC repo itself, on its own initiative, never this host's working tree.
+
+  ARCHITECTURE:
+  - `Dockerfile.independent-tester` (repo root, modeled on Dockerfile.linux-plugin-proof's already-
+    proven diff against Dockerfile.ai-beta): debian:12-slim + git/JDK17/Node/python3/pip + pre-baked
+    Gradle distributions (same ARG GRADLE_DISTRIBUTION_URLS mechanism as Dockerfile.ai-beta).
+    Deliberately NO PowerShell -- `npdev doctor`'s own documented "pwsh not found" friction is real
+    data a Linux stranger hits, not something to paper over. No repo source is COPY'd in; the image
+    is generic, reusable tooling.
+  - `NPDevCli/npdev_cli.py`'s new `run_tester()` (dispatched from `npdev tester`) shells out to
+    `docker build`/`docker run` via subprocess -- it NEVER imports `anthropic`, keeping the shipped
+    CLI stdlib-only (per npdev_jsonschema.py's documented invariant). `--dry-run` assembles and
+    prints both commands with zero Docker/network/API calls. The API key
+    (`NPDEV_TESTER_ANTHROPIC_API_KEY`, env-var-only, following the existing `NPDEV_AI_API_KEY`/
+    `SCRAPFORAI_API_KEY` precedent -- never a CLI flag) is forwarded via bare `-e VARNAME` so it
+    never appears as a value in the assembled argv. Deliberately a DIFFERENT env var name than the
+    existing `NPDEV_EXTERNALAI_ANTHROPIC_API_KEY` (Java, a generated app's own AgentProxyController
+    feature) so the two are never confused.
+  - `NPDevCli/independent_tester/tester_agent.py` runs INSIDE the container only. Uses the
+    Anthropic Python SDK's Tool Runner (`client.beta.messages.tool_runner` + `@beta_tool`) with
+    three tools scoped under /work (`run_shell`, `read_file`, `write_file`). Model `claude-opus-5`,
+    a minimal system prompt with zero NPDev framing. The agent clones the public repo ITSELF (no
+    pre-clone -- a real stranger's first action is deciding to clone, and skipping that would hide
+    exactly the friction this feature exists to surface).
+  - `NPDevCli/independent_tester/brief.json` is the single machine-readable source of truth for the
+    brief text (CLAUDE.md rule 0.3 forbids any script reading a .md file, so the brief cannot live
+    only in docs/EXTERNAL_TESTER_COLDSTART.md's prose -- that doc now notes brief.json is its
+    automated-runner mirror, kept in sync by hand).
+  - Findings are NOT auto-filed as ledger items. Output (transcript + friction log) lands under
+    `NPDev_General__OutsideRepo/ext9-independent-tester-kit-2026-09-21/runs/<timestamp>/` for a
+    human (or a later, project-aware session) to triage into real `ledger/items/*.yml` entries with
+    real guards -- matching the kit's own "do not silently fix or file findings mid-session"
+    instruction, and the fact that the ledger has no draft/staged status to begin with
+    (VALID_STATUSES is exactly OPEN|PARTIAL|DONE|WONTFIX|OBSOLETE).
+  - Manual, cost-incurring by design: not wired into any gate or CI workflow, matching
+    run-docker-linux-proof.ps1/run-linux-plugin-resource-proof.ps1's own exclusion from default
+    gates.
+
+  VERIFIED (free, no Docker/API spend): `npdev tester --dry-run` and `--dry-run --json` both
+  produce the correct docker build/run argv with the API key forwarded by name only, never a value.
+  `NPDevCli/tests/test_tester_cli.py` (14 tests) covers gradle-URL collection/dedup, the dry-run
+  path's argument assembly, the /work path-scoping guard (relative resolution + escape refusal),
+  all three tool implementations (round-trip write/read, missing-file handling, shell exit-code/
+  output capture, cwd-escape refusal), brief assembly for `all` vs a single task (and that the
+  brief never leaks "Claude Code"/"CLAUDE.md"/this checkout's own absolute path), and -- with the
+  `anthropic` package installed (a NEW dev/CI-only entry in scripts/requirements.txt, same stance
+  as jsonschema/coverage there; NOT a shipped-CLI dependency) -- that `make_tools()` builds a real,
+  valid 3-tool Tool Runner list. `python scripts/quality/run-script-inventory-check.ps1` passed
+  (237 scripts, all classified+invocation-declared) after registering the new
+  `scripts/quality/independent-tester/entrypoint.sh` as `orchestrated` (same shape as the existing
+  `linux-plugin-proof/cgroup-delegate-init.sh` precedent it's modeled on).
+
+  NOT verified this session, deliberately: an actual live container run (needs Docker + a real
+  Anthropic API key + real spend -- a manual, owner-triggered step, not something to run
+  unsupervised). `npdev tester --task A` (cheapest) is the recommended first live run before
+  `--task all` for the real REG-13/14/17 evidence.
+guard:
+  kind: test
+  ref: NPDevCli/tests/test_tester_cli.py#test_dry_run_never_touches_docker_and_reports_missing_key
+  asserts: >-
+    npdev tester --dry-run assembles a real docker build + docker run command list, forwards
+    NPDEV_TESTER_ANTHROPIC_API_KEY by name only (never as a value in the argv), and performs no
+    Docker, network, or Anthropic API calls
+  provenRed: false

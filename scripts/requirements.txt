@@ -25,3 +25,12 @@ jsonschema>=4.0
 # -- a missing `coverage` module fails step [18/35] loudly rather than quietly falling back to plain
 # `unittest` and never measuring anything.
 coverage>=7.0
+
+# REG-234 (EXT-9): NPDevCli/tests/test_tester_cli.py imports `anthropic` to verify the independent
+# tester's `@beta_tool` definitions actually build a valid Tool Runner tool list -- a real,
+# free (no API calls made) shape check, not a live run. NOT a dependency of the shipped CLI itself
+# (npdev_cli.py never imports it; see run_tester()'s own docstring) -- only
+# NPDevCli/independent_tester/tester_agent.py imports it, and that file only ever runs INSIDE
+# Dockerfile.independent-tester, which pip-installs its own copy. This entry is for
+# repo-development/CI test-running use only, same stance as jsonschema/coverage above.
+anthropic>=0.68

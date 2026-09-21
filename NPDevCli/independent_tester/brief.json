@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "npdev-independent-tester-brief.v1",
+  "note": "Single machine-readable source of truth for the independent-tester brief (REG-234 / EXT-9). docs/EXTERNAL_TESTER_COLDSTART.md's 'Brief to paste' section is the same text, hand-authored for a human running the manual path -- keep both in sync by hand; this file is what tester_agent.py actually sends. CLAUDE.md rule 0.3 forbids any script reading a .md file, which is why this is JSON rather than the doc itself.",
+  "systemPrompt": "You have shell and file access in a fresh Linux environment via three tools: run_shell, read_file, and write_file. Use them to accomplish the task the user gives you. You have never seen this task or this codebase before.",
+  "repoUrl": "https://github.com/MarceloGiazzon/NPDevGeneral.git",
+  "repoRef": "main",
+  "userBrief": "You are evaluating a low-code platform called NPDev that you have never seen. Your job is to be an honest first-time user and record exactly where you get stuck -- the friction is the deliverable, not a working app. Nothing is pre-installed for you: your first step for any task below is cloning the public repo yourself with `git clone --branch {repoRef} {repoUrl}` into /work/repo -- that clone step, and whether it goes smoothly, is itself part of what's being tested. Do the tasks below, in order, and keep a running friction log by calling write_file to append to /work/output/friction-log.md as you go (one entry per point of confusion, dead end, or assumption you had to make -- do not wait until the end to write it). When something is unclear, log it and make your best guess rather than giving up. Do not read any file whose name suggests it is a plan, roadmap, ledger, retrospective, or internal status document -- if you stumble onto one, note that you found it (that itself may be a finding) and do not use its contents to shortcut a task.",
+  "tasks": {
+    "A": {
+      "id": "REG-13",
+      "title": "Author an app with the tools",
+      "instruction": "Using only the NPDev MCP tools (if reachable from this environment) and the docs under /work/repo/docs/, take this app from description to a running FinalApp: \"a simple issue tracker -- issues have a title, description, status (open/closed), and an assignee; users can create, list, edit, and close issues.\" Do not read the platform's source, plans, or internal notes beyond what a newcomer would naturally open. If the MCP tools are not reachable from this environment, say so as a finding and attempt the same task by hand via the CLI and docs instead."
+    },
+    "B": {
+      "id": "REG-14",
+      "title": "Build the tutorial from docs alone",
+      "instruction": "Follow /work/repo/docs/TUTORIAL_FIRST_APP.md. It references docs/DSL_REFERENCE.md, which is generated, not committed -- if the tutorial does not tell you how to produce it, that gap is itself a finding; otherwise generate it as instructed. Build the tutorial app without using the MCP tools to fill gaps -- docs only. Log every place the docs were ambiguous, wrong, out of date, or assumed knowledge you didn't have."
+    },
+    "C": {
+      "id": "REG-17",
+      "title": "Reproduce the verification",
+      "instruction": "This container IS the 'hardware the author doesn't control' -- if you haven't already cloned the repo for an earlier task, do so now. Get the quality gates to run, starting from what the docs tell you. Log every question you had to ask yourself, every command that didn't work first try, every platform assumption you hit. You do NOT need every gate green -- you need an honest record of what a stranger on unknown hardware runs into."
+    }
+  },
+  "deliverable": "Write your three friction logs (one section per task, clearly labeled A/B/C) to /work/output/friction-log.md. Do not summarize a task as \"it went fine\" -- name specific friction points. If a task was genuinely frictionless end to end, say exactly which steps and why. When all three tasks are complete, write /work/output/DONE to signal completion."
+}

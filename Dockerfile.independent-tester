@@ -1,0 +1,89 @@
+# REG-234 -- independent cold-start tester image (EXT-9 as a platform feature).
+#
+# GOES AT THE REPO ROOT as `Dockerfile.independent-tester` (sibling of Dockerfile.ai-beta and
+# Dockerfile.linux-plugin-proof, deliberately modelled on both but merged into neither).
+#
+# What this image is for: giving a genuinely independent AI agent (driven by
+# NPDevCli/independent_tester/tester_agent.py, called via the Anthropic API directly -- NOT Claude
+# Code, so it never auto-loads this repo's CLAUDE.md) a disposable Linux environment to author,
+# build and reproduce NPDev from nothing but the public repo and its own docs -- the REG-13/14/17
+# cold-start claims this platform has never actually had an outside tester validate.
+#
+# Differences from Dockerfile.ai-beta/Dockerfile.linux-plugin-proof that matter:
+#   - NO source is COPY'd in and the image is NEVER built against a bind-mounted working copy. The
+#     agent clones the PUBLIC remote itself, on its own initiative, at CONTAINER RUN time (see
+#     NPDevCli/independent_tester/brief.json) -- it never sees this host's working tree, branches,
+#     or uncommitted work, and never gets a repo pre-cloned for it, so its own first-clone
+#     experience is real data, not skipped over.
+#   - python3 + pip IS installed (tester_agent.py needs the `anthropic` package; the host-side
+#     `npdev tester` command does NOT import it -- see npdev_cli.py's run_tester docstring).
+#   - PowerShell is DELIBERATELY NOT installed. `npdev doctor`'s own documented WARN
+#     ("PowerShell 7 (pwsh) not found... npdev run app and npdev verify --tier T1+ still shell out
+#     to _ops/*.ps1 and will fail without it") is a REAL friction point a Linux stranger with no
+#     pwsh hits today -- papering over it with a pre-installed pwsh would hide exactly the kind of
+#     finding this image exists to surface. Node/npm ARE kept (parity with Dockerfile.ai-beta;
+#     inexpensive, and some fixture/tooling paths use it).
+#   - Gradle distributions ARE pre-baked (same mechanism as Dockerfile.ai-beta) since Task C
+#     ("get the quality gates to run") needs Gradle -- the bake only removes the DOWNLOAD from the
+#     critical path, it does not touch the agent's own clone-and-build steps, so the real REG-17
+#     concern (does a fresh clone + build succeed on hardware the author doesn't control) is still
+#     genuinely exercised end to end.
+FROM debian:12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    NPDEV_INDEPENDENT_TESTER_CONTAINER=true \
+    TZ=UTC
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        git \
+        nodejs \
+        npm \
+        openjdk-17-jdk \
+        python3 \
+        python3-pip \
+        unzip \
+    && ln -sf /usr/bin/python3 /usr/local/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+# Debian 12's system Python is "externally managed" (PEP 668); this is a throwaway container, so
+# --break-system-packages is the pragmatic choice over a venv for one small, pinned dependency.
+RUN pip3 install --no-cache-dir --break-system-packages "anthropic>=0.68"
+
+# ---------------------------------------------------------------------------------------------
+# Pre-baked Gradle wrapper distributions -- identical mechanism to Dockerfile.ai-beta (see that
+# file's own comment for the network-flakiness history this avoids). NPDevCli's run_tester() reads
+# every gradle-wrapper.properties in the CURRENT checkout and passes their distributionUrl values
+# in as this build arg on every build, the same way run-docker-linux-proof.ps1 does -- so a wrapper
+# version bump can never silently stop being baked.
+# ---------------------------------------------------------------------------------------------
+ARG GRADLE_DISTRIBUTION_URLS=""
+ENV GRADLE_USER_HOME=/tmp/npdev-cache/gradle
+RUN set -eu; \
+    if [ -z "${GRADLE_DISTRIBUTION_URLS}" ]; then \
+        echo "GRADLE_DISTRIBUTION_URLS build arg is empty -- refusing to build an image that would" >&2; \
+        echo "fall back to downloading Gradle at run time. Build via 'npdev tester', not docker build directly." >&2; \
+        exit 1; \
+    fi; \
+    for url in ${GRADLE_DISTRIBUTION_URLS}; do \
+        zip_name="$(basename "${url}")"; \
+        dist_name="${zip_name%.zip}"; \
+        hash="$(node -e 'const c=require("crypto");const u=process.argv[1];console.log(BigInt("0x"+c.createHash("md5").update(u,"utf8").digest("hex")).toString(36));' "${url}")"; \
+        dist_dir="${GRADLE_USER_HOME}/wrapper/dists/${dist_name}/${hash}"; \
+        echo "Baking ${zip_name} -> ${dist_dir}"; \
+        mkdir -p "${dist_dir}"; \
+        curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 "${url}" -o "${dist_dir}/${zip_name}"; \
+        unzip -q "${dist_dir}/${zip_name}" -d "${dist_dir}"; \
+        touch "${dist_dir}/${zip_name}.ok"; \
+    done; \
+    ls -1 "${GRADLE_USER_HOME}/wrapper/dists"
+
+COPY NPDevCli/independent_tester/ /agent/independent_tester/
+COPY scripts/quality/independent-tester/entrypoint.sh /agent/entrypoint.sh
+RUN chmod +x /agent/entrypoint.sh
+
+WORKDIR /work
+
+ENTRYPOINT ["/agent/entrypoint.sh"]
