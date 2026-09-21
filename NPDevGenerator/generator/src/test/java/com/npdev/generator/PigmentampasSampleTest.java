@@ -45,8 +45,14 @@ class PigmentampasSampleTest {
 
         CompiledConcept pigment = compiled.findConcept("Pigment").orElse(null);
         assertNotNull(pigment, "Pigment concept must compile");
-        assertEquals(8, compiled.getConcepts().size(),
-                "Pigmentampas must compile exactly eight concepts (pigment store domain + Credential for jwt-mode auth)");
+        // PACK-23: identity/tracing/workspace are consumed by remote coordinate (S6's own design),
+        // so this counts the REAL published packs' full concept sets, not a locally-trimmed stand-in:
+        // 8 domain concepts (Pigment, PigmentCategory, Supplier, PigmentSupplier, StockEntry, Order,
+        // OrderItem, Credential) + identity 1.2.0 (User, Role, UserRole, PasswordResetToken,
+        // UserRolePermission, ExternalIdentity = 6) + tracing 1.0.2 (TraceEntry = 1) + workspace 1.1.0
+        // (Menu, PropertyValue = 2) = 17.
+        assertEquals(17, compiled.getConcepts().size(),
+                "Pigmentampas must compile its 8 domain concepts plus the full identity+tracing+workspace pack sets (9)");
 
         Path out = Files.createTempDirectory("npdev-pigmentampas-");
         Path migrations = Files.createTempDirectory("npdev-pigmentampas-migrations-");
