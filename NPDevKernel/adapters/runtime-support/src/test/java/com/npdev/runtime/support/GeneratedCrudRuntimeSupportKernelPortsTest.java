@@ -194,7 +194,7 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
                 }
         );
         return new GeneratedCrudRuntimeSupport(
-                identityModel(),
+                () -> identityModel(),
                 kernelRunner,
                 null,
                 null,
@@ -464,7 +464,7 @@ class GeneratedCrudRuntimeSupportKernelPortsTest {
         );
 
         return new GeneratedCrudRuntimeSupport(
-                compiledModel,
+                () -> compiledModel,
                 kernelRunner,
                 null,
                 null,

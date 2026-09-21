@@ -50,7 +50,7 @@ class GeneratedCrudRuntimeSupportCreateOrchestrationNotNullTest {
         }
 
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
-                compiledModel(), kernelRunner(), null, null, null, dataSource);
+                () -> compiledModel(), kernelRunner(), null, null, null, dataSource);
 
         // movimentoId/movimento_id deliberately has NO CompiledField and NO fieldMap entry -- the
         // exact real-world shape: the model never bound the history record's own required column.

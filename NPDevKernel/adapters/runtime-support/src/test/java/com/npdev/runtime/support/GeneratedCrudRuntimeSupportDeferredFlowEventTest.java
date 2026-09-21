@@ -88,7 +88,7 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
         // Constructing this is what binds the scheduler to the runner -- nothing in this test wires
         // them together by hand, because nothing in a generated app does either.
         runtimeSupport = new GeneratedCrudRuntimeSupport(
-                new CompiledModel("deferred-flow-event", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
+                () -> new CompiledModel("deferred-flow-event", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
                 kernelRunner,
                 null,
                 null,
@@ -190,7 +190,7 @@ class GeneratedCrudRuntimeSupportDeferredFlowEventTest {
     @Test
     void aDeferredScheduleWithoutADataSourceReportsFailureRatherThanPublishingNow() {
         GeneratedCrudRuntimeSupport withoutDataSource = new GeneratedCrudRuntimeSupport(
-                new CompiledModel("no-datasource", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
+                () -> new CompiledModel("no-datasource", "1.0.0", "v1", Map.<String, CompiledConcept>of()),
                 new KernelRunner(events, (entityName, payload) -> List.of()),
                 null,
                 null,

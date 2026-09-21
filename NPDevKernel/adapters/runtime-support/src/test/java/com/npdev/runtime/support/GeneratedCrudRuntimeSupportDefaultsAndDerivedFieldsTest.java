@@ -116,7 +116,7 @@ class GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest {
                 return List.of();
             }
         });
-        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(compiledModel, kernelRunner);
+        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(() -> compiledModel, kernelRunner);
 
         Map<String, Object> input = new LinkedHashMap<>();
         input.put("firstName", "Ana");
@@ -175,7 +175,7 @@ class GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest {
         entities.put(patient.getName(), patient);
         CompiledModel compiledModel = new CompiledModel("demo", "1.0.0", "v1", entities);
         KernelRunner kernelRunner = new KernelRunner((EventBus) event -> { }, (entityName, payload) -> List.of());
-        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(compiledModel, kernelRunner);
+        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(() -> compiledModel, kernelRunner);
 
         NestedJsonRecord record = new NestedJsonRecord();
         support.applyCreateFields("Patient", Map.of(
@@ -207,7 +207,7 @@ class GeneratedCrudRuntimeSupportDefaultsAndDerivedFieldsTest {
         entities.put(staffMember.getName(), staffMember);
         CompiledModel compiledModel = new CompiledModel("demo", "1.0.0", "v1", entities);
         KernelRunner kernelRunner = new KernelRunner((EventBus) event -> { }, (entityName, payload) -> List.of());
-        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(compiledModel, kernelRunner);
+        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(() -> compiledModel, kernelRunner);
 
         UUID tenantId = UUID.randomUUID();
         ReferenceRecord record = new ReferenceRecord();

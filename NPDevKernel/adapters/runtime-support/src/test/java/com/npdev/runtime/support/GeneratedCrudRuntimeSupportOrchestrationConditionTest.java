@@ -28,7 +28,7 @@ class GeneratedCrudRuntimeSupportOrchestrationConditionTest {
 
     private static boolean evaluate(String condition, Map<String, Object> eventPayload) throws Exception {
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
-                new CompiledModel("demo", "1.0.0", "v1", Map.of()),
+                () -> new CompiledModel("demo", "1.0.0", "v1", Map.of()),
                 kernelRunner()
         );
         Method method = GeneratedCrudRuntimeSupport.class.getDeclaredMethod(

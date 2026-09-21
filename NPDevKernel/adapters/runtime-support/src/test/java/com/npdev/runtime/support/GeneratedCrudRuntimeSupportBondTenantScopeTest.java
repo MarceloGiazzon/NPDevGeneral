@@ -48,7 +48,7 @@ class GeneratedCrudRuntimeSupportBondTenantScopeTest {
         }
 
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
-                compiledModel(), kernelRunner(), null, null, null, dataSource);
+                () -> compiledModel(), kernelRunner(), null, null, null, dataSource);
 
         // tenant-a referencing its OWN tenant row: allowed.
         assertDoesNotThrow(() -> support.enforceBondTargetTenant(

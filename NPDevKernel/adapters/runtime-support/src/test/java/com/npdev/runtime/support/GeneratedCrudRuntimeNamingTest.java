@@ -41,7 +41,7 @@ class GeneratedCrudRuntimeNamingTest {
         concepts.put(product.getName(), product);
         concepts.put(catalog.getName(), catalog);
         GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
-                new CompiledModel("demo", "1.0.0", "v1", concepts),
+                () -> new CompiledModel("demo", "1.0.0", "v1", concepts),
                 kernelRunner()
         );
 

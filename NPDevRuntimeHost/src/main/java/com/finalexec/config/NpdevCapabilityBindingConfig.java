@@ -558,9 +558,13 @@ public class NpdevCapabilityBindingConfig {
         return kernelRunner;
     }
 
-    /** REG-208 (B28 lift): same named residual as {@link #invariantEngine} -- {@code
-     * GeneratedCrudRuntimeSupport} builds its own concept-metadata caches once from the model it is
-     * constructed with. */
+    /** D1 Phase 1 fix (was: "REG-208 (B28 lift): same named residual as {@link #invariantEngine}
+     * -- GeneratedCrudRuntimeSupport builds its own concept-metadata caches once from the model it
+     * is constructed with"): GeneratedCrudRuntimeSupport now takes a {@code Supplier<CompiledModel>}
+     * and reads it fresh on every use instead of caching a snapshot -- pass {@code modelHolder::get}
+     * rather than {@code modelHolder.get()} so a later {@link ModelHolder#swap} is actually observed.
+     * A plain JDK Supplier, not ModelHolder itself, because :kernel adapters (where
+     * GeneratedCrudRuntimeSupport lives) cannot depend on NPDevRuntimeHost. */
     @Bean
     public GeneratedCrudRuntimeSupport generatedCrudRuntimeSupport(
             ModelHolder modelHolder,
@@ -578,7 +582,7 @@ public class NpdevCapabilityBindingConfig {
             ConceptGateway conceptGateway
     ) {
         return new GeneratedCrudRuntimeSupport(
-                modelHolder.get(),
+                modelHolder::get,
                 kernelRunner,
                 entityManagerProvider.getIfAvailable(),
                 capabilityDispatcher,
