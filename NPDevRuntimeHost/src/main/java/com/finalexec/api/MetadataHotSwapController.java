@@ -49,11 +49,19 @@ import java.util.Map;
  * immediately, no restart. A NAMED residual remains, real and worth stating plainly rather than
  * hidden behind a DO-NOT-SHIP gate: a handful of engine beans built ONCE from a model snapshot at
  * application-context startup ({@code CelInvariantEngine}-backed {@code InvariantEngine}, {@code
- * ConceptGateway}'s semantic policy, {@code KernelRunner}'s flow-definition provider, {@code
- * GeneratedCrudRuntimeSupport}, the kernel-side {@code DefaultExecutionAuthorizationPolicy}'s
- * app-declared-role cache) still need a restart to observe a structural rule change -- exactly like a
- * change requiring newly generated code does. See {@code NpdevCapabilityBindingConfig}'s own
- * per-bean javadoc for the complete, current list.
+ * ConceptGateway}'s semantic policy, {@code KernelRunner}'s flow-definition provider, the kernel-side
+ * {@code DefaultExecutionAuthorizationPolicy}'s app-declared-role cache) still need a restart to
+ * observe a structural rule change -- exactly like a change requiring newly generated code does.
+ * ({@code GeneratedCrudRuntimeSupport} was in this list until REG-235 (2026-09-21) converted it to
+ * read a live {@code Supplier<CompiledModel>}; it is no longer a residual for its OWN
+ * invariant/event/capability/binding lookups. That fix does NOT extend to the generated REST CRUD
+ * surface itself -- {@code GeneratedConceptCrudController} and its per-concept JPA entity are plain
+ * Java baked once from the model at generation time with zero {@code ModelHolder} reference anywhere
+ * in either template (entity.mustache, business-concept-crud-controller.mustache): a brand-new FIELD
+ * on an existing concept is structurally unreachable through that surface without regenerate +
+ * rebuild + restart, confirmed by reading both templates, not just by this class's own residual
+ * list.) See {@code NpdevCapabilityBindingConfig}'s own per-bean javadoc for the complete, current
+ * list of beans still needing a restart.
  *
  * <p><b>Two different gates, deliberately</b> (same posture as {@link AgentProxyController}).
  * {@code /status} answers any authenticated ADMIN caller, matching {@link RuntimeMetadataController}'s

@@ -75,10 +75,21 @@ detail: |
   `scripts/quality/independent-tester/entrypoint.sh` as `orchestrated` (same shape as the existing
   `linux-plugin-proof/cgroup-delegate-init.sh` precedent it's modeled on).
 
-  NOT verified this session, deliberately: an actual live container run (needs Docker + a real
-  Anthropic API key + real spend -- a manual, owner-triggered step, not something to run
-  unsupervised). `npdev tester --task A` (cheapest) is the recommended first live run before
-  `--task all` for the real REG-13/14/17 evidence.
+  2026-09-21 follow-up (same day): the live `docker build` was performed for real (Docker Desktop
+  was not running in the prior session). Built via the exact argv `npdev tester --dry-run --json`
+  reports (not hand-assembled) -- `docker build -f Dockerfile.independent-tester --build-arg
+  GRADLE_DISTRIBUTION_URLS=https://services.gradle.org/distributions/gradle-9.5.1-bin.zip -t
+  npdev-independent-tester:local .` -- succeeded in 233s, image size 2.03GB, tag confirmed present
+  afterward with `docker images`. Then `docker run --rm --network bridge -e
+  NPDEV_TESTER_TASK=all -e NPDEV_TESTER_REF=main npdev-independent-tester:local` (deliberately
+  WITHOUT `NPDEV_TESTER_ANTHROPIC_API_KEY`, so this makes zero Anthropic API calls and costs
+  nothing) confirmed the full run path works end-to-end short of the agent loop itself: the
+  container boots, `entrypoint.sh` execs `tester_agent.py`, which checks for the key FIRST (before
+  any clone/network activity -- confirmed by reading `tester_agent.py`'s `main()`) and exits 2 with
+  "NPDEV_TESTER_ANTHROPIC_API_KEY is not set" on stderr, exactly the documented behavior. This
+  closes the "was never actually built or run" gap the prior session left open; the actual
+  cost-incurring agent run (`--task A` with a real key) remains an owner-triggered manual step, not
+  attempted here.
 guard:
   kind: test
   ref: NPDevCli/tests/test_tester_cli.py#test_dry_run_never_touches_docker_and_reports_missing_key

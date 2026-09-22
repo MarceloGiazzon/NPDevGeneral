@@ -95,11 +95,14 @@ public class NpdevCapabilityBindingConfig {
      * has no in-place rebuild -- a hot reload changing declared invariants is NOT observed here
      * without a restart. Named residual (see docs/ACCEPTED_BOUNDARIES.md B28's reclassification):
      * the MODEL DATA hot-swaps everywhere via {@link ModelHolder#get()}; a handful of engine beans
-     * built ONCE from a model snapshot (this one, {@link #kernelRunner},
-     * {@link #generatedCrudRuntimeSupport}) still need a restart to observe a structural rule change,
-     * exactly like a change requiring newly generated code does. {@link #capabilityRegistry} is NOT
-     * in this set -- it registers a {@link ModelHolder} reload listener that rebuilds its bindings
-     * in place, since every consumer already holds a reference to the same mutable registry object.
+     * built ONCE from a model snapshot (this one, {@link #kernelRunner}) still need a restart to
+     * observe a structural rule change, exactly like a change requiring newly generated code does.
+     * ({@link #generatedCrudRuntimeSupport} was in this set until REG-235/D1 Phase 1 -- see its own
+     * bean javadoc -- but that fix does not reach the generated REST CRUD surface itself, a separate
+     * residual: see {@code MetadataHotSwapController}'s class javadoc.) {@link #capabilityRegistry}
+     * is NOT in this set -- it registers a {@link ModelHolder} reload listener that rebuilds its
+     * bindings in place, since every consumer already holds a reference to the same mutable registry
+     * object.
      */
     @Bean
     public InvariantEngine invariantEngine(ModelHolder modelHolder) {
