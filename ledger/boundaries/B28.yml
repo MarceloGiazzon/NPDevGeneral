@@ -83,7 +83,8 @@ codeLinkedNote: >-
   which must not depend on `ModelHolder`) and caches app-declared roles once at construction from
   `modelHolder.get()` -- its own javadoc already calls this "a named residual, same shape as
   `NpdevCapabilityBindingConfig#invariantEngine`," it was just never added to this file's list.
-  Tracked as REG-239 (not implemented yet); same fix shape as `invariantEngine`'s once REG-236 lands.
+  Tracked as REG-239 (FIXED later the same day -- see the final entry below); same fix shape as
+  `invariantEngine`'s.
   Also fixed a related doc drift found at the same time:
   `MetadataHotSwapController`'s class javadoc omitted `propertyResolver` from its own residual list
   (it's one of the 4 beans `NpdevCapabilityBindingConfig` names) and wrongly listed "property
@@ -112,5 +113,54 @@ codeLinkedNote: >-
   reload path at all. A durable `WAITING_EVENT` flow instance resuming across a reshaped flow is a
   separate, narrower residual (REG-238, open) -- not "still needs a restart" in the traditional
   sense (a restart doesn't even fix it; only a not-yet-designed shape-fingerprint guard would).
+
+  2026-09-21 (D1 Phase 2 continued, `ledger/items/REG-239.yml`): closed the 5th residual named in
+  the planning entry above. `DefaultExecutionAuthorizationPolicy` got the `ModelReloadListener` rebuild-in-place
+  treatment (a plain `setModel(CompiledModel)` on the adapter, the listener registered in
+  `NpdevAuthConfig` -- the `ReloadableInvariantEngine` idiom exactly), NOT the `Supplier` pattern:
+  its `toPermission` grant-name check is the ONLY place a `roles[].grants[]` name is validated
+  against the real `Permission` enum anywhere in the platform (`RoleValidation` deliberately checks
+  grant names structurally only -- `RoleValidation.java:15`), so re-deriving per request would have
+  moved that fail-loud validation off the startup path. Its two model-derived fields
+  (`appDeclaredRoles` and REG-177's `identityTables`) were merged into one immutable
+  `ModelDerivedState` record swapped as a unit, so a permission check racing a reload can never see
+  one model's roles paired with another's identity tables. Because `ModelHolder.swap` notifies
+  listeners inside its write lock and lets a throwing listener propagate, a reloaded model whose
+  `roles[]` declares an unrecognized grant now fails the RELOAD loudly and leaves the
+  previously-validated permission set in place, rather than degrading every later request.
+
+  2026-09-22 (exhaustive sweep, same D1 thread): an audit run specifically to answer "is the
+  residual list finally complete?" found THREE MORE, and the honest answer is no. The four-then-five
+  named residuals were never an enumeration -- they were the ones that happened to have been
+  noticed. Do not restate this boundary as "no bean caches model-derived state" again without a
+  mechanical check behind it; an earlier draft of the entry above said exactly that and was wrong
+  within the day. Newly tracked:
+
+  - REG-240 (MEDIUM-HIGH) `GeneratedCrudRuntimeSupport.identityTables`
+    (`:403`) -- REG-235 converted this class's 7 LOOKUP sites to `modelSupplier.get()` but left its
+    two CONSTRUCTOR-TIME DERIVATIONS untouched, which is why "the class was already fixed" hid it.
+    The platform now holds two copies of the same `IdentityPackTableNames.tryResolve` derivation,
+    one reload-aware (REG-239's) and one not.
+  - REG-241 (HIGH) `GeneratedCrudRuntimeSupport`'s orchestration subscribers (`:404`, `:1220-1246`)
+    -- the worst of the three, and the only one needing no unusual model change: ANY edit to
+    `orchestration[]` is silently ignored after a reload, and a REMOVED rule keeps firing. Its own
+    code comment defers the fix to "Phase 2 (KernelRunner's flow provider)", which REG-237 completed
+    without revisiting subscriber registration -- a comment pointing at a finished item is likely
+    exactly why this was missed.
+  - REG-242 (MEDIUM) `DocumentRenderController` injects `NPDevModelProvider` directly (`:82`,
+    `:324`) and so is pinned to the boot model forever. **This one also exposes a hole in REG-208's
+    structural guard**, which is the durable lesson: that guard is "there is no `CompiledModel`
+    bean, so a direct injection fails to wire at startup". `NPDevModelProvider` is a `@Component`
+    that EXPOSES `compiledModel()`, so injecting it compiles, wires and boots cleanly. This file's
+    own javadoc invariant ("the ONLY CompiledModel bean... nothing else may hold one directly") is
+    literally true and practically false. There is no static checker for any of this.
+
+  Also noted, not a residual by the strict definition but relevant to how this boundary is stated:
+  `RuntimeMetadataService` re-reads from disk per call (so it never goes stale), but it is refreshed
+  only by `/apply`, never by `/model-reload`. So a reload that adds a field makes it live in the
+  gateway/CRUD/panel paths while the UI metadata catalogs still describe the old shape -- i.e. "one
+  call fully applies a model change" is not true today either.
+
+  REG-238, REG-240, REG-241 and REG-242 are the open residuals under this boundary.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
 classification: LIFTED, PARTIAL

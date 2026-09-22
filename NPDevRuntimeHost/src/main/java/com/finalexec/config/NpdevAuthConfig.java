@@ -31,10 +31,19 @@ public class NpdevAuthConfig {
     }
 
     /**
-     * REG-208 (B28 lift): {@code DefaultExecutionAuthorizationPolicy} (a kernel adapter, which must
-     * not depend on {@code ModelHolder}) caches app-declared roles once at construction -- a named
-     * residual, same shape as {@code NpdevCapabilityBindingConfig#invariantEngine}: a hot reload
-     * that adds/removes an app-declared role still needs a restart to take effect here.
+     * D1 Phase 2 fix (REG-239; was: "REG-208 (B28 lift): {@code DefaultExecutionAuthorizationPolicy}
+     * (a kernel adapter, which must not depend on {@code ModelHolder}) caches app-declared roles
+     * once at construction -- a named residual, same shape as {@code
+     * NpdevCapabilityBindingConfig#invariantEngine}: a hot reload that adds/removes an app-declared
+     * role still needs a restart to take effect here"): the policy now rebuilds its model-derived
+     * state in place on a reload, so a role added/removed/regranted by a hot model reload takes
+     * effect on the next permission check with no restart.
+     *
+     * <p>Wired exactly like {@code NpdevCapabilityBindingConfig#invariantEngine}: the adapter still
+     * cannot depend on {@code ModelHolder}, so it exposes a plain {@code setModel(CompiledModel)}
+     * and the listener registration lives here. A reloaded model with an unrecognized grant name
+     * makes {@code setModel} throw, which {@code ModelHolder.swap} surfaces as the reload's own
+     * failure -- the same fail-loud contract this policy already gives at startup.
      */
     @Bean
     public ExecutionAuthorizationPolicy executionAuthorizationPolicy(
@@ -48,8 +57,10 @@ public class NpdevAuthConfig {
         // every permission check (never cached at bean-construction time) -- an InMemory-mode app
         // (no DataSource bean at all) gets null, which DefaultExecutionAuthorizationPolicy already
         // treats as "no override ever configured," identical to behavior before C2 existed.
-        return new DefaultExecutionAuthorizationPolicy(
+        DefaultExecutionAuthorizationPolicy policy = new DefaultExecutionAuthorizationPolicy(
                 tenantIsolationPolicy, modelHolder.get(), dataSourceProvider::getIfAvailable);
+        modelHolder.addReloadListener((before, after) -> policy.setModel(after));
+        return policy;
     }
 
     @Bean

@@ -28,12 +28,26 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
     private static final Logger LOG = Logger.getLogger(DefaultExecutionAuthorizationPolicy.class.getName());
 
     private final TenantIsolationPolicy tenantIsolationPolicy;
-    private final Map<String, Set<Permission>> appDeclaredRoles;
     private final Supplier<DataSource> dataSourceSupplier;
-    // REG-177: resolved ONCE at construction, not per-request -- empty when compiledModel is null
-    // (several constructors here allow that, see the two-arg ctor's own doc) or this app doesn't
-    // compose the identity pack at all (internal.tables=false is a normal, supported configuration).
-    private final Optional<IdentityPackTableNames> identityTables;
+
+    /**
+     * REG-239 (B28 lift): everything this policy derives from the compiled model, held as ONE
+     * immutable unit. Both pieces are still computed once per model (never per request) -- the
+     * change is only that "once per model" now means once per LIVE model rather than once per
+     * process. Grouping them means a permission check running concurrently with a hot reload can
+     * never observe the new model's roles paired with the old model's identity tables.
+     *
+     * <p>{@code identityTables} (REG-177) is empty when {@code compiledModel} is null (several
+     * constructors here allow that, see the two-arg ctor's own doc) or this app doesn't compose
+     * the identity pack at all (internal.tables=false is a normal, supported configuration).
+     */
+    private record ModelDerivedState(
+            Map<String, Set<Permission>> appDeclaredRoles,
+            Optional<IdentityPackTableNames> identityTables
+    ) {
+    }
+
+    private volatile ModelDerivedState modelState;
 
     public DefaultExecutionAuthorizationPolicy() {
         this(new DefaultTenantIsolationPolicy());
@@ -72,11 +86,37 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
             TenantIsolationPolicy tenantIsolationPolicy, CompiledModel compiledModel,
             Supplier<DataSource> dataSourceSupplier) {
         this.tenantIsolationPolicy = Objects.requireNonNull(tenantIsolationPolicy, "tenantIsolationPolicy");
-        this.appDeclaredRoles = toAppDeclaredRoles(compiledModel);
         this.dataSourceSupplier = dataSourceSupplier == null ? () -> null : dataSourceSupplier;
-        this.identityTables = compiledModel == null
-                ? Optional.empty()
-                : IdentityPackTableNames.tryResolve(compiledModel);
+        this.modelState = deriveFrom(compiledModel);
+    }
+
+    /**
+     * REG-239 (B28 lift): rebuilds this policy's model-derived state in place after a hot model
+     * reload, so a role added/removed/regranted by the reloaded model takes effect on the very next
+     * permission check -- the SAME instance keeps being used by every existing holder of the
+     * {@link ExecutionAuthorizationPolicy} interface reference. The same "build once, rebuild in
+     * place on reload" idiom {@code ReloadableInvariantEngine} and {@code capabilityRegistry} use,
+     * rather than re-deriving per request: this is on the permission-check hot path, and per-request
+     * re-derivation would also move {@link #toPermission}'s fail-loud grant-name validation off the
+     * startup path, which is exactly what the three-arg constructor's own doc says must not happen.
+     *
+     * <p>Deliberately allowed to throw: the caller is a {@code ModelHolder.ModelReloadListener},
+     * and {@code ModelHolder.swap} notifies listeners inside its write lock specifically so a
+     * throwing listener surfaces as the RELOAD's failure. A reloaded model whose {@code roles[]}
+     * declares an unrecognized grant therefore fails the reload loudly, exactly as it fails startup
+     * loudly today, instead of either degrading every subsequent request or silently keeping the
+     * pre-reload permission set.
+     */
+    public void setModel(CompiledModel model) {
+        this.modelState = deriveFrom(model);
+    }
+
+    private static ModelDerivedState deriveFrom(CompiledModel compiledModel) {
+        return new ModelDerivedState(
+                toAppDeclaredRoles(compiledModel),
+                compiledModel == null
+                        ? Optional.empty()
+                        : IdentityPackTableNames.tryResolve(compiledModel));
     }
 
     private static Map<String, Set<Permission>> toAppDeclaredRoles(CompiledModel compiledModel) {
@@ -261,10 +301,14 @@ public final class DefaultExecutionAuthorizationPolicy implements ExecutionAutho
     }
 
     private boolean hasPermission(ExecutionContext requester, Permission permission) {
-        Map<String, Set<String>> overrides = requester == null || identityTables.isEmpty()
+        // REG-239: read the volatile ONCE -- a reload landing mid-check must not let this call see
+        // one model's identity tables and another model's roles.
+        ModelDerivedState state = this.modelState;
+        Map<String, Set<String>> overrides = requester == null || state.identityTables().isEmpty()
                 ? Map.of()
                 : IdentityPermissionOverrideLookup.overridesFor(
-                        dataSourceSupplier.get(), identityTables.get(), requester.tenantId(), requester.actorId());
-        return RolePermissions.hasPermission(requester, permission, appDeclaredRoles, overrides);
+                        dataSourceSupplier.get(), state.identityTables().get(),
+                        requester.tenantId(), requester.actorId());
+        return RolePermissions.hasPermission(requester, permission, state.appDeclaredRoles(), overrides);
     }
 }
