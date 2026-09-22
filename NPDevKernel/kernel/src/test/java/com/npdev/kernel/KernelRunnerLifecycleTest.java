@@ -370,6 +370,219 @@ class KernelRunnerLifecycleTest {
         assertEquals("RESTART", resumed.getOutput());
     }
 
+    // ---------------------------------------------------------------------------------------
+    // REG-238: the flow-shape guard. Each of these parks a real instance on an await, then
+    // rebuilds the runner over the SAME stores with a DIFFERENT flow provider -- the existing
+    // restart-with-redeploy simulation just above, with the redeployed flow deliberately reshaped.
+    // ---------------------------------------------------------------------------------------
+
+    /** The await flow with an extra step spliced in BEFORE the await, so every index shifts. */
+    private static InMemoryFlowDefinitionProvider flowProviderForReshapedAwaitFlow() {
+        return new InMemoryFlowDefinitionProvider()
+                .register(new FlowDefinition(
+                        "AwaitApproval",
+                        "Invoice",
+                        List.of(
+                                FlowStepDefinition.map("newly-inserted-step", "anything", "$scratch"),
+                                FlowStepDefinition.awaitEvent("wait-approval", "InvoiceApproved", "$approval"),
+                                FlowStepDefinition.returnValue("return-status", "$approval.status")
+                        )
+                ));
+    }
+
+    /** The await flow with the SAME step names/types/order, but one step's parameters edited. */
+    private static InMemoryFlowDefinitionProvider flowProviderForReparameterizedAwaitFlow() {
+        return new InMemoryFlowDefinitionProvider()
+                .register(new FlowDefinition(
+                        "AwaitApproval",
+                        "Invoice",
+                        List.of(
+                                FlowStepDefinition.awaitEvent("wait-approval", "InvoiceApproved", "$approval"),
+                                // same name, same type, different output reference
+                                FlowStepDefinition.returnValue("return-status", "$approval")
+                        )
+                ));
+    }
+
+    private ExecutionResult parkOnAwaitThenResumeWith(
+            RecordingEventInfrastructure eventInfrastructure,
+            FlowInstanceStoreStub flowInstanceStore,
+            InMemoryFlowDefinitionProvider redeployedFlows,
+            String correlationId
+    ) {
+        KernelRunner firstRunner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                flowProviderForAwaitFlow(),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure,
+                flowInstanceStore
+        );
+        ExecutionResult waiting = firstRunner.execute("AwaitApproval", Map.of("correlationId", correlationId));
+        assertEquals(ExecutionStatus.WAITING_EVENT, waiting.getStatus());
+
+        eventInfrastructure.append(new EventEnvelope(
+                "evt-" + correlationId,
+                "InvoiceApproved",
+                3000L,
+                Map.of("status", "RESHAPED"),
+                correlationId,
+                "cause-reshape",
+                "external",
+                0,
+                "default",
+                "anonymous"
+        ));
+
+        KernelRunner secondRunner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                redeployedFlows,
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure,
+                flowInstanceStore
+        );
+        lastParkedExecutionId = waiting.getExecutionId();
+        lastRunner = secondRunner;
+        return secondRunner.resumeExecution(waiting.getExecutionId());
+    }
+
+    private String lastParkedExecutionId;
+    private KernelRunner lastRunner;
+
+    @Test
+    void resumeRefusesWhenTheFlowStepShapeChangedSinceTheInstanceWasCheckpointed() {
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        FlowInstanceStoreStub flowInstanceStore = new FlowInstanceStoreStub();
+
+        ExecutionResult resumed = parkOnAwaitThenResumeWith(
+                eventInfrastructure, flowInstanceStore, flowProviderForReshapedAwaitFlow(), "corr-reshape-1");
+
+        assertEquals(ExecutionStatus.FAILED, resumed.getStatus(),
+                "resuming positionally against a reshaped flow must be refused, not silently misapplied");
+        assertTrue(resumed.getError().contains("changed step shape"),
+                "the refusal must say what happened: " + resumed.getError());
+
+        FlowInstance stored = flowInstanceStore.findByExecutionId(lastParkedExecutionId).orElseThrow();
+        assertEquals(FlowInstanceStatus.STUCK, stored.status(),
+                "the instance must leave WAITING_EVENT, or both resume paths would re-select and "
+                        + "re-refuse it indefinitely -- neither persists backoff for a FAILED result");
+        assertEquals(FailureCodes.FLOW_SHAPE_CHANGED, stored.lastErrorCode());
+        assertEquals(ErrorKind.SYSTEM.name(), stored.lastErrorKind());
+        assertEquals("InvoiceApproved", stored.waitingForEventName(),
+                "markStuck must preserve the awaited event name -- withUnstuck refuses without it");
+    }
+
+    @Test
+    void resumeStillWorksWhenOnlyStepParametersChanged() {
+        // Pins the deliberate scope line in FlowShapeFingerprint: the guard answers "is the
+        // checkpointed step index still meaningful?", NOT "has anything about this flow changed?".
+        // Without this test a later session could quietly widen the fingerprint to cover
+        // parameters, turning every routine inputRef edit into a mass-STUCK event.
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        FlowInstanceStoreStub flowInstanceStore = new FlowInstanceStoreStub();
+
+        ExecutionResult resumed = parkOnAwaitThenResumeWith(
+                eventInfrastructure, flowInstanceStore, flowProviderForReparameterizedAwaitFlow(), "corr-reshape-2");
+
+        assertEquals(ExecutionStatus.OK, resumed.getStatus(),
+                "an in-place parameter edit leaves every step at its original index and name, so the "
+                        + "instance re-enters exactly the step it parked on and must resume normally");
+    }
+
+    @Test
+    void resumeOfAnInstanceCheckpointedBeforeTheGuardExistedIsAllowedThrough() {
+        // A row persisted before REG-238 shipped has no fingerprint in its state. It must not be
+        // refused (that would strand every in-flight instance on upgrade), and it must NOT be
+        // stamped with the current shape on the way past -- that would bless whatever shape is live
+        // now as if it were the checkpointed one.
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        FlowInstanceStoreStub flowInstanceStore = new FlowInstanceStoreStub();
+
+        KernelRunner runner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                flowProviderForAwaitFlow(),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure,
+                flowInstanceStore
+        );
+        ExecutionResult waiting = runner.execute("AwaitApproval", Map.of("correlationId", "corr-legacy-1"));
+        assertEquals(ExecutionStatus.WAITING_EVENT, waiting.getStatus());
+
+        FlowInstance parked = flowInstanceStore.findByExecutionId(waiting.getExecutionId()).orElseThrow();
+        Map<String, Object> legacyState = new LinkedHashMap<>(parked.state());
+        assertNotNull(legacyState.remove("__npdev_flowShape__"),
+                "the fingerprint must have been stamped at execute() time for this test to mean anything");
+        flowInstanceStore.update(parked.markWaiting(
+                parked.currentStepIndex(), parked.waitingForEventName(), legacyState, 4000L));
+
+        eventInfrastructure.append(new EventEnvelope(
+                "evt-legacy-1",
+                "InvoiceApproved",
+                4000L,
+                Map.of("status", "LEGACY"),
+                "corr-legacy-1",
+                "cause-legacy",
+                "external",
+                0,
+                "default",
+                "anonymous"
+        ));
+
+        ExecutionResult resumed = runner.resumeExecution(waiting.getExecutionId());
+        assertEquals(ExecutionStatus.OK, resumed.getStatus(),
+                "a pre-guard instance carries no fingerprint and must still resume");
+        assertEquals("LEGACY", resumed.getOutput());
+    }
+
+    @Test
+    void aRefusedInstanceIsNoLongerPickedUpByTheWaitingSweep() {
+        // The whole reason the guard writes STUCK instead of just returning FAILED: both
+        // ResumeCoordinator paths count a FAILED result as a successful resume and persist no
+        // backoff, so a still-WAITING_EVENT row would be swept and refused over and over.
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        FlowInstanceStoreStub flowInstanceStore = new FlowInstanceStoreStub();
+
+        ExecutionResult resumed = parkOnAwaitThenResumeWith(
+                eventInfrastructure, flowInstanceStore, flowProviderForReshapedAwaitFlow(), "corr-reshape-3");
+        assertEquals(ExecutionStatus.FAILED, resumed.getStatus());
+
+        assertTrue(flowInstanceStore.findAllWaiting(10).stream()
+                        .noneMatch(instance -> lastParkedExecutionId.equals(instance.executionId())),
+                "a shape-refused instance must not remain in the waiting set");
+        assertEquals(0, lastRunner.resumeAllWaitingExecutions(10),
+                "the sweep must not re-pick the refused instance");
+    }
+
+    @Test
+    void theAwaitedEventSurvivesARefusalSoTheInstanceCanBeRecoveredAfterTheModelIsFixed() {
+        // The guard returns before any step runs, so the awaited event is never consumed. After the
+        // operator restores the shape and un-sticks, the original event must still resume it.
+        RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
+        FlowInstanceStoreStub flowInstanceStore = new FlowInstanceStoreStub();
+
+        ExecutionResult refused = parkOnAwaitThenResumeWith(
+                eventInfrastructure, flowInstanceStore, flowProviderForReshapedAwaitFlow(), "corr-reshape-4");
+        assertEquals(ExecutionStatus.FAILED, refused.getStatus());
+        String executionId = lastParkedExecutionId;
+
+        KernelRunner restoredRunner = new KernelRunner(
+                eventInfrastructure,
+                (entityName, payload) -> List.of(),
+                flowProviderForAwaitFlow(),
+                (call, state) -> CapabilityResult.success(null),
+                eventInfrastructure,
+                flowInstanceStore
+        );
+        restoredRunner.unstickExecution(executionId);
+
+        ExecutionResult recovered = restoredRunner.resumeExecution(executionId);
+        assertEquals(ExecutionStatus.OK, recovered.getStatus(),
+                "once the shape matches again the original awaited event must still be consumable");
+        assertEquals("RESHAPED", recovered.getOutput());
+    }
+
     @Test
     void resumeAllWaitingExecutionsResumesOnlyInstancesWithMatchingPersistedEvent() {
         RecordingEventInfrastructure eventInfrastructure = new RecordingEventInfrastructure();
