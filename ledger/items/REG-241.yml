@@ -1,0 +1,51 @@
+id: REG-241
+title: >-
+  Orchestration subscribers are registered once from GeneratedCrudRuntimeSupport's constructor, so
+  after a hot reload an added orchestration[] rule never fires and a REMOVED one keeps firing
+type: BUG
+severity: HIGH
+status: OPEN
+opened: 2026-09-22
+source: >-
+  Exhaustive B28 residual sweep (see also REG-240, REG-242 and `ledger/boundaries/B28.yml`'s
+  2026-09-22 entry). `GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers()`
+  (`NPDevKernel/adapters/runtime-support/.../GeneratedCrudRuntimeSupport.java:1220`, called from
+  the constructor at `:404`) snapshots `modelSupplier.get()` at `:1225` and subscribes one handler
+  per event-triggered rule, capturing a fully-resolved immutable `RuntimeOrchestration` into each
+  lambda.
+
+  Its own comment at `:1221-1224` is why this was missed: it explicitly defers the fix to
+  "Phase 2 (KernelRunner's flow provider)". REG-237 completed that provider and never revisited
+  subscriber registration, so the comment now points at a CLOSED item while the gap it describes is
+  still open. A deferral comment naming another item is only safe if that item's done-when actually
+  covers it -- this one never did.
+surface: NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java,
+  NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java
+detail: |
+  NOT IMPLEMENTED. The subscription set lives in the EventBus as external state and is never
+  touched again after construction. After a `/model-reload`:
+
+  - a rule ADDED to `orchestration[]` never fires -- no subscriber was ever registered for its
+    event;
+  - a rule REMOVED still fires on every matching event -- the app keeps executing business logic
+    the operator believes they deleted;
+  - a rule EDITED runs its pre-reload body. Concretely: change `orchestration[].condition` from
+    `amount > 100` to `amount > 1000`, reload, and the app keeps auto-creating records at the old
+    threshold. Same for a changed target concept or field mapping on a `create` action.
+
+  This is the highest-severity residual under B28 because, unlike the others, it needs no unusual
+  model change -- ANY edit to `orchestration[]` is silently ignored, and the removed-rule case is
+  actively wrong rather than merely stale.
+
+  Fix shape: `ModelReloadListener` rebuild-in-place. The `Supplier` pattern structurally cannot
+  work: subscription is a side effect on the EventBus, not a lookup. The mechanism already exists --
+  `KernelRunner.subscribeEvent` returns an `AutoCloseable` (`KernelRunner.java:778`) and this class
+  currently DISCARDS the handle (`:1238` keeps only the name). Keep the handles, close them and
+  re-subscribe on swap. Wiring follows REG-239's shape: a public
+  `reloadOrchestrationSubscribers(CompiledModel)` on the adapter (which cannot import `ModelHolder`)
+  with the listener registered in `NpdevCapabilityBindingConfig#generatedCrudRuntimeSupport`
+  (`:589-618`).
+
+  Watch for ordering/idempotency when implementing: closing and re-subscribing must not drop an
+  event that arrives mid-swap, and `ModelHolder.swap` notifies listeners inside its write lock, so
+  the re-subscription runs with readers blocked.
