@@ -873,6 +873,9 @@ final EventBus eventBus;
         initialState.put("correlationId", correlationId);
         initialState.put("causationId", "flow:" + flow.getName());
         initialState.put("_npdevEntityName", flow.getEntityName());
+        // REG-238: stamp the flow's step SHAPE here, before the first save below, so every durable
+        // instance carries the shape it was checkpointed against. resumeExecution compares it.
+        initialState.put(FlowShapeFingerprint.STATE_KEY, flow.getShapeFingerprint());
         if (effectiveContext.tenantId() != null) {
             initialState.put("tenantId", effectiveContext.tenantId());
         }
@@ -981,14 +984,99 @@ final EventBus eventBus;
             );
         }
 
+        FlowDefinition resumingFlow = flowOpt.get();
+        ExecutionResult shapeRefusal = refuseIfFlowShapeChanged(existing, resumingFlow);
+        if (shapeRefusal != null) {
+            return shapeRefusal;
+        }
+
         Object input = existing.state().get("input");
         return executeFlowInstanceTracked(
-                flowOpt.get(),
+                resumingFlow,
                 input,
                 existing,
                 existing.currentStepIndex(),
                 existing.executionId(),
                 resumeContext
+        );
+    }
+
+    /**
+     * REG-238 (boundary B28): refuse to resume a durable instance positionally against a flow whose
+     * step SHAPE changed since that instance was checkpointed.
+     *
+     * <p>Returns {@code null} to allow the resume, or a terminal failure result to refuse it.
+     *
+     * <p><b>Why this writes STUCK to the store rather than just returning a failed result.</b>
+     * Neither resume caller treats a returned FAILED as a reason to stop: the sweep
+     * ({@code ResumeCoordinator.resumeAllWaitingExecutions}) only persists backoff when the result
+     * is WAITING_EVENT or a RuntimeException escapes, and otherwise counts the attempt as a
+     * successful resume; the event-arrival path ({@code ResumeCoordinator.resumeWaitingExecutionsFor})
+     * does the same with no backoff and no claim lease at all. A refusal that left the row in
+     * WAITING_EVENT would therefore be re-selected and refused again indefinitely -- every sweep
+     * tick on the in-proc store, and about once per 30s claim lease on the JDBC one. Writing STUCK
+     * takes the row out of WAITING_EVENT, so both paths stop selecting it, and it does so at the
+     * one choke point both of them funnel through.
+     *
+     * <p><b>Why STUCK specifically</b>, and not FAILED/FAILED_PERMANENT: STUCK is the only status
+     * with a coded operator recovery path ({@link #unstickExecution}), which is exactly the
+     * "fix the model, then put it back" situation this is. {@code markStuck} also preserves
+     * {@code waitingForEventName}, which {@code withUnstuck} requires.
+     *
+     * <p><b>No awaited event is burned.</b> This returns before any step runs, and the awaited
+     * event is only marked consumed inside the await step itself, so after the operator restores
+     * the shape and un-sticks the instance, the original event is still there to resume on.
+     *
+     * <p><b>Instances checkpointed before this guard shipped</b> carry no fingerprint and are
+     * allowed through, once, with a log line. They are deliberately NOT stamped with the current
+     * shape on the way past: stamping at resume time would bless whatever shape happens to be live
+     * at that moment as if it were the checkpointed one, laundering the exact misapplication this
+     * guard exists to catch. A correct backfill would have to know the shape as of checkpoint time,
+     * which by construction no longer exists. Such instances drain out under the old behaviour.
+     */
+    private ExecutionResult refuseIfFlowShapeChanged(FlowInstance existing, FlowDefinition flow) {
+        Object checkpointed = existing.state().get(FlowShapeFingerprint.STATE_KEY);
+        String checkpointedShape = checkpointed == null ? null : checkpointed.toString();
+        if (checkpointedShape == null || checkpointedShape.isBlank()) {
+            LOG.info("Resuming execution " + existing.executionId() + " (flow " + existing.flowName()
+                    + ") without a flow-shape fingerprint -- it was checkpointed before REG-238's guard "
+                    + "existed, so a step-shape change since then cannot be detected for this instance.");
+            return null;
+        }
+
+        String currentShape = flow.getShapeFingerprint();
+        if (checkpointedShape.equals(currentShape)) {
+            return null;
+        }
+
+        String message = "Flow \"" + existing.flowName() + "\" changed step shape since execution "
+                + existing.executionId() + " was checkpointed at step index " + existing.currentStepIndex()
+                + ", so that index no longer identifies the step it parked on; refusing to resume it "
+                + "positionally (checkpointed shape " + checkpointedShape + ", current shape " + currentShape
+                + "). Restore the flow's step shape and then un-stick this execution; un-sticking it "
+                + "without fixing the model first will simply refuse again.";
+        FailureInfo failureInfo = FailureInfo.of(
+                ErrorKind.SYSTEM,
+                FailureCodes.FLOW_SHAPE_CHANGED,
+                message,
+                Map.of(
+                        "checkpointedShape", checkpointedShape,
+                        "currentShape", currentShape,
+                        "currentStepIndex", String.valueOf(existing.currentStepIndex())
+                )
+        );
+        FlowInstance stuck = existing.markStuck(existing.state(), nowEpochMillis(), failureInfo);
+        flowInstanceStore.update(stuck);
+        emitOperationalFailureEvent(stuck);
+        LOG.warning(message);
+        return ExecutionResult.failed(
+                existing.flowName(),
+                List.of(),
+                List.of(),
+                message,
+                existing.executionId(),
+                existing.correlationId(),
+                existing.executionId()
         );
     }
 

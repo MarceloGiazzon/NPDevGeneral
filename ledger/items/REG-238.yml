@@ -1,12 +1,12 @@
 id: REG-238
 title: >-
-  KernelRunner.resumeExecution has no guard against a flow's step shape changing since a
-  WAITING_EVENT instance was checkpointed -- pre-existing via restart+deploy, now also reachable
-  via a live model hot-reload
+  KernelRunner.resumeExecution now refuses to resume a durable instance positionally against a
+  flow whose step shape changed since that instance was checkpointed
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-21
+closed: 2026-09-22
 source: >-
   D1 Phase 2 planning (server-driven UI structural rewrite), scoped out of REG-237's mechanical fix
   on purpose. `KernelRunner.resumeExecution` (`NPDevKernel/kernel/src/main/java/com/npdev/kernel/
@@ -43,3 +43,105 @@ detail: |
   instances with no fingerprint), what "mismatch" should do operationally (fail the instance
   outright vs. surface an operator-actionable alert), and whether `JdbcFlowInstanceStore`/
   `PostgresFlowInstanceStore` need schema changes.
+
+  IMPLEMENTED 2026-09-22. All four cited line numbers in the source note above verified true before
+  building on them. Every design question this item left open is answered below, and TWO of the
+  three answers went AGAINST this item's own proposal -- recorded here because the reasoning is the
+  reusable part.
+
+  1. STORAGE: a reserved key in the already-persisted `state_json` blob
+     (`FlowShapeFingerprint.STATE_KEY = "__npdev_flowShape__"`), NOT the new `FlowInstance`
+     column/field this item proposed. `FlowInstance` is a 20-component record with 4 constructors
+     and 9 `mark*`/`with*` factories, all of which re-invoke the canonical constructor, and it is
+     constructed at 3 production and ~49 test sites across 7 files; `JdbcFlowInstanceStore` would
+     need 11 SELECT lists, the INSERT list and a fully renumbered `UPDATE ... SET`. The state key
+     costs none of that and needs NO migration -- the key is simply absent from older rows and
+     `readStateJson` is a plain `Map` parse. Precedent is explicit, not invented: `FlowStateCodec`'s
+     `AWAIT_FIELD_DEADLINE_EPOCH_MS` javadoc already argues for riding the same `state_json` blob
+     over a new durable surface, and `_npdevEntityName` / `__npdev_…__` reserved keys already
+     survive the crash/resume round trip. Flat double-underscore form deliberately, not
+     `_npdev.await`'s dotted one: a dot is ambiguous with `KernelRunner.normalizeRef`'s nested-path
+     resolution. Verified nothing clears the state map wholesale across the round trip.
+     COST ACCEPTED: the fingerprint is not SQL-queryable, so an operator cannot bulk-list "every
+     waiting instance whose flow was reshaped" -- detection is one instance at a time, at resume.
+     If that bulk view is ever wanted, THAT is the argument for the column, not migration safety.
+
+  2. FAILURE SHAPE: `markStuck` + `flowInstanceStore.update` + `emitOperationalFailureEvent`, then
+     return a failed result -- and the store write is the whole point, not decoration. A plain
+     `ExecutionResult.failed(...)` would have been actively harmful: NEITHER resume caller treats
+     FAILED as a stop condition. `ResumeCoordinator.resumeAllWaitingExecutions` persists backoff
+     only for WAITING_EVENT or a thrown RuntimeException and otherwise counts the attempt as a
+     SUCCESSFUL resume; the event-arrival path `resumeWaitingExecutionsFor` does the same with no
+     backoff and no claim lease at all. A refusal leaving the row in WAITING_EVENT would be
+     re-selected and re-refused indefinitely -- every tick on the in-proc store, roughly every 30s
+     (the claim lease) on JDBC. Writing STUCK takes it out of WAITING_EVENT so both paths stop
+     selecting it, at the one choke point both funnel through. STUCK specifically because it is the
+     only status with a coded operator recovery path (`unstickExecution`), and `markStuck` preserves
+     `waitingForEventName`, which `withUnstuck` requires.
+     NOTE: an independent verification pass corrected the initial design here -- the analogous
+     terminal branch at `KernelRunner.java:1264-1277` returns the pre-built `failure` object rather
+     than constructing a fresh `ExecutionResult.failed(...)`, and its `markStuck` is one arm of a
+     switch inside an `else`, not an unconditional call. The guard therefore builds its own result
+     rather than copying that shape verbatim.
+
+  3. FINGERPRINT SCOPE: `(stepName, stepType)` plus tree structure, over all five nested child
+     lists, prefixed by the flow name; SHA-256 via `IdempotencyKeys.sha256Hex` (widened from
+     `private` rather than adding a second `MessageDigest` loop in the same module). Memoized on
+     `FlowDefinition`, which is immutable and built once per model snapshot.
+     Step NAMES are in it because the durable checkpoints INSIDE a step are keyed by name, not
+     index (`ForEachStep`'s `__forEachProgress.<name>`, `FlowStateCodec`'s await keys): a rename in
+     place keeps the index, so a type-and-arity-only fingerprint would pass it and every one of
+     those name-keyed lookups would silently miss.
+     Step PARAMETERS are deliberately NOT in it -- the guard answers "is the checkpointed index
+     still meaningful?", not "has anything changed?". A parameter edit leaves every step at its
+     original index and name, so including them would turn every routine `inputRef` tweak into a
+     mass-STUCK event across every in-flight instance: worse than the hazard being guarded.
+     `resumeStillWorksWhenOnlyStepParametersChanged` exists specifically to stop a future session
+     quietly widening this into a change-detector.
+     Judgement call recorded: `awaitEventName` is treated as a parameter and left out, so renaming
+     an awaited event in place lets the instance re-park on the new name rather than going STUCK.
+     Surprising but benign; including it would again mean mass-STUCK on every event rename.
+
+  4. LEGACY INSTANCES: allowed through unguarded, once, with a log line, and deliberately NOT
+     back-stamped with the current shape. Stamping at resume time would bless whatever shape is
+     live at that moment as if it were the checkpointed one -- laundering the exact misapplication
+     the guard exists to catch. A correct backfill would need the shape as of checkpoint time,
+     which by construction no longer exists.
+
+  5. `ResumeBootstrapRunner` needed no second insertion point -- it routes through the same
+     `resumeExecution`. One correction to this item's source note: it does not resume every waiting
+     instance at boot; `resumeAllWaitingExecutions` returns 0 with no event store, and only resumes
+     instances whose awaited event is already present or whose await timed out. The hazard is
+     identical, the trigger is narrower (event arrival, which may be at boot or much later).
+
+  Files: `FlowShapeFingerprint.java` (new), `FlowDefinition.getShapeFingerprint()` (memoized),
+  `KernelRunner.execute` (stamp) + `refuseIfFlowShapeChanged` (guard),
+  `FailureCodes.FLOW_SHAPE_CHANGED`, `IdempotencyKeys.sha256Hex` widened. No change to
+  `FlowInstance`, any `FlowInstanceStore`, `NpdevFlowInstanceTable`, or any of the 7 test files that
+  construct `FlowInstance`. ZERO DB migration.
+
+  Also fixed alongside (found while documenting): `docs/FLOWS.md`'s state-transition table cited
+  `KernelRunner.java` line numbers that had drifted -- one by ~1,200 lines, and one pointing into
+  code since extracted into `ResumeCoordinator`. Re-anchored against the current file and a note
+  added telling the next reader to trust the method name over the number.
+
+  Verified: `:kernel:test :adapters:authz-default:test --rerun-tasks` BUILD SUCCESSFUL, 30/30 in
+  KernelRunnerLifecycleTest with 0 failures and 0 skips, all 5 new tests confirmed present in the
+  JUnit XML. RED-PROVEN, not assumed: with the guard call stubbed out to return null, exactly 3 of
+  the 5 fail (the three asserting refusal) and the 2 control tests -- parameter-edit resumes, legacy
+  instance passes through -- stay green, which is the correct signature. The stub was removed and
+  its absence verified by grep before commit.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/kernel/src/test/java/com/npdev/kernel/KernelRunnerLifecycleTest.java#resumeRefusesWhenTheFlowStepShapeChangedSinceTheInstanceWasCheckpointed
+  asserts: >-
+    parks a real instance on an await via execute(), then rebuilds the KernelRunner over the SAME
+    stores with the flow reshaped (a step spliced in before the await) -- the existing
+    restart-with-redeploy simulation, deliberately reshaped -- and confirms the resume is REFUSED
+    (FAILED, message naming the shape change) and the instance is left STUCK with lastErrorCode
+    flow_shape_changed, lastErrorKind SYSTEM, and waitingForEventName preserved for unstick.
+    Siblings cover: a parameter-only edit still resuming OK, a pre-guard instance with no
+    fingerprint passing through, the refused instance no longer being picked up by the waiting
+    sweep, and the awaited event surviving a refusal so unstick + restored shape completes normally.
+  provenRed: true

@@ -13,6 +13,15 @@ public final class FlowDefinition {
     private final SchemaObject inputSchema;
     private final SchemaObject outputSchema;
 
+    /**
+     * REG-238: lazily computed, then memoized. Safe because this class is immutable -- {@code name}
+     * is final and {@code steps} is an unmodifiable copy -- so every computation yields the same
+     * string and a benign race just recomputes it. In production a {@code FlowDefinition} is built
+     * once per model snapshot and cached by {@code CompiledModelFlowDefinitionProvider}, so this
+     * costs one hash per flow per model load and is free on the execute/resume path.
+     */
+    private volatile String shapeFingerprint;
+
     public FlowDefinition(String name, String entityName, List<FlowStepDefinition> steps) {
         this(name, entityName, steps, null, null);
     }
@@ -50,6 +59,19 @@ public final class FlowDefinition {
 
     public List<FlowStepDefinition> getSteps() {
         return steps;
+    }
+
+    /**
+     * REG-238: a structural fingerprint of this flow's step tree -- see {@link FlowShapeFingerprint}
+     * for exactly what it covers and, just as importantly, what it deliberately ignores.
+     */
+    public String getShapeFingerprint() {
+        String memoized = shapeFingerprint;
+        if (memoized == null) {
+            memoized = FlowShapeFingerprint.of(this);
+            shapeFingerprint = memoized;
+        }
+        return memoized;
     }
 
     public SchemaObject getInputSchema() {

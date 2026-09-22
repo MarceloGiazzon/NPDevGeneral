@@ -67,7 +67,13 @@ public final class IdempotencyKeys {
         return DIGEST_PREFIX + sha256Hex(raw);
     }
 
-    private static String sha256Hex(String value) {
+    /**
+     * The kernel's shared SHA-256 hex digest. Widened from private for REG-238's
+     * {@code FlowShapeFingerprint}, which needs the identical digest and must not introduce a
+     * second {@code MessageDigest} loop in the same module. The surrounding class stays about
+     * idempotency-key bounding; this one method is simply the digest both callers share.
+     */
+    public static String sha256Hex(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder out = new StringBuilder(digest.length * 2);

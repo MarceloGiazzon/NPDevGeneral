@@ -16,6 +16,12 @@ public final class FailureCodes {
     public static final String FORBIDDEN = "forbidden";
     public static final String UNAUTHORIZED = "unauthorized";
     public static final String RESUME_ATTEMPT_CAP = "resume_attempt_cap";
+    /**
+     * REG-238: a durable instance was asked to resume against a flow whose step SHAPE changed since
+     * the instance was checkpointed, so its stored {@code currentStepIndex} no longer refers to the
+     * step it parked on. Detection only -- the old shape is never resurrected.
+     */
+    public static final String FLOW_SHAPE_CHANGED = "flow_shape_changed";
     public static final String EVENT_PAYLOAD_INVALID = "event_payload_invalid";
     public static final String SYSTEM_EXCEPTION = "system_exception";
 

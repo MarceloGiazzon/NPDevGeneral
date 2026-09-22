@@ -91,16 +91,22 @@ Every arrow above is a real call site in `KernelRunner.java`:
 
 | Transition | Where | Condition |
 |---|---|---|
-| *(start)* → RUNNING | `KernelRunner.java:806-815` | `FlowInstance.start(...)`, then persisted |
-| RUNNING → RUNNING | `KernelRunner.java:1053-1057` | every successful step checkpoint |
-| RUNNING → WAITING_EVENT | `KernelRunner.java:1119-1130` | an `AWAIT_EVENT` step's event isn't found yet |
-| RUNNING → COMPLETED | `KernelRunner.java:1086-1098`, `1170-1173` | all steps done, or resume past the end |
-| RUNNING → FAILED / FAILED_PERMANENT / STUCK | `KernelRunner.java:1149-1161`, `1197-1204` | a step fails; `resolveFailureTerminalStatus` (`:2641-2665`) picks the terminal status — compensation (if declared) runs first, then the same status applies either way |
-| WAITING_EVENT → RUNNING | guard at `KernelRunner.java:876-892` | `resumeExecution` finds the awaited event |
-| WAITING_EVENT → WAITING_EVENT | `KernelRunner.java:982-1011`, `2610-2617` | resume attempted, nothing found yet — backoff, **no attempt cap** (R2.1) |
-| WAITING_EVENT → STUCK | `FlowInstance.java:180-186` | `resumeAttemptCount + 1 >= RESUME_MAX_ATTEMPTS` (constant `20`) — reached **only** on real `exception:*` resume failures; `missing_event` passes `RESUME_NO_ATTEMPT_CAP = 0`, which `markResumeFailure` treats as never-exhausted (`ResumeCoordinator.applyResumeBackoff`) |
+| *(start)* → RUNNING | `KernelRunner.java:886-895` | `FlowInstance.start(...)`, then persisted |
+| RUNNING → RUNNING | `KernelRunner.java:1164` | every successful step checkpoint (`markRunning`) |
+| RUNNING → WAITING_EVENT | `KernelRunner.java:1233` | an `AWAIT_EVENT` step's event isn't found yet (`markWaiting`) |
+| RUNNING → COMPLETED | `KernelRunner.java:1196` | all steps done, or resume past the end |
+| RUNNING → FAILED / FAILED_PERMANENT / STUCK | `KernelRunner.java:1264-1277` | a step fails; `resolveFailureTerminalStatus` (`:1500`) picks the terminal status — compensation (if declared) runs first, then the same status applies either way |
+| WAITING_EVENT → RUNNING | guard at `KernelRunner.java:963-971` | `resumeExecution` finds the awaited event |
+| WAITING_EVENT → WAITING_EVENT | `ResumeCoordinator.java` (`applyResumeBackoff`) | resume attempted, nothing found yet — backoff, **no attempt cap** (R2.1) |
+| WAITING_EVENT → STUCK (shape guard) | `KernelRunner.refuseIfFlowShapeChanged` | REG-238: the flow's step shape changed since this instance was checkpointed — see "Resuming across a reshaped flow" below |
+| WAITING_EVENT → STUCK (attempt cap) | `FlowInstance.java:276` (`markResumeFailure`) | `resumeAttemptCount + 1 >= RESUME_MAX_ATTEMPTS` (constant `20`) — reached **only** on real `exception:*` resume failures; `missing_event` passes `RESUME_NO_ATTEMPT_CAP = 0`, which `markResumeFailure` treats as never-exhausted (`ResumeCoordinator.applyResumeBackoff`) |
 
-**Terminal-status selection** (`resolveFailureTerminalStatus`, `KernelRunner.java:2641-2665`):
+> Line numbers in this table drifted badly once before (one citation was ~1,200 lines off, and another
+> pointed into a class that had since been extracted into `ResumeCoordinator`). If you are reading
+> this and a number does not land where it claims, trust the method name and re-grep — then fix the
+> number here.
+
+**Terminal-status selection** (`resolveFailureTerminalStatus`, `KernelRunner.java:1500`):
 
 ```
 INPUT_VALIDATION_FAILED, INVARIANT_FAILED, EVENT_PAYLOAD_INVALID   → FAILED_PERMANENT
@@ -304,6 +310,43 @@ can actually be found, applying exponential backoff (base 5s, cap 300s) to anyth
 **This is the whole answer to "what happens if the JVM restarts while a flow is waiting":** nothing
 special. The instance was already durable before the crash; boot finds it and tries to resume it,
 exactly like the poller would have on its next tick anyway.
+
+### Resuming across a reshaped flow — the REG-238 guard
+
+A restart is only "nothing special" when the flow comes back the *same shape*. A restart is usually a
+**redeploy**, and a redeploy can carry an edited model.
+
+`resumeExecution` resolves a persisted instance's flow definition fresh, by name, and then applies the
+checkpointed `currentStepIndex` **positionally** to whatever step list comes back. If a step was
+inserted, deleted, reordered or renamed in between, that index no longer identifies the step the
+instance parked on, and the instance would silently re-enter the wrong one. The same applies to a hot
+model reload, which reaches the identical code without a restart at all.
+
+So every instance now carries a **structural fingerprint** of its flow's step tree, stamped into its
+state at `execute()` time (`FlowShapeFingerprint`, `KernelRunner.execute`) and compared at resume
+(`KernelRunner.refuseIfFlowShapeChanged`). On a mismatch the instance is marked `STUCK` with failure
+code `flow_shape_changed`, naming both fingerprints and the checkpointed index.
+
+What trips it: inserting, deleting, reordering or renaming a step at any depth; changing a step's
+type; moving a step into or out of a branch or loop body. What deliberately does **not**: editing a
+step's parameters in place (`inputRef`, condition text, capability/operation, timeouts, schemas). A
+parameter edit leaves every step at its original index and name, so the instance re-enters exactly
+the step it parked on — making that trip the guard would turn every routine edit into a mass-`STUCK`
+event across every in-flight instance of the flow, which is worse than the hazard being guarded.
+
+**Recovery:** restore the flow's step shape, then `unstickExecution`. The awaited event is *not*
+consumed by a refusal — the guard returns before any step runs — so the original event still resumes
+the instance once the shape matches. Un-sticking without fixing the model first simply refuses again,
+with the same message.
+
+**Honest limits.** This is detection, not version-pinned execution: the old flow shape is never
+resurrected and an in-flight instance cannot be run to completion against it. Instances checkpointed
+*before* this guard shipped carry no fingerprint and are allowed through unguarded, once, with a log
+line; they are deliberately **not** back-stamped with the current shape, because stamping at resume
+time would bless whatever shape happens to be live as if it were the checkpointed one — laundering
+the exact misapplication the guard exists to catch. Those instances drain out under the old
+behaviour. The fingerprint also rides in the instance's own state map, so it is a safety net against
+operator and deploy accidents, not a defence against a hostile model.
 
 ## 5. Compensation (LNCH-17)
 
