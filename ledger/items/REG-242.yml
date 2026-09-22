@@ -1,0 +1,51 @@
+id: REG-242
+title: >-
+  DocumentRenderController injects NPDevModelProvider and is pinned to the boot model forever --
+  and REG-208's "no CompiledModel bean" guard structurally cannot catch this shape
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-22
+source: >-
+  Exhaustive B28 residual sweep (see also REG-240, REG-241 and `ledger/boundaries/B28.yml`'s
+  2026-09-22 entry). `NPDevRuntimeHost/src/main/java/com/finalexec/api/DocumentRenderController.java`
+  holds `private final NPDevModelProvider modelProvider` (`:82`, ctor `:90`/`:97`) and resolves
+  documents via `modelProvider.compiledModel().getDocuments()` (`:324`).
+surface: NPDevRuntimeHost/src/main/java/com/finalexec/api/DocumentRenderController.java,
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/ModelHolder.java
+detail: |
+  NOT IMPLEMENTED. `NPDevModelProvider` (generated from
+  `NPDevGenerator/.../npdev-templates/npdev-runtime-model-provider.mustache`) loads
+  `compiled-model.json` once in its constructor into a `final CompiledModel`.
+  `NpdevCapabilityBindingConfig` uses that provider only to SEED `ModelHolder`, and
+  `/model-reload` swaps `ModelHolder` alone -- `NPDevModelProvider` is never updated. So this
+  controller is permanently pinned to the model the JVM booted with.
+
+  Observable: `GET /api/documents/{document}/render.pdf` and
+  `GET /api/documents/{document}/aggregate/{rootId}/render.pdf` resolve `documents[]` against the
+  boot model. A `documents[]` entry added by a reload returns 404 "No document declared named 'X'";
+  one deleted still renders; one whose `concept`, band/field list, `pageSize` or `marginMm` changed
+  keeps rendering the OLD layout -- over data that the (live) `conceptGateway` and
+  `aggregateRuntime` are reading from the NEW model. Shipped in every generated app
+  (`runtime-supported-controllers.json:37`).
+
+  The code fix is two lines: take `ModelHolder` instead and read `modelHolder.get().getDocuments()`
+  in `findDocument`, mechanically identical to `WebhookInboundController:175` and
+  `PropertyResolverController`.
+
+  THE STRUCTURAL POINT IS THE BIGGER HALF OF THIS ITEM, and it is the reason this is filed
+  separately rather than folded into REG-240/241. REG-208's durable guard is "there is no
+  `CompiledModel` bean in a generated app, so a direct injection fails to wire at Spring startup
+  instead of silently going stale". `NPDevModelProvider` is a `@Component` that EXPOSES
+  `compiledModel()` -- so injecting IT compiles, wires and boots cleanly, and the guard never fires.
+  `ModelHolder`'s own javadoc (`ModelHolder.java:15-19`) states the invariant as "the ONLY
+  CompiledModel bean in a generated app... nothing else may hold one directly": literally true,
+  practically false, and believed for a year.
+
+  There is no static checker for any of this: `grep -rl "ModelHolder\|modelHolder" scripts/` finds
+  only a jacoco XML report, and `scripts/quality/twin-pair-registry.json` has no reload rule. The
+  durable fix is a checker (or a RuntimeHost test) that fails on any `NPDevModelProvider` injection
+  outside `NpdevCapabilityBindingConfig#modelHolder`. Today that would catch exactly one site --
+  this one -- which is the point: it is cheap now and it closes the hole permanently.
+  Done-when should require BOTH the controller fix and the guard, or the next occurrence is
+  invisible again.
