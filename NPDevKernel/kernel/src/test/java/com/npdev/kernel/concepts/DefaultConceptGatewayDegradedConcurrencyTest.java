@@ -46,13 +46,25 @@ class DefaultConceptGatewayDegradedConcurrencyTest {
 
         @Override
         public Optional<ConceptRecord> findByIdForUpdate(String tenantId, String conceptName, String id) {
+            // The read MUST happen before the barrier, not after it. Counting down on entry and
+            // reading on the way out only pins when each thread ENTERS -- both are then released
+            // together, and if the scheduler lets one finish its entire write before the other
+            // resumes, the second thread reads the ALREADY-UPDATED row, CASes against the new
+            // version and also succeeds: both writers win, no exception, which is indistinguishable
+            // from the pre-REG-210 silent-overwrite bug this test exists to catch. Observed for
+            // real (both tests in this class, one run, "got A=null B=null") under machine load.
+            // Reading first makes "both threads hold the SAME version across the barrier" -- the
+            // property this class's javadoc claims -- structurally true instead of timing-dependent.
+            // This is also the true root cause of the spurious failure RUN-31 attributed to a tight
+            // join timeout; widening the timeouts did not address it, because nothing was hanging.
+            Optional<ConceptRecord> snapshotTakenBeforeTheRace = delegate.findById(tenantId, conceptName, id);
             bothRead.countDown();
             try {
                 release.await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            return delegate.findById(tenantId, conceptName, id);
+            return snapshotTakenBeforeTheRace;
         }
 
         @Override
