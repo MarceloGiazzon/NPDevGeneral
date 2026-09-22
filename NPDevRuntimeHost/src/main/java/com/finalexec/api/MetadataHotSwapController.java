@@ -47,9 +47,25 @@ import java.util.Map;
  * (most controllers/services in this template -- panels, procedures, aggregates, schedules, seeds,
  * the capability registry's own routing table, ...) observes the new model immediately, no restart.
  *
- * <p>As of D1 Phase 2 (REG-236/REG-237, 2026-09-21), only ONE named residual remains fully frozen:
- * the kernel-side {@code DefaultExecutionAuthorizationPolicy}'s app-declared-role cache (REG-239,
- * open). Everything else `NpdevCapabilityBindingConfig`'s original 4-bean residual list named is
+ * <p>As of D1 Phase 2 (REG-236/REG-237/REG-239, 2026-09-21), every residual this list had ever
+ * NAMED is closed -- but an exhaustive sweep the next day found three more it had never named
+ * (REG-240, REG-241, REG-242; see {@code ledger/boundaries/B28.yml}), so do not read the list below
+ * as an enumeration. The most consequential is REG-241: any edit to {@code orchestration[]} is
+ * silently ignored after a reload, and a REMOVED rule keeps firing, because subscribers are
+ * registered once from the constructor. REG-242 also shows this class's sibling guard has a hole --
+ * a bean can still pin itself to the boot model by injecting {@code NPDevModelProvider} (which
+ * exposes {@code compiledModel()}) rather than a {@code CompiledModel} bean, and nothing fails at
+ * startup when it does.
+ *
+ * <p>The last NAMED one -- the kernel-side {@code DefaultExecutionAuthorizationPolicy}'s
+ * app-declared-role cache -- now rebuilds in place on a reload via a {@code ModelReloadListener}
+ * registered in {@code NpdevAuthConfig} (REG-239), so a role added, removed or regranted by a hot
+ * reload takes effect on the next permission check. A reloaded model whose {@code roles[]} declares
+ * an unrecognized grant fails the RELOAD itself (the listener throws inside {@link
+ * ModelHolder#swap}'s write lock) and leaves the previously-validated permission set in place --
+ * that grant-name check is the only place in the platform where a grant is validated against the
+ * real {@code Permission} enum, so it must not move off a fail-loud path.
+ * Everything else `NpdevCapabilityBindingConfig`'s original 4-bean residual list named is
  * now live or live-with-a-scoped-exception: {@code CelInvariantEngine}-backed {@code
  * InvariantEngine}, {@code ConceptGateway}'s semantic policy, and {@code propertyResolver} all
  * observe a reload immediately (REG-236). {@code KernelRunner}'s flow-definition provider observes

@@ -1,11 +1,12 @@
 id: REG-239
 title: >-
-  NpdevAuthConfig.executionAuthorizationPolicy caches app-declared roles once at construction --
-  a 5th B28 residual that was never added to B28.yml's tracked list
+  NpdevAuthConfig.executionAuthorizationPolicy now observes live model reloads -- the 5th B28
+  residual, which B28.yml's tracked list had never named, is closed
 type: BUG
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-09-21
+closed: 2026-09-21
 source: >-
   D1 Phase 2 planning (server-driven UI structural rewrite). While scoping REG-236/REG-237's fix
   for B28.yml's 4 named residuals, found a 5th bean with the identical shape that B28.yml's tracked
@@ -20,14 +21,68 @@ source: >-
 surface: NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java,
   ledger/boundaries/B28.yml
 detail: |
-  NOT IMPLEMENTED. Same fix shape as REG-236's `invariantEngine` bean (see
-  `ledger/items/REG-236.yml` once it lands): `DefaultExecutionAuthorizationPolicy` lives in a
-  kernel adapter module and cannot depend on `ModelHolder` directly, so the fix is a
-  `ModelReloadListener`-driven rebuild-in-place wrapper (mirroring `ReloadableInvariantEngine`),
-  not a `Supplier<CompiledModel>` port -- verify at implementation time whether
-  `DefaultExecutionAuthorizationPolicy`'s app-declared-role cache is a cheap lookup (Supplier
-  pattern) or a real per-reload computation (listener/rebuild pattern) worth precomputing once per
-  reload rather than per call.
+  FIXED, with the `ModelReloadListener` rebuild-in-place pattern, as the item's own opening note
+  predicted -- and the "verify at implementation time which pattern fits" question it left open
+  resolved decisively AGAINST the `Supplier` pattern, for a reason that is not about cost:
 
-  This item is tracking work, not a live incident: an app whose model does not add/remove
-  app-declared roles at runtime is entirely unaffected. Low severity, no urgency.
+  `DefaultExecutionAuthorizationPolicy.toPermission` is the ONLY place in the entire platform where
+  a `roles[].grants[]` name is checked against the real `Permission` enum. The DSL's own
+  `RoleValidation` deliberately does not do it -- its class javadoc says so outright ("Grant names
+  are NOT checked against the real ...",
+  `NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/validation/RoleValidation.java:15`), because
+  `NPDevContract/dsl` cannot depend on `NPDevKernel`'s `Permission` enum (kernel depends on dsl,
+  never the reverse -- `RoleAst.java:11-13`). The three-arg constructor's javadoc states the
+  consequence as a deliberate contract: resolution happens at construction so a typo'd grant "fails
+  loudly during app startup instead of silently granting nothing the first time a user with that
+  role makes a request." A `Supplier<CompiledModel>` read per request would have moved that one
+  validation off the startup path entirely. So: listener, not supplier.
+
+  What changed (3 files):
+
+  1. `DefaultExecutionAuthorizationPolicy` (`NPDevKernel/adapters/authz-default/.../
+     DefaultExecutionAuthorizationPolicy.java`): the two `final` fields derived from the model --
+     `appDeclaredRoles` and REG-177's `identityTables` -- were merged into ONE immutable private
+     `ModelDerivedState` record held in a single `volatile` field, and a public
+     `setModel(CompiledModel)` rebuilds it in place. Merging them is not cosmetic: they were two
+     independent fields read in sequence by the same `hasPermission` call, so as two separate
+     volatiles a reload landing mid-check could have paired the new model's roles with the old
+     model's identity tables. `hasPermission` now reads the volatile exactly once per call. The
+     class stays `final`; no wrapper class was needed (unlike `ReloadableInvariantEngine`, which
+     had to wrap an immutable `CelInvariantEngine` it did not own). All four existing constructors
+     are untouched in signature, so no production or test call site changed.
+
+  2. `NpdevAuthConfig.executionAuthorizationPolicy` (`NPDevRuntimeHost/src/main/java/com/finalexec/
+     config/NpdevAuthConfig.java`): registers `modelHolder.addReloadListener((before, after) ->
+     policy.setModel(after))`, the identical line shape `NpdevCapabilityBindingConfig#invariantEngine`
+     uses. The adapter still has no dependency on `ModelHolder` -- the listener registration lives
+     on the RuntimeHost side, the adapter exposes only a plain `setModel`. Bean javadoc rewritten
+     (the old text described the residual as live).
+
+  3. New guard test (6 cases), `NPDevKernel/adapters/authz-default/src/test/java/.../
+     DefaultExecutionAuthorizationPolicyModelReloadTest.java`.
+
+  Failure semantics, decided from `ModelHolder.swap`'s actual contract rather than assumed:
+  `swap` notifies listeners INSIDE its write lock and documents that "a listener that throws
+  propagates out of this call, surfacing as the reload endpoint's own failure rather than a
+  silently half-applied swap" (`ModelHolder.java`). `setModel` is therefore deliberately allowed to
+  throw: a reloaded model declaring an unrecognized grant fails the RELOAD loudly -- the same
+  fail-loud treatment startup already gives -- and leaves the previously-validated permission set
+  in place, instead of the two worse alternatives (throwing on every subsequent permission check,
+  or silently keeping stale roles with no signal). A test pins exactly this.
+
+  Severity stays LOW as filed: an app whose model does not add/remove app-declared roles at runtime
+  was never affected.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/authz-default/src/test/java/com/npdev/adapters/authz/defaultpolicy/DefaultExecutionAuthorizationPolicyModelReloadTest.java#aGrantAddedToAnAppDeclaredRoleByAHotReloadTakesEffectWithoutRebuildingThePolicy
+  asserts: >-
+    representative of the 6 cases in this file -- constructing DefaultExecutionAuthorizationPolicy
+    once against a model whose AUDITOR role lacks READ_AUDIT, then calling setModel with a model
+    that grants it, and confirming the SAME instance now allows canReadAudit with no reconstruction
+    and no restart. The siblings cover the other directions the same way: a grant revoked, a role
+    dropped entirely, a null model, a built-in (non-app-declared) role left unperturbed by a
+    reload, and a reloaded model with an unrecognized grant name throwing out of setModel (so
+    ModelHolder.swap reports a failed RELOAD) while leaving the previously-validated permission set
+    intact.
+  provenRed: false
