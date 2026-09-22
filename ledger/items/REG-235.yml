@@ -61,18 +61,31 @@ detail: |
   sample app, simple-contact-intake) -- confirms NpdevCapabilityBindingConfig's wiring change
   compiles and boots correctly in a real generated app, not just in isolation.
 
-  HONEST SCOPE LIMIT, not verified this session: this fixes GeneratedCrudRuntimeSupport's OWN
-  internal model-freshness (invariant/event/capability/binding/orchestration lookups it performs
-  directly). It does NOT by itself prove a brand-new FIELD is reachable end-to-end through the
-  literal `/api/concepts/{conceptName}` generated REST controller -- that controller
-  (GeneratedConceptCrudController, business-concept-crud-controller.mustache) bakes its own
-  per-concept FieldMetadata into generated `register_*` methods at generation time, a SEPARATE
-  caching surface this fix does not touch. Whether that controller-layer metadata is ALSO a
-  blocker for a live-reloaded field, or whether it already delegates enough to
-  GeneratedCrudRuntimeSupport/ConceptGateway to see the reload, is unverified -- a live-boot
-  curl-based proof (generate+boot a probe app, add a field, hit model-reload, curl the concept
-  endpoint) was not performed this session (D1's Phase 3 scope). Do not claim full REST reachability
-  from this item alone.
+  SCOPE LIMIT: this fixes GeneratedCrudRuntimeSupport's OWN internal model-freshness
+  (invariant/event/capability/binding/orchestration lookups it performs directly). It does NOT
+  make a brand-new FIELD reachable end-to-end through the literal `/api/concepts/{conceptName}`
+  generated REST controller -- that controller (GeneratedConceptCrudController,
+  business-concept-crud-controller.mustache) bakes its own per-concept FieldMetadata into generated
+  `register_*` methods at generation time, a SEPARATE caching surface this fix does not touch.
+
+  2026-09-21 follow-up (same day, post-push): the "whether that controller-layer metadata is ALSO a
+  blocker" question above is now answered NO, definitively, by reading the generated code rather
+  than a live-boot curl proof -- three independent layers are baked once at generation time with
+  ZERO reference to `ModelHolder`/`CompiledModel` anywhere in any of them: (1) `entity.mustache`
+  emits the per-concept JPA entity with literal `private {javaType} {name};` fields and matching
+  getters/setters, no dynamic field mechanism at all; (2) `business-concept-crud-controller.mustache`
+  bakes each field's `FieldMetadata` into a `register_*` method called exactly once from the
+  controller's constructor; (3) create/update bind to that same statically-typed generated entity
+  class, so there is no code path that could accept an unknown field even if the controller wanted
+  to. A live model-reload cannot add a field to a compiled Java class -- this is a structural,
+  compile-time fact, not a behavioral one a live-boot test could contradict; a live-boot curl proof
+  was judged unnecessary given all three layers independently confirm the same zero-coupling result
+  by direct inspection of both templates. Confirms B28.yml's own existing text was already correct.
+  Fixed two now-stale doc references this left behind: `MetadataHotSwapController`'s class javadoc
+  and `NpdevCapabilityBindingConfig.invariantEngine`'s bean javadoc both still listed
+  `GeneratedCrudRuntimeSupport` among "still needs a restart" beans after this item's own fix
+  removed it from that set for its own internal lookups -- both corrected to note the fix and its
+  scope limit (does not reach the generated REST CRUD surface) in place.
 
   NOT attempted, explicitly deferred (D1 Phases 2 and 3, each its own future session):
   Phase 2 -- the same Supplier/listener conversion for CelInvariantEngine, ConceptGateway's
