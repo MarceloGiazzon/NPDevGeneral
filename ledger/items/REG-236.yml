@@ -1,0 +1,100 @@
+id: REG-236
+title: >-
+  invariantEngine, conceptGateway's semantic policy, and propertyResolver now observe live model
+  reloads (D1 Phase 2a)
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-09-21
+closed: 2026-09-21
+source: >-
+  D1 (server-driven UI structural rewrite), Phase 2. Follows REG-235 (D1 Phase 1, same day), which
+  fixed one of B28.yml's four named residuals (`GeneratedCrudRuntimeSupport`). Three research
+  agents scoped the remaining three beans; the key finding was that REG-235's `Supplier
+  <CompiledModel>` pattern does NOT transfer uniformly -- two of the three beans here
+  (`invariantEngine`, `conceptGateway`) cache the result of a real full-model walk, where
+  re-deriving on every call would be a performance regression, not a correctness fix. Full plan at
+  `C:\Users\Marcelo\.claude\plans\floating-sprouting-brook.md`.
+surface: NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java,
+  NPDevKernel/adapters/runtime-support/.../ReloadableInvariantEngine.java,
+  NPDevKernel/kernel/.../concepts/LiveConceptGatewaySemanticPolicy.java,
+  NPDevKernel/kernel/.../properties/DefaultPropertyResolver.java
+detail: |
+  FIXED, three beans, three different-but-related shapes:
+
+  1. `invariantEngine` (`CelInvariantEngine`-backed): new `ReloadableInvariantEngine`
+     (`NPDevKernel/adapters/runtime-support/.../ReloadableInvariantEngine.java`) holds a `volatile
+     CelInvariantEngine delegate` rebuilt via a `ModelHolder.addReloadListener(...)` callback --
+     the SAME "build once, rebuild-in-place on reload" idiom `capabilityRegistry` already uses, not
+     REG-235's `Supplier` pattern, because `CelInvariantEngine.fromCompiledModel` does a real
+     full-model rule-map build that would be wasteful to repeat on every invariant check (a hot
+     path via `KernelRunner`). `CelInvariantEngine` itself stays untouched/immutable. Forwards the
+     4 actual `@Override` methods of the `InvariantEngine` interface (confirmed by reading the
+     whole 1886-line class rather than assuming): `evaluate(String,Object)`,
+     `evaluate(List<String>,EvaluationContext)`, `evaluate(InvariantEvaluationRequest)`,
+     `evaluateAggregateInvariants(String,String,List,Map)`. Verified no production code casts the
+     bean down to concrete `CelInvariantEngine` (interface-typed everywhere).
+
+  2. `conceptGateway`'s semantic policy: new `LiveConceptGatewaySemanticPolicy`
+     (`NPDevKernel/kernel/.../concepts/LiveConceptGatewaySemanticPolicy.java`) implements
+     `ConceptGatewaySemanticPolicy` (confirmed: every one of its 10 methods is `default`, so
+     `DefaultConceptGateway` -- which only depends on the interface type -- needed ZERO changes;
+     none of its ~15 internal call sites touched). Holds an `AtomicReference<CompiledModel>
+     lastSeenModel` + `volatile` delegate; a private `current()` rebuilds via
+     `ConfiguredConceptGatewaySemanticPolicy.fromCompiledModel(model, sequenceAllocator)` only when
+     the model REFERENCE has changed (identity-compare cache mirroring `ModelHolder`'s own
+     `AtomicReference` idiom), so a request between reloads pays one reference comparison, not a
+     full model walk. `DefaultConceptGateway.governedBy(...)`'s ~7 test callers kept taking a raw
+     `CompiledModel` unchanged -- zero test-file churn there, smaller blast radius than REG-235's
+     12-file migration. `RuntimeConceptGatewaySemanticPolicies.fromCompiledModel` (the old
+     pass-through) is now unused in production but left in place (already deprecated, still used
+     by its own tests).
+
+  3. `propertyResolver` (`DefaultPropertyResolver`): constructor now takes
+     `Supplier<CompiledModel> modelSupplier` (REG-235's pattern fits here -- `:kernel` module, only
+     2 cheap read sites). A SECOND, separate trap was also fixed: its `ConcurrentHashMap<CacheKey,
+     PropertyExplanation> cache`, keyed by a `version` bumped only by `set()`, would otherwise have
+     kept serving stale cached explanations after a reload alone. A new `liveModel()` helper does
+     the identity-compare check AND clears `cache`/bumps `version` on a model change, reusing the
+     existing fields (no `CacheKey` shape change). Both `explain()` and `set()` call `liveModel()`
+     exactly once per invocation and thread the resolved model through, avoiding two different
+     "did it change" answers within one call. Pre-existing tests (`PropertyResolverCacheConcurrencyTest`,
+     `PropertyResolverCascadeTest`) needed a `fixedModel()` helper at their construction call sites
+     (wrapping one captured `CompiledModel` instance in a `Supplier`, NOT re-invoking a
+     model-building factory per call, which would have defeated their cache-hit-count assertions)
+     -- assertions themselves untouched.
+
+  New tests, one per bean, each proving live reload without reconstruction (construct once, swap
+  the model, confirm the SAME instance observes the change): `ReloadableInvariantEngineModelReloadTest`,
+  `LiveConceptGatewaySemanticPolicyModelReloadTest`, `DefaultPropertyResolverModelReloadTest` (this
+  last one specifically proves BOTH the live-model fix AND the cache-invalidation fix together --
+  without the cache fix it would still wrongly return the stale cached value).
+
+  `NpdevCapabilityBindingConfig.java`'s bean wiring updated for all three (`invariantEngine`,
+  `conceptGateway`, `propertyResolver`), plus each bean's own javadoc and the class-level
+  `invariantEngine` javadoc's residual-list note. `MetadataHotSwapController.java`'s class javadoc
+  updated to reflect all three beans no longer being frozen residuals (see also two doc-drift fixes
+  made alongside this: `propertyResolver` had been omitted from that javadoc's residual list
+  entirely, and "property resolution" had been wrongly listed there as something that already
+  observed reloads).
+
+  Verified: from `NPDevKernel`'s own root, `:kernel:test :adapters:runtime-support:test
+  :adapters:flow-compiled:test :adapters:resume-bootstrap-spring:test --rerun-tasks` all green in
+  one fresh, non-cached run (73s, 30/30 tasks -- also covers REG-237's bean in the same run).
+  `scripts/quality/run-runtimehost-gate.ps1` green end-to-end: confirmed the RuntimeHost jar-sync
+  step actually rebuilt `kernel-0.1.0.jar` (and the runtime-support/flow-compiled adapter jars)
+  fresh from the modified source -- not stale -- by checking the jar's mtime against the sync
+  step's own execution window, then assembled + booted + tested a real sample app
+  (simple-contact-intake) end-to-end against those fresh jars.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/kernel/src/test/java/com/npdev/kernel/properties/DefaultPropertyResolverModelReloadTest.java#explainObservesAHotModelReloadAndInvalidatesThePreReloadCacheEntry
+  asserts: >-
+    representative of all three beans' own guard tests (the other two are
+    LiveConceptGatewaySemanticPolicyModelReloadTest and ReloadableInvariantEngineModelReloadTest,
+    same package tier as their production classes) -- constructing DefaultPropertyResolver once
+    against a model, swapping the underlying model reference, and confirming the SAME instance's
+    explain() call now returns the new value AND that the pre-reload cached entry was invalidated
+    (not just the live-model read) -- no reconstruction, no restart
+  provenRed: false

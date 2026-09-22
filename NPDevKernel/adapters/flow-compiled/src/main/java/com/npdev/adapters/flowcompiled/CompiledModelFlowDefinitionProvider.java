@@ -20,19 +20,53 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Runtime projection adapter: Compiled DSL flows -> kernel FlowDefinition.
+ *
+ * <p>REG-237 (D1 Phase 2b): the constructor's field-population logic does real O(model) work
+ * (nested loops over capabilities/bindings/flows plus a full recursive step-tree conversion), so
+ * it is built once into an immutable {@link Snapshot} and swapped atomically via {@link #reload}
+ * on an actual model hot-reload, rather than rebuilt on every {@link #findFlow} lookup (a hot
+ * path called on every {@code KernelRunner.execute}/{@code resumeExecution}). This intentionally
+ * does NOT add any flow-shape/version-safety guard for an in-flight {@code WAITING_EVENT}
+ * instance resuming across a reshaped flow -- that is tracked separately and out of scope here.
  */
 public final class CompiledModelFlowDefinitionProvider implements FlowDefinitionProvider {
-    private final Map<String, FlowDefinition> flowsByName = new LinkedHashMap<>();
-    private final Map<String, String> adapterIdByCapability = new LinkedHashMap<>();
-    private final Map<String, Map<String, CompiledCapabilityOperation>> capabilityOperationsByCapability = new LinkedHashMap<>();
+
+    /**
+     * Immutable snapshot of everything the constructor used to populate directly. Rebuilt in
+     * full by {@link #buildSnapshot(CompiledModel)} and swapped in place by {@link #reload}.
+     */
+    private record Snapshot(
+            Map<String, FlowDefinition> flowsByName,
+            Map<String, String> adapterIdByCapability,
+            Map<String, Map<String, CompiledCapabilityOperation>> capabilityOperationsByCapability
+    ) {
+    }
+
+    private final AtomicReference<Snapshot> snapshot;
 
     public CompiledModelFlowDefinitionProvider(CompiledModel compiledModel) {
+        this.snapshot = new AtomicReference<>(buildSnapshot(compiledModel));
+    }
+
+    /**
+     * REG-237 (D1 Phase 2b): rebuilds the snapshot from a freshly reloaded model and swaps it in
+     * atomically, so the next {@link #findFlow} lookup (a fresh {@code execute()} or a
+     * {@code resumeExecution()} happening after this call) observes the new flow shapes without
+     * reconstructing this provider.
+     */
+    public void reload(CompiledModel compiledModel) {
+        snapshot.set(buildSnapshot(compiledModel));
+    }
+
+    private static Snapshot buildSnapshot(CompiledModel compiledModel) {
         if (compiledModel == null) {
             throw new IllegalArgumentException("compiledModel must be non-null");
         }
+        Map<String, Map<String, CompiledCapabilityOperation>> capabilityOperationsByCapability = new LinkedHashMap<>();
         for (com.npdev.dsl.v1.compiled.CompiledCapability capability : compiledModel.getCapabilities()) {
             Map<String, CompiledCapabilityOperation> operationsByName = new LinkedHashMap<>();
             for (CompiledCapabilityOperation operation : capability.getOperations()) {
@@ -40,18 +74,21 @@ public final class CompiledModelFlowDefinitionProvider implements FlowDefinition
             }
             capabilityOperationsByCapability.put(normalize(capability.getName()), operationsByName);
         }
+        Map<String, String> adapterIdByCapability = new LinkedHashMap<>();
         for (CompiledCapabilityBinding binding : compiledModel.getBindings()) {
             adapterIdByCapability.put(normalize(binding.getCapability()), binding.getAdapter());
         }
+        Map<String, FlowDefinition> flowsByName = new LinkedHashMap<>();
         for (CompiledFlow flow : compiledModel.getFlows()) {
             FlowDefinition definition = toFlowDefinition(flow, adapterIdByCapability, capabilityOperationsByCapability);
             flowsByName.put(normalize(flow.getName()), definition);
         }
+        return new Snapshot(flowsByName, adapterIdByCapability, capabilityOperationsByCapability);
     }
 
     @Override
     public Optional<FlowDefinition> findFlow(String flowName) {
-        return Optional.ofNullable(flowsByName.get(normalize(flowName)));
+        return Optional.ofNullable(snapshot.get().flowsByName().get(normalize(flowName)));
     }
 
     public FlowDefinition getFlow(String flowName) {

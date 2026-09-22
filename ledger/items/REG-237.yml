@@ -1,0 +1,68 @@
+id: REG-237
+title: >-
+  KernelRunner's flow-definition provider observes live model reloads for new/resumed flow
+  lookups (D1 Phase 2b)
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-09-21
+closed: 2026-09-21
+source: >-
+  D1 (server-driven UI structural rewrite), Phase 2b. The 4th of B28.yml's originally-named
+  residuals, split into its own ledger item (unlike REG-236's bundled three) because it has a
+  genuine, larger scope question attached: `KernelRunner` hosts a DURABLE flow engine where an
+  instance can sit `WAITING_EVENT` indefinitely and resume by re-resolving its flow definition
+  fresh, by name, with no shape/version check anywhere in that path. Full plan at
+  `C:\Users\Marcelo\.claude\plans\floating-sprouting-brook.md`.
+surface: NPDevKernel/adapters/flow-compiled/.../CompiledModelFlowDefinitionProvider.java,
+  NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java
+detail: |
+  FIXED (mechanical scope only -- see scope limit below, deliberate): `CompiledModelFlowDefinitionProvider`
+  did real O(model) work in its constructor (nested loops over capabilities/bindings/flows plus a
+  full recursive step-tree conversion) building internal maps ONCE -- `KernelRunner` calls
+  `findFlow(...)` on every `execute()` AND every `resumeExecution()` (a hot path), so a naive
+  Supplier-based "read live every call" port (REG-235/REG-236's pattern) would have been a real
+  perf regression here, unlike those beans' cheap per-call lookups.
+
+  Fix: extracted the constructor's field population into a `private record Snapshot(...)` and a
+  `private static Snapshot buildSnapshot(CompiledModel)`. Replaced the mutable fields with a single
+  `AtomicReference<Snapshot>`. The existing one-shot public constructor keeps its EXACT signature
+  and behavior (`CliRuntimeFactory`, `ModelBackedKernelRuntimeFactory`, and a third caller found by
+  reading the module, `CompiledModelKernelRunner`, all needed zero changes). Added `public void
+  reload(CompiledModel)` that rebuilds the snapshot and swaps the `AtomicReference` atomically.
+  `NpdevCapabilityBindingConfig.kernelRunner` bean now registers a `ModelHolder.addReloadListener`
+  that calls `flowDefinitionProvider.reload(after)`.
+
+  New test `CompiledModelFlowDefinitionProviderModelReloadTest`: construct against a model with no
+  `"onboard"` flow, confirm `findFlow` is empty; `reload(...)` with a model that has it; confirm
+  the SAME instance now finds it.
+
+  DELIBERATE SCOPE LIMIT, not a gap left by accident: this does NOT add any flow-shape/version
+  guard for an in-flight `WAITING_EVENT` instance resuming across a flow whose step shape changed
+  since it was checkpointed. Investigated during planning (reading `KernelRunner.java:826,971,
+  1108,1125` and `docs/FLOWS.md`) and found this hazard is PRE-EXISTING, not newly introduced by
+  this fix: an operator who reshapes a flow and does a normal restart+redeploy already hits the
+  identical positional-index mismatch on the next boot, via `ResumeBootstrapRunner` resuming a
+  durably-persisted instance against the freshly-rebuilt (reshaped) provider -- nothing in
+  `resumeExecution`/`ResumeCoordinator`/`ResumeBootstrapRunner` guards against that today either.
+  This fix adds one more trigger (a hot reload without a restart) to an existing gap, not a new
+  failure mode. The actual fix for that gap is real, separate design work -- tracked as REG-238,
+  open, not implemented here.
+
+  Verified: from `NPDevKernel`'s own root, `:kernel:test :adapters:runtime-support:test
+  :adapters:flow-compiled:test :adapters:resume-bootstrap-spring:test --rerun-tasks` all green in
+  one fresh run (73s, 30/30 tasks) -- including `CompiledModelFlowDefinitionProviderTest`,
+  `CompiledCapabilityPolicyProjectionTest`, `CompiledModelKernelRunnerDeterminismTest`,
+  `KernelRunnerCompensationTest`, and `KernelRunnerForEachDurabilityTest` (the last two proving
+  resume still works correctly when a flow's shape has NOT changed -- the common case this fix
+  must not regress). `scripts/quality/run-runtimehost-gate.ps1` green end-to-end against freshly
+  rebuilt jars (confirmed via jar mtime, not assumed).
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/flow-compiled/src/test/java/com/npdev/adapters/flowcompiled/CompiledModelFlowDefinitionProviderModelReloadTest.java#findFlowObservesLiveReloadWithoutReconstructingTheProvider
+  asserts: >-
+    constructing CompiledModelFlowDefinitionProvider once, then calling reload(CompiledModel) with
+    a model that adds a new flow, makes that flow immediately findable by the SAME instance -- no
+    reconstruction, no restart
+  provenRed: false

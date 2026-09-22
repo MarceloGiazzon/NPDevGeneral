@@ -62,10 +62,18 @@ class PropertyResolverCacheConcurrencyTest {
         );
     }
 
+    /** Wraps {@link #model()} in a supplier returning the SAME instance every call -- a fresh
+     *  {@code model()} invocation per {@code Supplier.get()} would look like a hot reload on every
+     *  read to {@code DefaultPropertyResolver.liveModel()} and defeat this test's caching assumptions. */
+    private static java.util.function.Supplier<CompiledModel> fixedModel() {
+        CompiledModel model = model();
+        return () -> model;
+    }
+
     @Test
     void cachingActuallyReducesGatewayQueries() {
         CountingConceptGateway gateway = new CountingConceptGateway(ConceptGateways.inMemory());
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         resolver.resolve("pageRows", CTX);
         resolver.resolve("pageRows", CTX);
@@ -83,7 +91,7 @@ class PropertyResolverCacheConcurrencyTest {
     @Timeout(30)
     void concurrentReadsDuringAWriteNeverObserveACorruptedOrPermanentlyStaleValue() throws InterruptedException {
         ConceptGateway gateway = ConceptGateways.inMemory();
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         int readerCount = 8;
         int iterationsPerReader = 500;

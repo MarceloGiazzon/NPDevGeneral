@@ -1,0 +1,33 @@
+id: REG-239
+title: >-
+  NpdevAuthConfig.executionAuthorizationPolicy caches app-declared roles once at construction --
+  a 5th B28 residual that was never added to B28.yml's tracked list
+type: BUG
+severity: LOW
+status: OPEN
+opened: 2026-09-21
+source: >-
+  D1 Phase 2 planning (server-driven UI structural rewrite). While scoping REG-236/REG-237's fix
+  for B28.yml's 4 named residuals, found a 5th bean with the identical shape that B28.yml's tracked
+  list had never named: `NpdevAuthConfig.executionAuthorizationPolicy`
+  (`NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java:33-53`) wraps
+  `DefaultExecutionAuthorizationPolicy` (a kernel adapter under `com.npdev.adapters.authz.
+  defaultpolicy`, which must not depend on RuntimeHost's `ModelHolder`) and caches the app's
+  declared roles once at construction from `modelHolder.get()`. Its own javadoc already
+  self-labels this "a named residual, same shape as
+  `NpdevCapabilityBindingConfig#invariantEngine`" -- it was just never added to `B28.yml`'s
+  tracked list, so a reader of that boundary's classification never learned this bean existed.
+surface: NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevAuthConfig.java,
+  ledger/boundaries/B28.yml
+detail: |
+  NOT IMPLEMENTED. Same fix shape as REG-236's `invariantEngine` bean (see
+  `ledger/items/REG-236.yml` once it lands): `DefaultExecutionAuthorizationPolicy` lives in a
+  kernel adapter module and cannot depend on `ModelHolder` directly, so the fix is a
+  `ModelReloadListener`-driven rebuild-in-place wrapper (mirroring `ReloadableInvariantEngine`),
+  not a `Supplier<CompiledModel>` port -- verify at implementation time whether
+  `DefaultExecutionAuthorizationPolicy`'s app-declared-role cache is a cheap lookup (Supplier
+  pattern) or a real per-reload computation (listener/rebuild pattern) worth precomputing once per
+  reload rather than per call.
+
+  This item is tracking work, not a live incident: an app whose model does not add/remove
+  app-declared roles at runtime is entirely unaffected. Low severity, no urgency.

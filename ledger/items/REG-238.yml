@@ -1,0 +1,45 @@
+id: REG-238
+title: >-
+  KernelRunner.resumeExecution has no guard against a flow's step shape changing since a
+  WAITING_EVENT instance was checkpointed -- pre-existing via restart+deploy, now also reachable
+  via a live model hot-reload
+type: BUG
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-21
+source: >-
+  D1 Phase 2 planning (server-driven UI structural rewrite), scoped out of REG-237's mechanical fix
+  on purpose. `KernelRunner.resumeExecution` (`NPDevKernel/kernel/src/main/java/com/npdev/kernel/
+  KernelRunner.java:971`) resolves a durably-persisted flow instance's definition FRESH, by name,
+  exactly like `execute()` does at line 826 -- it does not pin to whatever shape the instance was
+  originally checkpointed against. The checkpointed `currentStepIndex()` is then applied
+  POSITIONALLY against whatever `flow.getSteps()` the fresh lookup returns
+  (`KernelRunner.java:1108,1125`). There is no name/shape/hash reconciliation anywhere in this path
+  -- confirmed by reading `KernelRunner.java`, `FlowInstance.java`, and `docs/FLOWS.md` (no
+  hash/shape/version concept for flow definitions exists anywhere today).
+
+  This is NOT a new hazard introduced by REG-237's live-reload fix for
+  `CompiledModelFlowDefinitionProvider`. It is pre-existing and already reachable today via the
+  ONLY way a flow's shape can currently change at all: an operator edits the model and does a
+  normal restart+redeploy. `ResumeBootstrapRunner` (`docs/FLOWS.md`'s boot-time rehydration path)
+  resumes any pre-existing durably-persisted `WAITING_EVENT` instance on the next boot against the
+  freshly-rebuilt (reshaped) flow-definition provider, hitting the identical positional-index
+  mismatch. REG-237 adds one more trigger for the same pre-existing gap (a hot reload without a
+  full restart) rather than a new failure mode -- but the gap itself deserves its own fix, not to
+  stay silently accepted forever.
+surface: NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java,
+  NPDevKernel/kernel/.../FlowInstance.java, docs/FLOWS.md
+detail: |
+  NOT IMPLEMENTED. Proposed shape (from D1 Phase 2 planning, not designed in detail yet): a cheap
+  fingerprint of a flow's step list (e.g. a hash of step names/types/order) stored on `FlowInstance`
+  at `execute()` time, compared against the CURRENT flow definition's fingerprint at
+  `resumeExecution()` time; on a mismatch, fail to a clear `STUCK`/error result naming the mismatch
+  instead of silently misapplying `currentStepIndex` against a reshaped flow. Explicitly NOT
+  full version-pinned execution (running an old flow shape to completion) -- a fail-safe detection
+  guard is the target, not resurrecting an obsolete flow definition indefinitely.
+
+  Needs its own research+design pass before implementation: how the fingerprint is computed and
+  stored (a new `FlowInstance` column/field -- migration implications for existing persisted
+  instances with no fingerprint), what "mismatch" should do operationally (fail the instance
+  outright vs. surface an operator-actionable alert), and whether `JdbcFlowInstanceStore`/
+  `PostgresFlowInstanceStore` need schema changes.

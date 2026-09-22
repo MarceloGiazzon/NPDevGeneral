@@ -28,6 +28,7 @@ import com.npdev.kernel.capability.CapabilityPolicyOverrides;
 import com.npdev.kernel.concepts.ConceptGateway;
 import com.npdev.kernel.concepts.DefaultConceptGateway;
 import com.npdev.kernel.concepts.InMemoryConceptGatewayTraceSink;
+import com.npdev.kernel.concepts.LiveConceptGatewaySemanticPolicy;
 import com.npdev.kernel.ports.AuditLogStore;
 import com.npdev.kernel.ports.BulkheadStore;
 import com.npdev.kernel.ports.CapabilityDispatcher;
@@ -53,6 +54,7 @@ import com.finalexec.npdev.service.ProcedureRunner;
 import com.npdev.runtime.support.GeneratedCrudRuntimeSupport;
 import com.npdev.runtime.support.InMemoryOrchestrationExecutionRegistry;
 import com.npdev.runtime.support.OrchestrationExecutionRegistry;
+import com.npdev.runtime.support.ReloadableInvariantEngine;
 import com.npdev.runtime.support.RuntimeClock;
 import com.npdev.runtime.support.SystemRuntimeClock;
 import jakarta.persistence.EntityManager;
@@ -90,23 +92,23 @@ public class NpdevCapabilityBindingConfig {
     }
 
     /**
-     * REG-208 (B28 lift): {@code CelInvariantEngine.fromCompiledModel} builds its rule set ONCE
-     * from whatever model existed at bean-construction time, and {@code CelInvariantEngine} itself
-     * has no in-place rebuild -- a hot reload changing declared invariants is NOT observed here
-     * without a restart. Named residual (see docs/ACCEPTED_BOUNDARIES.md B28's reclassification):
-     * the MODEL DATA hot-swaps everywhere via {@link ModelHolder#get()}; a handful of engine beans
-     * built ONCE from a model snapshot (this one, {@link #kernelRunner}) still need a restart to
-     * observe a structural rule change, exactly like a change requiring newly generated code does.
-     * ({@link #generatedCrudRuntimeSupport} was in this set until REG-235/D1 Phase 1 -- see its own
-     * bean javadoc -- but that fix does not reach the generated REST CRUD surface itself, a separate
-     * residual: see {@code MetadataHotSwapController}'s class javadoc.) {@link #capabilityRegistry}
-     * is NOT in this set -- it registers a {@link ModelHolder} reload listener that rebuilds its
-     * bindings in place, since every consumer already holds a reference to the same mutable registry
-     * object.
+     * D1 Phase 2 fix (REG-236; was: "REG-208 (B28 lift): CelInvariantEngine.fromCompiledModel builds
+     * its rule set ONCE... a hot reload changing declared invariants is NOT observed here without a
+     * restart"): {@code CelInvariantEngine} itself stays immutable and untouched -- rebuilding its
+     * whole rule map on every invariant check would be a perf regression, unlike the cheap per-call
+     * lookups {@link #generatedCrudRuntimeSupport} reads live. Instead {@link ReloadableInvariantEngine}
+     * holds a {@code volatile} delegate rebuilt via a {@link ModelHolder} reload listener -- same
+     * "build once, rebuild-in-place on reload" idiom as {@link #capabilityRegistry}. Remaining
+     * residuals (see docs/ACCEPTED_BOUNDARIES.md B28): {@link #kernelRunner}'s flow-definition
+     * provider observes new lookups live as of REG-237, but resume-shape safety is a separate,
+     * open follow-up (REG-238); the kernel-side {@code DefaultExecutionAuthorizationPolicy}'s
+     * app-declared-role cache (REG-239, open).
      */
     @Bean
     public InvariantEngine invariantEngine(ModelHolder modelHolder) {
-        return CelInvariantEngine.fromCompiledModel(modelHolder.get());
+        ReloadableInvariantEngine engine = new ReloadableInvariantEngine(modelHolder.get());
+        modelHolder.addReloadListener((before, after) -> engine.setModel(after));
+        return engine;
     }
 
     @Bean
@@ -134,14 +136,18 @@ public class NpdevCapabilityBindingConfig {
         com.npdev.kernel.ports.SequenceAllocator sequenceAllocator = dataSource == null
                 ? com.npdev.kernel.ports.SequenceAllocator.inMemory()
                 : new com.finalexec.db.JdbcSequenceAllocator(dataSource);
-        // REG-208 (B28 lift): same named residual as invariantEngine above -- the semantic policy is
-        // a snapshot built once from modelHolder.get() at construction time.
+        // D1 Phase 2 fix (REG-236; was: "REG-208 (B28 lift): same named residual as invariantEngine
+        // above -- the semantic policy is a snapshot built once from modelHolder.get() at
+        // construction time"): LiveConceptGatewaySemanticPolicy re-derives the (expensive,
+        // full-model-walk) policy only when modelHolder's CompiledModel reference actually changes,
+        // an identity-compare cache mirroring ModelHolder's own AtomicReference idiom -- a request
+        // between reloads pays one reference comparison, not a full model walk.
         return new DefaultConceptGateway(
                 conceptStore,
                 PermissionEvaluator.allowAll(),
                 com.npdev.kernel.ports.TenantIsolationPolicy.STRICT_EQUALS,
                 auditLogStore,
-                RuntimeConceptGatewaySemanticPolicies.fromCompiledModel(modelHolder.get(), sequenceAllocator),
+                new LiveConceptGatewaySemanticPolicy(modelHolder::get, sequenceAllocator),
                 new InMemoryConceptGatewayTraceSink(),
                 transactionRunner
         );
@@ -153,13 +159,16 @@ public class NpdevCapabilityBindingConfig {
      * isolation/permissions/audit for the underlying rows come from there, exactly like every other
      * consumer of this gateway.
      *
-     * <p>REG-208 (B28 lift): same named residual as {@link #invariantEngine} -- {@code
-     * DefaultPropertyResolver} takes the model once at construction.
+     * <p>D1 Phase 2 fix (REG-236; was: "REG-208 (B28 lift): same named residual as
+     * {@link #invariantEngine} -- DefaultPropertyResolver takes the model once at construction"):
+     * {@code DefaultPropertyResolver} now takes {@code modelHolder::get} and re-derives its
+     * cached {@code PropertyExplanation} entries whenever the underlying model reference changes
+     * (a reload alone would otherwise leave stale cached explanations served indefinitely).
      */
     @Bean
     public com.npdev.kernel.properties.PropertyResolver propertyResolver(
             ConceptGateway conceptGateway, AuditLogStore auditLogStore, ModelHolder modelHolder) {
-        return new com.npdev.kernel.properties.DefaultPropertyResolver(conceptGateway, auditLogStore, modelHolder.get());
+        return new com.npdev.kernel.properties.DefaultPropertyResolver(conceptGateway, auditLogStore, modelHolder::get);
     }
 
     /**
@@ -503,8 +512,14 @@ public class NpdevCapabilityBindingConfig {
         return new RegistryCapabilityDispatcher(capabilityRegistry);
     }
 
-    /** REG-208 (B28 lift): same named residual as {@link #invariantEngine} -- {@code
-     * CompiledModelFlowDefinitionProvider} snapshots the model's flow definitions once. */
+    /** D1 Phase 2 fix (REG-237; was: "REG-208 (B28 lift): same named residual as
+     * {@link #invariantEngine} -- CompiledModelFlowDefinitionProvider snapshots the model's flow
+     * definitions once"): the provider now registers a {@link ModelHolder} reload listener that
+     * swaps its internal snapshot atomically, so both new {@code execute()} calls and
+     * {@code resumeExecution()} observe a live-reloaded flow shape. Scoped deliberately: this does
+     * NOT add a shape/version guard for a durable {@code WAITING_EVENT} instance resuming across a
+     * RESHAPED flow -- that gap is pre-existing (already reachable today via restart+redeploy, not
+     * newly introduced here) and tracked separately as REG-238, open. */
     @Bean
     public KernelRunner kernelRunner(
             EventBus eventBus,
@@ -525,10 +540,13 @@ public class NpdevCapabilityBindingConfig {
             PermissionEvaluator permissionEvaluator,
             ObjectProvider<ProcedureRunner> procedureRunnerProvider
     ) {
+        CompiledModelFlowDefinitionProvider flowDefinitionProvider =
+                new CompiledModelFlowDefinitionProvider(modelHolder.get());
+        modelHolder.addReloadListener((before, after) -> flowDefinitionProvider.reload(after));
         KernelRunner kernelRunner = new KernelRunner(
                 eventBus,
                 invariantEngine,
-                new CompiledModelFlowDefinitionProvider(modelHolder.get()),
+                flowDefinitionProvider,
                 capabilityDispatcher,
                 executionTracer,
                 eventStore,
