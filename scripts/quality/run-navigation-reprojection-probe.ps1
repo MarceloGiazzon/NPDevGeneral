@@ -145,13 +145,29 @@ function Stop-ProbeApp([object]$AppCtx) {
     Start-Sleep -Seconds 3
 }
 
-function Get-ReconcileSummaryLine([object]$AppCtx) {
-    $text = Get-Content -LiteralPath $AppCtx.OutLog -Raw
-    $m = [regex]::Match($text, 'WorkspaceMenuSeeder: reconciled [^\r\n]+')
-    if (-not $m.Success) {
-        Fail ("Boot log has no 'WorkspaceMenuSeeder: reconciled ...' line -- reconcile mode did not run. Log: " + $AppCtx.OutLog)
-    }
-    return $m.Value
+function Get-ReconcileSummaryLine([object]$AppCtx, [int]$TimeoutSeconds = 60) {
+    # WAIT for the line rather than reading once. "App healthy" is the actuator reporting UP, which
+    # does not imply the menu seeder has finished -- nor that its stdout has been flushed into the
+    # redirected log file yet. Reading once raced both, and lost: a real gate run failed here with
+    # "reconcile mode did not run" while the expected line, with the exact expected counts, was
+    # sitting in the very log file the failure message pointed at. Same defect class as RUN-31 --
+    # an assertion racing a write, which looks exactly like the bug the assertion exists to catch.
+    # A bounded poll makes the absence of the line mean "it genuinely never ran", which is the only
+    # thing this check should ever fail on.
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    do {
+        if (Test-Path -LiteralPath $AppCtx.OutLog) {
+            $text = Get-Content -LiteralPath $AppCtx.OutLog -Raw
+            $m = [regex]::Match($text, 'WorkspaceMenuSeeder: reconciled [^\r\n]+')
+            if ($m.Success) {
+                return $m.Value
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    } while ((Get-Date) -lt $deadline)
+
+    Fail ("Boot log has no 'WorkspaceMenuSeeder: reconciled ...' line after waiting ${TimeoutSeconds}s -- " +
+          "reconcile mode did not run. Log: " + $AppCtx.OutLog)
 }
 
 $tmpDir = Join-Path $bootLogRoot "csv"
