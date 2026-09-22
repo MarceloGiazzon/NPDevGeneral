@@ -22,6 +22,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Supplier;
 
 /**
  * RC-A3's reference implementation of {@link PropertyResolver}, reading/writing the
@@ -44,14 +46,38 @@ public final class DefaultPropertyResolver implements PropertyResolver {
 
     private final ConceptGateway conceptGateway;
     private final AuditLogStore auditLogStore;
-    private final CompiledModel compiledModel;
+    private final Supplier<CompiledModel> modelSupplier;
     private final AtomicLong version = new AtomicLong();
     private final Map<CacheKey, PropertyExplanation> cache = new ConcurrentHashMap<>();
+    private final AtomicReference<CompiledModel> lastSeenModel = new AtomicReference<>();
 
-    public DefaultPropertyResolver(ConceptGateway conceptGateway, AuditLogStore auditLogStore, CompiledModel compiledModel) {
+    public DefaultPropertyResolver(ConceptGateway conceptGateway, AuditLogStore auditLogStore, Supplier<CompiledModel> modelSupplier) {
         this.conceptGateway = Objects.requireNonNull(conceptGateway, "conceptGateway");
         this.auditLogStore = Objects.requireNonNull(auditLogStore, "auditLogStore");
-        this.compiledModel = Objects.requireNonNull(compiledModel, "compiledModel");
+        this.modelSupplier = Objects.requireNonNull(modelSupplier, "modelSupplier");
+    }
+
+    /**
+     * Returns the current model, resolving one live snapshot from {@link #modelSupplier} for this
+     * call. If the reference has changed since the last call (a hot reload swapped in a new
+     * {@code CompiledModel}, e.g. via {@code ModelHolder.swap(...)}), every cached
+     * {@link PropertyExplanation} is invalidated by bumping {@code version} (already part of
+     * {@link CacheKey}) and clearing {@code cache} -- reusing the exact same invalidation path
+     * {@link #set} uses for a write, so a reload and a write are indistinguishable to a reader.
+     *
+     * <p>Called exactly ONCE per public method invocation ({@link #explain}, {@link #set}) and the
+     * resolved {@link CompiledModel} is threaded through the rest of that call, so a single
+     * {@code explain()}/{@code set()} never observes two different answers to "did the model change"
+     * mid-call.
+     */
+    private CompiledModel liveModel() {
+        CompiledModel current = modelSupplier.get();
+        CompiledModel previous = lastSeenModel.getAndSet(current);
+        if (previous != current) {
+            version.incrementAndGet();
+            cache.clear();
+        }
+        return current;
     }
 
     @Override
@@ -61,8 +87,9 @@ public final class DefaultPropertyResolver implements PropertyResolver {
 
     @Override
     public PropertyExplanation explain(String propertyKey, ExecutionContext context) {
-        CompiledProperty property = declaredProperty(propertyKey);
-        List<CompiledPropertyScope> scopes = compiledModel.getPropertyScopes();
+        CompiledModel model = liveModel();
+        CompiledProperty property = declaredProperty(model, propertyKey);
+        List<CompiledPropertyScope> scopes = model.getPropertyScopes();
 
         // Resolve every declared scope's concrete id ONCE (from ExecutionContext.tags -- never a
         // per-read DB lookup), in cascade order (most specific first, per compiledModel's own order).
@@ -136,7 +163,8 @@ public final class DefaultPropertyResolver implements PropertyResolver {
 
     @Override
     public void set(String scopeType, String scopeId, String propertyKey, Object propertyValue, ExecutionContext context) {
-        CompiledProperty property = declaredProperty(propertyKey);
+        CompiledModel model = liveModel();
+        CompiledProperty property = declaredProperty(model, propertyKey);
         if (!property.settableAt().contains(scopeType)) {
             throw new PropertyNotSettableAtScopeException(propertyKey, scopeType, property.settableAt());
         }
@@ -178,8 +206,8 @@ public final class DefaultPropertyResolver implements PropertyResolver {
                 "success", null, context.tags(), meta));
     }
 
-    private CompiledProperty declaredProperty(String propertyKey) {
-        for (CompiledProperty property : compiledModel.getProperties()) {
+    private CompiledProperty declaredProperty(CompiledModel model, String propertyKey) {
+        for (CompiledProperty property : model.getProperties()) {
             if (property.name().equals(propertyKey)) {
                 return property;
             }

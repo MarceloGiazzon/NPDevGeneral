@@ -63,7 +63,15 @@ class PropertyResolverCascadeTest {
     }
 
     private static PropertyResolver resolver() {
-        return new DefaultPropertyResolver(ConceptGateways.inMemory(), AuditLogStore.noop(), model());
+        return new DefaultPropertyResolver(ConceptGateways.inMemory(), AuditLogStore.noop(), fixedModel());
+    }
+
+    /** Wraps {@link #model()} in a supplier returning the SAME instance every call -- a fresh
+     *  {@code model()} invocation per {@code Supplier.get()} would look like a hot reload on every
+     *  read to {@code DefaultPropertyResolver.liveModel()} and defeat these tests' caching assumptions. */
+    private static java.util.function.Supplier<CompiledModel> fixedModel() {
+        CompiledModel model = model();
+        return () -> model;
     }
 
     /** Seeds a workspace::PropertyValue row directly, bypassing set()'s own settableAt enforcement --
@@ -89,7 +97,7 @@ class PropertyResolverCascadeTest {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t1", "tenant", "t1", "dateFormat", "yyyy-MM-dd");
         seedRow(gateway, "t1", "user", "U1", "dateFormat", null);
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("dateFormat", CTX);
         assertNull(explanation.value(), "a present row with a NULL value is SET, not absent");
@@ -101,7 +109,7 @@ class PropertyResolverCascadeTest {
     void vector8_overrideATrueDefaultBackToFalseAtALowerScope() {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t1", "estabelecimento", "E1", "dobrarConf", "false");
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("dobrarConf", CTX);
         assertEquals(Boolean.FALSE, explanation.value(), "a falsy value must not be mistaken for 'unset'");
@@ -113,7 +121,7 @@ class PropertyResolverCascadeTest {
     void vector9_emptyStringIsAValueNotAnAbsence() {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t1", "user", "U1", "dateFormat", "");
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("dateFormat", CTX);
         assertEquals("", explanation.value());
@@ -137,7 +145,7 @@ class PropertyResolverCascadeTest {
     void vector2_tenantBeatsDefault() {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t1", "tenant", "t1", "pageRows", "50");
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("pageRows", CTX);
         assertEquals(50, explanation.value());
@@ -150,7 +158,7 @@ class PropertyResolverCascadeTest {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t1", "tenant", "t1", "pageRows", "50");
         seedRow(gateway, "t1", "user", "U1", "pageRows", "10");
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("pageRows", CTX);
         assertEquals(10, explanation.value());
@@ -163,7 +171,7 @@ class PropertyResolverCascadeTest {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t1", "tenant", "t1", "dobrarConf", "false");
         seedRow(gateway, "t1", "estabelecimento", "E1", "dobrarConf", "true");
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("dobrarConf", CTX);
         assertEquals(Boolean.TRUE, explanation.value());
@@ -175,7 +183,7 @@ class PropertyResolverCascadeTest {
     void vector5_anotherUsersRowMustNotLeak() {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t1", "user", "U2", "pageRows", "999");
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("pageRows", CTX);
         assertEquals(25, explanation.value(), "scopeId must be matched, not just scopeType");
@@ -186,7 +194,7 @@ class PropertyResolverCascadeTest {
     void vector6_anotherTenantsRowMustNotLeak() {
         ConceptGateway gateway = ConceptGateways.inMemory();
         seedRow(gateway, "t2", "tenant", "t2", "pageRows", "999");
-        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), model());
+        PropertyResolver resolver = new DefaultPropertyResolver(gateway, AuditLogStore.noop(), fixedModel());
 
         PropertyExplanation explanation = resolver.explain("pageRows", CTX);
         assertEquals(25, explanation.value(), "every stored value is tenant-scoped, as every concept table already is");
@@ -242,7 +250,7 @@ class PropertyResolverCascadeTest {
     @Test
     void vector14_everySetIsAuditedIncludingASetToNull() {
         RecordingAuditLogStore audit = new RecordingAuditLogStore();
-        PropertyResolver resolver = new DefaultPropertyResolver(ConceptGateways.inMemory(), audit, model());
+        PropertyResolver resolver = new DefaultPropertyResolver(ConceptGateways.inMemory(), audit, fixedModel());
 
         resolver.set("tenant", "t1", "dateFormat", null, CTX);
 

@@ -75,5 +75,42 @@ codeLinkedNote: >-
   for an authenticated SUPERUSER, auth is still checked ahead of the flag, and the explicit opt-in
   genuinely works. Completing the fix -- migrating every direct `CompiledModel` injection to
   `ModelHolder.get()` -- is real follow-up work (plan option (b)), not attempted this session.
+
+  2026-09-21 (D1 Phase 2 planning, same day as the Phase 1 entry above): found a 5th residual this
+  boundary's tracked list had never named, even though it already self-documents as one --
+  `NpdevAuthConfig.executionAuthorizationPolicy` (`NPDevRuntimeHost/src/main/java/com/finalexec/
+  config/NpdevAuthConfig.java:33-37`) wraps `DefaultExecutionAuthorizationPolicy` (a kernel adapter,
+  which must not depend on `ModelHolder`) and caches app-declared roles once at construction from
+  `modelHolder.get()` -- its own javadoc already calls this "a named residual, same shape as
+  `NpdevCapabilityBindingConfig#invariantEngine`," it was just never added to this file's list.
+  Tracked as REG-239 (not implemented yet); same fix shape as `invariantEngine`'s once REG-236 lands.
+  Also fixed a related doc drift found at the same time:
+  `MetadataHotSwapController`'s class javadoc omitted `propertyResolver` from its own residual list
+  (it's one of the 4 beans `NpdevCapabilityBindingConfig` names) and wrongly listed "property
+  resolution" as something that already observes reloads today -- both corrected in place.
+
+  2026-09-21 (D1 Phase 2, `ledger/items/REG-236.yml` + `REG-237.yml`, same day as the planning
+  entry above): closed 3 of the original 4 named residuals outright (`invariantEngine`,
+  `conceptGateway`'s semantic policy, `propertyResolver` -- REG-236) and the 4th (`KernelRunner`'s
+  flow-definition provider -- REG-237) for its mechanical half only. Two different fix shapes were
+  needed, not REG-235's single pattern: `invariantEngine` and `conceptGateway` cache the result of
+  a real full-model walk, so they got a `ModelReloadListener`-driven rebuild-in-place wrapper
+  (`ReloadableInvariantEngine`, `LiveConceptGatewaySemanticPolicy`) -- the SAME idiom
+  `capabilityRegistry` already used, chosen specifically because a `Supplier`-based "read live
+  every call" port would have repeated that expensive walk on every request. `propertyResolver`
+  fit REG-235's `Supplier<CompiledModel>` pattern (cheap per-call reads), plus a second,
+  independently-discovered fix: its `PropertyExplanation` cache was keyed by a `version` that a
+  model reload alone never bumped, so it needed explicit cache invalidation on top of the live
+  read, or it would have kept serving stale cached values. `KernelRunner`'s flow-definition
+  provider got the snapshot-swap treatment (an `AtomicReference<Snapshot>` + `reload(...)`) for
+  NEW `execute()`/`resumeExecution()` lookups only -- REG-237's own text explains why the
+  resume-across-a-reshaped-flow hazard is pre-existing, not newly introduced, and why fixing it is
+  separate work (REG-238, open).
+
+  Still needs a restart, unchanged by these two items: `NpdevAuthConfig.executionAuthorizationPolicy`
+  (REG-239, open, tracked above) is now the ONLY bean built once from a model snapshot with no
+  reload path at all. A durable `WAITING_EVENT` flow instance resuming across a reshaped flow is a
+  separate, narrower residual (REG-238, open) -- not "still needs a restart" in the traditional
+  sense (a restart doesn't even fix it; only a not-yet-designed shape-fingerprint guard would).
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
 classification: LIFTED, PARTIAL

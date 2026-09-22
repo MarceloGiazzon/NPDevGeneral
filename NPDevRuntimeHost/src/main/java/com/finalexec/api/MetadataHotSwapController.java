@@ -45,23 +45,28 @@ import java.util.Map;
  * <p><b>{@code /model-reload} (REG-208, B28 lift):</b> swaps the actual {@code CompiledModel} behind
  * {@link ModelHolder}, atomically. Every consumer that reads {@link ModelHolder#get()} fresh per use
  * (most controllers/services in this template -- panels, procedures, aggregates, schedules, seeds,
- * property resolution, the capability registry's own routing table, ...) observes the new model
- * immediately, no restart. A NAMED residual remains, real and worth stating plainly rather than
- * hidden behind a DO-NOT-SHIP gate: a handful of engine beans built ONCE from a model snapshot at
- * application-context startup ({@code CelInvariantEngine}-backed {@code InvariantEngine}, {@code
- * ConceptGateway}'s semantic policy, {@code KernelRunner}'s flow-definition provider, the kernel-side
- * {@code DefaultExecutionAuthorizationPolicy}'s app-declared-role cache) still need a restart to
- * observe a structural rule change -- exactly like a change requiring newly generated code does.
- * ({@code GeneratedCrudRuntimeSupport} was in this list until REG-235 (2026-09-21) converted it to
- * read a live {@code Supplier<CompiledModel>}; it is no longer a residual for its OWN
- * invariant/event/capability/binding lookups. That fix does NOT extend to the generated REST CRUD
- * surface itself -- {@code GeneratedConceptCrudController} and its per-concept JPA entity are plain
- * Java baked once from the model at generation time with zero {@code ModelHolder} reference anywhere
- * in either template (entity.mustache, business-concept-crud-controller.mustache): a brand-new FIELD
- * on an existing concept is structurally unreachable through that surface without regenerate +
- * rebuild + restart, confirmed by reading both templates, not just by this class's own residual
- * list.) See {@code NpdevCapabilityBindingConfig}'s own per-bean javadoc for the complete, current
- * list of beans still needing a restart.
+ * the capability registry's own routing table, ...) observes the new model immediately, no restart.
+ *
+ * <p>As of D1 Phase 2 (REG-236/REG-237, 2026-09-21), only ONE named residual remains fully frozen:
+ * the kernel-side {@code DefaultExecutionAuthorizationPolicy}'s app-declared-role cache (REG-239,
+ * open). Everything else `NpdevCapabilityBindingConfig`'s original 4-bean residual list named is
+ * now live or live-with-a-scoped-exception: {@code CelInvariantEngine}-backed {@code
+ * InvariantEngine}, {@code ConceptGateway}'s semantic policy, and {@code propertyResolver} all
+ * observe a reload immediately (REG-236). {@code KernelRunner}'s flow-definition provider observes
+ * a reload for every NEW {@code execute()}/{@code resumeExecution()} lookup (REG-237) -- but a
+ * durable {@code WAITING_EVENT} instance resuming across a flow whose STEP SHAPE changed since it
+ * was checkpointed has no version/shape guard; this is a pre-existing gap (already reachable today
+ * via a plain restart+redeploy, not newly introduced by REG-237), tracked separately as REG-238,
+ * open. ({@code GeneratedCrudRuntimeSupport} was also in this list until REG-235 (2026-09-21)
+ * converted it to read a live {@code Supplier<CompiledModel>}; it is no longer a residual for its
+ * OWN invariant/event/capability/binding lookups. That fix does NOT extend to the generated REST
+ * CRUD surface itself -- {@code GeneratedConceptCrudController} and its per-concept JPA entity are
+ * plain Java baked once from the model at generation time with zero {@code ModelHolder} reference
+ * anywhere in either template (entity.mustache, business-concept-crud-controller.mustache): a
+ * brand-new FIELD on an existing concept is structurally unreachable through that surface without
+ * regenerate + rebuild + restart, confirmed by reading both templates, not just by this class's own
+ * residual list.) See {@code NpdevCapabilityBindingConfig}'s own per-bean javadoc for the complete,
+ * current list.
  *
  * <p><b>Two different gates, deliberately</b> (same posture as {@link AgentProxyController}).
  * {@code /status} answers any authenticated ADMIN caller, matching {@link RuntimeMetadataController}'s
