@@ -164,3 +164,38 @@ notes: |
   widen further (though that only buys margin, not a bound), or reduce
   `org.gradle.workers.max`/`maxParallelForks` for this specific invocation, or restructure the test to
   assert via a callback/latch instead of a wall-clock join so it cannot be timing-sensitive at all.
+
+  UPDATE 2026-09-21 (REG-239 session), #1 ACTUALLY root-caused -- it was never the join timeout:
+  reproduced again (BOTH tests, one `:kernel:test` run) and this time read the assertion MESSAGE out
+  of the JUnit XML rather than just the failure line: `got A=null B=null`. Both racers completed and
+  NEITHER raised -- i.e. both writers won. The 2026-09-14 diagnosis above is not wrong about its own
+  scratch-test reproduction (a racer stalled past the join does produce the same `A=null B=null` XOR
+  failure at the same line), but it is the less likely of two mechanisms that share one symptom, and
+  it is not the one operating here: after the barrier releases, each racer only has to finish an
+  in-memory map write, so blaming a >30s stall requires believing in a 30-second delay for
+  microseconds of work.
+
+  The real defect was in `ReadBarrierStore.findByIdForUpdate` itself. It counted down `bothRead` on
+  ENTRY but called `delegate.findById` on the way OUT, AFTER `release.await()` returned -- so the
+  barrier pinned when each thread entered, not what each thread read. Both are then released
+  together, and if the scheduler lets the first finish its whole write before the second resumes,
+  the second reads the ALREADY-UPDATED row, CASes against the NEW version, and also succeeds. Two
+  winners, no exception -- indistinguishable from the pre-REG-210 silent-overwrite bug the test
+  exists to catch, which is what makes this failure mode so misleading. The class javadoc's claim
+  that the store "holds both caller threads at a barrier until BOTH have read the same version" was
+  simply not what the code did. It also explains the one observation the timeout theory never
+  accounted for: why the failure reproduces ONLY under `run-kernel-quality-gate.ps1`'s ~37-module
+  parallel-fork contention and never when `:kernel:test` runs alone -- more forks means a wider
+  spread between the two threads' wakeups from `release.await()`, which is exactly the window.
+
+  Fixed by taking the snapshot BEFORE the countdown and returning that snapshot after the barrier
+  (one statement moved, in the test's own fake store; no production code involved). This is the
+  "restructure it so it cannot be timing-sensitive at all" remedy the entry above asked for, and it
+  needs no callback/latch rework: once both racers provably hold the same version across the
+  barrier, whichever writes SECOND must fail its CAS no matter how the two are scheduled, so
+  "exactly one loses" is now structural rather than probable. The wall-clock joins stay at 30s as
+  pure hang nets -- with the race deterministic, the only way to trip one now is a genuine hang,
+  which SHOULD fail. Verified: the class green on its own, and green again in a full unfiltered
+  `:adapters:authz-default:test :kernel:test --rerun-tasks` run (the earlier filtered `--tests` run
+  was treated as indicative only, since a filtered Gradle run leaves partial jacoco and cannot be
+  trusted against the coverage ratchet).
