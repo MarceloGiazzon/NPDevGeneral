@@ -1,17 +1,20 @@
 {
-  "closedAt": "2026-09-23T10:39:18.9468425Z",
+  "closedAt": "2026-09-23T20:26:51.6885757Z",
   "branch": "close-all-open-2026-09-22",
-  "head": "27d9b409",
-  "headSubject": "feat(runtimehost): REG-246 -- Phase 4C, live-provisioned concepts become CRUD-reachable",
-  "summary": "Shipped Phase 4C (REG-246): a REG-245-provisioned live concept is now fully REST-reachable through GeneratedConceptCrudController with no regenerate/rebuild/restart. Key finding: ConceptGateway/JdbcBusinessConceptStore already resolve schema live from CompiledModel, so no live-appendable-map mechanism was needed -- a per-request resolveBinding falls through to the live model on a baked-map miss. Wiring logic lives in a new plain class (LiveConceptCrudSupport, runtimehost-core) since the mustache-templated controller cannot be unit-tested in isolation. Found and fixed a real bug during controller-level verification: create() never folded the generated id into its data map, breaking the very next getById. Committed as 27d9b409 and pushed to close-all-open-2026-09-22.",
-  "nextStep": "Phase 4D (live-rebuildable UI manifest) is the last item in REG-244's original D1 Phase 3 plan: BusinessUiEmitter.manifestJson is a pure function of CompiledModel but lives in NPDevGenerator, a build-time-only module RuntimeHost never depends on at runtime -- porting its logic (or a subset) to a runtime-reachable module is real, undesigned work. Start the same way 4B/4C started: re-run Understand/Inspect against current code (line numbers drift), then EnterPlanMode before writing code. Independent alternatives needing no new design decision: Phase 6 (fresh exhaustive B28 residual sweep) or continuing Phase 5's QUAL-41 coverage programme.",
-  "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_CLOSE_ALL_OPEN_2026-09-22.md",
+  "head": "dc8672ab",
+  "headSubject": "feat(runtimehost): QUAL-41 -- cover ControlPanelTenantUsersController's remaining 5 endpoints",
+  "summary": "Shipped QUAL-41's next coverage slice (22 new tests covering ControlPanelTenantUsersController's remaining 5 endpoints -- resetPassword/revokeSessions/list-grant-revokePermissionOverride; controller 35%->81.90%, RuntimeHost floor 22.08%->23.65%; committed+pushed as dc8672ab), set up a global machine-wide PostToolUse hook (~/.claude/hooks/enforce-watch-command.py, outside this repo) that mechanically enforces the always-surface-a-watch-command rule, then investigated a personal notes file (ListaSementes.txt) at the user's request and confirmed via a live ScrapForAI browser check that the 'app-tree-v2 three-pane redesign' idea in it was already fully implemented on 2026-08-20 -- no code changes needed there.",
+  "nextStep": "No forced next step. Two live candidates: (1) continue QUAL-41's programme -- NpdevAuthConfig's REG-156 ApplicationContextRunner gap is the next named target (needs a Spring ApplicationContextRunner test standing up ~15 other @Bean methods' dependency graph); (2) mine more ideas from c:\\Users\\Marcelo\\OneDrive\\Desktop\\ListaSementes.txt -- concrete untouched candidates already scoped this session: a DB data import/export tool (new NPDev Manager tab, SQL/CSV, DB-to-DB, pre-import structure check), a health/status kanban panel (tests/gates/probes dashboard in Manager + generated apps), or the more speculative GPU-accelerated validation engine idea. Also: ai-loop-verify-app's server is still running at http://localhost:8103 (PID 22372) from this session's browser verification -- stop it if not needed via D:\\WorkSpace\\NPDev\\Build\\ai-loop-verify-app\\_ops\\Stop-App.ps1.",
+  "plan": "",
   "blocked": "",
-  "verified": "Full run-runtimehost-gate.ps1 via digest runner: BUILD SUCCESSFUL, assembled sample app's own suite green (incl. two new tests: LiveConceptCrudSupportTest's 3 cases at the runtimehost-core level, GeneratedConceptCrudControllerLiveConceptTest's 2 cases at the real-generated-controller level via standalone MockMvc), runtimehost-core's own test task green, coverage ratchet passed (honest re-measurement). Two RED/GREEN proofs: partial-merge semantics in update(), and the id-in-data bug caught live by the controller-level test then fixed and reran green. check-dialect-sites.py/check-done-item-guards.py/check-doc-inventory.py all clean. Committed (27d9b409) and pushed.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
+  "verified": "Full run-runtimehost-gate.ps1 via digest runner: PASSED, exit 0 (assembled sample app build+test+coverage ratchet). Live ScrapForAI browser verification of app-tree-v2.html against ai-loop-verify-app (ad hoc, not a repo gate): routine passed after fixing ALLOW_EVALUATE + a locator selector, screenshots confirm three-pane layout, center detail table, right inspector, and dark/light theme toggle all render and behave correctly. Global watch-command hook proven to fire live in this session (not a repo gate).",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
   "unpushed": 0,
   "landedCommits": [
-    "27d9b409 feat(runtimehost): REG-246 -- Phase 4C, live-provisioned concepts become CRUD-reachable"
+    "dc8672ab feat(runtimehost): QUAL-41 -- cover ControlPanelTenantUsersController's remaining 5 endpoints"
   ]
 }
