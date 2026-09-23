@@ -1,26 +1,17 @@
 {
-  "closedAt": "2026-09-23T09:47:14.9285700Z",
+  "closedAt": "2026-09-23T10:39:18.9468425Z",
   "branch": "close-all-open-2026-09-22",
-  "head": "1c3c5980",
-  "headSubject": "feat(runtimehost): REG-245 -- Phase 4B, live runtime DDL for new bond-free concepts",
-  "summary": "Shipped Phase 4C (REG-246): a REG-245-provisioned live concept is now fully REST-reachable through GeneratedConceptCrudController with no regenerate/rebuild/restart. Discovered ConceptGateway/JdbcBusinessConceptStore already resolve schema live from CompiledModel, so no live-appendable-map mechanism was needed -- a per-request resolveBinding falls through to the live model on a baked-map miss. Split the actual wiring into a new plain class (LiveConceptCrudSupport, runtimehost-core) since the mustache-templated controller cannot be unit-tested in isolation; the template itself shrank to a thin wrapper. Found and fixed a real bug during controller-level verification: create() never folded the generated id into its data map, breaking the very next getById. Two RED/GREEN proofs run (partial-merge semantics, and the id-in-data bug). Full run-runtimehost-gate.ps1 green (assembled sample app suite + runtimehost-core test task + coverage ratchet, which auto-raised honestly). check-dialect-sites/check-done-item-guards/check-doc-inventory all clean.",
+  "head": "27d9b409",
+  "headSubject": "feat(runtimehost): REG-246 -- Phase 4C, live-provisioned concepts become CRUD-reachable",
+  "summary": "Shipped Phase 4C (REG-246): a REG-245-provisioned live concept is now fully REST-reachable through GeneratedConceptCrudController with no regenerate/rebuild/restart. Key finding: ConceptGateway/JdbcBusinessConceptStore already resolve schema live from CompiledModel, so no live-appendable-map mechanism was needed -- a per-request resolveBinding falls through to the live model on a baked-map miss. Wiring logic lives in a new plain class (LiveConceptCrudSupport, runtimehost-core) since the mustache-templated controller cannot be unit-tested in isolation. Found and fixed a real bug during controller-level verification: create() never folded the generated id into its data map, breaking the very next getById. Committed as 27d9b409 and pushed to close-all-open-2026-09-22.",
   "nextStep": "Phase 4D (live-rebuildable UI manifest) is the last item in REG-244's original D1 Phase 3 plan: BusinessUiEmitter.manifestJson is a pure function of CompiledModel but lives in NPDevGenerator, a build-time-only module RuntimeHost never depends on at runtime -- porting its logic (or a subset) to a runtime-reachable module is real, undesigned work. Start the same way 4B/4C started: re-run Understand/Inspect against current code (line numbers drift), then EnterPlanMode before writing code. Independent alternatives needing no new design decision: Phase 6 (fresh exhaustive B28 residual sweep) or continuing Phase 5's QUAL-41 coverage programme.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_CLOSE_ALL_OPEN_2026-09-22.md",
   "blocked": "",
-  "verified": "Full run-runtimehost-gate.ps1 via digest runner: BUILD SUCCESSFUL, assembled sample app's own suite green (incl. two new tests: LiveConceptCrudSupportTest's 3 cases at the runtimehost-core level, GeneratedConceptCrudControllerLiveConceptTest's 2 cases at the real-generated-controller level via standalone MockMvc), runtimehost-core's own test task green, coverage ratchet passed (honest re-measurement, not hand-edited). Both RED-proofs: (1) commented out the partial-merge in update(), reran narrowly, the 'partial update must not wipe other fields' assertion failed as expected, restored, reran green; (2) the id-in-data bug was caught live by the controller-level test (400 instead of 200 on getById immediately after create), fixed, reran green. check-dialect-sites.py: 0 sites outside the sanctioned package. check-done-item-guards.py: 0 blocking findings. check-doc-inventory.py: 0 blocking findings.",
-  "dirtyCount": 10,
-  "dirtyFiles": [
-    " M NPDevGenerator/generator/src/main/resources/npdev-templates/business-concept-crud-controller.mustache",
-    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/NewConceptSchemaProvisioner.java",
-    " M ledger/items/REG-244.yml",
-    " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl",
-    " M scripts/policy/coverage-baseline.json",
-    "?? NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptCrudSupport.java",
-    "?? NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/LiveConceptCrudSupportTest.java",
-    "?? NPDevRuntimeHost/src/test/java/com/finalexec/api/GeneratedConceptCrudControllerLiveConceptTest.java",
-    "?? ledger/items/REG-246.yml"
-  ],
+  "verified": "Full run-runtimehost-gate.ps1 via digest runner: BUILD SUCCESSFUL, assembled sample app's own suite green (incl. two new tests: LiveConceptCrudSupportTest's 3 cases at the runtimehost-core level, GeneratedConceptCrudControllerLiveConceptTest's 2 cases at the real-generated-controller level via standalone MockMvc), runtimehost-core's own test task green, coverage ratchet passed (honest re-measurement). Two RED/GREEN proofs: partial-merge semantics in update(), and the id-in-data bug caught live by the controller-level test then fixed and reran green. check-dialect-sites.py/check-done-item-guards.py/check-doc-inventory.py all clean. Committed (27d9b409) and pushed.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
-  "landedCommits": []
+  "landedCommits": [
+    "27d9b409 feat(runtimehost): REG-246 -- Phase 4C, live-provisioned concepts become CRUD-reachable"
+  ]
 }
