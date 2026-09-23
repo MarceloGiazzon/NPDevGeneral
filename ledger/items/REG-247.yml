@@ -1,0 +1,85 @@
+id: REG-247
+title: >-
+  Phase 4D: a live-provisioned concept gets a manifest node appended to generated-ui-manifest.json
+  with no regenerate/rebuild/restart
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-23
+closed: 2026-09-23
+source: >-
+  PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 4D, the last of REG-244's three follow-ups (4B/REG-245:
+  DDL, 4C/REG-246: CRUD reachability, this item: UI manifest). REG-244's own spike named the open
+  question this item resolves: BusinessUiEmitter.manifestJson is a pure function of CompiledModel
+  but lives in NPDevGenerator, a build-time-only module RuntimeHost never depends on at runtime.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptUiManifestSupport.java
+  (new), NPDevRuntimeHost/src/main/java/com/finalexec/api/MetadataHotSwapController.java,
+  NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/LiveConceptUiManifestSupportTest.java
+  (new), NPDevRuntimeHost/src/test/java/com/finalexec/MetadataHotSwapControllerStandaloneTest.java
+detail: |
+  **Scope finding not in REG-244's original spike:** the spike assumed "port manifestJson" without
+  sizing it. Re-inspecting found the real scope is much narrower than a port, for two independent
+  reasons. First, RuntimeHost has NO live SettingResolver or extensionFieldOrigins today (zero
+  references anywhere in the module) -- calling manifestJson again at reload time would silently
+  drop field-widget cascade overrides and pack-extension attribution for every EXISTING concept in
+  the manifest, not just the new one, so a full rebuild was never safe regardless of module
+  boundaries. Second, REG-245's `NewConceptSchemaProvisioner.outOfScopeReason` (already public,
+  already reused by REG-246) refuses any concept with a satellite/temporal/reference-bond field
+  before it can ever reach 4B's provisioning -- so a concept this item ever sees is structurally
+  guaranteed to have no reference fields, eliminating manifestJson's single largest dependency
+  (`referenceMetadata` and its ~10 helper methods, ~500 lines) entirely. `widget()` resolution
+  simplifies to "no reference, no cascade" for the same reason.
+
+  **Design: additive-only, matching 4B/4C's posture exactly.** `LiveConceptUiManifestSupport.refresh`
+  (new, plain, non-Spring class in `runtimehost-core`, same package as `NewConceptSchemaProvisioner`/
+  `LiveConceptCrudSupport`) reads the existing on-disk `generated-ui-manifest.json`, builds ONE
+  manifest node per newly-provisioned concept (a deliberate, comment-flagged MIRROR of
+  `manifestJson`'s per-concept loop -- not a shared call, not a port, since the general machinery
+  this class skips is exactly what makes a full rebuild unsafe), appends it to the existing
+  `concepts[]` array, and rewrites the file -- every EXISTING concept's node is left byte-for-byte
+  untouched. `StaticUiResourceConfig` already serves this file from an external, non-jar-baked,
+  non-cache-busted directory (REG-109), so the rewritten file is picked up on the very next request
+  with zero serving-side change.
+
+  **Wiring reuses the existing property**, `npdev.runtime.hotswap.new-concept-provisioning-enabled`
+  -- REG-244's owner-approved safety design already named this property as gating "DDL/CRUD/manifest"
+  together, so no new property was needed. Only concepts in `conceptsProvisioned` (that genuinely got
+  a table from REG-245's DDL step) are ever passed to the manifest refresh -- a concept whose DDL
+  failed never gets a screen whose first list/create call would just 500. New response fields
+  `uiManifestConceptsRefreshed`/`uiManifestRefreshFailed` mirror the existing
+  `conceptsProvisioned`/`conceptsProvisioningFailed` "never hide a limit behind a bare boolean"
+  convention.
+
+  **Idempotency posture matches REG-245's own DDL precedent:** a concept whose node already exists
+  in the manifest (a repeated reload) is reported as `refreshed` (the postcondition already holds),
+  not `failed` -- same reasoning as `CREATE TABLE IF NOT EXISTS` reporting success on a second call.
+
+  **What this deliberately does not solve, named rather than hidden:** does not touch
+  `guidePages`/`appShell`/`theme`/`panels` (unaffected by adding a concept); does not handle a
+  concept with a reference/bond field, a satellite concept, or a temporal concept (structurally
+  impossible today since `outOfScopeReason` already refused those at 4B -- if that scope ever widens,
+  this class's field-node builder must widen with it); no automated cross-module drift check between
+  `manifestJson`'s node shape and this mirror (the generator and runtimehost-core are separate Gradle
+  builds with no shared test classpath) -- a future field added to `manifestJson`'s per-concept node
+  needs a matching manual update here.
+
+  This closes REG-244's last named follow-up: all three phases (4B/REG-245, 4C/REG-246, 4D/this item)
+  of the D1 Phase 3 flagship capability ("add a concept, reload, it's queryable/writable through REST
+  with its screens present -- no regenerate/rebuild/restart") are now shipped for the bond-free,
+  non-satellite, non-temporal concept scope.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/MetadataHotSwapControllerStandaloneTest.java#modelReloadProvisionsTableAndUiManifestNodeForNewBondFreeConceptWhenEnabled
+  asserts: >-
+    LiveConceptUiManifestSupportTest (runtimehost-core level, no Spring/DB): appends a node for a
+    new concept while leaving an existing node byte-for-byte untouched; idempotent on a repeated
+    call (no duplicate node); a missing manifest file or an unknown concept name fails named without
+    throwing; an enum field's widget/enumOptions/enumName and a nested object field's objectSchema
+    are fully described with no reference metadata ever attached; an empty provisioned list is a
+    no-op. MetadataHotSwapControllerStandaloneTest's new test (controller level, real H2 DDL + a
+    pre-staged manifest fixture): a /model-reload that adds a brand-new bond-free concept both
+    creates its table (4B) and appends its UI manifest node (4D) in the same call, both named in the
+    response, with the pre-existing concept's node confirmed unchanged on disk afterward.
+  provenRed: false

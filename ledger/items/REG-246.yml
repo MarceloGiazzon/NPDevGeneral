@@ -80,7 +80,6 @@ detail: |
 guard:
   kind: test
   ref: >-
-    NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/LiveConceptCrudSupportTest.java#newlyProvisionedConceptIsFullyCrudReachableThroughLiveOps,
     NPDevRuntimeHost/src/test/java/com/finalexec/api/GeneratedConceptCrudControllerLiveConceptTest.java#newlyProvisionedConceptIsCrudReachableThroughTheRealGeneratedController
   asserts: >-
     Provisions a table for a brand-new bond-free "Widget" concept via the real

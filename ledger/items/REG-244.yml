@@ -120,3 +120,13 @@ detail: |
   live from `CompiledModel`, so the controller's `concepts` map stays untouched and unmutated; a miss
   falls through to a per-request `resolveBinding` that consults the live model directly instead. Only
   Phase 4D (live-rebuildable UI manifest) remains open from this spike.
+
+  **UPDATE 2026-09-23: Phase 4D shipped as REG-247, closing this spike's last named follow-up.** Not
+  a port of `manifestJson` either -- inspection found the real scope much narrower than estimated:
+  RuntimeHost has no live `SettingResolver`/`extensionFieldOrigins` today, so a full manifest rebuild
+  was never safe (it would silently drop cascade overrides/pack attribution for every EXISTING
+  concept, not just the new one); and `outOfScopeReason` (REG-245, reused again) already guarantees
+  a concept this phase ever sees has no reference fields, eliminating `manifestJson`'s largest
+  dependency outright. `LiveConceptUiManifestSupport` appends ONE node per newly-provisioned concept
+  to the on-disk manifest, additive-only, same posture as 4B/4C. All three follow-ups (4B/REG-245,
+  4C/REG-246, 4D/REG-247) are now shipped.
