@@ -206,5 +206,53 @@ codeLinkedNote: >-
   and even then only together with the mechanical guard the plan requires before the claim is
   trusted -- an unenforced "no bean caches model-derived state" restatement is exactly the sentence
   that was wrong before.
+
+  2026-09-23 (Phase 6, `ledger/items/REG-248.yml`): ran that fresh exhaustive sweep, mechanically
+  this time rather than by re-reading code and hoping nothing was missed again. Every one of the 38
+  files in `NPDevRuntimeHost`/`runtimehost-core` referencing `ModelHolder`, plus the 3 kernel-side
+  classes holding a raw `CompiledModel` field, plus every generator mustache template, was checked
+  for the exact bug shape REG-235/236/237/239/240/241 each turned out to be: a constructor or
+  `@Bean` method that reads `modelHolder.get()` and stores something derived from it with no
+  `addReloadListener` call. Zero new residuals. One theoretical concern needed real tracing, not
+  a read: `NpdevPluginConfig`'s persistence-capability-adapter realization carries a comment
+  hedging that "an already-realized adapter's own internal snapshot (if any) is a named residual" --
+  traced the full call chain (`RuntimePluginRealizationProviderCatalog.realize()` ->
+  `RuntimePluginPackageRealizationService.realize()` -> `CapabilityAdapterResolver.resolve()` ->
+  `populateCapabilityRegistry`) and confirmed nothing in it memoizes; every layer reconstructs
+  fresh, and `capabilityRegistry`'s own already-fixed `ModelReloadListener` re-runs the whole chain
+  on every reload. That comment is stale caution, not a live bug.
+
+  **The mechanical guard the previous entry said this needed now exists:**
+  `scripts/quality/check-model-holder-reload-wiring.py`, wired into `run-ai-knowledge-gate.ps1` step
+  `[50/50]`. It brace-matches every constructor and `@Bean` method in the same two scan roots
+  `check-model-provider-injection.py` (REG-242) already covers, flags a `modelHolder.get()` call not
+  deferred inside a lambda or a nested method (an anonymous class's `@Override`-ed method is
+  deferred too -- `RuntimeInvariantEngineFactory#create` is exactly this shape) whose enclosing
+  method has no `addReloadListener` call, and ships an `ALLOWLIST` keyed by (file, exact
+  method/constructor label) -- never a whole file, since most flagged files have other, correctly
+  wired `@Bean` methods alongside the exempted one. Five sites the checker's heuristic flagged
+  before the allowlist were triaged individually, each already documented in its own source comment
+  as a deliberate exception, not a residual: `TenantAutoRegistrationRunner` and
+  `NpdevObservabilityConfig#startupValidator` (both boot-once, `ApplicationRunner`/
+  `InitializingBean`, strictly before any reload endpoint could fire),
+  `ControlPanelTenantUsersController`'s constructor (a config-DEFAULT resolution, deliberately not
+  re-derived so it never overrides an operator's explicit `@Value`),
+  `NpdevPluginConfig#runtimePluginProfileDiagnostics` (a diagnostics snapshot explicitly meant to
+  describe what the app booted with), and `NpdevCapabilityBindingConfig#httpMessagingCapabilityAdapter`
+  (a DIFFERENT residual category entirely -- see below). The checker's own `--calibrate` proves all
+  of this with 11 controls: it fires on a bare constructor/`@Bean` cache, stays silent once a
+  listener is added, stays silent on a lambda (expression or block form) or a nested method that
+  defers the read, correctly parses a `@Bean(args)` plus a second annotation to the real method name
+  (an earlier draft mislabeled it "Bean"), and stays silent on the one allowlisted file despite it
+  matching the bad shape.
+
+  **Reclassifying LIFTED, not LIFTED/PARTIAL, for this boundary's own "snapshot bean" framing --
+  scoped precisely, not restated as "nothing needs a restart":** a model change that would require
+  a Spring bean to newly come into existence (`httpMessagingCapabilityAdapter`'s own case: a reload
+  that first-time binds `messaging-http`, a capability with no bean until that binding exists)
+  still needs a restart -- Spring beans cannot be added after context startup, a container
+  limitation, not a caching bug, and explicitly a DIFFERENT residual category from "a change built
+  once into a snapshot bean" (this boundary's own title). That is named here, not hidden, exactly
+  as the paragraph above insisted any future restatement must.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
-classification: LIFTED, PARTIAL
+classification: LIFTED

@@ -931,6 +931,19 @@ try {
         $failures += "NPDevModelProvider was injected outside NpdevCapabilityBindingConfig#modelHolder: see scripts/quality/check-model-provider-injection.py output above -- inject ModelHolder instead and call .get() fresh on every use"
     }
 
+    # B28 Phase 6 (REG-244's D1 thread): the mechanical guard the boundary's own text says a LIFTED
+    # claim requires. check-model-provider-injection.py above guards one narrow injection shape; this
+    # guards the broader, actually-recurring one -- a ModelHolder-holding bean whose constructor or
+    # @Bean method reads .get() and stores something derived from it with no addReloadListener call,
+    # the exact shape of REG-235/236/237/239/240/241. A fresh exhaustive sweep (2026-09-23) found zero
+    # live residuals of this shape; this script is what keeps that true going forward instead of it
+    # being a one-time claim that bitrots the way B28's own history shows it already did twice.
+    Write-Host '[50/50] Checking every ModelHolder.get() that seeds constructor/@Bean-time state is reload-wired...'
+    & $py "scripts/quality/check-model-holder-reload-wiring.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "a ModelHolder-derived snapshot is cached at bean-construction time with no addReloadListener: see scripts/quality/check-model-holder-reload-wiring.py output above -- either read modelHolder.get() fresh on every use, register a ModelReloadListener, or add a documented ALLOWLIST entry if this is a deliberate boot-time-only snapshot"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red

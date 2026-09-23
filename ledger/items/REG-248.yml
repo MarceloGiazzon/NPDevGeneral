@@ -1,0 +1,84 @@
+id: REG-248
+title: >-
+  B28 Phase 6: fresh exhaustive sweep for model-derived state cached without a reload listener,
+  backed by a new mechanical guard
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-23
+closed: 2026-09-23
+source: >-
+  PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 6 ("Restate B28 honestly and close it"): B28's own text
+  explicitly refuses a LIFTED reclassification without a FRESH exhaustive sweep AND a mechanical
+  guard behind it, having already been falsified twice (REG-240/241/242, found 2026-09-22, one day
+  after a prior sweep declared the residual list complete). check-model-provider-injection.py
+  (REG-242) already guards one narrow shape (a direct NPDevModelProvider injection); this item
+  guards the broader, actually-recurring shape those three items were each an instance of.
+surface: >-
+  scripts/quality/check-model-holder-reload-wiring.py (new),
+  scripts/quality/run-ai-knowledge-gate.ps1 (step [50/50]),
+  scripts/policy/script-invocation-declarations.json,
+  ledger/boundaries/B28.yml, docs/ACCEPTED_BOUNDARIES.md
+detail: |
+  **The sweep.** Every one of the 38 files in NPDevRuntimeHost/runtimehost-core referencing
+  `ModelHolder` (field or constructor param), the 3 kernel-side classes holding a raw `CompiledModel`
+  field, and every generator mustache template, checked by hand first, then mechanically. Zero new
+  residuals of the REG-235/236/237/239/240/241 bug shape (a bean caches something derived from
+  `modelHolder.get()` at construction time with no rebuild-on-reload path). One theoretical concern
+  needed real call-chain tracing rather than a read: `NpdevPluginConfig`'s persistence-capability-
+  adapter realization carries a comment hedging that "an already-realized adapter's own internal
+  snapshot (if any) is a named residual" -- traced `RuntimePluginRealizationProviderCatalog.realize()`
+  -> `RuntimePluginPackageRealizationService.realize()` -> `CapabilityAdapterResolver.resolve()` ->
+  `populateCapabilityRegistry` end to end and confirmed nothing memoizes; every layer reconstructs
+  fresh, and `capabilityRegistry`'s own already-fixed `ModelReloadListener` re-runs the whole chain
+  on every reload (REG-208). The comment is stale caution, not a live bug.
+
+  **The guard.** `check-model-holder-reload-wiring.py` brace-matches (not a real parser, same
+  tradeoff every checker in this package already makes) every constructor and `@Bean` method in a
+  file, and flags one whose body reads `modelHolder.get()` -- not deferred inside a lambda
+  (expression or block form) or a nested method (an anonymous class's `@Override`-ed method defers
+  too; `RuntimeInvariantEngineFactory#create` runs per-request, not at bean-construction time) --
+  with no `.addReloadListener(` call anywhere in that same body. Handles `@Bean(args)` plus a
+  chained second annotation (`@ConditionalOnProperty(...)`) correctly resolving to the real method
+  name, not the annotation's own parens (an early draft mislabeled `httpMessagingCapabilityAdapter`
+  as method "Bean"). 11 `--calibrate` controls prove: fires on a bare constructor/`@Bean` cache;
+  silent once a listener exists; silent on an expression lambda, a block lambda with internal
+  semicolons, and a nested anonymous-class method; silent on a plain per-request read; correctly
+  labels an annotated `@Bean`; and silent on the one allowlisted file despite it matching the bad
+  shape.
+
+  **Five flagged sites, all pre-existing and already documented as deliberate, none a residual:**
+  `TenantAutoRegistrationRunner` and `NpdevObservabilityConfig#startupValidator` (`ApplicationRunner`/
+  `InitializingBean`, run exactly once at boot, strictly before any reload endpoint could fire);
+  `ControlPanelTenantUsersController`'s constructor (a config-DEFAULT resolution the class's own
+  comment says must NOT re-derive on reload, so it never silently overrides an operator's explicit
+  `@Value`); `NpdevPluginConfig#runtimePluginProfileDiagnostics` (a diagnostics snapshot explicitly
+  meant to describe what the app booted with, per its own javadoc); and
+  `NpdevCapabilityBindingConfig#httpMessagingCapabilityAdapter` (a DIFFERENT residual category --
+  see below). Each is allowlisted by `(file, exact method/constructor label)`, never a whole file,
+  since most of these files have other, correctly reload-wired `@Bean` methods alongside the
+  exempted one.
+
+  **B28 reclassified `LIFTED`** (was `LIFTED, PARTIAL`), scoped precisely to this boundary's own
+  "a change built once into a snapshot bean" framing -- not restated as "nothing needs a restart."
+  Named, not hidden: a model change that would require a Spring bean to newly come into existence
+  (`httpMessagingCapabilityAdapter`'s own case) still needs a restart -- Spring cannot add a bean
+  after context startup, a container limitation, not a caching bug, and explicitly a different
+  residual category. `ledger/boundaries/B28.yml` and `docs/ACCEPTED_BOUNDARIES.md`'s B28 row both
+  updated together, per this repo's own convention for boundary records.
+guard:
+  kind: script
+  ref: "scripts/quality/check-model-holder-reload-wiring.py --calibrate"
+  asserts: >-
+    11 controls (see detail above) prove the checker both fires on the real bug shape and stays
+    silent on every legitimate pattern this codebase actually uses (fresh per-call reads, a listener
+    correctly registered, a deferred lambda in either form, a deferred nested method, an allowlisted
+    boot-once exception). The checker itself, run clean against the real corpus
+    (`python scripts/quality/check-model-holder-reload-wiring.py`, wired as
+    run-ai-knowledge-gate.ps1 step [50/50]), is the durable guard behind B28's LIFTED reclassification.
+  provenRed: true
+  provenRedNote: >-
+    Each of the 11 calibration controls is itself a RED/GREEN pair: a synthetic "bad" file the
+    checker must flag, paired with a "good" or "deferred" variant it must not. The final control
+    additionally removes the bad files and re-scans to prove the gate goes fully silent once nothing
+    is left to catch, not just that it happened to fire once.
