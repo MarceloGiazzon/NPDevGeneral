@@ -585,7 +585,11 @@ public class NpdevCapabilityBindingConfig {
      * and reads it fresh on every use instead of caching a snapshot -- pass {@code modelHolder::get}
      * rather than {@code modelHolder.get()} so a later {@link ModelHolder#swap} is actually observed.
      * A plain JDK Supplier, not ModelHolder itself, because :kernel adapters (where
-     * GeneratedCrudRuntimeSupport lives) cannot depend on NPDevRuntimeHost. */
+     * GeneratedCrudRuntimeSupport lives) cannot depend on NPDevRuntimeHost.
+     * REG-241: a fresh Supplier read is not enough for the orchestration EventBus subscriptions --
+     * those are a side effect, not a lookup -- so a reload listener is registered here to close and
+     * re-register them against the reloaded model, the same idiom {@link #invariantEngine} and
+     * {@link #capabilityRegistry} already use. */
     @Bean
     public GeneratedCrudRuntimeSupport generatedCrudRuntimeSupport(
             ModelHolder modelHolder,
@@ -602,7 +606,7 @@ public class NpdevCapabilityBindingConfig {
             IdempotencyStore idempotencyStore,
             ConceptGateway conceptGateway
     ) {
-        return new GeneratedCrudRuntimeSupport(
+        GeneratedCrudRuntimeSupport support = new GeneratedCrudRuntimeSupport(
                 modelHolder::get,
                 kernelRunner,
                 entityManagerProvider.getIfAvailable(),
@@ -616,6 +620,8 @@ public class NpdevCapabilityBindingConfig {
                 permissionEvaluator,
                 idempotencyStore
         ).withConceptGateway(conceptGateway);
+        modelHolder.addReloadListener((before, after) -> support.reloadOrchestrationSubscribers(after));
+        return support;
     }
 
     @Bean

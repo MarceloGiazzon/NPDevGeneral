@@ -267,10 +267,14 @@ public final class GeneratedCrudRuntimeSupport {
     private final AuditLogStore auditLogStore;
     private final PermissionEvaluator permissionEvaluator;
     private final IdempotencyStore idempotencyStore;
-    // REG-177: resolved ONCE at construction (not per-request) from the already-available
-    // compiledModel -- empty when this app doesn't compose the identity pack at all
-    // (internal.tables=false is a normal, supported configuration here, not an error).
-    private final Optional<IdentityPackTableNames> identityTables;
+    // REG-241: handles from every currently-registered orchestration subscription, so a reload can
+    // close them before re-registering against the new model. Access is synchronized on itself --
+    // the constructor's initial registration and a later ModelReloadListener-driven reload are the
+    // only two callers, and only one reload can be in flight at a time (ModelHolder.swap serializes
+    // reloads under its own write lock), but nothing stops a reload racing this class's OWN
+    // constructor-adjacent state in a test double, so the lock is taken explicitly rather than relied
+    // on implicitly.
+    private final List<AutoCloseable> orchestrationSubscriptions = new ArrayList<>();
     private ConceptGateway conceptGateway;
 
     // Fallback existence check for cross-concept reference validation when there is no
@@ -400,7 +404,6 @@ public final class GeneratedCrudRuntimeSupport {
         this.auditLogStore = auditLogStore == null ? AuditLogStore.noop() : auditLogStore;
         this.permissionEvaluator = permissionEvaluator == null ? PermissionEvaluator.allowAll() : permissionEvaluator;
         this.idempotencyStore = idempotencyStore == null ? IdempotencyStore.noop() : idempotencyStore;
-        this.identityTables = IdentityPackTableNames.tryResolve(modelSupplier.get());
         initializeOrchestrationSubscribers();
         // R2.4: the kernel's scheduleEvent flow step needs the durable table this class owns, and
         // :kernel cannot depend on this adapter. Registered here rather than in a Spring @Bean for
@@ -1218,31 +1221,59 @@ public final class GeneratedCrudRuntimeSupport {
     }
 
     private List<String> initializeOrchestrationSubscribers() {
-        // D1 Phase 1 note: called once from the constructor (line ~400), before any reload could
-        // occur, so a single modelSupplier.get() here preserves the exact prior behavior. Making
-        // orchestration subscribers themselves reload-aware is Phase 2 (KernelRunner's flow
-        // provider), not this fix.
-        CompiledModel modelAtConstruction = modelSupplier.get();
-        if (modelAtConstruction.getOrchestrationRules().isEmpty()) {
-            return List.of();
-        }
-        List<String> subscribers = new ArrayList<>();
-        for (CompiledOrchestration orchestration : modelAtConstruction.getOrchestrationRules()) {
-            RuntimeOrchestration runtimeOrchestration = toRuntimeOrchestration(orchestration);
-            if (runtimeOrchestration == null) {
-                continue;
+        return registerOrchestrationSubscribers(modelSupplier.get());
+    }
+
+    /**
+     * REG-241: the constructor-only registration above left the EventBus subscription set frozen
+     * as external state forever -- after a {@code /model-reload}, an orchestration rule ADDED to
+     * the new model never fired (no subscriber existed for its event) and a rule REMOVED kept
+     * firing (its subscriber was never told to stop). Called from a {@code ModelReloadListener}
+     * registered in {@code NpdevCapabilityBindingConfig}, which runs inside {@code
+     * ModelHolder.swap}'s write lock, so this always runs with readers of the model blocked and
+     * never overlaps a concurrent reload.
+     */
+    public void reloadOrchestrationSubscribers(CompiledModel model) {
+        registerOrchestrationSubscribers(model);
+    }
+
+    private List<String> registerOrchestrationSubscribers(CompiledModel model) {
+        synchronized (orchestrationSubscriptions) {
+            closeOrchestrationSubscriptionsLocked();
+            if (model.getOrchestrationRules().isEmpty()) {
+                return List.of();
             }
+            List<String> subscribers = new ArrayList<>();
+            for (CompiledOrchestration orchestration : model.getOrchestrationRules()) {
+                RuntimeOrchestration runtimeOrchestration = toRuntimeOrchestration(orchestration);
+                if (runtimeOrchestration == null) {
+                    continue;
+                }
+                try {
+                    AutoCloseable subscription = kernelRunner.subscribeEvent(
+                            runtimeOrchestration.eventName(),
+                            envelope -> handleEventOrchestration(runtimeOrchestration, envelope));
+                    orchestrationSubscriptions.add(subscription);
+                    subscribers.add(runtimeOrchestration.name());
+                } catch (Exception exception) {
+                    LOG.log(Level.WARNING,
+                            "Failed to register orchestration subscriber: " + runtimeOrchestration.name(),
+                            exception);
+                }
+            }
+            return subscribers.isEmpty() ? List.of() : List.copyOf(subscribers);
+        }
+    }
+
+    private void closeOrchestrationSubscriptionsLocked() {
+        for (AutoCloseable subscription : orchestrationSubscriptions) {
             try {
-                kernelRunner.subscribeEvent(runtimeOrchestration.eventName(), envelope ->
-                        handleEventOrchestration(runtimeOrchestration, envelope));
-                subscribers.add(runtimeOrchestration.name());
+                subscription.close();
             } catch (Exception exception) {
-                LOG.log(Level.WARNING,
-                        "Failed to register orchestration subscriber: " + runtimeOrchestration.name(),
-                        exception);
+                LOG.log(Level.WARNING, "Failed to close a prior orchestration subscription", exception);
             }
         }
-        return subscribers.isEmpty() ? List.of() : List.copyOf(subscribers);
+        orchestrationSubscriptions.clear();
     }
 
     private RuntimeOrchestration toRuntimeOrchestration(CompiledOrchestration orchestration) {
@@ -2642,6 +2673,7 @@ public final class GeneratedCrudRuntimeSupport {
             // authoritative over the principal's claim-roles -- same supplement-with-fallback contract
             // the RuntimeHost IdentityAwareContextResolver applies, kept consistent across both
             // context-resolution paths via the shared IdentityRoleLookup.
+            Optional<IdentityPackTableNames> identityTables = identityTables();
             Set<String> identityRoles = identityTables.isEmpty()
                     ? Set.of()
                     : IdentityRoleLookup.rolesFor(dataSource, identityTables.get(), tenantId, actorId);
@@ -2660,10 +2692,20 @@ public final class GeneratedCrudRuntimeSupport {
     private boolean isTokenRevoked(Object rawTokenVersion, String tenantId, String actorId) {
         // REG-23: delegate to the single shared decision point (IdentityRoleLookup.isTokenRevoked) so
         // both claim->context paths agree, including the config-driven rejection of legacy tv-less tokens.
+        Optional<IdentityPackTableNames> identityTables = identityTables();
         if (identityTables.isEmpty()) {
             return false;
         }
         return IdentityRoleLookup.isTokenRevoked(rawTokenVersion, dataSource, identityTables.get(), tenantId, actorId);
+    }
+
+    // REG-240: was resolved ONCE at construction into a final field, so a model reload that
+    // composes (or renames a table within) the identity pack after boot was never observed here --
+    // an app that booted without identity::User kept an empty role set forever, and a tokenVersion
+    // bump stopped logging anyone out. Reads modelSupplier.get() fresh instead, the same per-call
+    // cost the ten other IdentityPackTableNames.tryResolve callers in RuntimeHost already pay.
+    private Optional<IdentityPackTableNames> identityTables() {
+        return IdentityPackTableNames.tryResolve(modelSupplier.get());
     }
 
     private Map<String, Object> normalizePayloadForValidation(

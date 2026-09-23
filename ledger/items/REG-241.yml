@@ -4,8 +4,9 @@ title: >-
   after a hot reload an added orchestration[] rule never fires and a REMOVED one keeps firing
 type: BUG
 severity: HIGH
-status: OPEN
+status: DONE
 opened: 2026-09-22
+closed: 2026-09-23
 source: >-
   Exhaustive B28 residual sweep (see also REG-240, REG-242 and `ledger/boundaries/B28.yml`'s
   2026-09-22 entry). `GeneratedCrudRuntimeSupport.initializeOrchestrationSubscribers()`
@@ -22,30 +23,58 @@ source: >-
 surface: NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java,
   NPDevRuntimeHost/src/main/java/com/finalexec/config/NpdevCapabilityBindingConfig.java
 detail: |
-  NOT IMPLEMENTED. The subscription set lives in the EventBus as external state and is never
-  touched again after construction. After a `/model-reload`:
+  IMPLEMENTED 2026-09-23, exactly the fix shape this item proposed. Before the fix, after a
+  `/model-reload`: a rule ADDED to `orchestration[]` never fired (no subscriber existed for its
+  event); a rule REMOVED kept firing (the app kept executing business logic the operator believed
+  deleted); a rule EDITED (condition, target concept, field mapping) kept running its pre-reload
+  body.
 
-  - a rule ADDED to `orchestration[]` never fires -- no subscriber was ever registered for its
-    event;
-  - a rule REMOVED still fires on every matching event -- the app keeps executing business logic
-    the operator believes they deleted;
-  - a rule EDITED runs its pre-reload body. Concretely: change `orchestration[].condition` from
-    `amount > 100` to `amount > 1000`, reload, and the app keeps auto-creating records at the old
-    threshold. Same for a changed target concept or field mapping on a `create` action.
+  `GeneratedCrudRuntimeSupport.reloadOrchestrationSubscribers(CompiledModel)` (public,
+  `GeneratedCrudRuntimeSupport.java:1236`) now delegates to `registerOrchestrationSubscribers`,
+  which under `synchronized (orchestrationSubscriptions)` first calls
+  `closeOrchestrationSubscriptionsLocked()` (closes every previously-held `AutoCloseable`
+  subscription handle and clears the set) and then re-subscribes one handler per event-triggered
+  rule in the new model, same as the original constructor-time registration
+  (`initializeOrchestrationSubscribers` now just calls the same method with the supplier's current
+  value). The handles this class used to discard (kept only the rule name) are now kept in
+  `orchestrationSubscriptions` specifically so they can be closed on the next reload.
 
-  This is the highest-severity residual under B28 because, unlike the others, it needs no unusual
-  model change -- ANY edit to `orchestration[]` is silently ignored, and the removed-rule case is
-  actively wrong rather than merely stale.
+  Wired in `NpdevCapabilityBindingConfig#generatedCrudRuntimeSupport`
+  (`NPDevRuntimeHost/.../NpdevCapabilityBindingConfig.java:623`): after constructing the adapter,
+  `modelHolder.addReloadListener((before, after) -> support.reloadOrchestrationSubscribers(after))`
+  -- the same `ModelReloadListener` idiom `invariantEngine` and `capabilityRegistry` already use.
+  `ModelHolder.swap` notifies listeners inside its write lock, so re-subscription always runs with
+  readers of the model blocked and never overlaps a concurrent reload, answering this item's own
+  ordering/idempotency concern.
 
-  Fix shape: `ModelReloadListener` rebuild-in-place. The `Supplier` pattern structurally cannot
-  work: subscription is a side effect on the EventBus, not a lookup. The mechanism already exists --
-  `KernelRunner.subscribeEvent` returns an `AutoCloseable` (`KernelRunner.java:778`) and this class
-  currently DISCARDS the handle (`:1238` keeps only the name). Keep the handles, close them and
-  re-subscribe on swap. Wiring follows REG-239's shape: a public
-  `reloadOrchestrationSubscribers(CompiledModel)` on the adapter (which cannot import `ModelHolder`)
-  with the listener registered in `NpdevCapabilityBindingConfig#generatedCrudRuntimeSupport`
-  (`:589-618`).
+  Verified: `:kernel:test :adapters:runtime-support:test --rerun-tasks` BUILD SUCCESSFUL, all 4
+  tests in `GeneratedCrudRuntimeSupportOrchestrationReloadTest` pass with skipped=0. RED-PROVEN in
+  two separate passes, not assumed: (a) stubbing `reloadOrchestrationSubscribers`'s body to a no-op
+  fails exactly the three add/remove/edit tests (`aRuleAddedByAReloadFires`,
+  `aRuleRemovedByAReloadStopsFiring`, `anEditedConditionUsesTheNewThreshold`) while
+  `reloadDoesNotDoubleFire` and the two REG-240 identity-table tests stay green; (b) separately
+  removing only the `closeOrchestrationSubscriptionsLocked()` call (leaving stale subscriptions
+  active alongside the new ones) fails THREE tests, not the single `reloadDoesNotDoubleFire` this
+  item's own fix-shape note might suggest -- the stale old-threshold/old-rule subscribers also
+  double-fire or misfire on `aRuleRemovedByAReloadStopsFiring` and `anEditedConditionUsesTheNewThreshold`,
+  so only `aRuleAddedByAReloadFires` stays green. Recorded here because it is the actually-measured
+  failure signature, not a predicted one. Both stubs were restored and their absence verified by
+  grep before commit.
 
-  Watch for ordering/idempotency when implementing: closing and re-subscribing must not drop an
-  event that arrives mid-swap, and `ModelHolder.swap` notifies listeners inside its write lock, so
-  the re-subscription runs with readers blocked.
+  Also fixed alongside in the same session (REG-240, MEDIUM, this class's `identityTables` field):
+  see that item.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportOrchestrationReloadTest.java#aRuleRemovedByAReloadStopsFiring
+  asserts: >-
+    subscribes a "Notify" rule via the constructor, fires it once to confirm it works, then calls
+    reloadOrchestrationSubscribers with a model that has NO orchestration rules, and confirms a
+    second matching event does NOT increment the dispatcher's invocation count -- the worst of the
+    three failure modes because it needs no unusual model change and is actively wrong (keeps
+    executing deleted business logic) rather than merely stale. Siblings cover: a rule ADDED by a
+    reload firing on the next matching event without reconstructing the adapter
+    (aRuleAddedByAReloadFires), an EDITED condition using the new threshold immediately rather than
+    the pre-reload one (anEditedConditionUsesTheNewThreshold), and a reload not leaving stale
+    subscribers that double-fire the SAME event (reloadDoesNotDoubleFire).
+  provenRed: true

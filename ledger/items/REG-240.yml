@@ -4,8 +4,9 @@ title: >-
   this class's lookup sites to a live Supplier but left both of its constructor-time derivations
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-22
+closed: 2026-09-23
 source: >-
   Exhaustive B28 residual sweep run to answer "is the residual list finally complete?" (it was not;
   see also REG-241, REG-242 and `ledger/boundaries/B28.yml`'s 2026-09-22 entry). REG-235 converted
@@ -17,32 +18,46 @@ source: >-
   `this.identityTables = IdentityPackTableNames.tryResolve(modelSupplier.get())`.
 surface: NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java
 detail: |
-  NOT IMPLEMENTED. Field declared at `:273`, derived at `:403`, consumed at `:2645-2647` and
-  `:2663-2666`.
+  IMPLEMENTED 2026-09-23, the fresh-lookup shape this item proposed (not the cache-shape
+  alternative it also offered). The `identityTables` field is gone; `identityTables()` is now a
+  private method (`GeneratedCrudRuntimeSupport.java:2707`) that calls
+  `IdentityPackTableNames.tryResolve(modelSupplier.get())` fresh on every call, read live at both
+  consuming sites (the role-lookup permission check and the tokenVersion revocation check). No
+  `ModelReloadListener` wiring was needed for this one -- unlike REG-241's EventBus subscriptions,
+  this is a pure lookup, so `modelSupplier` alone (already held by the class since REG-235) is
+  sufficient; the caching bug was purely "resolves once and keeps the derived `Optional` forever,"
+  not "the Supplier itself is stale."
 
-  Two distinct observable failures after a hot reload:
+  Verified: `:adapters:runtime-support:test --rerun-tasks` BUILD SUCCESSFUL, both
+  `GeneratedCrudRuntimeSupportModelReloadTest` tests pass with skipped=0. RED-PROVEN, not assumed:
+  temporarily reintroduced the exact original bug shape (a field caching the FIRST resolved
+  `Optional` on first call, i.e. `if (cache == null) { cache = tryResolve(...); } return cache;`)
+  and confirmed BOTH `identityTablesComposedByAReloadAreHonored` and `anIdentityTableRenameIsFollowed`
+  fail while the unrelated third test in that file
+  (`aConceptAddedAfterConstructionIsVisibleWithoutRebuildingTheInstance`) stays green -- exactly the
+  two tests this item's two failure modes predict, no more and no less. The stub was restored and
+  its absence verified by grep before commit.
 
-  1. The identity pack is COMPOSED by the reload. An app that booted without `identity::User` keeps
-     `Optional.empty()` forever, so `:2645` hands an empty role set to every generated-CRUD
-     permission check (`IdentityRoleLookup.rolesFor` is never called) and DB-stored role grants are
-     ignored; and `:2663` returns `false` unconditionally from the revocation check, so a
-     `tokenVersion` bump STOPS LOGGING ANYONE OUT of the CRUD surface.
-  2. An identity concept's `tableName` changes. This class keeps querying the OLD table while every
-     other `tryResolve` caller re-resolves per request and uses the NEW one (LoginController,
-     IdentityAwareContextResolver, ChangePasswordController, CreateUserController,
-     PasswordResetController, BootstrapAdminController, the two ControlPanel user controllers,
-     OAuthGoogleAuthService). Login then succeeds against the new table while CRUD authorization
-     reads roles from the old one -- a silent split brain.
+  Duplication note from this item's original text still applies as historical record: REG-239 fixed
+  the analogous derivation on `DefaultExecutionAuthorizationPolicy`'s side by folding it into that
+  class's reload-swapped `ModelDerivedState`, a different mechanism (swap-on-reload) from this
+  fix's (read-live-every-time). Two shapes for one kind of problem now exist in the platform: worth
+  a twin-pair registry rule if a third case turns up, not worth generalizing for two.
 
-  Fix shape: fresh-lookup. The class already holds `modelSupplier`, so replace the field with a
-  private `identityTables()` helper over `modelSupplier.get()`. `tryResolve` is four `findConcept`
-  calls -- the same per-request cost the ten RuntimeHost callers above already pay. If `:2645` is
-  judged too hot for that, use `LiveConceptGatewaySemanticPolicy`'s identity-compare cache shape
-  (REG-236) instead. A `ModelReloadListener` is NOT directly available here: this is a `:kernel`
-  adapter and cannot import `ModelHolder`, so a listener-based fix would need REG-239's `setModel`
-  idiom with the registration living in `NpdevCapabilityBindingConfig`.
-
-  Note the duplication this leaves today: REG-239 fixed this exact derivation on the other side, by
-  folding `identityTables` into `DefaultExecutionAuthorizationPolicy`'s reload-swapped
-  `ModelDerivedState`. The platform currently holds two copies of one derivation, one reload-aware
-  and one not. Worth considering a twin-pair registry rule rather than just fixing the second copy.
+  Also fixed alongside in the same session (REG-241, HIGH, this class's orchestration subscribers):
+  see that item.
+guard:
+  kind: test
+  ref: >-
+    NPDevKernel/adapters/runtime-support/src/test/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupportModelReloadTest.java#identityTablesComposedByAReloadAreHonored
+  asserts: >-
+    constructs the adapter against a model with no identity pack (identityTables resolves to
+    empty, must not throw), then reloads with a model that DOES compose identity::User, and
+    confirms the resolution becomes present with the correct usersTable -- the more severe of the
+    two failure modes, since an empty result silently hands an empty role set to every
+    generated-CRUD permission check and unconditionally reports tokenVersion as not revoked. Sibling
+    anIdentityTableRenameIsFollowed covers the second failure mode: an identity table RENAMED by a
+    reload (not composed/decomposed) must be followed immediately rather than read from a name
+    cached at construction, which would otherwise split login (re-resolves per request) from CRUD
+    authorization (would keep reading the old table) onto two different tables.
+  provenRed: true
