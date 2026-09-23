@@ -1,0 +1,72 @@
+id: REG-243
+title: >-
+  POST /model-reload swaps the live CompiledModel but never refreshes RuntimeMetadataService's
+  UI-facing catalogs, so "one call fully applies a model change" was never true and nothing said so
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-09-23
+closed: 2026-09-23
+source: >-
+  PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 3. Noted as an "adjacent gap" in `ledger/boundaries/B28.yml`
+  (2026-09-22 entry) -- not a B28 residual by the strict definition (`RuntimeMetadataService`
+  re-reads its catalog files from disk per call, so it never goes internally stale the way a
+  cached-at-construction bean does), but a real functional gap with no ledger item of its own until
+  this plan required filing one before fixing it ("an untracked gap cannot be closed").
+surface: NPDevRuntimeHost/src/main/java/com/finalexec/api/MetadataHotSwapController.java,
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/npdev/service/RuntimeMetadataService.java
+detail: |
+  `POST /api/admin/runtime/metadata-hotswap/model-reload` (`MetadataHotSwapController.java:212`)
+  parses a `model.json`, compiles it, and swaps `ModelHolder` -- every `ModelHolder.get()` consumer
+  (generated CRUD, panels, invariants, orchestrations, documents) observes the new model
+  immediately. It does not touch `RuntimeMetadataService`'s catalogs at all.
+
+  `RuntimeMetadataService.applyMetadataOnlyReload` (`:370`) is the ONLY thing that refreshes those
+  catalogs, and it requires a `sourceMetadataRoot` directory -- the exact output shape of
+  `ModelChangeClassifierMain --emitMetadataTo <dir>`, a BUILD-TIME tool that lives in the generator
+  module. `RuntimeMetadataService`'s own javadoc at `:341` is explicit about why this runtime module
+  "does not and should not depend on" that module: the classifier needs the OLD model to diff
+  against the NEW one and needs generator-module code this jar does not carry.
+
+  So the observable gap is real: an operator calling `/model-reload` alone sees the new model live
+  in every CRUD/panel/invariant path, while the UI's own metadata catalogs (labels, hints, layout
+  descriptions) keep describing the OLD shape until a SEPARATE `/apply` call runs -- and nothing in
+  `/model-reload`'s response said so. "One call fully applies a model change" was never true.
+
+  DECISION (step 2, per the plan's own instruction to decide this before implementing): are the
+  catalogs DERIVABLE from the live `CompiledModel`, or do they genuinely need files on disk? Not
+  derivable within this module -- confirmed by reading `RuntimeMetadataService`'s own architecture
+  note above, which is a hard module-dependency constraint, not a missing convenience method. This
+  put the fix in the "needs files on disk" branch, where the plan named two options and deferred the
+  choice explicitly to the owner ("Decisions that need the owner, not me" #3): make `/model-reload`
+  also perform the full refresh (coupling two previously-independent, differently-risk-profiled
+  operations and requiring every structural reload to also carry a pre-built classifier directory),
+  or document the limit. Owner chose: document the limit.
+
+  IMPLEMENTED: `/model-reload`'s success response gained one field,
+  `uiMetadataCatalogsRefreshed: false`, with a comment at the call site explaining what it does and
+  does not mean (`false` here is not a failure -- the model swap genuinely succeeded -- it names
+  what this specific call did and did not reach) and pointing a caller who wants the catalogs
+  updated too at the separate `POST /apply` (which needs a `metadataSourceRoot`). No change to
+  `/apply` itself -- its own contract already narrowly scopes it to metadata-only classification and
+  never claimed to touch the live model.
+
+  Verified: extended the existing
+  `MetadataHotSwapControllerStandaloneTest#modelReloadSwapsTheModelWhenExplicitlyEnabled` (already a
+  real success-path test, not a new file) with one more `jsonPath` assertion on the new field, and
+  ran the full RuntimeHost gate (compiles this controller, boots the assembled sample app's own
+  suite). RED-PROVEN, not assumed: commented out the `response.put("uiMetadataCatalogsRefreshed",
+  false)` line and re-ran the full RuntimeHost gate (RuntimeHost never builds standalone, so this
+  needed the real assembly, not a narrow unit run) -- exactly 1 of 897 tests failed
+  (`modelReloadSwapsTheModelWhenExplicitlyEnabled`), everything else stayed green. Stub restored and
+  its absence verified by grep before commit.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/MetadataHotSwapControllerStandaloneTest.java#modelReloadSwapsTheModelWhenExplicitlyEnabled
+  asserts: >-
+    POSTs a real model.json to /model-reload with the flag enabled and SUPERUSER present, confirms
+    the model swap actually happened (ModelHolder now holds the new model, concepts count matches),
+    and confirms the response body carries uiMetadataCatalogsRefreshed: false -- the response cannot
+    be read as claiming a full apply when only the live model swapped.
+  provenRed: true

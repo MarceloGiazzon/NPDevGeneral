@@ -249,6 +249,15 @@ public class MetadataHotSwapController {
             response.put("concepts", newModel.getConcepts().size());
             response.put("flows", newModel.getFlows().size());
             response.put("procedures", newModel.getProcedures().size());
+            // REG-243: this call does not imply a full apply. It swaps the LIVE CompiledModel (every
+            // ModelHolder.get() consumer -- CRUD, panels, invariants, orchestrations, documents -- sees
+            // the new model immediately), but RuntimeMetadataService's UI-facing catalogs (labels,
+            // hints, layout descriptions) are untouched: they require a build-time classification this
+            // runtime module cannot perform (RuntimeMetadataService's own javadoc explains why), so a
+            // caller wanting those updated too must separately POST /apply with a metadataSourceRoot
+            // produced by the classifier. false here is not a failure -- the model swap above genuinely
+            // succeeded -- it names what this specific call did and did not reach.
+            response.put("uiMetadataCatalogsRefreshed", false);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             LOG.warn("B28 hot model reload failed: modelPath={}", modelFile, e);

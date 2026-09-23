@@ -163,7 +163,12 @@ class MetadataHotSwapControllerStandaloneTest {
                         .content("{\"modelPath\":\"" + escapeJson(modelPath.toString()) + "\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true))
-                .andExpect(jsonPath("$.concepts").value(1));
+                .andExpect(jsonPath("$.concepts").value(1))
+                // REG-243: /model-reload swaps the live CompiledModel but never touches
+                // RuntimeMetadataService's UI-facing catalogs (a build-time-only classification this
+                // runtime module cannot perform) -- the response must say so plainly rather than let
+                // "ok: true" be read as "fully applied".
+                .andExpect(jsonPath("$.uiMetadataCatalogsRefreshed").value(false));
 
         org.junit.jupiter.api.Assertions.assertEquals(1, modelHolder.get().getConcepts().size());
     }
