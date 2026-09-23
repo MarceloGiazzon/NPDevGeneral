@@ -1,0 +1,102 @@
+id: REG-244
+title: >-
+  Phase 4A research spike: a safety design for provisioning a brand-new CONCEPT (table + CRUD +
+  UI manifest) live via /model-reload, with no runtime DDL code path today
+type: GAP
+severity: MEDIUM
+status: PARTIAL
+opened: 2026-09-22
+source: >-
+  PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 4 (D1 Phase 3, the flagship B28 capability: "an operator
+  adds a concept to the model, reloads, and the new concept is queryable and writable through REST
+  with its screens present -- no regenerate, no rebuild, no restart"). The plan's own text is explicit
+  that Phase 4B-4D (real runtime-DDL code) may not start until 4A produces a written design and the
+  owner approves it -- this is a data-loss-class decision (runtime DDL against a live database) that
+  must not be made unilaterally.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java,
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/MissingTableCreationPass.java,
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaManifestLoader.java,
+  NPDevGenerator/generator/src/main/resources/npdev-templates/business-concept-crud-controller.mustache,
+  NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/GeneratedCrudRuntimeSupport.java,
+  NPDevGenerator/generator/src/main/java/com/npdev/generator/emitters/BusinessUiEmitter.java,
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/StaticUiResourceConfig.java,
+  NPDevRuntimeHost/src/main/java/com/finalexec/api/MetadataHotSwapController.java
+detail: |
+  Three independent blockers confirmed, each against real code (not restated from the plan's own
+  premise):
+
+  1. **DDL has no runtime-callable path.** `SchemaLifecycleExecutor implements FlywayMigrationStrategy`
+     (`:58`) -- a Flyway boot hook only; concept DDL for concepts known at generation time is baked
+     into a repeatable migration (`SchemaRealizationEmitter`) that never re-runs for a concept added
+     later. BUT an existing, already-idempotent, runtime-callable primitive exists and was never
+     invoked outside Flyway boot: `MissingTableCreationPass.createMissingBusinessTables(DataSource,
+     SchemaManifest)` (`MissingTableCreationPass.java:54`), built for the
+     `npdev.trial.force-physical-schema` profile, "idempotent by construction, safe to call every
+     boot" per its own javadoc (guarded `IF NOT EXISTS` via `SqlDialect`). Its ONLY real gap: its
+     `SchemaManifest` input (`SchemaManifestLoader.java:31-33`) reads a static generation-time
+     classpath JSON, blind to a live-added concept -- the actual missing piece is a new
+     `SchemaManifest` projection built from the live post-reload `CompiledModel`, not new DDL
+     machinery. Idempotency of the FULL `migrate()` method: NO (fingerprint-based destructive-recreate
+     branch assumes one boot-time transition) -- the design must call the narrow additive primitive
+     only, never the full method. Transactional posture: already modelled per-engine via
+     `StorageCapability.DDL_IN_TRANSACTION` (`SchemaLifecycleExecutor.java:951`); no new risk beyond
+     what boot-time migration already accepts, because the operation is idempotent by construction.
+
+  2. **CRUD registration is baked at generation time** (`register_{{serviceVariable}}`,
+     business-concept-crud-controller.mustache:62, wiring a GENERATED, typed
+     `{{className}}Service`'s method references into `ConceptBinding`). BUT the layer underneath
+     (`GeneratedCrudRuntimeSupport.persistenceCapability`, `:425`) is plain lambdas with no JPA
+     dependency of its own, and the validation/invariant layer (`materializeEntityValues`, `:2753`,
+     via `ObjectFieldSupport.readObjectValue`, `:73-79`) ALREADY treats a `Map<String,Object>` as its
+     native, first-choice DTO source -- Jackson-conversion/reflection are fallbacks, not the only
+     path. A precedent for raw-JDBC-against-`CompiledConcept`-metadata (no generated Java class)
+     already ships in the same file (`enforceBondTargetTenant`/`bondTargetExistsForTenant`, `:522-579`).
+     Conclusion: a generic, Map-backed, JDBC-driven `PersistenceCapability` for concepts with no
+     generated class is architecturally plausible and needs NO changes to the validation pipeline.
+     NOT yet solved: `GeneratedConceptCrudController`'s `concepts` map is built once in the
+     constructor and is `Collections.unmodifiableMap` (`:58`) -- making it live-appendable (or
+     replacing it with a live lookup) is real work for 4C's own step 3, not resolved here.
+
+  3. **`generated-ui-manifest.json` is a static emitted file`** -- but `BusinessUiEmitter.manifestJson`
+     (`:338`) is a PURE function of `CompiledModel`, and the file is ALREADY served from an
+     externally-overridable, non-jar-baked directory with no cache-busting
+     (`StaticUiResourceConfig`, REG-109) -- rewriting the file after a reload would be served on the
+     very next request with zero serving-side changes. NOT yet solved: `manifestJson`'s logic lives
+     in `NPDevGenerator`, a build-time-only module never depended on by RuntimeHost/Kernel at
+     runtime -- porting it to a runtime-reachable module is real work for 4D's own step 3.
+
+  **Shared integration point:** `MetadataHotSwapController.modelReload` (`:212-267`) already computes
+  `CompiledModel oldModel = modelHolder.swap(newModel)` (`:243`) -- diffing old vs new concepts by
+  name gives exactly the "brand-new this reload" set every one of the three provisioning steps needs.
+  Already `requireSuperUser`-gated; `npdev.runtime.hotswap.full-model-reload-enabled` (default true)
+  is an existing precedent to mirror, but the new provisioning steps need a SEPARATE, narrower
+  property defaulted OFF (higher risk than merely observing an already-swapped model).
+
+  **Safety design recommended (needs owner approval before 4B-4D):**
+  - New property `npdev.runtime.hotswap.new-concept-provisioning-enabled`, default `false`, gating
+    ONLY the new DDL/CRUD/manifest steps -- the existing unconditional model swap is untouched.
+  - Additive-only, unconditionally: CREATE TABLE IF NOT EXISTS + guarded ADD COLUMN for the new
+    concept's own columns ONLY. Never the destructive-recreate/fingerprint branch. A concept that
+    shrinks/renames/retypes via reload is explicitly out of scope and must be refused or ignored, not
+    attempted.
+  - Superuser requirement unchanged.
+  - No new transactional mechanism -- reuse the existing per-engine `DDL_IN_TRANSACTION` capability
+    for logging parity; idempotency (not transactionality) is what makes a partial failure safe.
+  - Response must name exactly which new concepts got provisioned and which failed
+    (`conceptsProvisioned`/`conceptsProvisioningFailed`), mirroring REG-243's
+    `uiMetadataCatalogsRefreshed` precedent of naming a limit rather than hiding it behind a bare
+    boolean -- the model swap happens unconditionally even if DDL provisioning then fails for one
+    concept, so a caller must be told which is which.
+
+  Full design, citations, and the open questions left for 4B/4C/4D's own step-2 Inspect (manifest
+  projection's new home, live-appendable CRUD registry mechanism, manifest-builder's runtime home,
+  the bond/junction-table edge case) are written out in
+  `D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\PHASE4A_RESEARCH_SPIKE_2026-09-22.md`.
+
+  **Status is PARTIAL, not DONE and not the code phases**: this item is the research spike only.
+  Ships no behaviour, no guard block (nothing to point a test at). Closes when the owner approves or
+  amends the safety design above. Phases 4B ("Runtime DDL path (additive-only)"), 4C ("Model-driven
+  CRUD registration"), and 4D ("Live-rebuildable UI manifest") are each separate, not-yet-filed
+  ledger items, filed only once their own Inspect step re-confirms this spike's premises still hold
+  (line numbers here are as of 2026-09-22 and will drift).
