@@ -48,32 +48,37 @@ import java.util.Map;
  * the capability registry's own routing table, ...) observes the new model immediately, no restart.
  *
  * <p>As of D1 Phase 2 (REG-236/REG-237/REG-239, 2026-09-21), every residual this list had ever
- * NAMED is closed -- but an exhaustive sweep the next day found three more it had never named
+ * NAMED was closed -- but an exhaustive sweep the next day found three more it had never named
  * (REG-240, REG-241, REG-242; see {@code ledger/boundaries/B28.yml}), so do not read the list below
- * as an enumeration. The most consequential is REG-241: any edit to {@code orchestration[]} is
- * silently ignored after a reload, and a REMOVED rule keeps firing, because subscribers are
- * registered once from the constructor. REG-242 also shows this class's sibling guard has a hole --
- * a bean can still pin itself to the boot model by injecting {@code NPDevModelProvider} (which
- * exposes {@code compiledModel()}) rather than a {@code CompiledModel} bean, and nothing fails at
- * startup when it does.
+ * as an enumeration; treat it as a history of what has been checked, not a static inventory.
+ * REG-241 (the most consequential of the three) and REG-240 were fixed 2026-09-23:
+ * {@code GeneratedCrudRuntimeSupport}'s orchestration subscribers now close and re-register on
+ * every reload (a {@code ModelReloadListener} in {@code NpdevCapabilityBindingConfig}), and its
+ * {@code identityTables} lookup reads {@code modelSupplier.get()} fresh instead of caching the
+ * boot-time resolution. REG-242 was fixed the same day: {@code DocumentRenderController} now reads
+ * {@code documents[]} through {@link ModelHolder} instead of injecting {@code NPDevModelProvider}
+ * directly, and {@code scripts/quality/check-model-provider-injection.py} (wired into
+ * {@code run-ai-knowledge-gate.ps1}) now fails the build if any OTHER bean pins itself to the boot
+ * model the same way -- the guard-hole this class's javadoc used to describe as open is now closed
+ * mechanically, not just by convention.
  *
- * <p>The last NAMED one -- the kernel-side {@code DefaultExecutionAuthorizationPolicy}'s
- * app-declared-role cache -- now rebuilds in place on a reload via a {@code ModelReloadListener}
- * registered in {@code NpdevAuthConfig} (REG-239), so a role added, removed or regranted by a hot
- * reload takes effect on the next permission check. A reloaded model whose {@code roles[]} declares
- * an unrecognized grant fails the RELOAD itself (the listener throws inside {@link
- * ModelHolder#swap}'s write lock) and leaves the previously-validated permission set in place --
- * that grant-name check is the only place in the platform where a grant is validated against the
- * real {@code Permission} enum, so it must not move off a fail-loud path.
+ * <p>The kernel-side {@code DefaultExecutionAuthorizationPolicy}'s app-declared-role cache now
+ * rebuilds in place on a reload via a {@code ModelReloadListener} registered in {@code
+ * NpdevAuthConfig} (REG-239), so a role added, removed or regranted by a hot reload takes effect on
+ * the next permission check. A reloaded model whose {@code roles[]} declares an unrecognized grant
+ * fails the RELOAD itself (the listener throws inside {@link ModelHolder#swap}'s write lock) and
+ * leaves the previously-validated permission set in place -- that grant-name check is the only place
+ * in the platform where a grant is validated against the real {@code Permission} enum, so it must
+ * not move off a fail-loud path.
  * Everything else `NpdevCapabilityBindingConfig`'s original 4-bean residual list named is
  * now live or live-with-a-scoped-exception: {@code CelInvariantEngine}-backed {@code
  * InvariantEngine}, {@code ConceptGateway}'s semantic policy, and {@code propertyResolver} all
  * observe a reload immediately (REG-236). {@code KernelRunner}'s flow-definition provider observes
- * a reload for every NEW {@code execute()}/{@code resumeExecution()} lookup (REG-237) -- but a
- * durable {@code WAITING_EVENT} instance resuming across a flow whose STEP SHAPE changed since it
- * was checkpointed has no version/shape guard; this is a pre-existing gap (already reachable today
- * via a plain restart+redeploy, not newly introduced by REG-237), tracked separately as REG-238,
- * open. ({@code GeneratedCrudRuntimeSupport} was also in this list until REG-235 (2026-09-21)
+ * a reload for every NEW {@code execute()}/{@code resumeExecution()} lookup (REG-237) -- and, as of
+ * REG-238 (2026-09-22), resuming a durable {@code WAITING_EVENT} instance now refuses (rather than
+ * silently misapplying a stale step index) when the flow's STEP SHAPE changed since it was
+ * checkpointed, via a fingerprint stamped at {@code execute()} time and checked at resume.
+ * ({@code GeneratedCrudRuntimeSupport} was also in this list until REG-235 (2026-09-21)
  * converted it to read a live {@code Supplier<CompiledModel>}; it is no longer a residual for its
  * OWN invariant/event/capability/binding lookups. That fix does NOT extend to the generated REST
  * CRUD surface itself -- {@code GeneratedConceptCrudController} and its per-concept JPA entity are
