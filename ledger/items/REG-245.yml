@@ -1,0 +1,106 @@
+id: REG-245
+title: >-
+  Phase 4B: /model-reload creates the business table for a brand-new, bond-free concept
+  (additive-only, default-off, superuser-gated)
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-23
+closed: 2026-09-23
+source: >-
+  PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 4B, gated on the owner's go/no-go over REG-244's safety
+  design (additive-only, default-off, superuser-gated live schema provisioning) -- approved
+  2026-09-23. Phase 4A's own research spike named the seam (a new `SchemaManifest` projection built
+  from the live post-reload `CompiledModel`, feeding the already-idempotent
+  `MissingTableCreationPass.createMissingBusinessTables`) and the safety posture this item
+  implements verbatim.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/NewConceptSchemaProvisioner.java,
+  NPDevRuntimeHost/src/main/java/com/finalexec/api/MetadataHotSwapController.java,
+  NPDevKernel/kernel/src/main/java/com/npdev/kernel/storage/sql/H2Dialect.java
+detail: |
+  New class `NewConceptSchemaProvisioner` (package `com.finalexec.db`, public like its sibling
+  `DesiredSchemaFactory`; the raw DDL executor underneath, `MissingTableCreationPass`, stays
+  package-private): diffs `oldModel.getConcepts()` vs `newModel.getConcepts()` by name (both already
+  available at `MetadataHotSwapController.modelReload`'s `modelHolder.swap(newModel)` call site,
+  which returns `oldModel`), and for every concept new this reload:
+
+  - Refuses (named in the response, never silently dropped) a concept with a satellite parent
+    (`getSatelliteOf() != null`), a temporal concept (`isTemporal()`), or any field with a
+    bond/reference target (`CompiledField.getReferenceTarget() != null`) -- the last of these needs
+    `BondModelSupport` (generator-only, a build-time module RuntimeHost does not depend on) to
+    resolve cardinality and the FK column's type, REG-244's own still-open "bond/junction-table edge
+    case", left for a later phase.
+  - Otherwise builds column name/type/required-column data straight from `CompiledConcept`'s plain
+    scalar fields via `SqlTypeSupport.sqlType`/`SqlIdentifierSupport.columnName`/`.tableName` (all in
+    the shared `dsl` module, already a RuntimeHost runtime dependency -- no generator dependency
+    needed for this bond-free scope), mirrors `SchemaRealizationEmitter.columnTypes`'s platform-column
+    synthesis (id/version/row_version/tenant_id/deleted_at), and calls the EXISTING
+    `MissingTableCreationPass.createMissingBusinessTables` with a `SchemaManifest` scoped to only
+    that concept's own table -- every other manifest field (renames, FKs, indexes, uniques,
+    destructive-recreate posture) is left at its empty/false default, confirmed unused by this call
+    path by reading `DesiredSchemaFactory.fromManifest` and `businessColumnDefs`.
+
+  `MetadataHotSwapController` gained `npdev.runtime.hotswap.new-concept-provisioning-enabled`
+  (default `false`) and an `ObjectProvider<DataSource>` (mirroring
+  `SchemaAcknowledgmentController`'s existing pattern for an InMemory app with no physical
+  DataSource). `/model-reload`'s response always names `conceptsProvisioned` (list) and
+  `conceptsProvisioningFailed` (map, name -> reason), never omitted, matching REG-243's
+  `uiMetadataCatalogsRefreshed` "name the limit, don't hide it behind a bare boolean" convention --
+  even when the property is off or no DataSource exists, both keys are present and empty. The model
+  swap's own success is independent of provisioning: provisioning runs after a successful swap and
+  its own per-concept failures are caught inside `NewConceptSchemaProvisioner`, never thrown out.
+
+  BUG FOUND AND FIXED ALONG THE WAY: `H2Dialect.tableExistsInCurrentSchemaSql`
+  (`H2Dialect.java:281`), the only caller of which is `MissingTableCreationPass.tableExists`, built
+  its `information_schema.tables` reference in lowercase. H2's system catalog is fixed-case
+  `INFORMATION_SCHEMA` regardless of the connection's own `DATABASE_TO_UPPER` setting -- an unquoted
+  lowercase reference resolves fine under the default (real-app) case-folding connection (the parser
+  upper-cases it before lookup, identical outcome to writing it uppercase), but throws
+  `Schema "information_schema" not found` under `DATABASE_TO_UPPER=false`, the flag several existing
+  H2 tests in this package (`SurplusDropFlowH2Test`, `SchemaVaultStoreTest`) use to keep the
+  platform's own lowercase snake_case identifiers stored as given. No existing test exercised
+  `MissingTableCreationPass`/`tableExistsInCurrentSchemaSql` at all before this item (confirmed by
+  grep), so the bug was latent. Fixed by writing the catalog name uppercase, matching the sibling
+  method `constraintExistsSql()`'s already-correct convention -- behavior-preserving under the
+  default connection, and additionally correct under `DATABASE_TO_UPPER=false`.
+
+  Also discovered while writing tests: `SqlDialects.active()` (`SqlDialects.java:262`) defaults to
+  `PostgresDialect.INSTANCE` and memoizes the first resolution for the whole JVM; no test in
+  `runtimehost-core` was pinning it to H2 before this item (nothing had exercised
+  `MissingTableCreationPass` directly). Both new test classes now call
+  `SqlDialects.setActive(H2Dialect.INSTANCE)` in `@BeforeEach` and `SqlDialects.resetActiveForTesting()`
+  in `@AfterEach`, the documented "for tests" pattern already used elsewhere in the kernel adapters.
+
+  Explicitly out of scope for this slice (named in `conceptsProvisioningFailed`, not silently
+  skipped): bond/reference fields, satellite concepts, temporal concepts, bounded-context-qualified
+  table naming, and unique constraints/indexes/FKs on the new table (matches
+  `MissingTableCreationPass`'s own pre-existing, already-accepted limitation). A concept present in
+  both old and new model but structurally changed is not part of the "new concept" diff set at all,
+  untouched by this phase. CRUD-reachability (Phase 4C) and a live-rebuildable UI manifest (Phase 4D)
+  are separate, not-yet-filed follow-ups -- this item only makes the table exist.
+
+  Verified: new `NewConceptSchemaProvisionerTest` (5 cases: happy path with expected columns,
+  idempotency across two calls, bond-field refusal, satellite/temporal refusal, existing-concept
+  diff exclusion) run directly against `runtimehost-core`'s own Gradle project
+  (`gradlew test --tests "*NewConceptSchemaProvisionerTest*" -PnpdevBuildRoot=... -PnpdevRuntimeHostLibsDir=...`)
+  -- green. RED-PROVEN: commented out `provisioned.add(concept.getName())`, reran, 3 of 5 tests
+  failed as expected; restored, reran, green again. One new
+  `MetadataHotSwapControllerStandaloneTest#modelReloadProvisionsTableForNewBondFreeConceptWhenEnabled`
+  case (property enabled + a real H2 DataSource + a reload adding one bond-free concept -> response
+  names it, table exists with its columns) plus an assertion on the existing enabled-but-off-by-default
+  case that both new response fields are present-but-empty. Full `run-runtimehost-gate.ps1` (assembled
+  sample app's own suite AND runtimehost-core's own `test` task, both via the digest runner) --
+  BUILD SUCCESSFUL both times, gate passed. `check-dialect-sites.py` -- 0 sites outside the sanctioned
+  package.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/NewConceptSchemaProvisionerTest.java#newBondFreeConceptGetsTableCreatedWithExpectedColumns
+  asserts: >-
+    Compiles a two-concept-diff model pair (old model with only a placeholder concept, new model
+    adding a bond-free "Widget"), calls NewConceptSchemaProvisioner.provision against a real H2
+    database, confirms "Widget" is named in the provisioned list with no failures, and confirms the
+    physical table now has both the model's own columns and the synthesized platform columns
+    (id/version/row_version/tenant_id).
+  provenRed: true

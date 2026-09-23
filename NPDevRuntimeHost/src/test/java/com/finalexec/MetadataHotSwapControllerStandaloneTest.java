@@ -5,16 +5,28 @@ import com.finalexec.api.MetadataHotSwapController;
 import com.finalexec.npdev.service.RuntimeMetadataService;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.storage.sql.H2Dialect;
+import com.npdev.kernel.storage.sql.SqlDialects;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
+import javax.sql.DataSource;
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.logging.Logger;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -40,6 +52,10 @@ class MetadataHotSwapControllerStandaloneTest {
 
     @BeforeEach
     void setUp() throws IOException {
+        // REG-244 Phase 4B: SqlDialects.active() defaults to Postgres and memoizes the first
+        // resolution for the whole JVM -- modelReloadProvisionsTableForNewBondFreeConceptWhenEnabled
+        // below runs real DDL against H2 and needs the dialect pinned accordingly.
+        SqlDialects.setActive(H2Dialect.INSTANCE);
         Path generatedResourcesRoot = appExternalRoot.resolve("npdev-generated/src/main/resources");
         writeFixture(generatedResourcesRoot.resolve("npdev/compiled-metadata.json"), compiledMetadataJson("old-namespace"));
         writeFixture(generatedResourcesRoot.resolve("npdev/metadata/index.json"), indexJson());
@@ -54,8 +70,14 @@ class MetadataHotSwapControllerStandaloneTest {
         when(runtimeContextService.currentContext(any())).thenReturn(executionContext);
 
         MetadataHotSwapController controller = new MetadataHotSwapController(
-                runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), false);
+                runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), false,
+                dataSourceProvider(null), false);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
+    }
+
+    @AfterEach
+    void tearDown() {
+        SqlDialects.resetActiveForTesting();
     }
 
     @Test
@@ -137,7 +159,8 @@ class MetadataHotSwapControllerStandaloneTest {
     @Test
     void modelReloadStillRequiresSuperUserEvenWhenFlagIsEnabled() throws Exception {
         MetadataHotSwapController enabledController = new MetadataHotSwapController(
-                runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), true);
+                runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), true,
+                dataSourceProvider(null), false);
         MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
         when(executionContext.hasRole("SUPERUSER")).thenReturn(false);
 
@@ -154,7 +177,8 @@ class MetadataHotSwapControllerStandaloneTest {
         com.finalexec.config.ModelHolder modelHolder =
                 new com.finalexec.config.ModelHolder(compiledModel(minimalModelJson()));
         MetadataHotSwapController enabledController = new MetadataHotSwapController(
-                runtimeMetadataService, runtimeContextService, modelHolder, true);
+                runtimeMetadataService, runtimeContextService, modelHolder, true,
+                dataSourceProvider(null), false);
         MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
         when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
 
@@ -168,9 +192,125 @@ class MetadataHotSwapControllerStandaloneTest {
                 // RuntimeMetadataService's UI-facing catalogs (a build-time-only classification this
                 // runtime module cannot perform) -- the response must say so plainly rather than let
                 // "ok: true" be read as "fully applied".
-                .andExpect(jsonPath("$.uiMetadataCatalogsRefreshed").value(false));
+                .andExpect(jsonPath("$.uiMetadataCatalogsRefreshed").value(false))
+                // REG-244 Phase 4B: new-concept provisioning is off by default here (last constructor
+                // arg false) -- both fields must still be NAMED, just empty, never omitted.
+                .andExpect(jsonPath("$.conceptsProvisioned.length()").value(0))
+                .andExpect(jsonPath("$.conceptsProvisioningFailed.length()").value(0));
 
         org.junit.jupiter.api.Assertions.assertEquals(1, modelHolder.get().getConcepts().size());
+    }
+
+    /** REG-244 Phase 4B: enabling the property with a real (H2) DataSource available makes a
+     *  reload that adds a brand-new, bond-free concept also create its table, named in the response. */
+    @Test
+    void modelReloadProvisionsTableForNewBondFreeConceptWhenEnabled() throws Exception {
+        String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime()
+                + ";DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
+        Path modelPath = appExternalRoot.resolve("model-with-new-concept.json");
+        String modelWithNewConcept = "{"
+                + "\"dslVersion\":\"1.0.0\",\"namespace\":\"hotswap.test\",\"version\":\"1.0\","
+                + "\"concepts\":[{\"name\":\"Thing\",\"fields\":["
+                + "{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true}]},"
+                + "{\"name\":\"Widget\",\"fields\":["
+                + "{\"name\":\"id\",\"type\":\"uuid\",\"id\":true,\"required\":true},"
+                + "{\"name\":\"label\",\"type\":\"string\"}]}]"
+                + "}";
+        writeFixture(modelPath, modelWithNewConcept);
+        com.finalexec.config.ModelHolder modelHolder =
+                new com.finalexec.config.ModelHolder(compiledModel(minimalModelJson()));
+        MetadataHotSwapController enabledController = new MetadataHotSwapController(
+                runtimeMetadataService, runtimeContextService, modelHolder, true,
+                dataSourceProvider(h2DataSource(url)), true);
+        MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
+        when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
+
+        enabledMockMvc.perform(post("/api/admin/runtime/metadata-hotswap/model-reload")
+                        .contentType("application/json")
+                        .content("{\"modelPath\":\"" + escapeJson(modelPath.toString()) + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.ok").value(true))
+                .andExpect(jsonPath("$.conceptsProvisioned[0]").value("Widget"))
+                .andExpect(jsonPath("$.conceptsProvisioningFailed.length()").value(0));
+
+        // SqlIdentifierSupport.tableName() pluralizes ("Widget" -> "widgets"); INFORMATION_SCHEMA is
+        // H2's own fixed-case system catalog, unaffected by this connection's DATABASE_TO_UPPER=false.
+        try (Connection connection = DriverManager.getConnection(url);
+                Statement statement = connection.createStatement();
+                ResultSet rs = statement.executeQuery(
+                        "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE LOWER(TABLE_NAME) = 'widgets'")) {
+            java.util.Set<String> columns = new java.util.HashSet<>();
+            while (rs.next()) {
+                columns.add(rs.getString(1));
+            }
+            org.junit.jupiter.api.Assertions.assertTrue(columns.contains("label"), "columns were " + columns);
+        }
+    }
+
+    private static ObjectProvider<DataSource> dataSourceProvider(DataSource dataSource) {
+        return new ObjectProvider<>() {
+            @Override
+            public DataSource getObject() {
+                return dataSource;
+            }
+
+            @Override
+            public DataSource getObject(Object... args) {
+                return dataSource;
+            }
+
+            @Override
+            public DataSource getIfAvailable() {
+                return dataSource;
+            }
+        };
+    }
+
+    private static DataSource h2DataSource(String url) {
+        return new DataSource() {
+            @Override
+            public Connection getConnection() throws SQLException {
+                return DriverManager.getConnection(url);
+            }
+
+            @Override
+            public Connection getConnection(String username, String password) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public PrintWriter getLogWriter() {
+                return null;
+            }
+
+            @Override
+            public void setLogWriter(PrintWriter out) {
+            }
+
+            @Override
+            public void setLoginTimeout(int seconds) {
+            }
+
+            @Override
+            public int getLoginTimeout() {
+                return 0;
+            }
+
+            @Override
+            public Logger getParentLogger() {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public <T> T unwrap(Class<T> iface) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public boolean isWrapperFor(Class<?> iface) {
+                return false;
+            }
+        };
     }
 
     private static com.npdev.dsl.v1.compiled.CompiledModel compiledModel(String modelJson) throws Exception {

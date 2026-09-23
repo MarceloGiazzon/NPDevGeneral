@@ -1,6 +1,7 @@
 package com.finalexec.api;
 
 import com.finalexec.config.ModelHolder;
+import com.finalexec.db.NewConceptSchemaProvisioner;
 import com.finalexec.npdev.service.RuntimeMetadataService;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiled.CompiledModel;
@@ -11,6 +12,7 @@ import com.npdev.kernel.ExecutionContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +23,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
@@ -89,6 +92,16 @@ import java.util.Map;
  * residual list.) See {@code NpdevCapabilityBindingConfig}'s own per-bean javadoc for the complete,
  * current list.
  *
+ * <p><b>New-concept schema provisioning</b> (REG-244 Phase 4B, {@code
+ * npdev.runtime.hotswap.new-concept-provisioning-enabled}, default {@code false}): when enabled AND
+ * a physical {@code DataSource} exists, a reload that adds a brand-new, bond-free, non-satellite,
+ * non-temporal concept also creates its business table (idempotent {@code CREATE TABLE IF NOT
+ * EXISTS} via {@link com.finalexec.db.NewConceptSchemaProvisioner}) in the same call -- additive
+ * only, never FKs/uniques/indexes. The response always names both {@code conceptsProvisioned} and
+ * {@code conceptsProvisioningFailed} (the latter mapping a concept name to why it was refused or
+ * failed), even when the property is off. This makes the new table EXIST; it does not make it
+ * CRUD-reachable or visible in the UI manifest -- those are separate, not-yet-shipped phases.
+ *
  * <p><b>Two different gates, deliberately</b> (same posture as {@link AgentProxyController}).
  * {@code /status} answers any authenticated ADMIN caller, matching {@link RuntimeMetadataController}'s
  * own gate on every other read here. {@code /apply} MUTATES what every caller of the metadata catalogs
@@ -111,17 +124,23 @@ public class MetadataHotSwapController {
     private final RuntimeContextService runtimeContextService;
     private final ModelHolder modelHolder;
     private final boolean fullModelReloadEnabled;
+    private final ObjectProvider<DataSource> dataSourceProvider;
+    private final boolean newConceptProvisioningEnabled;
 
     public MetadataHotSwapController(
             RuntimeMetadataService runtimeMetadataService,
             RuntimeContextService runtimeContextService,
             ModelHolder modelHolder,
-            @Value("${npdev.runtime.hotswap.full-model-reload-enabled:true}") boolean fullModelReloadEnabled
+            @Value("${npdev.runtime.hotswap.full-model-reload-enabled:true}") boolean fullModelReloadEnabled,
+            ObjectProvider<DataSource> dataSourceProvider,
+            @Value("${npdev.runtime.hotswap.new-concept-provisioning-enabled:false}") boolean newConceptProvisioningEnabled
     ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.runtimeContextService = runtimeContextService;
         this.modelHolder = modelHolder;
         this.fullModelReloadEnabled = fullModelReloadEnabled;
+        this.dataSourceProvider = dataSourceProvider;
+        this.newConceptProvisioningEnabled = newConceptProvisioningEnabled;
     }
 
     /**
@@ -258,6 +277,25 @@ public class MetadataHotSwapController {
             // produced by the classifier. false here is not a failure -- the model swap above genuinely
             // succeeded -- it names what this specific call did and did not reach.
             response.put("uiMetadataCatalogsRefreshed", false);
+            // REG-244 Phase 4B: the model swap above already succeeds/fails independently of this --
+            // provisioning runs AFTER a successful swap and its own per-concept failures are caught
+            // inside NewConceptSchemaProvisioner, never thrown out, so a DDL problem on one concept
+            // never undoes an otherwise-successful reload. Always named (never omitted), same
+            // "don't hide the limit behind a bare boolean" convention as uiMetadataCatalogsRefreshed:
+            // empty lists when the property is off or no DataSource exists, not their absence.
+            List<String> conceptsProvisioned = List.of();
+            Map<String, String> conceptsProvisioningFailed = Map.of();
+            if (newConceptProvisioningEnabled) {
+                DataSource dataSource = dataSourceProvider.getIfAvailable();
+                if (dataSource != null) {
+                    NewConceptSchemaProvisioner.Result result =
+                            NewConceptSchemaProvisioner.provision(dataSource, oldModel, newModel);
+                    conceptsProvisioned = result.provisioned();
+                    conceptsProvisioningFailed = result.failed();
+                }
+            }
+            response.put("conceptsProvisioned", conceptsProvisioned);
+            response.put("conceptsProvisioningFailed", conceptsProvisioningFailed);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             LOG.warn("B28 hot model reload failed: modelPath={}", modelFile, e);
