@@ -178,9 +178,25 @@ codeLinkedNote: >-
   subscribers also corrupt the remove/edit scenarios, not only the double-fire count.
 
   REG-238 and REG-239 were already DONE before this session (see their own entries above and
-  `ledger/items/REG-238.yml`/`REG-239.yml`). REG-242 is now the ONLY open residual under this
-  boundary -- do not read this as the boundary being lifted: REG-242
-  (`DocumentRenderController` pinned to the boot model via a direct `NPDevModelProvider` injection,
-  and the structural-guard hole that injection exposes) is unchanged and still open.
+  `ledger/items/REG-238.yml`/`REG-239.yml`).
+
+  2026-09-23 (same day, Phase 2 of the same plan): closed REG-242, the last of the three. Both
+  halves this item's own done-when required: `DocumentRenderController` now reads `documents[]`
+  through `ModelHolder` instead of injecting `NPDevModelProvider` directly (same idiom
+  `WebhookInboundController`/`PropertyResolverController` already used), and the durable guard this
+  item asked for now exists as `scripts/quality/check-model-provider-injection.py`, wired into
+  `run-ai-knowledge-gate.ps1` step `[49/49]` and calibrated both directions (fires on exactly the
+  original injection shape when temporarily reverted, silent otherwise). See
+  `ledger/items/REG-242.yml` for the full verification trace.
+
+  **Every residual any version of this boundary's list has ever NAMED is now closed.** This is
+  explicitly NOT the same claim as "the boundary is LIFTED" -- classification stays `LIFTED,
+  PARTIAL` here. The 2026-09-22 entry above records that the named list was never an enumeration
+  and was falsified within a day of being written; closing everything on a list that has already
+  been wrong once is not evidence the list is now complete. Restating this boundary as fully LIFTED
+  requires a FRESH exhaustive sweep (Phase 6 of `PLAN_CLOSE_ALL_OPEN_2026-09-22.md`, not yet run),
+  and even then only together with the mechanical guard the plan requires before the claim is
+  trusted -- an unenforced "no bean caches model-derived state" restatement is exactly the sentence
+  that was wrong before.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
 classification: LIFTED, PARTIAL

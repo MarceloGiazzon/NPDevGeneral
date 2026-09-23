@@ -14,9 +14,22 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  *
  * <p>REG-208 (B28 lift): the ONLY {@link CompiledModel} bean in a generated app -- {@code
  * NpdevCapabilityBindingConfig} builds it and immediately wraps it here; nothing else may hold one
- * directly (a 23rd direct injection fails to wire at startup instead of silently going stale at
- * reload time). Every other bean that needs the model holds a {@code ModelHolder} and calls {@link
- * #get()} fresh on every use -- never caches the result in a field or constructor local.
+ * directly (a direct {@code CompiledModel} injection fails to wire at startup instead of silently
+ * going stale at reload time). Every other bean that needs the model holds a {@code ModelHolder}
+ * and calls {@link #get()} fresh on every use -- never caches the result in a field or constructor
+ * local.
+ *
+ * <p><b>REG-242 correction:</b> the guard above is narrower than this javadoc used to claim. It
+ * catches a direct {@code CompiledModel} injection, but {@code NPDevModelProvider} is itself a
+ * {@code @Component} that exposes {@code compiledModel()} -- injecting THAT compiles, wires and
+ * boots cleanly, and reads the boot-time model forever, exactly the hazard this class exists to
+ * prevent. {@code DocumentRenderController} did exactly this for roughly a year before it was
+ * found and fixed. There is no Spring-wiring mechanism that can catch this shape; the only guard
+ * is {@code scripts/quality/check-model-provider-injection.py}, which fails on any
+ * {@code NPDevModelProvider} injection outside {@code
+ * NpdevCapabilityBindingConfig#modelHolder} (the one seam allowed to read it, in order to seed
+ * this class). If you are adding a bean that needs the model, inject {@code ModelHolder}, not
+ * {@code NPDevModelProvider}.
  */
 public class ModelHolder {
     private final AtomicReference<CompiledModel> current = new AtomicReference<>();

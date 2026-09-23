@@ -286,6 +286,9 @@
     "scripts/quality/check-model-technology-neutrality.py": {
       "invocation": "ci-gate"
     },
+    "scripts/quality/check-model-provider-injection.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-layered-complexity-ratchet.py": {
       "invocation": "ci-gate"
     },

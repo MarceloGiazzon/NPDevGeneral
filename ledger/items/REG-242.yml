@@ -4,8 +4,9 @@ title: >-
   and REG-208's "no CompiledModel bean" guard structurally cannot catch this shape
 type: BUG
 severity: MEDIUM
-status: OPEN
+status: DONE
 opened: 2026-09-22
+closed: 2026-09-23
 source: >-
   Exhaustive B28 residual sweep (see also REG-240, REG-241 and `ledger/boundaries/B28.yml`'s
   2026-09-22 entry). `NPDevRuntimeHost/src/main/java/com/finalexec/api/DocumentRenderController.java`
@@ -14,38 +15,66 @@ source: >-
 surface: NPDevRuntimeHost/src/main/java/com/finalexec/api/DocumentRenderController.java,
   NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/config/ModelHolder.java
 detail: |
-  NOT IMPLEMENTED. `NPDevModelProvider` (generated from
-  `NPDevGenerator/.../npdev-templates/npdev-runtime-model-provider.mustache`) loads
-  `compiled-model.json` once in its constructor into a `final CompiledModel`.
-  `NpdevCapabilityBindingConfig` uses that provider only to SEED `ModelHolder`, and
-  `/model-reload` swaps `ModelHolder` alone -- `NPDevModelProvider` is never updated. So this
-  controller is permanently pinned to the model the JVM booted with.
+  IMPLEMENTED 2026-09-23. Both halves this item's own done-when required, done together:
 
-  Observable: `GET /api/documents/{document}/render.pdf` and
-  `GET /api/documents/{document}/aggregate/{rootId}/render.pdf` resolve `documents[]` against the
-  boot model. A `documents[]` entry added by a reload returns 404 "No document declared named 'X'";
-  one deleted still renders; one whose `concept`, band/field list, `pageSize` or `marginMm` changed
-  keeps rendering the OLD layout -- over data that the (live) `conceptGateway` and
-  `aggregateRuntime` are reading from the NEW model. Shipped in every generated app
-  (`runtime-supported-controllers.json:37`).
+  1. THE CODE FIX: `DocumentRenderController` now takes `ModelHolder` in its constructor (field
+     renamed `modelHolder`) and `findDocument` reads `modelHolder.get().getDocuments()` fresh on
+     every call -- mechanically identical to `WebhookInboundController`'s and
+     `PropertyResolverController`'s idiom, exactly as this item proposed. The `NPDevModelProvider`
+     import is gone from the file entirely.
 
-  The code fix is two lines: take `ModelHolder` instead and read `modelHolder.get().getDocuments()`
-  in `findDocument`, mechanically identical to `WebhookInboundController:175` and
-  `PropertyResolverController`.
+  2. THE STRUCTURAL GUARD: `scripts/quality/check-model-provider-injection.py` (new), wired into
+     `run-ai-knowledge-gate.ps1` step `[49/49]`, with entries in
+     `scripts/policy/script-invocation-declarations.json` (`ci-gate`, validated by
+     `run-script-inventory-check.ps1` against `run-ai-knowledge-gate.ps1`'s own text) and
+     `scripts/policy/script-inventory-policy.json` (already covered by the existing
+     `^scripts/(...|quality|...)/ ` canonical pattern, no policy edit needed there). Scans
+     `NPDevRuntimeHost/src/main/java` and `NPDevRuntimeHost/runtimehost-core/src/main/java` for a
+     `NPDevModelProvider <identifier>` field/parameter declaration (a comment mention or the import
+     line itself does not match), allowlisting exactly one file:
+     `NpdevCapabilityBindingConfig.java` (the seam that seeds `ModelHolder`). Calibrated BOTH
+     directions, not merely written: `git stash`-reverting the controller fix and re-running the
+     checker reproduced exactly 2 hits (the field and the constructor parameter) at the pre-fix line
+     numbers this item's own `source` cited (`:82`, `:90`); restoring the fix returns it to PASS.
+     `run-script-inventory-check.ps1 -Calibrate` (its own self-test, unrelated to this checker)
+     also confirmed green throughout.
 
-  THE STRUCTURAL POINT IS THE BIGGER HALF OF THIS ITEM, and it is the reason this is filed
-  separately rather than folded into REG-240/241. REG-208's durable guard is "there is no
-  `CompiledModel` bean in a generated app, so a direct injection fails to wire at Spring startup
-  instead of silently going stale". `NPDevModelProvider` is a `@Component` that EXPOSES
-  `compiledModel()` -- so injecting IT compiles, wires and boots cleanly, and the guard never fires.
-  `ModelHolder`'s own javadoc (`ModelHolder.java:15-19`) states the invariant as "the ONLY
-  CompiledModel bean in a generated app... nothing else may hold one directly": literally true,
-  practically false, and believed for a year.
+  3. THE JAVADOC CORRECTION this item asked for: `ModelHolder.java`'s class javadoc, which used to
+     state the "only CompiledModel bean" invariant without qualification, now has a `REG-242
+     correction` paragraph naming the `NPDevModelProvider` hole explicitly and pointing at the new
+     checker as the only mechanism that actually closes it. `MetadataHotSwapController.java`'s class
+     javadoc (which had drifted to describe REG-240/241/242 as still-open hazards, and REG-238 as
+     still open when it had already been closed 2026-09-22 by an earlier session) was also
+     corrected in place -- found while touching this file's neighborhood, not itself part of this
+     item's surface, but the same "a comment citing an item's status must match that item's ledger
+     status" discipline applies to code comments, not only prose docs.
 
-  There is no static checker for any of this: `grep -rl "ModelHolder\|modelHolder" scripts/` finds
-  only a jacoco XML report, and `scripts/quality/twin-pair-registry.json` has no reload rule. The
-  durable fix is a checker (or a RuntimeHost test) that fails on any `NPDevModelProvider` injection
-  outside `NpdevCapabilityBindingConfig#modelHolder`. Today that would catch exactly one site --
-  this one -- which is the point: it is cheap now and it closes the hole permanently.
-  Done-when should require BOTH the controller fix and the guard, or the next occurrence is
-  invisible again.
+  Verified: `run-runtimehost-gate.ps1` BUILD SUCCESSFUL end to end (compiles the controller change,
+  the `ModelHolder` javadoc change, and the new test against the assembled sample app). The new
+  test was additionally re-run narrowly against the still-assembled app after the gate's own
+  cleanup step removed the JUnit XML the gate run itself produced, to get direct evidence rather
+  than inferring from BUILD SUCCESSFUL alone: 1 test, skipped=0, failures=0, errors=0.
+  `-Only aiKnowledge` passed with the new `[49/49]` step running (not skipped).
+
+  Not attempted, out of this item's scope: enumerating whether a GENERATED app (one built from a
+  real model, not the RuntimeHost template) could carry its own hand-added `NPDevModelProvider`
+  injection outside the template -- the checker scans the TEMPLATE only, which is the platform-level
+  fix; an app-level customization injecting it would need the checker to also run against generated
+  output, a different and larger surface not part of this item's done-when.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/api/DocumentRenderControllerReloadTest.java#aDocumentAddedByAReloadIsResolvableWithoutReconstructingTheController
+  asserts: >-
+    constructs DocumentRenderController with a ModelHolder wrapping a model with NO documents[],
+    confirms rendering "Invoice" 404s, then calls ModelHolder.swap with a model that DOES declare
+    it, and confirms the very next request renders 200 with the correct Content-Disposition --
+    without reconstructing the controller. This item's done-when also required a durable structural
+    guard, not just this behavioral test: scripts/quality/check-model-provider-injection.py (wired
+    into run-ai-knowledge-gate.ps1 step [49/49]) scans NPDevRuntimeHost's own template source for
+    any NPDevModelProvider <identifier> declaration outside
+    NpdevCapabilityBindingConfig#modelHolder. Calibrated both directions by temporarily reverting
+    the controller fix (via git stash) and confirming the checker reports exactly the 2 hits (field
+    + constructor parameter) at the exact pre-fix line numbers this item's own source cited, then
+    confirming it returns to silent once the fix is restored.
+  provenRed: true

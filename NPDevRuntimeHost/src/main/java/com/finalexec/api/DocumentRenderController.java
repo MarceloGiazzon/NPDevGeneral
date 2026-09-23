@@ -1,11 +1,11 @@
 package com.finalexec.api;
 
+import com.finalexec.config.ModelHolder;
 import com.finalexec.npdev.service.AggregateRuntime;
 import com.npdev.dsl.v1.compiled.CompiledDocument;
 import com.npdev.dsl.v1.compiled.CompiledDocumentBand;
 import com.npdev.dsl.v1.compiled.CompiledDocumentLogo;
 import com.npdev.dsl.v1.compiled.CompiledPanelFieldBinding;
-import com.npdev.generated.runtime.model.NPDevModelProvider;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityResult;
@@ -79,7 +79,7 @@ public class DocumentRenderController {
      */
     static final int MAX_DOCUMENT_ROWS = 50_000;
 
-    private final NPDevModelProvider modelProvider;
+    private final ModelHolder modelHolder;
     private final RuntimeContextService runtimeContextService;
     private final ConceptGateway conceptGateway;
     private final DocumentRenderContract documentRenderer;
@@ -87,14 +87,14 @@ public class DocumentRenderController {
     private final FileStoreContract fileStore;
 
     public DocumentRenderController(
-            NPDevModelProvider modelProvider,
+            ModelHolder modelHolder,
             RuntimeContextService runtimeContextService,
             ConceptGateway conceptGateway,
             DocumentRenderContract documentRenderer,
             AggregateRuntime aggregateRuntime,
             FileStoreContract fileStore
     ) {
-        this.modelProvider = modelProvider;
+        this.modelHolder = modelHolder;
         this.runtimeContextService = runtimeContextService;
         this.conceptGateway = conceptGateway;
         this.documentRenderer = documentRenderer;
@@ -321,7 +321,7 @@ public class DocumentRenderController {
     }
 
     private CompiledDocument findDocument(String documentName) {
-        return modelProvider.compiledModel().getDocuments().stream()
+        return modelHolder.get().getDocuments().stream()
                 .filter(candidate -> candidate.name().equals(documentName))
                 .findFirst()
                 .orElseThrow(() -> new ResponseStatusException(

@@ -918,6 +918,19 @@ try {
         $failures += "a basic building block's mandatory-field floor grew past its recorded baseline: see scripts/quality/check-layered-complexity-ratchet.py output above, and scripts/policy/layered-complexity-baseline.json"
     }
 
+    # REG-242 (B28 residual): a direct CompiledModel injection fails to wire at startup (REG-208),
+    # but NPDevModelProvider is itself a @Component exposing compiledModel() -- injecting THAT
+    # compiles, wires and boots cleanly, and pins the receiving bean to the boot-time model forever.
+    # DocumentRenderController did exactly this for roughly a year before a manual sweep found it.
+    # This is the durable, mechanical half of that fix: the one legitimate seam
+    # (NpdevCapabilityBindingConfig#modelHolder, which seeds ModelHolder) is allowlisted; any other
+    # injection fails here instead of shipping silently stale into every generated app.
+    Write-Host '[49/49] Checking NPDevModelProvider is injected only at the one seam that seeds ModelHolder...'
+    & $py "scripts/quality/check-model-provider-injection.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "NPDevModelProvider was injected outside NpdevCapabilityBindingConfig#modelHolder: see scripts/quality/check-model-provider-injection.py output above -- inject ModelHolder instead and call .get() fresh on every use"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red
