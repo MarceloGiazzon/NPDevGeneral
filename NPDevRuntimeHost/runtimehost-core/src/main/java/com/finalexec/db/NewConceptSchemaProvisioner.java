@@ -71,7 +71,14 @@ public final class NewConceptSchemaProvisioner {
         return new Result(List.copyOf(provisioned), Map.copyOf(failed));
     }
 
-    private static String outOfScopeReason(CompiledConcept concept) {
+    /**
+     * REG-244 Phase 4C: also called by the generated {@code GeneratedConceptCrudController}'s live-
+     * concept fallback ({@code business-concept-crud-controller.mustache}'s {@code resolveBinding})
+     * to keep "has a table" (this class) and "is CRUD-reachable" (4C) from ever drifting apart -- a
+     * concept only gets a live REST binding if it is exactly the shape this class would provision a
+     * table for. Public for that cross-package reuse; behavior unchanged from Phase 4B.
+     */
+    public static String outOfScopeReason(CompiledConcept concept) {
         if (concept.getSatelliteOf() != null) {
             return "satellite concept: stored on another concept's table, has no table of its own";
         }

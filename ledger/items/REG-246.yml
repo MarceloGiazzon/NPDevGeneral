@@ -1,0 +1,93 @@
+id: REG-246
+title: >-
+  Phase 4C: a live-provisioned concept becomes REST-reachable through GeneratedConceptCrudController
+  with no regenerate/rebuild/restart
+type: FEATURE
+severity: MEDIUM
+status: DONE
+opened: 2026-09-23
+closed: 2026-09-23
+source: >-
+  PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 4C, the CRUD-reachability follow-up REG-245 (Phase 4B)
+  explicitly left open: a REG-245-provisioned table exists but has no row in
+  GeneratedConceptCrudController's generation-time-baked, unmodifiable `concepts` map, so its REST
+  calls 400 with `unknown_concept`. REG-244's own Phase 4A spike named the two open questions this
+  item resolves: a generic Map-backed persistence primitive for a concept with no generated JPA
+  class, and the exact mechanism for making the baked map's lookup live-appendable.
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/LiveConceptCrudSupport.java (new),
+  NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/NewConceptSchemaProvisioner.java
+  (outOfScopeReason widened to public),
+  NPDevGenerator/generator/src/main/resources/npdev-templates/business-concept-crud-controller.mustache,
+  NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/LiveConceptCrudSupportTest.java (new),
+  NPDevRuntimeHost/src/test/java/com/finalexec/api/GeneratedConceptCrudControllerLiveConceptTest.java (new)
+detail: |
+  **Design finding not in REG-244's original spike:** `ConceptGateway` (bean wired in
+  `NpdevCapabilityBindingConfig.conceptGateway`, always standing in every app) and its production
+  store, `JdbcBusinessConceptStore`, are already `ModelHolder`-aware and resolve table/column metadata
+  LIVE from `CompiledModel` (rebuilding `shapesByConcept` on every reload, introspecting real DB
+  columns) -- built for exactly this. Routing a live concept's REST traffic through the EXISTING
+  gateway needed near-zero new persistence code, versus the spike's literal suggestion of a
+  hand-rolled JDBC primitive. Confirmed with the owner (over the alternative of a new Map-backed JDBC
+  primitive matching the baked path's lighter enforcement posture) before implementation, given the
+  real trade-off: a live-fallback concept is now tenant/permission/invariant-enforced through
+  `ConceptGateway` in a way the baked path (generated `{{className}}Service`, JPA-backed) is not at
+  its own layer -- accepted as the right posture for a first slice.
+
+  **Mechanism (no mutable state, no reload listener, no caching):** every one of
+  `GeneratedConceptCrudController`'s endpoints (`list`/`getById`/`create`/`update`/`delete`/`batch`)
+  already dispatched generically over its private `ConceptBinding<?>` record -- only the initial
+  `concepts.get(conceptName)` lookup (7 call sites) needed to change. Replaced with
+  `resolveBinding(conceptName, request)`: a baked-map hit returns unchanged (byte-identical to
+  pre-4C behavior); a miss calls the new `LiveConceptCrudSupport.resolve(liveModel, conceptName,
+  conceptGateway, context)`, which scans `liveModel.getConcepts()` for a route match (the SAME
+  `SqlIdentifierSupport.aliasPreservingTableName` derivation the baked `{{route}}` template variable
+  already uses) whose eligibility is exactly `NewConceptSchemaProvisioner.outOfScopeReason(concept)
+  == null` (widened from private to public, reused as-is) -- so "has a table" (REG-245) and
+  "is CRUD-reachable" (this item) can never drift apart. The scan only runs on a baked-map miss and
+  `modelHolder.get()` is a cheap `AtomicReference` read, so no caching was needed.
+
+  **Split for testability, discovered mid-implementation:** the mustache-templated controller cannot
+  be unit-tested in isolation (it doesn't exist as a compiled class until a real app is generated, and
+  its constructor's per-concept `register_*` calls need real generated service beans). All the actual
+  wiring logic therefore lives in `LiveConceptCrudSupport`, a plain non-templated class in
+  `runtimehost-core` -- directly unit-testable the same way `ConceptQueryControllerExportCsvVolumeTest`
+  tests `ConceptQueryController` (real H2 + `JdbcBusinessConceptStore` + `DefaultConceptGateway`, no
+  Spring context). The mustache template's own new code shrank to a thin wrapper
+  (`resolveBinding`/`toConceptBinding`) that just calls this class and wraps its result into the
+  private `ConceptBinding` record. `LiveConceptCrudSupport.LiveConceptOps.update` is a READ-MERGE-SAVE
+  (not a full replace): the controller's existing batch `setField` endpoint already calls
+  `binding.update()` with a SINGLETON one-field map, so a full replace here would have silently wiped
+  every other column on a bulk field edit -- proven by a RED/GREEN pass (temporarily skipped the merge,
+  confirmed the "partial update must not wipe other fields" assertion failed, restored, reran green).
+
+  **Real bug found and fixed during controller-level verification, not caught by the unit test alone:**
+  `create`'s caller-supplied body never carried the newly generated id, and `ConceptStore.save()`
+  echoes back whatever data map it was given (no re-SELECT) -- so the record returned from a create
+  had no `id` key in its `data()` map, even though its own top-level `id()` accessor was correct. The
+  generated controller's JSON response is built from `data()` via `metadata.fields()`, never from
+  `id()` directly, so a create's own response (and the very next `getById`, parsing that response's
+  `"id":null`) both broke. Fixed by folding the generated id into the data map before calling
+  `gateway.save(...)`. The `runtimehost-core`-level unit test had used `created.id()` (the correct
+  accessor) and so never exercised this path; a new assertion (`created.data().get("id")` must equal
+  `created.id()`) closes that gap, and the controller-level MockMvc test (which round-trips through
+  real JSON serialization, exactly like a real caller) is what actually caught the bug.
+
+  Explicitly out of scope for this slice, matching REG-245's own boundary exactly (a live concept only
+  gets a binding if `NewConceptSchemaProvisioner` would have provisioned its table): bond/reference
+  fields, satellite concepts, temporal concepts. A live concept still does not appear in the
+  model-authoring UI manifest -- that is Phase 4D, a separate, not-yet-filed follow-up.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/LiveConceptCrudSupportTest.java#newlyProvisionedConceptIsFullyCrudReachableThroughLiveOps,
+    NPDevRuntimeHost/src/test/java/com/finalexec/api/GeneratedConceptCrudControllerLiveConceptTest.java#newlyProvisionedConceptIsCrudReachableThroughTheRealGeneratedController
+  asserts: >-
+    Provisions a table for a brand-new bond-free "Widget" concept via the real
+    NewConceptSchemaProvisioner, then round-trips create/getById/partial-update/list/page/delete
+    through LiveConceptCrudSupport's ops directly (runtimehost-core level) AND through the real,
+    generated GeneratedConceptCrudController via standalone MockMvc (controller level) -- confirming
+    the concept is REST-reachable at /api/concepts/widgets with no regenerate/rebuild/restart. A
+    second controller-level test confirms a concept name matching neither the baked map nor the live
+    model still reports unknown_concept (400), not a 500 or false positive.
+  provenRed: true
