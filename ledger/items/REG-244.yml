@@ -100,3 +100,17 @@ detail: |
   CRUD registration"), and 4D ("Live-rebuildable UI manifest") are each separate, not-yet-filed
   ledger items, filed only once their own Inspect step re-confirms this spike's premises still hold
   (line numbers here are as of 2026-09-22 and will drift).
+
+  **UPDATE 2026-09-23: owner approved the safety design above; Phase 4B shipped as REG-245** (runtime
+  DDL path, additive-only, bond-free concepts only). The re-confirmed Inspect step found the actual
+  minimum manifest surface was smaller than this spike estimated (only `businessTableColumns`/
+  `businessTableColumnTypes`/`businessTableRequiredColumns` are read by
+  `MissingTableCreationPass.createMissingBusinessTables`'s call path, not a generator-parity
+  manifest), and found two more DSL features needing their own scope decision (satellite concepts,
+  temporal concepts), both refused-and-named rather than attempted. Remaining open from this spike's
+  "not yet solved" list, still owned by their own phases: `GeneratedConceptCrudController`'s
+  unmodifiable `concepts` map needs a live-appendable mechanism (4C), and `BusinessUiEmitter.manifestJson`
+  needs porting to a runtime-reachable module (4D). This spike's incidental discovery of a latent
+  `H2Dialect.tableExistsInCurrentSchemaSql` bug (lowercase `information_schema`, broken under
+  `DATABASE_TO_UPPER=false`) and of `SqlDialects.active()`'s untested Postgres-default-in-this-module
+  gap are both fixed and documented in REG-245, not repeated here.

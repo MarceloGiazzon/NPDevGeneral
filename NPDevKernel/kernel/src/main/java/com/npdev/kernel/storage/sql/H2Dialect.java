@@ -279,9 +279,17 @@ public final class H2Dialect implements SqlDialect {
 
     @Override
     public String tableExistsInCurrentSchemaSql(String tableName) {
-        return "SELECT COUNT(*) FROM information_schema.tables"
-                + " WHERE LOWER(table_schema) = LOWER(CURRENT_SCHEMA())"
-                + " AND LOWER(table_name) = '" + escapeLiteral(tableName).toLowerCase(Locale.ROOT) + "'";
+        // REG-244 Phase 4B: H2's system catalog is fixed-case INFORMATION_SCHEMA regardless of the
+        // connection's own DATABASE_TO_UPPER setting -- an unquoted lowercase reference here resolves
+        // fine under the (real-app) default, case-folding connection (the parser upper-cases it before
+        // lookup, same as writing it uppercase), but fails with "Schema \"information_schema\" not
+        // found" under DATABASE_TO_UPPER=false (no case-folding), which several tests in this package
+        // use to keep the platform's own lowercase snake_case identifiers stored as given. Writing the
+        // catalog name uppercase, as constraintExistsSql() below already does, behaves identically
+        // under the default connection and additionally works under DATABASE_TO_UPPER=false.
+        return "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES"
+                + " WHERE LOWER(TABLE_SCHEMA) = LOWER(CURRENT_SCHEMA())"
+                + " AND LOWER(TABLE_NAME) = '" + escapeLiteral(tableName).toLowerCase(Locale.ROOT) + "'";
     }
 
     @Override
