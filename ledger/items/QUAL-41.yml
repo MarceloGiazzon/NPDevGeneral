@@ -1,8 +1,8 @@
 id: QUAL-41
 title: >-
-  NPDevRuntimeHost's coverage floor (21.2728%, corrected 2026-09-23 -- the 17.45% this title
-  originally cited is over a month stale) is the lowest in the platform and has no tracked plan to
-  raise it -- the module copied verbatim into every generated FinalApp
+  NPDevRuntimeHost's coverage floor (23.6484%, corrected 2026-09-23 (second update same day) -- the
+  17.45% this title originally cited is over a month stale) is the lowest in the platform and has no
+  tracked plan to raise it -- the module copied verbatim into every generated FinalApp
 type: GAP
 severity: MEDIUM
 status: PARTIAL
@@ -243,6 +243,78 @@ detail: |
   named target, but `ControlPanelTenantUsersController`'s remaining 5 endpoints and
   `NpdevAuthConfig`'s REG-156 gap are the explicit next slice for whoever continues this standing
   programme -- title corrected to the current honest number per this item's own step-8 instruction.
+
+  2026-09-23 (same day, second slice): completed the exact next slice the entry above named --
+  `ControlPanelTenantUsersController`'s remaining 5 endpoints (`resetPassword`, `revokeSessions`,
+  `listPermissionOverrides`, `grantPermissionOverride`, `revokePermissionOverride`). 22 new
+  behavioural tests added to the existing `ControlPanelTenantUsersControllerTest` (no new file):
+  `resetPassword` -- missing-password (400), user-not-found (404), credential-row-missing (404), and
+  a full success path proving the stored hash actually verifies against the new password
+  (`PasswordHasher.verify`, not just a 200) AND `token_version` is bumped (LNCH-4's session-
+  invalidation contract, previously untested); `revokeSessions` -- user-not-found (404) and a real
+  `token_version` bump proof; `listPermissionOverrides` -- undeclared-role (400), role-not-assigned
+  (404), and both the empty-ceiling and populated-override read shapes; `grantPermissionOverride` --
+  undeclared-role (400), unrecognized-permission (400), permission-outside-role-ceiling (400),
+  role-not-assigned (404), and a success path proving BOTH the real INSERT row and the idempotent
+  re-grant (`overrideRowExists` guard: two grants of the same permission still leave exactly one row,
+  but both calls are independently audited); `revokePermissionOverride` -- undeclared-role (400),
+  role-not-assigned (404), override-not-found (404), and a real DELETE + audit-trail success path
+  (same evidence shape as the prior slice's `revokeRoleDeletesTheAssignmentAndAudits`: a post-call
+  `COUNT(*)` against the real H2 row, not just the response body).
+
+  Two new test-fixture additions needed for this slice, not present before: `identity_users` gained
+  a `token_version INT` column and a new `identity_user_role_permissions` table in the shared
+  `createSchema()` helper (both endpoints under test read/write them; no prior test in this class
+  touched either), and a new `identityModelWithRoles(CompiledRole...)` model-builder helper --
+  `identityModel()`'s own empty `roles[]` is deliberately what the earlier
+  `grantRoleRejectsARoleTheModelDoesNotDeclare` test relies on, so the permission-override tests
+  (which need `findDeclaredRole` to SUCCEED, not reject) needed a second builder rather than mutating
+  the first. `assignRole`'s return type changed from `void` to the new row's own id (previously
+  discarded by every caller) because the permission-override assertions key off
+  `identity_user_role_permissions.user_role_id`, not `(user_id, role_id)` directly.
+
+  **Verified, not assumed:** ran the FULL, unfiltered `run-runtimehost-gate.ps1` via the digest
+  runner (never `--tests`-filtered, per this item's own standing warning) -- `ok exit=0 517s`,
+  `NPDevRuntimeHost gate passed via assembled app sample simple-contact-intake.` A Gradle `test` task
+  fails the whole build on any single test failure, so this exit-0 is itself proof all 31 tests in
+  the class (9 pre-existing + 22 new) passed, not just that the file compiled. **Honest limitation
+  versus the prior slice's evidence**: that slice additionally captured a narrow `--tests`-filtered
+  JUnit XML re-run (`tests="9" skipped="0" failures="0" errors="0"`) as belt-and-suspenders proof the
+  class actually executed rather than being silently skipped; this slice did not, because
+  `run-runtimehost-gate.ps1`'s own sample-output-cleanup step (`OK Sample output cleanup completed
+  for simple-contact-intake.`) had already removed the assembled app's `test-results/` directory by
+  the time this was checked, and regenerating the app solely to capture that redundant artifact was
+  not judged worth the rebuild cost given the full gate's own exit-0 is already a stronger guarantee
+  (a filtered narrow run's JaCoCo would in any case be partial and unusable as the coverage source,
+  per this item's own repeated warning about that exact mistake).
+
+  **Measured, before/after, same mechanism this item always uses**
+  (`scripts/reports/out/runtimehost-jacoco-test-report.xml`, `simple-contact-intake` sample,
+  2026-09-23T17:18:45Z): RuntimeHost LINE coverage moved 22.0782% -> 23.6484%, a real +1.5702pp gain
+  -- `ControlPanelTenantUsersController` itself moved 35.24% (111/315 lines) -> 81.90% (258/315
+  lines), confirmed by reading the per-class counters in the fresh report directly, not the module
+  aggregate. The residual ~18% is almost entirely exception-handling branches this slice did not
+  target (the `IdentityPackSchemaException` catch arms in `resetPassword`/`revokeSessions`, and
+  `notifyPasswordChanged`'s mail-capability-bound branch, which needs a registered `mail` capability
+  to even enter -- out of scope for this slice, not forgotten). `check-coverage-ratchet.py
+  --write-baseline` ratcheted `NPDevRuntimeHost`'s floor up to match; `NPDevKernel/kernel`'s entry
+  (QUAL-40, separately accepted) was left untouched.
+
+  **The same ratchet run also raised one unrelated module's floor** (`scripts` 66.6149% ->
+  67.2366%), same "the ratchet checks every module's baseline whenever it runs" mechanism this
+  item's 2026-09-21/2026-09-23 entries already documented -- not touched by this session's diff
+  (only `ControlPanelTenantUsersControllerTest.java` and this baseline file changed), a real
+  higher measurement picked up along the way, not a regression.
+
+  **Status stays PARTIAL, not DONE**: `ControlPanelTenantUsersController` (the item's single largest
+  named target) is now real-test-covered end to end -- all 8 endpoints have behavioural tests, not
+  just the 3 from the prior slice. What remains open for the standing programme is
+  `NpdevAuthConfig`'s REG-156 `ApplicationContextRunner` gap (unchanged from every prior entry --
+  still judged a substantially larger, separately-scoped effort: proving it needs a Spring context
+  standing up most of that class's ~15 other `@Bean` methods' own dependency graph) and whatever
+  boot-time/first-run surface remains beyond what REG-177's own defect trail named. Closing this
+  item as DONE (vs. WONTFIX-accepting the new floor) is an owner call, not something this session
+  decided unilaterally, consistent with how every prior slice of this item has been closed out.
 guard:
   kind: test
   ref: NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelTenantUsersControllerTest.java#revokeRoleDeletesTheAssignmentAndAudits

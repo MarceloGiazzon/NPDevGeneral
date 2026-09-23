@@ -4,6 +4,7 @@ import com.finalexec.config.ModelHolder;
 import com.npdev.adapters.audit.inproc.InProcAuditLogStore;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
+import com.npdev.dsl.v1.compiled.CompiledRole;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.CapabilityRegistry;
 import com.npdev.kernel.ExecutionContext;
@@ -30,6 +31,7 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
@@ -95,13 +97,35 @@ class ControlPanelTenantUsersControllerTest {
         return new CompiledModel("test", "1.0.0", concepts);
     }
 
+    /** Same four identity-pack concepts as {@link #identityModel()}, plus app-declared roles --
+     *  needed by the permission-override endpoints' {@code findDeclaredRole} check, which
+     *  {@code identityModel()}'s empty {@code roles[]} deliberately cannot satisfy (see
+     *  {@code grantRoleRejectsARoleTheModelDoesNotDeclare}'s own comment on that). */
+    private static CompiledModel identityModelWithRoles(CompiledRole... roles) {
+        Map<String, CompiledConcept> concepts = new LinkedHashMap<>();
+        concepts.put("identity::User", new CompiledConcept("User", "User", "identity_users", List.of()));
+        concepts.put("identity::Role", new CompiledConcept("Role", "Role", "identity_roles", List.of()));
+        concepts.put("identity::UserRole", new CompiledConcept("UserRole", "UserRole", "identity_user_roles", List.of()));
+        concepts.put("identity::UserRolePermission",
+                new CompiledConcept("UserRolePermission", "UserRolePermission", "identity_user_role_permissions", List.of()));
+        return new CompiledModel(
+                "test", "2.0", "1.0.0", concepts,
+                List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(), List.of(),
+                List.of(), List.of(), List.of(), List.of(), List.of(),
+                null, null,
+                List.of(roles)
+        );
+    }
+
     private void createSchema() throws Exception {
         try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
             s.execute("CREATE TABLE identity_users (id UUID PRIMARY KEY, username VARCHAR(120), "
-                    + "display_name VARCHAR(200), tenant_id VARCHAR(120))");
+                    + "display_name VARCHAR(200), tenant_id VARCHAR(120), token_version INT)");
             s.execute("CREATE TABLE identity_roles (id UUID PRIMARY KEY, name VARCHAR(120), tenant_id VARCHAR(120))");
             s.execute("CREATE TABLE identity_user_roles (id UUID PRIMARY KEY, user_id UUID, role_id UUID, "
                     + "tenant_id VARCHAR(120))");
+            s.execute("CREATE TABLE identity_user_role_permissions (id UUID PRIMARY KEY, user_role_id UUID, "
+                    + "permission VARCHAR(120), tenant_id VARCHAR(120))");
             s.execute("CREATE TABLE usuarios (id UUID PRIMARY KEY, user_id UUID, senha_hash VARCHAR(200), "
                     + "tenant_id VARCHAR(120))");
         }
@@ -134,12 +158,40 @@ class ControlPanelTenantUsersControllerTest {
         return id;
     }
 
-    private void assignRole(String userId, String roleId) throws Exception {
+    /** Returns the new row's own id -- the permission-override tests need it to look up/verify
+     *  {@code identity_user_role_permissions} rows, which key off {@code user_role_id}, not
+     *  {@code (user_id, role_id)} directly. */
+    private String assignRole(String userId, String roleId) throws Exception {
+        String id = java.util.UUID.randomUUID().toString();
         try (Connection c = dataSource.getConnection();
              PreparedStatement ps = c.prepareStatement(
-                     "INSERT INTO identity_user_roles (id, user_id, role_id, tenant_id) VALUES (RANDOM_UUID(), ?, ?, ?)")) {
+                     "INSERT INTO identity_user_roles (id, user_id, role_id, tenant_id) VALUES (?, ?, ?, ?)")) {
+            ps.setObject(1, java.util.UUID.fromString(id));
+            ps.setObject(2, java.util.UUID.fromString(userId));
+            ps.setObject(3, java.util.UUID.fromString(roleId));
+            ps.setString(4, TENANT);
+            ps.executeUpdate();
+        }
+        return id;
+    }
+
+    private void insertCredential(String userId) throws Exception {
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                     "INSERT INTO usuarios (id, user_id, senha_hash, tenant_id) VALUES (RANDOM_UUID(), ?, 'oldhash', ?)")) {
             ps.setObject(1, java.util.UUID.fromString(userId));
-            ps.setObject(2, java.util.UUID.fromString(roleId));
+            ps.setString(2, TENANT);
+            ps.executeUpdate();
+        }
+    }
+
+    private void insertPermissionOverride(String userRoleId, String permission) throws Exception {
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                     "INSERT INTO identity_user_role_permissions (id, user_role_id, permission, tenant_id) "
+                             + "VALUES (RANDOM_UUID(), ?, ?, ?)")) {
+            ps.setObject(1, java.util.UUID.fromString(userRoleId));
+            ps.setString(2, permission);
             ps.setString(3, TENANT);
             ps.executeUpdate();
         }
@@ -291,6 +343,343 @@ class ControlPanelTenantUsersControllerTest {
         assertEquals(1, audited.size());
         assertEquals("role.revoke", audited.get(0).action());
         assertEquals("ada:MANAGER", audited.get(0).resourceId());
+    }
+
+    // ---------- resetPassword (QUAL-41 next slice) ----------
+
+    @Test
+    void resetPasswordRejectsMissingPassword() throws Exception {
+        createSchema();
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).resetPassword(
+                TENANT, "ada", new ControlPanelTenantUsersController.ResetPasswordRequest(""), null);
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("missing_password", response.getBody().get("error"));
+    }
+
+    @Test
+    void resetPasswordReturns404WhenUserNotFound() throws Exception {
+        createSchema();
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).resetPassword(
+                TENANT, "ghost", new ControlPanelTenantUsersController.ResetPasswordRequest("newpass123"), null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("user_not_found", response.getBody().get("error"));
+    }
+
+    @Test
+    void resetPasswordReturns404WhenCredentialRowMissing() throws Exception {
+        createSchema();
+        insertUser("ada");
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).resetPassword(
+                TENANT, "ada", new ControlPanelTenantUsersController.ResetPasswordRequest("newpass123"), null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("credential_not_found", response.getBody().get("error"));
+    }
+
+    @Test
+    void resetPasswordUpdatesTheHashAndBumpsTokenVersion() throws Exception {
+        createSchema();
+        String userId = insertUser("ada");
+        insertCredential(userId);
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).resetPassword(
+                TENANT, "ada", new ControlPanelTenantUsersController.ResetPasswordRequest("newpass123"), null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(true, response.getBody().get("ok"));
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT senha_hash FROM usuarios WHERE user_id = ? AND tenant_id = ?")) {
+            ps.setObject(1, java.util.UUID.fromString(userId));
+            ps.setString(2, TENANT);
+            try (var rs = ps.executeQuery()) {
+                rs.next();
+                assertTrue(com.finalexec.auth.PasswordHasher.verify("newpass123", rs.getString(1)),
+                        "the stored hash must verify against the new password, not still the old one");
+            }
+        }
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT token_version FROM identity_users WHERE id = ?")) {
+            ps.setObject(1, java.util.UUID.fromString(userId));
+            try (var rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(1, rs.getInt(1),
+                        "LNCH-4: a reset must invalidate sessions minted under the old password");
+            }
+        }
+    }
+
+    // ---------- revokeSessions ----------
+
+    @Test
+    void revokeSessionsReturns404WhenUserNotFound() throws Exception {
+        createSchema();
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).revokeSessions(TENANT, "ghost", null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("user_not_found", response.getBody().get("error"));
+    }
+
+    @Test
+    void revokeSessionsBumpsTokenVersion() throws Exception {
+        createSchema();
+        String userId = insertUser("ada");
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).revokeSessions(TENANT, "ada", null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(true, response.getBody().get("ok"));
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement("SELECT token_version FROM identity_users WHERE id = ?")) {
+            ps.setObject(1, java.util.UUID.fromString(userId));
+            try (var rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(1, rs.getInt(1));
+            }
+        }
+    }
+
+    // ---------- listPermissionOverrides ----------
+
+    @Test
+    void listPermissionOverridesRejectsUndeclaredRole() {
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).listPermissionOverrides(
+                TENANT, "ada", "GhostRole", null);
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("role_not_declared_by_model", response.getBody().get("error"));
+    }
+
+    @Test
+    void listPermissionOverridesReturns404WhenRoleNotAssignedToUser() throws Exception {
+        createSchema();
+        insertUser("ada");
+        insertRole("MANAGER");
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+
+        var response = controller(dataSource, model).listPermissionOverrides(TENANT, "ada", "MANAGER", null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("role_not_assigned_to_user", response.getBody().get("error"));
+    }
+
+    @Test
+    void listPermissionOverridesReturnsEmptyWhenNoneConfigured() throws Exception {
+        createSchema();
+        String userId = insertUser("ada");
+        String roleId = insertRole("MANAGER");
+        assignRole(userId, roleId);
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT", "EXECUTE_FLOW")));
+
+        var response = controller(dataSource, model).listPermissionOverrides(TENANT, "ada", "MANAGER", null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(List.of(), response.getBody().get("overridePermissions"));
+        assertEquals(false, response.getBody().get("restricted"));
+        assertEquals(List.of("READ_AUDIT", "EXECUTE_FLOW"), response.getBody().get("declaredCeiling"));
+    }
+
+    @Test
+    void listPermissionOverridesReturnsConfiguredOverrides() throws Exception {
+        createSchema();
+        String userId = insertUser("ada");
+        String roleId = insertRole("MANAGER");
+        String userRoleId = assignRole(userId, roleId);
+        insertPermissionOverride(userRoleId, "READ_AUDIT");
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT", "EXECUTE_FLOW")));
+
+        var response = controller(dataSource, model).listPermissionOverrides(TENANT, "ada", "MANAGER", null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(List.of("READ_AUDIT"), response.getBody().get("overridePermissions"));
+        assertEquals(true, response.getBody().get("restricted"));
+    }
+
+    // ---------- grantPermissionOverride ----------
+
+    @Test
+    void grantPermissionOverrideRejectsUndeclaredRole() {
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).grantPermissionOverride(
+                TENANT, "ada", "GhostRole",
+                new ControlPanelTenantUsersController.PermissionOverrideRequest("READ_AUDIT"), null);
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("role_not_declared_by_model", response.getBody().get("error"));
+    }
+
+    @Test
+    void grantPermissionOverrideRejectsUnrecognizedPermission() {
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+
+        var response = controller(dataSource, model).grantPermissionOverride(
+                TENANT, "ada", "MANAGER",
+                new ControlPanelTenantUsersController.PermissionOverrideRequest("NOT_A_REAL_PERMISSION"), null);
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("not_a_recognized_permission", response.getBody().get("error"));
+    }
+
+    @Test
+    void grantPermissionOverrideRejectsPermissionOutsideRoleCeiling() {
+        authenticateAs("SUPERUSER");
+        // MANAGER's declared ceiling is READ_AUDIT only -- EXECUTE_FLOW is a real permission, just
+        // not one this role is allowed to hold, the structural check this endpoint's own javadoc
+        // describes as enforced "HERE... and again, independently, at read time."
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+
+        var response = controller(dataSource, model).grantPermissionOverride(
+                TENANT, "ada", "MANAGER",
+                new ControlPanelTenantUsersController.PermissionOverrideRequest("EXECUTE_FLOW"), null);
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("permission_outside_role_ceiling", response.getBody().get("error"));
+    }
+
+    @Test
+    void grantPermissionOverrideReturns404WhenRoleNotAssignedToUser() throws Exception {
+        createSchema();
+        insertUser("ada");
+        insertRole("MANAGER");
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+
+        var response = controller(dataSource, model).grantPermissionOverride(
+                TENANT, "ada", "MANAGER",
+                new ControlPanelTenantUsersController.PermissionOverrideRequest("READ_AUDIT"), null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("role_not_assigned_to_user", response.getBody().get("error"));
+    }
+
+    @Test
+    void grantPermissionOverrideInsertsTheRowAuditsAndIsIdempotent() throws Exception {
+        createSchema();
+        String userId = insertUser("ada");
+        String roleId = insertRole("MANAGER");
+        String userRoleId = assignRole(userId, roleId);
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+        var request = new ControlPanelTenantUsersController.PermissionOverrideRequest("READ_AUDIT");
+
+        var first = controller(dataSource, model).grantPermissionOverride(TENANT, "ada", "MANAGER", request, null);
+        var second = controller(dataSource, model).grantPermissionOverride(TENANT, "ada", "MANAGER", request, null);
+
+        assertEquals(200, first.getStatusCode().value());
+        assertEquals(200, second.getStatusCode().value());
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT COUNT(*) FROM identity_user_role_permissions WHERE user_role_id = ? AND tenant_id = ?")) {
+            ps.setObject(1, java.util.UUID.fromString(userRoleId));
+            ps.setString(2, TENANT);
+            try (var rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(1, rs.getInt(1), "re-granting an already-bound permission must not duplicate the row");
+            }
+        }
+
+        List<AuditRecord> audited = auditLogStore.search(AuditQuery.emptyForTenant(TENANT));
+        assertEquals(2, audited.size(), "both grant calls are audited even though only one row ever exists");
+        assertEquals("permission_override.grant", audited.get(0).action());
+        assertEquals("ada:MANAGER:READ_AUDIT", audited.get(0).resourceId());
+    }
+
+    // ---------- revokePermissionOverride ----------
+
+    @Test
+    void revokePermissionOverrideRejectsUndeclaredRole() {
+        authenticateAs("SUPERUSER");
+
+        var response = controller(dataSource, identityModel()).revokePermissionOverride(
+                TENANT, "ada", "GhostRole", "READ_AUDIT", null);
+
+        assertEquals(400, response.getStatusCode().value());
+        assertEquals("role_not_declared_by_model", response.getBody().get("error"));
+    }
+
+    @Test
+    void revokePermissionOverrideReturns404WhenRoleNotAssignedToUser() throws Exception {
+        createSchema();
+        insertUser("ada");
+        insertRole("MANAGER");
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+
+        var response = controller(dataSource, model).revokePermissionOverride(
+                TENANT, "ada", "MANAGER", "READ_AUDIT", null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("role_not_assigned_to_user", response.getBody().get("error"));
+    }
+
+    @Test
+    void revokePermissionOverrideReturns404WhenOverrideNotFound() throws Exception {
+        createSchema();
+        String userId = insertUser("ada");
+        String roleId = insertRole("MANAGER");
+        assignRole(userId, roleId);
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+
+        var response = controller(dataSource, model).revokePermissionOverride(
+                TENANT, "ada", "MANAGER", "READ_AUDIT", null);
+
+        assertEquals(404, response.getStatusCode().value());
+        assertEquals("override_not_found", response.getBody().get("error"));
+    }
+
+    @Test
+    void revokePermissionOverrideDeletesTheRowAndAudits() throws Exception {
+        createSchema();
+        String userId = insertUser("ada");
+        String roleId = insertRole("MANAGER");
+        String userRoleId = assignRole(userId, roleId);
+        insertPermissionOverride(userRoleId, "READ_AUDIT");
+        authenticateAs("SUPERUSER");
+        CompiledModel model = identityModelWithRoles(new CompiledRole("MANAGER", List.of("READ_AUDIT")));
+
+        var response = controller(dataSource, model).revokePermissionOverride(
+                TENANT, "ada", "MANAGER", "READ_AUDIT", null);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals(true, response.getBody().get("ok"));
+
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement ps = c.prepareStatement(
+                     "SELECT COUNT(*) FROM identity_user_role_permissions WHERE user_role_id = ? AND tenant_id = ?")) {
+            ps.setObject(1, java.util.UUID.fromString(userRoleId));
+            ps.setString(2, TENANT);
+            try (var rs = ps.executeQuery()) {
+                rs.next();
+                assertEquals(0, rs.getInt(1), "the override row must actually be deleted");
+            }
+        }
+
+        List<AuditRecord> audited = auditLogStore.search(AuditQuery.emptyForTenant(TENANT));
+        assertEquals(1, audited.size());
+        assertEquals("permission_override.revoke", audited.get(0).action());
+        assertEquals("ada:MANAGER:READ_AUDIT", audited.get(0).resourceId());
     }
 
     private static final class SingleConnectionUrlDataSource implements DataSource {
