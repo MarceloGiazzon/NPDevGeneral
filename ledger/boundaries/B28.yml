@@ -161,6 +161,14 @@ codeLinkedNote: >-
   gateway/CRUD/panel paths while the UI metadata catalogs still describe the old shape -- i.e. "one
   call fully applies a model change" is not true today either.
 
+  RETIRED 2026-09-23 (filed and closed as REG-243, LOW): the catalogs cannot be derived live from
+  `CompiledModel` within this module -- `applyMetadataOnlyReload` requires a build-time
+  classification only the generator module (which this runtime module must not depend on) can
+  produce. Owner decision (this plan's Phase 3 explicitly deferred it): document the limit rather
+  than couple `/model-reload` to also require a pre-built classifier directory. `/model-reload`'s
+  success response now carries `uiMetadataCatalogsRefreshed: false`, so its "ok: true" can no
+  longer be misread as a full apply. See `ledger/items/REG-243.yml`.
+
   2026-09-23 (same exhaustive-sweep thread): closed 2 of the 3 residuals named in the entry just
   above. REG-241 (`GeneratedCrudRuntimeSupport`'s orchestration subscribers) got the
   `ModelReloadListener` rebuild-in-place treatment -- close every held `AutoCloseable` subscription

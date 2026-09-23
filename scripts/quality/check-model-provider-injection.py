@@ -20,6 +20,7 @@ USAGE
     python scripts/quality/check-model-provider-injection.py
     python scripts/quality/check-model-provider-injection.py --json
     python scripts/quality/check-model-provider-injection.py --repo <path>
+    python scripts/quality/check-model-provider-injection.py --calibrate  # self-test, exit 1 on failure
 Exit 0 = no NPDevModelProvider injection outside the allowed seam. Exit 1 = at least one. Exit 2 = usage.
 """
 
@@ -28,6 +29,7 @@ import argparse
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 # NPDevRuntimeHost is the Spring Boot template copied into every generated FinalApp -- scanning the
@@ -97,12 +99,88 @@ def resolve_repo(explicit: str | None) -> Path | None:
     return candidate if all((candidate / m).is_dir() for m in modules) else None
 
 
+def calibrate() -> int:
+    ok = True
+
+    def report(label: str, fired: bool, expect_fire: bool) -> None:
+        nonlocal ok
+        passed = fired == expect_fire
+        ok = ok and passed
+        print(f"  [{'PASS' if passed else 'FAIL'}] {label} (fired: {fired}, expected: {expect_fire})")
+
+    print("Calibration -- line-level detection must catch a real injection site, ignore a mention:")
+    report("field declaration ('private final NPDevModelProvider modelProvider;')",
+           bool(INJECTION_SITE.search("    private final NPDevModelProvider modelProvider;")),
+           expect_fire=True)
+    report("constructor parameter ('NPDevModelProvider modelProvider,')",
+           bool(INJECTION_SITE.search("            NPDevModelProvider modelProvider,")),
+           expect_fire=True)
+    report("import line (no identifier between the type and ';')",
+           bool(INJECTION_SITE.search("import com.npdev.generated.runtime.model.NPDevModelProvider;")),
+           expect_fire=False)
+    report("javadoc mention ('the {@code NPDevModelProvider} field...') is filtered by the comment check",
+           bool(COMMENT.match(" * the {@code NPDevModelProvider} field is the one legitimate seam.")),
+           expect_fire=True)
+
+    # End-to-end: a real scan() over a synthetic two-file tree, the same code path the real gate
+    # runs -- not just the two regexes in isolation.
+    print("Calibration -- end-to-end scan() over a synthetic template tree:")
+    with tempfile.TemporaryDirectory() as tmp:
+        repo_root = Path(tmp)
+        bad_file = repo_root / "NPDevRuntimeHost/src/main/java/com/finalexec/api/SyntheticController.java"
+        bad_file.parent.mkdir(parents=True, exist_ok=True)
+        bad_file.write_text(
+            "package com.finalexec.api;\n"
+            "import com.npdev.generated.runtime.model.NPDevModelProvider;\n"
+            "public class SyntheticController {\n"
+            "    private final NPDevModelProvider modelProvider;\n"
+            "}\n",
+            encoding="utf-8",
+        )
+        allowed_file = repo_root / ALLOWED_FILE
+        allowed_file.parent.mkdir(parents=True, exist_ok=True)
+        allowed_file.write_text(
+            "package com.finalexec.config;\n"
+            "public class NpdevCapabilityBindingConfig {\n"
+            "    public Object modelHolder(NPDevModelProvider modelProvider) { return null; }\n"
+            "}\n",
+            encoding="utf-8",
+        )
+
+        hits = scan(repo_root)
+        hit_files = {hit["file"] for hit in hits}
+        report("synthetic controller outside the allowed seam is caught",
+               "NPDevRuntimeHost/src/main/java/com/finalexec/api/SyntheticController.java" in hit_files,
+               expect_fire=True)
+        report("the allowlisted seam itself is never flagged",
+               ALLOWED_FILE in hit_files,
+               expect_fire=False)
+
+        # Now remove the bad file (the "fixed" state) and confirm the gate goes silent -- the two
+        # controls above prove it CAN fire; this one proves it does not fire when there is nothing
+        # left to catch.
+        bad_file.unlink()
+        clean_hits = scan(repo_root)
+        report("gate is silent once the only bad injection is removed",
+               len(clean_hits) > 0,
+               expect_fire=False)
+
+    if not ok:
+        print("\nFAIL: at least one control did not behave as required.", file=sys.stderr)
+        return 1
+    print("\nOK: all controls behave correctly.")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repo", default=None)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--calibrate", action="store_true", help="run the required controls and exit")
     args = parser.parse_args()
+    if args.calibrate:
+        return calibrate()
     repo = resolve_repo(args.repo)
     if repo is None:
         print("error: could not resolve the repo root (the directory holding NPDevContract + "
