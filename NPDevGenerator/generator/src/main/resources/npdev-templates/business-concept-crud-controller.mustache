@@ -4,6 +4,11 @@ import {{servicePackage}}.*;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.config.ModelHolder;
+import com.npdev.generated.runtime.service.RuntimeContextService;
+import com.npdev.kernel.concepts.ConceptGateway;
+import com.npdev.kernel.concepts.ConceptRecord;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -36,6 +41,9 @@ public class GeneratedConceptCrudController {
     private static final int MAX_BATCH_SIZE = 500;
 
     private final Map<String, ConceptBinding<?>> concepts;
+    private final ModelHolder modelHolder;
+    private final ConceptGateway conceptGateway;
+    private final RuntimeContextService runtimeContextService;
 
     // SCALE-2. This constructor used to take one `{{className}}Service` parameter per concept, with
     // the ApplicationContext tacked on unused at the end. That is a hard ceiling, not a slow path:
@@ -50,12 +58,53 @@ public class GeneratedConceptCrudController {
     // metadata/field registration block is what grows with the model. Keeping the constructor to N
     // small call statements moves that ceiling far out of reach as well; fixing only the parameter
     // count would have traded `too many parameters` for `code too large` at a slightly larger model.
-    public GeneratedConceptCrudController(org.springframework.context.ApplicationContext context) {
+    public GeneratedConceptCrudController(
+            org.springframework.context.ApplicationContext context,
+            ModelHolder modelHolder,
+            ConceptGateway conceptGateway,
+            RuntimeContextService runtimeContextService
+    ) {
         Map<String, ConceptBinding<?>> bindings = new LinkedHashMap<>();
 {{#concepts}}
         register_{{serviceVariable}}(context, bindings);
 {{/concepts}}
         this.concepts = Collections.unmodifiableMap(bindings);
+        this.modelHolder = modelHolder;
+        this.conceptGateway = conceptGateway;
+        this.runtimeContextService = runtimeContextService;
+    }
+
+    /**
+     * REG-244 Phase 4C: the single hook point that lets a concept added to the model AFTER
+     * generation (provisioned live by {@code NewConceptSchemaProvisioner} via {@code
+     * /model-reload}) become REST-reachable on this SAME controller, with no regenerate/rebuild/
+     * restart. Every endpoint below already dispatches generically over {@code ConceptBinding<?>} --
+     * this is the only place that needed to change. A baked-map hit is a no-op passthrough (byte-
+     * identical to the pre-4C behavior); only a miss falls through to {@code
+     * LiveConceptCrudSupport} -- a plain, non-templated class (unlike this controller) that holds
+     * all the actual live-concept wiring/logic so it can be unit-tested directly.
+     */
+    private ConceptBinding<?> resolveBinding(String conceptName, HttpServletRequest request) {
+        ConceptBinding<?> baked = concepts.get(conceptName);
+        if (baked != null) {
+            return baked;
+        }
+        com.npdev.kernel.ExecutionContext context = runtimeContextService.currentContext(request);
+        return com.finalexec.db.LiveConceptCrudSupport.resolve(modelHolder.get(), conceptName, conceptGateway, context)
+                .map(this::toConceptBinding)
+                .orElse(null);
+    }
+
+    private ConceptBinding<ConceptRecord> toConceptBinding(com.finalexec.db.LiveConceptCrudSupport.LiveConceptOps ops) {
+        ConceptMetadata metadata = new ConceptMetadata(
+                ops.conceptName(), ops.conceptName(), ops.tableName(), ops.idField(), ops.route(), false);
+        for (com.finalexec.db.LiveConceptCrudSupport.FieldInfo field : ops.fields()) {
+            metadata.addField(new FieldMetadata(
+                    field.name(), field.name(), field.columnName(), "text",
+                    field.required(), field.id(), field.id(), true, true, "text", List.of()));
+        }
+        return ConceptBinding.of(
+                metadata, ops.list(), ops.getById(), ops.create(), ops.update(), ops.delete(), ops.page());
     }
 
 {{#concepts}}
@@ -109,9 +158,10 @@ public class GeneratedConceptCrudController {
             @RequestParam(name = "direction", required = false) String direction,
             @RequestParam(name = "filter", required = false) String filter,
             @RequestParam(name = "where", required = false) String where,
-            @RequestParam(name = "asOf", required = false) String asOf
+            @RequestParam(name = "asOf", required = false) String asOf,
+            HttpServletRequest request
     ) {
-        ConceptBinding<?> binding = concepts.get(conceptName);
+        ConceptBinding<?> binding = resolveBinding(conceptName, request);
         if (binding == null) {
             return badRequest("unknown_concept", "Unknown concept: " + conceptName);
         }
@@ -259,8 +309,10 @@ public class GeneratedConceptCrudController {
     }
 
     @GetMapping("/{conceptName}/{id}")
-    public ResponseEntity<?> getById(@PathVariable String conceptName, @PathVariable String id) {
-        ConceptBinding<?> binding = concepts.get(conceptName);
+    public ResponseEntity<?> getById(
+            @PathVariable String conceptName, @PathVariable String id, HttpServletRequest request
+    ) {
+        ConceptBinding<?> binding = resolveBinding(conceptName, request);
         if (binding == null) {
             return badRequest("unknown_concept", "Unknown concept: " + conceptName);
         }
@@ -277,9 +329,10 @@ public class GeneratedConceptCrudController {
     @PostMapping("/{conceptName}")
     public ResponseEntity<?> create(
             @PathVariable String conceptName,
-            @RequestBody(required = false) Map<String, Object> body
+            @RequestBody(required = false) Map<String, Object> body,
+            HttpServletRequest request
     ) {
-        ConceptBinding<?> binding = concepts.get(conceptName);
+        ConceptBinding<?> binding = resolveBinding(conceptName, request);
         if (binding == null) {
             return badRequest("unknown_concept", "Unknown concept: " + conceptName);
         }
@@ -299,9 +352,10 @@ public class GeneratedConceptCrudController {
     public ResponseEntity<?> update(
             @PathVariable String conceptName,
             @PathVariable String id,
-            @RequestBody(required = false) Map<String, Object> body
+            @RequestBody(required = false) Map<String, Object> body,
+            HttpServletRequest request
     ) {
-        ConceptBinding<?> binding = concepts.get(conceptName);
+        ConceptBinding<?> binding = resolveBinding(conceptName, request);
         if (binding == null) {
             return badRequest("unknown_concept", "Unknown concept: " + conceptName);
         }
@@ -324,8 +378,10 @@ public class GeneratedConceptCrudController {
     }
 
     @DeleteMapping("/{conceptName}/{id}")
-    public ResponseEntity<?> delete(@PathVariable String conceptName, @PathVariable String id) {
-        ConceptBinding<?> binding = concepts.get(conceptName);
+    public ResponseEntity<?> delete(
+            @PathVariable String conceptName, @PathVariable String id, HttpServletRequest request
+    ) {
+        ConceptBinding<?> binding = resolveBinding(conceptName, request);
         if (binding == null) {
             return badRequest("unknown_concept", "Unknown concept: " + conceptName);
         }
@@ -365,9 +421,10 @@ public class GeneratedConceptCrudController {
     @PostMapping("/{conceptName}/batch")
     public ResponseEntity<?> batch(
             @PathVariable String conceptName,
-            @RequestBody(required = false) Map<String, Object> body
+            @RequestBody(required = false) Map<String, Object> body,
+            HttpServletRequest request
     ) {
-        ConceptBinding<?> binding = concepts.get(conceptName);
+        ConceptBinding<?> binding = resolveBinding(conceptName, request);
         if (binding == null) {
             return badRequest("unknown_concept", "Unknown concept: " + conceptName);
         }
@@ -678,6 +735,12 @@ public class GeneratedConceptCrudController {
     }
 
     private static Map<String, Object> toRecord(ConceptMetadata metadata, Object source) {
+        // REG-244 Phase 4C: a live-concept binding's T is ConceptRecord (a Map-backed record with no
+        // getX()/isX() accessors), which the reflective path below cannot read -- reuse the same
+        // conversion the pushdown-query path already applies to a ConceptRecord.
+        if (source instanceof com.npdev.kernel.concepts.ConceptRecord conceptRecord) {
+            return toRecordFromConceptRecord(metadata, conceptRecord);
+        }
         Map<String, Object> out = new LinkedHashMap<>();
         for (FieldMetadata field : metadata.fields()) {
             out.put(field.name(), readValue(source, field.name()));
