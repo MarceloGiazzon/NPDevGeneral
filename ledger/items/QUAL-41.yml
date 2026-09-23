@@ -1,6 +1,7 @@
 id: QUAL-41
 title: >-
-  NPDevRuntimeHost's coverage floor (17.45%) is the lowest in the platform and has no tracked plan to
+  NPDevRuntimeHost's coverage floor (21.2728%, corrected 2026-09-23 -- the 17.45% this title
+  originally cited is over a month stale) is the lowest in the platform and has no tracked plan to
   raise it -- the module copied verbatim into every generated FinalApp
 type: GAP
 severity: MEDIUM
@@ -25,6 +26,7 @@ files:
   - NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelAdminUserControllerTest.java
   - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/IdentityProvisioningTest.java
   - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/controlpanel/TenantAutoRegistrationRunnerTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelTenantUsersControllerTest.java
 detail: |
   17.4451% of NPDevRuntimeHost's lines execute under test (per the last real run-runtimehost-gate.ps1
   measurement this session, 2026-08-25) -- the lowest-covered module in the platform, and the one
@@ -172,15 +174,85 @@ detail: |
   `ControlPanelTenantUsersController`'s own identity-pack-present CRUD paths, and `NpdevAuthConfig`'s
   REG-156 boot-config regression shape remain untested, so the item stays open for whoever continues
   the programme.
+
+  2026-09-23 (PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 5): continued the programme with the exact
+  target this item's own EXT-10 pass named and deprioritized twice --
+  `ControlPanelTenantUsersController` (735 lines, 8 SUPERUSER-only endpoints over per-tenant
+  identity/role/permission maintenance), the largest untested controller in the platform, had zero
+  test coverage before this session.
+
+  **Report-scope question resolved first** (this item's own step-2 instruction: read the report and
+  the gate, not either standing claim): confirmed by READING `run-runtimehost-gate.ps1` directly --
+  line 118, `$runtimeHostJacocoSource = ... $assembledAppRoot ... "build\reports\jacoco\test\
+  jacocoTestReport.xml"` -- the measured coverage percentage comes ONLY from the assembled sample
+  app's build of RuntimeHost's top-level `src/main`. `runtimehost-core:test` DOES run (lines 99-112,
+  `verificationTasks` includes it, a failure there throws and fails the gate) and IS real regression
+  protection, but contributes ZERO to this measured number -- both the older "only measures the
+  sample app" belief and the "runtimehost-core tests run in the gate" correction are true
+  simultaneously, about two different things (test EXECUTION for correctness vs. coverage
+  MEASUREMENT); neither is stale, they were just never stated together before.
+
+  Chose `ControlPanelTenantUsersController.list/grantRole/revokeRole` (not the full 8-endpoint
+  surface -- `resetPassword`, `revokeSessions`, and the three permission-override endpoints remain
+  untested, named explicitly as the next slice below) and wrote 9 real behavioural tests in a new
+  `ControlPanelTenantUsersControllerTest`: non-SUPERUSER forbidden (403), no-physical-DataSource
+  (503), `list()`'s documented "identity pack absent degrades to an empty role list, not a 503"
+  contract (the one endpoint here that stays available without the pack -- every WRITE endpoint
+  hard-requires it via the shared `requireIdentityTables()` guard, proven once via `revokeRole`
+  rather than duplicated per endpoint), a full `list()` happy path (role + credential joins),
+  `grantRole`'s cross-check against the MODEL's declared roles (`CompiledRole`, a different thing
+  from an assigned `identity_user_roles` row -- rejects any role the model doesn't declare), and
+  `revokeRole`'s user-not-found/role-not-assigned 404s plus its real DELETE + audit-trail success
+  path (asserted against a real H2 `identity_user_roles` row count and a real
+  `InProcAuditLogStore.search()` result, not a mock).
+
+  Not attempted this pass, named so nobody re-derives the same triage: `resetPassword` (mail-capability
+  side effect + token-version bump, a materially different shape from the three tested endpoints),
+  `revokeSessions`, and the three permission-override endpoints
+  (`list/grant/revokePermissionOverride`) -- `ControlPanelTenantUsersController` is now ~35% covered,
+  not exhaustively. `NpdevAuthConfig`'s REG-156 `ApplicationContextRunner` gap (named in this item's
+  prior entry) also remains untested, same reasoning as before (a substantially larger, separately-
+  scoped effort).
+
+  **Verified, not assumed:** ran the FULL, unfiltered `run-runtimehost-gate.ps1` via the digest
+  runner (never `--tests`-filtered -- see this item's own standing warning about partial jacoco) --
+  `BUILD SUCCESSFUL`, gate passed. Confirmed the new test class actually ran (not silently skipped)
+  by re-running it narrowly (`--tests
+  com.finalexec.controlpanel.ControlPanelTenantUsersControllerTest`, `RuntimeHost Never Build
+  Standalone`'s documented `NPDEV_RUNTIMEHOST_LIBS_DIR`-override recipe, against the SAME assembled
+  app the full gate had just built) and reading the fresh JUnit XML directly: `tests="9"
+  skipped="0" failures="0" errors="0"`. This narrow run is verification-only, never the coverage
+  source (its own JaCoCo would be partial) -- the recorded number below comes from the full run.
+
+  **Measured, before/after, same mechanism this item always uses**
+  (`scripts/reports/out/runtimehost-jacoco-test-report.xml`, `simple-contact-intake` sample,
+  2026-09-23): RuntimeHost LINE coverage moved 20.2668% -> 21.2728%, a real +1.0060pp gain --
+  `ControlPanelTenantUsersController` itself moved 5.40% -> 35.24% (111/315 lines), confirmed by
+  reading the per-class counters in the fresh report, not just the module total.
+  `check-coverage-ratchet.py --write-baseline` ratcheted `NPDevRuntimeHost`'s floor up to match.
+
+  **The same ratchet run also raised two UNRELATED modules' floors** (`NPDevCli` 58.5351% ->
+  60.2606%, `scripts` 65.2023% -> 66.6149%) from reports already sitting on disk from other,
+  earlier work this same day -- not touched by this item's changes (only
+  `ControlPanelTenantUsersControllerTest.java` and this baseline file are in this session's diff),
+  same "the ratchet checks every module's baseline whenever it runs, not just the one the calling
+  gate cares about" mechanism this item's own 2026-09-21 entry already documented. Neither floor was
+  lowered; both are real, honest, higher measurements simply picked up along the way.
+
+  **Status stays PARTIAL, not DONE**: real, measured progress on the item's own single largest
+  named target, but `ControlPanelTenantUsersController`'s remaining 5 endpoints and
+  `NpdevAuthConfig`'s REG-156 gap are the explicit next slice for whoever continues this standing
+  programme -- title corrected to the current honest number per this item's own step-8 instruction.
 guard:
   kind: test
-  ref: NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelAdminUserControllerTest.java#identityPackNotComposedFailsClosedNotEagerCrash
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelTenantUsersControllerTest.java#revokeRoleDeletesTheAssignmentAndAudits
   asserts: >-
-    ControlPanelAdminUserController (registered unconditionally in every generated app, never gated
-    on the identity pack) resolves IdentityPackTableNames gracefully and returns a clean 503 when
-    the identity pack is absent, rather than the eager, throwing resolve() call REG-177's own
-    "2026-08-15 correction" documents as a real, live packaged-app ApplicationContext boot crash
-    (BeanCreationException -> IllegalStateException) for any generated app that doesn't compose the
-    identity pack. This is the single sharpest boot-time regression proof this item's new coverage
-    added.
+    ControlPanelTenantUsersController.revokeRole -- previously wholly untested, the largest
+    uncovered controller in the platform (735 lines) before this session -- performs a real DELETE
+    against a real H2 identity_user_roles row (asserted by a post-call COUNT(*), not just the
+    response body) AND appends a real audit record (asserted via InProcAuditLogStore.search(),
+    action="role.revoke", resourceId="<username>:<role>"), not a mock verifying a call happened.
+    Confirmed actually ran via a fresh JUnit XML from a narrow --tests re-run against the same
+    assembled app the full gate built: tests="9" skipped="0" failures="0" errors="0" for the whole
+    new ControlPanelTenantUsersControllerTest class.
   provenRed: false
