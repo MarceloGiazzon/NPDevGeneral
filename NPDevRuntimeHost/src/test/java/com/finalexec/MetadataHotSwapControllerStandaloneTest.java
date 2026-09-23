@@ -71,7 +71,7 @@ class MetadataHotSwapControllerStandaloneTest {
 
         MetadataHotSwapController controller = new MetadataHotSwapController(
                 runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), false,
-                dataSourceProvider(null), false);
+                dataSourceProvider(null), false, staticUiPath());
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -160,7 +160,7 @@ class MetadataHotSwapControllerStandaloneTest {
     void modelReloadStillRequiresSuperUserEvenWhenFlagIsEnabled() throws Exception {
         MetadataHotSwapController enabledController = new MetadataHotSwapController(
                 runtimeMetadataService, runtimeContextService, new com.finalexec.config.ModelHolder(), true,
-                dataSourceProvider(null), false);
+                dataSourceProvider(null), false, staticUiPath());
         MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
         when(executionContext.hasRole("SUPERUSER")).thenReturn(false);
 
@@ -178,7 +178,7 @@ class MetadataHotSwapControllerStandaloneTest {
                 new com.finalexec.config.ModelHolder(compiledModel(minimalModelJson()));
         MetadataHotSwapController enabledController = new MetadataHotSwapController(
                 runtimeMetadataService, runtimeContextService, modelHolder, true,
-                dataSourceProvider(null), false);
+                dataSourceProvider(null), false, staticUiPath());
         MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
         when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
 
@@ -193,18 +193,22 @@ class MetadataHotSwapControllerStandaloneTest {
                 // runtime module cannot perform) -- the response must say so plainly rather than let
                 // "ok: true" be read as "fully applied".
                 .andExpect(jsonPath("$.uiMetadataCatalogsRefreshed").value(false))
-                // REG-244 Phase 4B: new-concept provisioning is off by default here (last constructor
-                // arg false) -- both fields must still be NAMED, just empty, never omitted.
+                // REG-244 Phase 4B/4D: new-concept provisioning is off here (newConceptProvisioningEnabled
+                // false) -- all four fields must still be NAMED, just empty, never omitted.
                 .andExpect(jsonPath("$.conceptsProvisioned.length()").value(0))
-                .andExpect(jsonPath("$.conceptsProvisioningFailed.length()").value(0));
+                .andExpect(jsonPath("$.conceptsProvisioningFailed.length()").value(0))
+                .andExpect(jsonPath("$.uiManifestConceptsRefreshed.length()").value(0))
+                .andExpect(jsonPath("$.uiManifestRefreshFailed.length()").value(0));
 
         org.junit.jupiter.api.Assertions.assertEquals(1, modelHolder.get().getConcepts().size());
     }
 
-    /** REG-244 Phase 4B: enabling the property with a real (H2) DataSource available makes a
-     *  reload that adds a brand-new, bond-free concept also create its table, named in the response. */
+    /** REG-244 Phase 4B/4D: enabling the property with a real (H2) DataSource available makes a
+     *  reload that adds a brand-new, bond-free concept both create its table (4B) AND append a
+     *  manifest node for it to the on-disk {@code generated-ui-manifest.json} (4D), both named in
+     *  the response. */
     @Test
-    void modelReloadProvisionsTableForNewBondFreeConceptWhenEnabled() throws Exception {
+    void modelReloadProvisionsTableAndUiManifestNodeForNewBondFreeConceptWhenEnabled() throws Exception {
         String url = "jdbc:h2:mem:" + getClass().getSimpleName() + System.nanoTime()
                 + ";DB_CLOSE_DELAY=-1;DATABASE_TO_UPPER=false";
         Path modelPath = appExternalRoot.resolve("model-with-new-concept.json");
@@ -217,11 +221,14 @@ class MetadataHotSwapControllerStandaloneTest {
                 + "{\"name\":\"label\",\"type\":\"string\"}]}]"
                 + "}";
         writeFixture(modelPath, modelWithNewConcept);
+        Path manifestFile = Path.of(staticUiPath()).resolve("npdev-business-ui").resolve("generated-ui-manifest.json");
+        writeFixture(manifestFile, "{\"schemaVersion\":\"npdev-generated-ui-manifest.v1\","
+                + "\"defaultGuidePage\":\"Default\",\"concepts\":[{\"conceptName\":\"Thing\"}]}");
         com.finalexec.config.ModelHolder modelHolder =
                 new com.finalexec.config.ModelHolder(compiledModel(minimalModelJson()));
         MetadataHotSwapController enabledController = new MetadataHotSwapController(
                 runtimeMetadataService, runtimeContextService, modelHolder, true,
-                dataSourceProvider(h2DataSource(url)), true);
+                dataSourceProvider(h2DataSource(url)), true, staticUiPath());
         MockMvc enabledMockMvc = MockMvcBuilders.standaloneSetup(enabledController).build();
         when(executionContext.hasRole("SUPERUSER")).thenReturn(true);
 
@@ -231,7 +238,9 @@ class MetadataHotSwapControllerStandaloneTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.ok").value(true))
                 .andExpect(jsonPath("$.conceptsProvisioned[0]").value("Widget"))
-                .andExpect(jsonPath("$.conceptsProvisioningFailed.length()").value(0));
+                .andExpect(jsonPath("$.conceptsProvisioningFailed.length()").value(0))
+                .andExpect(jsonPath("$.uiManifestConceptsRefreshed[0]").value("Widget"))
+                .andExpect(jsonPath("$.uiManifestRefreshFailed.length()").value(0));
 
         // SqlIdentifierSupport.tableName() pluralizes ("Widget" -> "widgets"); INFORMATION_SCHEMA is
         // H2's own fixed-case system catalog, unaffected by this connection's DATABASE_TO_UPPER=false.
@@ -245,6 +254,25 @@ class MetadataHotSwapControllerStandaloneTest {
             }
             org.junit.jupiter.api.Assertions.assertTrue(columns.contains("label"), "columns were " + columns);
         }
+
+        // The existing "Thing" node must be untouched, and the new "Widget" node must be well formed.
+        java.util.Map<?, ?> manifest = new ObjectMapper().readValue(manifestFile.toFile(), java.util.Map.class);
+        java.util.List<?> concepts = (java.util.List<?>) manifest.get("concepts");
+        org.junit.jupiter.api.Assertions.assertEquals(2, concepts.size(), "expected Thing (untouched) + Widget (new): " + concepts);
+        java.util.Map<?, ?> widgetNode = concepts.stream()
+                .map(node -> (java.util.Map<?, ?>) node)
+                .filter(node -> "Widget".equals(node.get("conceptName")))
+                .findFirst().orElseThrow();
+        org.junit.jupiter.api.Assertions.assertEquals("/widgets", widgetNode.get("route"));
+        org.junit.jupiter.api.Assertions.assertEquals("Default", widgetNode.get("guidePage"));
+        java.util.List<?> fields = (java.util.List<?>) widgetNode.get("fields");
+        org.junit.jupiter.api.Assertions.assertTrue(
+                fields.stream().anyMatch(f -> "label".equals(((java.util.Map<?, ?>) f).get("name"))),
+                "expected a 'label' field node, got " + fields);
+    }
+
+    private String staticUiPath() {
+        return appExternalRoot.resolve("npdev-generated/src/main/resources/static").toString();
     }
 
     private static ObjectProvider<DataSource> dataSourceProvider(DataSource dataSource) {

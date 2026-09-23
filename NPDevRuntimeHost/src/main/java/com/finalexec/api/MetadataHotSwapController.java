@@ -1,6 +1,7 @@
 package com.finalexec.api;
 
 import com.finalexec.config.ModelHolder;
+import com.finalexec.db.LiveConceptUiManifestSupport;
 import com.finalexec.db.NewConceptSchemaProvisioner;
 import com.finalexec.npdev.service.RuntimeMetadataService;
 import com.npdev.dsl.v1.ast.ModelAst;
@@ -99,8 +100,22 @@ import java.util.Map;
  * EXISTS} via {@link com.finalexec.db.NewConceptSchemaProvisioner}) in the same call -- additive
  * only, never FKs/uniques/indexes. The response always names both {@code conceptsProvisioned} and
  * {@code conceptsProvisioningFailed} (the latter mapping a concept name to why it was refused or
- * failed), even when the property is off. This makes the new table EXIST; it does not make it
- * CRUD-reachable or visible in the UI manifest -- those are separate, not-yet-shipped phases.
+ * failed), even when the property is off. CRUD-reachability needs no further action here (Phase 4C,
+ * REG-246): {@code GeneratedConceptCrudController}'s own live-concept fallback resolves a provisioned
+ * concept directly against the live {@link ModelHolder}, independent of this endpoint's response.
+ *
+ * <p><b>Live UI manifest refresh</b> (REG-244 Phase 4D, same property as provisioning above --
+ * gating "DDL/CRUD/manifest" together was the owner-approved design from REG-244's own safety
+ * spike): immediately after a successful provisioning pass, every concept named in {@code
+ * conceptsProvisioned} (never a concept whose table failed) gets a manifest node appended to the
+ * on-disk {@code generated-ui-manifest.json} via {@link LiveConceptUiManifestSupport#refresh} --
+ * additive-only, same as the DDL step: every EXISTING concept's node is left byte-for-byte
+ * untouched (that class's own javadoc explains why a full manifest rebuild is unsafe without a live
+ * {@code SettingResolver}). {@code StaticUiResourceConfig} already serves this file from an
+ * external, non-jar-baked, non-cache-busted directory, so the rewritten file is picked up on the
+ * very next request with zero serving-side change. Named in the response as {@code
+ * uiManifestConceptsRefreshed}/{@code uiManifestRefreshFailed}, same "never hide a limit behind a
+ * bare boolean" convention as {@code conceptsProvisioned} above.
  *
  * <p><b>Two different gates, deliberately</b> (same posture as {@link AgentProxyController}).
  * {@code /status} answers any authenticated ADMIN caller, matching {@link RuntimeMetadataController}'s
@@ -126,6 +141,7 @@ public class MetadataHotSwapController {
     private final boolean fullModelReloadEnabled;
     private final ObjectProvider<DataSource> dataSourceProvider;
     private final boolean newConceptProvisioningEnabled;
+    private final Path uiManifestFile;
 
     public MetadataHotSwapController(
             RuntimeMetadataService runtimeMetadataService,
@@ -133,7 +149,11 @@ public class MetadataHotSwapController {
             ModelHolder modelHolder,
             @Value("${npdev.runtime.hotswap.full-model-reload-enabled:true}") boolean fullModelReloadEnabled,
             ObjectProvider<DataSource> dataSourceProvider,
-            @Value("${npdev.runtime.hotswap.new-concept-provisioning-enabled:false}") boolean newConceptProvisioningEnabled
+            @Value("${npdev.runtime.hotswap.new-concept-provisioning-enabled:false}") boolean newConceptProvisioningEnabled,
+            // Same default literal StaticUiResourceConfig.STATIC_UI_PATH_DEFAULT uses -- duplicated,
+            // not shared, per the same "two independent consumers of one convention, no shared
+            // constant to hang it on" precedent build.gradle's resolveNpdevRuntimeLibsDir documents.
+            @Value("${npdev.static-ui.path:npdev-generated/src/main/resources/static}") String staticUiPath
     ) {
         this.runtimeMetadataService = runtimeMetadataService;
         this.runtimeContextService = runtimeContextService;
@@ -141,6 +161,8 @@ public class MetadataHotSwapController {
         this.fullModelReloadEnabled = fullModelReloadEnabled;
         this.dataSourceProvider = dataSourceProvider;
         this.newConceptProvisioningEnabled = newConceptProvisioningEnabled;
+        this.uiManifestFile = Paths.get(staticUiPath).toAbsolutePath().normalize()
+                .resolve("npdev-business-ui").resolve("generated-ui-manifest.json");
     }
 
     /**
@@ -296,6 +318,20 @@ public class MetadataHotSwapController {
             }
             response.put("conceptsProvisioned", conceptsProvisioned);
             response.put("conceptsProvisioningFailed", conceptsProvisioningFailed);
+
+            // REG-244 Phase 4D: only a concept that actually got a table (conceptsProvisioned, not
+            // merely newModel.getConcepts()) is ever offered a UI manifest node -- a concept whose
+            // DDL failed must never get a screen whose first list/create call would just 500.
+            List<String> uiManifestConceptsRefreshed = List.of();
+            Map<String, String> uiManifestRefreshFailed = Map.of();
+            if (newConceptProvisioningEnabled && !conceptsProvisioned.isEmpty()) {
+                LiveConceptUiManifestSupport.Result manifestResult =
+                        LiveConceptUiManifestSupport.refresh(uiManifestFile, newModel, conceptsProvisioned);
+                uiManifestConceptsRefreshed = manifestResult.refreshed();
+                uiManifestRefreshFailed = manifestResult.failed();
+            }
+            response.put("uiManifestConceptsRefreshed", uiManifestConceptsRefreshed);
+            response.put("uiManifestRefreshFailed", uiManifestRefreshFailed);
             return ResponseEntity.ok(response);
         } catch (Exception e) {
             LOG.warn("B28 hot model reload failed: modelPath={}", modelFile, e);
