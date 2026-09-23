@@ -161,6 +161,26 @@ codeLinkedNote: >-
   gateway/CRUD/panel paths while the UI metadata catalogs still describe the old shape -- i.e. "one
   call fully applies a model change" is not true today either.
 
-  REG-238, REG-240, REG-241 and REG-242 are the open residuals under this boundary.
+  2026-09-23 (same exhaustive-sweep thread): closed 2 of the 3 residuals named in the entry just
+  above. REG-241 (`GeneratedCrudRuntimeSupport`'s orchestration subscribers) got the
+  `ModelReloadListener` rebuild-in-place treatment -- close every held `AutoCloseable` subscription
+  handle and re-subscribe one per event-triggered rule in the new model, wired via
+  `modelHolder.addReloadListener` in `NpdevCapabilityBindingConfig#generatedCrudRuntimeSupport`, the
+  same idiom `invariantEngine`/`capabilityRegistry` already use. REG-240
+  (`GeneratedCrudRuntimeSupport.identityTables`) got REG-235's `Supplier`-read shape instead, not a
+  listener -- it is a pure lookup with no side effect and no expensive full-model walk to cache
+  against, so `modelSupplier.get()` read fresh on every call was sufficient; no reload wiring needed.
+  Both RED-proven by temporarily reintroducing each original bug shape and confirming the guard
+  tests (and only the expected tests) fail -- see `ledger/items/REG-240.yml` and
+  `ledger/items/REG-241.yml` for the full verification trace, including one measured surprise:
+  removing ONLY REG-241's `closeOrchestrationSubscriptionsLocked()` call fails three of its four
+  tests, not the one this boundary's own text above might suggest, because stale un-closed
+  subscribers also corrupt the remove/edit scenarios, not only the double-fire count.
+
+  REG-238 and REG-239 were already DONE before this session (see their own entries above and
+  `ledger/items/REG-238.yml`/`REG-239.yml`). REG-242 is now the ONLY open residual under this
+  boundary -- do not read this as the boundary being lifted: REG-242
+  (`DocumentRenderController` pinned to the boot model via a direct `NPDevModelProvider` injection,
+  and the structural-guard hole that injection exposes) is unchanged and still open.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B28"
 classification: LIFTED, PARTIAL
