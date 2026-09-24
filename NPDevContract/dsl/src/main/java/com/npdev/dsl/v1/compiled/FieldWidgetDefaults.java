@@ -35,10 +35,19 @@ public final class FieldWidgetDefaults {
     public static final String GROUP = "group";
     /** Structural label for an {@code array} field's nested editor; the editor itself always wins. */
     public static final String LIST = "list";
+    public static final String SLIDER = "slider";
+    public static final String TOGGLE = "toggle";
+    public static final String RATING = "rating";
+    public static final String CURRENCY = "currency";
+    public static final String PASSWORD = "password";
+    public static final String FILE = "file";
+    public static final String UUID = "uuid";
+    public static final String RICHTEXT = "richtext";
 
     public static final Set<String> SUPPORTED_WIDGETS = Set.of(
             TEXT, TEXTAREA, NUMBER, EMAIL, TEL, URL, COLOR, DATE, DATETIME_LOCAL, CHECKBOX,
-            SELECT, AUTOCOMPLETE, LOOKUP, SEARCH_DIALOG, MULTISELECT, IMAGE_SELECT, CUSTOM, GROUP, LIST
+            SELECT, AUTOCOMPLETE, LOOKUP, SEARCH_DIALOG, MULTISELECT, IMAGE_SELECT, CUSTOM, GROUP, LIST,
+            SLIDER, TOGGLE, RATING, CURRENCY, PASSWORD, FILE, UUID, RICHTEXT
     );
 
     private static final Set<String> NUMERIC_TYPES = Set.of("int", "integer", "long", "decimal");
@@ -100,6 +109,8 @@ public final class FieldWidgetDefaults {
             case "datetime" -> DATETIME_LOCAL;
             case "boolean" -> CHECKBOX;
             case "int", "integer", "long", "decimal" -> NUMBER;
+            case "uuid" -> UUID;
+            case "file" -> FILE;
             default -> TEXT;
         };
     }
@@ -153,6 +164,27 @@ public final class FieldWidgetDefaults {
         }
         if (NUMBER.equals(normalized)) {
             return NUMERIC_TYPES.contains(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (SLIDER.equals(normalized)) {
+            return NUMERIC_TYPES.contains(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (RATING.equals(normalized)) {
+            return ("int".equals(type) || "integer".equals(type)) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (CURRENCY.equals(normalized)) {
+            return "decimal".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (PASSWORD.equals(normalized) || RICHTEXT.equals(normalized)) {
+            return "string".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (TOGGLE.equals(normalized)) {
+            return "boolean".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (FILE.equals(normalized)) {
+            return "file".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
+        }
+        if (UUID.equals(normalized)) {
+            return "uuid".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;
         }
         if (DATE.equals(normalized)) {
             return "date".equals(type) ? Compatibility.COMPATIBLE : Compatibility.INCOMPATIBLE;

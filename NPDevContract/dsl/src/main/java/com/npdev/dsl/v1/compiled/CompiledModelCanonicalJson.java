@@ -961,6 +961,7 @@ public final class CompiledModelCanonicalJson {
         node.put("defaultGroup", safe(metadata.getDefaultGroup()));
         node.put("imageField", safe(metadata.getImageField()));
         node.put("customWidgetRef", safe(metadata.getCustomWidgetRef()));
+        node.put("currency", safe(metadata.getCurrency()));
         return node;
     }
 

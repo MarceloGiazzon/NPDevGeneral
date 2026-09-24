@@ -518,6 +518,20 @@ public final class BusinessUiEmitter extends AbstractEmitter {
             node.put("label", fieldLabel(field));
             node.put("columnName", toSnake(field.getName()));
             node.put("type", manifestType(field));
+            // Wave 2 (NPDEV_FEATURE_PLAN_2026-09-24.md): min/max already existed on CompiledSchema
+            // for a numeric field (validation-only, never reached the UI before) -- the slider and
+            // rating widgets are the first renderers to read them client-side.
+            if (field.getSchema() != null) {
+                if (field.getSchema().getMin() != null) {
+                    node.put("min", field.getSchema().getMin());
+                }
+                if (field.getSchema().getMax() != null) {
+                    node.put("max", field.getSchema().getMax());
+                }
+            }
+            if (field.getUi() != null && field.getUi().getCurrency() != null && !field.getUi().getCurrency().isBlank()) {
+                node.put("currency", field.getUi().getCurrency());
+            }
             node.put("required", field.isRequired());
             node.put("id", field.isId());
             node.put("readOnly", field.isId());

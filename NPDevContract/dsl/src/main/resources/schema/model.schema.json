@@ -1910,6 +1910,12 @@
           "type": "integer",
           "minimum": 0
         },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
+        },
         "precision": {
           "type": "integer",
           "minimum": 1,
@@ -2393,6 +2399,10 @@
           "minLength": 1
         },
         "customWidgetRef": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currency": {
           "type": "string",
           "minLength": 1
         }
@@ -4983,6 +4993,12 @@
         "maxLength": {
           "type": "integer",
           "minimum": 0
+        },
+        "min": {
+          "type": "number"
+        },
+        "max": {
+          "type": "number"
         },
         "precision": {
           "type": "integer",
