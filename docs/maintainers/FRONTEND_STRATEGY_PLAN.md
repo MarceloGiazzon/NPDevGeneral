@@ -720,7 +720,7 @@ declared expression nothing evaluates is a lie in the model.
 
 `AGGREGATE_WORKBENCH_PLAN.md` §4 still shows `band.display: selected|all|paged`; `ff4acba` found it
 was never implemented anywhere and closed it without code. **Corpus scanned 2026-07-27: 0 files in
-`golden-ai-scenarios/**` or `knowledge/**` teach it** — so the drift is confined to that one
+`NPDevSamples/ai-scenarios/**` or `NPDevMcp/knowledge/**` teach it** — so the drift is confined to that one
 document. One-paragraph edit; no corpus rebuild.
 
 ### F5-R4 `selectorRef` owner-descoped — record the boundary · **30 min**

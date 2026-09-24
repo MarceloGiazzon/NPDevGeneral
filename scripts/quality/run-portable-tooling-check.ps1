@@ -18,7 +18,7 @@ function Convert-ToRepoPath {
 }
 
 # md-zero-2026-08-11 PLAN.md Phase 5: reconstructs a Group D doc's rendered text from its
-# content/*.json mirror -- the same data scripts/docs/generate_group_d_docs.py renders into the
+# docs/content/*.json mirror -- the same data scripts/docs/generate_group_d_docs.py renders into the
 # actual .md file, so this stays byte-identical to what a reader sees without this script ever
 # opening README.md / docs/GETTING_STARTED.md itself.
 function Get-RenderedContentDoc {
@@ -267,11 +267,11 @@ function Get-HardcodedDriveMatches {
     $scannable = Get-PythonScannableText -Root $Root -Paths $pythonPaths
     $script:PythonProseStrippedFileCount = @($scannable.Keys).Count
     # md-zero-2026-08-11 PLAN.md Phase 5: README.md and docs/GETTING_STARTED.md are GENERATED from
-    # content/*.json (scripts/docs/generate_group_d_docs.py) -- read the rendered text back from
+    # docs/content/*.json (scripts/docs/generate_group_d_docs.py) -- read the rendered text back from
     # that JSON mirror instead of the .md file itself, byte-identical either way.
     $groupDContentSource = @{
-        "README.md"               = "content/readme.json"
-        "docs/GETTING_STARTED.md" = "content/getting-started.json"
+        "README.md"               = "docs/content/readme.json"
+        "docs/GETTING_STARTED.md" = "docs/content/getting-started.json"
     }
     foreach ($file in $scopedFiles) {
         $repoRelative = Convert-ToRepoPath -Root $Root -PathValue $file.FullName
@@ -334,7 +334,7 @@ try {
         # run_validate_semantic), which reports a failed model via exit 2, not the schema-only
         # path's exit 1 -- this fixture is still rejected, just by the stronger default validator.
         (Invoke-NpdevCommand -Name "npdev-invalid-model-rejected" -Root $workspaceRootPath -CommandLine "./npdev validate model NPDevCli/tests/fixtures/invalid-model.json" -ExpectedExitCode 2)
-        (Invoke-NpdevCommand -Name "npdev-normalize-ai-model" -Root $workspaceRootPath -CommandLine "mkdir -p build && ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json > build/npdev-normalized-model.json")
+        (Invoke-NpdevCommand -Name "npdev-normalize-ai-model" -Root $workspaceRootPath -CommandLine "mkdir -p build && ./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json > build/npdev-normalized-model.json")
         (Invoke-NpdevCommand -Name "npdev-generate-app" -Root $workspaceRootPath -CommandLine "./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated")
     )
 
@@ -342,8 +342,8 @@ try {
     $gradleMatches = Get-GradlePwshCoreTaskMatches -Root $workspaceRootPath
     $pathNeutralityScanScope = Get-PathNeutralityScanScope
     $pathNeutralityExcludedPaths = Get-PathNeutralityExcludedPaths
-    $readmeText = Get-RenderedContentDoc -Root $workspaceRootPath -ContentJsonRelativePath "content/readme.json"
-    $gettingStartedText = Get-RenderedContentDoc -Root $workspaceRootPath -ContentJsonRelativePath "content/getting-started.json"
+    $readmeText = Get-RenderedContentDoc -Root $workspaceRootPath -ContentJsonRelativePath "docs/content/readme.json"
+    $gettingStartedText = Get-RenderedContentDoc -Root $workspaceRootPath -ContentJsonRelativePath "docs/content/getting-started.json"
     $linuxExamplesPresent = (
         $readmeText.Contains("./npdev validate model") -and
         $readmeText.Contains("./npdev normalize ai-model") -and
@@ -448,7 +448,7 @@ finally {
     # 2026-08-23: this check runs the README's own documented commands, two of which write into
     # `build/` at the REPO ROOT -- `npdev normalize ai-model > build/npdev-normalized-model.json`
     # and `npdev generate app --output build/npdev-generated` (which also emits build/ArtifactNP).
-    # The relative paths are deliberate: they are exactly what content/readme.json tells a user to
+    # The relative paths are deliberate: they are exactly what docs/content/readme.json tells a user to
     # run, and rewriting them to an absolute external root would put a hardcoded drive letter in
     # the very script whose job is to refuse them. What was wrong is that the artefacts were LEFT
     # BEHIND, so this check violated CLAUDE.md's first rule ("NEVER write generated/build artifacts

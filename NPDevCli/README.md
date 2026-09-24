@@ -5,7 +5,7 @@
 ```bash
 ./npdev --version
 ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
-./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json
+./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json
 ./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated
 ./npdev report bootstrap
 ```

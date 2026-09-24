@@ -7,7 +7,7 @@ you, the eval harness, or an external MCP agent alike. This tool turns that dema
 proposals:
 
   1. cluster candidates by resolved failure signature,
-  2. drop signatures already covered by an existing knowledge/cards/*.json error-fix card,
+  2. drop signatures already covered by an existing NPDevMcp/knowledge/cards/*.json error-fix card,
   3. for each remaining signature seen >= --threshold times, write a DRAFT card to
      <Build>/npdev-ai/capture/drafts/ (NEVER into the repo -- promotion is a human `git mv`).
 
@@ -125,7 +125,7 @@ def _draft_card(sig: str, cluster: dict[str, Any]) -> dict[str, Any]:
             f"Seen {cluster['count']} time(s) across {len(cluster['models'])} model(s). "
             f"Diagnostic code: {code or '(none)'}. "
             f"This error was resolved in the captured runs; verify the fix below is the general "
-            f"remedy, tighten the wording, then `git mv` this file into knowledge/cards/."
+            f"remedy, tighten the wording, then `git mv` this file into NPDevMcp/knowledge/cards/."
         ),
         "keywords": keywords,
         "appliesTo": [rep.get("concept")] if rep.get("concept") else [],

@@ -24,7 +24,7 @@ Generates three fixtures for real (NPDevSamples/scripts/generate-sample-app.ps1 
     exercises is generate-sample-app.ps1 auto-detecting Input/web/ and passing --webAssetsRoot.
 
 untrustedExtensionAsset has no fixture in either corpus location the generator actually builds from
-(untrusted-extension-manifest.json only exists today under golden-ai-scenarios/, which the
+(untrusted-extension-manifest.json only exists today under NPDevSamples/ai-scenarios/, which the
 AI-authoring validation pipeline consumes, not npdev generate) -- this checker asserts the key's
 shape (a non-negative int) rather than a non-zero count for that one category, and says so in its
 output rather than silently passing over the gap.
@@ -202,7 +202,7 @@ def main(argv: list[str]) -> int:
 
     print(
         "\nNote: untrustedExtensionAsset has no generatable corpus fixture today (untrusted-"
-        "extension-manifest.json only exists under golden-ai-scenarios/, consumed by AI-authoring "
+        "extension-manifest.json only exists under NPDevSamples/ai-scenarios/, consumed by AI-authoring "
         "validation, not npdev generate) -- only its shape is checked here, not a non-zero count."
     )
 

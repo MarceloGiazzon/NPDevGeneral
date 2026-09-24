@@ -4,7 +4,7 @@
 WHY THIS EXISTS
 ---------------
 `scripts/quality/firstrun-harness/run-readme.sh` tests NPDev's INSTRUCTIONS by pulling the commands
-out of content/readme.json / content/your-first-app.json and running them on a bare machine. Getting
+out of docs/content/readme.json / docs/content/your-first-app.json and running them on a bare machine. Getting
 a documented command from its written form to something safe to execute has now been wrong in three
 separate ways, and every one of them was found by a ~30-minute container run that then blamed the
 product:
@@ -20,7 +20,7 @@ the docs; until now nothing tested the harness. This does, in milliseconds, with
 and no Docker -- so a fourth shape is caught before it costs half an hour and a wrong diagnosis.
 
 md-zero-2026-08-11 PLAN.md Phase 5: extract_commands.py no longer parses markdown at all (see its
-own docstring) -- it reads content/*.json, the JSON mirror of content/*.yml that
+own docstring) -- it reads docs/content/*.json, the JSON mirror of docs/content/*.yml that
 scripts/docs/generate_group_d_docs.py also renders back into README.md / docs/YOUR_FIRST_APP.md,
 byte-identical. The corpus below moved from raw markdown strings to constructed content-doc dicts
 (the same `{"sections": [{"level", "title", "blocks": [{"type", "lang", "text"}]}]}` shape the real
@@ -196,13 +196,13 @@ readme_content = json.loads((REPO_ROOT / "content" / "readme.json").read_text(en
 live = ex.extract_section_commands(readme_content, QUICKSTART_HEADING)
 if live is None:
     failures.append(
-        "LIVE: content/readme.json has no heading matching " + QUICKSTART_HEADING + " -- the "
+        "LIVE: docs/content/readme.json has no heading matching " + QUICKSTART_HEADING + " -- the "
         "first-run harness would extract nothing and report every downstream check as a product "
-        "failure. Restore the heading in content/readme.yml, or add the new one to run-readme.sh "
+        "failure. Restore the heading in docs/content/readme.yml, or add the new one to run-readme.sh "
         "AND to QUICKSTART_HEADING here.")
 elif not live:
     failures.append(
-        "LIVE: content/readme.json's quickstart section has no sh fence -- the harness would run "
+        "LIVE: docs/content/readme.json's quickstart section has no sh fence -- the harness would run "
         "zero commands and every check after it would fail for that reason alone.")
 else:
     for command in live:
@@ -220,7 +220,7 @@ if yfa_content_path.is_file():
     yfa_content = yfa_content_path.read_text(encoding="utf-8")
     if "git commit -am" not in yfa_content:
         failures.append(
-            "LIVE: content/your-first-app.json no longer contains a `git commit -am` block -- the "
+            "LIVE: docs/content/your-first-app.json no longer contains a `git commit -am` block -- the "
             "harness's step5-commit check selects that block by content and would find nothing.")
 
 # C1/B5 (Cold Clone Audit fix, 2026-08-28): Getting Started's first-hour fences are now the SAME
@@ -239,16 +239,16 @@ if getStarted_content_path.is_file():
     if gs_s1 != ["./npdev --version",
                  "./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json"]:
         failures.append(
-            "LIVE: content/getting-started.json section 1 (Validate a model) no longer extracts to "
+            "LIVE: docs/content/getting-started.json section 1 (Validate a model) no longer extracts to "
             "the version + canonical-demo validate commands the first hour is built on. The Getting "
-            "Started doc's fences are load-bearing; edit content/getting-started.yml and re-render, "
+            "Started doc's fences are load-bearing; edit docs/content/getting-started.yml and re-render, "
             "or update this pin deliberately.")
 
     gs_s2 = ex.extract_section_commands(gs, r"^##\s+2\.\s+Create and run an app of your own")
     if gs_s2 != ["./npdev doctor", "./npdev setup", "./npdev init ../my-app",
                  "./npdev dev --model ../my-app/model.json"]:
         failures.append(
-            "LIVE: content/getting-started.json section 2 (Create and run an app of your own) no "
+            "LIVE: docs/content/getting-started.json section 2 (Create and run an app of your own) no "
             "longer extracts to doctor -> setup -> init -> dev -- the exact commands README's "
             "quickstart executes nightly. Keep the doc's first hour aligned with the tested path "
             "(see the Cold Clone Audit B5 finding).")

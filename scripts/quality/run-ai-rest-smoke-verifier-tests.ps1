@@ -30,7 +30,7 @@ try {
     $baseUrl = "http://127.0.0.1:$port"
     $positiveReportPath = Join-Path $testRoot "positive-result.json"
     pwsh -NoProfile -File scripts/ai/Invoke-AiRestSmokeVerifier.ps1 `
-        -VerificationPath golden-ai-scenarios/base-ai-loop/ai-verification-report.json `
+        -VerificationPath NPDevSamples/ai-scenarios/base-ai-loop/ai-verification-report.json `
         -BaseUrl $baseUrl `
         -ReportPath $positiveReportPath | Out-Null
     if ($LASTEXITCODE -ne 0) {
@@ -146,7 +146,7 @@ try {
     $negativeReportPath = Join-Path $testRoot "negative-result.json"
     $ErrorActionPreference = "Continue"
     pwsh -NoProfile -File scripts/ai/Invoke-AiRestSmokeVerifier.ps1 `
-        -VerificationPath golden-ai-scenarios/behavior-mismatch/ai-verification-report.json `
+        -VerificationPath NPDevSamples/ai-scenarios/behavior-mismatch/ai-verification-report.json `
         -BaseUrl $baseUrl `
         -ReportPath $negativeReportPath 2>$null | Out-Null
     $negativeExit = $LASTEXITCODE
@@ -245,7 +245,7 @@ try {
 
     $ErrorActionPreference = "Continue"
     pwsh -NoProfile -File scripts/ai/Invoke-AiRestSmokeVerifier.ps1 `
-        -VerificationPath golden-ai-scenarios/base-ai-loop/ai-verification-report.json `
+        -VerificationPath NPDevSamples/ai-scenarios/base-ai-loop/ai-verification-report.json `
         -BaseUrl $baseUrl `
         -ExpectedPort ($port + 1) `
         -ReportPath (Join-Path $testRoot "wrong-port-result.json") 2>$null | Out-Null

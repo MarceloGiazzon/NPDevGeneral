@@ -8,6 +8,6 @@
   "appliesTo": ["workflow", "flow"],
   "signature": "workflow transition <id> references unknown state <id>",
   "fix": "Add the target state to states[] (and terminalStates[] if terminal), or point the transition's to/from at an already-declared state.",
-  "sourceRefs": ["golden-ai-scenarios/workflow-invalid-transition"],
+  "sourceRefs": ["NPDevSamples/ai-scenarios/workflow-invalid-transition"],
   "status": "active"
 }

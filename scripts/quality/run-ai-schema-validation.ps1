@@ -1,5 +1,5 @@
 param(
-    [string]$ScenarioRoot = "golden-ai-scenarios",
+    [string]$ScenarioRoot = "NPDevSamples/ai-scenarios",
     [string]$ReportPath = "scripts/reports/out/ai-schema-validation-report.json",
     [string]$ScopePolicyPath = "scripts/policy/beta0-scope.json",
     [string]$RunId = ""

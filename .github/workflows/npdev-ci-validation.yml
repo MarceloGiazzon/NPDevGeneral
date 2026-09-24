@@ -246,7 +246,7 @@ jobs:
           chmod +x ./npdev
           ./npdev --version
           ./npdev validate model NPDevContract/dsl/resources/Models/canonical-demo/model.json
-          ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json > /tmp/npdev-normalized-model.json
+          ./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json > /tmp/npdev-normalized-model.json
           ./npdev generate app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json --config NPDevContract/dsl/resources/Models/canonical-demo/config.json --output build/npdev-generated
 
       # Shared-root fix (2026-07-24): the generated app resolves runtimehost-libs to

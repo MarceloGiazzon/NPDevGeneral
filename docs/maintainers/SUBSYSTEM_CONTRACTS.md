@@ -143,8 +143,8 @@ result.
 
 ## AI knowledge substrate
 
-Durable platform findings live as `knowledge/cards/*.json` (schema
-`schemas/ai/knowledge-card.schema.json`). `knowledge/platform-status.json` is a **derived** projection
+Durable platform findings live as `NPDevMcp/knowledge/cards/*.json` (schema
+`schemas/ai/knowledge-card.schema.json`). `NPDevMcp/knowledge/platform-status.json` is a **derived** projection
 of the gaps ledger — regenerate via `scripts/ai/extract_platform_status.py`, never hand-edit.
 
 `scripts/ai/build_knowledge.py` fans these plus the golden scenarios into `<Build>/npdev-ai/`

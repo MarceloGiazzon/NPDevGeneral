@@ -321,7 +321,7 @@ $fakeAiBetaReportPath = Join-Path $testRoot "fake-minimal-ai-beta-green.json"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     scriptPath = "scripts/quality/run-ai-beta-gate.ps1"
     workspaceRoot = $workspaceRoot
-    scenarioRoot = "golden-ai-scenarios"
+    scenarioRoot = "NPDevSamples/ai-scenarios"
     scenarioCount = 1
     scenarios = @(
         @{

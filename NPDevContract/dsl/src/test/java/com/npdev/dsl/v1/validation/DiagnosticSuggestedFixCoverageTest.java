@@ -18,9 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * R1.4 enforcement: no ERROR diagnostic may ship without an actionable {@code suggestedFix}.
  *
- * <p><b>Why the corpus is this package's own source and not {@code golden-ai-scenarios/}.</b> The
+ * <p><b>Why the corpus is this package's own source and not {@code NPDevSamples/ai-scenarios/}.</b> The
  * roadmap item specified "a corpus run over the 28 golden-scenario expected failures". Measured
- * 2026-08-18: {@code golden-ai-scenarios/} holds 28 scenarios of which 23 (not 28) declare
+ * 2026-08-18: {@code NPDevSamples/ai-scenarios/} holds 28 scenarios of which 23 (not 28) declare
  * {@code expectedOutcome: fail}, and NONE of the 23 fails inside this validator. Their models are
  * {@code schemaVersion: ai-model.v1} -- a different schema, which {@code JsonModelParser} cannot
  * even parse as a DSL model -- and their expected diagnostic codes
@@ -161,7 +161,7 @@ class DiagnosticSuggestedFixCoverageTest {
      */
     @Test
     void knowledgeCardHelpKeysNameCardsThatExist() {
-        Path cards = resolveWorkspaceRoot().resolve("knowledge/cards");
+        Path cards = resolveWorkspaceRoot().resolve("NPDevMcp/knowledge/cards");
         for (String message : List.of(
                 "Panel ticketBoard dataSource main: concept not found: Ghost",
                 "Concept Ticket lifecycle: transition to 'archived' is not declared in lifecycle.states",

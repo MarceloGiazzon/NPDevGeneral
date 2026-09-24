@@ -34,7 +34,7 @@ WORKDIR /work
 COPY run-readme.sh /usr/local/bin/run-readme.sh
 COPY inject_field.py /usr/local/bin/inject_field.py
 # The command extractor -- the one place that knows how to turn a documented command (read from
-# content/*.json, cloned in with the repo -- never markdown, this image has no PyYAML) into
+# docs/content/*.json, cloned in with the repo -- never markdown, this image has no PyYAML) into
 # something safe to run. It has its own unit-test corpus (scripts/quality/check-firstrun-extractor.py,
 # in the AI knowledge gate) because getting from written form to runnable has been wrong three
 # separate times and each was found only by a ~30-minute run of THIS container, which then reported

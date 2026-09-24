@@ -144,7 +144,7 @@ function Test-ExternalVerificationUrlBan {
     $ErrorActionPreference = "Continue"
     pwsh -NoProfile -File scripts/quality/Invoke-JsonSchemaValidation.ps1 `
         -SchemaPath "schemas/ai/ai-verification-report.schema.json" `
-        -InstancePath "golden-ai-scenarios/verification-external-curl/ai-verification-report.json" `
+        -InstancePath "NPDevSamples/ai-scenarios/verification-external-curl/ai-verification-report.json" `
         -ReportPath $resultPath 2>$null | Out-Null
     $exitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
@@ -153,7 +153,7 @@ function Test-ExternalVerificationUrlBan {
         Add-Failure $Failures "External verification URL fixture was not rejected by schema validation."
     }
     return [pscustomobject]@{
-        fixture = "golden-ai-scenarios/verification-external-curl/ai-verification-report.json"
+        fixture = "NPDevSamples/ai-scenarios/verification-external-curl/ai-verification-report.json"
         validationReport = $resultPath
         rejected = ($exitCode -ne 0 -and $null -ne $result -and [string]$result.status -eq "failed")
     }

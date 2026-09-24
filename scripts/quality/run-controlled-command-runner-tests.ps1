@@ -237,7 +237,7 @@ try {
     $structuredRestSmoke = Invoke-StructuredRunner -Name "structured-rest-smoke-allowed" -Request ([ordered]@{
         schemaVersion = "npdev-ai-command-request.v1"
         type = "rest-smoke"
-        verificationPath = "golden-ai-scenarios/base-ai-loop/ai-verification-report.json"
+        verificationPath = "NPDevSamples/ai-scenarios/base-ai-loop/ai-verification-report.json"
         baseUrl = "http://127.0.0.1:$restPort"
         expectedPort = $restPort
         timeoutSeconds = 60

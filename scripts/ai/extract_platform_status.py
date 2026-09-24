@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-r"""Project the gaps ledger into knowledge/platform-status.json.
+r"""Project the gaps ledger into NPDevMcp/knowledge/platform-status.json.
 
 docs-decoupling-2026-08-11 PLAN.md Phase 1 inverted the ledger from markdown-as-database
 (docs/OPEN_GAPS_AND_ROADMAP.md's own "## 1. Priority index" / "## 7. Fixed engine bugs" tables,
@@ -17,7 +17,7 @@ change). That quirk is not this migration's to fix; the point of resynthesis-the
 extraction logic did not change at all, only where the row text comes from -- so the output is
 proven byte-identical, bugs included (see the Phase 1 commit message for the before/after SHA-256).
 
-Output is committed at knowledge/platform-status.json and CI-checked against a fresh extraction, so
+Output is committed at NPDevMcp/knowledge/platform-status.json and CI-checked against a fresh extraction, so
 the projection and the ledger can never silently diverge (run-ai-knowledge-gate.ps1).
 
 Usage:
@@ -41,7 +41,7 @@ import yaml
 from npdev_ai_common import repo_root
 
 LEDGER = "ledger/gaps.yml"
-OUTPUT = "knowledge/platform-status.json"
+OUTPUT = "NPDevMcp/knowledge/platform-status.json"
 
 _ID = re.compile(r"^\s*(#\d+|[A-Z][A-Za-z]*-[A-Za-z0-9][A-Za-z0-9-]*)")
 _STATUS_WORD = re.compile(r"^(OPEN|PARTIAL|NEEDS-VERIFY|DONE|BOUNDARY|LIFTED)", re.IGNORECASE)

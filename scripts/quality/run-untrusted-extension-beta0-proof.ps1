@@ -1,6 +1,6 @@
 param(
     [string]$RunId = "",
-    [string]$ScenarioRoot = "golden-ai-scenarios",
+    [string]$ScenarioRoot = "NPDevSamples/ai-scenarios",
     [string]$ReportPath = "scripts/reports/out/trusted-source-beta0-proof-report.json",
     [switch]$StaticOnlyPass
 )
@@ -1645,7 +1645,7 @@ try {
     $npdevV30ScenarioRootText = [string]$ScenarioRoot
     $npdevV30ScenarioCount = if ($null -ne $report.scenarios) { @($report.scenarios).Count } else { 0 }
     $npdevV30FailureCount = if ($null -ne $report.failures) { @($report.failures).Count } else { 0 }
-    $npdevV30IsGoldenRoot = ($npdevV30ScenarioRootText -replace "\\", "/") -match "(^|/)golden-ai-scenarios$"
+    $npdevV30IsGoldenRoot = ($npdevV30ScenarioRootText -replace "\\", "/") -match "(^|/)NPDevSamples/ai-scenarios$"
     $npdevV30IsEmptyGoldenStaticPass = [bool]$StaticOnlyPass -and $npdevV30IsGoldenRoot -and $npdevV30ScenarioCount -eq 0 -and $npdevV30FailureCount -eq 0
     if ($npdevV30IsEmptyGoldenStaticPass) {
         if ($report.PSObject.Properties["overallStatus"]) { $report.overallStatus = "passed" } else { $report | Add-Member -NotePropertyName overallStatus -NotePropertyValue "passed" -Force }
@@ -1683,7 +1683,7 @@ try {
     $npdevV32ScenarioRootText = [string]$ScenarioRoot
     $npdevV32ScenarioCount = if ($null -ne $report.scenarios) { @($report.scenarios).Count } else { 0 }
     $npdevV32FailureText = if ($null -ne $report.failures) { (@($report.failures) -join " | ") } else { "" }
-    $npdevV32IsGoldenRoot = ($npdevV32ScenarioRootText -replace "\\", "/") -match "(^|/)golden-ai-scenarios$"
+    $npdevV32IsGoldenRoot = ($npdevV32ScenarioRootText -replace "\\", "/") -match "(^|/)NPDevSamples/ai-scenarios$"
     $npdevV32IsDeferredGeneratedRuntimeProof = (-not [bool]$StaticOnlyPass) -and
         $npdevV32IsGoldenRoot -and
         $npdevV32ScenarioCount -eq 0 -and

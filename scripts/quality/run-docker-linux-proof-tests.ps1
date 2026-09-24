@@ -53,7 +53,7 @@ Add-Assertion -Name "timeout-policy-reported" -Passed ($null -ne $missingDockerR
 $policy = Read-Json "scripts/policy/beta-release-gate-policy.json"
 $scope = Read-Json "scripts/policy/beta0-scope.json"
 $commandPolicy = Read-Json "scripts/policy/ai-command-policy.json"
-$pathTraversalRequest = Read-Json "golden-ai-scenarios/command-policy-path-traversal/command-request.json"
+$pathTraversalRequest = Read-Json "NPDevSamples/ai-scenarios/command-policy-path-traversal/command-request.json"
 $dockerRequiredReport = @($policy.requiredReports | Where-Object { [string]$_.path -eq "scripts/reports/out/docker-linux-parity-report.json" })
 $runtimePreflightReport = @($policy.requiredReports | Where-Object { [string]$_.path -eq "scripts/reports/out/runtimehost-staged-jar-preflight-report.json" })
 Add-Assertion -Name "docker-report-is-release-required" -Passed ($dockerRequiredReport.Count -eq 1) -Message "docker-linux-parity-report.json is not a release required report."

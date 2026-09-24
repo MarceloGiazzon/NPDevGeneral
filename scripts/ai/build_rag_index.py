@@ -3,9 +3,9 @@
 
 Chunks by OBJECT / SECTION (not arbitrary token windows), so retrieval returns a whole concept,
 flow, or doc section:
-  - prose docs     -> one chunk per `##`/`###` heading section, read from content/*.json (never a
+  - prose docs     -> one chunk per `##`/`###` heading section, read from docs/content/*.json (never a
     .md -- md-zero-2026-08-11 PLAN.md Phase 4; the three docs this used to read are GENERATED from
-    content/*.yml by scripts/docs/generate_group_e_docs.py, which also mirrors it as JSON),
+    docs/content/*.yml by scripts/docs/generate_group_e_docs.py, which also mirrors it as JSON),
   - sample models  -> one chunk per concept / flow / panel / procedure (with the JSON snippet),
     tagged with keywords pulled from field types, reference targets, and onDelete so queries like
     "cascade delete bond" match.
@@ -18,7 +18,7 @@ WHY JSON, NOT THE AUTHORED YAML: `./npdev setup` calls this script on every real
 in CI -- and PyYAML is explicitly a repo-dev/CI-only dependency (scripts/requirements.txt's own
 comment: "NOT a dependency of the shipped CLI itself"). Found live running the first-run harness
 (a bare machine, nothing installed beyond what README documents): `import yaml` here broke
-`npdev setup` on a fresh install. content/*.json carries the identical data, stdlib-readable.
+`npdev setup` on a fresh install. docs/content/*.json carries the identical data, stdlib-readable.
 
 Usage: python scripts/ai/build_rag_index.py
 """
@@ -34,16 +34,16 @@ from typing import Any
 from npdev_ai_common import ai_out_dir, repo_root
 
 CONTENT_FILES = [
-    "content/npdev-concepts-deep-dive.json",
-    "content/npdev-user-manual.json",
-    "content/authoring-for-ai.json",
+    "docs/content/npdev-concepts-deep-dive.json",
+    "docs/content/npdev-user-manual.json",
+    "docs/content/authoring-for-ai.json",
 ]
 
 SAMPLE_OBJECT_KEYS = ["concepts", "flows", "panels", "procedures", "orchestrations", "events"]
 
 
 def chunk_content_doc(content_rel: str, doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """One chunk per section already split out in content/*.yml (read here via its content/*.json
+    """One chunk per section already split out in docs/content/*.yml (read here via its docs/content/*.json
     mirror) -- pre-chunked by `##`/`###` heading, so this just maps section -> chunk instead of
     re-parsing markdown."""
     chunks: list[dict[str, Any]] = []
@@ -67,7 +67,7 @@ def chunk_content_doc(content_rel: str, doc: dict[str, Any]) -> list[dict[str, A
 def chunk_cards(root: Path) -> list[dict[str, Any]]:
     """One chunk per active knowledge card (idea 1: merge maintainer findings into retrieval).
 
-    Cards live in knowledge/cards/*.json; superseded ones are skipped. The card body is already
+    Cards live in NPDevMcp/knowledge/cards/*.json; superseded ones are skipped. The card body is already
     capped at 4000 chars (knowledge-card.schema.json) to index whole, matching the doc/sample cap.
     """
     cards_dir = root / "knowledge" / "cards"

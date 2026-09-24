@@ -30,7 +30,7 @@ class AiModelToDslMappingTest {
     private static final Path WORKSPACE_ROOT = resolveWorkspaceRoot();
     private static final Path POLICY_PATH = WORKSPACE_ROOT.resolve("scripts/policy/ai-model-to-dsl-mapping-policy.json");
     private static final Path AI_MODEL_SCHEMA_PATH = WORKSPACE_ROOT.resolve("schemas/ai/ai-model.schema.json");
-    private static final Path SCENARIO_ROOT = WORKSPACE_ROOT.resolve("golden-ai-scenarios");
+    private static final Path SCENARIO_ROOT = WORKSPACE_ROOT.resolve("NPDevSamples/ai-scenarios");
     private static final Path TEST_OUTPUT_ROOT = WORKSPACE_ROOT.resolve("scripts/reports/tmp/ai-model-to-dsl-mapping-test");
     private static final Set<String> ALLOWED_CLASSIFICATIONS = Set.of(
             "mapped",
@@ -238,7 +238,7 @@ class AiModelToDslMappingTest {
                 "-File",
                 "scripts/ai/Normalize-AiContract.ps1",
                 "-ScenarioPath",
-                "golden-ai-scenarios/" + scenarioId,
+                "NPDevSamples/ai-scenarios/" + scenarioId,
                 "-OutputDirectory",
                 relativeToWorkspace(scenarioOutput),
                 "-ResultPath",

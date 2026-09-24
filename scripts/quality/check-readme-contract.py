@@ -28,8 +28,8 @@ the steps run.
 md-zero-2026-08-11 PLAN.md Phase 5: this used to carry its OWN, third, independent duplicate of
 fenced-command extraction (a second one lives in scripts/quality/firstrun-harness/extract_commands.py,
 a third existed as a purpose-built parser embedded in run-readme.sh, both now also reading
-content/*.json instead of re-parsing markdown). All three now share ONE extraction implementation:
-this imports extract_commands.py directly and reads the same content/*.json mirrors README.md and
+docs/content/*.json instead of re-parsing markdown). All three now share ONE extraction implementation:
+this imports extract_commands.py directly and reads the same docs/content/*.json mirrors README.md and
 docs/YOUR_FIRST_APP.md are generated from (scripts/docs/generate_group_d_docs.py).
 """
 from __future__ import annotations
@@ -48,8 +48,8 @@ import extract_commands  # noqa: E402
 # they do. Adding a doc here is how you put it under contract. `None` heading -> every sh block in
 # the content file, matching extract_commands.section_blocks' "no filter" case.
 DOCS = [
-    ("content/readme.json", "## See it run"),
-    ("content/your-first-app.json", None),
+    ("docs/content/readme.json", "## See it run"),
+    ("docs/content/your-first-app.json", None),
 ]
 
 CLI = REPO / "NPDevCli" / "npdev_cli.py"

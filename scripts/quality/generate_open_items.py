@@ -3,7 +3,7 @@
 OPEN_ITEMS.md from ledger/items/*.yml -- the single source of truth for tracked items.
 
 Never hand-edit the generated file -- it is a projection, the same discipline
-knowledge/platform-status.json already uses relative to the gaps ledger
+NPDevMcp/knowledge/platform-status.json already uses relative to the gaps ledger
 (scripts/ai/extract_platform_status.py).
 
 MIGRATION COMPLETE (see ledger/README.md): all 64 tracked ids are migrated.

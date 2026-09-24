@@ -8,6 +8,6 @@
   "appliesTo": ["panel"],
   "signature": "panel <id> references unknown entity <id>",
   "fix": "Add the entity to entities/concepts, or fix the panel's entity reference to an existing concept name (exact, case-sensitive). List existing concepts with npdev_inspect_app first.",
-  "sourceRefs": ["golden-ai-scenarios/panel-unknown-entity"],
+  "sourceRefs": ["NPDevSamples/ai-scenarios/panel-unknown-entity"],
   "status": "active"
 }

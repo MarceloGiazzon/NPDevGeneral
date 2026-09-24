@@ -156,7 +156,7 @@ def render(schema: dict) -> str:
         "through the AI authoring loop (see `docs/adr/ADR-0006-authoring-path.md`).\n"
         "- `docs/NPDEV_CONCEPTS_DEEP_DIVE.md` — the conceptual model behind concepts/flows/"
         "capabilities/panels.\n"
-        "- `knowledge/cards/*.json` — durable platform findings; `npdev_search_examples`/"
+        "- `NPDevMcp/knowledge/cards/*.json` — durable platform findings; `npdev_search_examples`/"
         "`npdev_search_fix` (MCP) query this corpus directly.\n"
         "- Validation error codes carry a `suggestedFix`/`helpKey` "
         "(`ValidationDiagnostic`) — every `ModelValidatorMain`/`npdev validate model` JSON "

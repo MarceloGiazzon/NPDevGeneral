@@ -22,7 +22,7 @@ validate-model:
 	$(NPDEV) validate model $(MODEL)
 
 normalize-ai:
-	$(NPDEV) normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json
+	$(NPDEV) normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json
 
 generate-app:
 	$(NPDEV) generate app --model $(MODEL) --config $(CONFIG) --output $(OUTPUT)

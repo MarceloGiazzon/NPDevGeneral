@@ -138,7 +138,7 @@ sections:
     lang: sh
     text: |-
       ./npdev doctor
-      ./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json
+      ./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json
       ./npdev report bootstrap
   - type: prose
     text: |2

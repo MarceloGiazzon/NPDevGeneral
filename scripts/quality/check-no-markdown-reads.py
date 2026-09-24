@@ -475,14 +475,14 @@ def calibrate() -> int:
         ("variable assigned a .md literal, then read -- MUST fire",
          'p = "docs/adr/ADR-0011.md"\nopen(p).read()\n', True),
         ("tuple-unpacked for-loop target, the plan's own noted false-negative -- MUST fire",
-         'TARGETS = [("content/readme.yml", "README.md")]\n'
+         'TARGETS = [("docs/content/readme.yml", "README.md")]\n'
          'for yaml_rel, md_rel in TARGETS:\n'
          '    open(md_rel).read()\n', True),
         ("tuple-unpacked for-loop target, the OTHER (non-.md) position read -- must stay silent "
          "(the real generate_group_d_docs.py false positive positional tracking was built for: "
          "TARGETS = [(yaml_rel, json_rel, md_rel), ...], only yaml_path.read_text() was called, "
          "and whole-tuple tainting flagged it anyway for being unpacked alongside md_rel)",
-         'TARGETS = [("content/readme.yml", "content/readme.json", "README.md")]\n'
+         'TARGETS = [("docs/content/readme.yml", "docs/content/readme.json", "README.md")]\n'
          'for yaml_rel, json_rel, md_rel in TARGETS:\n'
          '    yaml_path = ROOT / yaml_rel\n'
          '    open(yaml_path).read()\n', False),
@@ -491,9 +491,9 @@ def calibrate() -> int:
         ("subprocess grep on a .md literal -- MUST fire",
          'import subprocess\nsubprocess.run(["grep", "-l", "TODO", "README.md"])\n', True),
         ("a .json read -- must stay silent (not just \"any open() call\")",
-         'import json\njson.loads(open("content/readme.json").read())\n', False),
+         'import json\njson.loads(open("docs/content/readme.json").read())\n', False),
         ("a variable assigned a .json literal, then read -- must stay silent",
-         'p = "content/readme.json"\nopen(p).read()\n', False),
+         'p = "docs/content/readme.json"\nopen(p).read()\n', False),
     ]
     for label, source, expect_fire in py_cases:
         report(label, scan_python(Path("fixture.py"), source), expect_fire)
@@ -520,14 +520,14 @@ def calibrate() -> int:
         ("Get-Content on a tainted variable -- MUST fire",
          '$doc = "docs/GETTING_STARTED.md"\nGet-Content -LiteralPath $doc\n', True),
         ("Get-Content on a .json path -- must stay silent",
-         'Get-Content -LiteralPath "content/readme.json"\n', False),
+         'Get-Content -LiteralPath "docs/content/readme.json"\n', False),
     ]
     for label, source, expect_fire in ps_cases:
         report(label, scan_powershell(source), expect_fire)
 
     sh_cases = [
         ("grep on a literal .md -- MUST fire", 'grep -m1 Requires README.md\n', True),
-        ("cat on a .json path -- must stay silent", 'cat content/readme.json\n', False),
+        ("cat on a .json path -- must stay silent", 'cat docs/content/readme.json\n', False),
     ]
     for label, source, expect_fire in sh_cases:
         report(label, scan_shell(source), expect_fire)

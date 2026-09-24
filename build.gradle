@@ -159,7 +159,7 @@ tasks.register('validateAiScenarios') {
     description = 'Natively validates active AI scenario manifests and AI models with the Node JSON Schema validator.'
 
     doLast {
-        def scenarioRoot = file('golden-ai-scenarios')
+        def scenarioRoot = file('NPDevSamples/ai-scenarios')
         def activeScenarioDirs = scenarioRoot.listFiles()
                 .findAll { it.directory && it.name != 'deferred' }
                 .sort { it.name }
@@ -204,7 +204,7 @@ tasks.register('validateAiScenarios') {
                 evidence: [
                         activeScenarioCount: activeScenarioDirs.size(),
                         validatedArtifactCount: validatedArtifacts,
-                        deferredRootExcluded: 'golden-ai-scenarios/deferred'
+                        deferredRootExcluded: 'NPDevSamples/ai-scenarios/deferred'
                 ],
                 details: [failures: failures]
         )
@@ -216,7 +216,7 @@ tasks.register('validateScenarioCoherence') {
     description = 'Natively checks active scenario coherence invariants previously enforced by script logic.'
 
     doLast {
-        def scenarioRoot = file('golden-ai-scenarios')
+        def scenarioRoot = file('NPDevSamples/ai-scenarios')
         def scenarioDirs = scenarioRoot.listFiles()
                 .findAll { it.directory && it.name != 'deferred' }
                 .sort { it.name }
@@ -268,7 +268,7 @@ tasks.register('validateScenarioCoherence') {
                 evidence: [
                         activeScenarioCount: scenarioDirs.size(),
                         expectedActiveScenarioCount: 30,
-                        deferredRootExcluded: 'golden-ai-scenarios/deferred'
+                        deferredRootExcluded: 'NPDevSamples/ai-scenarios/deferred'
                 ],
                 details: [failures: failures]
         )

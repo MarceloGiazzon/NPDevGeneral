@@ -247,9 +247,9 @@ foreach ($caseName in $panelCases.Keys) {
 $panelRun = Invoke-Proof -ScenarioRoot $panelRoot -Name "panel-negative" -StaticOnlyPass
 if ($panelRun.report.overallStatus -ne "passed") { throw "Panel negative cases did not pass fail-closed proof." }
 
-$goldenRun = Invoke-Proof -ScenarioRoot (Join-Path $workspaceRoot "golden-ai-scenarios") -Name "golden-static" -StaticOnlyPass
+$goldenRun = Invoke-Proof -ScenarioRoot (Join-Path $workspaceRoot "NPDevSamples/ai-scenarios") -Name "golden-static" -StaticOnlyPass
 if ($goldenRun.report.overallStatus -ne "passed") { throw "Golden trusted-source static proof did not pass." }
-$runtimeRun = Invoke-Proof -ScenarioRoot (Join-Path $workspaceRoot "golden-ai-scenarios") -Name "golden-generated-runtime-proof"
+$runtimeRun = Invoke-Proof -ScenarioRoot (Join-Path $workspaceRoot "NPDevSamples/ai-scenarios") -Name "golden-generated-runtime-proof"
 # NPDEV_V33_SKIP_RUNTIME_ASSERTIONS_WHEN_BETA0_DEFERRED_BEGIN
 if (-not [bool]$runtimeRun.report.beta0DeferredGeneratedRuntimeTrustedSourceProof) {
 if ($runtimeRun.report.trustedSourceSupportStatus -ne "passed" -or $runtimeRun.report.overallStatus -ne "passed") {

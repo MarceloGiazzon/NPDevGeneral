@@ -73,7 +73,7 @@
       "checker": {
         "path": "scripts/ai/build_knowledge.py"
       },
-      "note": "The AI knowledge substrate (knowledge/cards/*.json, MCP search tools, validated by build_knowledge.py --validate-only in the AI knowledge gate) is real but partial -- it describes the platform, not yet 'why does this model element exist' from a semantic graph. That's P2.2-P2.4's acceptance slice."
+      "note": "The AI knowledge substrate (NPDevMcp/knowledge/cards/*.json, MCP search tools, validated by build_knowledge.py --validate-only in the AI knowledge gate) is real but partial -- it describes the platform, not yet 'why does this model element exist' from a semantic graph. That's P2.2-P2.4's acceptance slice."
     }
   ]
 }
