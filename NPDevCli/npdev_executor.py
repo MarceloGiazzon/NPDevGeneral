@@ -20,11 +20,16 @@ SECURITY POSTURE (this is why the plan defers the executor to last and gates it 
      all belong to that reviewed, CI-tested runner -- the executor adds no second opinion and no
      bypass. In particular the runner's 600s cap is respected, never overridden: a long gate that
      exceeds it records a timed-out FAILED run, which is the honest answer.
-  3. No HTTP surface. The executor is reachable from a terminal (`npdev verify --run`) and from the
-     local Manager's own Tauri command only. The generated app's verification page (Phase 4) has NO
-     Run control and must never get one -- a button that runs scripts from a served web page is
-     remote-code-execution shaped (S5.3's reason), and it stays out of the app document by having
-     runnable:false everywhere there.
+  3. No HTTP surface, still true of THIS executor: it is reachable from a terminal
+     (`npdev verify --run`) and from the local Manager's own Tauri command only, never from a served
+     page. S5.3's original reasoning ("a button that runs scripts from a served web page is
+     remote-code-execution shaped") was correct and is still why almost every item in the generated
+     app's verification page stays runnable:false forever -- but S5.3 was DELIBERATELY, narrowly
+     lifted for exactly three fixed, individually-reviewed, read-only scripts
+     (Status-App.ps1/Status-Environment.ps1/Check-Provenance.ps1), served through a SEPARATE,
+     independently-reasoned mechanism (`ControlPanelHealthController`, RuntimeHost Java, its own
+     hardcoded allowlist + SUPERUSER auth + timeout), never through this executor. This executor's
+     own posture is unchanged; see that controller's javadoc for the lift's full reasoning.
   4. A BLOCKED run records nothing. If the controlled runner refuses the command, nothing ran, so
      the refusal must not be recorded as a failure -- that would turn a policy config bug into
      cadence evidence.

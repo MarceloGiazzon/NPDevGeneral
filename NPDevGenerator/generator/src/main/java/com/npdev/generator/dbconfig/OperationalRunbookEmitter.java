@@ -322,6 +322,27 @@ load_npdev_agent_proxy_env() {
 """;
 
     /**
+     * Health run/stop (the S5.3 boundary lift): {@code ControlPanelHealthController} needs its own
+     * {@code _ops} directory's absolute path to resolve a runnable item id against a real script
+     * file -- it has no other way to find it, since {@code _ops} is a SIBLING of the app module, not
+     * inside it. Every launcher script already lives inside {@code _ops} itself, so
+     * {@code $PSScriptRoot} already IS that path; no discovery logic is needed, only exporting it
+     * into the process environment the same way the OAuth/secrets loaders above already do.
+     */
+    private static final String OPS_DIR_ENV_SETTER = """
+
+# S5.3 lift: ControlPanelHealthController resolves a runnable script id against $NPDEV_OPS_DIR.
+$env:NPDEV_OPS_DIR = $PSScriptRoot
+""";
+
+    /** POSIX twin of {@link #OPS_DIR_ENV_SETTER}. */
+    private static final String OPS_DIR_ENV_SETTER_SH = """
+
+# S5.3 lift: ControlPanelHealthController resolves a runnable script id against $NPDEV_OPS_DIR.
+export NPDEV_OPS_DIR="$SCRIPT_DIR"
+""";
+
+    /**
      * SEC-11: the POSIX twin of {@link #OAUTH_SECRET_ENV_LOADER} -- reads the Google OAuth
      * client id/secret from the OS credential store via {@code npdev-manager --get-secret} and
      * exports them directly into the process environment. No persisted file, per SEC-11 decision 3.
@@ -1803,7 +1824,7 @@ $logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yy
 Write-Host "Logging this run to $logFile"
 """ + API_KEY_PROVISIONER + """
 Ensure-NpdevApiKey -AppRoot $appRoot
-""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + """
+""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + OPS_DIR_ENV_SETTER + """
 
 # 2>&1 merges the JVM's stderr into the same stream, because a stack trace on stderr is exactly what
 # the person reading this file is looking for. Tee keeps the console live -- a run that only writes
@@ -1862,7 +1883,7 @@ LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
 echo "Logging this run to $LOG_FILE"
 """ + API_KEY_PROVISIONER_SH + """
 ensure_npdev_api_key "$APP_ROOT"
-""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + """
+""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + OPS_DIR_ENV_SETTER_SH + """
 load_npdev_oauth_google_env
 load_npdev_agent_proxy_env "$APP_ROOT"
 
@@ -1943,7 +1964,7 @@ $errFile = Join-Path $PSScriptRoot 'app.stderr.log'
 
 """ + API_KEY_PROVISIONER + """
 Ensure-NpdevApiKey -AppRoot $appRoot
-""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + """
+""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + OPS_DIR_ENV_SETTER + """
 
 $jar = Get-ChildItem -LiteralPath $appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
        Where-Object { $_.FullName -like '*\\build\\libs\\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
@@ -2050,7 +2071,7 @@ ERR_FILE="$SCRIPT_DIR/app.stderr.log"
 
 """ + API_KEY_PROVISIONER_SH + """
 ensure_npdev_api_key "$APP_ROOT"
-""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + """
+""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + OPS_DIR_ENV_SETTER_SH + """
 load_npdev_oauth_google_env
 load_npdev_agent_proxy_env "$APP_ROOT"
 

@@ -1383,9 +1383,11 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.4.1: DB Import/Export fixes -- precondition failures (missing jar, no connection, etc.) now \
-     honor --json instead of surfacing as a raw parser error, and CSV export/import no longer \
-     collapses a NOT NULL column's legitimate empty string into NULL on round-trip."
+    "0.4.2: New Secrets tab exposes the existing db/deploy OS-keyring credential store (set/replace/ \
+     delete a scoped secret, never reads a value back); GitHub added as a second OAuth sign-in \
+     provider alongside Google; generated apps can now run three fixed, reviewed, read-only \
+     health checks live from their own Verification page (Status-App, Status-Environment, \
+     Check-Provenance), Super User only."
         .to_string()
 }
 
@@ -1393,7 +1395,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "DB Export/Import Fix";
+const CURRENT_VERSION_TITLE: &str = "Secrets Tab + GitHub OAuth";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {

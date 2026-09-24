@@ -531,6 +531,20 @@ def _human_name(identifier: str) -> str:
     return spaced
 
 
+# S5.3 lift: the ONLY filenames ControlPanelHealthController.java will ever execute -- see that
+# class's own javadoc for why these three (each read line-by-line and confirmed read-only/non-
+# secret-leaking) and why every other _ops script was excluded (lifecycle, destructive, or looked
+# safe by name and was not: Print-DbConnectionInfo.ps1 prints the live DB password, Test-App.ps1/
+# Smoke-Test.ps1 write real database rows). Kept in lockstep with that class's RUNNABLE_SCRIPTS map
+# AND New-VerificationPanelPage.ps1's own copy -- all three hardcoded independently on purpose, so
+# none can drift into allowlisting a script the others never reviewed.
+HEALTH_RUNNABLE_SCRIPTS = {
+    "Status-App.ps1": "status-app",
+    "Status-Environment.ps1": "status-environment",
+    "Check-Provenance.ps1": "check-provenance",
+}
+
+
 def emit_verification_panel_page(static_dir: Path, ops_dir: Path, app_id: str = "") -> Path:
     static_dir.mkdir(parents=True, exist_ok=True)
     items: list[dict] = []
@@ -538,16 +552,24 @@ def emit_verification_panel_page(static_dir: Path, ops_dir: Path, app_id: str = 
     if ops_dir.is_dir():
         for script in sorted(ops_dir.glob("*.ps1")):
             item_id = _to_verification_id(script.stem)
+            health_id = HEALTH_RUNNABLE_SCRIPTS.get(script.name)
+            runnable = health_id is not None
+            description = (
+                f"Emitted app operation {ops_dir}\\{script.name}; read-only self-check, live "
+                "Run/Stop/View-log available above when signed in as Super User."
+                if runnable else
+                f"Emitted app operation {ops_dir}\\{script.name}; read-only here "
+                "(re-run via the generated Run/Start/Stop scripts, never from this page)."
+            )
             items.append({
                 "id": item_id,
                 "name": _human_name(script.stem),
-                "description": (f"Emitted app operation {ops_dir}\\{script.name}; read-only here "
-                                 "(re-run via the generated Run/Start/Stop scripts, never from this "
-                                 "page)."),
+                "description": description,
                 "category": "check-script",
                 "tier": None,
                 "command": script.name,
-                "runnable": False,
+                "runnable": runnable,
+                "healthId": health_id,
                 "maxStaleness": None,
                 "lastRun": None,
             })

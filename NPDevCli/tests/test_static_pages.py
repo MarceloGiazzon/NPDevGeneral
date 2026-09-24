@@ -110,31 +110,68 @@ class StaticPagesFixtureTest(unittest.TestCase):
         # the ONE regrouping app-tree-v2 does that app-tree (v1) does not.
         self.assertIn("App Config", doc["sections"]["Configs"]["Project General"])
 
-    def test_verification_panel_page_is_read_only_and_embeds_no_fetch(self):
+    def test_verification_panel_page_embeds_a_baked_snapshot_and_the_health_fetch_only(self):
         dest = sp.emit_verification_panel_page(self.static_dir, self.ops_dir, "myapp")
         html = dest.read_text(encoding="utf-8")
         self.assertNotIn("__APP__", html)
         self.assertNotIn("__BLOB__", html)
-        # S5.3 (the plan's own hard requirement): no fetch() at all -- the inventory is baked in.
-        self.assertNotIn("fetch(", html)
+        # S5.3 was lifted, not removed: the page still works with zero network calls (VERIFICATION
+        # is still a baked-in blob), and the ONLY fetch() calls it ever makes target
+        # ControlPanelHealthController's own fixed path prefix -- never an arbitrary URL, and never
+        # one built from item data.
+        self.assertIn("var VERIFICATION = ", html)
+        self.assertIn("fetch('/api/admin/health/items'", html)
+        self.assertIn("fetch('/api/admin/health/run/'", html)
+        self.assertIn("fetch('/api/admin/health/stop/'", html)
 
         doc = json.loads((self.static_dir / "verification.json").read_text(encoding="utf-8"))
         self.assertEqual("npdev-verification-panel.v1", doc["schemaVersion"])
         self.assertEqual("myapp", doc["subject"]["name"])
 
-    def test_verification_panel_lists_emitted_ops_scripts_as_check_scripts(self):
+    def test_verification_panel_marks_only_the_reviewed_allowlist_as_runnable(self):
+        # The dangerous/lifecycle scripts a naive "make every _ops/*.ps1 runnable" allowlist would
+        # have exposed -- these must NEVER become runnable, regardless of what else changes here.
         (self.ops_dir / "Reset-Environment.ps1").write_text("# stub\n", encoding="utf-8")
         (self.ops_dir / "Start-Environment.ps1").write_text("# stub\n", encoding="utf-8")
+        (self.ops_dir / "Stop-App.ps1").write_text("# stub\n", encoding="utf-8")
+        (self.ops_dir / "Print-DbConnectionInfo.ps1").write_text("# stub\n", encoding="utf-8")
+        (self.ops_dir / "Test-App.ps1").write_text("# stub\n", encoding="utf-8")
+        # The three reviewed, read-only scripts -- these, and only these, must be runnable.
+        (self.ops_dir / "Status-App.ps1").write_text("# stub\n", encoding="utf-8")
+        (self.ops_dir / "Status-Environment.ps1").write_text("# stub\n", encoding="utf-8")
+        (self.ops_dir / "Check-Provenance.ps1").write_text("# stub\n", encoding="utf-8")
 
         sp.emit_verification_panel_page(self.static_dir, self.ops_dir, "myapp")
         doc = json.loads((self.static_dir / "verification.json").read_text(encoding="utf-8"))
 
         check_scripts = [i for i in doc["items"] if i["category"] == "check-script"]
-        names = {i["name"] for i in check_scripts}
-        self.assertIn("Reset Environment", names)
-        self.assertIn("Start Environment", names)
+        self.assertEqual(8, len(check_scripts))
+        runnable_by_name = {i["command"]: i["runnable"] for i in check_scripts}
+        self.assertEqual(
+            {
+                "Reset-Environment.ps1": False,
+                "Start-Environment.ps1": False,
+                "Stop-App.ps1": False,
+                "Print-DbConnectionInfo.ps1": False,
+                "Test-App.ps1": False,
+                "Status-App.ps1": True,
+                "Status-Environment.ps1": True,
+                "Check-Provenance.ps1": True,
+            },
+            runnable_by_name,
+        )
+        health_ids_by_name = {i["command"]: i["healthId"] for i in check_scripts if i["runnable"]}
+        self.assertEqual(
+            {
+                "Status-App.ps1": "status-app",
+                "Status-Environment.ps1": "status-environment",
+                "Check-Provenance.ps1": "check-provenance",
+            },
+            health_ids_by_name,
+        )
         for item in check_scripts:
-            self.assertFalse(item["runnable"], "verification.html is READ-ONLY (S5.3)")
+            if not item["runnable"]:
+                self.assertIsNone(item["healthId"])
 
     def test_hosting_page_writes_html_and_a_host_plan_json_sibling(self):
         app_dir = self.tmp_path / "hosted-app"
