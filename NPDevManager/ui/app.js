@@ -1162,10 +1162,14 @@ async function loadManagerVersion() {
   const el = document.getElementById("manager-version");
   if (!el) return;
   try {
-    el.textContent = `v${await invoke("manager_version")}`;
+    el.textContent = await invoke("manager_build_stamp");
   } catch (e) {
-    el.textContent = "";
-    return;
+    try {
+      el.textContent = `v${await invoke("manager_version")}`;
+    } catch (e2) {
+      el.textContent = "";
+      return;
+    }
   }
   try {
     el.title = await invoke("manager_version_description");

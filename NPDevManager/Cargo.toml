@@ -1,6 +1,6 @@
 [package]
 name = "npdev-manager"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "Installs and runs NPDev for someone who will never open a terminal."
 license = "MIT"
@@ -8,6 +8,10 @@ repository = "https://github.com/MarceloGiazzon/NPDevGeneral"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Stamps NPDEV_MANAGER_BUILD_TIMESTAMP at compile time (build.rs) so the version chip's timestamp
+# can never silently go stale the way a hand-typed date could -- already in Cargo.lock as a
+# transitive dependency, so this adds no new crate to the tree.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dependencies]
 # `protocol-asset` is what lets the Scrap Manager's filmstrip render a screenshot straight off disk
