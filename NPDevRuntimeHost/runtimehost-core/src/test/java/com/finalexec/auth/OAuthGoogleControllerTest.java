@@ -79,7 +79,7 @@ class OAuthGoogleControllerTest {
     @Test
     void authorizeRedirectsToProviderWithStateAndCallbackRoundTripsASession() throws Exception {
         provider.stub("sub-new", "new@example.com", true, "New", null);
-        ResponseEntity<Void> authorize = controller.authorize("login", "/", request());
+        ResponseEntity<Void> authorize = controller.authorize("google", "login", "/", request());
 
         assertEquals(HttpStatus.FOUND, authorize.getStatusCode());
         String location = authorize.getHeaders().getLocation().toString();
@@ -87,7 +87,7 @@ class OAuthGoogleControllerTest {
         assertTrue(location.contains("redirect_uri="), "redirect_uri must travel with the state");
         String state = stateOf(authorize);
 
-        ResponseEntity<Void> callback = controller.callback("code-1", state, request());
+        ResponseEntity<Void> callback = controller.callback("google", "code-1", state, request());
 
         assertEquals(HttpStatus.FOUND, callback.getStatusCode());
         String setCookie = callback.getHeaders().getFirst("Set-Cookie");
@@ -110,10 +110,10 @@ class OAuthGoogleControllerTest {
         // reading this same npdev_jwt cookie back on the very next such redirect. Lax still keeps
         // the cookie off cross-site subrequests/form posts (CSRF protection unchanged).
         provider.stub("sub-lax", "lax@example.com", true, "Lax", null);
-        ResponseEntity<Void> authorize = controller.authorize("login", "/", request());
+        ResponseEntity<Void> authorize = controller.authorize("google", "login", "/", request());
         String state = stateOf(authorize);
 
-        ResponseEntity<Void> callback = controller.callback("code-lax", state, request());
+        ResponseEntity<Void> callback = controller.callback("google", "code-lax", state, request());
 
         String setCookie = callback.getHeaders().getFirst("Set-Cookie");
         assertTrue(setCookie != null && setCookie.contains("SameSite=Lax"),
@@ -124,7 +124,7 @@ class OAuthGoogleControllerTest {
 
     @Test
     void unknownStateIsRefusedAndNeverMintsASession() {
-        ResponseEntity<Void> callback = controller.callback("code-2", "bogus-state", request());
+        ResponseEntity<Void> callback = controller.callback("google", "code-2", "bogus-state", request());
 
         assertEquals("/?error=oauth_state_invalid", callback.getHeaders().getLocation().toString());
         assertNull(callback.getHeaders().getFirst("Set-Cookie"));
@@ -133,11 +133,11 @@ class OAuthGoogleControllerTest {
     @Test
     void stateIsSingleUse() throws Exception {
         provider.stub("sub-once", "once@example.com", true, "Once", null);
-        ResponseEntity<Void> authorize = controller.authorize("login", "/", request());
+        ResponseEntity<Void> authorize = controller.authorize("google", "login", "/", request());
         String state = stateOf(authorize);
 
-        ResponseEntity<Void> first = controller.callback("code-3", state, request());
-        ResponseEntity<Void> replay = controller.callback("code-4", state, request());
+        ResponseEntity<Void> first = controller.callback("google", "code-3", state, request());
+        ResponseEntity<Void> replay = controller.callback("google", "code-4", state, request());
 
         assertEquals(HttpStatus.FOUND, first.getStatusCode());
         assertTrue(first.getHeaders().getFirst("Set-Cookie").startsWith("npdev_jwt="));
@@ -149,10 +149,10 @@ class OAuthGoogleControllerTest {
     @Test
     void linkLegWithoutASessionCookieIsRefused() throws Exception {
         provider.stub("sub-out", "out@example.com", true, "Out", null);
-        ResponseEntity<Void> authorize = controller.authorize("link", "/profile", request());
+        ResponseEntity<Void> authorize = controller.authorize("google", "link", "/profile", request());
         String state = stateOf(authorize);
 
-        ResponseEntity<Void> callback = controller.callback("code-5", state, request());
+        ResponseEntity<Void> callback = controller.callback("google", "code-5", state, request());
 
         assertEquals("/profile?error=oauth_link_requires_session",
                 callback.getHeaders().getLocation().toString());
@@ -162,13 +162,13 @@ class OAuthGoogleControllerTest {
     void linkLegWithSessionLinksGoogleToTheAccount() throws Exception {
         insertUser("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "owner@example.com", "owner@example.com");
         provider.stub("sub-owner", "owner@example.com", true, "Owner", null);
-        ResponseEntity<Void> authorize = controller.authorize("link", "/profile", request());
+        ResponseEntity<Void> authorize = controller.authorize("google", "link", "/profile", request());
         String state = stateOf(authorize);
 
         MockHttpServletRequest callbackRequest = request();
         callbackRequest.setAttribute("npdev.auth.claims",
                 Map.of("actor_id", "owner@example.com", "tenant_id", TENANT, "roles", java.util.Set.of("USER")));
-        ResponseEntity<Void> callback = controller.callback("code-6", state, callbackRequest);
+        ResponseEntity<Void> callback = controller.callback("google", "code-6", state, callbackRequest);
 
         assertEquals("/profile", callback.getHeaders().getLocation().toString(),
                 "a clean link redirects to the caller with no error parameter");
@@ -182,13 +182,16 @@ class OAuthGoogleControllerTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
     void configReportsEnoughForTheLoginScreen() {
         ResponseEntity<Map<String, Object>> config = controller.config();
 
         assertEquals(HttpStatus.OK, config.getStatusCode());
-        assertEquals(true, config.getBody().get("enabled"));
-        assertEquals("google", config.getBody().get("provider"));
-        assertEquals("/api/auth/oauth/google/authorize", config.getBody().get("authorizePath"));
+        List<Map<String, Object>> providers = (List<Map<String, Object>>) config.getBody().get("providers");
+        assertEquals(1, providers.size());
+        assertEquals("google", providers.get(0).get("id"));
+        assertEquals("Google", providers.get(0).get("label"));
+        assertEquals("/api/auth/oauth/google/authorize", providers.get(0).get("authorizePath"));
     }
 
     @Test
@@ -206,10 +209,10 @@ class OAuthGoogleControllerTest {
     @Test
     void authorizedNextSurvivesSanitizationIntoTheSavedState() throws Exception {
         provider.stub("sub-safe", "safe@example.com", true, "Safe", null);
-        ResponseEntity<Void> authorize = controller.authorize("login", "https://evil.example", request());
+        ResponseEntity<Void> authorize = controller.authorize("google", "login", "https://evil.example", request());
         String state = stateOf(authorize);
 
-        ResponseEntity<Void> callback = controller.callback("code-7", state, request());
+        ResponseEntity<Void> callback = controller.callback("google", "code-7", state, request());
 
         assertEquals("/", callback.getHeaders().getLocation().toString(),
                 "a hostile next must fall back to the app root, never to the attacker host");

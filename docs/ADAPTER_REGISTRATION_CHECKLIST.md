@@ -47,6 +47,8 @@ verified list-free (jar discovery). If you consciously exclude a new adapter, ad
   runtimehost-core's compiled OAuth classes (a staged runtimehost-libs jar), never by generated-app
   source, so the proof tests need not build it from source; apps receive the jar via the staged
   runtimehost-libs fileTree exactly like runtimehost-core itself.
+- `idp-github`: the GitHub identity provider, same reasoning as `idp-google` above -- imported only
+  by runtimehost-core's compiled OAuth classes, never by generated-app source.
 
 ## For a capable agent (future work, not part of this checklist)
 

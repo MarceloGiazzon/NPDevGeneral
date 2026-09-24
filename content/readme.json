@@ -121,7 +121,7 @@
       "blocks": [
         {
           "type": "prose",
-          "text": "\n| You write | You get |\n|---|---|\n| `roles` + `grants` | roles and what they may do |\n| `requiredRole` | access **enforced at the API**, not just hidden in the UI |\n| row-level rules | control over *which rows* each user sees |\n| `sensitive` on a field | special handling in logs, traces, and exports |\n| — | JWT or API-key auth, a super-user key issued on first boot, and a built-in ControlPanel for users, roles and schedules |\n"
+          "text": "\n| You write | You get |\n|---|---|\n| `roles` + `grants` | roles and what they may do |\n| `requiredRole` | access **enforced at the API**, not just hidden in the UI |\n| row-level rules | control over *which rows* each user sees |\n| `sensitive` on a field | special handling in logs, traces, and exports |\n| — | JWT or API-key auth, a super-user key issued on first boot, and a built-in ControlPanel for users, roles and schedules |\n| — | optional Google/GitHub sign-in (env/keyring-configured, no model changes needed), on top of username+password |\n"
         }
       ]
     },
