@@ -5,11 +5,11 @@
 .DESCRIPTION
     Fails (non-zero exit) if:
       1. the gaps-roadmap generator (scripts/docs/generate_gaps_roadmap.py) fails to run, or
-         knowledge/platform-status.json is stale vs a fresh extraction of ledger/gaps.yml --
+         NPDevMcp/knowledge/platform-status.json is stale vs a fresh extraction of ledger/gaps.yml --
          i.e. someone hand-edited the committed platform-status projection without regenerating it
          (md-zero-2026-08-11 PLAN.md Phase 6: the gaps-roadmap doc itself is no longer committed,
          so there is nothing left to compare it against -- only whether it still generates).
-      2. any knowledge/cards/*.json fails knowledge-card validation.
+      2. any NPDevMcp/knowledge/cards/*.json fails knowledge-card validation.
       3. the shared failure-signature normalizer self-check fails.
       4. the security pattern sweep no longer catches the bug shapes it was written for.
       5. the security pattern sweep finds an UNTRIAGED hit in the codebase.
@@ -206,7 +206,7 @@ try {
     # Bundled into the same [2/35] slot (docs-decoupling-2026-08-11 PLAN.md Phase 1's precedent:
     # avoid renumbering every banner for one more freshness check). md-zero-2026-08-11 PLAN.md
     # Phase 4: docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md, docs/ai/AUTHORING_FOR_AI.md
-    # and docs/ai/UI_GENERATION_PROMPT.md are GENERATED from content/*.yml, the same prose
+    # and docs/ai/UI_GENERATION_PROMPT.md are GENERATED from docs/content/*.yml, the same prose
     # scripts/ai/build_rag_index.py chunks and scripts/ai/build_core_context.py concatenates whole
     # -- if a hand-edit touches the .md without touching its YAML source, this catches it.
     #
@@ -218,21 +218,21 @@ try {
     if ($LASTEXITCODE -ne 0) {
         $failures += "scripts/docs/generate_group_e_docs.py failed to run: see its output above"
     } else {
-        git diff --exit-code -- docs/NPDEV_CONCEPTS_DEEP_DIVE.md docs/NPDEV_USER_MANUAL.md docs/ai/AUTHORING_FOR_AI.md docs/ai/UI_GENERATION_PROMPT.md content/npdev-concepts-deep-dive.json content/npdev-user-manual.json content/authoring-for-ai.json content/ui-generation-prompt.json
-        if ($LASTEXITCODE -ne 0) { $failures += "a Group E doc or its content/*.json mirror was STALE relative to its content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
+        git diff --exit-code -- docs/NPDEV_CONCEPTS_DEEP_DIVE.md docs/NPDEV_USER_MANUAL.md docs/ai/AUTHORING_FOR_AI.md docs/ai/UI_GENERATION_PROMPT.md docs/content/npdev-concepts-deep-dive.json docs/content/npdev-user-manual.json docs/content/authoring-for-ai.json docs/content/ui-generation-prompt.json
+        if ($LASTEXITCODE -ne 0) { $failures += "a Group E doc or its docs/content/*.json mirror was STALE relative to its docs/content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
     }
 
     # md-zero-2026-08-11 PLAN.md Phase 5: same freshness check for the four executable docs
     # (README.md, docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md, docs/AUTHORING_WITH_AI.md) and
-    # their content/*.json mirrors -- the first-run harness and extract_commands.py read the JSON,
+    # their docs/content/*.json mirrors -- the first-run harness and extract_commands.py read the JSON,
     # never the .md, so this is what catches a hand-edited .md that was never regenerated.
     # Same PLAN-11-to-4.md Item 2 shape as Group E above: regenerate, then let git diff decide.
     & $py "scripts/docs/generate_group_d_docs.py"
     if ($LASTEXITCODE -ne 0) {
         $failures += "scripts/docs/generate_group_d_docs.py failed to run: see its output above"
     } else {
-        git diff --exit-code -- README.md docs/GETTING_STARTED.md docs/YOUR_FIRST_APP.md docs/AUTHORING_WITH_AI.md content/readme.json content/getting-started.json content/your-first-app.json content/authoring-with-ai.json
-        if ($LASTEXITCODE -ne 0) { $failures += "a Group D doc or its content/*.json mirror was STALE relative to its content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
+        git diff --exit-code -- README.md docs/GETTING_STARTED.md docs/YOUR_FIRST_APP.md docs/AUTHORING_WITH_AI.md docs/content/readme.json docs/content/getting-started.json docs/content/your-first-app.json docs/content/authoring-with-ai.json
+        if ($LASTEXITCODE -ne 0) { $failures += "a Group D doc or its docs/content/*.json mirror was STALE relative to its docs/content/*.yml source (regenerating changed a committed file, shown above) -- commit the regenerated result" }
     }
 
     Write-Host "[4/39] Checking failure-signature normalizer..."
@@ -821,10 +821,10 @@ try {
     # OperationalRunbookEmitter.java's own write() calls every run (a checker-owned list would be a
     # third copy of the truth). (Banner numbering is hand-typed and -- per the R11 note above --
     # the denominators on the older steps are historical; this step's /40 matches the live count.)
-    Write-Host '[40/40] Checking every _ops script name in content/*.yml is actually emitted...'
+    Write-Host '[40/40] Checking every _ops script name in docs/content/*.yml is actually emitted...'
     & $py "scripts/quality/check-ops-script-names.py"
     if ($LASTEXITCODE -ne 0) {
-        $failures += "a content/*.yml doc names an _ops script the runbook emitter never writes: see scripts/quality/check-ops-script-names.py output above -- fix the DOCUMENT to name an emitted script (OperationalRunbookEmitter's write() list is the ground truth)"
+        $failures += "a docs/content/*.yml doc names an _ops script the runbook emitter never writes: see scripts/quality/check-ops-script-names.py output above -- fix the DOCUMENT to name an emitted script (OperationalRunbookEmitter's write() list is the ground truth)"
     }
 
     # Path A realignment P0.1 (D:\WorkSpace\NPDev\NPDev_General__OutsideRepo\NPDEV_REALIGNMENT_PLAN):

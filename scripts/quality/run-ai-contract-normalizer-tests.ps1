@@ -11,7 +11,7 @@ if ([string]::IsNullOrWhiteSpace($RunId)) {
 
 $policyPath = "scripts/policy/ai-model-to-dsl-mapping-policy.json"
 $schemaPath = "schemas/ai/ai-model.schema.json"
-$scenarioRoot = "golden-ai-scenarios"
+$scenarioRoot = "NPDevSamples/ai-scenarios"
 $testRoot = Join-Path $workspaceRoot "scripts/reports/tmp/ai-model-to-dsl-mapping"
 if (Test-Path -LiteralPath $testRoot) {
     Remove-Item -LiteralPath $testRoot -Recurse -Force

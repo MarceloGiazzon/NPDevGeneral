@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """C1 (LNCH-22 cold-clone audit): every `_ops\\<name>` / `$ops\\<name>` script referenced in
-content/*.yml must be a script the runbook emitter actually writes.
+docs/content/*.yml must be a script the runbook emitter actually writes.
 
 WHY THIS EXISTS
 ---------------
-docs/NPDEV_USER_MANUAL.md and docs/NPDEV_CONCEPTS_DEEP_DIVE.md are generated from content/*.yml
+docs/NPDEV_USER_MANUAL.md and docs/NPDEV_CONCEPTS_DEEP_DIVE.md are generated from docs/content/*.yml
 and teach the reader a ready-to-paste ops sequence. Three of its script names had never been
 emitted by OperationalRunbookEmitter (Build-App.ps1, Test-App.ps1, Status-App.ps1 -- the real
 names are Build-FinalApp.ps1, Smoke-Test.ps1, Status-Environment.ps1), so a reader following the
@@ -59,7 +59,7 @@ def emitted_script_names(emitter_source: str) -> set[str]:
 
 
 def documented_script_names(root: Path) -> list[tuple[str, str]]:
-    """(name, relative doc path) for every ops-script reference in content/*.yml."""
+    """(name, relative doc path) for every ops-script reference in docs/content/*.yml."""
     found: list[tuple[str, str]] = []
     for yml in sorted(root.glob("*.yml")):
         text = yml.read_text(encoding="utf-8")
@@ -143,7 +143,7 @@ def main() -> int:
               "(see OperationalRunbookEmitter's write() list), do not add a checker exception.")
         return 1
 
-    print(f"OK: every _ops/$ops script named in content/*.yml is emitted by the runbook emitter "
+    print(f"OK: every _ops/$ops script named in docs/content/*.yml is emitted by the runbook emitter "
           f"({len(documented_script_names(CONTENT_DIR))} references checked).")
     return 0
 

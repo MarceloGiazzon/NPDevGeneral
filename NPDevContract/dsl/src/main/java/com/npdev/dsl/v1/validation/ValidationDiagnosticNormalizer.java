@@ -71,13 +71,13 @@ final class ValidationDiagnosticNormalizer {
 
     /**
      * R1.4: {@code helpKey} normally carries a documentation lookup key ({@code
-     * validation.semantic.<code>}). Where a real {@code knowledge/cards/*.json} card documents THIS
+     * validation.semantic.<code>}). Where a real {@code NPDevMcp/knowledge/cards/*.json} card documents THIS
      * diagnostic class, the card's id is used instead so {@code npdev_search_fix} can hand back the
      * precedent fix. Card ids are kebab-case and doc keys are dotted, so a consumer can tell them
      * apart without a flag.
      *
      * <p>Only cards that actually exist and actually describe a DSL-validation diagnostic are wired
-     * -- measured 2026-08-18: of the 16 cards in {@code knowledge/cards/}, 6 are {@code error-fix}
+     * -- measured 2026-08-18: of the 16 cards in {@code NPDevMcp/knowledge/cards/}, 6 are {@code error-fix}
      * and only these 3 have a signature a {@code SemanticValidator} message can match. Pointing
      * {@code helpKey} at an id with no card behind it would be worse than leaving the doc key.
      */

@@ -79,7 +79,7 @@ PATH_RE = re.compile(
 REPO_TOP_LEVEL_DIRS = (
     "scripts/", "NPDevContract/", "NPDevGenerator/", "NPDevKernel/", "NPDevRuntimeHost/",
     "NPDevSamples/", "NPDevCli/", "NPDevMcp/", "NPDevManager/", "ledger/", "docs/",
-    ".github/", "knowledge/", "schemas/", "content/", "npdev-templates/", "AppGen/",
+    ".github/", "schemas/", "npdev-templates/", "AppGen/",
 )
 
 # The documents a reader arrives through. Deliberately not repo-wide: these five are the entry

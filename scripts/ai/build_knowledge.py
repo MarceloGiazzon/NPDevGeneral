@@ -2,9 +2,9 @@
 """Single fan-out builder for the NPDev AI knowledge substrate.
 
 Reads the committed sources of truth --
-  - knowledge/cards/*.json          (durable findings: gotcha|gap|constraint|error-fix|recipe)
-  - knowledge/platform-status.json  (derived projection of the gaps ledger)
-  - golden-ai-scenarios/*/          (negative scenarios: broken model + expected failure class)
+  - NPDevMcp/knowledge/cards/*.json          (durable findings: gotcha|gap|constraint|error-fix|recipe)
+  - NPDevMcp/knowledge/platform-status.json  (derived projection of the gaps ledger)
+  - NPDevSamples/ai-scenarios/*/          (negative scenarios: broken model + expected failure class)
 -- validates them, and fans them out into the three build artifacts the MCP tools consume, under
 <Build>/npdev-ai/ (never committed, per the build-output policy):
 
@@ -110,7 +110,7 @@ def build_failure_index(root: Path, cards: list[dict[str, Any]]) -> dict[str, An
                 "; ".join(card.get("sourceRefs") or []) or f"card:{card.get('id')}")
 
     # (b) negative golden scenarios -- coarse class signatures pointing at the broken example.
-    scen_dir = root / "golden-ai-scenarios"
+    scen_dir = root / "NPDevSamples/ai-scenarios"
     for manifest_path in sorted(scen_dir.glob("*/scenario.manifest.json")):
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -130,10 +130,10 @@ def build_failure_index(root: Path, cards: list[dict[str, Any]]) -> dict[str, An
         signature = (expected_class or sid).replace("_", " ").replace("-", " ")
         fix = (
             f"This class of model is rejected at the '{stage or 'validation'}' stage. "
-            f"See golden-ai-scenarios/{sid}/ for a minimal broken example; correct the model so it no "
+            f"See NPDevSamples/ai-scenarios/{sid}/ for a minimal broken example; correct the model so it no "
             f"longer trips this rule, then re-validate."
         )
-        add(signature, expected_class or sid, fix, f"golden-ai-scenarios/{sid}")
+        add(signature, expected_class or sid, fix, f"NPDevSamples/ai-scenarios/{sid}")
 
     entries = sorted(by_sig.values(), key=lambda e: e["signature"])
     return {"schemaVersion": "failure-index.v1", "count": len(entries), "signatures": entries}
@@ -161,7 +161,7 @@ def build_capabilities(root: Path, cards: list[dict[str, Any]]) -> dict[str, Any
     ]
     return {
         "schemaVersion": "capabilities.v1",
-        "generatedFrom": ["knowledge/platform-status.json", "knowledge/cards/*.json"],
+        "generatedFrom": ["NPDevMcp/knowledge/platform-status.json", "NPDevMcp/knowledge/cards/*.json"],
         "items": status.get("items", []),
         "cards": constraint_cards,
     }

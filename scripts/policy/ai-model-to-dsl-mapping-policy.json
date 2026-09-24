@@ -190,7 +190,7 @@
   "scenarioScopeReconciliation": {
     "checkpoint": "CP3",
     "trustedSourceDecision": "path-b-deferred",
-    "trustedSourceDeferredRoot": "golden-ai-scenarios/deferred/trusted-source",
+    "trustedSourceDeferredRoot": "NPDevSamples/ai-scenarios/deferred/trusted-source",
     "trustedSourceDeferredScenarioIds": [
       "create-users-panel-procedure",
       "trusted-source-path-traversal"

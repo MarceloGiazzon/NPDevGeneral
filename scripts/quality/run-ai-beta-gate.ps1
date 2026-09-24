@@ -1,5 +1,5 @@
 param(
-    [string]$ScenarioRoot = "golden-ai-scenarios",
+    [string]$ScenarioRoot = "NPDevSamples/ai-scenarios",
     [string]$ReportPath = "scripts/reports/out/ai-beta-gate-report.json",
     [string]$ScopePolicyPath = "scripts/policy/beta0-scope.json",
     [string]$RunId = "",
@@ -742,7 +742,7 @@ $report = [pscustomobject]@{
     scenarioCount = $scenarioResults.Count
     summary = [pscustomobject]@{
         # QUAL-42: a bare scenarioCount/failure count misreads designed-negative scenarios as
-        # defects (22 of 30 golden-ai-scenarios declare expectedOutcome: fail). Always read the
+        # defects (22 of 30 NPDevSamples/ai-scenarios declare expectedOutcome: fail). Always read the
         # outcome in expected terms: expectedFailAsDesigned is the SAFETY CORPUS doing its job,
         # not a defect -- only expectedFailUnexpected and expectedPassFailed are real failures.
         expectedFail = $expectedFailCount

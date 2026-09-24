@@ -54,13 +54,13 @@ The active contract rejects unsupported or incoherent AI model input before offi
 
 ## Golden Examples
 
-`golden-ai-scenarios/base-ai-loop/ai-model.json` proves the simple entity and flow path: `User` maps to an official concept and `CreateUser` maps to an official flow.
+`NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json` proves the simple entity and flow path: `User` maps to an official concept and `CreateUser` maps to an official flow.
 
-`golden-ai-scenarios/tenant-workflow-ops/ai-model.json` proves expanded mapping: tenant-scoped `Ticket`, `CreateTicket`, the workflow panel, `advance-ticket`, roles, auth, tenancy, and lifecycle metadata all map to official DSL artifacts.
+`NPDevSamples/ai-scenarios/tenant-workflow-ops/ai-model.json` proves expanded mapping: tenant-scoped `Ticket`, `CreateTicket`, the workflow panel, `advance-ticket`, roles, auth, tenancy, and lifecycle metadata all map to official DSL artifacts.
 
 Negative scenarios stay in the contract as rejection examples. For example, `panel-unknown-entity` documents `PANEL_ENTITY_UNRESOLVED`, `procedure-unbounded-bulk` documents `PROCEDURE_BULK_LIMIT_MISSING`, and `workflow-invalid-transition` documents `WORKFLOW_TRANSITION_STATE_UNRESOLVED`.
 
-CP3 reconciles scenario scope without adding new product support. Trusted-source scenarios are deferred under `golden-ai-scenarios/deferred/trusted-source/` and excluded from active mapping coverage. CP12 keeps trusted-source and custom procedures outside the active minimal support boundary, but admits bounded declarative custom panel metadata through the normal panel contract. Unsupported custom procedure kinds remain clean kind rejections with `AI_MODEL_KIND_UNSUPPORTED`.
+CP3 reconciles scenario scope without adding new product support. Trusted-source scenarios are deferred under `NPDevSamples/ai-scenarios/deferred/trusted-source/` and excluded from active mapping coverage. CP12 keeps trusted-source and custom procedures outside the active minimal support boundary, but admits bounded declarative custom panel metadata through the normal panel contract. Unsupported custom procedure kinds remain clean kind rejections with `AI_MODEL_KIND_UNSUPPORTED`.
 
 ## What This Does Not Solve
 

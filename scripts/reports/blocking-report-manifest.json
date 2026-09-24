@@ -19,7 +19,7 @@
       "schemaVersion": "npdev-ai-beta-gate-report.v1",
       "requiredStatus": "passed",
       "inputs": [
-        "golden-ai-scenarios",
+        "NPDevSamples/ai-scenarios",
         "schemas/ai"
       ],
       "blocking": true
@@ -31,7 +31,7 @@
       "requiredStatus": "passed",
       "inputs": [
         "schemas/ai",
-        "golden-ai-scenarios"
+        "NPDevSamples/ai-scenarios"
       ],
       "blocking": true
     },
@@ -53,9 +53,9 @@
       "schemaVersion": "npdev-ui-panel-smoke-report.v1",
       "requiredStatus": "passed",
       "inputs": [
-        "golden-ai-scenarios/tenant-workflow-ops",
-        "golden-ai-scenarios/tenant-service-desk",
-        "golden-ai-scenarios/tenant-approval-portal"
+        "NPDevSamples/ai-scenarios/tenant-workflow-ops",
+        "NPDevSamples/ai-scenarios/tenant-service-desk",
+        "NPDevSamples/ai-scenarios/tenant-approval-portal"
       ],
       "blocking": true
     },

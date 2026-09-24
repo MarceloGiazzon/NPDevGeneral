@@ -7,7 +7,7 @@ WHY THIS EXISTS
 ----------------
 `docs/OPEN_GAPS_AND_ROADMAP.md` carried two machine-parsed tables (Sec 1 "Priority index", Sec 7
 "Fixed engine bugs") that `scripts/ai/extract_platform_status.py` regex-scraped out of hand-written
-markdown into `knowledge/platform-status.json` -- "a database disguised as documentation." Editing
+markdown into `NPDevMcp/knowledge/platform-status.json` -- "a database disguised as documentation." Editing
 either table risked silently drifting the projection every MCP tool reads. `ledger/gaps.yml` is now
 the single source of truth for those two tables; `extract_platform_status.py` reads it directly.
 

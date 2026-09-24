@@ -37,7 +37,7 @@ support/generated-folder.signature.properties` at generation time
 hash at every boot in governed mode. A single edited byte anywhere in that tree fails startup with
 a `StrictExecutionViolationException`, not a soft warning — this is the mechanism behind the
 `mapa-armazem.html`-class "signature mismatch" incidents already logged in
-`knowledge/cards/hash-guarded-npdev-generated.json`.
+`NPDevMcp/knowledge/cards/hash-guarded-npdev-generated.json`.
 
 ## Platform version pairing
 

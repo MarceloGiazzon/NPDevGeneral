@@ -7,6 +7,17 @@ severity: MEDIUM
 status: DONE
 opened: 2026-09-22
 closed: 2026-09-24
+guard:
+  kind: manual
+  ref: >-
+    ledger/items/REG-245.yml, ledger/items/REG-246.yml, ledger/items/REG-247.yml
+  asserts: >-
+    This item has no deliverable of its own -- it is a research-spike design record. Its DONE claim
+    is that all three follow-up phases it named (4B/4C/4D) shipped as separate, independently
+    guarded ledger items: REG-245 (runtime DDL path), REG-246 (model-driven CRUD registration), and
+    REG-247 (live-rebuildable UI manifest). Each of those carries its own test/script guard; this
+    guard is the manual claim that all three exist and are themselves DONE.
+  provenRed: false
 source: >-
   PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 4 (D1 Phase 3, the flagship B28 capability: "an operator
   adds a concept to the model, reloads, and the new concept is queryable and writable through REST

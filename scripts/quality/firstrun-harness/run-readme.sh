@@ -39,13 +39,13 @@ hr()     { printf '%.0s-' {1..78}; echo; }
 section() { echo; hr; echo "== $*"; hr; }
 
 # md-zero-2026-08-11 PLAN.md Phase 7: reconstructs a Group D doc's rendered text from its
-# content/*.json mirror -- the exact inverse scripts/docs/generate_group_d_docs.py's own render()
+# docs/content/*.json mirror -- the exact inverse scripts/docs/generate_group_d_docs.py's own render()
 # uses to write the .md, so this stays byte-identical to what a reader sees without this script
 # ever opening README.md / docs/GETTING_STARTED.md itself.
-# Pull ONE prose line out of a content/*.json without python3.
+# Pull ONE prose line out of a docs/content/*.json without python3.
 #
 # WHY THIS EXISTS -- a circular dependency this harness created for itself on 2026-08-11.
-# md-zero Phase 7 moved every prose question here onto content/*.json mirrors, and
+# md-zero Phase 7 moved every prose question here onto docs/content/*.json mirrors, and
 # render_content_doc reads them with python3. But section 1's whole job is to install ONLY what
 # README's prerequisites sentence names, on an image with NOTHING on it -- and Python 3 IS one of
 # the things that sentence names. So the harness needed python3 to read the line telling it to
@@ -335,10 +335,10 @@ echo "  HEAD: $(git -C "$SRC" log -1 --format='%h %s' 2>/dev/null | cut -c1-60)"
 
 # md-zero-2026-08-11 PLAN.md Phase 7: every prose-content question this harness asks (the
 # prerequisites sentence, "does it document the login key/URL") is answered from the SAME
-# content/*.json mirrors section 2/6 already read -- never from README.md / GETTING_STARTED.md
+# docs/content/*.json mirrors section 2/6 already read -- never from README.md / GETTING_STARTED.md
 # text directly, so this file has no markdown reads left either.
-README_TEXT=$(render_content_doc content/readme.json)
-GETTING_STARTED_TEXT=$(render_content_doc content/getting-started.json)
+README_TEXT=$(render_content_doc docs/content/readme.json)
+GETTING_STARTED_TEXT=$(render_content_doc docs/content/getting-started.json)
 
 # ---------------------------------------------------------------- 1. prerequisites
 
@@ -352,8 +352,8 @@ PREREQ_LINE=$(printf '%s\n' "$README_TEXT" | grep -m1 -i '^Requires\|^\*\*Requir
 # section runs before anything is installed and Python 3 is one of the things it is about to be
 # told to install. Fall back to the same JSON, read with grep. See grep_content_line's note.
 if [ -z "$PREREQ_LINE" ]; then
-  PREREQ_LINE=$(grep_content_line content/readme.json 'Requires')
-  [ -n "$PREREQ_LINE" ] && echo "  (prerequisites read from content/readme.json directly -- python3 not installed yet)"
+  PREREQ_LINE=$(grep_content_line docs/content/readme.json 'Requires')
+  [ -n "$PREREQ_LINE" ] && echo "  (prerequisites read from docs/content/readme.json directly -- python3 not installed yet)"
 fi
 
 if [ -z "$PREREQ_LINE" ]; then
@@ -428,8 +428,8 @@ done
 # present -- guarded, so a genuine "README doesn't name Python 3" defect still leaves both empty and
 # both later checks correctly failing for the RIGHT reason, rather than papering over that case too.
 if command -v python3 >/dev/null 2>&1; then
-  README_TEXT=$(render_content_doc content/readme.json)
-  GETTING_STARTED_TEXT=$(render_content_doc content/getting-started.json)
+  README_TEXT=$(render_content_doc docs/content/readme.json)
+  GETTING_STARTED_TEXT=$(render_content_doc docs/content/getting-started.json)
 fi
 
 # Java must specifically be 17 -- the single most common newcomer failure.
@@ -484,15 +484,15 @@ command -v python3 >/dev/null 2>&1 \
   || die "python3 is not installed, so the harness cannot extract README's commands. Section 1's \
 prereq-present check above says whether README is at fault; either way this run cannot continue."
 
-CMDS=$(python3 "$EXTRACTOR" --section "$QUICKSTART_HEADING" content/readme.json)
+CMDS=$(python3 "$EXTRACTOR" --section "$QUICKSTART_HEADING" docs/content/readme.json)
 EXTRACT_RC=$?
 if [ "$EXTRACT_RC" -eq 3 ]; then
-  c_red "  HARNESS CANNOT RUN: no runnable section found in content/readme.json."
+  c_red "  HARNESS CANNOT RUN: no runnable section found in docs/content/readme.json."
   echo  "    Looked for a '## Quickstart' or '## See it run' heading and found neither."
   echo  "    This is NOT a product failure -- it means the harness has no commands to follow, and"
   echo  "    every check after this one would fail for that reason alone. Fix QUICKSTART_HEADING in"
   echo  "    this script (and in scripts/quality/check-firstrun-extractor.py, which pins the same"
-  echo  "    regex), or restore the section in content/readme.yml (README.md is GENERATED from it --"
+  echo  "    regex), or restore the section in docs/content/readme.yml (README.md is GENERATED from it --"
   echo  "    see scripts/docs/generate_group_d_docs.py)."
   exit 2
 elif [ "$EXTRACT_RC" -ne 0 ]; then
@@ -896,14 +896,14 @@ section "6. Execute docs/YOUR_FIRST_APP.md the way a newcomer would (I1/I2)"
 # deliberately excluded, since running it would try to rename a field this app doesn't have a
 # reason to rename.
 #
-# md-zero-2026-08-11 PLAN.md Phase 5: reads content/your-first-app.json (the JSON mirror of
-# content/your-first-app.yml, which also renders docs/YOUR_FIRST_APP.md byte-identically) instead
+# md-zero-2026-08-11 PLAN.md Phase 5: reads docs/content/your-first-app.json (the JSON mirror of
+# docs/content/your-first-app.yml, which also renders docs/YOUR_FIRST_APP.md byte-identically) instead
 # of parsing the .md file's raw text -- this image has no PyYAML (see extract_commands.py's own
 # docstring for why the mirror exists), so this stays a stdlib-only `json` read. The numbered-step
 # extraction (level-2 "N. Title" headings, N <= 5, blocks tagged sh/json) is unchanged in shape;
 # only the source of the section list moved from regex-over-markdown to structured JSON already
 # split into sections by scripts/docs/generate_group_d_docs.py's own conversion.
-YFA_DOC="$SRC/content/your-first-app.json"
+YFA_DOC="$SRC/docs/content/your-first-app.json"
 YFA_WORK=/work/my-library
 YFA_APP=/work/my-library-app
 YFA_PORT=8084

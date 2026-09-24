@@ -1,6 +1,6 @@
 param(
     [string]$ScopePolicyPath = "scripts/policy/beta0-scope.json",
-    [string]$ScenarioRoot = "golden-ai-scenarios",
+    [string]$ScenarioRoot = "NPDevSamples/ai-scenarios",
     [string]$RunId = ""
 )
 

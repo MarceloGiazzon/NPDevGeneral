@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Renders README.md, docs/GETTING_STARTED.md, docs/YOUR_FIRST_APP.md and docs/AUTHORING_WITH_AI.md
-from content/*.yml, and mirrors each content/*.yml as content/*.json alongside it.
+from docs/content/*.yml, and mirrors each docs/content/*.yml as docs/content/*.json alongside it.
 
 WHY THIS EXISTS
 ---------------
@@ -14,7 +14,7 @@ scripts/quality/check-readme-contract.py's own fenced_sh_commands() (a third, in
 duplicate of the same fence-extraction logic). Three parsers of the same shape of document is how
 a change to one doc's structure breaks a check that was never told about it.
 
-Each doc is now split into content/*.yml as a preamble + ordered `##`/`###` sections, each section's
+Each doc is now split into docs/content/*.yml as a preamble + ordered `##`/`###` sections, each section's
 content further split into ordered PROSE and FENCE blocks (never re-merged into one opaque body
 string, unlike Group E's docs -- these need per-fence access so a command extractor does not have
 to re-parse markdown to find fence boundaries). This script renders the four docs back from that
@@ -25,10 +25,10 @@ WHY A JSON MIRROR TOO
 The first-run harness runs inside a DELIBERATELY BARE Docker image (scripts/quality/firstrun-harness/
 Dockerfile: "Deliberately absent: java, python, pip, pwsh, gradle, node, docker" -- python3 itself
 only exists once section 1 installs it from README's own prerequisite list, and even then there is
-no pip, so no PyYAML). extract_commands.py runs INSIDE that container. If it read content/*.yml, the
+no pip, so no PyYAML). extract_commands.py runs INSIDE that container. If it read docs/content/*.yml, the
 harness would break on every fresh machine -- silently reintroducing exactly the class of defect
-this whole plan exists to prevent, just one layer down. content/*.json carries the identical data in
-a format Python's stdlib `json` module reads with zero installed packages. content/*.yml stays the
+this whole plan exists to prevent, just one layer down. docs/content/*.json carries the identical data in
+a format Python's stdlib `json` module reads with zero installed packages. docs/content/*.yml stays the
 authored, human-edited, git-diffable source; the .json is generated from it, never hand-edited.
 
 STALENESS DETECTION MOVED TO GIT, NOT --check (Phase 7, PLAN-11-to-4.md Item 2)
@@ -42,7 +42,7 @@ Staleness detection moves to the caller, using the right tool for "did this writ
 already committed" -- git, which diffs bytes without this process ever opening the .md itself:
 
     python scripts/docs/generate_group_d_docs.py
-    git diff --exit-code -- README.md docs/GETTING_STARTED.md docs/YOUR_FIRST_APP.md docs/AUTHORING_WITH_AI.md content/readme.json content/getting-started.json content/your-first-app.json content/authoring-with-ai.json
+    git diff --exit-code -- README.md docs/GETTING_STARTED.md docs/YOUR_FIRST_APP.md docs/AUTHORING_WITH_AI.md docs/content/readme.json docs/content/getting-started.json docs/content/your-first-app.json docs/content/authoring-with-ai.json
 
 A non-empty diff means the committed docs (or their JSON mirrors) were stale.
 
@@ -63,10 +63,10 @@ _REPO_ROOT = _HERE.parent.parent
 
 # (yaml source, json mirror, rendered markdown)
 TARGETS = [
-    ("content/readme.yml", "content/readme.json", "README.md"),
-    ("content/getting-started.yml", "content/getting-started.json", "docs/GETTING_STARTED.md"),
-    ("content/your-first-app.yml", "content/your-first-app.json", "docs/YOUR_FIRST_APP.md"),
-    ("content/authoring-with-ai.yml", "content/authoring-with-ai.json", "docs/AUTHORING_WITH_AI.md"),
+    ("docs/content/readme.yml", "docs/content/readme.json", "README.md"),
+    ("docs/content/getting-started.yml", "docs/content/getting-started.json", "docs/GETTING_STARTED.md"),
+    ("docs/content/your-first-app.yml", "docs/content/your-first-app.json", "docs/YOUR_FIRST_APP.md"),
+    ("docs/content/authoring-with-ai.yml", "docs/content/authoring-with-ai.json", "docs/AUTHORING_WITH_AI.md"),
 ]
 
 
@@ -85,7 +85,7 @@ def render_blocks(blocks: list[dict]) -> list[str]:
 
 
 def render(doc: dict) -> str:
-    """Exact inverse of the split used to build content/*.yml: preamble blocks, then each
+    """Exact inverse of the split used to build docs/content/*.yml: preamble blocks, then each
     section's heading line + its own ordered prose/fence blocks -- see that conversion's own
     round-trip proof (in-memory AND disk reload, both diffed byte-for-byte against the source)."""
     parts = render_blocks(doc["preamble"])

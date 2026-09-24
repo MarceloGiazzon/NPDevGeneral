@@ -82,6 +82,13 @@ def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]
     `generate-sample-app.ps1` run, which this scanner's blind rglob then picked up as a SEPARATE,
     role-less corpus member -- `NPDevSamples/**/Output/` is gitignored precisely because it is
     ephemeral (docs/BUILD_OUTPUT_LOCATION_POLICY.md), so it must never enter the tracked corpus.
+
+    Also skips `NPDevSamples/ai-scenarios/` (NPDEV_FEATURE_PLAN_2026-09-24.md Wave 1.3 merged the
+    former repo-root `golden-ai-scenarios/` in here for repo tidiness). Those `model.json` fixtures
+    are golden AI-loop scenarios -- several are DELIBERATELY invalid, exercising the AI-authoring
+    refusal path -- not DSL corpus members, and were never in scope for validate-corpus/corpus-roles
+    before the move; giving them a corpus role or running validateModel over them measures the wrong
+    thing.
     """
     models: list[tuple[str, Path]] = []
     if appgen_root.exists():
@@ -93,9 +100,10 @@ def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]
             models.append((f"AppGen/apps/{app}", p))
     if samples_root.exists():
         for p in sorted(samples_root.rglob("model.json")):
-            if "Output" in p.relative_to(samples_root).parts:
+            rel_parts = p.relative_to(samples_root).parts
+            if "Output" in rel_parts or "ai-scenarios" in rel_parts:
                 continue
-            rel = p.relative_to(samples_root).parts
+            rel = rel_parts
             app = "/".join(rel[:-2]) if len(rel) > 2 else rel[0]
             models.append((f"NPDevSamples/{app}", p))
     return models

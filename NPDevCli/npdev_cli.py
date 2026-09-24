@@ -6827,7 +6827,7 @@ def _emit_metadata_only_catalogs(
 # ---------------------------------------------------------------------------
 # Move 10 D2 (LC-D2): declarative acceptance scenarios -- boots via D1, seeds `given` through the
 # generic concept CRUD API, executes `when`, asserts `then` with a minimal JSONPath grammar, and
-# reports in a shape that generalizes golden-ai-scenarios/*/ai-verification-report.json (the same
+# reports in a shape that generalizes NPDevSamples/ai-scenarios/*/ai-verification-report.json (the same
 # schemaVersion FAMILY -- checks/scenarios with real per-assertion actual values, not a second
 # vocabulary reinvented from scratch).
 # ---------------------------------------------------------------------------
@@ -7926,7 +7926,7 @@ def _load_quality_module(root: Path, module_name: str, filename: str):
 
 
 def _render_group_e_content_doc(json_path: Path) -> str:
-    """Reconstructs a Group E content/*.json mirror back into its rendered markdown text -- the
+    """Reconstructs a Group E docs/content/*.json mirror back into its rendered markdown text -- the
     exact inverse scripts/docs/generate_group_e_docs.py's own render() uses to write the .md,
     duplicated here (5 lines) rather than cross-imported, since NPDevCli and scripts/docs are
     siblings with no shared package (same rationale as build_core_context.py's own
@@ -10829,7 +10829,7 @@ def _add_load_exemplar_member(root: Path, kind: str, from_spec: str, new_name: s
     PREMISE CHECK (R1.5's own roadmap text): "with `--from` copying an exemplar out of the RAG
     corpus" is FALSE as literally stated. `NPDevMcp/server.py`'s `tool_search_examples` reads
     `<Build>/npdev-ai/rag-index.json` -- ranked TEXT CHUNKS for an AI agent to read, built by
-    `scripts/ai/build_knowledge.py` from `knowledge/cards/` + golden scenarios, and not guaranteed
+    `scripts/ai/build_knowledge.py` from `NPDevMcp/knowledge/cards/` + golden scenarios, and not guaranteed
     to exist in a fresh checkout (a Build-root artifact -- CLAUDE.md's own "ephemeral" tier). There
     is no structured concept/panel/flow/procedure JSON in it to copy; there is nothing there for
     `--from` to extract a member out of. The real, in-repo, always-present, already-proven source

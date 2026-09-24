@@ -5,7 +5,7 @@ WHY THIS IS A MODULE AND NOT THREE LINES OF sed
 -----------------------------------------------
 The first-run harness (`run-readme.sh`) does not test NPDev's code -- it tests NPDev's
 instructions, by pulling the commands out of README.md's Quickstart section (via
-content/readme.json -- see below) and running them. Getting a documented command from its written
+docs/content/readme.json -- see below) and running them. Getting a documented command from its written
 form to something safe to execute has been wrong in three DIFFERENT ways, each found only by a
 ~30-minute container run, and each reported as a product failure in someone else's name:
 
@@ -20,7 +20,7 @@ normalization lives here, in one place, as ordinary functions with a corpus of u
 milliseconds without a clone, a JDK or Docker. The harness tests the docs; this tests the harness.
 
 md-zero-2026-08-11 PLAN.md Phase 5: this module no longer parses markdown at all -- it reads
-content/readme.json, the JSON mirror of content/readme.yml (which scripts/docs/generate_group_d_docs.py
+docs/content/readme.json, the JSON mirror of docs/content/readme.yml (which scripts/docs/generate_group_d_docs.py
 also renders back into README.md, byte-identical). The JSON mirror, not the YAML, because this
 script runs INSIDE the first-run harness's Docker image, which is deliberately bare (no pip, so no
 PyYAML -- scripts/quality/firstrun-harness/Dockerfile's own words: "Deliberately absent: java,
@@ -220,7 +220,7 @@ def extract_section_commands(content_doc: dict, heading_pattern: str,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("file", nargs="?", help="content/*.json file (omit with --normalize-block)")
+    parser.add_argument("file", nargs="?", help="docs/content/*.json file (omit with --normalize-block)")
     parser.add_argument("--section", help="regex matching the heading whose commands to extract")
     parser.add_argument("--normalize-block", action="store_true",
                         help="read one already-extracted block body from stdin")
@@ -236,7 +236,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not args.file or not args.section:
-        parser.error("need a content/*.json file and --section, or --normalize-block")
+        parser.error("need a docs/content/*.json file and --section, or --normalize-block")
 
     with open(args.file, encoding="utf-8") as handle:
         content_doc = json.load(handle)

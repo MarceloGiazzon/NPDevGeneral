@@ -94,7 +94,7 @@ COMMANDS = [
          args=["validate", "model", "NPDevContract/dsl/resources/Models/canonical-demo/model.json"]),
     dict(key="normalize-ai", kind="npdev", cwd="", defArgs="", section="Generate apps",
          label="Normalize AI model",
-         args=["normalize", "ai-model", "golden-ai-scenarios/base-ai-loop/ai-model.json"]),
+         args=["normalize", "ai-model", "NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json"]),
     dict(key="generate-app", kind="npdev", cwd="", defArgs="",
          section="Generate apps", label="Generate app (canonical demo)",
          args=["generate", "app", "--model", "NPDevContract/dsl/resources/Models/canonical-demo/model.json",

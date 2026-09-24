@@ -58,7 +58,7 @@ reading one, and from that moment the document could not change. Inverting all 3
 14,000 lines of markdown and three whole checkers.
 
 If you need a fact in a script, put it in `ledger/*.yml` or `scripts/policy/*.json` and render the
-document from it — `content/*.yml` → `scripts/docs/generate_*.py` is the worked example.
+document from it — `docs/content/*.yml` → `scripts/docs/generate_*.py` is the worked example.
 
 **The 5 exemptions are capped and may never grow.** They are markdown *linters* — scripts whose job
 is validating hand-written prose (link integrity, doc classification, pinned download links,

@@ -22,7 +22,10 @@ PROBE_LABEL_PREFIX = "NPDevSamples/probes/"
 def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]:
     """Mirrors validate-corpus.py's own find_models() label convention exactly -- including its
     Output-dir exclusion (docs/CLOSEOUT_PLAN.md G2 aftermath: a generated model.json copy under
-    NPDevSamples/**/Output/ must never enter the tracked corpus; see that function's own docstring).
+    NPDevSamples/**/Output/ must never enter the tracked corpus; see that function's own docstring)
+    and its NPDevSamples/ai-scenarios/ exclusion (Wave 1.3 of NPDEV_FEATURE_PLAN_2026-09-24.md:
+    several of those `model.json` fixtures are DELIBERATELY invalid, exercising the AI-authoring
+    refusal path, not DSL corpus members).
 
     Storage probes are excluded here rather than in validate-corpus.py: they ARE corpus members (they
     must parse, and they carry a `probe` corpusRole), they simply are not evidence of DSL coverage."""
@@ -36,9 +39,10 @@ def find_models(appgen_root: Path, samples_root: Path) -> list[tuple[str, Path]]
             models.append((f"AppGen/apps/{app}", p))
     if samples_root.exists():
         for p in sorted(samples_root.rglob("model.json")):
-            if "Output" in p.relative_to(samples_root).parts:
+            rel_parts = p.relative_to(samples_root).parts
+            if "Output" in rel_parts or "ai-scenarios" in rel_parts:
                 continue
-            rel = p.relative_to(samples_root).parts
+            rel = rel_parts
             app = "/".join(rel[:-2]) if len(rel) > 2 else rel[0]
             label = f"NPDevSamples/{app}"
             if label.startswith(PROBE_LABEL_PREFIX):

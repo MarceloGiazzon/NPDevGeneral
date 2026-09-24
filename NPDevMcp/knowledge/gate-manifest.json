@@ -23,7 +23,7 @@
       "id": "AI-BETA",
       "script": "scripts/quality/run-ai-beta-gate.ps1",
       "description": "AI beta scenario gate: validates golden AI scenarios against scope policy, verifies scenario pack structure and model schema conformance.",
-      "surface": "golden-ai-scenarios/, scripts/policy/beta0-scope.json"
+      "surface": "NPDevSamples/ai-scenarios/, scripts/policy/beta0-scope.json"
     },
     {
       "id": "BETA-RELEASE",

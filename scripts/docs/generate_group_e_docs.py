@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Renders docs/NPDEV_CONCEPTS_DEEP_DIVE.md, docs/NPDEV_USER_MANUAL.md,
-docs/ai/AUTHORING_FOR_AI.md and docs/ai/UI_GENERATION_PROMPT.md from content/*.yml, and mirrors
-each content/*.yml as content/*.json alongside it.
+docs/ai/AUTHORING_FOR_AI.md and docs/ai/UI_GENERATION_PROMPT.md from docs/content/*.yml, and mirrors
+each docs/content/*.yml as docs/content/*.json alongside it.
 
 WHY THIS EXISTS
 ---------------
@@ -10,7 +10,7 @@ chunks for the npdev_search_examples MCP tool, and AUTHORING_FOR_AI.md is also c
 into scripts/ai/build_core_context.py's cacheable prompt prefix. Both builders used to
 `Path.read_text()` the .md files directly -- and both did `if path.exists() else ""`, so a moved or
 renamed doc silently emptied that section of the AI context with every gate green (found while
-building this). The prose now lives in content/*.yml (same body text, split into preamble + titled
+building this). The prose now lives in docs/content/*.yml (same body text, split into preamble + titled
 `##`/`###` sections, identical shape to the chunker's own splitting rule); this script renders it
 back into the three tracked, human-readable .md files -- nothing else opens a .md.
 
@@ -23,15 +23,15 @@ Docker test container -- and `scripts/requirements.txt`'s PyYAML entry is explic
 only ("NOT a dependency of the shipped CLI itself... the Manager ships a private Python with no
 third-party packages" -- npdev_jsonschema.py's own docstring). A bare `import yaml` inside
 build_rag_index.py or build_core_context.py breaks `npdev setup` on every fresh install. Same fix
-as Group D's content/*.json mirrors: build_rag_index.py and build_core_context.py read the JSON
-(Python stdlib `json`, zero installed packages); content/*.yml stays the authored source.
+as Group D's docs/content/*.json mirrors: build_rag_index.py and build_core_context.py read the JSON
+(Python stdlib `json`, zero installed packages); docs/content/*.yml stays the authored source.
 
 FOURTH TARGET, ADDED PHASE 7
 -----------------------------
 docs/ai/UI_GENERATION_PROMPT.md joined this group for the same reason, found by
 check-no-markdown-reads.py, not by inspection: `npdev generate screen` (NPDevCli/npdev_cli.py, a
 real end-user command) assembled its AI prompt by `Path.read_text()`-ing this doc directly. Same
-fix, same shape -- content/ui-generation-prompt.yml is the source, npdev_cli.py reads the JSON
+fix, same shape -- docs/content/ui-generation-prompt.yml is the source, npdev_cli.py reads the JSON
 mirror (same PyYAML constraint as build_rag_index.py: this runs on every user's machine).
 
 STALENESS DETECTION MOVED TO GIT, NOT --check (Phase 7, PLAN-11-to-4.md Item 2)
@@ -42,7 +42,7 @@ in-memory render -- a script reading markdown content, one level removed from th
 detection moves to the caller, using git to diff bytes without this process opening the .md itself:
 
     python scripts/docs/generate_group_e_docs.py
-    git diff --exit-code -- docs/NPDEV_CONCEPTS_DEEP_DIVE.md docs/NPDEV_USER_MANUAL.md docs/ai/AUTHORING_FOR_AI.md docs/ai/UI_GENERATION_PROMPT.md content/npdev-concepts-deep-dive.json content/npdev-user-manual.json content/authoring-for-ai.json content/ui-generation-prompt.json
+    git diff --exit-code -- docs/NPDEV_CONCEPTS_DEEP_DIVE.md docs/NPDEV_USER_MANUAL.md docs/ai/AUTHORING_FOR_AI.md docs/ai/UI_GENERATION_PROMPT.md docs/content/npdev-concepts-deep-dive.json docs/content/npdev-user-manual.json docs/content/authoring-for-ai.json docs/content/ui-generation-prompt.json
 
 USAGE
 -----
@@ -65,26 +65,26 @@ from npdev_ai_common import build_root  # noqa: E402
 
 # (yaml source, json mirror, rendered markdown)
 TARGETS = [
-    ("content/npdev-concepts-deep-dive.yml", "content/npdev-concepts-deep-dive.json", "docs/NPDEV_CONCEPTS_DEEP_DIVE.md"),
-    ("content/npdev-user-manual.yml", "content/npdev-user-manual.json", "docs/NPDEV_USER_MANUAL.md"),
-    ("content/authoring-for-ai.yml", "content/authoring-for-ai.json", "docs/ai/AUTHORING_FOR_AI.md"),
-    ("content/ui-generation-prompt.yml", "content/ui-generation-prompt.json", "docs/ai/UI_GENERATION_PROMPT.md"),
+    ("docs/content/npdev-concepts-deep-dive.yml", "docs/content/npdev-concepts-deep-dive.json", "docs/NPDEV_CONCEPTS_DEEP_DIVE.md"),
+    ("docs/content/npdev-user-manual.yml", "docs/content/npdev-user-manual.json", "docs/NPDEV_USER_MANUAL.md"),
+    ("docs/content/authoring-for-ai.yml", "docs/content/authoring-for-ai.json", "docs/ai/AUTHORING_FOR_AI.md"),
+    ("docs/content/ui-generation-prompt.yml", "docs/content/ui-generation-prompt.json", "docs/ai/UI_GENERATION_PROMPT.md"),
     # DOC-1: the audience-facing feature guide. Same source->json->markdown shape as its four
     # siblings, so the ai-knowledge gate's `git diff --exit-code` catches a hand-edit to the .md
     # for free rather than needing a rule of its own.
-    ("content/npdev-feature-guide.yml", "content/npdev-feature-guide.json", "docs/NPDEV_FEATURE_GUIDE.md"),
+    ("docs/content/npdev-feature-guide.yml", "docs/content/npdev-feature-guide.json", "docs/NPDEV_FEATURE_GUIDE.md"),
 ]
 
 # DOC-1: the ONE target that also gets an HTML rendering, written OUTSIDE the repo. A guide is the
 # thing people send each other, and a self-contained page is what survives that; the repo is not
 # where build output lives (docs/BUILD_OUTPUT_LOCATION_POLICY.md).
 HTML_TARGETS = {
-    "content/npdev-feature-guide.yml": "npdev-docs/feature-guide.html",
+    "docs/content/npdev-feature-guide.yml": "npdev-docs/feature-guide.html",
 }
 
 
 def render(doc: dict) -> str:
-    """Exact inverse of the split used to build content/*.yml: preamble, then each section's
+    """Exact inverse of the split used to build docs/content/*.yml: preamble, then each section's
     heading line + body, all joined by newline -- see that conversion's own round-trip proof."""
     parts = doc["preamble"].split("\n")
     for section in doc["sections"]:

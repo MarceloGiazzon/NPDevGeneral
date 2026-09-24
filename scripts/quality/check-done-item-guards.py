@@ -115,7 +115,7 @@ from generate_open_items import load_items  # noqa: E402  (reuses the one ledger
 REPO_TOP_LEVEL_DIRS = (
     "scripts/", "NPDevContract/", "NPDevGenerator/", "NPDevKernel/", "NPDevRuntimeHost/",
     "NPDevSamples/", "NPDevCli/", "NPDevMcp/", "NPDevManager/",
-    "ledger/", "docs/", ".github/", "knowledge/", "schemas/", "content/",
+    "ledger/", "docs/", ".github/", "schemas/",
 )
 
 # Fully-qualified Java class name: dotted lowercase package segments, final segment starting

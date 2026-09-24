@@ -8,6 +8,6 @@
   "appliesTo": ["model", "schema"],
   "signature": "unsupported model top-level key <id>",
   "fix": "Fetch the object type's schema via npdev_get_schema and rename/remove the key to a declared field; never invent fields.",
-  "sourceRefs": ["golden-ai-scenarios/unknown-ai-schema-property", "NPDevCli/npdev_cli.py"],
+  "sourceRefs": ["NPDevSamples/ai-scenarios/unknown-ai-schema-property", "NPDevCli/npdev_cli.py"],
   "status": "active"
 }

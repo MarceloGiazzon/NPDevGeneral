@@ -111,7 +111,7 @@ Three outcomes, and the third one matters:
 
 ```sh
 ./npdev doctor
-./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json
+./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json
 ./npdev report bootstrap
 ```
 

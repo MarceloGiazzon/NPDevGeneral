@@ -210,7 +210,7 @@ class CoreContextTest(unittest.TestCase):
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
 
     def test_serves_a_current_bundle_without_rebuilding(self):
-        self._write_bundle(["content/authoring-for-ai.json"])
+        self._write_bundle(["docs/content/authoring-for-ai.json"])
         calls: list[str] = []
         with patch.object(server, "run_ai_script",
                           lambda script, args, timeout=300: calls.append(script)):
@@ -219,7 +219,7 @@ class CoreContextTest(unittest.TestCase):
         self.assertIn("core authoring context", _text_of(result))
 
     def test_manifest_only_returns_the_hash_and_the_bundle_path(self):
-        self._write_bundle(["content/authoring-for-ai.json"])
+        self._write_bundle(["docs/content/authoring-for-ai.json"])
         with patch.object(server, "run_ai_script", lambda *a, **k: self.fail("should not rebuild")):
             result = server.tool_core_context({"manifest_only": True})
         payload = json.loads(_text_of(result))
@@ -230,8 +230,8 @@ class CoreContextTest(unittest.TestCase):
         self.assertTrue(server._core_context_stale(self.bundle, self.manifest))
 
     def test_a_source_newer_than_the_bundle_is_stale(self):
-        # content/authoring-for-ai.json is a real repo file; ageing the bundle past it is enough.
-        self._write_bundle(["content/authoring-for-ai.json"])
+        # docs/content/authoring-for-ai.json is a real repo file; ageing the bundle past it is enough.
+        self._write_bundle(["docs/content/authoring-for-ai.json"])
         self.assertFalse(server._core_context_stale(self.bundle, self.manifest))
         os.utime(self.bundle, (1_000_000, 1_000_000))
         self.assertTrue(server._core_context_stale(self.bundle, self.manifest))
@@ -246,13 +246,13 @@ class CoreContextTest(unittest.TestCase):
 
         def failing(script, args, timeout=300):
             calls.append(script)
-            return {"ok": False, "exitCode": 1, "stdout": "", "stderr": "no content/ dir"}
+            return {"ok": False, "exitCode": 1, "stdout": "", "stderr": "no docs/content/ dir"}
 
         with patch.object(server, "run_ai_script", failing):
             result = server.tool_core_context({})
         self.assertEqual(calls, ["build_core_context.py"])
         self.assertTrue(result["isError"])
-        self.assertIn("no content/ dir", _text_of(result))
+        self.assertIn("no docs/content/ dir", _text_of(result))
 
 
 class AppContextTest(unittest.TestCase):

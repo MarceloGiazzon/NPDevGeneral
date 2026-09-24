@@ -72,7 +72,7 @@ context, so it costs nothing per turn — which is why the advice lives there an
 | ~~`NPDevEditor/ui-react`~~ | — | **REMOVED** (2026-08-17/20). A generated app no longer serves `/npdev-ui-react/`. Replacement is `static/model-authoring.html`, emitted by `ModelAuthoringEmitter`. See `BREAKING.md`. |
 | `NPDevSamples` | JSON/PS1 | Reference sample apps + browser-verification harness |
 | `NPDevCli` / `NPDevMcp` | Python | Model-validation CLI / MCP server for AI authoring |
-| `golden-ai-scenarios`, `schemas/ai` | JSON | AI safety/verification fixtures + schemas |
+| `NPDevSamples/ai-scenarios`, `schemas/ai` | JSON | AI safety/verification fixtures + schemas |
 
 Package roots: `com.npdev.dsl.v1` / `com.npdev.generator` / `com.npdev.kernel` / `com.finalexec`.
 
@@ -257,7 +257,7 @@ relevant section **before** the first edit.
 | RuntimeHost tests naming `com.npdev.generated.` | RuntimeHost tests |
 | `propertyScopes[]` / `properties[]`, `PropertyResolver` | Scoped-property cascade |
 | `SqlDialect`, pagination, adding a DB engine, `_ops` toolbox | Storage, dialects and engines |
-| `knowledge/cards/*.json`, `platform-status.json`, the MCP search tools | AI knowledge substrate |
+| `NPDevMcp/knowledge/cards/*.json`, `platform-status.json`, the MCP search tools | AI knowledge substrate |
 | `run-scale-proof.ps1` or a red nightly scale ladder | Nightly model-scale ladder |
 | Adding a controller class; a one-off Postgres repro; pack catalog | Manual verification scripts |
 

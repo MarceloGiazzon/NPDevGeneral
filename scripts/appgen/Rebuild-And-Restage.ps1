@@ -6,7 +6,7 @@
 .DESCRIPTION
     After changing kernel/adapter/generator Java, three separate caches must be refreshed before a
     regenerated app actually reflects the change, and their default directories do NOT line up
-    (see knowledge/cards/runtimehost-libs-dir-mismatch.json and generator-runtime-cache-refresh.json):
+    (see NPDevMcp/knowledge/cards/runtimehost-libs-dir-mismatch.json and generator-runtime-cache-refresh.json):
 
       1. runtimehost-libs   -- restaged jars the generated app compiles against
                                (scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars)

@@ -16,9 +16,9 @@ All paths in `scenario.manifest.json` are relative to `ScenarioRoot`. Paths must
 
 ## Active And Deferred Scope
 
-Only top-level scenario directories under `golden-ai-scenarios/` are active golden scenarios. The `golden-ai-scenarios/deferred/` directory is a scope container, not a scenario, and active validation scripts exclude it from scenario coherence, schema validation, AI contract normalization, mapping coverage, and the AI beta gate.
+Only top-level scenario directories under `NPDevSamples/ai-scenarios/` are active golden scenarios. The `NPDevSamples/ai-scenarios/deferred/` directory is a scope container, not a scenario, and active validation scripts exclude it from scenario coherence, schema validation, AI contract normalization, mapping coverage, and the AI beta gate.
 
-CP3 uses the locked Path B decision for trusted-source scope. Trusted-source fixtures are preserved under `golden-ai-scenarios/deferred/trusted-source/` until a later approved checkpoint proves full trusted-source behavior from fresh evidence.
+CP3 uses the locked Path B decision for trusted-source scope. Trusted-source fixtures are preserved under `NPDevSamples/ai-scenarios/deferred/trusted-source/` until a later approved checkpoint proves full trusted-source behavior from fresh evidence.
 
 CP3 also uses the locked custom Path B decision for unsupported custom-only `app.kind` values. CP12 narrows that rule by admitting declarative custom panel metadata through the standard `expanded-beta-application` panel contract. Custom procedures and custom procedure-plus-panel app kinds remain unsupported and must fail cleanly at `ai-model-schema`; deferred custom source assets must not be referenced by active manifests.
 

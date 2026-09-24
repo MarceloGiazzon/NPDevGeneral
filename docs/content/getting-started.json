@@ -85,7 +85,7 @@
         {
           "type": "fence",
           "lang": "sh",
-          "text": "./npdev doctor\n./npdev normalize ai-model golden-ai-scenarios/base-ai-loop/ai-model.json\n./npdev report bootstrap"
+          "text": "./npdev doctor\n./npdev normalize ai-model NPDevSamples/ai-scenarios/base-ai-loop/ai-model.json\n./npdev report bootstrap"
         },
         {
           "type": "prose",

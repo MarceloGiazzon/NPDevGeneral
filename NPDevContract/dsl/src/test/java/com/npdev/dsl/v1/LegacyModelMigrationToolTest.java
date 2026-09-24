@@ -23,7 +23,7 @@ class LegacyModelMigrationToolTest {
                 "migrate",
                 "legacy-model",
                 "--input",
-                workspaceRoot.resolve("test-fixtures/legacy-model.json").toString(),
+                workspaceRoot.resolve("NPDevSamples/test-fixtures/legacy-model.json").toString(),
                 "--output",
                 output.toString()
         ).directory(workspaceRoot.toFile()).redirectErrorStream(true).start();
