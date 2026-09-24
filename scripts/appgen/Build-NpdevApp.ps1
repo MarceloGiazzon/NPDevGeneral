@@ -73,6 +73,12 @@ param(
   # init/Job container, a CI deploy step) BEFORE any serving instance boots, so no instance ever
   # contends the migration lock with another one in a correctly-ordered deployment.
   [switch]$MigrateOnly,
+  # S17b Secrets Manager consumer wiring: when a `db/<SecretEnv>/<AppId>` credential is stored in
+  # the OS keyring (NPDev Manager's Secrets tab / `npdev-manager --set-secret-env db <env> <id>`),
+  # it is preferred over `db.definition.json`'s own plaintext `database.password` when resolving
+  # what goes into resolved-db-plan.json. Defaults to 'dev' since a local AppGen build is the
+  # common case; pass -SecretEnv staging/prod for a build tied to a non-dev credential.
+  [string]$SecretEnv = 'dev',
   # -AcknowledgeDestructive <token>: threads the token into the generator's new
   # --destructiveAcknowledgment flag (LNCH-1 P6 task 6.2b), landing it verbatim in the generated
   # manifest's destructiveAcknowledgment key -- the value SchemaLifecycleExecutor's Phase 4
@@ -758,6 +764,23 @@ $DbPlan = [ordered]@{
   appRoot = $GeneratedAppRoot
   runtimeHostLibsDir = $RuntimeHostLibsDir
 }
+# S17b Secrets Manager consumer wiring: prefer the OS keyring over db.definition.json's own
+# plaintext `database.password`. This is additive, not a migration -- when no keyring entry
+# exists (the common case for a local H2 app, which has no password to speak of), the plaintext
+# field is used exactly as before. resolved-db-plan.json itself still carries the RESOLVED value
+# in plaintext either way: DBeaver-connection-info printing, the {password} profile-substitution
+# used by backup/restore exec commands, and the POSIX/PowerShell launchers all read it from this
+# file today, so removing the plaintext field here would break those, not secure them. What
+# changes is the SOURCE the human enters it into -- the keyring, via the Manager's Secrets tab or
+# `npdev-manager --set-secret-env db <env> <id>`, instead of typing it into db.definition.json.
+$Password = "$($DbDef.database.password)"
+$NpdevManagerExe = if ($env:NPDEV_MANAGER_EXE) { $env:NPDEV_MANAGER_EXE }
+                    else { (Get-Command npdev-manager.exe -ErrorAction SilentlyContinue).Source }
+if ($NpdevManagerExe) {
+  $KeyringPassword = & $NpdevManagerExe '--get-secret-env' 'db' $SecretEnv $AppId 2>$null
+  if ($LASTEXITCODE -eq 0 -and $KeyringPassword) { $Password = $KeyringPassword }
+}
+if ($Password) { $DbPlan['password'] = $Password }
 # MON-9. THIS FILE HAS TWO WRITERS and this one runs last.
 #
 # `OperationalRunbookEmitter.toPlanJson()` (Java) builds a much richer plan -- storageMode,
