@@ -1420,6 +1420,156 @@ textarea.declared-panel-edit-input {
   font-size: 13px;
 }
 
+/* Wave 2 (NPDEV_FEATURE_PLAN_2026-09-24.md): widget-catalogue controls. */
+
+.slider-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.slider-control-value {
+  min-width: 2.5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #5b6675;
+}
+
+.toggle-switch-input {
+  appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  background: #c7ccd1;
+  position: relative;
+  cursor: pointer;
+  outline-offset: 2px;
+  transition: background 0.15s ease-in-out;
+}
+
+.toggle-switch-input::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease-in-out;
+}
+
+.toggle-switch-input:checked {
+  background: var(--np-accent, #1769aa);
+}
+
+.toggle-switch-input:checked::before {
+  left: 18px;
+}
+
+.rating-control {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.rating-star {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px;
+  color: #c7ccd1;
+}
+
+.rating-star-filled {
+  color: var(--np-accent, #1769aa);
+}
+
+.currency-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.currency-control-symbol {
+  color: #5b6675;
+  font-size: 13px;
+}
+
+.currency-control-input {
+  text-align: right;
+}
+
+.password-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.password-control-toggle {
+  background: none;
+  border: 1px solid #c7ccd1;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+  color: #5b6675;
+}
+
+.uuid-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.uuid-control-input {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  background: #f4f5f7;
+  color: #5b6675;
+}
+
+.uuid-control-copy {
+  background: none;
+  border: 1px solid #c7ccd1;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+  color: #5b6675;
+}
+
+.richtext-control-toolbar {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.richtext-control-tool {
+  background: #f4f5f7;
+  border: 1px solid #c7ccd1;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 8px;
+  min-width: 28px;
+}
+
+.richtext-control-editor {
+  border: 1px solid #c7ccd1;
+  border-radius: 4px;
+  min-height: 4.5em;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.richtext-control-editor:focus-visible {
+  outline: 2px solid var(--np-accent, #1769aa);
+  outline-offset: -1px;
+}
+
 .declared-panel-add-row {
   display: flex;
   flex-wrap: wrap;

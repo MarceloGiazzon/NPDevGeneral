@@ -24,6 +24,7 @@
     "navigation": [
       { "label": "Widget Orders", "target": "WidgetOrder", "group": "Operations" },
       { "label": "Widget Catalog", "target": "WidgetCatalogEntry", "group": "Operations" },
+      { "label": "Widget Showcase", "target": "WidgetShowcase", "group": "Operations" },
       { "label": "Reference Data" }
     ]
   },
@@ -441,6 +442,67 @@
         { "name": "id", "type": "uuid", "id": true, "required": true },
         { "name": "supplierCode", "type": "string", "required": true, "unique": true, "ui": { "label": "Supplier code" } },
         { "name": "displayName", "type": "string", "required": true, "ui": { "label": "Name" } }
+      ]
+    },
+    {
+      "name": "WidgetShowcase",
+      "truthLevel": "T2",
+      "ui": { "label": "Widget showcase" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        {
+          "name": "volumeLevel",
+          "type": "int",
+          "required": true,
+          "min": 0,
+          "max": 11,
+          "ui": { "label": "Volume level", "widget": "slider" }
+        },
+        {
+          "name": "featured",
+          "type": "boolean",
+          "required": true,
+          "ui": { "label": "Featured", "widget": "toggle" }
+        },
+        {
+          "name": "qualityRating",
+          "type": "int",
+          "required": false,
+          "max": 3,
+          "ui": { "label": "Quality rating", "widget": "rating" }
+        },
+        {
+          "name": "listPrice",
+          "type": "decimal",
+          "precision": 12,
+          "scale": 2,
+          "required": true,
+          "ui": { "label": "List price", "widget": "currency", "currency": "USD" }
+        },
+        {
+          "name": "accessCode",
+          "type": "string",
+          "required": false,
+          "ui": { "label": "Access code", "widget": "password" }
+        },
+        {
+          "name": "brochure",
+          "type": "file",
+          "required": false,
+          "ui": { "label": "Brochure" }
+        },
+        {
+          "name": "externalRef",
+          "type": "uuid",
+          "required": false,
+          "ui": { "label": "External reference", "widget": "uuid" }
+        },
+        {
+          "name": "description",
+          "type": "string",
+          "required": false,
+          "ui": { "label": "Description", "widget": "richtext" }
+        }
       ]
     },
     {

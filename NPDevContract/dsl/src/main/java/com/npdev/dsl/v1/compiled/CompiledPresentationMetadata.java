@@ -41,6 +41,7 @@ public final class CompiledPresentationMetadata {
     private final String defaultGroup;
     private final String imageField;
     private final String customWidgetRef;
+    private final String currency;
     private final Map<String, String> labelLocales;
     private final Map<String, String> shortLabelLocales;
 
@@ -80,6 +81,7 @@ public final class CompiledPresentationMetadata {
             String defaultGroup,
             String imageField,
             String customWidgetRef,
+            String currency,
             Map<String, String> labelLocales,
             Map<String, String> shortLabelLocales
     ) {
@@ -118,6 +120,7 @@ public final class CompiledPresentationMetadata {
         this.defaultGroup = defaultGroup;
         this.imageField = imageField;
         this.customWidgetRef = customWidgetRef;
+        this.currency = currency;
         this.labelLocales = (labelLocales == null || labelLocales.isEmpty()) ? Map.of() : Map.copyOf(labelLocales);
         this.shortLabelLocales = (shortLabelLocales == null || shortLabelLocales.isEmpty()) ? Map.of() : Map.copyOf(shortLabelLocales);
     }
@@ -260,6 +263,10 @@ public final class CompiledPresentationMetadata {
 
     public String getCustomWidgetRef() {
         return customWidgetRef;
+    }
+
+    public String getCurrency() {
+        return currency;
     }
 
     public Map<String, String> getLabelLocales() {

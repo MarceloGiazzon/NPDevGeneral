@@ -4179,6 +4179,19 @@
 
   function renderFieldValue(target, field, value, includeRawId) {
     target.innerHTML = "";
+    if (field.widget === "password") {
+      // Never render an actual password value, even in a read-only list/detail view.
+      target.textContent = value ? "••••••••" : "-";
+      return;
+    }
+    if (field.widget === "richtext") {
+      if (!value) {
+        target.textContent = "-";
+        return;
+      }
+      target.innerHTML = sanitizeRichText(String(value));
+      return;
+    }
     if (field.type === "file") {
       if (!value || !value.key) {
         target.textContent = "-";
@@ -4749,11 +4762,23 @@
       }
       return createEnumSelect(field, value);
     }
+    if (field.widget === "rating") {
+      return createRatingInput(field, value);
+    }
+    if (field.widget === "richtext") {
+      return createRichTextInput(field, value);
+    }
+    if (field.widget === "uuid") {
+      return createUuidInput(field, value);
+    }
     if (field.type === "boolean") {
       const input = document.createElement("input");
       input.name = field.name;
       input.type = "checkbox";
       input.checked = Boolean(value);
+      if (field.widget === "toggle") {
+        input.className = "toggle-switch-input";
+      }
       return input;
     }
     if (field.widget === "textarea") {
@@ -4762,6 +4787,9 @@
       textarea.rows = 3;
       textarea.value = value === null || value === undefined ? "" : String(value);
       return textarea;
+    }
+    if (field.widget === "slider") {
+      return createSliderInput(field, value);
     }
     const input = document.createElement("input");
     input.name = field.name;
@@ -4779,10 +4807,21 @@
       input.type = "tel";
     } else if (field.widget === "url") {
       input.type = "url";
+    } else if (field.widget === "password") {
+      input.type = "password";
+    } else if (field.widget === "currency") {
+      input.type = "number";
+      input.step = "0.01";
     } else {
       input.type = "text";
     }
     input.value = value === null || value === undefined ? "" : String(value);
+    if (field.widget === "password") {
+      return wrapPasswordInput(input);
+    }
+    if (field.widget === "currency") {
+      return wrapCurrencyInput(input, field);
+    }
     return input;
   }
 
@@ -5081,6 +5120,236 @@
   // file immediately uploads it (multipart, outside the record's own JSON save request) and only
   // updates the hidden input on success; the record's own create/update POST still carries just
   // the returned handle, never raw bytes.
+  // Wave 2 (NPDEV_FEATURE_PLAN_2026-09-24.md): field.widget="slider" for an int/integer/long/decimal
+  // field -- a native <input type=range> IS a real named form control with its own .value, so no
+  // hidden-input wrapper is needed (unlike rating/richtext below, which have no native HTML element).
+  // Range bounds come from field.min/field.max (Wave 2 threaded these onto the manifest for the
+  // first time -- see BusinessUiEmitter); absent either, the plan's documented default is 0-100.
+  function createSliderInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "slider-control";
+    const input = document.createElement("input");
+    input.type = "range";
+    input.name = field.name;
+    const min = (field.min !== undefined && field.min !== null) ? field.min : 0;
+    const max = (field.max !== undefined && field.max !== null) ? field.max : 100;
+    input.min = String(min);
+    input.max = String(max);
+    input.step = (field.type === "decimal") ? "any" : "1";
+    input.value = (value === null || value === undefined || value === "") ? String(min) : String(value);
+    const label = document.createElement("span");
+    label.className = "slider-control-value";
+    label.textContent = input.value;
+    input.addEventListener("input", function () {
+      label.textContent = input.value;
+    });
+    wrapper.appendChild(input);
+    wrapper.appendChild(label);
+    return wrapper;
+  }
+
+  // field.widget="rating" for an int/integer field: no native star-rating element exists, so (like
+  // createFileInput below) a hidden input carries the real named value and a row of clickable star
+  // buttons drives it. Star count is field.max if declared and in [1,10], else 5 (the plan's default).
+  function createRatingInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "rating-control";
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+    hidden.value = (value === null || value === undefined) ? "" : String(value);
+    wrapper.appendChild(hidden);
+    const maxStars = (field.max !== undefined && field.max !== null && field.max >= 1 && field.max <= 10)
+      ? Math.round(field.max) : 5;
+    const stars = [];
+    function refresh() {
+      const current = parseInt(hidden.value, 10) || 0;
+      stars.forEach(function (star, i) {
+        const filled = i < current;
+        star.textContent = filled ? "★" : "☆";
+        star.classList.toggle("rating-star-filled", filled);
+      });
+    }
+    for (let i = 0; i < maxStars; i++) {
+      const star = document.createElement("button");
+      star.type = "button";
+      star.className = "rating-star";
+      star.setAttribute("aria-label", "Rate " + (i + 1) + " of " + maxStars);
+      star.addEventListener("click", function () {
+        // Clicking the currently-set star clears the rating back to unset, same as most rating
+        // widgets -- otherwise a required field could never be un-rated once clicked.
+        hidden.value = (parseInt(hidden.value, 10) === i + 1) ? "" : String(i + 1);
+        refresh();
+      });
+      stars.push(star);
+      wrapper.appendChild(star);
+    }
+    refresh();
+    return wrapper;
+  }
+
+  // field.widget="richtext" for a string field: a minimal contenteditable with bold/italic/list,
+  // sanitized on every change AND once more on blur (a paste can carry markup the input listener
+  // hasn't run for yet) so nothing but the whitelist below ever reaches the hidden input that
+  // actually gets submitted -- see sanitizeRichText's own docstring for the whitelist and why it
+  // parses real DOM instead of a regex.
+  function createRichTextInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "richtext-control";
+    const toolbar = document.createElement("div");
+    toolbar.className = "richtext-control-toolbar";
+
+    const hidden = document.createElement("input");
+    hidden.type = "hidden";
+    hidden.name = field.name;
+
+    const editor = document.createElement("div");
+    editor.className = "richtext-control-editor";
+    editor.contentEditable = "true";
+    const initialHtml = sanitizeRichText(value === null || value === undefined ? "" : String(value));
+    editor.innerHTML = initialHtml;
+    hidden.value = initialHtml;
+
+    function makeToolButton(label, command, title) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "richtext-control-tool";
+      btn.textContent = label;
+      btn.title = title;
+      // Without this, clicking the button steals focus from the editor FIRST, so execCommand runs
+      // with no selection inside it.
+      btn.addEventListener("mousedown", function (e) { e.preventDefault(); });
+      btn.addEventListener("click", function () {
+        document.execCommand(command, false, null);
+        syncHidden();
+      });
+      return btn;
+    }
+    toolbar.appendChild(makeToolButton("B", "bold", "Bold"));
+    toolbar.appendChild(makeToolButton("I", "italic", "Italic"));
+    toolbar.appendChild(makeToolButton("• List", "insertUnorderedList", "Bulleted list"));
+
+    function syncHidden() {
+      hidden.value = sanitizeRichText(editor.innerHTML);
+    }
+    editor.addEventListener("input", syncHidden);
+    editor.addEventListener("blur", function () {
+      const cleaned = sanitizeRichText(editor.innerHTML);
+      if (cleaned !== editor.innerHTML) {
+        editor.innerHTML = cleaned;
+      }
+      hidden.value = cleaned;
+    });
+
+    wrapper.appendChild(toolbar);
+    wrapper.appendChild(editor);
+    wrapper.appendChild(hidden);
+    return wrapper;
+  }
+
+  // field.widget="uuid": read-only monospace display + copy-to-clipboard, and (Wave 2) the DEFAULT
+  // widget for a uuid-typed field. Still a real named input (readOnly, not disabled, so its .value
+  // keeps round-tripping through submitForm's generic form.elements[field.name] read) -- only the
+  // copy button is extra chrome around it.
+  function createUuidInput(field, value) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "uuid-control";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.name = field.name;
+    input.value = value === null || value === undefined ? "" : String(value);
+    input.readOnly = true;
+    input.className = "uuid-control-input";
+    wrapper.appendChild(input);
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "uuid-control-copy";
+    copyButton.textContent = "Copy";
+    copyButton.addEventListener("click", function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value);
+        const original = copyButton.textContent;
+        copyButton.textContent = "Copied";
+        setTimeout(function () { copyButton.textContent = original; }, 1200);
+      }
+    });
+    wrapper.appendChild(copyButton);
+    return wrapper;
+  }
+
+  // field.widget="password": the <input type=password> itself is built by createInput's generic
+  // dispatch (same value path as any other text-like field) -- this just adds a show/hide toggle
+  // around it. Wrapping is safe: form.elements[field.name] finds a named control anywhere in the
+  // form regardless of nesting, the same reason createFileInput/createRatingInput's wrappers work.
+  function wrapPasswordInput(input) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "password-control";
+    input.className = "password-control-input";
+    wrapper.appendChild(input);
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "password-control-toggle";
+    toggle.textContent = "Show";
+    toggle.addEventListener("click", function () {
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      toggle.textContent = showing ? "Show" : "Hide";
+    });
+    wrapper.appendChild(toggle);
+    return wrapper;
+  }
+
+  // field.widget="currency": a decimal field rendered as a plain number input (decimal stays a raw
+  // string through submitForm -- see its own numericTypes comment -- so no special submit handling
+  // is needed here) with a currency-symbol affix read from field.currency (BusinessUiEmitter emits
+  // it from the field's declared ui.currency, Wave 2).
+  function wrapCurrencyInput(input, field) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "currency-control";
+    const symbol = document.createElement("span");
+    symbol.className = "currency-control-symbol";
+    symbol.textContent = field.currency || "";
+    input.className = "currency-control-input";
+    wrapper.appendChild(symbol);
+    wrapper.appendChild(input);
+    return wrapper;
+  }
+
+  // Whitelist-based HTML sanitizer for field.widget="richtext" -- parses real DOM (a fresh, never-
+  // inserted <div>) and walks it rather than using a regex, because a regex cannot correctly reason
+  // about nested/malformed markup and is the classic way an HTML sanitizer turns out to be bypassable.
+  // Keeps only RICHTEXT_ALLOWED_TAGS, unwrapping (not deleting) any other element so plain pasted
+  // text/structure survives; strips EVERY attribute from a kept element (no href/src/style/onXXX --
+  // this widget has no legitimate use for any of them), and drops any non-element/non-text node
+  // (comments, processing instructions). Used both on every editor change and when first rendering
+  // a stored value, so a value written before this sanitizer existed (or written some other way)
+  // gets cleaned on next read, not just on next edit.
+  const RICHTEXT_ALLOWED_TAGS = new Set(["B", "STRONG", "I", "EM", "UL", "OL", "LI", "BR", "P"]);
+  function sanitizeRichText(html) {
+    const container = document.createElement("div");
+    container.innerHTML = html || "";
+    (function clean(node) {
+      Array.from(node.childNodes).forEach(function (child) {
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          if (!RICHTEXT_ALLOWED_TAGS.has(child.tagName)) {
+            while (child.firstChild) {
+              node.insertBefore(child.firstChild, child);
+            }
+            node.removeChild(child);
+            return;
+          }
+          Array.from(child.attributes).forEach(function (attr) {
+            child.removeAttribute(attr.name);
+          });
+          clean(child);
+        } else if (child.nodeType !== Node.TEXT_NODE) {
+          node.removeChild(child);
+        }
+      });
+    })(container);
+    return container.innerHTML;
+  }
+
   function createFileInput(field, value) {
     const wrapper = document.createElement("div");
     wrapper.className = "file-control";

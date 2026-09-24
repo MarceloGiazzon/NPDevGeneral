@@ -2222,6 +2222,7 @@ public final class ModelCompiler {
                 metadata.getDefaultGroup(),
                 metadata.getImageField(),
                 metadata.getCustomWidgetRef(),
+                metadata.getCurrency(),
                 metadata.getLabelLocales(),
                 metadata.getShortLabelLocales()
         );

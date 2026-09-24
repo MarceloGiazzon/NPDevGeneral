@@ -35,7 +35,7 @@ class FieldWidgetDefaultsTest {
     @Test
     void defaultsMatchPerDataType() {
         assertEquals("text", FieldWidgetDefaults.defaultWidget("string", false, false, false));
-        assertEquals("text", FieldWidgetDefaults.defaultWidget("uuid", false, false, false));
+        assertEquals("uuid", FieldWidgetDefaults.defaultWidget("uuid", false, false, false));
         assertEquals("number", FieldWidgetDefaults.defaultWidget("int", false, false, false));
         assertEquals("number", FieldWidgetDefaults.defaultWidget("integer", false, false, false));
         assertEquals("number", FieldWidgetDefaults.defaultWidget("long", false, false, false));
@@ -71,6 +71,55 @@ class FieldWidgetDefaultsTest {
         assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("long"), "number"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "number"));
         assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("uuid"), "number"));
+    }
+
+    @Test
+    void sliderIsCompatibleOnlyWithNumericTypes() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "slider"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("decimal"), "slider"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "slider"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("boolean"), "slider"));
+    }
+
+    @Test
+    void toggleIsCompatibleOnlyWithBoolean() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("boolean"), "toggle"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "toggle"));
+    }
+
+    @Test
+    void ratingIsCompatibleOnlyWithIntOrInteger() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "rating"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("integer"), "rating"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("long"), "rating"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("decimal"), "rating"));
+    }
+
+    @Test
+    void currencyIsCompatibleOnlyWithDecimal() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("decimal"), "currency"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "currency"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "currency"));
+    }
+
+    @Test
+    void passwordAndRichtextAreCompatibleOnlyWithString() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "password"));
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "richtext"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "password"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("int"), "richtext"));
+    }
+
+    @Test
+    void fileIsCompatibleOnlyWithFileType() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("file"), "file"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "file"));
+    }
+
+    @Test
+    void uuidWidgetIsCompatibleOnlyWithUuidType() {
+        assertEquals(COMPATIBLE, FieldWidgetDefaults.classify(scalar("uuid"), "uuid"));
+        assertEquals(INCOMPATIBLE, FieldWidgetDefaults.classify(scalar("string"), "uuid"));
     }
 
     @Test

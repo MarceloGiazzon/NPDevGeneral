@@ -872,6 +872,7 @@ public final class CompiledModelCanonicalJsonReader {
                 optionalText(node, "defaultGroup"),
                 optionalText(node, "imageField"),
                 optionalText(node, "customWidgetRef"),
+                optionalText(node, "currency"),
                 readLabelLocales(node, "label"),
                 readLabelLocales(node, "shortLabel")
         );

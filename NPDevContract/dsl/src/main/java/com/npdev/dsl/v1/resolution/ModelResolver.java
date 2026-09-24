@@ -414,6 +414,7 @@ public final class ModelResolver {
                 firstNonBlank(override.getDefaultGroup(), base.getDefaultGroup()),
                 firstNonBlank(override.getImageField(), base.getImageField()),
                 firstNonBlank(override.getCustomWidgetRef(), base.getCustomWidgetRef()),
+                firstNonBlank(override.getCurrency(), base.getCurrency()),
                 mergeLabelLocales(override.getLabel(), override.getLabelLocales(), base.getLabelLocales()),
                 mergeLabelLocales(override.getShortLabel(), override.getShortLabelLocales(), base.getShortLabelLocales())
         );
@@ -459,6 +460,7 @@ public final class ModelResolver {
                 metadata.getDefaultGroup(),
                 metadata.getImageField(),
                 metadata.getCustomWidgetRef(),
+                metadata.getCurrency(),
                 metadata.getLabelLocales(),
                 metadata.getShortLabelLocales()
         );

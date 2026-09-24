@@ -2867,6 +2867,7 @@ public final class JsonModelParser {
                 readText(node, "defaultGroup"),
                 readText(node, "imageField"),
                 readText(node, "customWidgetRef"),
+                readText(node, "currency"),
                 readLabelLocales(node, "label"),
                 readLabelLocales(node, "shortLabel")
         );
