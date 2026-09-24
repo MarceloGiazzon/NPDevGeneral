@@ -25,8 +25,11 @@ import java.util.stream.Collectors;
 /**
  * A minimal, self-contained CSV reader/writer -- no new dependency for a format this narrow (one
  * file per table, always UTF-8, always comma-delimited, one record per line -- a quoted field may not
- * embed a newline, unlike full RFC4180). A {@code null} value and an empty string are indistinguishable
- * on round-trip (a well-known CSV limitation, not a bug in this class).
+ * embed a newline, unlike full RFC4180). {@code null} and an empty string ARE distinguishable on
+ * round-trip: a bare, unquoted empty field is {@code null}; an explicitly quoted empty field
+ * ({@code ""}) is an empty string. Without this, a NOT NULL text column that legitimately holds ''
+ * (e.g. Flyway's own {@code flyway_schema_history.script} baseline row) re-imports as SQL NULL and
+ * fails that column's NOT NULL constraint -- reproduced live 2026-09-24 against a running app.
  *
  * <p>Every value round-trips through {@link Object#toString()} on export and a small
  * {@code dataType}-driven parse on import, rather than a blind {@link PreparedStatement#setObject}
@@ -108,7 +111,7 @@ final class CsvRowSerializer implements RowSerializer {
 
     private void bindCell(PreparedStatement statement, int index, String cell, String dataType, SqlDialect targetDialect,
             Connection connection) throws SQLException {
-        if (cell == null || cell.isEmpty()) {
+        if (cell == null) {
             statement.setNull(index, Types.VARCHAR);
             return;
         }
@@ -152,6 +155,9 @@ final class CsvRowSerializer implements RowSerializer {
         if (value == null) {
             return "";
         }
+        if (value.isEmpty()) {
+            return "\"\"";
+        }
         boolean needsQuoting = value.contains(",") || value.contains("\"") || value.contains("\n") || value.contains("\r");
         if (!needsQuoting) {
             return value;
@@ -159,10 +165,13 @@ final class CsvRowSerializer implements RowSerializer {
         return "\"" + value.replace("\"", "\"\"") + "\"";
     }
 
+    /** A cell's value is {@code null} (SQL NULL) unless it was quoted -- {@code ""} is the only way
+     *  to write an explicit empty string, so an unquoted empty field between commas is NULL. */
     private static List<String> parseCsvLine(String line) {
         List<String> cells = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         boolean inQuotes = false;
+        boolean quoted = false;
         for (int i = 0; i < line.length(); i++) {
             char c = line.charAt(i);
             if (inQuotes) {
@@ -178,14 +187,16 @@ final class CsvRowSerializer implements RowSerializer {
                 }
             } else if (c == '"') {
                 inQuotes = true;
+                quoted = true;
             } else if (c == ',') {
-                cells.add(current.toString());
+                cells.add(quoted || current.length() > 0 ? current.toString() : null);
                 current.setLength(0);
+                quoted = false;
             } else {
                 current.append(c);
             }
         }
-        cells.add(current.toString());
+        cells.add(quoted || current.length() > 0 ? current.toString() : null);
         return cells;
     }
 }
