@@ -6,6 +6,7 @@ type: GAP
 severity: MEDIUM
 status: DONE
 opened: 2026-09-22
+closed: 2026-09-24
 source: >-
   PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 4 (D1 Phase 3, the flagship B28 capability: "an operator
   adds a concept to the model, reloads, and the new concept is queryable and writable through REST
