@@ -360,6 +360,9 @@
       "invocation": "manual-runbook",
       "documentedIn": "docs/MONITOR.md"
     },
+    "scripts/quality/check-manager-version-bump.py": {
+      "invocation": "ci-gate"
+    },
     "scripts/quality/check-markdown-links.py": {
       "invocation": "ci-gate"
     },

@@ -1379,14 +1379,30 @@ fn manager_version() -> String {
 
 /// What changed in the CURRENT version -- shown as the version chip's tooltip, so someone looking
 /// at the tab bar knows what shipped without leaving the Manager. Update this string alongside
-/// `Cargo.toml`'s and `tauri.conf.json`'s `version` on every bump; it deliberately describes only
-/// the current version, not a full changelog (that's `git log`).
+/// `Cargo.toml`'s and `tauri.conf.json`'s `version`, AND `CURRENT_VERSION_TITLE` below, on every
+/// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.4.0: Share a running app over the internet from the window (tunnel, host check, keys, \
-     deploy hand-off); Monitor + Scrap Manager; verification panel; Prompter validate/apply with \
-     automatic backup."
+    "0.4.1: DB Import/Export fixes -- precondition failures (missing jar, no connection, etc.) now \
+     honor --json instead of surfacing as a raw parser error, and CSV export/import no longer \
+     collapses a NOT NULL column's legitimate empty string into NULL on round-trip."
         .to_string()
+}
+
+/// Short headline for the version chip's own visible text (not just its tooltip) -- update
+/// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
+/// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
+/// version bump is still visible at a glance instead of looking identical to the last one.
+const CURRENT_VERSION_TITLE: &str = "DB Export/Import Fix";
+
+#[tauri::command]
+fn manager_build_stamp() -> String {
+    format!(
+        "v{} - {} - {}",
+        env!("CARGO_PKG_VERSION"),
+        CURRENT_VERSION_TITLE,
+        env!("NPDEV_MANAGER_BUILD_TIMESTAMP")
+    )
 }
 
 // -------------------------------------------------------------------------------------------
@@ -2756,6 +2772,7 @@ the blast radius needs a baseline to diff against"
             manager_home_path,
             manager_version,
             manager_version_description,
+            manager_build_stamp,
             // The Monitor (Phase B)
             monitor_scan,
             monitor_probe,

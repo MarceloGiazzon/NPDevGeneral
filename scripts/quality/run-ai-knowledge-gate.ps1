@@ -944,6 +944,18 @@ try {
         $failures += "a ModelHolder-derived snapshot is cached at bean-construction time with no addReloadListener: see scripts/quality/check-model-holder-reload-wiring.py output above -- either read modelHolder.get() fresh on every use, register a ModelReloadListener, or add a documented ALLOWLIST entry if this is a deliberate boot-time-only snapshot"
     }
 
+    # 2026-09-24: a Manager-visible bug fix (db export/import's --json precondition handling, then
+    # CsvRowSerializer's NULL/empty-string round-trip fix) shipped twice in one session before the
+    # Manager's own version was bumped -- the version chip is the only signal a user has that
+    # "what's running" matches "what was just fixed," and main.rs's own comment already names the
+    # three places (Cargo.toml, tauri.conf.json, manager_version_description) that must move
+    # together. This makes that mechanical instead of a comment someone has to reread.
+    Write-Host '[51/51] Checking NPDevManager behavior changes carry a version bump...'
+    & $py "scripts/quality/check-manager-version-bump.py"
+    if ($LASTEXITCODE -ne 0) {
+        $failures += "NPDevManager changed without (or with an inconsistent) version bump: see scripts/quality/check-manager-version-bump.py output above -- bump Cargo.toml, tauri.conf.json, AND main.rs's manager_version_description/CURRENT_VERSION_TITLE together"
+    }
+
     if ($failures.Count -gt 0) {
         Write-Host ""
         Write-Host "AI knowledge gate FAILED:" -ForegroundColor Red
