@@ -11,7 +11,7 @@ capability that will break silently -- the witness column makes that visible.
     python emit-capability-matrix.py --out <dir>     # writes matrix.json + matrix.html
     python emit-capability-matrix.py --appgen-root <p> --samples-root <p>
 
-Output (written to scripts/reports/out/capability-matrix/ by default; --out overrides):
+Output (written to <BuildRoot>/reports/capability-matrix/ by default; --out overrides):
   matrix.json   - machine-readable: {schemaVersion, apps:[{label,path,used:[...,...]}],
                    features:[{name,corpusUsers,witness:[testFiles]}]}
   matrix.html   - the human view: rows = sample apps, columns = capabilities, cells used/unused,
@@ -44,7 +44,12 @@ from dsl_coverage.corpus import _merge_context_fragments, find_models  # noqa: E
 from dsl_coverage.features import FEATURE_DETECTORS  # noqa: E402
 
 SCHEMA_VERSION = "npdev-capability-matrix.v1"
-DEFAULT_OUT = REPO_ROOT / "scripts" / "reports" / "out" / "capability-matrix"
+# Build output policy (docs/BUILD_OUTPUT_LOCATION_POLICY.md): never inside the repo. Wave 1.5 of
+# NPDEV_FEATURE_PLAN_2026-09-24.md moved this default off scripts/reports/out/.
+import os  # noqa: E402
+_BUILD_ROOT = Path(os.environ["NPDEV_BUILD_ROOT"]) if os.environ.get("NPDEV_BUILD_ROOT") \
+    else REPO_ROOT.parent / "Build"
+DEFAULT_OUT = _BUILD_ROOT / "reports" / "capability-matrix"
 
 
 def _feature_keywords(feature: str) -> list[str]:
