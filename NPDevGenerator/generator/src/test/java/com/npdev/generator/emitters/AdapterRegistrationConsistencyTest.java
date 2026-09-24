@@ -41,6 +41,10 @@ class AdapterRegistrationConsistencyTest {
             "flowinstance-postgres",
             "idempotency-inproc",
             "idempotency-postgres",
+            // GitHub identity-provider adapter: same reasoning as idp-google below -- consumed ONLY
+            // through runtimehost-core's compiled OAuth classes (a staged runtimehost-libs jar), no
+            // generated-app source ever imports it.
+            "idp-github",
             // SEC-11 (Session 3b): the Google identity-provider adapter is consumed ONLY through
             // runtimehost-core's compiled classes (OAuthGoogleController, a staged runtimehost-libs
             // jar) -- no generated-app source ever imports it, so no proof test needs to build it

@@ -56,16 +56,19 @@ class LoginPageEmitterTest {
             """;
 
     @Test
-    void jwtModeEmitsLoginPageWithGoogleSurface(@TempDir Path tempDir) throws Exception {
+    void jwtModeEmitsLoginPageWithOAuthSurface(@TempDir Path tempDir) throws Exception {
         Path out = emitPage(tempDir, "Login Demo", true);
         Path page = out.resolve("src/main/resources/static/login.html");
         assertTrue(Files.isRegularFile(page));
         String html = Files.readString(page);
         assertTrue(html.contains("Login Demo"), "the page must carry the app name");
-        assertTrue(html.contains("Continue with Google"), "both tabs share the Google affordance");
-        assertTrue(html.contains("/api/auth/oauth/config"), "the button must be gated on the server's config probe");
-        assertTrue(html.contains("cfg.authorizePath") && html.contains("purpose=login"),
-                "the button must start the authorize round trip against the server-provided authorize path");
+        assertTrue(html.contains("Continue with \" + p.label"),
+                "one button per server-reported provider, built from its label, not a hardcoded provider name");
+        assertTrue(html.contains("google:") && html.contains("github:"),
+                "both providers this platform ships an adapter for get an icon, regardless of which are configured");
+        assertTrue(html.contains("/api/auth/oauth/config"), "the buttons must be gated on the server's config probe");
+        assertTrue(html.contains("p.authorizePath") && html.contains("purpose=login"),
+                "each button must start the authorize round trip against its own server-provided authorize path");
         assertTrue(html.contains("/api/auth/login"), "the password form must post to the platform login endpoint");
         assertTrue(html.contains("npdev.shell.token"), "a successful login must write the shell's own token key");
         assertTrue(html.contains("email_exists_requires_link"),

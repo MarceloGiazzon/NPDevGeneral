@@ -178,6 +178,7 @@ you write.**
 | row-level rules | control over *which rows* each user sees |
 | `sensitive` on a field | special handling in logs, traces, and exports |
 | — | JWT or API-key auth, a super-user key issued on first boot, and a built-in ControlPanel for users, roles and schedules |
+| — | optional Google/GitHub sign-in (env/keyring-configured, no model changes needed), on top of username+password |
 
 ### Queries and reporting
 
