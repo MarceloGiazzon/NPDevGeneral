@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "db import",
+  "ok": true,
+  "exitCode": 0,
+  "output": "  widgets: EQUAL (42 source row(s))\n  orders: COMPATIBLE (17 source row(s))\n    (COMPATIBLE, not EQUAL -- importing this table will additionally require --force)\n"
+}

@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "db export",
+  "ok": true,
+  "exitCode": 0,
+  "output": "  widgets: 42 row(s) -> C:\\demo\\export\\widgets.csv\n  orders: 17 row(s) -> C:\\demo\\export\\orders.csv\nnpdev db export: wrote 2 table(s) to C:\\demo\\export (format=csv, scope=business)\n"
+}
