@@ -2,12 +2,8 @@
 
 Renders the SAME `concepts`/`bonds` data `inspect_bonds` already computes (npdev_cli.py) as a
 self-contained SVG/HTML page -- no separate model read, no duplicated bond-extraction logic, so
-this can never drift from what `inspect bonds`'s own JSON output says. The layout algorithm
-mirrors NPDevEditor/ui-react/src/authoring/graph/erDiagramLayout.ts (a layered auto-layout: a
-table's layer is the longest chain of outgoing reference fields it owns) so the CLI's diagram and
-the Editor's live "ER diagram" view read the same way; kept as a second implementation rather than
-a shared one because the Editor is TypeScript/React and this CLI is deliberately stdlib-only
-Python with no build step (see npdev_cli.py's own zero-third-party-deps discipline).
+this can never drift from what `inspect bonds`'s own JSON output says. The layout is a layered
+auto-layout: a table's layer is the longest chain of outgoing reference fields it owns.
 
 Stdlib only, by the same rule as npdev_engines.py/npdev_monitor.py.
 """
