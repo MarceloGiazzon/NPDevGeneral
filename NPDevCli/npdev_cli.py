@@ -1057,11 +1057,11 @@ def _stamp_field_rename(field: dict, old_field: str, new_field: str) -> str:
 
 def run_migrate_rename(args: argparse.Namespace) -> int:
     """B1.2 (docs/ACCEPTED_BOUNDARIES.md B1): declare a field rename for authors editing model.json
-    directly rather than through NPDevEditor's Field Details panel. NPDevEditor already stamps
-    `renamedFrom` automatically at its own single choke point (`updateField` in editorUtils.ts) --
-    this gives the hand-editing path the identical choke point, so a rename is a DECLARED event
-    either way, never a diff the engine has to guess at (docs/ACCEPTED_BOUNDARIES.md B1: a diff alone
-    cannot tell 'renamed a->b' from 'dropped a, added b', and guessing wrong destroys data).
+    directly rather than through the model-authoring page's Field Details panel. The model-authoring
+    page already stamps `renamedFrom` automatically at its own single choke point -- this gives the
+    hand-editing path the identical choke point, so a rename is a DECLARED event either way, never a
+    diff the engine has to guess at (docs/ACCEPTED_BOUNDARIES.md B1: a diff alone cannot tell
+    'renamed a->b' from 'dropped a, added b', and guessing wrong destroys data).
 
     Two forms: a single <Concept>.<oldField> <newField> pair (below), or --from-suggestions <file>
     (boundary lift plan 2026-09-02, package 2.2) applying every accepted candidate from `npdev
