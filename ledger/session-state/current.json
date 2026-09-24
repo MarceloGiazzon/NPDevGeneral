@@ -1,20 +1,30 @@
 {
-  "closedAt": "2026-09-23T20:26:51.6885757Z",
+  "closedAt": "2026-09-24T18:00:00.8608550Z",
   "branch": "close-all-open-2026-09-22",
-  "head": "dc8672ab",
-  "headSubject": "feat(runtimehost): QUAL-41 -- cover ControlPanelTenantUsersController's remaining 5 endpoints",
-  "summary": "Shipped QUAL-41's next coverage slice (22 new tests covering ControlPanelTenantUsersController's remaining 5 endpoints -- resetPassword/revokeSessions/list-grant-revokePermissionOverride; controller 35%->81.90%, RuntimeHost floor 22.08%->23.65%; committed+pushed as dc8672ab), set up a global machine-wide PostToolUse hook (~/.claude/hooks/enforce-watch-command.py, outside this repo) that mechanically enforces the always-surface-a-watch-command rule, then investigated a personal notes file (ListaSementes.txt) at the user's request and confirmed via a live ScrapForAI browser check that the 'app-tree-v2 three-pane redesign' idea in it was already fully implemented on 2026-08-20 -- no code changes needed there.",
-  "nextStep": "No forced next step. Two live candidates: (1) continue QUAL-41's programme -- NpdevAuthConfig's REG-156 ApplicationContextRunner gap is the next named target (needs a Spring ApplicationContextRunner test standing up ~15 other @Bean methods' dependency graph); (2) mine more ideas from c:\\Users\\Marcelo\\OneDrive\\Desktop\\ListaSementes.txt -- concrete untouched candidates already scoped this session: a DB data import/export tool (new NPDev Manager tab, SQL/CSV, DB-to-DB, pre-import structure check), a health/status kanban panel (tests/gates/probes dashboard in Manager + generated apps), or the more speculative GPU-accelerated validation engine idea. Also: ai-loop-verify-app's server is still running at http://localhost:8103 (PID 22372) from this session's browser verification -- stop it if not needed via D:\\WorkSpace\\NPDev\\Build\\ai-loop-verify-app\\_ops\\Stop-App.ps1.",
+  "head": "3a9f705d",
+  "headSubject": "feat(runtimehost,cli,manager): add npdev db export/import data-mobility tool",
+  "summary": "Fixed the npdev db export/import feature that shipped last session: made precondition failures (missing jar, no connection, etc.) honor --json instead of crashing the Manager's JSON parser, fixed CsvRowSerializer's CSV NULL-vs-empty-string ambiguity (caused a live NOT NULL constraint failure on flyway_schema_history), and fixed the Manager's byInstaller01 app registry entry which pointed at a never-generated model directory instead of its actual generated FinalApp (byInstaller01-app). Bumped Manager to v0.4.1, added a build-time-stamped version chip (title + auto-timestamp, never hand-typed), and added a new enforced gate check (check-manager-version-bump.py, wired into run-ai-knowledge-gate.ps1 step 51/51) that fails the build if NPDevManager behavior changes without a version bump, after the version was forgotten twice in this session.",
+  "nextStep": "Nothing is committed yet -- 9 modified files + 1 new file (scripts/quality/check-manager-version-bump.py) sit uncommitted in the working tree, and there is also 1 already-committed but unpushed commit (3a9f705d) from before this session. Review the diff and commit (likely 2-3 logical commits: the CLI/RuntimeHost export-import fixes, the Manager version-bump feature + new gate check), then push. The Manager is running locally (v0.4.1) with the byInstaller01 registry fix already applied to the user's own manager.json outside the repo -- no further action needed there.",
   "plan": "",
   "blocked": "",
-  "verified": "Full run-runtimehost-gate.ps1 via digest runner: PASSED, exit 0 (assembled sample app build+test+coverage ratchet). Live ScrapForAI browser verification of app-tree-v2.html against ai-loop-verify-app (ad hoc, not a repo gate): routine passed after fixing ALLOW_EVALUATE + a locator selector, screenshots confirm three-pane layout, center detail table, right inspector, and dark/light theme toggle all render and behave correctly. Global watch-command hook proven to fire live in this session (not a repo gate).",
-  "dirtyCount": 2,
+  "verified": "runtimehost-core:test (DataExportImportRoundTripH2Test, including new notNullColumnWithEmptyStringRoundTripsAsEmptyStringNotNull case) -- BUILD SUCCESSFUL. Live re-run of the original failing scenario against the running ai-loop-verify-app after restaging the fixed jar -- NOT NULL crash confirmed gone, table verified unchanged/restored to original state. check-manager-version-bump.py manually verified both directions (catches a missing bump, catches a partial bump, passes a correct one). run-script-inventory-check.ps1 -- passed (240/240 classified+invocation-declared). No full run-all-gates.ps1 this session.",
+  "dirtyCount": 14,
   "dirtyFiles": [
+    " M NPDevCli/npdev_cli.py",
+    " M NPDevManager/Cargo.lock",
+    " M NPDevManager/Cargo.toml",
+    " M NPDevManager/build.rs",
+    " M NPDevManager/src/main.rs",
+    " M NPDevManager/tauri.conf.json",
+    " M NPDevManager/ui/app.js",
+    " M NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/CsvRowSerializer.java",
+    " M NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/db/DataExportImportRoundTripH2Test.java",
     " M ledger/session-state/current.json",
-    " M ledger/session-state/history.jsonl"
+    " M ledger/session-state/history.jsonl",
+    " M scripts/policy/script-invocation-declarations.json",
+    " M scripts/quality/run-ai-knowledge-gate.ps1",
+    "?? scripts/quality/check-manager-version-bump.py"
   ],
-  "unpushed": 0,
-  "landedCommits": [
-    "dc8672ab feat(runtimehost): QUAL-41 -- cover ControlPanelTenantUsersController's remaining 5 endpoints"
-  ]
+  "unpushed": 1,
+  "landedCommits": []
 }
