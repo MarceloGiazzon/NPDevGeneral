@@ -5475,13 +5475,36 @@ def run_db_explain_refusal(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def _print_data_transfer_message(args: argparse.Namespace, command_name: str, message: str, *, ok: bool) -> None:
+    """`db export`/`db import` precondition checks run before the Java subprocess that
+    `_print_db_transfer_result` wraps even exists, but a caller that always passes `--json` (the
+    Manager's DB Import/Export tab) needs the SAME `npdev-cli-result.v1` envelope either way --
+    otherwise a precondition failure prints a bare stderr line with nothing on stdout, which the
+    Manager's JSON parser cannot tell apart from a crash (surfaces as a raw "no output on stdout"
+    error instead of the normal red-status rendering every other outcome gets)."""
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": command_name,
+            "ok": ok,
+            "exitCode": 0 if ok else 2,
+            "output": message,
+        }, indent=2))
+    elif ok:
+        print(message)
+    else:
+        print(message, file=sys.stderr)
+
+
 def _resolve_db_connection_for_data_transfer(app_root: Path, args: argparse.Namespace, command: str):
     """Shared by `run_db_export`/`run_db_import`: the SAME resolution order every other `db`
     subcommand uses (prefer _ops/resolved-db-plan.json, fall back to db.definition.json) -- see
     `run_db_verify`'s own docstring for why that order is chosen. Returns (url, user, password) on
-    success, or (None, None, None) after printing a `db <command>: ...` failure to stderr and the
-    caller should return 2 (or 0 for the InMemory no-op case, signaled by url == "").
+    success, or (None, None, None) after printing a `db <command>: ...` failure (honoring --json via
+    `_print_data_transfer_message`) and the caller should return 2 (or 0 for the InMemory no-op case,
+    signaled by url == "").
     """
+    command_name = f"db {command}"
     if args.url:
         return args.url, args.db_user, (args.db_password or "")
 
@@ -5490,11 +5513,17 @@ def _resolve_db_connection_for_data_transfer(app_root: Path, args: argparse.Name
     if plan_path.is_file():
         plan = read_json(plan_path)
         if not plan.get("physicalDatabase", False):
-            print(f"npdev db {command}: this app has no physical database (InMemory storage) -- nothing to do.")
+            _print_data_transfer_message(
+                args, command_name,
+                f"npdev {command_name}: this app has no physical database (InMemory storage) -- nothing to do.",
+                ok=True)
             return "", None, None
         url = plan.get("jdbcUrl") or None
         if url is None:
-            print(f"npdev db {command}: {plan_path} has no jdbcUrl recorded -- pass --url explicitly.", file=sys.stderr)
+            _print_data_transfer_message(
+                args, command_name,
+                f"npdev {command_name}: {plan_path} has no jdbcUrl recorded -- pass --url explicitly.",
+                ok=False)
             return None, None, None
         user = args.db_user if args.db_user is not None else (plan.get("username") or None)
         password = args.db_password if args.db_password is not None else (plan.get("password") or "")
@@ -5504,39 +5533,53 @@ def _resolve_db_connection_for_data_transfer(app_root: Path, args: argparse.Name
         try:
             engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
         except ValueError as exc:
-            print(f"npdev db {command}: {exc} (in {db_def_path})", file=sys.stderr)
+            _print_data_transfer_message(
+                args, command_name, f"npdev {command_name}: {exc} (in {db_def_path})", ok=False)
             return None, None, None
         if engine_key == "inmemory":
-            print(f"npdev db {command}: this app has no physical database (InMemory storage) -- nothing to do.")
+            _print_data_transfer_message(
+                args, command_name,
+                f"npdev {command_name}: this app has no physical database (InMemory storage) -- nothing to do.",
+                ok=True)
             return "", None, None
         url = _jdbc_url_for_verify(engine_key, app_root, database)
         if url is None:
-            print(f"npdev db {command}: do not know how to build a JDBC URL for engine '{engine_key}' -- "
-                  f"pass --url explicitly.", file=sys.stderr)
+            _print_data_transfer_message(
+                args, command_name,
+                f"npdev {command_name}: do not know how to build a JDBC URL for engine '{engine_key}' -- "
+                f"pass --url explicitly.",
+                ok=False)
             return None, None, None
         user = args.db_user if args.db_user is not None else database.get("username")
         password = args.db_password if args.db_password is not None else (database.get("password") or "")
         return url, user, password
-    print(f"npdev db {command}: neither {plan_path} nor {db_def_path} was found, and no --url was given. "
-          f"Pass --url (with --db-user/--db-password as needed), or run this from the app's own directory.",
-          file=sys.stderr)
+    _print_data_transfer_message(
+        args, command_name,
+        f"npdev {command_name}: neither {plan_path} nor {db_def_path} was found, and no --url was given. "
+        f"Pass --url (with --db-user/--db-password as needed), or run this from the app's own directory.",
+        ok=False)
     return None, None, None
 
 
-def _data_transfer_classpath_and_java(app_root: Path, command: str):
+def _data_transfer_classpath_and_java(app_root: Path, args: argparse.Namespace, command: str):
     """Shared setup for `run_db_export`/`run_db_import`: the runtimehost-libs + this app's own fat
     jar's BOOT-INF/lib -- the same classpath `run_db_verify`/`run_db_explain_refusal` build (see
     `run_db_verify`'s own docstring for why the fat jar's OWN bundled JDBC drivers are needed, not
     just runtimehost-libs). Returns (java_bin, libs) on success, or (None, None) after printing a
-    failure.
+    failure (honoring --json via `_print_data_transfer_message`).
     """
+    command_name = f"db {command}"
     libs = _default_runtimehost_libs_dir()
     if libs is None:
-        print(f"npdev db {command}: runtimehost jars are not staged -- run `npdev setup`", file=sys.stderr)
+        _print_data_transfer_message(
+            args, command_name,
+            f"npdev {command_name}: runtimehost jars are not staged -- run `npdev setup`", ok=False)
         return None, None
     java_bin = java_launcher()
     if java_bin is None:
-        print(f"npdev db {command}: no java found (see `npdev doctor`'s java checks)", file=sys.stderr)
+        _print_data_transfer_message(
+            args, command_name,
+            f"npdev {command_name}: no java found (see `npdev doctor`'s java checks)", ok=False)
         return None, None
     return java_bin, libs
 
@@ -5560,14 +5603,17 @@ def run_db_export(args: argparse.Namespace) -> int:
     if url == "":
         return 0
 
-    java_bin, libs = _data_transfer_classpath_and_java(app_root, "export")
+    java_bin, libs = _data_transfer_classpath_and_java(app_root, args, "export")
     if java_bin is None:
         return 2
 
     fat_jar = _finalexec_fat_jar_for(app_root)
     if fat_jar is None:
-        print(f"npdev db export: no built jar found under {app_root / 'build' / 'libs'}. Build this "
-              f"app at least once first (e.g. `_ops/Build-FinalApp.ps1`).", file=sys.stderr)
+        _print_data_transfer_message(
+            args, "db export",
+            f"npdev db export: no built jar found under {app_root / 'build' / 'libs'}. Build this "
+            f"app at least once first (e.g. `_ops/Build-FinalApp.ps1`).",
+            ok=False)
         return 2
 
     out_dir = Path(args.out).expanduser().resolve()
@@ -5594,7 +5640,8 @@ def run_db_export(args: argparse.Namespace) -> int:
         try:
             completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=300)
         except (OSError, subprocess.SubprocessError) as exc:
-            print(f"npdev db export: could not run ExportMain ({exc})", file=sys.stderr)
+            _print_data_transfer_message(
+                args, "db export", f"npdev db export: could not run ExportMain ({exc})", ok=False)
             return 2
 
     _print_db_transfer_result(args, "db export", completed)
@@ -5619,14 +5666,17 @@ def run_db_import(args: argparse.Namespace) -> int:
     if url == "":
         return 0
 
-    java_bin, libs = _data_transfer_classpath_and_java(app_root, "import")
+    java_bin, libs = _data_transfer_classpath_and_java(app_root, args, "import")
     if java_bin is None:
         return 2
 
     fat_jar = _finalexec_fat_jar_for(app_root)
     if fat_jar is None:
-        print(f"npdev db import: no built jar found under {app_root / 'build' / 'libs'}. Build this "
-              f"app at least once first (e.g. `_ops/Build-FinalApp.ps1`).", file=sys.stderr)
+        _print_data_transfer_message(
+            args, "db import",
+            f"npdev db import: no built jar found under {app_root / 'build' / 'libs'}. Build this "
+            f"app at least once first (e.g. `_ops/Build-FinalApp.ps1`).",
+            ok=False)
         return 2
 
     in_dir = Path(args.input_dir).expanduser().resolve()
@@ -5655,7 +5705,8 @@ def run_db_import(args: argparse.Namespace) -> int:
         try:
             completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=300)
         except (OSError, subprocess.SubprocessError) as exc:
-            print(f"npdev db import: could not run ImportMain ({exc})", file=sys.stderr)
+            _print_data_transfer_message(
+                args, "db import", f"npdev db import: could not run ImportMain ({exc})", ok=False)
             return 2
 
     _print_db_transfer_result(args, "db import", completed)

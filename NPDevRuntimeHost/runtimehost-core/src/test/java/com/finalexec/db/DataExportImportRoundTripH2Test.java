@@ -136,6 +136,35 @@ class DataExportImportRoundTripH2Test {
     }
 
     @Test
+    void notNullColumnWithEmptyStringRoundTripsAsEmptyStringNotNull() throws SQLException {
+        // Reproduces a live failure (2026-09-24, against a running app's flyway_schema_history):
+        // a NOT NULL text column legitimately holding '' must not come back as SQL NULL, or the
+        // re-insert violates that column's own NOT NULL constraint.
+        try (Connection connection = DriverManager.getConnection(sourceUrl); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(64) NOT NULL)");
+            statement.execute("INSERT INTO gadgets VALUES (1, '')");
+            statement.execute("INSERT INTO gadgets VALUES (2, 'named')");
+        }
+        assertEquals(ExportMain.EXIT_OK, runExport("csv"));
+
+        String targetUrl = freshTargetUrl();
+        try (Connection connection = DriverManager.getConnection(targetUrl); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE gadgets (id BIGINT PRIMARY KEY, label VARCHAR(64) NOT NULL)");
+        }
+
+        String applyOutput = runImport(targetUrl, "csv", true, false);
+        assertTrue(applyOutput.contains("imported 2 row(s)"), applyOutput);
+        assertEquals(2, countRows(targetUrl, "gadgets"));
+
+        try (Connection connection = DriverManager.getConnection(targetUrl);
+                Statement statement = connection.createStatement();
+                var resultSet = statement.executeQuery("SELECT label FROM gadgets WHERE id = 1")) {
+            assertTrue(resultSet.next());
+            assertEquals("", resultSet.getString(1));
+        }
+    }
+
+    @Test
     void sqlInsertExportThenImportRunsEveryStatement() throws SQLException {
         createSourceSchemaAndData();
         assertEquals(ExportMain.EXIT_OK, runExport("sql-insert"));
