@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="packs.css" />
 <link rel="stylesheet" href="provenance.css" />
 <link rel="stylesheet" href="dbio.css" />
+<link rel="stylesheet" href="secrets.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -39,6 +40,7 @@
     <button class="tab" data-screen="packs">Packs</button>
     <button class="tab" data-screen="provenance">Impact</button>
     <button class="tab" data-screen="dbio">DB Import/Export</button>
+    <button class="tab" data-screen="secrets">Secrets</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -645,6 +647,49 @@
         </div>
       </div>
     </section>
+
+    <section id="screen-secrets" class="screen" hidden>
+      <h1>&#128272; SECRETS <span class="dim">// db and deploy credentials, in the OS keyring</span></h1>
+      <p class="subtitle">
+        Stored in the OS credential store (Windows Credential Manager / macOS Keychain / Linux
+        Secret Service), isolated per environment -- never in a .env file, never in
+        <code>manager.json</code>. This tab only ever WRITES a value; nothing here can read one back.
+      </p>
+
+      <div class="secrets-columns">
+        <div class="secrets-table">
+          <div class="packs-toolbar">
+            <button class="btn" id="secrets-refresh">&#8635; REFRESH</button>
+            <span id="secrets-status" class="status-line"></span>
+          </div>
+          <div id="secrets-list"></div>
+        </div>
+
+        <div class="secrets-panel">
+          <h3>SET A CREDENTIAL</h3>
+          <p class="secrets-note">
+            Saving replaces any existing value for the same scope/env/profile id combination.
+            Click "Replace…" on a row to refill this form for an existing profile.
+          </p>
+          <label>Scope
+            <select id="secrets-form-scope"></select>
+          </label>
+          <label>Environment
+            <select id="secrets-form-env"></select>
+          </label>
+          <label>Profile id
+            <input type="text" id="secrets-form-id" placeholder="warehouse" autocomplete="off" />
+          </label>
+          <label>Label (optional)
+            <input type="text" id="secrets-form-label" placeholder="Warehouse prod DB" autocomplete="off" />
+          </label>
+          <label>Value
+            <input type="password" id="secrets-form-value" placeholder="never shown once saved" autocomplete="new-password" />
+          </label>
+          <button class="btn" id="secrets-form-save">SAVE</button>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
@@ -803,6 +848,7 @@
   <script src="packs.js"></script>
   <script src="provenance.js"></script>
   <script src="dbio.js"></script>
+  <script src="secrets.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these
@@ -815,6 +861,7 @@
     try { window.__npdevInitPacks(); } catch (e) { console.error("Packs init failed", e); }
     try { window.__npdevInitProvenance(); } catch (e) { console.error("Impact init failed", e); }
     try { window.__npdevInitDbio(); } catch (e) { console.error("DB Import/Export init failed", e); }
+    try { window.__npdevInitSecrets(); } catch (e) { console.error("Secrets init failed", e); }
   </script>
 </body>
 </html>
