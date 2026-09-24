@@ -1,6 +1,6 @@
 dependencies {
     implementation project(':kernel')
-    implementation 'org.postgresql:postgresql:42.7.4'
+    implementation 'org.postgresql:postgresql:42.7.13'
 
     testImplementation project(':adapters:postgres-test-support')
 }
