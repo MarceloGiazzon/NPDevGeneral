@@ -4,7 +4,7 @@ title: >-
   UI manifest) live via /model-reload, with no runtime DDL code path today
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-09-22
 source: >-
   PLAN_CLOSE_ALL_OPEN_2026-09-22.md Phase 4 (D1 Phase 3, the flagship B28 capability: "an operator
@@ -130,3 +130,6 @@ detail: |
   dependency outright. `LiveConceptUiManifestSupport` appends ONE node per newly-provisioned concept
   to the on-disk manifest, additive-only, same posture as 4B/4C. All three follow-ups (4B/REG-245,
   4C/REG-246, 4D/REG-247) are now shipped.
+
+  **UPDATE 2026-09-24: closed.** 4B/4C/4D shipped as REG-245/246/247. Remaining refusals (reference
+  fields, satellite and temporal concepts) are picked up by NPDEV_FEATURE_PLAN_2026-09-24.md Wave 6.3.
