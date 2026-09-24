@@ -99,6 +99,10 @@ const FIXTURE_PACK_LIST_DEPRECATED: &str = include_str!("../fixtures/pack-list-d
 /// W3.2. Captured live from `python NPDevCli/npdev_cli.py pack why --model <path> identity`
 /// against the same WmsOfficePackTest app.
 const FIXTURE_PACK_WHY: &str = include_str!("../fixtures/pack-why.json");
+/// Data mobility tab: hand-written, not captured -- shaped exactly like the real
+/// `npdev-cli-result.v1` envelope `run_db_export`/`run_db_import` (npdev_cli.py) emit with --json.
+const FIXTURE_DB_EXPORT_RESULT: &str = include_str!("../fixtures/db-export-result.json");
+const FIXTURE_DB_IMPORT_RESULT: &str = include_str!("../fixtures/db-import-result.json");
 
 /// Which doctor fixture stub mode serves -- switchable at runtime (see `set_fake_doctor_scenario`
 /// command) so every failure screen (missing Java, wrong version, unstaged jars) can be exercised
@@ -1269,6 +1273,72 @@ pub async fn run_pack_why(
     let args = vec!["pack".to_string(), "why".to_string(), "--model".to_string(), model,
                     pack_id.to_string()];
     run_json(python_exe, npdev_cli, &args, java_home, "pack why").await
+}
+
+/// The data-mobility tab's export half -- `npdev db export --app <dir> --out <dir> --format <f>
+/// --scope <s> [--tables ...] --json`. Thin pipe, same shape as run_pack_list: no format/scope
+/// decision lives here, `db export` (npdev_cli.py) owns argv building and connection resolution
+/// (prefers _ops/resolved-db-plan.json, same as every other `db` subcommand).
+pub async fn run_db_export(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    out_dir: &str,
+    format: &str,
+    scope: &str,
+    tables: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_DB_EXPORT_RESULT).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec![
+        "db".to_string(), "export".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--out".to_string(), out_dir.to_string(),
+        "--format".to_string(), format.to_string(),
+        "--scope".to_string(), scope.to_string(),
+        "--json".to_string(),
+    ];
+    if let Some(tables) = tables.filter(|t| !t.is_empty()) {
+        args.push("--tables".to_string());
+        args.push(tables.to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "db export").await
+}
+
+/// The data-mobility tab's import half -- `npdev db import --app <dir> --in <dir> --format <f>
+/// [--apply] [--force] --json`. `apply=false` runs the pre-import "DB Structure Check" only and
+/// writes nothing; `force=true` additionally imports a COMPATIBLE (not EQUAL) table -- see
+/// ImportMain's own javadoc (NPDevRuntimeHost/runtimehost-core) for the full EQUAL/COMPATIBLE/
+/// INCOMPATIBLE gating this passes straight through to.
+pub async fn run_db_import(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    in_dir: &str,
+    format: &str,
+    apply: bool,
+    force: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_DB_IMPORT_RESULT).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec![
+        "db".to_string(), "import".to_string(),
+        "--app".to_string(), app_dir.to_string(),
+        "--in".to_string(), in_dir.to_string(),
+        "--format".to_string(), format.to_string(),
+        "--json".to_string(),
+    ];
+    if apply {
+        args.push("--apply".to_string());
+    }
+    if force {
+        args.push("--force".to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "db import").await
 }
 
 /// S16 (NPDEV_MEGA_ROADMAP.md, Track B): `npdev impact --baseline <old> --current <new> --app <d>`

@@ -247,17 +247,28 @@ public final class H2Dialect implements SqlDialect {
 
     @Override
     public String listTablesSql() {
-        return "SELECT table_name FROM information_schema.tables"
-                + " WHERE table_schema = COALESCE(?, current_schema())"
-                + " AND table_type = 'BASE TABLE' ORDER BY table_name";
+        // Every identifier here is spelled in its REAL uppercase form -- H2's INFORMATION_SCHEMA
+        // catalog columns are fixed uppercase internally regardless of the database's own
+        // DATABASE_TO_UPPER setting, and every NPDev-generated app boots with DATABASE_TO_UPPER=false
+        // (case-folding memory note). An unquoted lowercase spelling here throws "Schema
+        // \"information_schema\" not found" (the schema) and then "Column \"table_name\" not found"
+        // (the columns) against that exact, real configuration -- caught live by
+        // DataTransferIntrospectionTest against a DATABASE_TO_UPPER=false H2 database (this method had
+        // never actually been executed before; DialectConformanceTierATest only asserts on the SQL
+        // text, never runs it). The result column is explicitly aliased to the interface's documented
+        // lowercase contract name, matching listIndexesSql()'s existing style below.
+        return "SELECT TABLE_NAME AS table_name FROM INFORMATION_SCHEMA.TABLES"
+                + " WHERE TABLE_SCHEMA = COALESCE(?, current_schema())"
+                + " AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME";
     }
 
     @Override
     public String listColumnsSql() {
-        return "SELECT column_name, data_type, is_nullable, column_default"
-                + " FROM information_schema.columns"
-                + " WHERE table_schema = COALESCE(?, current_schema()) AND table_name = ?"
-                + " ORDER BY ordinal_position";
+        return "SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type, IS_NULLABLE AS is_nullable,"
+                + " COLUMN_DEFAULT AS column_default"
+                + " FROM INFORMATION_SCHEMA.COLUMNS"
+                + " WHERE TABLE_SCHEMA = COALESCE(?, current_schema()) AND TABLE_NAME = ?"
+                + " ORDER BY ORDINAL_POSITION";
     }
 
     @Override
@@ -266,15 +277,15 @@ public final class H2Dialect implements SqlDialect {
         // pg_index here, so this is genuinely a different query rather than a reworded one.
         // Uniqueness comes from INDEX_TYPE_NAME ('UNIQUE INDEX' / 'PRIMARY KEY' / 'INDEX') -- getting
         // that wrong is REG-129's exact bug class, which conformance I3 exists to catch.
-        return "SELECT i.index_name AS index_name,"
-                + " ic.column_name AS column_name,"
-                + " CASE WHEN i.index_type_name IN ('UNIQUE INDEX', 'PRIMARY KEY')"
+        return "SELECT i.INDEX_NAME AS index_name,"
+                + " ic.COLUMN_NAME AS column_name,"
+                + " CASE WHEN i.INDEX_TYPE_NAME IN ('UNIQUE INDEX', 'PRIMARY KEY')"
                 + " THEN TRUE ELSE FALSE END AS is_unique"
-                + " FROM information_schema.indexes i"
-                + " JOIN information_schema.index_columns ic"
-                + " ON ic.index_name = i.index_name AND ic.table_name = i.table_name"
-                + " WHERE i.table_schema = COALESCE(?, current_schema()) AND i.table_name = ?"
-                + " ORDER BY i.index_name, ic.ordinal_position";
+                + " FROM INFORMATION_SCHEMA.INDEXES i"
+                + " JOIN INFORMATION_SCHEMA.INDEX_COLUMNS ic"
+                + " ON ic.INDEX_NAME = i.INDEX_NAME AND ic.TABLE_NAME = i.TABLE_NAME"
+                + " WHERE i.TABLE_SCHEMA = COALESCE(?, current_schema()) AND i.TABLE_NAME = ?"
+                + " ORDER BY i.INDEX_NAME, ic.ORDINAL_POSITION";
     }
 
     @Override

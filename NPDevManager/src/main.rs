@@ -474,6 +474,58 @@ async fn db_operation(
     npdev::run_db_operation(&python, &cli, java_home.as_deref(), &app_dir, &operation, confirm.as_deref()).await
 }
 
+/// Data mobility tab: `npdev db export`. Thin pipe, same shape as `pack_list` -- format/scope
+/// choices and connection resolution live entirely in the CLI.
+#[tauri::command]
+async fn db_export(
+    state: State<'_, AppState>,
+    app_dir: String,
+    out_dir: String,
+    format: String,
+    scope: String,
+    tables: Option<String>,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_db_export(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(), &app_dir, &out_dir, &format, &scope, tables.as_deref()).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_db_export(&python, &cli, java_home.as_deref(), &app_dir, &out_dir, &format, &scope, tables.as_deref()).await
+}
+
+/// Data mobility tab: `npdev db import`. `apply=false` is the pre-import "DB Structure Check" (the
+/// Check Structure button); `apply=true` is the Import button, `force` only meaningful together with
+/// it. See ImportMain's own javadoc for the EQUAL/COMPATIBLE/INCOMPATIBLE gating this passes through.
+#[tauri::command]
+async fn db_import(
+    state: State<'_, AppState>,
+    app_dir: String,
+    in_dir: String,
+    format: String,
+    apply: bool,
+    force: bool,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_db_import(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(), &app_dir, &in_dir, &format, apply, force).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_db_import(&python, &cli, java_home.as_deref(), &app_dir, &in_dir, &format, apply, force).await
+}
+
+/// A native folder picker for the data mobility tab's export-output / import-input path fields --
+/// same `rfd` pattern as `pick_local_repo_folder`, parameterized on the dialog title since this one
+/// serves two different fields.
+#[tauri::command]
+async fn pick_db_transfer_folder(title: String) -> Option<String> {
+    let handle = rfd::AsyncFileDialog::new().set_title(&title).pick_folder().await?;
+    Some(handle.path().to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -2686,6 +2738,9 @@ the blast radius needs a baseline to diff against"
             list_engines,
             create_app,
             db_operation,
+            db_export,
+            db_import,
+            pick_db_transfer_folder,
             open_folder,
             open_url,
             start_dev,

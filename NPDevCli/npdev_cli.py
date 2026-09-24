@@ -5475,6 +5475,215 @@ def run_db_explain_refusal(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def _resolve_db_connection_for_data_transfer(app_root: Path, args: argparse.Namespace, command: str):
+    """Shared by `run_db_export`/`run_db_import`: the SAME resolution order every other `db`
+    subcommand uses (prefer _ops/resolved-db-plan.json, fall back to db.definition.json) -- see
+    `run_db_verify`'s own docstring for why that order is chosen. Returns (url, user, password) on
+    success, or (None, None, None) after printing a `db <command>: ...` failure to stderr and the
+    caller should return 2 (or 0 for the InMemory no-op case, signaled by url == "").
+    """
+    if args.url:
+        return args.url, args.db_user, (args.db_password or "")
+
+    plan_path = app_root / "_ops" / "resolved-db-plan.json"
+    db_def_path = app_root / "db.definition.json"
+    if plan_path.is_file():
+        plan = read_json(plan_path)
+        if not plan.get("physicalDatabase", False):
+            print(f"npdev db {command}: this app has no physical database (InMemory storage) -- nothing to do.")
+            return "", None, None
+        url = plan.get("jdbcUrl") or None
+        if url is None:
+            print(f"npdev db {command}: {plan_path} has no jdbcUrl recorded -- pass --url explicitly.", file=sys.stderr)
+            return None, None, None
+        user = args.db_user if args.db_user is not None else (plan.get("username") or None)
+        password = args.db_password if args.db_password is not None else (plan.get("password") or "")
+        return url, user, password
+    if db_def_path.is_file():
+        database = read_json(db_def_path).get("database", {})
+        try:
+            engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
+        except ValueError as exc:
+            print(f"npdev db {command}: {exc} (in {db_def_path})", file=sys.stderr)
+            return None, None, None
+        if engine_key == "inmemory":
+            print(f"npdev db {command}: this app has no physical database (InMemory storage) -- nothing to do.")
+            return "", None, None
+        url = _jdbc_url_for_verify(engine_key, app_root, database)
+        if url is None:
+            print(f"npdev db {command}: do not know how to build a JDBC URL for engine '{engine_key}' -- "
+                  f"pass --url explicitly.", file=sys.stderr)
+            return None, None, None
+        user = args.db_user if args.db_user is not None else database.get("username")
+        password = args.db_password if args.db_password is not None else (database.get("password") or "")
+        return url, user, password
+    print(f"npdev db {command}: neither {plan_path} nor {db_def_path} was found, and no --url was given. "
+          f"Pass --url (with --db-user/--db-password as needed), or run this from the app's own directory.",
+          file=sys.stderr)
+    return None, None, None
+
+
+def _data_transfer_classpath_and_java(app_root: Path, command: str):
+    """Shared setup for `run_db_export`/`run_db_import`: the runtimehost-libs + this app's own fat
+    jar's BOOT-INF/lib -- the same classpath `run_db_verify`/`run_db_explain_refusal` build (see
+    `run_db_verify`'s own docstring for why the fat jar's OWN bundled JDBC drivers are needed, not
+    just runtimehost-libs). Returns (java_bin, libs) on success, or (None, None) after printing a
+    failure.
+    """
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        print(f"npdev db {command}: runtimehost jars are not staged -- run `npdev setup`", file=sys.stderr)
+        return None, None
+    java_bin = java_launcher()
+    if java_bin is None:
+        print(f"npdev db {command}: no java found (see `npdev doctor`'s java checks)", file=sys.stderr)
+        return None, None
+    return java_bin, libs
+
+
+def run_db_export(args: argparse.Namespace) -> int:
+    """`npdev db export` -- data mobility (ListaSementes.txt: "Data mobility is very important "
+    "value... I want to have some options... to export and import... path, format (SQL Insert "
+    "Statements, CSV) ... choose tables / all tables / only business tables"). Shells to
+    `com.finalexec.db.ExportMain` the same way `db explain-refusal` shells to `ExplainRefusalMain`:
+    no schema-realization manifest is needed -- the tool reads the live database's own schema
+    straight through SqlDialect's introspection contract, so it works against any JDBC-reachable
+    database, NPDev-generated or not.
+
+    Exit codes, passed straight through from ExportMain: 0 = every requested table written, 1 = a
+    table failed mid-export, 2 = could not determine.
+    """
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    url, user, password = _resolve_db_connection_for_data_transfer(app_root, args, "export")
+    if url is None:
+        return 2
+    if url == "":
+        return 0
+
+    java_bin, libs = _data_transfer_classpath_and_java(app_root, "export")
+    if java_bin is None:
+        return 2
+
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        print(f"npdev db export: no built jar found under {app_root / 'build' / 'libs'}. Build this "
+              f"app at least once first (e.g. `_ops/Build-FinalApp.ps1`).", file=sys.stderr)
+        return 2
+
+    out_dir = Path(args.out).expanduser().resolve()
+
+    with tempfile.TemporaryDirectory(prefix="npdev-db-export-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([str(Path(libs) / "*"), str(extracted_libs / "*")])
+
+        command = [java_bin, "-cp", classpath, "com.finalexec.db.ExportMain",
+                   "--url", url, "--out", str(out_dir), "--format", args.format, "--scope", args.scope]
+        if args.tables:
+            command += ["--tables", args.tables]
+        if user:
+            command += ["--user", user]
+        if password:
+            command += ["--password", password]
+
+        try:
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=300)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"npdev db export: could not run ExportMain ({exc})", file=sys.stderr)
+            return 2
+
+    _print_db_transfer_result(args, "db export", completed)
+    return completed.returncode
+
+
+def run_db_import(args: argparse.Namespace) -> int:
+    """`npdev db import` -- the file-to-database half of `db export`. For --format csv (default),
+    ImportMain runs the tri-state "DB Structure Check" (EQUAL/COMPATIBLE/INCOMPATIBLE) against each
+    table before writing anything; --apply is required to actually write, and COMPATIBLE additionally
+    requires --force -- the same dry-run-by-default, explicit-escalation convention every other
+    destructive npdev db command follows. For --format sql-insert, the exported files are plain SQL
+    scripts with no structure to check.
+
+    Exit codes, passed straight through from ImportMain: 0 = clean (dry-run or --apply), 1 = at least
+    one table INCOMPATIBLE or a write failed, 2 = could not determine.
+    """
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    url, user, password = _resolve_db_connection_for_data_transfer(app_root, args, "import")
+    if url is None:
+        return 2
+    if url == "":
+        return 0
+
+    java_bin, libs = _data_transfer_classpath_and_java(app_root, "import")
+    if java_bin is None:
+        return 2
+
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        print(f"npdev db import: no built jar found under {app_root / 'build' / 'libs'}. Build this "
+              f"app at least once first (e.g. `_ops/Build-FinalApp.ps1`).", file=sys.stderr)
+        return 2
+
+    in_dir = Path(args.input_dir).expanduser().resolve()
+
+    with tempfile.TemporaryDirectory(prefix="npdev-db-import-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([str(Path(libs) / "*"), str(extracted_libs / "*")])
+
+        command = [java_bin, "-cp", classpath, "com.finalexec.db.ImportMain",
+                   "--url", url, "--in", str(in_dir), "--format", args.format]
+        if args.apply:
+            command.append("--apply")
+        if args.force:
+            command.append("--force")
+        if user:
+            command += ["--user", user]
+        if password:
+            command += ["--password", password]
+
+        try:
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=300)
+        except (OSError, subprocess.SubprocessError) as exc:
+            print(f"npdev db import: could not run ImportMain ({exc})", file=sys.stderr)
+            return 2
+
+    _print_db_transfer_result(args, "db import", completed)
+    return completed.returncode
+
+
+def _print_db_transfer_result(args: argparse.Namespace, command_name: str, completed) -> None:
+    """Shared by `run_db_export`/`run_db_import`: with `--json`, wrap the Java subprocess's raw text
+    output in the SAME `npdev-cli-result.v1` envelope `db <op>` (the Manager's DB toolbox,
+    `run_db_operation`) already uses -- `output` carries the tool's own text verbatim rather than a
+    second, re-derived story about what it did. Without `--json`, print exactly as a terminal user
+    already sees from every other `db` subcommand."""
+    if getattr(args, "json", False):
+        output = (completed.stdout or "") + (completed.stderr or "")
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1",
+            "command": command_name,
+            "ok": completed.returncode == 0,
+            "exitCode": completed.returncode,
+            "output": _strip_spring_jcl_notice(output).strip(),
+        }, indent=2))
+        return
+    if completed.stdout:
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+
+
 def run_db_surplus(args: argparse.Namespace) -> int:
     """STOR-31 (docs/ACCEPTED_BOUNDARIES.md B3, LIFTED): CLI front end for
     `SchemaAcknowledgmentController`'s surplus preview/drop endpoints on a RUNNING app -- the
@@ -13901,6 +14110,99 @@ def build_parser() -> argparse.ArgumentParser:
              "even if the target has no schema yet.",
     )
 
+    # Data mobility (ListaSementes.txt): DB-to-file export, in CSV or SQL-insert-statement form, for
+    # all tables or business tables only (business = every table minus the npdev_* kernel/system
+    # registry NpdevInternalTables already enforces complete). No schema-realization manifest is
+    # needed -- ExportMain reads the live database's own schema straight through SqlDialect's
+    # introspection contract, exactly like `db explain-refusal` needs none either.
+    db_export = db_sub.add_parser(
+        "export",
+        help="Export a database's tables to CSV or SQL-insert files, plus a manifest.json the "
+             "matching `db import` uses for its pre-import structure check -- with no app boot "
+             "required.",
+    )
+    db_export.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory (holds npdev-generated/, a built jar under build/libs/, and -- unless "
+             "--url is given -- _ops/resolved-db-plan.json or db.definition.json for the connection). "
+             "Defaults to the current directory.",
+    )
+    db_export.add_argument(
+        "--url", default=None,
+        help="An explicit JDBC URL, overriding the app's own resolved connection.",
+    )
+    db_export.add_argument("--db-user", default=None, help="Overrides the resolved username.")
+    db_export.add_argument("--db-password", default=None, help="Overrides the resolved password.")
+    db_export.add_argument(
+        "--out", required=True, metavar="DIR",
+        help="Directory to write <table>.csv/.sql files and manifest.json into. Created if missing.",
+    )
+    db_export.add_argument(
+        "--format", choices=("csv", "sql-insert"), default="csv",
+        help="csv (default): one <table>.csv per table, typed on import. sql-insert: one <table>.sql "
+             "of literal INSERT statements per table -- human-readable, no structure check on import.",
+    )
+    db_export.add_argument(
+        "--scope", choices=("all", "business"), default="business",
+        help="business (default): every table except the npdev_* kernel/system tables. all: every "
+             "table, kernel/system included. Ignored when --tables is given.",
+    )
+    db_export.add_argument(
+        "--tables", default=None, metavar="A,B,C",
+        help="Comma-separated table names to export, overriding --scope entirely.",
+    )
+    db_export.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-cli-result.v1 object (ok/exitCode/output) instead of ExportMain's raw "
+             "text -- the same envelope `db <op>` (the Manager's DB toolbox) already uses.",
+    )
+
+    # The file-to-database half of `db export`. CSV import is gated by ImportStructureVerdict's
+    # tri-state pre-import check; sql-insert import has no structure to check -- it is a literal
+    # script.
+    db_import = db_sub.add_parser(
+        "import",
+        help="Import a directory `db export` wrote back into a database, gated (for --format csv) by "
+             "a per-table EQUAL/COMPATIBLE/INCOMPATIBLE structure check. Previews by default; --apply "
+             "actually writes.",
+    )
+    db_import.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory (holds npdev-generated/, a built jar under build/libs/, and -- unless "
+             "--url is given -- _ops/resolved-db-plan.json or db.definition.json for the connection). "
+             "Defaults to the current directory.",
+    )
+    db_import.add_argument(
+        "--url", default=None,
+        help="An explicit JDBC URL for the TARGET, overriding the app's own resolved connection.",
+    )
+    db_import.add_argument("--db-user", default=None, help="Overrides the resolved TARGET username.")
+    db_import.add_argument("--db-password", default=None, help="Overrides the resolved TARGET password.")
+    db_import.add_argument(
+        "--in", required=True, metavar="DIR", dest="input_dir",
+        help="A directory `db export` wrote (manifest.json + <table>.csv, or <table>.sql files).",
+    )
+    db_import.add_argument(
+        "--format", choices=("csv", "sql-insert"), default="csv",
+        help="Must match the format `db export` was run with.",
+    )
+    db_import.add_argument(
+        "--apply", action="store_true",
+        help="Actually write. Without this flag, import runs the structure check (csv) or counts "
+             "statements (sql-insert) and writes nothing -- the same dry-run-by-default convention "
+             "every other destructive npdev command follows.",
+    )
+    db_import.add_argument(
+        "--force", action="store_true",
+        help="--format csv only: also import a table whose verdict is COMPATIBLE (not EQUAL) -- an "
+             "extra target column, judged safe but not identical. Never overrides INCOMPATIBLE.",
+    )
+    db_import.add_argument(
+        "--json", action="store_true",
+        help="Emit an npdev-cli-result.v1 object (ok/exitCode/output) instead of ImportMain's raw "
+             "text -- the same envelope `db <op>` (the Manager's DB toolbox) already uses.",
+    )
+
     # STOR-18 (docs/ACCEPTED_BOUNDARIES.md B9): bulk pre-drop-snapshot restore, against a RUNNING
     # app's SchemaAcknowledgmentController batch endpoint (SUPERUSER-gated, same auth path
     # `monitor hotswap` already uses -- X-Super-User-Key, never the business X-Api-Key).
@@ -15854,6 +16156,10 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_reverse_migrate(args)
         if args.command == "db" and args.db_command == "promote":
             return run_db_promote(args)
+        if args.command == "db" and args.db_command == "export":
+            return run_db_export(args)
+        if args.command == "db" and args.db_command == "import":
+            return run_db_import(args)
         if args.command == "db" and args.db_command == "restore":
             return run_db_restore(args)
         if args.command == "db" and args.db_command == "adopt-ownership":

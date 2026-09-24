@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="verification.css" />
 <link rel="stylesheet" href="packs.css" />
 <link rel="stylesheet" href="provenance.css" />
+<link rel="stylesheet" href="dbio.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -37,6 +38,7 @@
     <button class="tab" data-screen="verification">Verification</button>
     <button class="tab" data-screen="packs">Packs</button>
     <button class="tab" data-screen="provenance">Impact</button>
+    <button class="tab" data-screen="dbio">DB Import/Export</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -576,6 +578,73 @@
         <div class="prov-detail" id="provenance-detail"><p class="status-line">Select a concept node to see what it produced.</p></div>
       </div>
     </section>
+
+    <!-- Data mobility (ListaSementes.txt): export a database's tables to CSV/SQL-insert files, or
+         import a directory `db export` wrote back in, gated by a per-table structure check. -->
+    <section id="screen-dbio" class="screen" hidden>
+      <h1>⇄ DB IMPORT/EXPORT <span class="dim">// move an app's data in or out</span></h1>
+      <p class="subtitle">
+        Reads/writes through <code>npdev db export</code> / <code>npdev db import</code> -- format,
+        table scoping and the pre-import structure check are all decided there, never here.
+      </p>
+
+      <div class="packs-toolbar">
+        <label id="dbio-app-label" hidden>App <select id="dbio-app-picker"></select></label>
+        <button class="btn" id="dbio-refresh-apps">⟳ REFRESH APPS</button>
+        <span id="dbio-status" class="status-line"></span>
+      </div>
+
+      <div class="dbio-columns">
+        <div class="dbio-panel">
+          <h3>EXPORT</h3>
+          <label>Output folder
+            <div class="dbio-path-row">
+              <input type="text" id="dbio-export-out" readonly placeholder="Pick a folder…" />
+              <button class="btn ghost" id="dbio-export-pick">Browse…</button>
+            </div>
+          </label>
+          <label>Format
+            <select id="dbio-export-format">
+              <option value="csv">CSV</option>
+              <option value="sql-insert">SQL insert statements</option>
+            </select>
+          </label>
+          <label>Tables
+            <select id="dbio-export-scope">
+              <option value="business">Business tables only</option>
+              <option value="all">All tables (incl. kernel/system)</option>
+            </select>
+          </label>
+          <button class="btn" id="dbio-export-run">⬇ EXPORT</button>
+          <pre class="dbio-output" id="dbio-export-output"></pre>
+        </div>
+
+        <div class="dbio-panel">
+          <h3>IMPORT</h3>
+          <label>Input folder
+            <div class="dbio-path-row">
+              <input type="text" id="dbio-import-in" readonly placeholder="Pick a folder…" />
+              <button class="btn ghost" id="dbio-import-pick">Browse…</button>
+            </div>
+          </label>
+          <label>Format
+            <select id="dbio-import-format">
+              <option value="csv">CSV</option>
+              <option value="sql-insert">SQL insert statements</option>
+            </select>
+          </label>
+          <label class="dbio-force">
+            <input type="checkbox" id="dbio-import-force" />
+            Also import COMPATIBLE (not just EQUAL) tables
+          </label>
+          <div class="dbio-actions">
+            <button class="btn ghost" id="dbio-import-check">CHECK STRUCTURE</button>
+            <button class="btn" id="dbio-import-run">⬆ IMPORT</button>
+          </div>
+          <pre class="dbio-output" id="dbio-import-output"></pre>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
@@ -733,6 +802,7 @@
   <script src="verification.js"></script>
   <script src="packs.js"></script>
   <script src="provenance.js"></script>
+  <script src="dbio.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these
@@ -744,6 +814,7 @@
     try { window.__npdevInitVerification(); } catch (e) { console.error("Verification init failed", e); }
     try { window.__npdevInitPacks(); } catch (e) { console.error("Packs init failed", e); }
     try { window.__npdevInitProvenance(); } catch (e) { console.error("Impact init failed", e); }
+    try { window.__npdevInitDbio(); } catch (e) { console.error("DB Import/Export init failed", e); }
   </script>
 </body>
 </html>
