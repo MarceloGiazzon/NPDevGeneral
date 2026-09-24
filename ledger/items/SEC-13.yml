@@ -1,0 +1,144 @@
+id: SEC-13
+title: >-
+  Deliberate, narrow lift of the S5.3 "verification page is read-only forever" boundary: a
+  generated FinalApp's verification page can now Run/Stop/view the log of exactly three fixed,
+  individually-reviewed, read-only _ops scripts, SUPERUSER-gated, never a free-form execution
+  surface
+type: FEATURE
+severity: HIGH
+status: DONE
+opened: 2026-09-24
+closed: 2026-09-24
+source: >-
+  User request (session continuing close-all-open-2026-09-22): "full live run/stop in the FinalApp
+  too" for the health/status kanban panel feature. Implementing it surfaced that
+  VERIFICATION_PANEL_AND_PROBE_PLAN's S5.3 ("READ-ONLY IS A HARD REQUIREMENT, NOT A PREFERENCE... a
+  verification page served over HTTP is exactly the shape of remote-code-execution if it can run
+  scripts") is a real, test-enforced boundary (test_static_pages.py asserted zero fetch() calls and
+  runnable:false on every item), not an unfinished feature -- confirmed with the user before
+  proceeding (AskUserQuestion), who chose to lift it deliberately rather than keep the page
+  read-only.
+surface: >-
+  NPDevRuntimeHost/src/main/java/com/finalexec/controlpanel/ControlPanelHealthController.java (new),
+  NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelHealthControllerTest.java
+  (new), NPDevGenerator/.../dbconfig/OperationalRunbookEmitter.java (NPDEV_OPS_DIR env injection,
+  all 4 launcher script variants), NPDevRuntimeHost/src/main/resources/application.properties
+  (npdev.ops.dir, npdev.health.run-timeout-seconds), scripts/appgen/New-VerificationPanelPage.ps1
+  (AppGen path emitter), NPDevCli/npdev_static_pages.py + NPDevCli/static_page_templates/
+  verification.html.tpl (`npdev init` path emitter), NPDevCli/tests/test_static_pages.py,
+  NPDevCli/npdev_executor.py (docstring correction only, its own posture is unchanged)
+detail: |
+  WHAT WAS ACTUALLY LIFTED, PRECISELY: S5.3's blanket "no fetch(), no Run/Stop/POST, runnable:false
+  everywhere, ever" is replaced by "everything stays exactly that read-only EXCEPT three fixed
+  scripts, each individually read line-by-line and confirmed safe, behind SUPERUSER auth and a
+  request-input-proof hardcoded allowlist". The original reasoning (a script-running button on a
+  served page is RCE-shaped) is still correct and still why every other _ops script -- roughly a
+  dozen -- stays permanently unreachable from this page.
+
+  THE ALLOWLIST, AND WHY EXACTLY THESE THREE: every script BOTH _ops emitters
+  (Build-NpdevApp.ps1/Build-ClaudeApp.ps1 and OperationalRunbookEmitter.java) write was read in
+  full, not judged by its filename -- two that sounded diagnostic were not, once read:
+    - Print-DbConnectionInfo.ps1: `Write-Host "Password: $($plan.password)"` -- would have leaked
+      the live DB password into a log a SUPERUSER-authenticated request could read back over HTTP.
+    - Test-App.ps1 / Smoke-Test.ps1: both create a real "smoke user" row (POST /api/users or
+      /api/flows/.../execute) with a fresh random email on every run, never cleaned up -- a
+      "health check" that mutates business data on every click.
+  Excluded for the obvious reason (lifecycle/destructive, not diagnostic): Start-App, Stop-App,
+  Start-Environment, Stop-Environment, Build-App/Build-FinalApp, Migrate-Only, Impact-Only,
+  Reset-Environment (a literal data wipe), Install-Service/Uninstall-Service,
+  Reissue-SuperUserKey (credential rotation), Run-FinalApp/Create-Environment, and
+  Serve-AppConsole.ps1 -- the last of which is an interactive shell and would BE the
+  remote-code-execution S5.3 warned about if ever exposed.
+  Confirmed safe by reading their full bodies:
+    - Status-App.ps1: one GET to /actuator/health, nothing else.
+    - Status-Environment.ps1: PID file checks, TCP reachability probes, `docker ps` (read-only
+      inspect) -- no state mutation, no secret in output.
+    - Check-Provenance.ps1: authenticated GETs + a static-analysis Python script run against the
+      result; fails cleanly (not unsafely) when the sibling NPDev repo it needs is absent, the
+      common case for a real deployment.
+  The three-item allowlist is hardcoded independently in THREE places on purpose (Java controller,
+  PowerShell emitter, Python emitter) -- deliberately not unified into one source of truth, so a
+  bug in any one place cannot silently widen what another place will execute.
+
+  ARCHITECTURE: `ControlPanelHealthController` lives under NPDevRuntimeHost/src/main/java (the
+  per-app-recompiled template tree, like every other ControlPanel controller), not
+  runtimehost-core, because it needs the GENERATED `RuntimeContextService` for the same
+  `context.hasRole("SUPERUSER")` check every sibling ControlPanel controller already uses -- no new
+  auth mechanism was introduced. It resolves its own `_ops` directory via a new `NPDEV_OPS_DIR`
+  environment variable, set by every _ops launcher script to `$PSScriptRoot`/`$SCRIPT_DIR` (the
+  launcher already lives inside `_ops`, so no discovery logic was needed) and mapped in
+  application.properties to `npdev.ops.dir`; absent when the jar is run directly rather than
+  through a launcher, in which case every item reports `available:false` and nothing can run.
+  Each run spawns `pwsh -NoProfile -File <allowlisted path>` (never a filename built from request
+  input), tees output to the SAME `App/logs` directory Run-FinalApp.ps1 already writes into (spared
+  on regeneration), tracks the child Process in memory (bounded by
+  `npdev.health.run-timeout-seconds`, default 600, after which the server force-kills it itself),
+  and refuses a second concurrent run of the same id. `POST /stop/{id}` calls
+  `Process.destroyForcibly()`. State does not survive a JVM restart -- a restarted process cannot
+  still be running the child it forgot about either, so nothing is lost by not persisting it.
+
+  The verification page itself keeps its original property (works fully with the app stopped, via
+  the baked-in JSON blob) and ADDS a live overlay: on load it calls
+  `GET /api/admin/health/items`; a non-200 (not signed in as Super User, or app unreachable) is
+  handled exactly like every other graceful-degradation path in this codebase -- no error shown,
+  the page simply shows its static snapshot with no Run/Stop controls. Signed-in SUPERUSER sessions
+  see Run/Stop/Log buttons on exactly the three allowlisted rows and nowhere else.
+
+  VERIFICATION: NPDevCli/tests/test_static_pages.py rewritten (not deleted) -- the two tests that
+  used to assert "zero fetch(), runnable:false everywhere" now assert the narrower, correct claim:
+  fetch() calls exist but target only /api/admin/health/*, and runnable is true for EXACTLY
+  {status-app, status-environment, check-provenance} and false for every other script including
+  Reset-Environment.ps1/Stop-App.ps1/Print-DbConnectionInfo.ps1/Test-App.ps1 in the same test run
+  (10/10 tests pass). ControlPanelHealthControllerTest.java exercises the real thing, not a mock --
+  a real `pwsh` child process in a temp `_ops` directory, mirroring `secrets.rs`'s own "no in-memory
+  backend to substitute" testing discipline: non-SUPERUSER 403 on every endpoint, an id outside the
+  allowlist 404s before ever reaching a process, no configured ops dir 409s, a real script's actual
+  stdout lands in the readable log, exit 0 records "passed" and non-zero records "failed", a second
+  concurrent run of the same id 409s, and Stop genuinely kills a real sleeping child and records
+  "stopped". Full compile+boot validated via `run-fast-gate.ps1 -Tier T1` against a real generated
+  app (this test lives under NPDevRuntimeHost/src/test/java, which compiles against the GENERATED
+  RuntimeContextService class and therefore only builds for real inside an assembled app -- see
+  docs/maintainers/SUBSYSTEM_CONTRACTS.md's "RuntimeHost tests naming com.npdev.generated." section).
+
+  ONE REAL BUG CAUGHT BY LIVE VERIFICATION (test-only, not a production defect): the first real run
+  against a generated app's own Gradle build failed `runRefusesASecondConcurrentRunOfTheSameId`
+  with `Failed to delete temp directory ... the file is already in use by another process` on the
+  log file a killed `pwsh` child had written to. Root cause: `destroyForcibly()` returning does not
+  guarantee Windows has released the child's file handle yet, and JUnit's `@TempDir` cleanup (which
+  runs immediately after the test method returns) raced that release. Fixed by waiting for the
+  SAME `onExit()`-driven state transition a real caller would observe before letting the test
+  method return, rather than trusting `stop()`'s HTTP response alone. Re-ran with `--rerun-tasks`
+  (no cache) against the real generated app afterward: 10/10 pass, 0 failures. Separately confirmed
+  unrelated: `canary-build-boot-smoke` (T1) failed in the same session's `run-fast-gate.ps1` pass,
+  but its own cadence history shows it last PASSED before 2026-09-02 and the failure is an
+  `invalid_api_key` 401 on `/actuator/health` from a stale smoke-harness API key -- the app itself
+  generated, built, and booted successfully (health endpoint responded; a genuinely crashed app
+  reports a different message, per this repo's own documented gotcha), so this pre-existing,
+  three-week-stale harness issue is unrelated to this item and was not investigated further here.
+
+  NOT YET DONE: a real browser click-through against a booted app (this session validated via
+  Gradle tests against the real generated source tree, not a live ScrapForAI browser pass) --
+  natural next step before fully trusting this in production, not attempted here given the scope
+  already covered this session.
+
+  FULL RUNTIMEHOST SUITE CONFIRMATION (unfiltered `:test`, real generated npdev-canary app,
+  935 tests): 934 passed, 1 failed -- the failure is `com.finalexec.db.H2LocalBootLockCrossProcessTest`
+  (a completely different package, never touched this session), failing with the IDENTICAL
+  temp-dir-cleanup-races-a-killed-cross-process-lock-holder signature as the bug this item's own
+  test fix above already diagnosed and fixed -- independent confirmation the mechanism is a
+  pre-existing Windows OS-level race in this test suite generally, not something this session's
+  changes introduced. Not fixed here (out of scope, pre-existing, unrelated file).
+guard:
+  kind: script
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelHealthControllerTest.java ;
+    NPDevCli/tests/test_static_pages.py::test_verification_panel_marks_only_the_reviewed_allowlist_as_runnable
+  asserts: >-
+    The allowlist is EXACTLY {Status-App.ps1, Status-Environment.ps1, Check-Provenance.ps1} in both
+    the Java controller and both page emitters, and no other _ops script (explicitly including
+    Reset-Environment.ps1, Stop-App.ps1, Print-DbConnectionInfo.ps1, Test-App.ps1) can ever report
+    runnable:true. Re-open this item and re-review line-by-line before adding a FOURTH script to any
+    of the three independently-hardcoded allowlists -- the smallness and independence of this list
+    is the actual security property, not an implementation detail to optimize away.
+  provenRed: true
+verification: UNIT_TESTED

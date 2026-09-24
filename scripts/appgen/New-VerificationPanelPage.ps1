@@ -6,15 +6,21 @@
 .DESCRIPTION
   VERIFICATION_PANEL_AND_PROBE_PLAN 2026-08-27 Phase 4. The EMITTED-APP half of the panel contract:
   the app's own verification inventory, in the SAME npdev-verification-panel.v1 shape the NPDev repo
-  emits (npdev_panel.py), rendered by a self-contained, READ-ONLY page.
+  emits (npdev_panel.py), rendered as a self-contained page.
 
-  READ-ONLY IS A HARD REQUIREMENT, NOT A PREFERENCE (S5.3): a verification page served over HTTP is
-  exactly the shape of remote-code-execution if it can run scripts. This page performs NO fetch() at
-  all -- the inventory is baked into the HTML as a static JSON blob at emit time -- and has no Run /
-  Stop / POST / exec surface. Grep the output for 'run', 'exec', 'POST' and every hit is prose, a
-  filename, or a private JS identifier, never a control or a request. The data is the LAST-KNOWN
-  reality at emit time, which is precisely what a tester's most common question ("why is it down?")
-  needs, and it works with the app stopped.
+  S5.3 WAS "read-only, forever, no exceptions" -- a verification page served over HTTP is exactly
+  the shape of remote-code-execution if it can run scripts. That boundary was DELIBERATELY LIFTED,
+  not quietly bypassed: `ControlPanelHealthController` (NPDevRuntimeHost) now exposes exactly THREE
+  fixed, individually-reviewed, read-only `_ops` scripts (Status-App.ps1, Status-Environment.ps1,
+  Check-Provenance.ps1 -- see that class's own javadoc for why each was chosen and everything else
+  was excluded, including two that looked safe by name and were not) behind SUPERUSER auth, a
+  request-proof hardcoded allowlist, and a bounded timeout. This page's baked-in JSON blob is still
+  emitted (the page still works with the app stopped, still answers "why is it down" from
+  LAST-KNOWN state with zero network calls) -- what changed is that the three allowlisted items ALSO
+  get a live Run/Stop/View-log surface, wired to that controller, visible only once the page
+  confirms (via a 200 from /api/admin/health/items) that the signed-in session is SUPERUSER.
+  Every OTHER item on this page remains exactly as read-only as before: runnable stays false, and
+  nothing about this page can ever reach a script outside that fixed three-item allowlist.
 
   Boundary (S5.1): writes ONLY into the App module's src/main/resources/static (NOT npdev-generated/,
   which the runtime strict-execution validator hashes) -- while we do not write anything to
@@ -58,6 +64,16 @@ function Get-HumanName([string]$id) {
   return $spaced
 }
 
+# S5.3 lift: the ONLY filenames ControlPanelHealthController.java will ever execute (see its own
+# javadoc for why these three and no others). This list must be kept in lockstep with that class's
+# RUNNABLE_SCRIPTS map -- both are hardcoded on purpose, independently, so neither can drift into
+# allowlisting a script the other side never reviewed.
+$HealthRunnableScripts = @{
+  'Status-App.ps1' = 'status-app'
+  'Status-Environment.ps1' = 'status-environment'
+  'Check-Provenance.ps1' = 'check-provenance'
+}
+
 $items = [System.Collections.Generic.List[object]]::new()
 
 # --- emitted operations (check-script) ---------------------------------------------
@@ -65,14 +81,22 @@ if (Test-Path -LiteralPath $OpsDir) {
   Get-ChildItem -LiteralPath $OpsDir -Filter '*.ps1' -File -ErrorAction SilentlyContinue |
     Sort-Object Name | ForEach-Object {
     $id = ConvertTo-VerificationId $_.BaseName
+    $healthId = $HealthRunnableScripts[$_.Name]
+    $runnable = $null -ne $healthId
+    $description = if ($runnable) {
+      "Emitted app operation `$OpsDir\$($_.Name); read-only self-check, live Run/Stop/View-log available above when signed in as Super User."
+    } else {
+      "Emitted app operation `$OpsDir\$($_.Name); read-only here (re-run via the generated Run/Start/Stop scripts, never from this page)."
+    }
     $items.Add([ordered]@{
       id = $id
       name = (Get-HumanName $_.BaseName)
-      description = "Emitted app operation `$OpsDir\$($_.Name); read-only here (re-run via the generated Run/Start/Stop scripts, never from this page)."
+      description = $description
       category = 'check-script'
       tier = $null
       command = $_.Name
-      runnable = $false
+      runnable = $runnable
+      healthId = $healthId
       maxStaleness = $null
       lastRun = $null
     })
@@ -156,7 +180,9 @@ $document = [ordered]@{
 $json = $document | ConvertTo-Json -Depth 20
 
 # ---------------------------------------------------------------------------------------------
-# Emit the machine-readable document AND the self-contained (zero-fetch) read-only page.
+# Emit the machine-readable document AND the page: still self-contained and fully usable with zero
+# network calls (the baked-in blob), now ALSO polling ControlPanelHealthController for the three
+# allowlisted items when the viewer turns out to be signed in as Super User.
 # ---------------------------------------------------------------------------------------------
 Set-Content -LiteralPath (Join-Path $StaticDir 'verification.json') -Value $json -Encoding UTF8
 
@@ -190,48 +216,122 @@ $tpl = @'
   .running  { color: #0969da; background: #f0f6ff; }
   .never    { color: #888; }
   .note { font-size: 12px; color: #667; margin-top: 18px; }
+  .actbtn { font-size: 11px; padding: 2px 8px; border-radius: 4px; border: 1px solid #8884; background: #fff; cursor: pointer; margin-right: 4px; }
+  .actbtn:disabled { opacity: .4; cursor: default; }
+  .actbtn.run { border-color: #1a7f37; color: #1a7f37; }
+  .actbtn.stop { border-color: #c33; color: #c33; }
 </style>
 </head>
 <body>
 <h1>__APP__ &mdash; Verification</h1>
-<div class="sub" id="subject">Read-only inventory of this app's verification checks and their last-known results. No action here runs anything.</div>
+<div class="sub" id="subject">Inventory of this app's verification checks and their last-known results.</div>
+<p class="sub" id="healthNote" style="display:none">Signed in as Super User: Status-App, Status-Environment and Check-Provenance can be run live below. Every other row stays a last-known snapshot -- no other script is ever reachable from this page.</p>
 
 <div class="cols" id="cols"></div>
 <table id="table">
   <thead><tr>
-    <th>State</th><th>Item</th><th>Category</th><th>Last result</th><th>Last run</th><th>Last duration</th><th>Last-known description</th>
+    <th>State</th><th>Item</th><th>Category</th><th>Last result</th><th>Last run</th><th>Last duration</th><th>Last-known description</th><th>Live</th>
   </tr></thead>
   <tbody id="rows"></tbody>
 </table>
 
-<p class="note">Shows what was true when this page was generated (works with the app stopped). To see fresh results, re-run the generated verification and regenerate this page.</p>
+<p class="note">Rows without a Live action show what was true when this page was generated (works with the app stopped). To see fresh results for those, re-run the generated verification and regenerate this page.</p>
 
 <script>
 var VERIFICATION = __BLOB__;
+var HEALTH_ITEMS = {}; // healthId -> live item, populated only if /api/admin/health/items succeeds (SUPERUSER)
+var HEALTH_AVAILABLE = false;
+var HEALTH_POLL = null;
 
 function esc(v){ var d=document.createElement('div'); d.textContent= v==null?'':String(v); return d.innerHTML; }
 function dur(v){ if(v==null) return '—'; return v>=60 ? (v/60).toFixed(1)+' min' : v+'s'; }
 function rel(iso){ if(!iso) return '—'; var d=(new Date(iso)).getTime(); if(!isFinite(d)) return esc(iso); var m=Math.floor((Date.now()-d)/60000); if(m<1)return 'just now'; if(m<60)return m+'m ago'; var h=Math.floor(m/60); if(h<24)return h+'h ago'; return Math.floor(h/24)+'d ago'; }
-function col(item){ if(!item.lastRun) return 'never-run'; if(item.lastRun.result==='failed') return 'failing'; return 'healthy'; }
+function col(item){ if(!item.lastRun) return 'never-run'; if(item.lastRun.result==='failed'||item.lastRun.result==='timed-out') return 'failing'; return 'healthy'; }
 var COLS={ 'never-run':'NEVER RUN','failing':'FAILING','stale':'STALE','healthy':'HEALTHY' };
-function badge(r){ if(!r) return '<span class="never">—</span>'; var c=(r==='skipped'||r==='not-applicable'||r==='cancelled')?'skip':r; return '<span class="badge '+c+'">'+esc(r.toUpperCase())+'</span>'; }
+function badge(r){ if(!r) return '<span class="never">—</span>'; var c=(r==='skipped'||r==='not-applicable'||r==='cancelled'||r==='stopped')?'skip':r; return '<span class="badge '+c+'">'+esc(r.toUpperCase())+'</span>'; }
 
-(function(){
+function effectiveItem(i){
+  // The live overlay wins whenever it has actually run this session -- otherwise fall back to the
+  // baked-in last-known snapshot, so a never-refreshed page still shows something meaningful.
+  if(i.healthId && HEALTH_ITEMS[i.healthId] && HEALTH_ITEMS[i.healthId].lastRun){
+    return Object.assign({}, i, { lastRun: HEALTH_ITEMS[i.healthId].lastRun });
+  }
+  return i;
+}
+
+function actionsCell(i){
+  if(!i.healthId || !HEALTH_AVAILABLE) return '';
+  var live = HEALTH_ITEMS[i.healthId] || {};
+  var running = live.lastRun && live.lastRun.result === 'running';
+  var runBtn = '<button class="actbtn run" data-run="'+esc(i.healthId)+'"'+(running?' disabled':'')+'>▶ Run</button>';
+  var stopBtn = '<button class="actbtn stop" data-stop="'+esc(i.healthId)+'"'+(running?'':' disabled')+'>■ Stop</button>';
+  var logBtn = (live.lastRun) ? '<button class="actbtn" data-log="'+esc(i.healthId)+'">Log</button>' : '';
+  return runBtn+stopBtn+logBtn;
+}
+
+function render(){
   var doc = VERIFICATION;
-  if(!doc || !doc.items) { document.getElementById('rows').innerHTML='<tr><td colspan="7">No verification items declared.</td></tr>'; return; }
+  if(!doc || !doc.items) { document.getElementById('rows').innerHTML='<tr><td colspan="8">No verification items declared.</td></tr>'; return; }
   var counts={ 'never-run':0,'failing':0,'stale':0,'healthy':0 };
-  doc.items.forEach(function(i){ counts[col(i)]++; });
+  var effective = doc.items.map(effectiveItem);
+  effective.forEach(function(i){ counts[col(i)]++; });
   var cols='';
   Object.keys(COLS).forEach(function(k){ cols+='<div class="col"><h3>'+COLS[k]+' <b>'+counts[k]+'</b></h3></div>'; });
   document.getElementById('cols').innerHTML=cols;
-  var s=doc.subject||{}; document.getElementById('subject').textContent='Read-only inventory of \''+(s.name||'')+'\' — generated '+(doc.generatedAt||'');
+  var s=doc.subject||{}; document.getElementById('subject').textContent='Inventory of \''+(s.name||'')+'\' — generated '+(doc.generatedAt||'');
+  document.getElementById('healthNote').style.display = HEALTH_AVAILABLE ? '' : 'none';
   var rows='';
-  doc.items.forEach(function(i){ var l=i.lastRun||{}; rows+=
+  effective.forEach(function(i){ var l=i.lastRun||{}; rows+=
     '<tr><td>'+COLS[col(i)]+'</td><td><strong>'+esc(i.name)+'</strong><div class="mono" style="color:#667">'+esc(i.id)+'</div></td>'+
     '<td>'+esc(i.category||'')+'</td><td>'+badge(l.result)+'</td><td class="mono">'+rel(l.startedAt)+'</td>'+
-    '<td>'+dur(l.durationSeconds)+'</td><td>'+esc(i.description||'')+'</td></tr>'; });
+    '<td>'+dur(l.durationSeconds)+'</td><td>'+esc(i.description||'')+'</td><td>'+actionsCell(i)+'</td></tr>'; });
   document.getElementById('rows').innerHTML=rows;
-})();
+  document.querySelectorAll('[data-run]').forEach(function(b){ b.addEventListener('click', function(){ runHealthItem(b.dataset.run); }); });
+  document.querySelectorAll('[data-stop]').forEach(function(b){ b.addEventListener('click', function(){ stopHealthItem(b.dataset.stop); }); });
+  document.querySelectorAll('[data-log]').forEach(function(b){ b.addEventListener('click', function(){ window.open('/api/admin/health/log/'+encodeURIComponent(b.dataset.log), '_blank'); }); });
+}
+
+// S5.3 lift: the ONLY network calls this page ever makes, all against ControlPanelHealthController,
+// all SUPERUSER-gated server-side regardless of what this client-side code does. A 403/network
+// error here is not an error state to report -- it means "not signed in as Super User" or "app not
+// reachable", both of which this page already handles by falling back to its baked-in snapshot.
+function refreshHealth(){
+  return fetch('/api/admin/health/items', { credentials: 'same-origin' })
+    .then(function(r){ if(!r.ok) throw new Error('not available'); return r.json(); })
+    .then(function(doc){
+      HEALTH_AVAILABLE = true;
+      HEALTH_ITEMS = {};
+      (doc.items||[]).forEach(function(i){ HEALTH_ITEMS[i.id] = i; });
+      render();
+    })
+    .catch(function(){ HEALTH_AVAILABLE = false; render(); });
+}
+
+function runHealthItem(id){
+  fetch('/api/admin/health/run/'+encodeURIComponent(id), { method: 'POST', credentials: 'same-origin' })
+    .then(function(){ startPolling(); })
+    .catch(function(){ });
+}
+function stopHealthItem(id){
+  fetch('/api/admin/health/stop/'+encodeURIComponent(id), { method: 'POST', credentials: 'same-origin' })
+    .then(function(){ startPolling(); })
+    .catch(function(){ });
+}
+function startPolling(){
+  refreshHealth();
+  if(HEALTH_POLL) return;
+  var ticks = 0;
+  HEALTH_POLL = setInterval(function(){
+    ticks++;
+    refreshHealth().then(function(){
+      var stillRunning = Object.keys(HEALTH_ITEMS).some(function(k){ return HEALTH_ITEMS[k].lastRun && HEALTH_ITEMS[k].lastRun.result === 'running'; });
+      if(!stillRunning || ticks > 300){ clearInterval(HEALTH_POLL); HEALTH_POLL = null; }
+    });
+  }, 2000);
+}
+
+render();
+refreshHealth();
 </script>
 </body></html>
 '@
