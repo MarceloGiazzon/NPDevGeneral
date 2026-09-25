@@ -3685,6 +3685,53 @@ def run_capabilities(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_widgets(args: argparse.Namespace) -> int:
+    """Print the field-widget catalogue -- every widget the generator knows how to render.
+
+    Shells out to WidgetCatalogueMain (the dsl jar, staged in runtimehost-libs) rather than
+    carrying a second copy of the widget list in Python -- the same shape `capabilities` uses to
+    read SqlDialects, and the same source of truth (FieldWidgetDefaults.catalogue()) the
+    generator's WidgetCatalogueEmitter writes into every app's static/widget-catalog.json.
+    """
+    libs = _default_runtimehost_libs_dir()
+    if libs is None or not Path(libs).exists():
+        detail = ("runtimehost-libs not staged -- run "
+                   "scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars")
+        if getattr(args, "json", False):
+            print(json.dumps({
+                "schemaVersion": "npdev-cli-result.v1",
+                "command": "widgets",
+                "ok": False,
+                "exitCode": 1,
+                "detail": detail,
+            }, indent=2))
+        else:
+            print(f"npdev widgets: unavailable -- {detail}")
+        return 1
+
+    java_home = os.environ.get("JAVA_HOME")
+    java_bin = _resolve_java_home_binary(java_home) if java_home else None
+    if java_bin is None or not java_bin.exists():
+        path_java = shutil.which("java")
+        java_bin = Path(path_java) if path_java else None
+    if java_bin is None:
+        print("npdev widgets: unavailable -- no Java runtime found "
+              "(set JAVA_HOME or put java on PATH)")
+        return 1
+
+    java_args = [str(java_bin), "-cp", str(Path(libs) / "*"),
+                 "com.npdev.dsl.v1.cli.WidgetCatalogueMain"]
+    if getattr(args, "type", None):
+        java_args += ["--type", args.type]
+    if getattr(args, "json", False):
+        java_args.append("--json")
+    completed = subprocess.run(java_args, capture_output=True, text=True, timeout=30, check=False)
+    print(completed.stdout, end="")
+    if completed.returncode != 0 and completed.stderr:
+        print(completed.stderr, file=sys.stderr, end="")
+    return 0 if completed.returncode == 0 else 1
+
+
 def _find_db_definition(explicit: str | None) -> Path | None:
     """The app's db.definition.json, from an explicit path or the current directory.
 
@@ -14508,6 +14555,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Emit the matrix as JSON (npdev-storage-capability-matrix.v1) instead of the grid.",
     )
 
+    widgets_parser = subparsers.add_parser(
+        "widgets", help="Show every field widget the generator can render -- read from "
+                        "FieldWidgetDefaults, so it always matches the actual widget list."
+    )
+    widgets_parser.add_argument(
+        "--type", metavar="<dsl-type>",
+        help="Only show widgets compatible with this DSL field type, e.g. --type int.",
+    )
+    widgets_parser.add_argument(
+        "--json", action="store_true",
+        help="Emit the catalogue as JSON instead of the human-readable listing.",
+    )
+
     # Item 2, SUPPORT_FEATURES_PLAN_2026-08-26: the limits register (docs/ACCEPTED_BOUNDARIES.md),
     # made reachable from the terminal -- where an error's `B5:schema_ahead_detected`-style code
     # actually appears -- instead of only from a markdown file that does not ship to a third-party
@@ -16187,6 +16247,8 @@ def main(argv: list[str] | None = None) -> int:
             return _dev_run(args, sys.modules[__name__])
         if args.command == "capabilities":
             return run_capabilities(args)
+        if args.command == "widgets":
+            return run_widgets(args)
         if args.command == "why":
             return run_why(args)
         if args.command == "engines":

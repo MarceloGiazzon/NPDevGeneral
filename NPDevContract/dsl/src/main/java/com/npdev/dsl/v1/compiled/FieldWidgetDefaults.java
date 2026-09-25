@@ -1,5 +1,6 @@
 package com.npdev.dsl.v1.compiled;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -222,5 +223,108 @@ public final class FieldWidgetDefaults {
         }
 
         return Compatibility.UNKNOWN_WIDGET;
+    }
+
+    /**
+     * One catalogue entry per {@link #SUPPORTED_WIDGETS} value: the field types it accepts (as
+     * COMPATIBLE per {@link #classify}), the DSL types it is the default for (per
+     * {@link #defaultWidget}), and a one-line human description. This is the single source both
+     * the generator's {@code WidgetCatalogueEmitter} (a live JSON+HTML page per generated app) and
+     * the {@code npdev widgets} CLI command read -- neither hand-maintains its own widget list.
+     */
+    public record WidgetCatalogueEntry(
+            String name,
+            List<String> compatibleTypes,
+            List<String> isDefaultFor,
+            String description
+    ) {
+    }
+
+    /** @see WidgetCatalogueEntry */
+    public static List<WidgetCatalogueEntry> catalogue() {
+        return List.of(
+                new WidgetCatalogueEntry(TEXT,
+                        List.of("string", "int", "integer", "long", "decimal", "boolean", "date", "datetime", "uuid"),
+                        List.of("string"),
+                        "Plain single-line text input; compatible with virtually any scalar field."),
+                new WidgetCatalogueEntry(TEXTAREA,
+                        List.of("string"), List.of(),
+                        "Multi-line plain text input for longer strings."),
+                new WidgetCatalogueEntry(NUMBER,
+                        List.of("int", "integer", "long", "decimal"), List.of("int", "integer", "long", "decimal"),
+                        "Native number input."),
+                new WidgetCatalogueEntry(EMAIL,
+                        List.of("string"), List.of(),
+                        "Native email input with browser-native validation."),
+                new WidgetCatalogueEntry(TEL,
+                        List.of("string"), List.of(),
+                        "Native telephone-number input."),
+                new WidgetCatalogueEntry(URL,
+                        List.of("string"), List.of(),
+                        "Native URL input with browser-native validation."),
+                new WidgetCatalogueEntry(COLOR,
+                        List.of("string"), List.of(),
+                        "Native color picker; stores a hex string."),
+                new WidgetCatalogueEntry(DATE,
+                        List.of("date"), List.of("date"),
+                        "Native date picker."),
+                new WidgetCatalogueEntry(DATETIME_LOCAL,
+                        List.of("datetime"), List.of("datetime"),
+                        "Native date+time picker."),
+                new WidgetCatalogueEntry(CHECKBOX,
+                        List.of("boolean"), List.of("boolean"),
+                        "Standard checkbox."),
+                new WidgetCatalogueEntry(SELECT,
+                        List.of("enum", "reference"), List.of("enum (with declared values)"),
+                        "Native dropdown for an enum with declared values, or a single reference."),
+                new WidgetCatalogueEntry(AUTOCOMPLETE,
+                        List.of("enum", "reference"), List.of(),
+                        "Type-ahead dropdown for an enum or a reference field."),
+                new WidgetCatalogueEntry(LOOKUP,
+                        List.of("reference"), List.of("reference"),
+                        "Search-dialog picker for a single reference field."),
+                new WidgetCatalogueEntry(SEARCH_DIALOG,
+                        List.of("reference"), List.of(),
+                        "Legacy alias for lookup, kept for samples authored before lookup existed."),
+                new WidgetCatalogueEntry(MULTISELECT,
+                        List.of("reference (multi)", "array (closed enum)"), List.of("reference (multi)"),
+                        "Multi-select control for a many-to-many reference or a closed-enum array."),
+                new WidgetCatalogueEntry(IMAGE_SELECT,
+                        List.of("enum", "reference"), List.of(),
+                        "Visual picker showing an image per option or row."),
+                new WidgetCatalogueEntry(CUSTOM,
+                        List.of("any (requires ui.customWidgetRef)"), List.of(),
+                        "Delegates rendering to an author-registered custom widget."),
+                new WidgetCatalogueEntry(GROUP,
+                        List.of("object"), List.of(),
+                        "Structural label for a nested object field's own editor."),
+                new WidgetCatalogueEntry(LIST,
+                        List.of("array"), List.of(),
+                        "Structural label for a nested array field's own editor."),
+                new WidgetCatalogueEntry(SLIDER,
+                        List.of("int", "integer", "long", "decimal"), List.of(),
+                        "Range slider; uses the field's declared min/max, else defaults to 0-100."),
+                new WidgetCatalogueEntry(TOGGLE,
+                        List.of("boolean"), List.of(),
+                        "Styled on/off switch; same value path as a checkbox."),
+                new WidgetCatalogueEntry(RATING,
+                        List.of("int", "integer"), List.of(),
+                        "1-5 star rating (star count from the field's max if declared and <= 10)."),
+                new WidgetCatalogueEntry(CURRENCY,
+                        List.of("decimal"), List.of(),
+                        "Number input formatted to 2 decimals with a currency symbol from ui.currency."),
+                new WidgetCatalogueEntry(PASSWORD,
+                        List.of("string"), List.of(),
+                        "Masked text input with a show/hide toggle."),
+                new WidgetCatalogueEntry(FILE,
+                        List.of("file"), List.of("file"),
+                        "Upload control backed by the file-store adapter."),
+                new WidgetCatalogueEntry(UUID,
+                        List.of("uuid"), List.of("uuid"),
+                        "Read-only monospace display with a copy-to-clipboard button."),
+                new WidgetCatalogueEntry(RICHTEXT,
+                        List.of("string"), List.of(),
+                        "Minimal contenteditable editor (bold/italic/list); stores sanitized HTML.")
+        );
     }
 }

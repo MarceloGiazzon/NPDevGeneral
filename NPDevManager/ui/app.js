@@ -959,6 +959,7 @@ document.getElementById("run-start-btn").addEventListener("click", async () => {
   document.getElementById("run-banner").hidden = true;
   document.getElementById("run-link").textContent = `http://localhost:${port}`;
   document.getElementById("run-link").href = `http://localhost:${port}`;
+  document.getElementById("run-widgets-link").href = `http://localhost:${port}/widget-catalog.html`;
   try {
     await invoke("start_dev", { appDir, port });
     devRunning = true;
@@ -1048,6 +1049,12 @@ document.getElementById("db-reset-btn").addEventListener("click", async () => {
 });
 
 document.getElementById("run-link").addEventListener("click", (event) => {
+  event.preventDefault();
+  const href = event.target.href;
+  if (href && href !== "#") invoke("open_url", { url: href });
+});
+
+document.getElementById("run-widgets-link").addEventListener("click", (event) => {
   event.preventDefault();
   const href = event.target.href;
   if (href && href !== "#") invoke("open_url", { url: href });
