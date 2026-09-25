@@ -148,6 +148,26 @@ tasks.register('modelXref', JavaExec) {
     args cliArgs
 }
 
+// Wave 4 (2026-09-25): resolve a model's packs[]/fragments and print the pack-composed JSON --
+// the same representation a generated app's own npdev-generated/.../npdev/model.json holds, which
+// ModelSyncStatusService reads at runtime. Unlike validateModel/modelXref above, NOT
+// ignoreExitValue: a resolution failure here means nothing useful was produced, so a normal Gradle
+// task failure is the correct signal (the caller has nothing to read on failure either way).
+tasks.register('canonicalizeModel', JavaExec) {
+    group = 'verification'
+    description = 'Resolve a model.json\'s packs/fragments and print the pack-composed JSON.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.npdev.dsl.v1.cli.ModelCanonicalizeMain'
+    def cliArgs = []
+    if (project.hasProperty('modelPath')) {
+        cliArgs << project.getProperty('modelPath')
+    }
+    if (project.hasProperty('reportOut')) {
+        cliArgs << '--out' << project.getProperty('reportOut')
+    }
+    args cliArgs
+}
+
 // PK-3: npdev pack add|update|list|why -- same JavaExec-wrapping-a-small-Main-class convention as
 // validateModel above. add/update share one Main class (PackAddMain; PackUpdateMain is a 1-line
 // delegate) since they're the same operation under two names.

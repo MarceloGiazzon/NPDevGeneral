@@ -426,6 +426,10 @@ dl.kv dd small { opacity: .6; }
 .badge.ephemeral { color: var(--warn); border-color: #5a4a1e; }
 .badge.preserved { color: var(--muted); }
 .badge.unknownpolicy { color: var(--off); border-style: dashed; }
+/* Wave 4 (2026-09-25): model-sync badge, same defined-tokens-only discipline as MON-9 above. */
+.badge.synced { color: var(--ok); border-color: #1e5a2e; }
+.badge.diverged { color: var(--warn); border-color: #5a4a1e; }
+.badge.syncunknown { color: var(--off); border-style: dashed; }
 
 .verdict { font-family: var(--font-mono); font-size: 13px; letter-spacing: 2px; padding: 4px 12px;
            border-radius: 4px; border: 1px solid currentColor; display: inline-block; }

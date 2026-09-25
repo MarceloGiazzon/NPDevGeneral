@@ -297,11 +297,17 @@ def _tcp_open(host: str, port: int, timeout: float = 0.5) -> bool:
         return False
 
 
-def _http_json(url: str, timeout: float = 1.0, headers: dict | None = None) -> tuple[int | None, object]:
+def _http_json(
+        url: str, timeout: float = 1.0, headers: dict | None = None, data: bytes | None = None
+) -> tuple[int | None, object]:
     """(status, parsed-or-raw). A 4xx is a RESULT, not an exception: a 401 from an engine's status
     endpoint proves the engine is there, which is the whole point of the D9 service probe. Returns
-    (None, error-text) only when nothing answered at all."""
-    request = urllib.request.Request(url, headers=headers or {})
+    (None, error-text) only when nothing answered at all.
+
+    `data` (bytes) makes this a POST -- `urllib.request.Request` picks the method from whether a
+    body is present, same as every other urllib-based caller in this codebase
+    (`_metadata_hotswap_apply` in npdev_cli.py)."""
+    request = urllib.request.Request(url, data=data, headers=headers or {})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", "replace")
@@ -321,6 +327,62 @@ def _http_json(url: str, timeout: float = 1.0, headers: dict | None = None) -> t
             return exc.code, body
     except Exception as exc:  # URLError, socket.timeout, ssl, ...
         return None, str(exc)
+
+
+def model_sync_status(
+        base_url: str, super_user_key: str, canonical_model_json: str, timeout: float = 5.0
+) -> dict:
+    """Wave 4 (2026-09-25): POST a pack-resolved model candidate (produced by
+    `:NPDevContract:dsl:canonicalizeModel` -- see `_canonicalize_model_for_sync` in npdev_cli.py,
+    the caller that actually produces `canonical_model_json`) at
+    `ModelSyncStatusController#syncStatus`, authenticating the same way `_run_monitor_hotswap`
+    does: the `X-Super-User-Key` header (`SuperUserCredentialAuthFilter`), since the endpoint
+    requires SUPERUSER specifically -- an `auth.mode=none` app grants only ADMIN to anonymous
+    callers.
+
+    Never raises for an ordinary refusal -- returns `{"ok": False, "code": ..., "message": ...}`,
+    same shape callers of `_metadata_hotswap_apply` (npdev_cli.py) already expect. This function
+    does no pack resolution or compilation of its own; a raw, unresolved `definition/model.json`
+    would report every app using packs as permanently "diverged" (the deployed side is always the
+    pack-RESOLVED form)."""
+    result: dict = {"ok": False, "code": None, "message": None}
+    status, body = _http_json(
+        base_url.rstrip("/") + "/api/admin/model/sync-status",
+        timeout=timeout,
+        headers={"Content-Type": "application/json", "X-Super-User-Key": super_user_key},
+        data=canonical_model_json.encode("utf-8"),
+    )
+    if status is None:
+        result["code"] = "UNREACHABLE"
+        result["message"] = f"could not reach {base_url}: {body}"
+        return result
+    if status == 404:
+        result["code"] = "ENDPOINT_NOT_FOUND"
+        result["message"] = (
+            f"HTTP 404 from {base_url} -- this app predates Wave 4's ModelSyncStatusController "
+            "and has no /api/admin/model/sync-status endpoint. Regenerate it."
+        )
+        return result
+    if status == 403:
+        result["code"] = "FORBIDDEN"
+        result["message"] = "SUPERUSER key was rejected -- it may have been rotated since this app last started."
+        return result
+    if status != 200 or not isinstance(body, dict):
+        result["code"] = f"HTTP_{status}"
+        result["message"] = f"HTTP {status}: {json.dumps(body) if isinstance(body, dict) else str(body)[:300]}"
+        return result
+
+    result["ok"] = True
+    result["code"] = body.get("status") or "unknown"
+    result["inSync"] = bool(body.get("inSync"))
+    result["authoringHash"] = body.get("authoringHash")
+    result["deployHash"] = body.get("deployHash")
+    result["lastExportedAt"] = body.get("lastExportedAt")
+    result["message"] = (
+        "authoring and deployed models match" if result["inSync"]
+        else f"authoring and deployed models differ (status: {result['code']})"
+    )
+    return result
 
 
 # ---------------------------------------------------------------------------------------------

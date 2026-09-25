@@ -192,6 +192,21 @@ function dataPolicyBadge(app) {
   return `<span class="badge unknownpolicy">—</span> <small>(regenerate to see)</small>`;
 }
 
+// Wave 4 (2026-09-25): only present on a deep probe (--include-info) of a RUNNING app that knows
+// both its own model path and its Super User key -- see the gating in npdev_cli.py's `run_monitor`
+// probe branch. Absent (not merely false) on every other card, so this only ever renders in the
+// Inspector, never the lightweight scan grid.
+function modelSyncBadge(probe) {
+  const sync = probe.modelSync;
+  if (!sync) return "";
+  if (!sync.ok) {
+    return `<span class="badge syncunknown" title="${esc(sync.message || "")}">SYNC UNKNOWN</span>`;
+  }
+  return sync.inSync
+    ? `<span class="badge synced">IN SYNC</span>`
+    : `<span class="badge diverged" title="${esc(sync.message || "")}">DIVERGED</span>`;
+}
+
 function cardHtml(app) {
   const state = statusOf(app);
   const dir = esc(app.appDir);
@@ -469,6 +484,17 @@ function renderInspector(probe) {
         🔑 <b>Super User key file</b> — needed to unlock the Control Panel the first time
         <code>${esc(probe.superUserKeyFile)}</code>
         <button data-copy="${esc(probe.superUserKeyFile)}">📋 Copy path</button>
+      </div>`);
+  }
+
+  // Wave 4: is the deployed model still the one on disk? See modelSyncBadge's own comment for why
+  // this is silent (not "unknown") on a stopped app or one probed without --include-info -- both
+  // are ordinary states, not failures.
+  if (probe.modelSync) {
+    sections.push(`
+      <div class="insp-callout">
+        ${modelSyncBadge(probe)} <b>Model sync</b>
+        ${probe.modelSync.message ? `— ${esc(probe.modelSync.message)}` : ""}
       </div>`);
   }
 
