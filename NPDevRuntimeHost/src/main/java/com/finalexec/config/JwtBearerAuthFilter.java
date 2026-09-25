@@ -81,7 +81,7 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
             return true;
         }
         // SEC-11 (OAuth browser round trip): the provider redirects the browser back to
-        // /api/auth/oauth/google/callback WITHOUT any NPDev credential for the signup/login legs
+        // /api/auth/oauth/<provider>/callback WITHOUT any NPDev credential for the signup/login legs
         // (that is the whole point of the flow), so those paths must be reachable when the request
         // carries neither an Authorization header nor a session cookie. The authenticated account-
         // LINK leg starts from a same-site navigation that DOES carry the npdev_jwt cookie, and a
@@ -89,11 +89,18 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
         // other -- a link attempt with a stale or missing session is refused here with the ordinary
         // missing_bearer_token, never silently accepted. The /oauth/config probe is unconditional
         // (it only reports whether OAuth is enabled; the login screen fetches it pre-credential).
+        //
+        // Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24): this used to hardcode the literal "google" path
+        // segment -- a real bug caught live on Pigmentampa's GitHub sign-in button, which this filter
+        // rejected with missing_bearer_token before OAuthGoogleController's provider-parameterized
+        // authorize/callback routes (see its own javadoc: one class, several providers, since before
+        // this fix) ever ran. Match ANY provider segment instead of enumerating providers here a
+        // second time -- a third provider added to that controller needs no matching edit in this
+        // filter.
         if (uri.equals("/api/auth/oauth/config") || uri.equals("/api/v1/auth/oauth/config")) {
             return true;
         }
-        if (uri.equals("/api/auth/oauth/google/authorize") || uri.equals("/api/v1/auth/oauth/google/authorize")
-                || uri.equals("/api/auth/oauth/google/callback") || uri.equals("/api/v1/auth/oauth/google/callback")) {
+        if (isOauthAuthorizeOrCallbackPath(uri)) {
             return normalize(request.getHeader("Authorization")) == null && sessionCookieValue(request) == null;
         }
         // R6.2: an inbound webhook door has its OWN independent authentication -- an HMAC-SHA256
@@ -131,6 +138,27 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
             return false;
         }
         return !(uri.startsWith("/api/") || uri.startsWith("/api/v1/"));
+    }
+
+    /**
+     * Matches {@code /api/auth/oauth/<provider>/authorize} and {@code .../callback} (and their
+     * {@code /api/v1/} twins) for ANY single path segment as the provider id -- not just
+     * {@code google} or {@code github} by name -- so this filter never needs a second edit when
+     * {@link com.finalexec.auth.OAuthGoogleController} gains a third provider.
+     */
+    private static boolean isOauthAuthorizeOrCallbackPath(String uri) {
+        String path = uri.startsWith("/api/v1/") ? "/api/" + uri.substring("/api/v1/".length()) : uri;
+        if (!path.startsWith("/api/auth/oauth/")) {
+            return false;
+        }
+        String remainder = path.substring("/api/auth/oauth/".length());
+        int slash = remainder.indexOf('/');
+        if (slash <= 0) {
+            return false;
+        }
+        String provider = remainder.substring(0, slash);
+        String action = remainder.substring(slash + 1);
+        return !provider.isEmpty() && (action.equals("authorize") || action.equals("callback"));
     }
 
     @Override
