@@ -37,10 +37,7 @@ class NonDefaultRuntimeSurfaceProfileIntegrationTest {
 
         assertTrue(activeControllers.contains("RuntimeMetadataController"));
         assertTrue(activeControllers.contains("RuntimePluginPackagesController"));
-        assertTrue(activeControllers.contains("RuntimeRefreshController"));
         assertTrue(activeControllers.contains("ModelSyncStatusController"));
-        assertTrue(activeControllers.contains("BetaOnboardingController"));
-        assertTrue(mappedControllers.contains("FlowBuilderController"));
         assertTrue(mappedControllers.contains("RuntimeTopologyExplorerController"));
     }
 
@@ -53,10 +50,10 @@ class NonDefaultRuntimeSurfaceProfileIntegrationTest {
             }
             Package beanPackage = beanType.getPackage();
             // REG-163: every controller this test checks (RuntimePluginPackagesController,
-            // ModelSyncStatusController, RuntimeRefreshController, BetaOnboardingController) lives
-            // under a com.finalexec.api SUBpackage (.internal/.experimental), never the bare
-            // com.finalexec.api package itself -- an exact-equals check here can never match any of
-            // them, a second, independent bug this test's own revival surfaced.
+            // ModelSyncStatusController) lives under a com.finalexec.api SUBpackage
+            // (.internal/.experimental), never the bare com.finalexec.api package itself -- an
+            // exact-equals check here can never match any of them, a second, independent bug this
+            // test's own revival surfaced.
             if (beanPackage == null || !beanPackage.getName().startsWith("com.finalexec.api")) {
                 continue;
             }
@@ -73,10 +70,10 @@ class NonDefaultRuntimeSurfaceProfileIntegrationTest {
             Class<?> beanType = handlerMethod.getBeanType();
             Package beanPackage = beanType.getPackage();
             // REG-163: every controller this test checks (RuntimePluginPackagesController,
-            // ModelSyncStatusController, RuntimeRefreshController, BetaOnboardingController) lives
-            // under a com.finalexec.api SUBpackage (.internal/.experimental), never the bare
-            // com.finalexec.api package itself -- an exact-equals check here can never match any of
-            // them, a second, independent bug this test's own revival surfaced.
+            // ModelSyncStatusController) lives under a com.finalexec.api SUBpackage
+            // (.internal/.experimental), never the bare com.finalexec.api package itself -- an
+            // exact-equals check here can never match any of them, a second, independent bug this
+            // test's own revival surfaced.
             if (beanPackage == null || !beanPackage.getName().startsWith("com.finalexec.api")) {
                 continue;
             }

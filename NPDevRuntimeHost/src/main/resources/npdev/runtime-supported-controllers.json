@@ -38,10 +38,7 @@
     "SemanticBehaviorWriteBackController",
     "ModelSyncStatusController",
     "RuntimePluginPackagesController",
-    "RuntimeRefreshController",
     "RuntimeTopologyExplorerController",
-    "BetaOnboardingController",
-    "FlowBuilderController",
     "SchemaPromotionController"
   ],
   "deferredControllers": [
@@ -95,7 +92,6 @@
     "RuntimeTopologyExplorerService",
     "FlowBuilderService",
     "GovernanceWorkspaceService",
-    "BetaOnboardingService",
     "CapabilityIntegrationPanelService"
   ],
   "supportedCoreServicePatterns": [

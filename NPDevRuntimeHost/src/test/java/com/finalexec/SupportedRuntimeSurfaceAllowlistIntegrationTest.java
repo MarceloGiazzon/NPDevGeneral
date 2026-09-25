@@ -52,11 +52,14 @@ class SupportedRuntimeSurfaceAllowlistIntegrationTest {
         assertTrue(activeControllers.contains("RuntimeMetadataController"));
         assertTrue(activeControllers.contains("RuntimePluginStatusController"));
         assertTrue(activeControllers.contains("SupportDiagnosticsController"));
-        // Derived from the manifest's OWN deferredControllers list rather than three hardcoded
-        // names: those three (RuntimePluginPackagesController, RuntimeRefreshController,
-        // ModelSyncStatusController) have since moved into allowedControllers (git blame: promoted
-        // months ago, unrelated to this branch), so the hardcoded version silently asserted a state
-        // the manifest itself no longer declares -- exactly the kind of drift a derived check can't have.
+        // Derived from the manifest's OWN deferredControllers list rather than hardcoded names:
+        // RuntimePluginPackagesController and ModelSyncStatusController have since moved into
+        // allowedControllers (git blame: promoted months ago, unrelated to this branch), and
+        // RuntimeRefreshController -- the third name this comment used to list -- was deleted
+        // outright (Wave 4, 2026-09-25): a canned-response stub superseded by
+        // MetadataHotSwapController's real /model-reload. A hardcoded version would have silently
+        // asserted a state the manifest itself no longer declares -- exactly the kind of drift a
+        // derived check can't have.
         Set<String> deferredControllers = loadArray("deferredControllers");
         LinkedHashSet<String> activeButDeferred = new LinkedHashSet<>(activeControllers);
         activeButDeferred.retainAll(deferredControllers);
