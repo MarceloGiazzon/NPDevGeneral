@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{namespace}} -- Widget Catalogue</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 24px; line-height: 1.4; max-width: 900px; }
+    h1 { margin: 0 0 4px; font-size: 1.4rem; }
+    .subtitle { color: #666; margin: 0 0 20px; max-width: 72ch; }
+    .widget-card { border: 1px solid #8883; border-radius: 8px; padding: 14px 16px; margin: 0 0 14px; }
+    .widget-card h2 { margin: 0 0 4px; font-size: 1.05rem; font-family: ui-monospace, monospace; }
+    .widget-card .desc { color: #666; margin: 0 0 8px; max-width: 68ch; }
+    .widget-card .meta { font-size: 0.8rem; color: #888; margin: 0 0 10px; }
+    .widget-card .meta code { font-family: ui-monospace, monospace; }
+    .demo { background: #8881; border-radius: 6px; padding: 10px 12px; }
+    .demo-value { font-size: 0.8rem; color: #666; margin-top: 6px; font-family: ui-monospace, monospace; }
+    .needs-context { color: #888; font-style: italic; font-size: 0.9rem; }
+    input, select, textarea { font: inherit; padding: 4px 8px; }
+    button { font: inherit; padding: 4px 10px; cursor: pointer; }
+    .slider-row { display: flex; align-items: center; gap: 10px; }
+    .rating-star { font-size: 1.3rem; background: none; border: none; cursor: pointer; color: #ccc; padding: 0 2px; }
+    .rating-star.filled { color: #e0a800; }
+    .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider { position: absolute; inset: 0; background: #8886; border-radius: 22px; transition: 0.15s; cursor: pointer; }
+    .toggle-slider::before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; top: 3px; background: white; border-radius: 50%; transition: 0.15s; }
+    input:checked + .toggle-slider { background: #2a6df4; }
+    input:checked + .toggle-slider::before { transform: translateX(18px); }
+    .richtext-editor { border: 1px solid #8883; border-radius: 4px; padding: 6px 8px; min-height: 2.4em; }
+    .richtext-toolbar button { margin-right: 4px; }
+    .uuid-box { display: flex; gap: 6px; }
+    .uuid-box input { font-family: ui-monospace, monospace; background: #8881; }
+    .currency-row { display: flex; align-items: center; gap: 6px; }
+  </style>
+</head>
+<body>
+<h1>{{namespace}} -- Widget Catalogue</h1>
+<p class="subtitle">
+  Every field widget this app's generator knows how to render ({{widgetCount}} total), generated
+  from <code>FieldWidgetDefaults.catalogue()</code> -- the same source of truth the
+  <code>npdev widgets</code> CLI command reads. Widgets whose rendering depends on live model data
+  (a reference's rows, an enum's declared values) show a placeholder instead of a fake demo; see
+  <a href="widget-catalog.json">widget-catalog.json</a> for the raw data.
+</p>
+
+{{#widgets}}
+<div class="widget-card">
+  <h2>{{name}}</h2>
+  <p class="desc">{{description}}</p>
+  <p class="meta">compatible types: <code>{{compatibleTypesJoined}}</code>{{#hasDefaults}} &middot; default for: <code>{{isDefaultForJoined}}</code>{{/hasDefaults}}</p>
+  <div class="demo" data-widget="{{name}}">
+    {{#needsModelContext}}
+    <p class="needs-context">Needs live model data (reference rows / enum values / a custom registration) to demo -- see it on any concept using this widget instead.</p>
+    {{/needsModelContext}}
+  </div>
+</div>
+{{/widgets}}
+
+<script>
+(function () {
+  "use strict";
+
+  function demoOf(name) {
+    return document.querySelector('.demo[data-widget="' + name + '"]');
+  }
+  function valueLabel(demo) {
+    var label = document.createElement("div");
+    label.className = "demo-value";
+    demo.appendChild(label);
+    return label;
+  }
+
+  // -- plain native inputs, one row per widget name -> input type --
+  [
+    ["text", "text"], ["textarea", null], ["number", "number"], ["email", "email"],
+    ["tel", "tel"], ["url", "url"], ["color", "color"], ["date", "date"],
+    ["datetime-local", "datetime-local"], ["checkbox", "checkbox"]
+  ].forEach(function (pair) {
+    var name = pair[0], type = pair[1];
+    var demo = demoOf(name);
+    if (!demo) { return; }
+    var input = type === null ? document.createElement("textarea") : document.createElement("input");
+    if (type && type !== "checkbox") { input.type = type; }
+    if (type === "checkbox") { input.type = "checkbox"; }
+    if (type === "textarea" || type === null) { input.rows = 2; }
+    demo.appendChild(input);
+    var label = valueLabel(demo);
+    var read = function () { return type === "checkbox" ? String(input.checked) : input.value; };
+    label.textContent = "value: " + read();
+    input.addEventListener("input", function () { label.textContent = "value: " + read(); });
+    input.addEventListener("change", function () { label.textContent = "value: " + read(); });
+  });
+
+  // -- slider --
+  (function () {
+    var demo = demoOf("slider");
+    if (!demo) { return; }
+    var row = document.createElement("div");
+    row.className = "slider-row";
+    var input = document.createElement("input");
+    input.type = "range"; input.min = "0"; input.max = "100"; input.value = "50";
+    var out = document.createElement("span");
+    out.textContent = input.value;
+    input.addEventListener("input", function () { out.textContent = input.value; });
+    row.appendChild(input); row.appendChild(out);
+    demo.appendChild(row);
+  })();
+
+  // -- toggle --
+  (function () {
+    var demo = demoOf("toggle");
+    if (!demo) { return; }
+    var wrap = document.createElement("label");
+    wrap.className = "toggle-switch";
+    var input = document.createElement("input");
+    input.type = "checkbox";
+    var slider = document.createElement("span");
+    slider.className = "toggle-slider";
+    wrap.appendChild(input); wrap.appendChild(slider);
+    demo.appendChild(wrap);
+    var label = valueLabel(demo);
+    label.textContent = "value: false";
+    input.addEventListener("change", function () { label.textContent = "value: " + input.checked; });
+  })();
+
+  // -- rating --
+  (function () {
+    var demo = demoOf("rating");
+    if (!demo) { return; }
+    var wrap = document.createElement("div");
+    var current = 0;
+    var stars = [];
+    function refresh() {
+      stars.forEach(function (s, i) { s.classList.toggle("filled", i < current); s.textContent = i < current ? "★" : "☆"; });
+      label.textContent = "value: " + (current || "(unset)");
+    }
+    for (var i = 0; i < 5; i++) {
+      (function (idx) {
+        var star = document.createElement("button");
+        star.type = "button"; star.className = "rating-star"; star.textContent = "☆";
+        star.addEventListener("click", function () { current = (current === idx + 1) ? 0 : idx + 1; refresh(); });
+        stars.push(star);
+        wrap.appendChild(star);
+      })(i);
+    }
+    demo.appendChild(wrap);
+    var label = valueLabel(demo);
+    refresh();
+  })();
+
+  // -- currency --
+  (function () {
+    var demo = demoOf("currency");
+    if (!demo) { return; }
+    var row = document.createElement("div");
+    row.className = "currency-row";
+    var symbol = document.createElement("span");
+    symbol.textContent = "USD";
+    var input = document.createElement("input");
+    input.type = "number"; input.step = "0.01";
+    row.appendChild(symbol); row.appendChild(input);
+    demo.appendChild(row);
+    var label = valueLabel(demo);
+    label.textContent = "value: (empty)";
+    input.addEventListener("input", function () { label.textContent = "value: " + input.value; });
+  })();
+
+  // -- password --
+  (function () {
+    var demo = demoOf("password");
+    if (!demo) { return; }
+    var input = document.createElement("input");
+    input.type = "password";
+    var toggle = document.createElement("button");
+    toggle.type = "button"; toggle.textContent = "Show";
+    toggle.addEventListener("click", function () {
+      var showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      toggle.textContent = showing ? "Show" : "Hide";
+    });
+    demo.appendChild(input); demo.appendChild(toggle);
+  })();
+
+  // -- file --
+  (function () {
+    var demo = demoOf("file");
+    if (!demo) { return; }
+    var input = document.createElement("input");
+    input.type = "file";
+    var label = valueLabel(demo);
+    label.textContent = "(no file)";
+    input.addEventListener("change", function () {
+      label.textContent = (input.files && input.files[0]) ? input.files[0].name : "(no file)";
+    });
+    demo.appendChild(input);
+  })();
+
+  // -- uuid --
+  (function () {
+    var demo = demoOf("uuid");
+    if (!demo) { return; }
+    var row = document.createElement("div");
+    row.className = "uuid-box";
+    var input = document.createElement("input");
+    input.type = "text"; input.readOnly = true;
+    input.value = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
+    var copy = document.createElement("button");
+    copy.type = "button"; copy.textContent = "Copy";
+    copy.addEventListener("click", function () {
+      if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(input.value); }
+    });
+    row.appendChild(input); row.appendChild(copy);
+    demo.appendChild(row);
+  })();
+
+  // -- richtext --
+  (function () {
+    var demo = demoOf("richtext");
+    if (!demo) { return; }
+    var toolbar = document.createElement("div");
+    toolbar.className = "richtext-toolbar";
+    ["B", "I"].forEach(function (label) {
+      var b = document.createElement("button");
+      b.type = "button"; b.textContent = label;
+      b.addEventListener("mousedown", function (e) { e.preventDefault(); });
+      b.addEventListener("click", function () {
+        document.execCommand(label === "B" ? "bold" : "italic", false, null);
+      });
+      toolbar.appendChild(b);
+    });
+    var editor = document.createElement("div");
+    editor.className = "richtext-editor";
+    editor.contentEditable = "true";
+    editor.textContent = "Edit me";
+    demo.appendChild(toolbar);
+    demo.appendChild(editor);
+  })();
+})();
+</script>
+</body>
+</html>

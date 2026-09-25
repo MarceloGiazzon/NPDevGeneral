@@ -209,4 +209,25 @@ class FieldWidgetDefaultsTest {
     void unrecognizedWidgetNameIsAlwaysUnknown() {
         assertEquals(UNKNOWN_WIDGET, FieldWidgetDefaults.classify(scalar("string"), "not-a-real-widget"));
     }
+
+    // -- catalogue() --
+
+    @Test
+    void catalogueHasExactlyOneEntryPerSupportedWidgetWithNoBlankFields() {
+        var entries = FieldWidgetDefaults.catalogue();
+        assertEquals(FieldWidgetDefaults.SUPPORTED_WIDGETS.size(), entries.size());
+        var seenNames = new java.util.HashSet<String>();
+        for (var entry : entries) {
+            org.junit.jupiter.api.Assertions.assertTrue(
+                    FieldWidgetDefaults.SUPPORTED_WIDGETS.contains(entry.name()),
+                    "catalogue() entry '" + entry.name() + "' is not in SUPPORTED_WIDGETS");
+            org.junit.jupiter.api.Assertions.assertTrue(seenNames.add(entry.name()),
+                    "catalogue() has a duplicate entry for '" + entry.name() + "'");
+            org.junit.jupiter.api.Assertions.assertFalse(entry.compatibleTypes().isEmpty(),
+                    "catalogue() entry '" + entry.name() + "' has no compatibleTypes");
+            org.junit.jupiter.api.Assertions.assertFalse(entry.description().isBlank(),
+                    "catalogue() entry '" + entry.name() + "' has no description");
+        }
+        assertEquals(FieldWidgetDefaults.SUPPORTED_WIDGETS, seenNames);
+    }
 }
