@@ -4513,7 +4513,12 @@
       }
       const visible = isFieldVisible(field, values);
       const enabled = isFieldEnabled(field, values);
-      const readonly = isFieldReadonlyByCondition(field, values);
+      // field.widget === "uuid" renders createUuidInput's own input.readOnly = true (a copy-to-
+      // clipboard display, never meant for manual entry) -- without this OR, this generic pass would
+      // unconditionally overwrite that back to false on every render/input event, since
+      // isFieldReadonlyByCondition only knows about declared readonlyWhen/access-scoping rules, not a
+      // widget's own intrinsic behavior.
+      const readonly = isFieldReadonlyByCondition(field, values) || field.widget === "uuid";
       const required = isFieldRequiredNow(field, values);
       const wrapper = control.closest(".form-field");
       // W1.5: a field hidden by the SERVER's real per-actor overlay (field.permissionOverlay.visible
@@ -4793,7 +4798,14 @@
     }
     const input = document.createElement("input");
     input.name = field.name;
-    if (field.widget === "datetime-local" || field.type === "datetime") {
+    // field.widget === "currency" MUST be checked before the generic number/decimal branch below --
+    // a currency field's field.type is "decimal" (or "number"/"integer"), which would otherwise match
+    // that earlier, more general branch first in this else-if chain and leave step unset, defaulting
+    // the browser's native number-input validation to step=1 and rejecting any 2-decimal amount.
+    if (field.widget === "currency") {
+      input.type = "number";
+      input.step = "0.01";
+    } else if (field.widget === "datetime-local" || field.type === "datetime") {
       input.type = "datetime-local";
     } else if (field.widget === "date" || field.type === "date") {
       input.type = "date";
@@ -4809,9 +4821,6 @@
       input.type = "url";
     } else if (field.widget === "password") {
       input.type = "password";
-    } else if (field.widget === "currency") {
-      input.type = "number";
-      input.step = "0.01";
     } else {
       input.type = "text";
     }
