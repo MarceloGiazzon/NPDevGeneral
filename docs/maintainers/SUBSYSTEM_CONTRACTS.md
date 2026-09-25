@@ -25,6 +25,14 @@ the Manager's two newest screens. The Tauri commands are thin wrappers — **no 
   Playwright reporter record THROUGH `npdev explore record` rather than judging for themselves.
 - **Records are never deleted.** `explore prune` prunes blobs only, exempts pinned and ledger-linked
   runs, and prints what it kept and why.
+- **`probe --include-info`'s `modelSync` field (Wave 4, 2026-09-25) is gated behind include-info
+  and a running app on purpose** — it costs a Gradle invocation
+  (`:NPDevContract:dsl:canonicalizeModel`, `npdev_cli._canonicalize_model_for_sync`) plus a live
+  `X-Super-User-Key`-authenticated POST to `ModelSyncStatusController`
+  (`npdev_monitor.model_sync_status`), neither of which belongs in the 30s scan of every app.
+  `canonicalizeModel` exists because `ModelSyncStatusController` does no pack resolution itself —
+  posting a raw, unresolved `definition/model.json` would report every packs-using app as
+  permanently "diverged" (the deployed side is always the pack-RESOLVED form).
 
 ## Generated-app filesystem contract
 

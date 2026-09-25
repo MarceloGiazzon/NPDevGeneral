@@ -9333,6 +9333,59 @@ def run_release_candidate(args: argparse.Namespace, root: Path) -> dict:
             "sha": manifest["sha"], "tag": manifest["tag"], "stepsRun": steps_run}
 
 
+def _canonicalize_model_for_sync(model_path: Path, timeout: float = 30.0) -> tuple[bool, str | None, str | None]:
+    """Wave 4 (2026-09-25): runs `:NPDevContract:dsl:canonicalizeModel` to resolve
+    `model_path`'s packs/fragments into the same pack-composed JSON a generated app's own
+    `npdev-generated/.../npdev/model.json` holds -- the candidate
+    `npdev_monitor.model_sync_status` needs to POST at `ModelSyncStatusController`. Posting the
+    RAW authoring file instead would report every app using packs as permanently "diverged", since
+    the deployed side is always the pack-resolved form.
+
+    Returns `(ok, canonical_json_or_none, error_message_or_none)`. Never raises: an unresolvable
+    pack graph, a missing Gradle wrapper, or a timed-out build are all ordinary "cannot answer
+    sync status right now" outcomes for the Monitor's on-demand inspector, not CLI crashes.
+
+    Deliberately Gradle-only, unlike `run_validate_semantic`'s warm `npdev-ai-tools.jar` path:
+    that jar is staged manually (`sync-runtimehost-libs.ps1`) and a stale copy predating this
+    Main class would fail with ClassNotFoundException with no fallback signal a caller could act
+    on. Worth revisiting once the staging step can detect "this jar predates class X\", not before.
+    """
+    root = repo_root()
+    model = Path(model_path).expanduser().resolve()
+    if not model.exists():
+        return False, None, f"model not found: {model}"
+    wrapper = gradle_wrapper(root)
+    if not wrapper.exists():
+        return False, None, f"Gradle wrapper not found: {wrapper}"
+
+    with tempfile.TemporaryDirectory(prefix="npdev-canonicalize-") as temp_dir:
+        out_path = Path(temp_dir) / "canonical-model.json"
+        command = [
+            str(wrapper),
+            *gradle_project_cache_args("root"),
+            ":NPDevContract:dsl:canonicalizeModel",
+            f"-PmodelPath={model}",
+            f"-PreportOut={out_path}",
+            "-q",
+            "--console=plain",
+        ]
+        if os.name == "nt" and wrapper.suffix.lower() == ".bat":
+            command = ["cmd.exe", "/c"] + command
+        try:
+            completed = subprocess.run(
+                command, cwd=root, check=False, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return False, None, f"canonicalizeModel did not finish within {timeout}s"
+        if not out_path.exists():
+            detail = (completed.stderr or completed.stdout or "").strip()
+            return False, None, (
+                "canonicalizeModel did not produce output"
+                + (f" (exit {completed.returncode})" if completed.returncode else "")
+                + (f": {detail[-500:]}" if detail else "")
+            )
+        return True, out_path.read_text(encoding="utf-8"), None
+
+
 def run_validate_semantic(model_path: Path, report_out: Path | None, *, quiet: bool = False) -> int:
     """Run full structural + semantic validation via the standalone Java validator.
 
@@ -12025,6 +12078,33 @@ def run_monitor(args: argparse.Namespace) -> int:
         result.setdefault("schemaVersion", "npdev-monitor-probe.v1")
         result.setdefault("command", "monitor probe")
         result["ok"] = result.get("status") == "ok"
+        # Wave 4 (2026-09-25): model-sync is deliberately gated behind --include-info (this is the
+        # deep, one-app-at-a-time probe the Manager's Inspector uses on open, never the lightweight
+        # 30s scan of every app) -- it costs a Gradle invocation plus a live authenticated POST,
+        # neither of which belongs in a background tick run for every app on the machine.
+        if (args.include_info and result.get("health") == "running"
+                and result.get("modelPath") and result.get("superUserKeyFile")
+                and result.get("probeBaseUrl")):
+            ok, canonical_json, error = _canonicalize_model_for_sync(Path(result["modelPath"]))
+            if not ok:
+                result["modelSync"] = {"ok": False, "code": "CANONICALIZE_FAILED", "message": error}
+            else:
+                try:
+                    super_user_key = Path(result["superUserKeyFile"]).read_text(encoding="utf-8").strip()
+                except OSError as exc:
+                    result["modelSync"] = {
+                        "ok": False, "code": "SUPERUSER_KEY_UNREADABLE",
+                        "message": f"found {result['superUserKeyFile']} but could not read it: {exc}",
+                    }
+                    super_user_key = None
+                if super_user_key == "":
+                    result["modelSync"] = {
+                        "ok": False, "code": "SUPERUSER_KEY_EMPTY",
+                        "message": f"{result['superUserKeyFile']} exists but is empty",
+                    }
+                elif super_user_key:
+                    result["modelSync"] = npdev_monitor.model_sync_status(
+                        result["probeBaseUrl"], super_user_key, canonical_json)
         # REG-153: this is the one command whose job is answering "what is this app's real API
         # key" (see the comment on `record["apiKey"]` in `npdev_monitor.probe_app`) -- keep it
         # unredacted here, matching the documented, tested contract `Get-NpdevLiveApiKey` depends on.
