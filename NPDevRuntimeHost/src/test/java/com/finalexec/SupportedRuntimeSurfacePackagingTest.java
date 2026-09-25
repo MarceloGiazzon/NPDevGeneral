@@ -42,15 +42,23 @@ class SupportedRuntimeSurfacePackagingTest {
         // this test only ever asked the former. RuntimePluginPackagesController/RuntimeRefreshController/
         // ModelSyncStatusController all compile cleanly under the new gate, so they move here.
         assertPackaged("com.finalexec.api.internal.RuntimePluginPackagesController");
-        assertPackaged("com.finalexec.api.internal.RuntimeRefreshController");
         assertPackaged("com.finalexec.api.internal.ModelSyncStatusController");
         // REG-168: RuntimeTopologyExplorerController promoted to allowedControllers -- its service
         // dependencies (FlowBuilderService, GovernanceWorkspaceService, CapabilityIntegrationPanelService)
         // are now all in supportedCoreServiceComponents and live in service/internal/, so the
         // dependency chain is fully satisfiable.
         assertPackaged("com.finalexec.api.internal.RuntimeTopologyExplorerController");
-        assertPackaged("com.finalexec.api.internal.BetaOnboardingController");
-        assertPackaged("com.finalexec.api.internal.FlowBuilderController");
+
+        // Wave 4 (2026-09-25): RuntimeRefreshController deleted -- a canned-response stub superseded
+        // by MetadataHotSwapController's real /model-reload (REG-208/B28). BetaOnboardingController
+        // deleted -- the Beta0 programme it described closed (the project has shipped beta1.x tags
+        // since 2026-08-11, per docs/RELEASE_PROCESS.md). FlowBuilderController deleted -- its
+        // saveDraft/addStep mutation endpoints had zero callers besides itself (flows are authored in
+        // the model); FlowBuilderService.listDrafts()/draftHistory() stay, since
+        // RuntimeTopologyExplorerService and CapabilityIntegrationPanelService both still read them.
+        assertNotPackaged("com.finalexec.api.internal.RuntimeRefreshController");
+        assertNotPackaged("com.finalexec.api.internal.BetaOnboardingController");
+        assertNotPackaged("com.finalexec.api.internal.FlowBuilderController");
     }
 
     @Test
@@ -97,6 +105,9 @@ class SupportedRuntimeSurfacePackagingTest {
         assertNotPackaged("com.finalexec.npdev.service.experimental.FlowBuilderService");
         assertNotPackaged("com.finalexec.npdev.service.experimental.PreviewReferenceResolver");
         assertNotPackaged("com.finalexec.npdev.service.experimental.TemplateLibraryManagementService");
+        // Wave 4 (2026-09-25): deleted alongside BetaOnboardingController -- see the sibling
+        // controller test's own comment.
+        assertNotPackaged("com.finalexec.npdev.service.internal.BetaOnboardingService");
         // REG-163: see the sibling controller test's own comment -- nonDefaultServicePatterns
         // services are now compiled so the profile they exist for is reachable at all.
         assertPackaged("com.finalexec.npdev.service.internal.ModelSyncStatusService");
@@ -104,7 +115,6 @@ class SupportedRuntimeSurfacePackagingTest {
         // REG-168: RuntimeTopologyExplorerService promoted alongside its controller -- all transitive
         // deps now in service/internal/ and supportedCoreServiceComponents.
         assertPackaged("com.finalexec.npdev.service.internal.RuntimeTopologyExplorerService");
-        assertPackaged("com.finalexec.npdev.service.internal.BetaOnboardingService");
         assertPackaged("com.finalexec.npdev.service.internal.FlowBuilderService");
         assertPackaged("com.finalexec.npdev.service.internal.CapabilityIntegrationPanelService");
     }

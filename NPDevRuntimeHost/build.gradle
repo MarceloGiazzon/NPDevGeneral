@@ -204,11 +204,11 @@ tasks.named('compileJava') {
 // RuntimePluginRuntimeRefResolverTest (1), RuntimeUiMetadataControllerStandaloneTest (3) -- all
 // model-fixture-coupled assertions (specific roles/fields/concepts) that don't match this sample's
 // model. They stay excluded below pending a fixture fix, which is out of scope for this stage.
-// ModelSyncStatusControllerStandaloneTest also stays excluded: it imports
-// ModelSyncStatusController/ModelSyncStatusService, both deferredControllers/non-default-pattern
-// classes compiled OUT of sourceSets.main by unsupportedRuntimeHostControllerSources/
-// unsupportedRuntimeHostServiceSources below regardless of runtime profile -- a real compile blocker,
-// confirmed against the live runtime-supported-controllers.json manifest.
+// Wave 4 (2026-09-25): ModelSyncStatusControllerStandaloneTest's exclusion above this comment was
+// stale -- ModelSyncStatusController/ModelSyncStatusService moved into allowedControllers/
+// supportedCoreServiceComponents long before this branch (REG-163), and neither imports
+// com.npdev.generated.*, so nothing here ever compiled them out. Re-enabled (removed from the list
+// below); it now gets a real SUPERUSER-auth-check test alongside its two existing ones.
 // R1 Stage 5 / D7 (MASTER-ROADMAP.md Track C item C3): 6 permanently-uncompilable test files
 // DELETED outright (not merely excluded) per D7's decision -- confirmed, not assumed:
 // Step02/04/05/06 (ReferencesEnumsDomainTypes/InvariantExplainability/ProviderOverlap/RoomOverlap)
@@ -233,7 +233,6 @@ def modelSpecificGeneratedAppTests = [
         'com/finalexec/Step01MultiConceptIntegrationTest.java',
         'com/finalexec/Step03NestedJsonbIntegrationTest.java',
         'com/finalexec/JwtAuthExternalBetaIT.java',
-        'com/finalexec/ModelSyncStatusControllerStandaloneTest.java',
         // REG-163: NonDefaultRuntimeSurfaceProfileIntegrationTest REVIVED 2026-08-15 -- the compile-
         // time gate it was blocked on (unsupportedRuntimeHostControllerSources/
         // unsupportedRuntimeHostServiceSources keyed on allowedControllers only) now compiles
