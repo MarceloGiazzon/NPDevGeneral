@@ -70,6 +70,28 @@ class OperationalRunbookOauthEnvContractTest {
                 launcherName + " must not reference a persisted env file (option b: keyring only)");
     }
 
+    /**
+     * Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24): the GitHub twin of {@link #assertTransportContract}.
+     */
+    private static void assertGithubTransportContract(String launcher, String launcherName, boolean isPs1) {
+        assertTrue(launcher.contains("--get-secret"), launcherName + " must read the keyring via --get-secret");
+        assertTrue(launcher.contains("NPDEV_OAUTH_GITHUB_KEYRING_PROFILE"),
+                launcherName + " must honor NPDEV_OAUTH_GITHUB_KEYRING_PROFILE");
+        assertTrue(launcher.contains("oauth-github"),
+                launcherName + " must default the keyring profile base to oauth-github");
+        if (isPs1) {
+            assertTrue(launcher.contains("Set-Item -Path env:NPDEV_OAUTH_GITHUB_CLIENT_ID"),
+                    launcherName + " must inject client id into process env");
+            assertTrue(launcher.contains("Set-Item -Path env:NPDEV_OAUTH_GITHUB_CLIENT_SECRET"),
+                    launcherName + " must inject client secret into process env");
+        } else {
+            assertTrue(launcher.contains("export NPDEV_OAUTH_GITHUB_CLIENT_ID"),
+                    launcherName + " must export client id into process env");
+            assertTrue(launcher.contains("export NPDEV_OAUTH_GITHUB_CLIENT_SECRET"),
+                    launcherName + " must export client secret into process env");
+        }
+    }
+
     @Test
     void emitsExampleAndKeyringTransportContract(@TempDir Path tempDir) throws Exception {
         Path opsRoot = emit(tempDir);
@@ -87,8 +109,17 @@ class OperationalRunbookOauthEnvContractTest {
         assertFalse(exampleText.contains(OBSOLETE_MATERIALIZE_CLAIM),
                 "example must not reference obsolete materialize claim");
 
+        Path githubExample = opsRoot.getParent().resolve("secrets").resolve("oauth-github.env.example");
+        assertTrue(Files.exists(githubExample), "oauth-github.env.example must be emitted");
+        String githubExampleText = Files.readString(githubExample);
+        assertTrue(githubExampleText.contains("--set-secret"), "GitHub example must document the keyring set path");
+        assertTrue(githubExampleText.contains("NPDEV_OAUTH_GITHUB_KEYRING_PROFILE"),
+                "GitHub example must document the keyring profile base override");
+
         assertTransportContract(read(opsRoot, "Run-FinalApp.ps1"), "Run-FinalApp.ps1", true);
         assertTransportContract(read(opsRoot, "Start-App.ps1"), "Start-App.ps1", true);
+        assertGithubTransportContract(read(opsRoot, "Run-FinalApp.ps1"), "Run-FinalApp.ps1", true);
+        assertGithubTransportContract(read(opsRoot, "Start-App.ps1"), "Start-App.ps1", true);
     }
 
     @Test
@@ -97,5 +128,7 @@ class OperationalRunbookOauthEnvContractTest {
 
         assertTransportContract(read(opsRoot, "run-final-app.sh"), "run-final-app.sh", false);
         assertTransportContract(read(opsRoot, "start-app.sh"), "start-app.sh", false);
+        assertGithubTransportContract(read(opsRoot, "run-final-app.sh"), "run-final-app.sh", false);
+        assertGithubTransportContract(read(opsRoot, "start-app.sh"), "start-app.sh", false);
     }
 }

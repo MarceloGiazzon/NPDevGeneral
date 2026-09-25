@@ -520,9 +520,19 @@ writer.writeRelative(
                     // two separate gates on the same request. superUserRoleKey already gets
                     // flow.execute unconditionally (every collected permission is granted to it
                     // below), so only the "user" role needs this alignment.
+                    //
+                    // Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24, live on Pigmentampa's RegisterArtist):
+                    // flow.execute alone is not enough -- the Flow's OWN createConcept/updateConcept
+                    // step compiles to a CapabilityCallStep that checks the separate, coarser
+                    // "capability.invoke" gate (see CapabilityCallStep), which nothing granted "user"
+                    // anywhere else in this method. Without this, the CRUD-level check and the
+                    // flow.execute check both pass and the flow still 422s with capability_auth on
+                    // its very first write -- a third gate on the same request that this same
+                    // reasoning already covers for flow.execute.
                     if (("create".equals(operation) || "update".equals(operation) || "delete".equals(operation))
                             && model.findFlow(concept.getName(), operation).isPresent()) {
                         grants.add(new PermissionGrantSpec("flow.execute", "", "", "user"));
+                        grants.add(new PermissionGrantSpec("capability.invoke", "", "", "user"));
                     }
                 }
             }

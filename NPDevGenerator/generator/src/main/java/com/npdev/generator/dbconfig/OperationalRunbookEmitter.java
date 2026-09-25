@@ -155,6 +155,30 @@ if ($npdevManager) {
 """;
 
     /**
+     * Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24): the GitHub twin of {@link #OAUTH_SECRET_ENV_LOADER}.
+     * Same contract exactly -- keyring profile base {@code NPDEV_OAUTH_GITHUB_KEYRING_PROFILE}
+     * (default {@code oauth-github}), same absent-is-not-an-error degradation.
+     */
+    private static final String OAUTH_GITHUB_SECRET_ENV_LOADER = """
+
+# GitHub OAuth: same mechanism as the Google loader above, its own keyring profile base.
+$npdevManager = if ($env:NPDEV_MANAGER_EXE) { $env:NPDEV_MANAGER_EXE }
+                else { (Get-Command npdev-manager.exe -ErrorAction SilentlyContinue).Source }
+if ($npdevManager) {
+  $oauthGithubProfile = if ($env:NPDEV_OAUTH_GITHUB_KEYRING_PROFILE) { $env:NPDEV_OAUTH_GITHUB_KEYRING_PROFILE } else { 'oauth-github' }
+  $oauthGithubClientId = (& $npdevManager --get-secret "$oauthGithubProfile.client-id" 2>$null)
+  $githubClientIdOk = $LASTEXITCODE -eq 0
+  $oauthGithubClientSecret = (& $npdevManager --get-secret "$oauthGithubProfile.client-secret" 2>$null)
+  $githubSecretOk = $LASTEXITCODE -eq 0
+  if ($githubClientIdOk -and $githubSecretOk -and $oauthGithubClientId -and $oauthGithubClientSecret) {
+    Set-Item -Path env:NPDEV_OAUTH_GITHUB_CLIENT_ID -Value $oauthGithubClientId
+    Set-Item -Path env:NPDEV_OAUTH_GITHUB_CLIENT_SECRET -Value $oauthGithubClientSecret
+    Write-Host ("Injected GitHub OAuth credentials from the OS credential store (profile base '" + $oauthGithubProfile + "').")
+  }
+}
+""";
+
+    /**
      * R7 Stage C (SEC-1): give every generated app a real, per-app, randomly-generated admin API
      * key instead of the universal {@code dev-key}/{@code api-dev} literal Stage A left the {@code
      * dev} profile shipping.
@@ -360,6 +384,28 @@ load_npdev_oauth_google_env() {
       export NPDEV_OAUTH_GOOGLE_CLIENT_ID="$client_id"
       export NPDEV_OAUTH_GOOGLE_CLIENT_SECRET="$client_secret"
       echo "Injected Google OAuth credentials from the OS credential store (profile base '$oauth_base')."
+    fi
+  fi
+}
+""";
+
+    /**
+     * Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24): the POSIX twin of
+     * {@link #OAUTH_GITHUB_SECRET_ENV_LOADER}.
+     */
+    private static final String OAUTH_GITHUB_SECRET_ENV_LOADER_SH = """
+
+load_npdev_oauth_github_env() {
+  if [ -n "$NPDEV_MANAGER_EXE" ]; then npdev_manager="$NPDEV_MANAGER_EXE"
+  else npdev_manager=$(command -v npdev-manager 2>/dev/null || true); fi
+  if [ -n "$npdev_manager" ]; then
+    oauth_github_base="${NPDEV_OAUTH_GITHUB_KEYRING_PROFILE:-oauth-github}"
+    github_client_id=$("$npdev_manager" --get-secret "$oauth_github_base.client-id" 2>/dev/null) && github_client_id_ok=1 || github_client_id_ok=0
+    github_client_secret=$("$npdev_manager" --get-secret "$oauth_github_base.client-secret" 2>/dev/null) && github_client_secret_ok=1 || github_client_secret_ok=0
+    if [ "$github_client_id_ok" = "1" ] && [ "$github_client_secret_ok" = "1" ] && [ -n "$github_client_id" ] && [ -n "$github_client_secret" ]; then
+      export NPDEV_OAUTH_GITHUB_CLIENT_ID="$github_client_id"
+      export NPDEV_OAUTH_GITHUB_CLIENT_SECRET="$github_client_secret"
+      echo "Injected GitHub OAuth credentials from the OS credential store (profile base '$oauth_github_base')."
     fi
   fi
 }
@@ -679,6 +725,7 @@ npdev_resolve_app_relative() {
         Path secretsDir = finalAppRoot.resolve("secrets");
         Files.createDirectories(secretsDir);
         writeOauthGoogleExample(secretsDir);
+        writeOauthGithubExample(secretsDir);
         write(secretsDir.resolve("agent-proxy.env.example"), """
 # agent-proxy.env.example -- copy to `agent-proxy.env` in this directory and fill in ONE provider key.
 #
@@ -754,6 +801,48 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
 
 NPDEV_OAUTH_GOOGLE_CLIENT_ID=replace-me.apps.googleusercontent.com
 NPDEV_OAUTH_GOOGLE_CLIENT_SECRET=replace-me
+""");
+    }
+
+    /**
+     * Wave 3 (NPDEV_FEATURE_PLAN_2026-09-24): the GitHub twin of
+     * {@link #writeOauthGoogleExample}. Same discipline, own keyring profile base.
+     */
+    private static void writeOauthGithubExample(Path secretsDir) throws Exception {
+        write(secretsDir.resolve("oauth-github.env.example"), """
+# oauth-github.env.example -- reference for GitHub OAuth App credentials in this app.
+#
+# What this enables: both the sign-in and create-account screens of this app show "Continue with
+# GitHub". The login flow exchanges the provider's redirect code here, maps the verified GitHub
+# identity onto an identity::User (signup/link/login), and issues the same JWT session the
+# username/password login already uses -- tokenVersion revocation included.
+#
+# The REAL secret lives in the OS credential store (NPDev Manager keyring), never in manager.json
+# and never in any file the generator touched. The `_ops` launchers read the keyring directly at
+# boot via `npdev-manager --get-secret` and inject the values into the app process environment --
+# no persisted file, per SEC-11 decision 3 ("never in .env").
+#
+# Storing credentials (one-time per machine, or after a credential rotation):
+#   npdev-manager --set-secret oauth-github.client-id     (paste the client id on stdin)
+#   npdev-manager --set-secret oauth-github.client-secret (paste the client secret on stdin)
+#
+# Overriding the keyring profile base (optional):
+#   Set NPDEV_OAUTH_GITHUB_KEYRING_PROFILE=my-profile before launching; the launcher then reads
+#   `my-profile.client-id` and `my-profile.client-secret` instead of the default `oauth-github`.
+#
+# Launching WITHOUT the launcher (`java -jar ...`):
+#   Set NPDEV_OAUTH_GITHUB_CLIENT_ID and NPDEV_OAUTH_GITHUB_CLIENT_SECRET in your shell first.
+#   The launchers handle this automatically; this is only for manual jar runs.
+#
+# GitHub OAuth Apps (unlike GitHub Apps) accept exactly ONE authorization callback URL, set in the
+# app's own settings -- it must match this app's http://<host>:<port>/api/auth/oauth/github/callback
+# exactly, port included, or the provider refuses the redirect with a mismatch error.
+#
+# This file itself is not read by anything -- it exists only as documentation.
+# Lines below show the variable names the app process receives; they are never real secrets.
+
+NPDEV_OAUTH_GITHUB_CLIENT_ID=replace-me
+NPDEV_OAUTH_GITHUB_CLIENT_SECRET=replace-me
 """);
     }
 
@@ -1824,7 +1913,7 @@ $logFile = Join-Path $logDir ('app-' + (Get-Date).ToUniversalTime().ToString('yy
 Write-Host "Logging this run to $logFile"
 """ + API_KEY_PROVISIONER + """
 Ensure-NpdevApiKey -AppRoot $appRoot
-""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + OPS_DIR_ENV_SETTER + """
+""" + OAUTH_SECRET_ENV_LOADER + OAUTH_GITHUB_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + OPS_DIR_ENV_SETTER + """
 
 # 2>&1 merges the JVM's stderr into the same stream, because a stack trace on stderr is exactly what
 # the person reading this file is looking for. Tee keeps the console live -- a run that only writes
@@ -1883,8 +1972,9 @@ LOG_FILE="$LOG_DIR/app-$(date -u +%Y%m%dT%H%M%SZ).log"
 echo "Logging this run to $LOG_FILE"
 """ + API_KEY_PROVISIONER_SH + """
 ensure_npdev_api_key "$APP_ROOT"
-""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + OPS_DIR_ENV_SETTER_SH + """
+""" + OAUTH_SECRET_ENV_LOADER_SH + OAUTH_GITHUB_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + OPS_DIR_ENV_SETTER_SH + """
 load_npdev_oauth_google_env
+load_npdev_oauth_github_env
 load_npdev_agent_proxy_env "$APP_ROOT"
 
 # 2>&1 merges the JVM's stderr into the same stream, and tee keeps the console live -- a run that
@@ -1964,7 +2054,7 @@ $errFile = Join-Path $PSScriptRoot 'app.stderr.log'
 
 """ + API_KEY_PROVISIONER + """
 Ensure-NpdevApiKey -AppRoot $appRoot
-""" + OAUTH_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + OPS_DIR_ENV_SETTER + """
+""" + OAUTH_SECRET_ENV_LOADER + OAUTH_GITHUB_SECRET_ENV_LOADER + SECRETS_ENV_LOADER + OPS_DIR_ENV_SETTER + """
 
 $jar = Get-ChildItem -LiteralPath $appRoot -Recurse -Filter 'FinalExec-*.jar' -ErrorAction SilentlyContinue |
        Where-Object { $_.FullName -like '*\\build\\libs\\*' -and $_.Name -notlike '*-plain.jar' } | Select-Object -First 1
@@ -2071,8 +2161,9 @@ ERR_FILE="$SCRIPT_DIR/app.stderr.log"
 
 """ + API_KEY_PROVISIONER_SH + """
 ensure_npdev_api_key "$APP_ROOT"
-""" + OAUTH_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + OPS_DIR_ENV_SETTER_SH + """
+""" + OAUTH_SECRET_ENV_LOADER_SH + OAUTH_GITHUB_SECRET_ENV_LOADER_SH + SECRETS_ENV_LOADER_SH + OPS_DIR_ENV_SETTER_SH + """
 load_npdev_oauth_google_env
+load_npdev_oauth_github_env
 load_npdev_agent_proxy_env "$APP_ROOT"
 
 JAR=$(find "$APP_ROOT" -path '*/build/libs/*' -name 'FinalExec-*.jar' ! -name '*-plain.jar' 2>/dev/null | head -n 1)
