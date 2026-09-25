@@ -1,0 +1,21 @@
+# Pigmentampa-specific JWT login config (npdev.auth.mode itself is set via config.json's
+# "defaults": {"auth.mode": "jwt"}, emitted into application-npdev-auth.properties by the
+# generator). Mirrors application-wmsoffice.yml's shape exactly -- inert for any app that doesn't
+# activate the "pigmentampa" Spring profile, so it's safe to ship in the shared RuntimeHost template.
+npdev:
+  auth:
+    # application-dev.yml (loaded earlier in the "dev,trial,pigmentampa" profile list) hardcodes
+    # mode: apikey; a later-activated profile's YAML wins over an earlier one's for the same key,
+    # so restating mode: jwt here is what actually flips Pigmentampa over to JWT (same reasoning
+    # application-wmsoffice.yml documents).
+    mode: jwt
+    jwt:
+      issuer: pigmentampa
+      audience: pigmentampa-api
+      # Keys live under the app's own `secrets/` directory (spared by regeneration, unlike the rest
+      # of the app tree) rather than an external Build-root path -- no extra env var to remember to
+      # set before every launch, only the one-time keypair generation documented in this app's
+      # README.
+      public-key-path: ${NPDEV_PIGMENTAMPA_KEYS_DIR:./secrets/pigmentampa-keys}/jwt-public.pem
+      private-key-path: ${NPDEV_PIGMENTAMPA_KEYS_DIR:./secrets/pigmentampa-keys}/jwt-private-pkcs8.pem
+      expiry-seconds: 28800
