@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "npdev-eval-run-list.v1",
+  "runs": [
+    {
+      "runId": "eval-2026-09-26-002",
+      "generatedAt": "2026-09-26T11:58:38Z",
+      "stillRunning": false,
+      "cancelled": false,
+      "scenarioCount": 1,
+      "passed": 1,
+      "failed": 0,
+      "ok": true,
+      "resultsPath": "D:\\WorkSpace\\NPDev\\Build\\evals\\eval-2026-09-26-002\\results.json"
+    },
+    {
+      "runId": "eval-2026-09-26-001",
+      "generatedAt": "2026-09-26T11:57:43Z",
+      "stillRunning": false,
+      "cancelled": false,
+      "scenarioCount": 1,
+      "passed": 1,
+      "failed": 0,
+      "ok": true,
+      "resultsPath": "D:\\WorkSpace\\NPDev\\Build\\evals\\eval-2026-09-26-001\\results.json"
+    }
+  ]
+}

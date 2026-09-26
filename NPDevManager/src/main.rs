@@ -532,6 +532,17 @@ fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     app.opener().open_path(path, None::<&str>).map_err(|e| e.to_string())
 }
 
+/// Wave 7.2: reads a scenario's `detailReportPath` (an `ai-schema-validation-report.json` or
+/// `ai-beta-gate-report.json`, per `results.json`'s own field) for the Evals tab's row-detail view.
+/// `path` is never operator-typed -- the Evals tab only ever gets it from a `results.json` the CLI
+/// itself just wrote, same trust boundary `verify-run-status`'s "View report" button already applies
+/// to `open_folder` above.
+#[tauri::command]
+fn read_json_file(path: String) -> Result<Value, String> {
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("could not read {path}: {e}"))?;
+    serde_json::from_str(&text).map_err(|e| format!("{path} did not parse as JSON: {e}"))
+}
+
 #[tauri::command]
 fn open_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -1398,11 +1409,9 @@ fn manager_version() -> String {
 /// bump; it deliberately describes only the current version, not a full changelog (that's `git log`).
 #[tauri::command]
 fn manager_version_description() -> String {
-    "0.4.2: New Secrets tab exposes the existing db/deploy OS-keyring credential store (set/replace/ \
-     delete a scoped secret, never reads a value back); GitHub added as a second OAuth sign-in \
-     provider alongside Google; generated apps can now run three fixed, reviewed, read-only \
-     health checks live from their own Verification page (Status-App, Status-Environment, \
-     Check-Provenance), Super User only."
+    "0.4.3: New Evals tab runs `npdev eval` (7.1) over NPDevSamples/ai-scenarios/*/ -- a table of \
+     every scenario with its last verdict/duration, Run all/Run one/Stop, a run selector, a two-run \
+     comparison, and a row-detail view of that scenario's stage-by-stage evidence."
         .to_string()
 }
 
@@ -1410,7 +1419,7 @@ fn manager_version_description() -> String {
 /// alongside `manager_version_description` on every bump. The timestamp half is NOT hand-maintained
 /// here: `build.rs` stamps `NPDEV_MANAGER_BUILD_TIMESTAMP` at compile time, so a rebuild without a
 /// version bump is still visible at a glance instead of looking identical to the last one.
-const CURRENT_VERSION_TITLE: &str = "Secrets Tab + GitHub OAuth";
+const CURRENT_VERSION_TITLE: &str = "Evals Tab";
 
 #[tauri::command]
 fn manager_build_stamp() -> String {
@@ -1993,6 +2002,51 @@ async fn studio_apply_live(
     let python = resolve_python_exe(&state).await?;
     let cli = resolve_npdev_cli(&state)?;
     npdev::run_monitor_studio_apply(&python, &cli, java_home.as_deref(), &app_dir, &model_path, &baseline_path).await
+}
+
+/// Wave 7.2: the Evals tab's scenario table, before any run has happened yet.
+#[tauri::command]
+async fn eval_list_scenarios(state: State<'_, AppState>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_eval_list_scenarios(&python, &cli, java_home.as_deref()).await
+}
+
+/// The run selector's own list, newest first (the CLI already sorts it that way).
+#[tauri::command]
+async fn eval_list_runs(state: State<'_, AppState>) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_eval_list_runs(&python, &cli, java_home.as_deref()).await
+}
+
+/// `scenario: None` is "Run all"; `scenario: Some(id)` is "Run one". The caller generates `run_id`
+/// itself (a timestamp) before calling this, so it can start polling `eval_list_runs` for that same
+/// id immediately rather than waiting for this (potentially minutes-long) call to resolve.
+#[tauri::command]
+async fn eval_run(state: State<'_, AppState>, scenario: Option<String>, run_id: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_eval_run(&python, &cli, java_home.as_deref(), scenario.as_deref(), &run_id).await
+}
+
+#[tauri::command]
+async fn eval_stop(state: State<'_, AppState>, run_id: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_eval_stop(&python, &cli, java_home.as_deref(), &run_id).await
+}
+
+#[tauri::command]
+async fn eval_compare(state: State<'_, AppState>, run_a: String, run_b: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_eval_compare(&python, &cli, java_home.as_deref(), &run_a, &run_b).await
 }
 
 const STUDIO_HISTORY_LIMIT: usize = 20;
@@ -2871,6 +2925,7 @@ the blast radius needs a baseline to diff against"
             db_import,
             pick_db_transfer_folder,
             open_folder,
+            read_json_file,
             open_url,
             start_dev,
             stop_dev,
@@ -2952,6 +3007,11 @@ the blast radius needs a baseline to diff against"
             studio_history_record,
             studio_history_list,
             studio_history_read,
+            eval_list_scenarios,
+            eval_list_runs,
+            eval_run,
+            eval_stop,
+            eval_compare,
             prompter_app_context,
             prompter_generate,
             run_ai_loop,

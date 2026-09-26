@@ -34,6 +34,9 @@ function showScreen(name) {
   // down while this tab is not the one showing -- re-asking `host status` on entry is the same
   // reasoning as install/run above.
   if (name === "hosting" && window.__npdevRefreshHosting) window.__npdevRefreshHosting();
+  // A run can finish (or a new one start from a terminal) while this tab is not the one showing --
+  // same reasoning as verification above.
+  if (name === "evals" && window.__npdevRefreshEvals) window.__npdevRefreshEvals();
 }
 
 // The Monitor's "Explore this app" button crosses screens, which is the one affordance that turns

@@ -1,6 +1,6 @@
 [package]
 name = "npdev-manager"
-version = "0.4.2"
+version = "0.4.3"
 edition = "2021"
 description = "Installs and runs NPDev for someone who will never open a terminal."
 license = "MIT"

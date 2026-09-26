@@ -7404,6 +7404,28 @@ def _eval_run_one_scenario(
     return base
 
 
+def _eval_write_results(run_root: Path, run_id: str, scenario_root: Path,
+                         scenarios_out: list[dict], *, still_running: bool, cancelled: bool = False) -> dict:
+    passed = sum(1 for s in scenarios_out if s["verdict"] == "PASS")
+    report = {
+        "schemaVersion": EVAL_SCHEMA_VERSION,
+        "runId": run_id,
+        "generatedAt": _utc_now(),
+        "scenarioRoot": str(scenario_root),
+        "stillRunning": still_running,
+        "cancelled": cancelled,
+        "scenarioCount": len(scenarios_out),
+        "passed": passed,
+        "failed": len(scenarios_out) - passed,
+        "ok": (not still_running) and not cancelled and passed == len(scenarios_out),
+        "scenarios": scenarios_out,
+    }
+    results_path = run_root / "results.json"
+    results_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report["resultsPath"] = str(results_path)
+    return report
+
+
 def run_eval(args: argparse.Namespace) -> dict:
     root = repo_root()
     scenario_root = (Path(args.scenario_root).expanduser().resolve() if getattr(args, "scenario_root", None)
@@ -7411,33 +7433,37 @@ def run_eval(args: argparse.Namespace) -> dict:
     run_id = args.run_id or ("eval-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S%f")[:-3])
     run_root = _eval_run_root(run_id)
     run_root.mkdir(parents=True, exist_ok=True)
+    cancel_sentinel = run_root / "CANCELLED"
 
     if getattr(args, "model", None) and not getattr(args, "scenario", None):
         raise CliError("--model requires --scenario: it overlays one scenario's ai-model.json, "
                         "not the whole corpus.")
     scenario_ids = [args.scenario] if getattr(args, "scenario", None) else _eval_discover_scenario_ids(scenario_root)
 
-    scenarios_out = [
-        _eval_run_one_scenario(root, scenario_root, scenario_id, run_id, run_root,
-                                getattr(args, "model", None), args.timeout)
-        for scenario_id in scenario_ids
-    ]
-    passed = sum(1 for s in scenarios_out if s["verdict"] == "PASS")
-    report = {
-        "schemaVersion": EVAL_SCHEMA_VERSION,
-        "runId": run_id,
-        "generatedAt": _utc_now(),
-        "scenarioRoot": str(scenario_root),
-        "scenarioCount": len(scenarios_out),
-        "passed": passed,
-        "failed": len(scenarios_out) - passed,
-        "ok": passed == len(scenarios_out),
-        "scenarios": scenarios_out,
-    }
-    results_path = run_root / "results.json"
-    results_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    report["resultsPath"] = str(results_path)
-    return report
+    # A long "run all" is a Manager-visible, multi-minute operation, so results.json is written
+    # after EVERY scenario (not just at the end) -- the Manager tab polls this same file for
+    # progress, and `eval_stop`'s cancel sentinel is checked between scenarios (never mid-subprocess,
+    # which would orphan a gradle daemon or a booted JVM instead of tearing it down cleanly).
+    scenarios_out: list[dict] = []
+    for scenario_id in scenario_ids:
+        if cancel_sentinel.exists():
+            scenarios_out.append({
+                "scenario": scenario_id, "verdict": "SKIPPED_CANCELLED", "iterations": 0,
+                "durationMs": 0, "tokens": None, "firstError": "run was cancelled before this scenario started",
+            })
+            continue
+        scenarios_out.append(_eval_run_one_scenario(
+            root, scenario_root, scenario_id, run_id, run_root, getattr(args, "model", None), args.timeout))
+        _eval_write_results(run_root, run_id, scenario_root, scenarios_out, still_running=True)
+
+    cancelled = cancel_sentinel.exists()
+    if cancelled:
+        try:
+            cancel_sentinel.unlink()
+        except OSError:
+            pass
+    return _eval_write_results(run_root, run_id, scenario_root, scenarios_out,
+                                still_running=False, cancelled=cancelled)
 
 
 def _eval_load_results(run_ref: str) -> dict:
@@ -7482,6 +7508,59 @@ def run_eval_compare(args: argparse.Namespace) -> dict:
         "onlyInB": only_b,
         "ok": len(regressed) == 0,
     }
+
+
+def run_eval_list_scenarios(args: argparse.Namespace) -> dict:
+    root = repo_root()
+    scenario_root = (Path(args.scenario_root).expanduser().resolve() if getattr(args, "scenario_root", None)
+                     else root / "NPDevSamples" / "ai-scenarios")
+    scenarios = []
+    for scenario_id in _eval_discover_scenario_ids(scenario_root):
+        manifest = _eval_read_manifest(scenario_root, scenario_id)
+        scenarios.append({
+            "scenario": scenario_id,
+            "kind": manifest.get("kind"),
+            "expectedOutcome": manifest.get("expectedOutcome"),
+            "expectedFailureStage": manifest.get("expectedFailureStage"),
+            "heavy": _eval_scenario_needs_heavy_path(manifest),
+        })
+    return {"schemaVersion": "npdev-eval-scenario-list.v1", "scenarioRoot": str(scenario_root),
+            "scenarios": scenarios}
+
+
+def run_eval_list_runs(args: argparse.Namespace) -> dict:
+    evals_root = _ai_build_root() / "evals"
+    runs = []
+    if evals_root.is_dir():
+        for run_dir in sorted(evals_root.iterdir(), reverse=True):
+            results_path = run_dir / "results.json"
+            if not results_path.is_file():
+                continue
+            try:
+                report = json.loads(results_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            runs.append({
+                "runId": report.get("runId", run_dir.name),
+                "generatedAt": report.get("generatedAt"),
+                "stillRunning": report.get("stillRunning", False),
+                "cancelled": report.get("cancelled", False),
+                "scenarioCount": report.get("scenarioCount"),
+                "passed": report.get("passed"),
+                "failed": report.get("failed"),
+                "ok": report.get("ok"),
+                "resultsPath": str(results_path),
+            })
+    return {"schemaVersion": "npdev-eval-run-list.v1", "runs": runs}
+
+
+def run_eval_stop(args: argparse.Namespace) -> dict:
+    run_root = _eval_run_root(args.run_id)
+    if not run_root.is_dir():
+        raise CliError(f"no run directory for {args.run_id!r}: {run_root}")
+    (run_root / "CANCELLED").write_text("", encoding="utf-8")
+    return {"schemaVersion": "npdev-eval-stop.v1", "runId": args.run_id, "ok": True,
+            "message": "cancel requested; the run will stop before its next scenario starts."}
 
 
 # ---------------------------------------------------------------------------
@@ -8354,7 +8433,7 @@ def run_generate_screen(args: argparse.Namespace) -> int:
     print(f"npdev: fetching {bundle_url}", file=sys.stderr)
     bundle = _fetch_json(bundle_url, headers)
 
-    prompt_content_path = root / "content" / "ui-generation-prompt.json"
+    prompt_content_path = root / "docs" / "content" / "ui-generation-prompt.json"
     if not prompt_content_path.exists():
         raise CliError(f"reference prompt content not found: {prompt_content_path}")
     prompt_doc_text = _render_group_e_content_doc(prompt_content_path)
@@ -16108,6 +16187,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     eval_compare.add_argument("run_a", help="A run-id under <BuildRoot>/evals/, or a results.json path.")
     eval_compare.add_argument("run_b", help="A run-id under <BuildRoot>/evals/, or a results.json path.")
+    eval_list_scenarios = eval_sub.add_parser(
+        "list-scenarios", help="List every discovered scenario id with its kind/expectedOutcome/stage."
+    )
+    eval_list_scenarios.add_argument("--scenario-root", help="Defaults to NPDevSamples/ai-scenarios.")
+    eval_sub.add_parser("list-runs", help="List every past run under <BuildRoot>/evals/, newest first.")
+    eval_stop = eval_sub.add_parser(
+        "stop", help="Request an in-progress run to stop before its next scenario starts."
+    )
+    eval_stop.add_argument("run_id", help="The run-id to cancel.")
 
     generate_screen = generate_sub.add_parser(
         "screen", help="Generate one hand-written screen against a live app's UI contract (R-P4)."
@@ -17090,6 +17178,15 @@ def main(argv: list[str] | None = None) -> int:
             result = run_eval_compare(args)
             print(json.dumps(result, indent=2))
             return 0 if result.get("ok") else 2
+        if args.command == "eval" and args.eval_command == "list-scenarios":
+            print(json.dumps(run_eval_list_scenarios(args), indent=2))
+            return 0
+        if args.command == "eval" and args.eval_command == "list-runs":
+            print(json.dumps(run_eval_list_runs(args), indent=2))
+            return 0
+        if args.command == "eval" and args.eval_command == "stop":
+            print(json.dumps(run_eval_stop(args), indent=2))
+            return 0
         if args.command == "generate" and args.generate_command == "screen":
             return run_generate_screen(args)
         if args.command == "report" and args.report_command == "bootstrap":

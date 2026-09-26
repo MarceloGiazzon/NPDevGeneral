@@ -57,6 +57,13 @@ const FIXTURE_MONITOR_PROBE: &str = include_str!("../fixtures/monitor-probe.json
 const FIXTURE_MONITOR_ENGINE_RUNNING: &str = include_str!("../fixtures/monitor-engine-running.json");
 const FIXTURE_MONITOR_ENGINE_STOPPED: &str = include_str!("../fixtures/monitor-engine-stopped.json");
 const FIXTURE_MONITOR_ENGINE_MISSING: &str = include_str!("../fixtures/monitor-engine-missing.json");
+// Wave 7.2 (the Manager's Evals tab). Captured live on 2026-09-26 from `npdev eval
+// list-scenarios`/`list-runs`/`compare` and a real single-scenario `eval run` -- never hand-written,
+// same reason as every fixture above.
+const FIXTURE_EVAL_LIST_SCENARIOS: &str = include_str!("../fixtures/eval-list-scenarios.json");
+const FIXTURE_EVAL_LIST_RUNS: &str = include_str!("../fixtures/eval-list-runs.json");
+const FIXTURE_EVAL_RUN_ONE_SCENARIO: &str = include_str!("../fixtures/eval-run-one-scenario.json");
+const FIXTURE_EVAL_COMPARE: &str = include_str!("../fixtures/eval-compare.json");
 const FIXTURE_MONITOR_LOGS: &str = include_str!("../fixtures/monitor-logs.json");
 // NPDEV_MANAGER_SHARE_IMPLEMENTATION_PLAN M2. Captured live on 2026-09-09 against a real generated
 // app (see fixtures/README.md's own "The Share screen" section for the exact command behind each
@@ -1388,6 +1395,90 @@ pub async fn run_monitor_studio_apply(
         "--baseline-path".to_string(), baseline_path.to_string(),
     ];
     run_json(python_exe, npdev_cli, &args, java_home, "monitor studio-apply").await
+}
+
+/// Wave 7.2 (the Manager's Evals tab, NPDEV_FEATURE_PLAN_2026-09-24.md): thin wrappers over
+/// `npdev eval *` (7.1). None of these take `--json` -- unlike `monitor studio-apply` above, every
+/// `eval` subcommand always prints JSON, there is no human-readable mode to opt out of.
+pub async fn run_eval_list_scenarios(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_EVAL_LIST_SCENARIOS).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec!["eval".to_string(), "list-scenarios".to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "eval list-scenarios").await
+}
+
+pub async fn run_eval_list_runs(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_EVAL_LIST_RUNS).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec!["eval".to_string(), "list-runs".to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "eval list-runs").await
+}
+
+/// `scenario`/`run_id` are `Option` because "Run all" (no `--scenario`) is the same command as
+/// "Run one" (with it) -- the CLI already draws that distinction, this only threads it through.
+/// Blocking: the caller (the Evals tab's Run button) awaits this directly and shows a spinner for
+/// the run's duration, which is why `eval_stop` (below) exists as a SEPARATE command rather than a
+/// cancel parameter here -- there would be no way to call it while this one is still awaited.
+pub async fn run_eval_run(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    scenario: Option<&str>,
+    run_id: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_EVAL_RUN_ONE_SCENARIO).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec!["eval".to_string(), "run".to_string(), "--run-id".to_string(), run_id.to_string()];
+    if let Some(s) = scenario {
+        args.push("--scenario".to_string());
+        args.push(s.to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "eval run").await
+}
+
+/// Writes the CANCELLED sentinel `run_eval_run`'s own loop checks between scenarios -- cooperative,
+/// same reasoning as `ai_loop_cancel` (state.rs): a run in the middle of a real generate/build/boot
+/// has a child process underway that a hard kill would orphan, so this only ever takes effect at
+/// the NEXT scenario boundary, never mid-subprocess.
+pub async fn run_eval_stop(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    run_id: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-eval-stop.v1", "runId": run_id, "ok": true,
+            "message": "STUB MODE -- no run was actually cancelled."
+        }));
+    }
+    let args = vec!["eval".to_string(), "stop".to_string(), run_id.to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "eval stop").await
+}
+
+pub async fn run_eval_compare(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    run_a: &str,
+    run_b: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_EVAL_COMPARE).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec!["eval".to_string(), "compare".to_string(), run_a.to_string(), run_b.to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "eval compare").await
 }
 
 pub async fn run_monitor_logs(

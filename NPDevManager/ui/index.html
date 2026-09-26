@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="dbio.css" />
 <link rel="stylesheet" href="secrets.css" />
 <link rel="stylesheet" href="studio.css" />
+<link rel="stylesheet" href="evals.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -43,6 +44,7 @@
     <button class="tab" data-screen="dbio">DB Import/Export</button>
     <button class="tab" data-screen="secrets">Secrets</button>
     <button class="tab" data-screen="studio">Studio</button>
+    <button class="tab" data-screen="evals">Evals</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -741,6 +743,33 @@
         </div>
       </div>
     </section>
+
+    <!-- Wave 7.2 (the Manager's Evals tab, NPDEV_FEATURE_PLAN_2026-09-24.md): a table of
+         NPDevSamples/ai-scenarios/*/ with each one's last verdict from `npdev eval run` (7.1), a run
+         selector (this tab can show any past run's verdicts, not just the newest), and a two-run
+         comparison. There is no live multi-turn transcript here -- see evals.js's own header comment
+         for why -- clicking a row shows that scenario's stage-by-stage evidence instead. -->
+    <section id="screen-evals" class="screen" hidden>
+      <h1>&#9635; EVALS <span class="dim">// AI-scenario corpus, last verdict per scenario</span></h1>
+      <p class="subtitle">Reads NPDevSamples/ai-scenarios/*/ through <code>npdev eval list-scenarios</code> and every past run's verdicts through <code>npdev eval list-runs</code> — nothing is reclassified here.</p>
+
+      <div class="evals-toolbar">
+        <button type="button" class="btn" id="evals-run-all">&#9654; RUN ALL</button>
+        <button type="button" class="btn stop" id="evals-stop" disabled>&#9632; STOP</button>
+        <button type="button" class="btn ghost" id="evals-refresh">&#8635; REFRESH</button>
+        <span class="evals-sep"></span>
+        <label>Showing run <select id="evals-run-picker"></select></label>
+        <span class="evals-sep"></span>
+        <label>Compare <select id="evals-compare-a"></select></label>
+        <label>vs <select id="evals-compare-b"></select></label>
+        <button type="button" class="btn ghost" id="evals-compare-btn">COMPARE</button>
+        <span id="evals-status" class="status-line"></span>
+      </div>
+      <div class="evals-compare-summary" id="evals-compare-summary"></div>
+
+      <div class="evals-table-wrap" id="evals-table-wrap"></div>
+      <div class="evals-detail" id="evals-detail" hidden></div>
+    </section>
   </main>
 
   <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
@@ -901,6 +930,7 @@
   <script src="dbio.js"></script>
   <script src="secrets.js"></script>
   <script src="studio.js"></script>
+  <script src="evals.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these
@@ -915,6 +945,7 @@
     try { window.__npdevInitDbio(); } catch (e) { console.error("DB Import/Export init failed", e); }
     try { window.__npdevInitSecrets(); } catch (e) { console.error("Secrets init failed", e); }
     try { window.__npdevInitStudio(); } catch (e) { console.error("Studio init failed", e); }
+    try { window.__npdevInitEvals(); } catch (e) { console.error("Evals init failed", e); }
   </script>
 </body>
 </html>
