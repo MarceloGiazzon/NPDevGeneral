@@ -7262,6 +7262,229 @@ def run_closed_loop(args: argparse.Namespace) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Wave 7.1 (close-all-open plan, 2026-09-26): `npdev eval run` / `npdev eval compare` -- a headless
+# eval harness over NPDevSamples/ai-scenarios/*/, exposing two already-real, already-battle-tested
+# engines (run-ai-schema-validation.ps1's per-scenario ai-model/ai-config/command-policy/
+# verification-schema stage checker, and run-ai-beta-gate.ps1's full normalize -> official-validate
+# -> generate -> deterministic-generate -> build -> boot -> health -> smoke pipeline) as one CLI verb
+# with a uniform, sandboxed results.json. Deliberately NOT a second implementation of either engine:
+# every verdict below is read out of whichever engine's own report already computed it.
+# ---------------------------------------------------------------------------
+
+EVAL_SCHEMA_VERSION = "npdev-eval-run-report.v1"
+
+# A scenario whose expectedOutcome is "pass" needs a real boot + REST smoke to know whether it truly
+# passes -- schema validation alone cannot see that far. Same for the one negative stage
+# ("smoke-verification") that is by definition only reachable after a real boot.
+_EVAL_HEAVY_FAILURE_STAGES = {"smoke-verification"}
+
+
+def _eval_scenario_needs_heavy_path(manifest: dict) -> bool:
+    return (manifest.get("expectedOutcome") == "pass"
+            or manifest.get("expectedFailureStage") in _EVAL_HEAVY_FAILURE_STAGES)
+
+
+def _eval_run_root(run_id: str) -> Path:
+    return _ai_build_root() / "evals" / run_id
+
+
+def _eval_discover_scenario_ids(scenario_root: Path) -> list[str]:
+    return sorted(
+        p.name for p in scenario_root.iterdir()
+        if p.is_dir() and p.name != "deferred" and (p / "scenario.manifest.json").is_file()
+    )
+
+
+def _eval_read_manifest(scenario_root: Path, scenario_id: str) -> dict:
+    manifest_path = scenario_root / scenario_id / "scenario.manifest.json"
+    return json.loads(manifest_path.read_text(encoding="utf-8"))
+
+
+def _eval_overlay_scenario(scenario_root: Path, scenario_id: str, model_path: Path, overlay_root: Path) -> Path:
+    """Copies one scenario's own directory verbatim, then swaps in a candidate ai-model.json --
+    lets `--model` test a not-yet-committed model against a scenario's existing expectations without
+    ever touching the checked-in corpus."""
+    overlay_dir = overlay_root / scenario_id
+    shutil.copytree(scenario_root / scenario_id, overlay_dir)
+    shutil.copy2(model_path, overlay_dir / "ai-model.json")
+    return overlay_root
+
+
+def _eval_run_schema_validation(root: Path, scenario_root: Path, out_dir: Path) -> dict:
+    report_path = out_dir / "ai-schema-validation-report.json"
+    command = [
+        "pwsh", "-NoProfile", "-File", str(root / "scripts" / "quality" / "run-ai-schema-validation.ps1"),
+        "-ScenarioRoot", str(scenario_root),
+        "-ReportPath", str(report_path),
+    ]
+    subprocess.run(command, cwd=str(root), capture_output=True, text=True, timeout=300)
+    if not report_path.is_file():
+        raise CliError("run-ai-schema-validation.ps1 did not write a report: " + str(report_path))
+    return json.loads(report_path.read_text(encoding="utf-8"))
+
+
+def _eval_run_beta_gate_for_one_scenario(
+        root: Path, scenario_root: Path, scenario_id: str, run_id: str, out_dir: Path, timeout: int) -> dict:
+    report_path = out_dir / "ai-beta-gate-report.json"
+    command = [
+        "pwsh", "-NoProfile", "-File", str(root / "scripts" / "quality" / "run-ai-beta-gate.ps1"),
+        "-ScenarioRoot", str(scenario_root),
+        "-ReportPath", str(report_path),
+        "-Scenario", scenario_id,
+        "-RunId", f"{run_id}-{scenario_id}",
+    ]
+    subprocess.run(command, cwd=str(root), capture_output=True, text=True, timeout=timeout)
+    if not report_path.is_file():
+        raise CliError("run-ai-beta-gate.ps1 did not write a report: " + str(report_path))
+    gate_report = json.loads(report_path.read_text(encoding="utf-8"))
+    entry = next((s for s in gate_report.get("scenarios", []) if s.get("scenarioId") == scenario_id), None)
+    if entry is None:
+        raise CliError(f"scenario {scenario_id!r} missing from its own beta-gate report")
+    return entry
+
+
+def _eval_verdict_from_schema_entry(entry: dict) -> tuple[str, str | None]:
+    if entry.get("status") == "passed":
+        return "PASS", None
+    failures = entry.get("failures") or []
+    return "FAIL", (failures[0] if failures else "schema validation did not match the expected outcome")
+
+
+def _eval_verdict_from_beta_gate_entry(entry: dict) -> tuple[str, str | None]:
+    expected_outcome = entry.get("expectedOutcome")
+    matched = (bool(entry.get("expectedFailureMatched")) if expected_outcome == "fail"
+               else entry.get("status") == "passed")
+    if matched:
+        return "PASS", None
+    reasons = entry.get("failureReasons") or []
+    return "FAIL", (reasons[0] if reasons else "no failureReasons recorded")
+
+
+def _eval_run_one_scenario(
+        root: Path, scenario_root: Path, scenario_id: str, run_id: str, run_root: Path,
+        model_override: str | None, timeout: int) -> dict:
+    scenario_out = run_root / scenario_id
+    scenario_out.mkdir(parents=True, exist_ok=True)
+    manifest = _eval_read_manifest(scenario_root, scenario_id)
+
+    effective_root = scenario_root
+    if model_override:
+        effective_root = _eval_overlay_scenario(
+            scenario_root, scenario_id, Path(model_override).expanduser().resolve(),
+            scenario_out / "overlay-scenarios")
+
+    started = time.time()
+    base = {
+        "scenario": scenario_id,
+        "kind": manifest.get("kind"),
+        "expectedOutcome": manifest.get("expectedOutcome"),
+        "expectedFailureStage": manifest.get("expectedFailureStage"),
+        "iterations": 1,
+        "tokens": None,
+    }
+    try:
+        if _eval_scenario_needs_heavy_path(manifest):
+            entry = _eval_run_beta_gate_for_one_scenario(
+                root, effective_root, scenario_id, run_id, scenario_out, timeout)
+            verdict, first_error = _eval_verdict_from_beta_gate_entry(entry)
+            base["detailReportPath"] = str(scenario_out / "ai-beta-gate-report.json")
+        else:
+            schema_report = _eval_run_schema_validation(root, effective_root, scenario_out)
+            entry = next((s for s in schema_report.get("scenarios", [])
+                          if s.get("scenarioId") == scenario_id), None)
+            if entry is None:
+                raise CliError(f"scenario {scenario_id!r} missing from its own schema validation report")
+            verdict, first_error = _eval_verdict_from_schema_entry(entry)
+            base["detailReportPath"] = str(scenario_out / "ai-schema-validation-report.json")
+    except (CliError, subprocess.TimeoutExpired) as exc:
+        verdict, first_error = "FAIL", str(exc)
+    base["verdict"] = verdict
+    base["firstError"] = first_error
+    base["durationMs"] = int((time.time() - started) * 1000)
+    return base
+
+
+def run_eval(args: argparse.Namespace) -> dict:
+    root = repo_root()
+    scenario_root = (Path(args.scenario_root).expanduser().resolve() if getattr(args, "scenario_root", None)
+                     else root / "NPDevSamples" / "ai-scenarios")
+    run_id = args.run_id or ("eval-" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S%f")[:-3])
+    run_root = _eval_run_root(run_id)
+    run_root.mkdir(parents=True, exist_ok=True)
+
+    if getattr(args, "model", None) and not getattr(args, "scenario", None):
+        raise CliError("--model requires --scenario: it overlays one scenario's ai-model.json, "
+                        "not the whole corpus.")
+    scenario_ids = [args.scenario] if getattr(args, "scenario", None) else _eval_discover_scenario_ids(scenario_root)
+
+    scenarios_out = [
+        _eval_run_one_scenario(root, scenario_root, scenario_id, run_id, run_root,
+                                getattr(args, "model", None), args.timeout)
+        for scenario_id in scenario_ids
+    ]
+    passed = sum(1 for s in scenarios_out if s["verdict"] == "PASS")
+    report = {
+        "schemaVersion": EVAL_SCHEMA_VERSION,
+        "runId": run_id,
+        "generatedAt": _utc_now(),
+        "scenarioRoot": str(scenario_root),
+        "scenarioCount": len(scenarios_out),
+        "passed": passed,
+        "failed": len(scenarios_out) - passed,
+        "ok": passed == len(scenarios_out),
+        "scenarios": scenarios_out,
+    }
+    results_path = run_root / "results.json"
+    results_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report["resultsPath"] = str(results_path)
+    return report
+
+
+def _eval_load_results(run_ref: str) -> dict:
+    """A run ref is either a run-id under <BuildRoot>/evals/, or a direct path to a results.json."""
+    direct = Path(run_ref).expanduser()
+    if direct.is_file():
+        return json.loads(direct.read_text(encoding="utf-8"))
+    results_path = _eval_run_root(run_ref) / "results.json"
+    if not results_path.is_file():
+        raise CliError(f"no results.json for run {run_ref!r} (looked at {results_path})")
+    return json.loads(results_path.read_text(encoding="utf-8"))
+
+
+def run_eval_compare(args: argparse.Namespace) -> dict:
+    report_a = _eval_load_results(args.run_a)
+    report_b = _eval_load_results(args.run_b)
+    by_id_a = {s["scenario"]: s for s in report_a.get("scenarios", [])}
+    by_id_b = {s["scenario"]: s for s in report_b.get("scenarios", [])}
+
+    regressed, improved, unchanged, only_a, only_b = [], [], [], [], []
+    for scenario_id in sorted(set(by_id_a) | set(by_id_b)):
+        a, b = by_id_a.get(scenario_id), by_id_b.get(scenario_id)
+        if a is None:
+            only_b.append(scenario_id)
+        elif b is None:
+            only_a.append(scenario_id)
+        elif a["verdict"] == "PASS" and b["verdict"] == "FAIL":
+            regressed.append(scenario_id)
+        elif a["verdict"] == "FAIL" and b["verdict"] == "PASS":
+            improved.append(scenario_id)
+        else:
+            unchanged.append(scenario_id)
+
+    return {
+        "schemaVersion": "npdev-eval-compare-report.v1",
+        "runA": report_a.get("runId", args.run_a),
+        "runB": report_b.get("runId", args.run_b),
+        "regressed": regressed,
+        "improved": improved,
+        "unchanged": len(unchanged),
+        "onlyInA": only_a,
+        "onlyInB": only_b,
+        "ok": len(regressed) == 0,
+    }
+
+
+# ---------------------------------------------------------------------------
 # R3.4: `npdev test` -- one verb, one verdict per app. Composition only: it OWNS no runner and no
 # verdict of its own. The REST layer is derived from what the generator already published about the
 # model; the other two layers are `run_acceptance` and `npdev_explore.run_suite`, called as-is, and
@@ -15856,6 +16079,36 @@ def build_parser() -> argparse.ArgumentParser:
     loop_run.add_argument("--api-key", default="dev-key")
     loop_run.add_argument("--keep-running", action="store_true")
 
+    # Wave 7.1: headless eval harness over NPDevSamples/ai-scenarios/*/. Reuses
+    # run-ai-schema-validation.ps1 (schema/config/command-policy/verification-schema stages) and
+    # run-ai-beta-gate.ps1 (the full normalize->generate->build->boot->smoke pipeline, for scenarios
+    # that need a real boot to verify) -- it owns neither engine, only their per-scenario verdicts.
+    npdev_eval = subparsers.add_parser(
+        "eval", help="Run or compare AI-scenario evals in a sandboxed build root."
+    )
+    eval_sub = npdev_eval.add_subparsers(dest="eval_command")
+    eval_run = eval_sub.add_parser(
+        "run", help="Run every scenario (or one with --scenario) and write "
+                    "<BuildRoot>/evals/<run-id>/results.json."
+    )
+    eval_run.add_argument("--scenario", help="Only this scenario id, instead of the whole corpus.")
+    eval_run.add_argument(
+        "--model",
+        help="Overlay this ai-model.json onto --scenario's own directory before running it, to test "
+             "a candidate model against that scenario's existing expectations without touching the "
+             "checked-in corpus. Requires --scenario.",
+    )
+    eval_run.add_argument("--scenario-root", help="Defaults to NPDevSamples/ai-scenarios.")
+    eval_run.add_argument("--run-id", help="Defaults to a UTC timestamp-based id.")
+    eval_run.add_argument("--timeout", type=int, default=900,
+                           help="Per-scenario subprocess timeout in seconds for the heavy "
+                                "(generate+build+boot+smoke) path (default 900).")
+    eval_compare = eval_sub.add_parser(
+        "compare", help="Diff two eval runs' verdicts by scenario id."
+    )
+    eval_compare.add_argument("run_a", help="A run-id under <BuildRoot>/evals/, or a results.json path.")
+    eval_compare.add_argument("run_b", help="A run-id under <BuildRoot>/evals/, or a results.json path.")
+
     generate_screen = generate_sub.add_parser(
         "screen", help="Generate one hand-written screen against a live app's UI contract (R-P4)."
     )
@@ -16827,6 +17080,14 @@ def main(argv: list[str] | None = None) -> int:
             return 0 if result.get("ok") else 2
         if args.command == "loop" and args.loop_command == "run":
             result = run_closed_loop(args)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 2
+        if args.command == "eval" and args.eval_command == "run":
+            result = run_eval(args)
+            print(json.dumps(result, indent=2))
+            return 0 if result.get("ok") else 2
+        if args.command == "eval" and args.eval_command == "compare":
+            result = run_eval_compare(args)
             print(json.dumps(result, indent=2))
             return 0 if result.get("ok") else 2
         if args.command == "generate" and args.generate_command == "screen":

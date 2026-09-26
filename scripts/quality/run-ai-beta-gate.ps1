@@ -3,6 +3,7 @@ param(
     [string]$ReportPath = "scripts/reports/out/ai-beta-gate-report.json",
     [string]$ScopePolicyPath = "scripts/policy/beta0-scope.json",
     [string]$RunId = "",
+    [string]$Scenario = "",
     [switch]$SkipGenerator
 )
 
@@ -397,6 +398,14 @@ $scenarioResults = @()
 $overallStatus = if ($policyStageStatus -eq "passed" -and $runtimeHostLibsStageStatus -eq "passed" -and $null -ne $schemaReport -and $schemaExit -eq 0 -and $missingRequiredScenarios.Count -eq 0) { "passed" } else { "failed" }
 
 foreach ($scenarioDir in $scenarioDirs) {
+    # Wave 7.1 (npdev eval): an optional single-scenario filter so the eval CLI can drive one
+    # scenario at a time into its own sandboxed run without paying for the whole corpus. Coverage
+    # fields computed above (missingRequiredScenarios, discoveredScenarioIds) are intentionally
+    # unaffected -- they describe the corpus, not this run -- so a caller reading a filtered run's
+    # per-scenario entry under `scenarios[]` should not trust the top-level `overallStatus`.
+    if (-not [string]::IsNullOrWhiteSpace($Scenario) -and $scenarioDir.Name -ne $Scenario) {
+        continue
+    }
     $scenarioFailureReasons = [System.Collections.Generic.List[string]]::new()
     $stages = @()
     $manifestPath = Join-Path $scenarioDir.FullName "scenario.manifest.json"
