@@ -11,6 +11,7 @@
 <link rel="stylesheet" href="provenance.css" />
 <link rel="stylesheet" href="dbio.css" />
 <link rel="stylesheet" href="secrets.css" />
+<link rel="stylesheet" href="studio.css" />
 </head>
 <body>
   <div id="fake-banner" class="fake-banner" hidden>
@@ -41,6 +42,7 @@
     <button class="tab" data-screen="provenance">Impact</button>
     <button class="tab" data-screen="dbio">DB Import/Export</button>
     <button class="tab" data-screen="secrets">Secrets</button>
+    <button class="tab" data-screen="studio">Studio</button>
     <span id="manager-version" class="manager-version" title="NPDev Manager version"></span>
   </nav>
 
@@ -692,6 +694,53 @@
         </div>
       </div>
     </section>
+
+    <section id="screen-studio" class="screen" hidden>
+      <h1>&#127912; STUDIO <span class="dim">// edit a concept/panel/field and see it live, no rebuild</span></h1>
+      <p class="subtitle">
+        Pick a node on the left, edit its JSON in the middle, click Apply. A metadata-only change
+        (labels, widgets, panel/flow logic) or a brand-new concept goes live in the running app
+        within seconds; anything else on an EXISTING concept's shape needs a rebuild, named honestly
+        rather than silently half-applied.
+      </p>
+
+      <div class="studio-rebuild-banner" id="studio-rebuild-banner">
+        <span id="studio-rebuild-message"></span>
+        <button type="button" class="btn" id="studio-rebuild-btn">Rebuild &amp; restart</button>
+      </div>
+
+      <div class="studio-toolbar">
+        <select id="studio-app-picker"></select>
+        <button type="button" class="btn ghost" id="studio-refresh">&#8635; REFRESH</button>
+        <span id="studio-status" class="status-line"></span>
+      </div>
+
+      <div class="studio-columns">
+        <div class="studio-pane">
+          <h3>Model tree</h3>
+          <div id="studio-tree"></div>
+        </div>
+
+        <div class="studio-pane studio-editor-pane">
+          <h3>Selected node (JSON)</h3>
+          <textarea id="studio-editor" spellcheck="false" disabled></textarea>
+          <div class="studio-editor-error" id="studio-editor-error"></div>
+          <div class="studio-widget-chips" id="studio-widget-chips"></div>
+          <button type="button" class="btn" id="studio-apply" style="margin-top:8px;" disabled>APPLY</button>
+
+          <h3 style="margin-top:14px;">Undo</h3>
+          <ul class="studio-history-list" id="studio-history-list"></ul>
+        </div>
+
+        <div class="studio-pane studio-preview-pane">
+          <div class="studio-preview-toolbar">
+            <h3 style="margin:0;">Live preview</h3>
+            <button type="button" class="btn ghost" id="studio-preview-refresh">&#8635; Reload</button>
+          </div>
+          <iframe id="studio-iframe" title="Running app preview"></iframe>
+        </div>
+      </div>
+    </section>
   </main>
 
   <!-- Provider editor (Phase F). This tab IS the settings surface for providers -- the Manager has
@@ -851,6 +900,7 @@
   <script src="provenance.js"></script>
   <script src="dbio.js"></script>
   <script src="secrets.js"></script>
+  <script src="studio.js"></script>
   <script>
     // Boot the added screens after their files have defined their init hooks. Kept here rather
     // than inside app.js's own init() so the five original screens are unaffected if any of these
@@ -864,6 +914,7 @@
     try { window.__npdevInitProvenance(); } catch (e) { console.error("Impact init failed", e); }
     try { window.__npdevInitDbio(); } catch (e) { console.error("DB Import/Export init failed", e); }
     try { window.__npdevInitSecrets(); } catch (e) { console.error("Secrets init failed", e); }
+    try { window.__npdevInitStudio(); } catch (e) { console.error("Studio init failed", e); }
   </script>
 </body>
 </html>

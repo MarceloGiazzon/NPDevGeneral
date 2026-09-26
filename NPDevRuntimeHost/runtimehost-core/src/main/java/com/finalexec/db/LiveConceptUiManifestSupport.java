@@ -47,12 +47,25 @@ import java.util.function.Function;
  *
  * <p>Only ever called with concept names that already appear in {@link
  * NewConceptSchemaProvisioner.Result#provisioned()} -- i.e. concepts that genuinely have a live
- * table (REG-245). That guarantee is exactly what lets this class skip {@code manifestJson}'s
- * largest dependency, reference-field metadata ({@code referenceMetadata} and its helpers,
- * ~500 lines): {@link NewConceptSchemaProvisioner#outOfScopeReason} already refuses any concept
- * with a bond/reference field before it can ever reach 4B's provisioning, so a concept this class
- * is asked to handle is structurally guaranteed to have none. If that scope ever widens, this
- * class's field-node builder must widen with it.
+ * table (REG-245). That guarantee is exactly what let this class originally skip {@code
+ * manifestJson}'s largest dependency, reference-field metadata ({@code referenceMetadata} and its
+ * helpers, ~500 lines): before Wave 6.3, {@link NewConceptSchemaProvisioner#outOfScopeReason}
+ * refused any concept with a reference field before it could ever reach 4B's provisioning.
+ *
+ * <p><b>Wave 6.3 (NPDEV_FEATURE_PLAN_2026-09-24.md)</b> widened that scope to a reference targeting
+ * an ALREADY-EXISTING concept, so {@link #fieldNodes} now emits a {@code reference} node for one --
+ * deliberately a MINIMAL subset of {@code BusinessUiEmitter}'s ~500-line version, not a port of it:
+ * {@code targetConcept}/{@code targetIdField}/{@code endpointBase}/{@code displayField} only, which
+ * is everything {@code business-ui-app.mustache}'s lookup control (@code createLookupInput},
+ * {@code loadReferenceLabel}, {@code openPickerDialog}) actually requires to render and resolve a
+ * working picker -- confirmed by reading those functions, not assumed: every OTHER reference
+ * property they read (@code displayFields}, {@code searchFields}, {@code pickerColumns}, {@code via},
+ * {@code defaultFilterExpression}, ...) already falls back safely to {@code displayField}/{@code
+ * targetIdField} or an empty list when absent. A live-provisioned reference field is therefore a
+ * working, if plain, lookup -- one search-by-id-or-default-filter picker, not the richer
+ * search-fields/columns/filter-expression a REGENERATED app can declare. Widening this further (a
+ * declared {@code picker}/{@code referenceSemantics} on the live field) is real future work, not
+ * silently claimed here.
  */
 public final class LiveConceptUiManifestSupport {
 
@@ -165,7 +178,7 @@ public final class LiveConceptUiManifestSupport {
         node.put("formPresentation", formPresentation(concept));
         node.put("frameMode", NpdevSettings.UI_FRAME_MODE.defaultValue());
         node.put("guidePage", defaultGuidePage);
-        node.put("fields", fieldNodes(concept));
+        node.put("fields", fieldNodes(concept, model, contexts));
         node.put("list", listNode(concept, idField));
         node.put("documents", documentNodes(model, concept.getName()));
         Map<String, Object> actions = new LinkedHashMap<>();
@@ -239,7 +252,9 @@ public final class LiveConceptUiManifestSupport {
         return list;
     }
 
-    private static List<Map<String, Object>> fieldNodes(CompiledConcept concept) {
+    private static List<Map<String, Object>> fieldNodes(
+            CompiledConcept concept, CompiledModel model, List<CompiledContext> contexts
+    ) {
         List<Map<String, Object>> fields = new ArrayList<>();
         for (CompiledField field : concept.getFields()) {
             Map<String, Object> node = new LinkedHashMap<>();
@@ -279,10 +294,14 @@ public final class LiveConceptUiManifestSupport {
                     node.put("objectSchema", buildItemsSchemaNode(schema, 0));
                 }
             }
-            // No reference field is structurally possible here (see class javadoc), so widget()
-            // never needs isReference/isMultiReference, and no "reference"/"tableDisplay" node is
-            // ever added.
-            node.put("widget", widget(field));
+            // Wave 6.3: a reference field IS possible now (see class javadoc) -- referenceNode
+            // resolves it (null for any non-reference field, or one outOfScopeReason would have
+            // already refused, so this always resolves when non-null).
+            Map<String, Object> referenceNode = referenceNode(field, model, contexts);
+            if (referenceNode != null) {
+                node.put("reference", referenceNode);
+            }
+            node.put("widget", widget(field, referenceNode != null));
             node.put("customWidgetRef", firstNonBlank(field.getUi() == null ? null : field.getUi().getCustomWidgetRef(), ""));
             node.put("enumValues", field.getEnumValues());
             node.put("enumOptions", enumOptionsManifest(field));
@@ -298,7 +317,7 @@ public final class LiveConceptUiManifestSupport {
         return fields;
     }
 
-    private static String widget(CompiledField field) {
+    private static String widget(CompiledField field, boolean isReference) {
         CompiledPresentationMetadata ui = field.getUi();
         String declaredWidget = ui == null ? null : ui.getWidget();
         if (declaredWidget != null && !declaredWidget.isBlank()) {
@@ -306,7 +325,36 @@ public final class LiveConceptUiManifestSupport {
         }
         String type = manifestType(field);
         boolean hasEnumValues = field.getEnumValues() != null && !field.getEnumValues().isEmpty();
-        return FieldWidgetDefaults.defaultWidget(type, false, false, hasEnumValues);
+        return FieldWidgetDefaults.defaultWidget(type, isReference, false, hasEnumValues);
+    }
+
+    /**
+     * Wave 6.3: {@code null} for a non-reference field. For a reference field, a MINIMAL {@code
+     * reference} node -- see this class's own javadoc for exactly which four keys and why they are
+     * enough for a working (if plain) lookup. {@code outOfScopeReason} already proved the target
+     * resolves in {@code model} before this concept could reach {@link #refresh} at all, so {@code
+     * findConcept} here is never expected to come back empty -- if it somehow did (a model mutated
+     * between provisioning and this call), this field is skipped as non-reference rather than
+     * thrown, since a missing lookup on one field must not fail the whole concept's manifest node.
+     */
+    private static Map<String, Object> referenceNode(
+            CompiledField field, CompiledModel model, List<CompiledContext> contexts
+    ) {
+        String target = field.getReferenceTarget();
+        if (target == null || target.isBlank()) {
+            return null;
+        }
+        CompiledConcept targetConcept = model.findConcept(target).orElse(null);
+        if (targetConcept == null) {
+            return null;
+        }
+        String targetIdField = idField(targetConcept).getName();
+        Map<String, Object> reference = new LinkedHashMap<>();
+        reference.put("targetConcept", targetConcept.getName());
+        reference.put("targetIdField", targetIdField);
+        reference.put("endpointBase", SqlIdentifierSupport.conceptEndpointBase(targetConcept, contexts));
+        reference.put("displayField", targetIdField);
+        return reference;
     }
 
     private static String fieldUiString(CompiledField field, Function<CompiledPresentationMetadata, String> accessor) {

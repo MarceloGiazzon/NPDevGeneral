@@ -1,6 +1,8 @@
 package com.finalexec.db;
 
 import com.finalexec.db.schemastate.DesiredColumn;
+import com.finalexec.db.schemastate.DesiredForeignKey;
+import com.finalexec.db.schemastate.DesiredIndex;
 import com.finalexec.db.schemastate.DesiredSchema;
 import com.finalexec.db.schemastate.DesiredTable;
 import com.npdev.kernel.dbschema.InternalColumnDefinition;
@@ -37,11 +39,20 @@ import java.util.List;
  *
  * <p>Deliberately minimal, matching what {@code afterMigrate}'s OWN later steps still need to do their
  * job and nothing more: columns with their type and nullability, a primary key, and (for internal
- * tables, which declare them explicitly) indexes. No foreign keys or unique constraints on BUSINESS
- * tables here -- {@link UniqueConstraintPass#applyUniqueConstraints} already runs afterward in
- * {@code afterMigrate} and is unconditionally idempotent, so unique constraints still get applied
- * there; foreign keys are a real gap for this override (tracked, not silently claimed to work) but do
- * not block the CRUD/JPA access these tests actually exercise.
+ * tables, which declare them explicitly) indexes. No unique constraints on BUSINESS tables here --
+ * {@link UniqueConstraintPass#applyUniqueConstraints} already runs afterward in {@code afterMigrate}
+ * and is unconditionally idempotent, so unique constraints still get applied there.
+ *
+ * <p><b>Wave 6.3 (NPDEV_FEATURE_PLAN_2026-09-24.md, live provisioning of a reference field):</b>
+ * foreign keys ARE created here now, but ONLY for a table this call is creating for the first time --
+ * {@link #createBusinessTableConstraints} runs immediately after a successful {@code createTable} for
+ * a brand-new table, reading the SAME {@link DesiredTable#foreignKeys()}/{@link DesiredTable#indexes()}
+ * {@link DesiredSchemaFactory#fromManifest} already projects from {@code SchemaManifest}'s SER-G8
+ * fields (used elsewhere for diffing, never before for DDL emission here) -- {@link
+ * NewConceptSchemaProvisioner} is the one caller that populates them, for a new concept's reference
+ * field whose target concept already existed. No "IF NOT EXISTS" guard is needed for either
+ * statement: this method only ever runs on a table {@code createMissingBusinessTables}'s own {@code
+ * tableExists} check just proved does not exist yet, so its FK/index cannot exist yet either.
  *
  * <p>{@code IF NOT EXISTS} via {@link com.npdev.kernel.storage.sql.SqlDialect#guardedCreateTable}, same
  * as every other CREATE TABLE in this package -- idempotent by construction, safe to call every boot.
@@ -59,11 +70,43 @@ final class MissingTableCreationPass {
                     continue;
                 }
                 createTable(connection, table.name(), businessColumnDefs(table), List.of());
+                createBusinessTableConstraints(connection, table);
             }
         } catch (SQLException exception) {
             throw new IllegalStateException(
                     "npdev.trial.force-physical-schema: failed creating missing business table(s) from the manifest",
                     exception);
+        }
+    }
+
+    /** Wave 6.3: the FK/index half of a brand-new business table -- see this class's own javadoc for
+     *  why no existence guard is needed here. Column/referenced-column lists are declared as
+     *  multi-column in {@link DesiredForeignKey}/{@link DesiredIndex} for symmetry with the rest of
+     *  the SER-G8 vocabulary, but {@link NewConceptSchemaProvisioner} (the only populating caller
+     *  today) only ever declares single-column reference FKs -- this loop handles the general case
+     *  either way, it just has no multi-column caller yet. */
+    private static void createBusinessTableConstraints(Connection connection, DesiredTable table) throws SQLException {
+        for (DesiredForeignKey fk : table.foreignKeys()) {
+            String constraintName = "fk_" + table.name() + "_" + String.join("_", fk.columns());
+            String ddl = "ALTER TABLE " + SqlDialects.active().identifier(table.name())
+                    + " ADD CONSTRAINT " + SqlDialects.active().identifier(constraintName)
+                    + " FOREIGN KEY (" + String.join(", ", SqlDialects.active().identifiers(fk.columns())) + ")"
+                    + " REFERENCES " + SqlDialects.active().identifier(fk.referencedTable())
+                    + " (" + String.join(", ", SqlDialects.active().identifiers(fk.referencedColumns())) + ")";
+            try (PreparedStatement statement = connection.prepareStatement(ddl)) {
+                statement.executeUpdate();
+            }
+        }
+        for (DesiredIndex index : table.indexes()) {
+            String indexName = "idx_" + table.name() + "_" + String.join("_", index.columns());
+            String ddl = "CREATE " + (index.unique() ? "UNIQUE " : "") + "INDEX "
+                    + SqlDialects.active().identifier(indexName)
+                    + " ON " + SqlDialects.active().identifier(table.name())
+                    + " (" + String.join(", ", SqlDialects.active().identifiers(index.columns())) + ")";
+            try (PreparedStatement statement = connection.prepareStatement(
+                    SqlDialects.active().guardedCreateIndex(indexName, table.name(), ddl))) {
+                statement.executeUpdate();
+            }
         }
     }
 

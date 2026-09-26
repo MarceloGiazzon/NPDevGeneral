@@ -557,7 +557,22 @@ fn norm_path(p: &str) -> String {
 
 pub(crate) fn model_dir_of_app(app_dir: &str) -> Option<String> {
     let normalized = app_dir.trim_end_matches(['\\', '/']);
-    normalized.strip_suffix("-app").map(|s| s.to_string())
+    if let Some(stripped) = normalized.strip_suffix("-app") {
+        return Some(stripped.to_string());
+    }
+    // Wave 6 (Studio tab): AppGen/NPDevSamples apps (Build-NpdevApp.ps1 et al) don't use npdev
+    // init's `<name>-app` naming at all -- the generated app lives at `<outputRoot>/App`, with the
+    // model/config it was generated FROM staged alongside it at `<outputRoot>/Input` (confirmed live
+    // against a real build: `App` and `Input` are siblings). Existence-checked here, unlike the
+    // suffix-strip above, since "Input" is not itself a naming convention that implies a model lives
+    // there the way "-app" does -- an app_dir that happens to have an unrelated sibling "Input"
+    // folder with no model.json in it must fall through to the caller's own poorer fallback, not
+    // silently point at the wrong directory.
+    let candidate = PathBuf::from(normalized).parent()?.join("Input");
+    if candidate.join("model.json").is_file() {
+        return candidate.to_str().map(|s| s.to_string());
+    }
+    None
 }
 
 #[tauri::command]
@@ -1961,6 +1976,102 @@ async fn generate_app_from_model(state: State<'_, AppState>, app_dir: String) ->
     npdev::run_generate_app(&python, &cli, java_home.as_deref(), &model, &config, &app_dir).await
 }
 
+/// Wave 6.1 (the Manager's Studio tab, NPDEV_FEATURE_PLAN_2026-09-24.md): the "Apply" button's live
+/// half. The caller (studio.js) has ALREADY validated the candidate (`validate_prompter_model`) and
+/// written it to disk (`apply_prompter_model`, which returns `modelPath`/`backupPath`) before this is
+/// called -- this command classifies the two on-disk files and pushes the change into the RUNNING app
+/// if it can go live, never writing the model itself. Thin pipe to `npdev monitor studio-apply`;
+/// the classify/route/push decision lives entirely in that CLI command, not here.
+#[tauri::command]
+async fn studio_apply_live(
+    state: State<'_, AppState>,
+    app_dir: String,
+    model_path: String,
+    baseline_path: String,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_monitor_studio_apply(&python, &cli, java_home.as_deref(), &app_dir, &model_path, &baseline_path).await
+}
+
+const STUDIO_HISTORY_LIMIT: usize = 20;
+
+fn studio_history_dir(app_dir: &str) -> PathBuf {
+    PathBuf::from(app_dir).join("data").join("studio-history")
+}
+
+/// Wave 6.2 (Undo): copies the just-written model.json into the app's own
+/// `data/studio-history/<millis>.json` -- `data/` is one of the exactly three directories
+/// (`data`/`logs`/`secrets`) regeneration spares (FinalAppAssembler.PRESERVED_APP_DIRECTORIES), so
+/// this history survives a regenerate+rebuild the same way the app's own database does. Prunes down
+/// to the newest `STUDIO_HISTORY_LIMIT` entries -- a rolling window, not an unbounded audit log.
+/// Best-effort by design (the caller swallows any error): history is a convenience for Undo, never a
+/// gate on an apply that already succeeded.
+#[tauri::command]
+fn studio_history_record(app_dir: String, model_path: String) -> Result<(), String> {
+    let dir = studio_history_dir(&app_dir);
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| e.to_string())?
+        .as_millis();
+    let dest = dir.join(format!("{millis}.json"));
+    std::fs::copy(&model_path, &dest)
+        .map_err(|e| format!("could not copy {model_path} to {}: {e}", dest.display()))?;
+
+    let mut entries: Vec<PathBuf> = std::fs::read_dir(&dir)
+        .map_err(|e| e.to_string())?
+        .filter_map(|entry| entry.ok().map(|e| e.path()))
+        .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
+        .collect();
+    entries.sort();
+    if entries.len() > STUDIO_HISTORY_LIMIT {
+        for stale in &entries[..entries.len() - STUDIO_HISTORY_LIMIT] {
+            let _ = std::fs::remove_file(stale);
+        }
+    }
+    Ok(())
+}
+
+/// Wave 6.2: every recorded version, NEWEST FIRST (index 0 is always the just-applied current
+/// state, since `studio_history_record` runs right after every successful write) -- the Studio's
+/// Undo offers index 1, the one before it.
+#[tauri::command]
+fn studio_history_list(app_dir: String) -> Result<Value, String> {
+    let dir = studio_history_dir(&app_dir);
+    let mut entries: Vec<PathBuf> = match std::fs::read_dir(&dir) {
+        Ok(read) => read.filter_map(|entry| entry.ok().map(|e| e.path())).collect(),
+        Err(_) => Vec::new(),
+    };
+    entries.retain(|p| p.extension().and_then(|e| e.to_str()) == Some("json"));
+    entries.sort();
+    entries.reverse();
+    let items: Vec<Value> = entries.iter().map(|path| {
+        let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+        let millis: i64 = file_name.trim_end_matches(".json").parse().unwrap_or(0);
+        serde_json::json!({"fileName": file_name, "appliedAtMillis": millis})
+    }).collect();
+    Ok(Value::Array(items))
+}
+
+/// Wave 6.2: reads one recorded version back as a candidate model for Undo to re-apply through the
+/// SAME `validate_prompter_model` -> `apply_prompter_model` -> `studio_apply_live` path a fresh edit
+/// uses (the plan's own "Undo re-applies the previous one through the same path"). Rejects a
+/// `fileName` that is not a bare `<digits>.json` (no path traversal via `..`/separators -- this
+/// reads whatever file the Studio itself named, never an operator-typed path).
+#[tauri::command]
+fn studio_history_read(app_dir: String, file_name: String) -> Result<Value, String> {
+    if !file_name.ends_with(".json")
+        || !file_name.trim_end_matches(".json").chars().all(|c| c.is_ascii_digit())
+    {
+        return Err(format!("not a valid history file name: {file_name}"));
+    }
+    let path = studio_history_dir(&app_dir).join(&file_name);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
+    serde_json::from_str(&text).map_err(|e| format!("{} is not valid JSON: {e}", path.display()))
+}
+
 /// Session 2 (NPDEV_MEGA_ROADMAP.md): the AI loop's Tauri entry point. Resolves everything the
 /// engine needs ONCE (profile, python/cli/java_home) and registers a cancel flag BEFORE spawning --
 /// same "already running" guard shape as `run_ops_script` -- then hands off to `ai_loop::run` in a
@@ -2837,6 +2948,10 @@ the blast radius needs a baseline to diff against"
             validate_prompter_model,
             apply_prompter_model,
             generate_app_from_model,
+            studio_apply_live,
+            studio_history_record,
+            studio_history_list,
+            studio_history_read,
             prompter_app_context,
             prompter_generate,
             run_ai_loop,
