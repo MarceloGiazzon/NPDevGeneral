@@ -41,7 +41,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EMITTER = REPO_ROOT / "NPDevGenerator" / "generator" / "src" / "main" / "java" / "com" / "npdev" / "generator" / "dbconfig" / "OperationalRunbookEmitter.java"
-CONTENT_DIR = REPO_ROOT / "content"
+CONTENT_DIR = REPO_ROOT / "docs" / "content"
 
 # A `write(opsRoot.resolve("Name"))` / `writeExecutable(opsRoot.resolve("Name"))` /
 # `writeJson(opsRoot.resolve("Name"))` literal. The JSON plan and README_RUNBOOK.md are emitted
