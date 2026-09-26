@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -135,5 +136,83 @@ class PluginIpcFrameCodecTest {
         // Same string a plugin's String.valueOf(...)/nullToEmpty(...) would already have produced from
         // the raw UUID in the in-process path -- the wire round-trip changes representation, not value.
         assertEquals(loteId.toString(), ocupacao.get("loteId"));
+    }
+
+    @Test
+    void jsonSafeValuesAcceptsALocalDateBareAndNestedInsideMapsAndLists() {
+        // WMS-14: a "date"/"datetime" concept field (e.g. WmsOffice's Lote.dataValidade) is a native
+        // LocalDate/OffsetDateTime in ConceptRecord.data() (DslTypeCoercionSupport.normalizeByDslType),
+        // the same shape REG-217 already fixed for UUID -- so a listConcepts -> mapList ->
+        // callCapability chain copying a date field hit the identical crash for a different type.
+        LocalDate dataValidade = LocalDate.of(2027, 1, 1);
+        assertTrue(PluginIpcJsonSafeValues.isJsonSafe(dataValidade));
+        assertTrue(PluginIpcJsonSafeValues.isJsonSafe(
+                List.of(Map.of("dataValidade", dataValidade))
+        ));
+    }
+
+    /**
+     * {@code PluginIpcFrameCodec} deliberately has no {@code JavaTimeModule} registered (a real plugin
+     * child process's restricted classpath does not reliably have {@code jackson-datatype-jsr310}
+     * resolvable, live-crashed with {@code NoClassDefFoundError} when tried), so a caller must
+     * {@code PluginIpcJsonSafeValues.sanitizeForWire} the args BEFORE building the frame, exactly as
+     * {@code PluginIpcHostSession}/{@code PluginIpcCallbackClient}/{@code PluginIpcChildRuntime} now do.
+     */
+    @Test
+    void roundTripsAnInvokeFrameCarryingASanitizedLocalDateValuedField() throws IOException {
+        LocalDate dataValidade = LocalDate.of(2027, 1, 1);
+        List<Object> rawArgs = List.<Object>of(List.of(Map.of("id", UUID.randomUUID(), "dataValidade", dataValidade)));
+        List<Object> safeArgs = PluginIpcJsonSafeValues.sanitizeArgsForWire(rawArgs);
+        PluginIpcFrame.InvokeFrame frame = new PluginIpcFrame.InvokeFrame(
+                "req-2", "alocacao", "AllocationCapability", "alocacao-inproc", "enderecarRecebimento",
+                safeArgs, "corr-2", null, Map.of(), null
+        );
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        PluginIpcFrameCodec.writeInvoke(buffer, frame);
+
+        PluginIpcFrame decoded = PluginIpcFrameCodec.readFrame(new ByteArrayInputStream(buffer.toByteArray()));
+
+        assertInstanceOf(PluginIpcFrame.InvokeFrame.class, decoded);
+        PluginIpcFrame.InvokeFrame invoke = (PluginIpcFrame.InvokeFrame) decoded;
+        List<?> lotes = (List<?>) invoke.args().get(0);
+        Map<?, ?> lote = (Map<?, ?>) lotes.get(0);
+        // ISO-8601, the same string every other JSON surface in this platform already produces for a
+        // date field -- sanitizing to a String before the codec ever sees it changes representation,
+        // not value.
+        assertEquals(dataValidade.toString(), lote.get("dataValidade"));
+    }
+
+    @Test
+    void jsonSafeValuesAcceptsASqlDateBareAndNestedInsideMapsAndLists() {
+        // WMS-14, the confirmed real leaf type (not the LocalDate guess above, which turned out to be
+        // incomplete): WmsOffice's H2Local storage layer returns a raw java.sql.Date for a "date"-typed
+        // concept field -- DslTypeCoercionSupport.normalizeFieldValue has no "date" case at all, so
+        // whatever the storage layer's read path produces flows through unchanged.
+        java.sql.Date dataValidade = java.sql.Date.valueOf(LocalDate.of(2027, 1, 1));
+        assertTrue(PluginIpcJsonSafeValues.isJsonSafe(dataValidade));
+        assertTrue(PluginIpcJsonSafeValues.isJsonSafe(
+                List.of(Map.of("dataValidade", dataValidade))
+        ));
+    }
+
+    @Test
+    void roundTripsAnInvokeFrameCarryingASanitizedSqlDateValuedField() throws IOException {
+        java.sql.Date dataValidade = java.sql.Date.valueOf(LocalDate.of(2027, 1, 1));
+        List<Object> rawArgs = List.<Object>of(List.of(Map.of("id", UUID.randomUUID(), "dataValidade", dataValidade)));
+        List<Object> safeArgs = PluginIpcJsonSafeValues.sanitizeArgsForWire(rawArgs);
+        PluginIpcFrame.InvokeFrame frame = new PluginIpcFrame.InvokeFrame(
+                "req-3", "alocacao", "AllocationCapability", "alocacao-inproc", "enderecarRecebimento",
+                safeArgs, "corr-3", null, Map.of(), null
+        );
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        PluginIpcFrameCodec.writeInvoke(buffer, frame);
+
+        PluginIpcFrame decoded = PluginIpcFrameCodec.readFrame(new ByteArrayInputStream(buffer.toByteArray()));
+
+        assertInstanceOf(PluginIpcFrame.InvokeFrame.class, decoded);
+        PluginIpcFrame.InvokeFrame invoke = (PluginIpcFrame.InvokeFrame) decoded;
+        List<?> lotes = (List<?>) invoke.args().get(0);
+        Map<?, ?> lote = (Map<?, ?>) lotes.get(0);
+        assertEquals("2027-01-01", lote.get("dataValidade"));
     }
 }

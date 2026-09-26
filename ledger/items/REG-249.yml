@@ -1,0 +1,116 @@
+id: REG-249
+title: >-
+  A listConcepts -> mapList -> callCapability chain copying a "date"-typed concept field crashes
+  PLUGIN_EXECUTION_FAILED the moment the target capability runs through plugin-process-isolation
+  IPC, because PluginIpcJsonSafeValues.isJsonSafe had no case for java.sql.Date/LocalDate/
+  OffsetDateTime -- the same bug class REG-217 fixed for UUID, left open for date/time types
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-26
+closed: 2026-09-26
+verification: VERIFIED_LIVE
+source: >-
+  Found live while building WMS-14 (WmsOffice's EnderecarRecebimentoProcedure, a new
+  listConcepts(Lote) -> mapList(select id/produtoId/dataValidade) -> callCapability chain) against
+  wmsoffice-browser (:8100). Same failure shape REG-217 already root-caused and fixed for UUID
+  ("Plugin IPC value 'invoke.args[1]' is not JSON-safe: java.util.ArrayList") -- REG-217's own text
+  explicitly predicted this blast radius ("ANY procedure in ANY generated app that uses
+  listConcepts+mapList to build a list/map containing an id or reference-typed field... will hit
+  the exact same crash") but only ever fixed UUID, not the other types DslTypeCoercionSupport's
+  normalizeFieldValue leaves uncoerced (date has no case at all, unlike uuid/reference/decimal).
+surface: >-
+  NPDevRuntimeHost/runtimehost-core/.../service/pluginipc/PluginIpcJsonSafeValues.java (isJsonSafe,
+  now a recursive findFirstUnsafe walk + sanitizeForWire/sanitizeArgsForWire), PluginIpcFrameCodec.java
+  (deliberately NOT given a JavaTimeModule -- see detail), PluginIpcHostSession.java,
+  PluginIpcCallbackClient.java, PluginIpcChildRuntime.java (all three call sites now sanitize args/
+  response value before building a wire frame); new/extended tests in
+  PluginIpcJsonSafeValuesTest.java and NPDevRuntimeHost/src/test/java/.../PluginIpcFrameCodecTest.java.
+detail: |
+  ROOT CAUSE: DslTypeCoercionSupport.normalizeFieldValue has explicit branches for "uuid"/"reference"
+  (REG-217's own fix target) and "decimal", but NONE for "date"/"datetime" -- it falls through to
+  `return rawValue` unchanged, so whatever the storage/DTO-binding layer produces for a date field
+  flows straight into ConceptRecord.data() untouched. For WmsOffice's H2Local ("inproc") persistence
+  mode, that raw value is a genuine `java.sql.Date` (confirmed live, not assumed, via this same fix's
+  own improved diagnostics -- see below), NOT a `java.time.LocalDate` as first guessed. A
+  listConcepts(Lote) -> mapList(select ..., dataValidade) -> callCapability chain (WMS-14's new
+  EnderecarRecebimentoProcedure -> AllocationCapability.enderecarRecebimento) therefore built a "lotes"
+  arg list containing a raw java.sql.Date, which PluginIpcJsonSafeValues.isJsonSafe rejected the moment
+  the alocacao capability's "plugin:java-source" adapter dispatched through
+  PluginIpcHostSession/TimeBoundedPluginExecutionEngine's process-isolation path -- the identical
+  PLUGIN_EXECUTION_FAILED "invoke.args[1] is not JSON-safe: java.util.ArrayList" shape REG-217 already
+  named (the outer List's class, not the real nested offender -- REG-217's own documented diagnostics
+  gap, flagged but never fixed).
+
+  DIAGNOSTICS FIX (done first, and what actually found the real type): rewrote
+  PluginIpcJsonSafeValues.isJsonSafe/requireJsonSafe to recursively walk into the offending Map/List
+  and report the EXACT leaf path and its runtime class, instead of just the outer container's class.
+  The very first live retest under this improved diagnostic immediately named the true culprit:
+  `invoke.args[1][0].dataValidade is not JSON-safe: java.sql.Date` -- confirming the LocalDate/
+  OffsetDateTime cases added in an earlier attempt (guessing from DslTypeCoercionSupport.
+  normalizeByDslType, a DIFFERENT method than the one actually used for ConceptRecord population) were
+  a reasonable but incomplete guess.
+
+  FIX ATTEMPT 1 (tried, reverted): added `LocalDate`/`OffsetDateTime` to isJsonSafe's accepted types
+  and registered `JavaTimeModule` on PluginIpcFrameCodec's ObjectMapper so they could actually
+  serialize. Live-crashed the plugin CHILD PROCESS itself with
+  `NoClassDefFoundError: com/fasterxml/jackson/datatype/jsr310/JavaTimeModule` -- a real `java -jar`
+  boot launches the child through Spring Boot's `PropertiesLauncher` against the packaged fat jar
+  (PluginIpcChildProcess's own SEC-5 comment), and `jackson-datatype-jsr310` is NOT reliably
+  resolvable on that child's restricted classloader even though the jar is physically present under
+  `BOOT-INF/lib/` and listed in `BOOT-INF/classpath.idx` (confirmed by extracting and inspecting the
+  actual booted jar, not assumed) -- a strictly WORSE failure (the whole child process dies) than the
+  one being fixed.
+
+  FINAL FIX: PluginIpcJsonSafeValues gained `sanitizeForWire`/`sanitizeArgsForWire`, which recursively
+  replaces any `LocalDate`/`OffsetDateTime`/`java.util.Date` (including its `java.sql.Date`/
+  `java.sql.Timestamp`/`java.sql.Time` subclasses) with its `toString()` ISO-8601 representation
+  BEFORE a wire frame is ever built -- the same "never widen what crosses the boundary" principle
+  UUID already established (Jackson serializes a String natively, no extra module needed on ANY
+  classpath). `PluginIpcFrameCodec` deliberately does NOT register `JavaTimeModule` (removed after
+  the crash above) -- its plain `ObjectMapper` never needs to serialize a raw date/time object at
+  all now. All three real call sites (`PluginIpcHostSession.invoke`, `PluginIpcCallbackClient.
+  callBack`, `PluginIpcChildRuntime`'s response-value path) now sanitize before validating/building
+  their frame. `isJsonSafe`'s accepted-types list also keeps `LocalDate`/`OffsetDateTime`/`Date`
+  directly (harmless and correct even though sanitize removes them earlier in the real path) so the
+  predicate stays meaningful for direct unit tests and any future caller that has not sanitized yet.
+
+  Regression tests added directly against the failure shape, mirroring REG-217's own precedent:
+  `PluginIpcJsonSafeValuesTest` (runtimehost-core) -- isJsonSafe accepts bare/nested LocalDate,
+  OffsetDateTime, java.sql.Date; a sanitize-then-round-trip test for LocalDate and for java.sql.Date
+  (the real leaf type) proving the codec never needs jsr310; a diagnostics test proving
+  requireJsonSafe now reports the exact nested path+type (`invoke.args[1][0].dataValidade ...
+  java.lang.Object`) instead of just `java.util.ArrayList`; a sanitizeForWire test proving UUID/
+  String/Boolean/Number pass through untouched. The same cases mirrored into
+  NPDevRuntimeHost/src/test/java/.../PluginIpcFrameCodecTest.java (the template-tree file, not
+  independently buildable standalone, same as REG-217's own mirroring).
+
+  VERIFIED LIVE end to end (not just unit tests): restaged runtimehost-libs
+  (sync-runtimehost-libs.ps1 -BuildLocalJars), regenerated + rebuilt + rebooted wmsoffice-browser
+  (:8100, fresh H2 DB each retry). Sequence: bootstrap-admin -> login (JWT) -> seed
+  warehouse-a-small -> create a Lote (dataValidade "2027-01-01") -> create a Recebimento with one
+  RecebimentoLote (quantidade 37) -> POST .../Recebimento/invoke/EnderecarRecebimentoProcedure.
+  Before this fix: PLUGIN_EXECUTION_FAILED / PLUGIN_EXECUTION_PROCESS_KILLED at each intermediate
+  attempt (see WMS-14 for the full retry history). After this fix: HTTP 200, the full procedure
+  return value shows `Recebimento.estagio: "Enderecado"`, and a follow-up GET
+  /api/local_armazenagem_lotes confirmed 37 real rows totaling exactly quantidade=37 (one row per
+  pallet position, palletSize=1 for the seeded product), each backing LocalArmazenagem row correctly
+  marked `situacao: "Ocupado"`.
+guard:
+  kind: live
+  ref: >-
+    Pre-fix (provenRed): POST /api/runtime/aggregate/Recebimento/invoke/EnderecarRecebimentoProcedure
+    against wmsoffice-browser (:8100, fresh H2), a PreRecebimento Recebimento with one RecebimentoLote
+    (a Lote carrying dataValidade "2027-01-01"). Post-fix: same exact request/data shape, three
+    successive rebuild+reboot cycles as each fix attempt (LocalDate guess -> JavaTimeModule crash ->
+    final sanitize-based fix) was live-tested in turn. Also
+    com.finalexec.npdev.service.pluginipc.PluginIpcJsonSafeValuesTest (runtimehost-core, gradle
+    narrow-test verified green after each source change).
+  asserts: >-
+    pre-fix: FAILED/PLUGIN_EXECUTION_FAILED ("invoke.args[1] is not JSON-safe: java.util.ArrayList",
+    later "invoke.args[1][0].dataValidade is not JSON-safe: java.sql.Date" once diagnostics improved).
+    post-fix: HTTP 200, Recebimento.estagio becomes "Enderecado", and 37 real LocalArmazenagemLote
+    rows (quantidade summing to exactly 37) are created with their LocalArmazenagem marked Ocupado --
+    the JSON-safe fix unblocking WMS-14's own real allocation logic, not just a synthetic isJsonSafe
+    unit check.
+  provenRed: true

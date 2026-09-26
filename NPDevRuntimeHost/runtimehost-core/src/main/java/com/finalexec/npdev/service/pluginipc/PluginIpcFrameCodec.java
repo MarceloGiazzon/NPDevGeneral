@@ -17,6 +17,20 @@ import java.io.OutputStream;
  * {@code [4-byte big-endian length][UTF-8 JSON payload]}, one {@link PluginIpcFrame} per frame.
  * See docs/architecture/PLUGIN_PROCESS_ISOLATION_DESIGN.md section 1. Reuses Jackson (already a hard
  * dependency of this module) -- no new library.
+ *
+ * <p>Deliberately NOT registering {@code JavaTimeModule} (WMS-14, tried first and reverted): a real
+ * {@code java -jar} boot launches the plugin child process through Spring Boot's own
+ * {@code PropertiesLauncher} against the packaged fat jar (see {@code PluginIpcChildProcess}'s own
+ * SEC-5 comment), and live-fire proved {@code jackson-datatype-jsr310} is NOT reliably resolvable on
+ * that child's classloader even though the jar is physically present under {@code BOOT-INF/lib/} and
+ * listed in {@code BOOT-INF/classpath.idx} -- the child crashed with
+ * {@code NoClassDefFoundError: com/fasterxml/jackson/datatype/jsr310/JavaTimeModule} the moment this
+ * codec's {@code ObjectMapper} needed it, a strictly worse failure than the one being fixed (the whole
+ * child process dies, not just one value). {@link PluginIpcJsonSafeValues#sanitizeForWire} converts a
+ * {@code LocalDate}/{@code OffsetDateTime}/{@code java.util.Date} to its ISO-8601 string BEFORE it ever
+ * reaches this codec, so the plain {@code ObjectMapper} below -- no extra module, nothing this child's
+ * restricted classpath might not have -- never has to serialize a raw date/time object at all, the same
+ * "never widen what crosses the boundary" principle {@code UUID} already established (REG-217).
  */
 public final class PluginIpcFrameCodec {
 

@@ -1,0 +1,42 @@
+id: WMS-15
+title: >-
+  Expedicao's 'Confirmar Saida' (E15) is a plain one-click flow with no second confirmation step or
+  item listing, unlike the original GeneXus screen's explicit named-items confirmation
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-09-26
+verification: NONE
+source: >-
+  WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.4 line E15, source-verified in this session (2026-09-26)
+  while cross-referencing NPDEV_FEATURE_PLAN_2026-09-24.md's Wave 8 against the older WMS-9 record
+  (WMS-9's own E15 line had scored this "PASS by declaration" from the flow's mere existence,
+  without checking whether it actually confirms anything). Recorded first in
+  AppGen/apps/_official/WmsOffice/definition/parity.json (Wave 8 residual #3). NOT fixed this
+  session -- deliberately deferred, see detail.
+surface: >-
+  AppGen/apps/_official/WmsOffice/definition/model.json (ExpedicaoDemandaPanel's
+  ConfirmarSaidaExpedicao action/flow)
+detail: |
+  ConfirmarSaidaExpedicao (the flow behind ExpedicaoDemandaPanel's "Confirmar Saida" button) is a
+  flat invariantCheck -> updateConcept -> emitEvent -> return, the same shape as any other one-click
+  flow action -- no client-side confirmation dialog, no listing of the specific items/quantities
+  being confirmed out, before the write happens. The checklist's own line (per the original GeneXus
+  manual) expects an explicit SECOND confirmation step naming the listed items before the exit is
+  committed.
+
+  NOT fixed this session: the platform DSL has no declarative "confirmation dialog" or
+  "type/click-to-confirm gate" primitive (the same limitation WMS-9's own Z1-Z6/Reset work already
+  hit and worked around by hand-authoring reset-ambiente.html outside the generated panel system
+  entirely, since a plain declarative button would repeat the exact "zero confirmation" defect one
+  level up). Fixing E15 the same way -- a bespoke hand-authored confirmation page bypassing
+  ExpedicaoDemandaPanel -- is a real, small design decision (does it replace the panel action
+  entirely, or add a second gate in front of it?), not a typo fix, and was judged out of scope for
+  an unplanned pickup alongside R16/WMS-14 in the same session. Left here, same as WMS-9 left it,
+  for whoever picks this up next with time to make that call.
+
+  Two options for whoever closes this: (a) a hand-authored confirmation page (reset-ambiente.html's
+  own pattern) sitting in front of the existing ConfirmarSaidaExpedicao flow, listing the
+  Expedicao's itens before submitting; (b) wait for/propose a genuine declarative confirmation-gate
+  primitive in the panel-action schema, which would also unblock any other screen needing the same
+  shape (this is the second time it has been hit -- Reset first, now this).

@@ -95,8 +95,9 @@ public final class PluginIpcChildRuntime {
         );
         Map<String, Object> contextState = invoke.contextState() == null ? Map.of() : invoke.contextState();
         CapabilityResult result = invokeHandlerSafely(handler, call, contextState);
-        PluginIpcJsonSafeValues.requireJsonSafe("response.value", result.value());
-        PluginIpcFrameCodec.writeResponse(out, toResponseFrame(invoke.requestId(), result));
+        Object safeValue = PluginIpcJsonSafeValues.sanitizeForWire(result.value());
+        PluginIpcJsonSafeValues.requireJsonSafe("response.value", safeValue);
+        PluginIpcFrameCodec.writeResponse(out, toResponseFrame(invoke.requestId(), result, safeValue));
     }
 
     private static CapabilityResult invokeHandlerSafely(
@@ -128,9 +129,11 @@ public final class PluginIpcChildRuntime {
         return result;
     }
 
-    private static PluginIpcFrame.ResponseFrame toResponseFrame(String requestId, CapabilityResult result) {
+    private static PluginIpcFrame.ResponseFrame toResponseFrame(
+            String requestId, CapabilityResult result, Object safeValue
+    ) {
         if (result.ok()) {
-            return PluginIpcFrame.ResponseFrame.success(requestId, result.value());
+            return PluginIpcFrame.ResponseFrame.success(requestId, safeValue);
         }
         return PluginIpcFrame.ResponseFrame.failure(
                 requestId,
