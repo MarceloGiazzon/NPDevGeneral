@@ -1,0 +1,223 @@
+{
+  "schemaVersion": "npdev-eval-scenario-list.v1",
+  "scenarioRoot": "D:\\WorkSpace\\NPDev\\NPDev_General\\NPDevSamples\\ai-scenarios",
+  "scenarios": [
+    {
+      "scenario": "auth-disabled-protected-endpoint",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "base-ai-loop",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "behavior-mismatch",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "smoke-verification",
+      "heavy": true
+    },
+    {
+      "scenario": "command-policy-direct-node",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "command-policy",
+      "heavy": false
+    },
+    {
+      "scenario": "command-policy-direct-pwsh",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "command-policy",
+      "heavy": false
+    },
+    {
+      "scenario": "command-policy-external-curl",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "command-policy",
+      "heavy": false
+    },
+    {
+      "scenario": "command-policy-malicious-rm",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "command-policy",
+      "heavy": false
+    },
+    {
+      "scenario": "command-policy-path-traversal",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "command-policy",
+      "heavy": false
+    },
+    {
+      "scenario": "create-users-panel-procedure",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "custom-panel-invalid-binding",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "custom-panel-procedure-mismatch",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "custom-panel-unsupported",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "custom-procedure-admission-rejection",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "custom-procedure-invalid",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "custom-procedure-panel",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "invalid-contract",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "panel-arbitrary-javascript",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "panel-unknown-entity",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "procedure-raw-shell",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "procedure-unbounded-bulk",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "role-tenant-bypass",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "tenant-approval-portal",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "tenant-service-desk",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "tenant-workflow-ops",
+      "kind": "positive",
+      "expectedOutcome": "pass",
+      "expectedFailureStage": null,
+      "heavy": true
+    },
+    {
+      "scenario": "tier-skip-gratuitous-untrusted-extension",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "trusted-source-path-traversal",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "unknown-ai-schema-property",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "unsupported-surface",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-config-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "verification-external-curl",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "verification-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "workflow-invalid-transition",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    },
+    {
+      "scenario": "workflow-no-terminal-state",
+      "kind": "negative",
+      "expectedOutcome": "fail",
+      "expectedFailureStage": "ai-model-schema",
+      "heavy": false
+    }
+  ]
+}

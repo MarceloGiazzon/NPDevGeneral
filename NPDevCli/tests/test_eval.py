@@ -116,6 +116,58 @@ class EvalStageRoutingTest(unittest.TestCase):
         self.assertEqual(1, len(captured_roots))
         self.assertEqual("PASS", report["scenarios"][0]["verdict"])
 
+    def test_stop_writes_a_sentinel_that_cancels_the_run_before_its_next_scenario(self):
+        manifest = {"kind": "negative", "expectedOutcome": "fail", "expectedFailureStage": "ai-model-schema"}
+        schema_report = {"scenarios": [{"scenarioId": "sc-1", "status": "passed", "failures": []}]}
+
+        def _fake_run_schema_validation(root, scenario_root, out_dir):
+            # `eval stop` fires WHILE the (single, real) scenario is "running" -- proven here by
+            # calling it from inside the mocked engine call itself, the one place in this test that
+            # is guaranteed to run between the first and second scenario.
+            npdev_cli.run_eval_stop(argparse.Namespace(run_id="test-run"))
+            return schema_report
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch("npdev_cli._ai_build_root", return_value=Path(tmp)), \
+                 patch("npdev_cli._eval_discover_scenario_ids", return_value=["sc-1", "sc-2"]), \
+                 patch("npdev_cli._eval_read_manifest", return_value=manifest), \
+                 patch("npdev_cli._eval_run_schema_validation", side_effect=_fake_run_schema_validation):
+                report = npdev_cli.run_eval(self._run_args())
+
+        self.assertTrue(report["cancelled"])
+        self.assertFalse(report["ok"])
+        self.assertEqual("PASS", report["scenarios"][0]["verdict"])
+        self.assertEqual("SKIPPED_CANCELLED", report["scenarios"][1]["verdict"])
+
+    def test_list_scenarios_reports_kind_and_whether_the_heavy_path_is_needed(self):
+        light_manifest = {"kind": "negative", "expectedOutcome": "fail", "expectedFailureStage": "ai-model-schema"}
+        heavy_manifest = {"kind": "positive", "expectedOutcome": "pass", "expectedFailureStage": ""}
+        with patch("npdev_cli._eval_discover_scenario_ids", return_value=["light-one", "heavy-one"]), \
+             patch("npdev_cli._eval_read_manifest", side_effect=lambda root, sid:
+                   heavy_manifest if sid == "heavy-one" else light_manifest):
+            report = npdev_cli.run_eval_list_scenarios(argparse.Namespace(scenario_root=None))
+
+        by_id = {s["scenario"]: s for s in report["scenarios"]}
+        self.assertFalse(by_id["light-one"]["heavy"])
+        self.assertTrue(by_id["heavy-one"]["heavy"])
+
+    def test_list_runs_reads_every_results_json_under_the_evals_root(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            evals_root = Path(tmp) / "evals"
+            for run_id, ok in (("run-older", True), ("run-newer", False)):
+                run_dir = evals_root / run_id
+                run_dir.mkdir(parents=True)
+                (run_dir / "results.json").write_text(
+                    json.dumps({"runId": run_id, "generatedAt": "2026-01-01T00:00:00Z",
+                                "scenarioCount": 1, "passed": 1 if ok else 0, "failed": 0 if ok else 1, "ok": ok}),
+                    encoding="utf-8")
+            with patch("npdev_cli._ai_build_root", return_value=Path(tmp)):
+                report = npdev_cli.run_eval_list_runs(argparse.Namespace())
+
+        run_ids = {r["runId"] for r in report["runs"]}
+        self.assertEqual({"run-older", "run-newer"}, run_ids)
+
 
 class EvalCompareTest(unittest.TestCase):
     def _write_results(self, directory: Path, run_id: str, scenarios: list[dict]) -> None:

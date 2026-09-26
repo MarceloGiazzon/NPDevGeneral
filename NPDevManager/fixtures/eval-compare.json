@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "npdev-eval-compare-report.v1",
+  "runA": "eval-2026-09-26-001",
+  "runB": "eval-2026-09-26-002",
+  "regressed": [],
+  "improved": [],
+  "unchanged": 0,
+  "onlyInA": [
+    "panel-arbitrary-javascript"
+  ],
+  "onlyInB": [
+    "trusted-source-path-traversal"
+  ],
+  "ok": true
+}
