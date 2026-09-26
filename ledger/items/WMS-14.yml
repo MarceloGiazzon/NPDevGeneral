@@ -1,0 +1,77 @@
+id: WMS-14
+title: >-
+  Recebimento's PreRecebimento->Enderecado lifecycle transition was a bare estagio field flip with
+  no allocation side effect -- fixed 2026-09-26
+type: BUG
+severity: MEDIUM
+status: DONE
+opened: 2026-09-26
+closed: 2026-09-26
+verification: VERIFIED_LIVE
+source: >-
+  WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.3 line R16, scored FAIL in this session (2026-09-26) while
+  cross-referencing NPDEV_FEATURE_PLAN_2026-09-24.md's Wave 8 against the older WMS-9 record
+  (WMS-9's own R15-R16 line had scored this "PASS by declaration" without a live browser check --
+  reading the actual autoPanel transaction.actions for Recebimento found no custom procedure at all
+  for this transition, only the generic lifecycle button). Recorded first in
+  AppGen/apps/_official/WmsOffice/definition/parity.json (Wave 8 residual #2). Fixed same session.
+surface: >-
+  AppGen/apps/_official/WmsOffice/definition/model.json (Recebimento autoPanel transaction.actions,
+  new EnderecarRecebimentoProcedure), AppGen/apps/_official/WmsOffice/definition/capabilities/
+  alocacao/src/main/java/com/wmsoffice/capabilities/alocacao/AllocationCapability.java (new
+  enderecarRecebimento method), capabilities/alocacao/capability.plugin.json
+detail: |
+  Before this fix, PreRecebimento->Enderecado was covered only by the autoPanel's generic
+  lifecycle-transition button (a plain estagio field write) -- it never called any allocation logic
+  or wrote a LocalArmazenagemLote row, contradicting the checklist's own premise that this stage
+  "computes destination positions before goods arrive." A flow named AlocarRecebimento (calling the
+  alocacao.alocarRecebimento capability operation) already existed in the model but was completely
+  orphaned -- not referenced by any panel action or procedure anywhere.
+
+  Fixed by adding a new capability method, AllocationCapability.enderecarRecebimento, which puts
+  away every RecebimentoLote row of a Recebimento in one call across the whole entidade's storage
+  (not rua-scoped, unlike the existing alocarRecebimentoPorRua, which confirms a specific incoming
+  ruaId a human already picked -- "Enderecado" means choosing destinations, not confirming one).
+  Reuses the existing alocarComCandidatos eligibility/sort/greedy-allocate core and folds the same
+  locais/ocupacoes/lotes join alocarRecebimentoPorRua already establishes in Java (the procedure-step
+  grammar's mapList has no cross-list join primitive). A new EnderecarRecebimentoProcedure loads
+  RecebimentoLote/Lote/LocalArmazenagem/LocalArmazenagemLote/Produto (listConcepts+mapList, same
+  unfiltered-then-Java-filter shape ProcessarRecebimentoArquivoOnCommitProcedure already uses),
+  calls the new capability op, upserts LocalArmazenagemLote per returned alocacao (same for-each
+  upsert shape as that onCommit procedure), marks each used LocalArmazenagem Ocupado, then patches
+  Recebimento.estagio to Enderecado. Wired into the Recebimento autoPanel as a new "Enderecar" action
+  (visibleWhen estagio=='PreRecebimento'), replacing the generic transition -- same precedent as
+  WMS-9 C7's ConfirmarMovimentacaoExpedicaoProcedure for Expedicao's DemandaGerada transition.
+
+  Verified: npdev validate model (0 errors, 58 pre-existing ux-metadata warnings, unchanged
+  baseline, confirming the new procedure/capability wiring introduced no schema violations).
+
+  LIVE REST VERIFICATION (2026-09-26, same session): the first live attempt hit a genuine, separate
+  PLATFORM bug, not an app-model defect -- filed and fixed as REG-249 (PluginIpcJsonSafeValues had no
+  case for a "date"-typed concept field crossing the plugin process-isolation IPC boundary; WmsOffice's
+  H2Local storage returns a raw java.sql.Date for Lote.dataValidade, which the new
+  EnderecarRecebimentoProcedure's own listConcepts->mapList->callCapability chain copies, the same bug
+  shape REG-217 already fixed for UUID but left open for date/time types). REG-249's own detail has the
+  full three-attempt fix history (LocalDate guess -> JavaTimeModule child-process crash -> final
+  sanitize-to-string fix) and its own live proof.
+
+  Once REG-249 landed, end-to-end proof against wmsoffice-browser (:8100, fresh H2 DB): bootstrap-admin
+  -> login (JWT) -> seed warehouse-a-small -> create a Lote (dataValidade 2027-01-01) -> create a
+  Recebimento with one RecebimentoLote (quantidade 37) -> POST
+  /api/runtime/aggregate/Recebimento/invoke/EnderecarRecebimentoProcedure. Result: HTTP 200, the
+  procedure's own return value shows Recebimento.estagio: "Enderecado" (not PreRecebimento). A
+  follow-up GET /api/local_armazenagem_lotes confirmed 37 real rows created, quantidade summing to
+  exactly 37 (the requested amount; palletSize=1 for the seeded product, so one row per position), each
+  backing LocalArmazenagem row correctly flipped to situacao: "Ocupado" -- the Enderecado transition
+  now genuinely computes and persists destination positions, not a bare field flip.
+guard:
+  kind: live
+  ref: >-
+    POST /api/runtime/aggregate/Recebimento/invoke/EnderecarRecebimentoProcedure against
+    wmsoffice-browser (:8100, fresh H2), a PreRecebimento Recebimento with one RecebimentoLote
+    (quantidade 37) over a Lote seeded via warehouse-a-small
+  asserts: >-
+    HTTP 200; response's recebimentoEnderecado.estagio == "Enderecado"; a follow-up GET
+    /api/local_armazenagem_lotes shows 37 new rows totaling quantidade=37, each backing
+    LocalArmazenagem row marked situacao="Ocupado" -- real allocation, not just a status flip.
+  provenRed: true

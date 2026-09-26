@@ -32,12 +32,13 @@ public final class PluginIpcCallbackClient {
     }
 
     public CapabilityResult callBack(String capability, String operation, List<Object> args) {
-        PluginIpcJsonSafeValues.requireJsonSafeArgs(capability + "." + operation + ".args", args);
+        List<Object> safeArgs = PluginIpcJsonSafeValues.sanitizeArgsForWire(args);
+        PluginIpcJsonSafeValues.requireJsonSafeArgs(capability + "." + operation + ".args", safeArgs);
         String callbackId = UUID.randomUUID().toString();
         try {
             synchronized (out) {
                 PluginIpcFrameCodec.writeCallback(out, new PluginIpcFrame.CallbackFrame(
-                        requestId, callbackId, capability, operation, args
+                        requestId, callbackId, capability, operation, safeArgs
                 ));
             }
             while (true) {

@@ -1,0 +1,47 @@
+id: WMS-16
+title: >-
+  Item-level wizard sub-panels (Adicionar Itens selection, default-1-position, row clone,
+  duplicate-product refusal, computed Total) are not declared on RecebimentoWorkbench or
+  ExpedicaoWorkbench at all -- BLOCKER declaration gap, not a partial defect
+type: GAP
+severity: MEDIUM
+status: OPEN
+opened: 2026-09-26
+verification: NONE
+source: >-
+  WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.3 lines R6-R12 (Recebimento) and its Expedicao analogue,
+  originally flagged as a BLOCKER declaration gap in WMS-9 (2026-09-18/20: "the item-level wizard
+  ... is not declared on RecebimentoWorkbench at all"). Re-surfaced 2026-09-26 while
+  cross-referencing NPDEV_FEATURE_PLAN_2026-09-24.md's Wave 8 against the older WMS-9 record --
+  unlike WMS-9's other named residuals, this one had never been picked up by any later session and
+  had no ledger item of its own tracking it (WMS-9 recorded it only in prose). Recorded first in
+  AppGen/apps/_official/WmsOffice/definition/parity.json (Wave 8 residual #4). NOT started this
+  session.
+surface: >-
+  AppGen/apps/_official/WmsOffice/definition/model.json (Recebimento and Expedicao autoPanels /
+  aggregate declarations)
+detail: |
+  The original GeneXus Recebimento and Expedicao screens both have an item-level entry wizard: an
+  "Adicionar Itens" selection sub-panel, a default-1-position convenience, row clone (duplicate a
+  row's fields into a new one), duplicate-product refusal (reject adding the same produto twice to
+  one document), and a computed running Total. None of this is declared anywhere on the Recebimento
+  or Expedicao aggregate/autoPanel today -- not a partially-working feature, a genuinely absent
+  declaration surface, which is why WMS-9 called it a BLOCKER rather than a scored FAIL line.
+
+  This is the largest-scoped of the four Wave 8 residuals (the other three -- WMS-13's maxQuantity
+  fix, WMS-14's Enderecado side effect, WMS-15's Confirmar Saida confirmation gap -- were each a
+  single procedure/capability/flow change; this one needs new sub-panel declarations, a
+  duplicate-check invariant or procedure guard, and a computed-total field/expression across TWO
+  aggregates). Not attempted this session given the other three residuals' own scope already filled
+  the session's available time; flagged here so it has its own tracked record instead of only living
+  in WMS-9's prose and this parity.json snapshot.
+
+  Suggested scoping for whoever picks this up: start with ONE aggregate (Recebimento, since
+  RecebimentoLote is the simpler of the two collections) rather than both at once; check whether the
+  autoPanel schema already supports a nested "add sub-panel" selection surface before assuming new
+  generator work is needed (RecomputarOcupacaoOnCommitProcedure's own Movimento itens.posicoes
+  nesting, and MovimentoLivrePanel's rowOps:["add"]/addFormFields pattern at model.json's
+  MovimentoLivrePanel declaration, may already cover the "Adicionar Itens" half without new
+  platform code); duplicate-product refusal is likely an aggregate-level invariant expression, same
+  shape as PosicaoDentroDoMaximo; computed Total may need a balances[]-style declarative sum or a
+  procedure-computed field depending on what the aggregate schema already supports.

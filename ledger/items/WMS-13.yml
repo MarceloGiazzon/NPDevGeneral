@@ -1,0 +1,58 @@
+id: WMS-13
+title: >-
+  MovimentoItemPosicao.maxQuantity resolves to null for every posicao (OcupacaoDisponivelQuery has
+  no 'disponivel' field), blocking every Movimento Livre (MVL) save from ever succeeding -- fixed
+  2026-09-26
+type: BUG
+severity: HIGH
+status: DONE
+opened: 2026-09-26
+closed: 2026-09-26
+verification: LOCAL_PROOF_DONE
+source: >-
+  Root-caused twice before without a fix (WMS-9 2026-09-19, re-confirmed WMS-11 2026-09-20, "flag
+  for the item owner if a dedicated fix item is wanted" -- never filed). Found orphaned in
+  AppGen/apps/_official/WmsOffice/definition/parity.json (Wave 8 residual #1, written 2026-09-26
+  session start) while cross-referencing NPDEV_FEATURE_PLAN_2026-09-24.md's Wave 8 against the
+  older, already-closed WMS-7/8/9/11/12 record. Fixed and verified live the same session, before
+  this item was filed -- filed after the fact purely so the fix has a permanent record and this
+  class of "found twice, fixed neither time" gap does not recur a third time.
+surface: >-
+  AppGen/apps/_official/WmsOffice/definition/model.json (Movimento aggregate's
+  itens.posicoes.lookupFields, OcupacaoDisponivelQuery)
+detail: |
+  MovimentoItemPosicao.maxQuantity is a lookupField sourced from OcupacaoDisponivelQuery.disponivel
+  (model.json Movimento aggregate declaration), but OcupacaoDisponivelQuery was a bare query over
+  LocalArmazenagemLote with no field or computed column named 'disponivel' -- so maxQuantity resolved
+  to null for every posicao regardless of real stock, and the PosicaoDentroDoMaximo invariant
+  (quantidade <= maxQuantity) could never pass for any nonzero Origem quantity. Every MVL save failed
+  with "Aggregate Movimento invariant(s) violated: PosicaoDentroDoMaximo" -- the first successful MVL
+  save in this app's history had never happened.
+
+  Fixed 2026-09-26 (same session, before this item existed) by pointing the lookupField's valueField
+  at OcupacaoDisponivelQuery's real 'quantidade' field instead of the nonexistent 'disponivel'.
+  WMS-9's own root-cause note warned this one-line fix is correct for Origem (cannot remove more than
+  what is there) but wrong for Destino (whose real max is remaining bin CAPACITY, which
+  LocalArmazenagem has no field for) -- accepted as a known simplification for this slice: the
+  PosicaoDentroDoMaximo invariant only constrains Origem (papel != 'Origem' || quantidade <=
+  maxQuantity in the aggregate's own invariant expression), so Destino rows are unaffected by
+  whatever maxQuantity resolves to. A role-conditional lookupField or a real capacity field on
+  LocalArmazenagem remains future work if Destino ever needs its own ceiling.
+
+  Verified live: npdev validate model (0 errors, 58 pre-existing ux-metadata warnings, unchanged
+  baseline). Regenerated+built+booted wmsoffice-browser (port 8100, fresh H2 DB): a balanced Origem
+  40 / Destino 40 Movimento draft committed successfully via POST
+  /api/runtime/aggregate/Movimento -- the first successful MVL save in this app's history. An
+  over-limit Origem quantity (999 against 100 occupied) was still correctly refused with the same
+  PosicaoDentroDoMaximo business-language message, confirming the invariant was fixed, not
+  neutered.
+guard:
+  kind: manual
+  ref: >-
+    POST /api/runtime/aggregate/Movimento against wmsoffice-browser (port 8100, fresh H2), balanced
+    Origem 40 / Destino 40 draft
+  asserts: >-
+    Save succeeds (200, committed) for a within-capacity Origem quantity; an over-limit Origem
+    quantity (999 against 100 occupied) is still refused with PosicaoDentroDoMaximo's business-
+    language message, proving the fix constrains rather than removes the invariant.
+  provenRed: false

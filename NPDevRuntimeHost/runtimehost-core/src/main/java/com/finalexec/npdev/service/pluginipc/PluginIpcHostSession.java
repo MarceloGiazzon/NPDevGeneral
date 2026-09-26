@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -81,7 +82,8 @@ public final class PluginIpcHostSession {
         Objects.requireNonNull(childOut, "childOut");
         Objects.requireNonNull(childIn, "childIn");
 
-        PluginIpcJsonSafeValues.requireJsonSafeArgs("invoke.args", call.args());
+        List<Object> safeArgs = PluginIpcJsonSafeValues.sanitizeArgsForWire(call.args());
+        PluginIpcJsonSafeValues.requireJsonSafeArgs("invoke.args", safeArgs);
         String requestId = UUID.randomUUID().toString();
         try {
             synchronized (childIn) {
@@ -91,7 +93,7 @@ public final class PluginIpcHostSession {
                         call.capabilityType(),
                         call.adapterId(),
                         call.operation(),
-                        call.args(),
+                        safeArgs,
                         call.correlationId(),
                         call.idempotencyKey(),
                         contextState == null ? Map.of() : contextState,
