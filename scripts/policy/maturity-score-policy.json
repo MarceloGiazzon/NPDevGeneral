@@ -122,7 +122,7 @@
       "profiles": {
         "product": 94
       },
-      "reason": "Trusted-source scenarios are deferred by Beta0 Path B and cannot support a near-100 product claim."
+      "reason": "The create-users-panel-procedure trusted-source scenario is deferred by Beta0 Path B and cannot support a near-100 product claim (trusted-source-path-traversal was reactivated in Wave 7, 2026-09-26)."
     },
     {
       "id": "custom-procedure-or-panel-incomplete",

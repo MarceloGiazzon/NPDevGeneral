@@ -167,16 +167,10 @@ final class UntrustedExtensionManifest {
         if (!Set.of("procedure", "panel", "widget").contains(entry.kind())) {
             throw new IllegalStateException("Unsupported untrusted extension kind: " + entry.kind());
         }
-        if (!isSafeRelativePath(entry.relativePath())) {
-            throw new IllegalStateException("Unsafe untrusted extension relative path: " + entry.relativePath());
-        }
         if (!entry.sha256().matches("[a-f0-9]{64}")) {
             throw new IllegalStateException("Untrusted extension manifest entry has invalid SHA-256: " + entry.relativePath());
         }
-        Path source = sourceRoot.resolve(entry.relativePath()).normalize();
-        if (!source.startsWith(sourceRoot) || !Files.isRegularFile(source)) {
-            throw new IllegalStateException("Untrusted extension file is missing or outside the model directory: " + entry.relativePath());
-        }
+        resolveWithinSourceRoot(sourceRoot, entry.relativePath());
         if ("procedure".equals(entry.kind())) {
             if (!isJavaIdentifier(entry.className()) || !isJavaIdentifier(entry.method())) {
                 throw new IllegalStateException("Untrusted extension procedure className/method must be Java identifiers: " + entry.relativePath());
@@ -201,13 +195,7 @@ final class UntrustedExtensionManifest {
                     + TRUTH_STATUSES + ": " + entry.relativePath());
         }
         for (String test : entry.tests()) {
-            if (!isSafeRelativePath(test)) {
-                throw new IllegalStateException("Unsafe untrusted extension test path: " + test);
-            }
-            Path testPath = sourceRoot.resolve(test).normalize();
-            if (!testPath.startsWith(sourceRoot) || !Files.isRegularFile(testPath)) {
-                throw new IllegalStateException("Untrusted extension declares a test file that is missing: " + test);
-            }
+            resolveWithinSourceRoot(sourceRoot, test);
         }
         // Path A P5.1 (docs/architecture/NPDEV_BOX_OBJECT_TRUTH_VISION.md's Truth Classification):
         // "truth classification should never block creation, it only blocks false claims" -- T0-T3
@@ -238,7 +226,7 @@ final class UntrustedExtensionManifest {
     }
 
     static TrustedProcedure toProcedure(TrustedReference reference, ManifestEntry entry, Path sourceRoot) throws IOException {
-        Path sourcePath = sourceRoot.resolve(entry.relativePath()).normalize();
+        Path sourcePath = resolveWithinSourceRoot(sourceRoot, entry.relativePath());
         String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
         validateJavaSource(source, entry.relativePath());
         return new TrustedProcedure(
@@ -259,7 +247,7 @@ final class UntrustedExtensionManifest {
     }
 
     static TrustedPanel toPanel(TrustedReference reference, ManifestEntry entry, Path sourceRoot) throws IOException {
-        Path sourcePath = sourceRoot.resolve(entry.relativePath()).normalize();
+        Path sourcePath = resolveWithinSourceRoot(sourceRoot, entry.relativePath());
         String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
         validatePanelSource(source, entry.relativePath());
         String route = firstNonBlank(reference.route(), entry.runtimeBinding().substring("panel:".length()));
@@ -284,17 +272,44 @@ final class UntrustedExtensionManifest {
     }
 
     static TrustedWidget toWidget(ManifestEntry entry, Path sourceRoot) throws IOException {
-        Path sourcePath = sourceRoot.resolve(entry.relativePath()).normalize();
+        Path sourcePath = resolveWithinSourceRoot(sourceRoot, entry.relativePath());
         String source = Files.readString(sourcePath, StandardCharsets.UTF_8);
         validatePanelJavaScript(source, entry.relativePath());
         return new TrustedWidget(entry.relativePath(), source);
     }
 
     static void validateHash(Path sourceRoot, ManifestEntry entry) throws IOException {
-        String actual = sha256(sourceRoot.resolve(entry.relativePath()).normalize());
+        String actual = sha256(resolveWithinSourceRoot(sourceRoot, entry.relativePath()));
         if (!actual.equals(entry.sha256())) {
             throw new IllegalStateException("Untrusted extension SHA-256 mismatch for " + entry.relativePath());
         }
+    }
+
+    /**
+     * Resolves {@code relativePath} against {@code sourceRoot} and rejects anything that would
+     * escape it: syntactic traversal/absolute/UNC forms (via {@link #isSafeRelativePath}) and, since
+     * that check cannot see through the filesystem, a symlink whose real target lands outside the
+     * real source root (checked via {@link Path#toRealPath}).
+     */
+    private static Path resolveWithinSourceRoot(Path sourceRoot, String relativePath) {
+        if (!isSafeRelativePath(relativePath)) {
+            throw new IllegalStateException("Unsafe untrusted extension relative path: " + relativePath);
+        }
+        Path candidate = sourceRoot.resolve(relativePath).normalize();
+        if (!candidate.startsWith(sourceRoot) || !Files.isRegularFile(candidate)) {
+            throw new IllegalStateException("Untrusted extension file is missing or outside the model directory: " + relativePath);
+        }
+        try {
+            Path realSourceRoot = sourceRoot.toRealPath();
+            Path realCandidate = candidate.toRealPath();
+            if (!realCandidate.startsWith(realSourceRoot)) {
+                throw new IllegalStateException(
+                        "Untrusted extension file resolves outside the model directory via a symlink: " + relativePath);
+            }
+        } catch (IOException e) {
+            throw new IllegalStateException("Untrusted extension file could not be resolved: " + relativePath, e);
+        }
+        return candidate;
     }
 
     static String generationManifest(

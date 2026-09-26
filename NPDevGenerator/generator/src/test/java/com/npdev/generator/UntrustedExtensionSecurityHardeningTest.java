@@ -9,6 +9,7 @@ import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.kernel.security.UntrustedExtensionBytecodeInspector;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -235,6 +236,70 @@ class UntrustedExtensionSecurityHardeningTest {
                 <!doctype html>
                 <html><head><style>body { background: url(//example.com/x.png); }</style></head><body></body></html>
                 """);
+    }
+
+    @Test
+    void manifestRejectsRelativePathTraversalOutsideSourceRoot() throws Exception {
+        Path modelRoot = Files.createTempDirectory("npdev-trusted-source-traversal-");
+        Path modelPath = modelRoot.resolve("model.json");
+        Files.writeString(modelPath, "{}");
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"),
+                panelManifestWithRelativePath("../outside.html", "0".repeat(64)));
+
+        Path out = Files.createTempDirectory("npdev-trusted-source-traversal-out-");
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath));
+        assertTrue(error.getMessage().contains("Unsafe untrusted extension relative path"), error.getMessage());
+    }
+
+    @Test
+    void manifestRejectsSymlinkThatResolvesOutsideSourceRoot() throws Exception {
+        Path modelRoot = Files.createTempDirectory("npdev-trusted-source-symlink-");
+        Path modelPath = modelRoot.resolve("model.json");
+        Files.writeString(modelPath, "{}");
+        Path outside = Files.createTempDirectory("npdev-trusted-source-symlink-outside-");
+        Path secret = outside.resolve("secret-panel.html");
+        Files.writeString(secret, "<!doctype html><html><body>secret</body></html>");
+
+        Path linkedPanel = modelRoot.resolve("panel/user-admin-panel.html");
+        Files.createDirectories(linkedPanel.getParent());
+        try {
+            Files.createSymbolicLink(linkedPanel, secret);
+        } catch (IOException | UnsupportedOperationException e) {
+            // Creating a symlink needs elevated privilege on some Windows configurations
+            // (no Developer Mode). The containment check this test exists to prove still runs
+            // wherever symlink creation is actually possible, including CI.
+            return;
+        }
+        Files.writeString(modelRoot.resolve("untrusted-extension-manifest.json"), panelManifest(sha256(secret)));
+
+        Path out = Files.createTempDirectory("npdev-trusted-source-symlink-out-");
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> new UntrustedExtensionEmitter(new GeneratedSourceWriter(out, new RegenerationPolicy())).emit(panelModel(), modelPath));
+        assertTrue(error.getMessage().contains("symlink"), error.getMessage());
+    }
+
+    private static String panelManifestWithRelativePath(String relativePath, String hash) {
+        return """
+                {
+                  "schemaVersion": "npdev-untrusted-extension-manifest.v1",
+                  "scenarioId": "trusted-source-security-path-escape",
+                  "policyVersion": "cp10",
+                  "expectedOutcome": "fail",
+                  "entries": [
+                    {
+                      "entryId": "panel-path-escape",
+                      "kind": "panel",
+                      "relativePath": "%s",
+                      "language": "html+javascript",
+                      "sha256": "%s",
+                      "runtimeBinding": "panel:/users",
+                      "requiredRole": "admin",
+                      "tenantScoped": true
+                    }
+                  ]
+                }
+                """.formatted(relativePath, hash);
     }
 
     private static void assertProcedureRejected(String caseName, String source) throws Exception {
