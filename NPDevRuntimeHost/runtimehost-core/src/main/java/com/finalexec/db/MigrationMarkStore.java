@@ -46,7 +46,8 @@ public final class MigrationMarkStore {
             String markedFingerprint,
             long markedAtUtc,
             String markedBy,
-            String note
+            String note,
+            boolean forced
     ) {
     }
 
@@ -66,7 +67,8 @@ public final class MigrationMarkStore {
                         + "marked_at_utc BIGINT NOT NULL, "
                         + "marked_by " + InternalDdlTypes.text() + ", "
                         + "note " + InternalDdlTypes.text() + ", "
-                        + "from_fingerprint " + InternalDdlTypes.text() + ")")
+                        + "from_fingerprint " + InternalDdlTypes.text() + ", "
+                        + "forced " + SqlDialects.active().portableColumnType("BOOLEAN") + ")")
         )) {
             statement.executeUpdate();
         }
@@ -88,6 +90,19 @@ public final class MigrationMarkStore {
                 statement.executeUpdate();
             }
         }
+        // Wave 5 (B6 lift): audits whether this mark was recorded despite `npdev db mark-done` finding
+        // live-vs-expected drift (an operator overriding with --force) -- same additive, guarded
+        // upgrade-path discipline as from_fingerprint above, for the same reason: this runs on every
+        // boot via findMatching, so the guard must be unconditional-safe, not one-time.
+        if (!hasForcedColumn(connection)) {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    SqlDialects.active().guardedAddColumn(TABLE, "forced",
+                            "ALTER TABLE " + TABLE + " ADD COLUMN forced "
+                            + SqlDialects.active().portableColumnType("BOOLEAN"))
+            )) {
+                statement.executeUpdate();
+            }
+        }
         // REG-30: a duplicate mark for the same transition can no longer be inserted twice. A unique
         // index (not a named ADD CONSTRAINT) so it is trivially idempotent across repeated
         // ensureTable calls; NULLs are never considered equal by a unique index on either engine, so
@@ -102,11 +117,19 @@ public final class MigrationMarkStore {
     }
 
     private static boolean hasFromFingerprintColumn(Connection connection) throws SQLException {
+        return hasColumn(connection, "from_fingerprint");
+    }
+
+    private static boolean hasForcedColumn(Connection connection) throws SQLException {
+        return hasColumn(connection, "forced");
+    }
+
+    private static boolean hasColumn(Connection connection, String columnName) throws SQLException {
         DatabaseMetaData metadata = connection.getMetaData();
         for (String candidate : List.of(TABLE.toLowerCase(Locale.ROOT), TABLE.toUpperCase(Locale.ROOT))) {
             try (ResultSet resultSet = metadata.getColumns(null, null, candidate, null)) {
                 while (resultSet.next()) {
-                    if ("from_fingerprint".equalsIgnoreCase(resultSet.getString("COLUMN_NAME"))) {
+                    if (columnName.equalsIgnoreCase(resultSet.getString("COLUMN_NAME"))) {
                         return true;
                     }
                 }
@@ -117,15 +140,24 @@ public final class MigrationMarkStore {
 
     /** Inserts a new mark and returns it (with its generated id/timestamp). {@code fromFingerprint}
      * is the live stored fingerprint the operator observed the database at; the mark only matches a
-     * future boot whose OWN stored fingerprint still equals it (REG-28). */
+     * future boot whose OWN stored fingerprint still equals it (REG-28). Equivalent to {@code
+     * insert(dataSource, fromFingerprint, markedFingerprint, markedBy, note, false)}. */
     public static Mark insert(DataSource dataSource, String fromFingerprint, String markedFingerprint, String markedBy, String note) {
+        return insert(dataSource, fromFingerprint, markedFingerprint, markedBy, note, false);
+    }
+
+    /** Wave 5 (B6 lift): the {@code forced} form {@code npdev db mark-done} uses when the operator
+     * overrides a live-vs-expected drift refusal with {@code --force} -- audited on the row so the
+     * history shows it was not a clean match. */
+    public static Mark insert(DataSource dataSource, String fromFingerprint, String markedFingerprint,
+            String markedBy, String note, boolean forced) {
         String id = UUID.randomUUID().toString();
         long markedAtUtc = System.currentTimeMillis();
         try (Connection connection = dataSource.getConnection()) {
             ensureTable(connection);
             try (PreparedStatement statement = connection.prepareStatement(
-                    "INSERT INTO " + TABLE + " (id, from_fingerprint, marked_fingerprint, marked_at_utc, marked_by, note) "
-                            + "VALUES (?, ?, ?, ?, ?, ?)"
+                    "INSERT INTO " + TABLE + " (id, from_fingerprint, marked_fingerprint, marked_at_utc, marked_by, note, forced) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?)"
             )) {
                 statement.setString(1, id);
                 if (fromFingerprint == null || fromFingerprint.isBlank()) {
@@ -145,12 +177,13 @@ public final class MigrationMarkStore {
                 } else {
                     statement.setString(6, note);
                 }
+                statement.setBoolean(7, forced);
                 statement.executeUpdate();
             }
         } catch (SQLException exception) {
             throw new IllegalStateException("Failed inserting migration mark", exception);
         }
-        return new Mark(id, fromFingerprint, markedFingerprint, markedAtUtc, markedBy, note);
+        return new Mark(id, fromFingerprint, markedFingerprint, markedAtUtc, markedBy, note, forced);
     }
 
     /** All marks, most-recently-submitted first. Never throws -- an unreachable/missing table (a
@@ -160,7 +193,7 @@ public final class MigrationMarkStore {
         try (Connection connection = dataSource.getConnection()) {
             ensureTable(connection);
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT id, from_fingerprint, marked_fingerprint, marked_at_utc, marked_by, note FROM " + TABLE
+                    "SELECT id, from_fingerprint, marked_fingerprint, marked_at_utc, marked_by, note, forced FROM " + TABLE
                             + " ORDER BY marked_at_utc DESC");
                  ResultSet resultSet = statement.executeQuery()) {
                 while (resultSet.next()) {
@@ -170,7 +203,8 @@ public final class MigrationMarkStore {
                             resultSet.getString(3),
                             resultSet.getLong(4),
                             resultSet.getString(5),
-                            resultSet.getString(6)));
+                            resultSet.getString(6),
+                            resultSet.getBoolean(7)));
                 }
             }
         } catch (SQLException exception) {
@@ -193,7 +227,7 @@ public final class MigrationMarkStore {
         try (Connection connection = dataSource.getConnection()) {
             ensureTable(connection);
             try (PreparedStatement statement = connection.prepareStatement(
-                    "SELECT id, from_fingerprint, marked_fingerprint, marked_at_utc, marked_by, note FROM " + TABLE
+                    "SELECT id, from_fingerprint, marked_fingerprint, marked_at_utc, marked_by, note, forced FROM " + TABLE
                             + " WHERE from_fingerprint = ? AND marked_fingerprint = ? ORDER BY marked_at_utc DESC")) {
                 statement.setString(1, fromFingerprint);
                 statement.setString(2, toFingerprint);
@@ -207,7 +241,8 @@ public final class MigrationMarkStore {
                             resultSet.getString(3),
                             resultSet.getLong(4),
                             resultSet.getString(5),
-                            resultSet.getString(6)));
+                            resultSet.getString(6),
+                            resultSet.getBoolean(7)));
                 }
             }
         } catch (SQLException exception) {
