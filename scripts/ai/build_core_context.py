@@ -85,7 +85,7 @@ def build_bundle() -> tuple[str, dict]:
         "prompt (behind a cache breakpoint); put the specific app request AFTER it.\n"
     )
 
-    authoring_content = root / "content" / "authoring-for-ai.json"
+    authoring_content = root / "docs" / "content" / "authoring-for-ai.json"
     add("Authoring contract", authoring_content, render_authoring_contract(authoring_content))
 
     for name in SCHEMAS:

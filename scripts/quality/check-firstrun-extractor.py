@@ -192,7 +192,7 @@ check("a section that exists with no sh fence is an empty list, not None",
 
 # --------------------------------------------------------------------------- live: the anchors
 
-readme_content = json.loads((REPO_ROOT / "content" / "readme.json").read_text(encoding="utf-8"))
+readme_content = json.loads((REPO_ROOT / "docs" / "content" / "readme.json").read_text(encoding="utf-8"))
 live = ex.extract_section_commands(readme_content, QUICKSTART_HEADING)
 if live is None:
     failures.append(
@@ -211,7 +211,7 @@ else:
         if "\r" in command:
             failures.append(f"LIVE: extracted command carries a stray CR: {command!r}")
 
-yfa_content_path = REPO_ROOT / "content" / "your-first-app.json"
+yfa_content_path = REPO_ROOT / "docs" / "content" / "your-first-app.json"
 if yfa_content_path.is_file():
     # Section 6 of the harness selects step 5's closing commit block BY CONTENT, because it used to
     # select it by index -- and a `### Let it do that for you` sub-section inserted a fence ahead of
@@ -231,7 +231,7 @@ if yfa_content_path.is_file():
 # lost its `sh` lang, a command corrupted by an editorial pass. That is the doc-rot class this
 # file's LIVE anchors exist to catch in milliseconds; the same rename that once silently disarmed
 # the README quickstart extraction (## Quickstart -> ## See it run) would come through here first.
-getStarted_content_path = REPO_ROOT / "content" / "getting-started.json"
+getStarted_content_path = REPO_ROOT / "docs" / "content" / "getting-started.json"
 if getStarted_content_path.is_file():
     gs = json.loads(getStarted_content_path.read_text(encoding="utf-8"))
 
