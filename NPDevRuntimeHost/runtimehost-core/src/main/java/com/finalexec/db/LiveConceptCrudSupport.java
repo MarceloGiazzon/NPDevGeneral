@@ -71,13 +71,21 @@ public final class LiveConceptCrudSupport {
      * {@link NewConceptSchemaProvisioner} uses to decide whether a concept gets a table -- a concept
      * only gets a live REST binding if it is exactly the shape that class would provision a table
      * for, so "has a table" and "is CRUD-reachable" can never drift apart.
+     *
+     * <p>Wave 6.3: passes {@code liveModel} itself as the "existing concepts" argument, not some
+     * transient pre-reload snapshot -- this runs per REQUEST, long after any reload completed, so by
+     * the time it runs, every concept a reload's own {@code outOfScopeReason(concept, oldModel)} check
+     * approved is already reflected in {@code liveModel}. A reference field's target existing in the
+     * CURRENT model is exactly the right question here, whether that target was there from original
+     * generation or was itself live-provisioned earlier.
      */
     public static Optional<LiveConceptOps> resolve(
             CompiledModel liveModel, String requestedRoute, ConceptGateway gateway, ExecutionContext context
     ) {
         for (CompiledConcept concept : liveModel.getConcepts()) {
             String route = SqlIdentifierSupport.aliasPreservingTableName(concept, liveModel.getContexts());
-            if (route.equals(requestedRoute) && NewConceptSchemaProvisioner.outOfScopeReason(concept) == null) {
+            if (route.equals(requestedRoute)
+                    && NewConceptSchemaProvisioner.outOfScopeReason(concept, liveModel) == null) {
                 return Optional.of(buildOps(concept, route, gateway, context));
             }
         }

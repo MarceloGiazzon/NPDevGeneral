@@ -1368,6 +1368,28 @@ pub async fn run_impact_cli(
     run_json(python_exe, npdev_cli, &args, java_home, "impact").await
 }
 
+/// Wave 6.1 (the Manager's Studio tab, NPDEV_FEATURE_PLAN_2026-09-24.md): wraps `npdev monitor
+/// studio-apply` -- classifies an already-written model.json against its pre-write backup and, if
+/// live-reloadable, pushes it into the running app (B28 model-reload, plus the metadata-hotswap
+/// display-catalog patch for a metadata-only change). No `fake_mode` fixture yet -- this is a brand
+/// new screen verified against a real running app, not the Manager's existing headless-mode suite.
+pub async fn run_monitor_studio_apply(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    model_path: &str,
+    baseline_path: &str,
+) -> Result<Value, String> {
+    let args = vec![
+        "monitor".to_string(), "studio-apply".to_string(), "--json".to_string(),
+        "--app-dir".to_string(), app_dir.to_string(),
+        "--model-path".to_string(), model_path.to_string(),
+        "--baseline-path".to_string(), baseline_path.to_string(),
+    ];
+    run_json(python_exe, npdev_cli, &args, java_home, "monitor studio-apply").await
+}
+
 pub async fn run_monitor_logs(
     python_exe: &Path,
     npdev_cli: &Path,

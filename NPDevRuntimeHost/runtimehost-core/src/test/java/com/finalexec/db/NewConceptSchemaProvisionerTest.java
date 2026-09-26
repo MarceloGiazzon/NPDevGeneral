@@ -178,14 +178,13 @@ class NewConceptSchemaProvisionerTest {
     }
 
     @Test
-    void bondFieldConceptIsRefusedNotAttempted() throws Exception {
-        CompiledModel oldModel = compile("""
-                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
-                  { "name": "Widget", "fields": [
-                    { "name": "id", "type": "uuid", "id": true, "required": true }
-                  ] }
-                ] }
-                """);
+    void referenceToAnotherBrandNewConceptIsRefusedNotAttempted() throws Exception {
+        // Wave 6.3 widened scope: a reference to an ALREADY-EXISTING concept is now provisionable
+        // (see referenceFieldToExistingConceptGetsForeignKeyAndIndex below) -- what stays refused is
+        // a reference to a concept that is ALSO new in this SAME reload (both "Widget" and "Order"
+        // are absent from oldModel here), since this class provisions one table per call with no
+        // notion of a dependency-sorted batch to order "Widget" before "Order" safely.
+        CompiledModel oldModel = compile(EMPTY_MODEL);
         CompiledModel newModel = compile("""
                 { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
@@ -200,10 +199,98 @@ class NewConceptSchemaProvisionerTest {
 
         NewConceptSchemaProvisioner.Result result = NewConceptSchemaProvisioner.provision(dataSource(), oldModel, newModel);
 
-        assertTrue(result.provisioned().isEmpty(), "expected no tables provisioned, got " + result.provisioned());
+        assertEquals(java.util.List.of("Widget"), result.provisioned(), "Widget itself has no reference field, so it provisions fine");
         assertTrue(result.failed().containsKey("Order"));
-        assertTrue(result.failed().get("Order").contains("bond"), "reason should name the bond: " + result.failed());
+        assertTrue(result.failed().get("Order").contains("already-existing concept"),
+                "reason should name the not-yet-existing target: " + result.failed());
         assertTrue(columnNames("orders").isEmpty(), "no table should have been created for a refused concept");
+    }
+
+    @Test
+    void referenceFieldToExistingConceptGetsForeignKeyAndIndex() throws Exception {
+        // Wave 6.3 (NPDEV_FEATURE_PLAN_2026-09-24.md): "Order" references "Widget", which already
+        // existed (and already has a REAL table -- provisioned by a first call, matching how an
+        // operator's SECOND live reload would find it) before "Order" is introduced.
+        DataSource dataSource = dataSource();
+        CompiledModel empty = compile(EMPTY_MODEL);
+        CompiledModel withWidget = compile("""
+                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                  { "name": "Widget", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] }
+                ] }
+                """);
+        NewConceptSchemaProvisioner.Result widgetResult = NewConceptSchemaProvisioner.provision(dataSource, empty, withWidget);
+        assertEquals(java.util.List.of("Widget"), widgetResult.provisioned());
+
+        CompiledModel withOrder = compile("""
+                { "namespace": "reg244.phase4b", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
+                  { "name": "Widget", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true }
+                  ] },
+                  { "name": "Order", "fields": [
+                    { "name": "id", "type": "uuid", "id": true, "required": true },
+                    { "name": "widgetId", "type": "reference", "reference": { "target": "Widget" } }
+                  ] }
+                ] }
+                """);
+        NewConceptSchemaProvisioner.Result orderResult = NewConceptSchemaProvisioner.provision(dataSource, withWidget, withOrder);
+
+        assertEquals(java.util.List.of("Order"), orderResult.provisioned(), "expected no failures, got " + orderResult.failed());
+        assertTrue(columnNames("orders").contains("widget_id"), "expected the reference field's own column");
+        assertTrue(foreignKeyExists("orders", "widget_id", "widgets"),
+                "expected a real FK from orders.widget_id to widgets");
+        assertTrue(indexExistsOnColumn("orders", "widget_id"), "expected an index on the new FK column");
+
+        // The FK is real DDL, not just a manifest claim: inserting a widget_id that does not exist
+        // in widgets must be rejected by the DATABASE itself.
+        try (Connection connection = DriverManager.getConnection(url);
+                Statement statement = connection.createStatement()) {
+            assertTrue(assertSqlExceptionOnDanglingReference(statement),
+                    "the database should reject an order referencing a non-existent widget");
+        }
+    }
+
+    private boolean assertSqlExceptionOnDanglingReference(Statement statement) {
+        try {
+            statement.execute("INSERT INTO orders (id, widget_id, version, row_version, tenant_id) "
+                    + "VALUES (random_uuid(), random_uuid(), 0, 0, 'default')");
+            return false;
+        } catch (SQLException expected) {
+            return true;
+        }
+    }
+
+    private boolean foreignKeyExists(String table, String column, String referencedTable) throws SQLException {
+        // This class's own DATABASE_TO_UPPER=false connection stores identifiers lowercase (same
+        // reasoning columnNames() above already documents for INFORMATION_SCHEMA) -- getImportedKeys
+        // needs the table name in that same stored case, not upper-cased.
+        try (Connection connection = DriverManager.getConnection(url)) {
+            try (ResultSet rs = connection.getMetaData().getImportedKeys(null, null, table.toLowerCase(java.util.Locale.ROOT))) {
+                while (rs.next()) {
+                    String fkColumn = rs.getString("FKCOLUMN_NAME");
+                    String pkTable = rs.getString("PKTABLE_NAME");
+                    if (column.equalsIgnoreCase(fkColumn) && referencedTable.equalsIgnoreCase(pkTable)) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean indexExistsOnColumn(String table, String column) throws SQLException {
+        try (Connection connection = DriverManager.getConnection(url)) {
+            try (ResultSet rs = connection.getMetaData().getIndexInfo(
+                    null, null, table.toLowerCase(java.util.Locale.ROOT), false, false)) {
+                while (rs.next()) {
+                    if (column.equalsIgnoreCase(rs.getString("COLUMN_NAME"))) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     @Test

@@ -12242,6 +12242,8 @@ def run_monitor(args: argparse.Namespace) -> int:
         return _run_monitor_ops(args)
     if args.monitor_command == "hotswap":
         return _run_monitor_hotswap(args)
+    if args.monitor_command == "studio-apply":
+        return _run_monitor_studio_apply(args)
     if args.monitor_command == "ingress":
         return _run_monitor_ingress(args)
     if args.monitor_command == "clone":
@@ -12386,17 +12388,23 @@ def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> 
     at boot -- verified live 2026-08-02) but nothing writes to it automatically; RUN-22's own
     browser-routine proof had to hand-patch it to reach the served grid.
 
-    Patches ONLY the field labels the just-emitted `fields.manifest.json` (the SAME
+    Patches the field labels AND widgets the just-emitted `fields.manifest.json` (the SAME
     `metadata_source_root` the REST call above was already given, from `--emitMetadataTo`)
     disagrees with -- deliberately never regenerates the whole manifest from a bare model.json
-    compile, which has no access to the settings (`superUserRole`, auth mode, per-field
-    widget-cascade overrides, ...) the real generation pipeline resolves via `SettingResolver`, and
-    would silently revert any of them to a platform default for an app that customized one. That
-    also means it only ever matches TOP-LEVEL fields: `generated-ui-manifest.json`'s own
-    `concepts[].fields[]` list is `BusinessUiEmitter.manifestFields()`, which walks
-    `concept.getFields()` directly and has no entries for a nested object/array field's own
-    sub-paths (`fields.manifest.json`'s `"a.b"`-shaped `fieldPath` entries) -- matching those here
-    would silently do nothing, so they are skipped rather than attempted.
+    compile, which has no access to the settings (`superUserRole`, auth mode, ...) the real
+    generation pipeline resolves via `SettingResolver`, and would silently revert any of them to a
+    platform default for an app that customized one. `widget` is safe to include in this surgical
+    patch (Wave 6.1, the Studio's live widget-swap): `CompiledMetadataCanonicalJson`'s own
+    `readUiText(uiNode, domainUiNode, "widget", defaultWidget(...))` resolves it entirely from
+    model.json's own field/domain-type declarations, the exact same bare compile
+    `ModelChangeClassifierMain` already performs -- unlike `superUserRole` or auth mode, it is never
+    sourced from `SettingResolver`, so a bare-compile value can never silently diverge from what the
+    real generation pipeline would have written. That also means both only ever match TOP-LEVEL
+    fields: `generated-ui-manifest.json`'s own `concepts[].fields[]` list is
+    `BusinessUiEmitter.manifestFields()`, which walks `concept.getFields()` directly and has no
+    entries for a nested object/array field's own sub-paths (`fields.manifest.json`'s `"a.b"`-shaped
+    `fieldPath` entries) -- matching those here would silently do nothing, so they are skipped
+    rather than attempted.
 
     Read-modify-write, atomic (temp file + `os.replace`, same directory so the replace cannot cross
     filesystems), and a no-op -- never an exception -- when either input file is missing: an app
@@ -12417,23 +12425,33 @@ def _patch_generated_ui_manifest(app_root: Path, metadata_source_root: Path) -> 
         return {"patched": False, "reason": f"could not read/parse manifest: {exc}"}
 
     labels: dict[tuple[str, str], str] = {}
+    widgets: dict[tuple[str, str], str] = {}
     for item in fields_catalog.get("items") or []:
         concept = item.get("concept")
         field_path = item.get("fieldPath")
         if concept and field_path and "." not in field_path:
-            labels[(concept, field_path)] = item.get("label", "")
+            key = (concept, field_path)
+            labels[key] = item.get("label", "")
+            if item.get("widget"):
+                widgets[key] = item["widget"]
 
     changed: list[str] = []
     for concept_node in manifest.get("concepts") or []:
         concept_name = concept_node.get("conceptName")
         for field_node in concept_node.get("fields") or []:
             key = (concept_name, field_node.get("name"))
+            field_changed = False
             if key in labels and field_node.get("label") != labels[key]:
                 field_node["label"] = labels[key]
+                field_changed = True
+            if key in widgets and field_node.get("widget") != widgets[key]:
+                field_node["widget"] = widgets[key]
+                field_changed = True
+            if field_changed:
                 changed.append(f"{concept_name}.{field_node.get('name')}")
 
     if not changed:
-        return {"patched": False, "reason": "no field label differed from the served manifest"}
+        return {"patched": False, "reason": "no field label or widget differed from the served manifest"}
 
     tmp = manifest_path.with_name(manifest_path.name + ".tmp")
     tmp.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
@@ -12591,6 +12609,234 @@ def _run_monitor_hotswap(args: argparse.Namespace) -> int:
     result.update(swap_result)
     _print_result(result, args)
     return 0 if result["ok"] else 2
+
+
+def _model_reload_apply(base_url: str, super_user_key: str, model_path: str, timeout: float) -> dict:
+    """Wave 6 (the Manager's Studio tab, NPDEV_FEATURE_PLAN_2026-09-24.md 6.1): the HTTP core behind
+    `npdev studio apply-live`'s live-swap step -- one POST to
+    `MetadataHotSwapController#modelReload` (B28), swapping the running app's ENTIRE `CompiledModel`
+    atomically with no restart. Same shape as `_metadata_hotswap_apply` above (structured `{"ok":
+    False, "code": ..., "message": ...}` on any failure, never raises for an ordinary refusal), and
+    the same header (`X-Super-User-Key`, never the business `X-Api-Key` -- `/model-reload` requires
+    SUPERUSER specifically, same reasoning `_run_monitor_hotswap`'s own docstring gives for `/apply`)."""
+    import urllib.error
+    import urllib.request
+
+    result: dict = {"ok": False, "code": None, "message": None}
+    body = json.dumps({"modelPath": model_path}).encode("utf-8")
+    request = urllib.request.Request(
+        base_url + "/api/admin/runtime/metadata-hotswap/model-reload",
+        data=body, method="POST",
+        headers={"Content-Type": "application/json", "X-Super-User-Key": super_user_key},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        raw_body = exc.read().decode("utf-8", "replace")
+        try:
+            payload = json.loads(raw_body)
+        except json.JSONDecodeError:
+            payload = {}
+        if exc.code == 404:
+            result["code"] = "ENDPOINT_NOT_FOUND"
+            result["message"] = (
+                f"HTTP 404 from {base_url} -- this app predates REG-208's full model-reload endpoint, "
+                "or npdev.runtime.hotswap.full-model-reload-enabled=false. Regenerate it, or fall "
+                "back to a rebuild.")
+            return result
+        result["code"] = payload.get("code") or f"HTTP_{exc.code}"
+        result["message"] = payload.get("message") or f"HTTP {exc.code}: {raw_body[:300]}"
+        return result
+    except urllib.error.URLError as exc:
+        result["code"] = "UNREACHABLE"
+        result["message"] = f"could not reach {base_url}: {exc.reason}"
+        return result
+
+    result["ok"] = bool(payload.get("ok", True))
+    result["concepts"] = payload.get("concepts")
+    result["flows"] = payload.get("flows")
+    result["procedures"] = payload.get("procedures")
+    result["conceptsProvisioned"] = payload.get("conceptsProvisioned")
+    result["conceptsProvisioningFailed"] = payload.get("conceptsProvisioningFailed")
+    result["uiManifestConceptsRefreshed"] = payload.get("uiManifestConceptsRefreshed")
+    result["uiManifestRefreshFailed"] = payload.get("uiManifestRefreshFailed")
+    if result["ok"]:
+        result["code"] = "RELOADED"
+        result["message"] = f"model reloaded live, {result['concepts']} concept(s)"
+    else:
+        result["code"] = payload.get("code") or "UNKNOWN"
+        result["message"] = payload.get("message")
+    return result
+
+
+def _studio_classify_and_route(root: Path, baseline: Path, candidate: Path, deadline: float,
+                                emit_to: Path) -> dict:
+    """Wave 6 (Studio Apply): classifies `candidate` against `baseline` via the SAME ai-tools.jar fast
+    path `_classify_model_change_report`/`_emit_metadata_only_catalogs` already use
+    (`_classifier_command`/`_run_bounded`), always passing `--emitMetadataTo emit_to` -- a no-op
+    refusal (non-zero exit) for anything but METADATA_ONLY, which is fine: the report at `--out` is
+    written UNCONDITIONALLY before that refusal fires, so a non-zero classifier exit here is expected
+    for a schema-shaped change, not a failure of this call. Returns the FULL parsed report
+    (`classification`, `classificationReasons`, `items[]`, ...) plus `emitted` (True only when
+    METADATA_ONLY actually populated `emit_to`) -- `items[]` is what lets the caller tell a pure
+    brand-new-concept diff (every item `ADD_TABLE`, live-reloadable via B28 + REG-244's provisioning)
+    apart from one that also touches an EXISTING concept's shape (needs a real rebuild: REG-244's own
+    `outOfScopeReason`/`GeneratedConceptCrudController` javadoc are both explicit that a live model
+    swap alone cannot make a new column on an existing concept CRUD-reachable, and no live path
+    ALTERs a table at all). Raises CliError if the classifier could not run or produced no report at
+    all -- the same failure shape `_classify_model_change_report` uses."""
+    with tempfile.TemporaryDirectory(prefix="npdev-studio-classify-") as tmp:
+        report_path = Path(tmp) / "classification.json"
+        resolved = _classifier_command(root, [
+            "--current", str(candidate), "--baseline", str(baseline),
+            "--out", str(report_path), "--emitMetadataTo", str(emit_to),
+        ])
+        if resolved is None:
+            raise CliError("cannot classify the model change: no staged npdev-ai-tools.jar and no "
+                            "Gradle wrapper found.")
+        command, cwd = resolved
+        try:
+            _run_bounded(command, cwd, deadline)
+        except _DeadlineExceeded:
+            raise CliError("model classification exceeded the overall --timeout budget.")
+        if not report_path.exists():
+            raise CliError("model classification did not produce a report.")
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            raise CliError(f"model classification report is not valid JSON: {exc}")
+    report["emitted"] = report.get("classification") == "METADATA_ONLY"
+    return report
+
+
+def _studio_route_for(report: dict) -> str:
+    """Wave 6: `"model-reload"` for anything B28 + REG-244's provisioning can genuinely take live
+    (a METADATA_ONLY diff, always safe to swap; or a diff whose ENTIRE `items[]` is `ADD_TABLE` --
+    brand-new concepts only, nothing touching an existing concept's shape), `"needs-rebuild"`
+    otherwise. Deliberately conservative: a MIXED plan (a new concept plus, say, an `ADD_COLUMN` on
+    an existing one) routes to `needs-rebuild` even though the new-concept half is individually safe
+    -- `/model-reload` would swap the WHOLE model atomically, so the existing concept's new field
+    would appear live in `ModelHolder` with no matching column ever added to its live table, which is
+    worse than refusing (a read/write through it would fail with a raw SQL error instead of the
+    Studio naming the real limit up front)."""
+    classification = report.get("classification")
+    items = report.get("items") or []
+    if classification == "METADATA_ONLY":
+        return "model-reload"
+    if classification == "SAFE_ADDITIVE" and items and all(item.get("kind") == "ADD_TABLE" for item in items):
+        return "model-reload"
+    return "needs-rebuild"
+
+
+def _run_monitor_studio_apply(args: argparse.Namespace) -> int:
+    """`npdev monitor studio-apply` -- Wave 6.1 (NPDEV_FEATURE_PLAN_2026-09-24.md, the Manager's
+    Studio tab). Sits alongside `monitor hotswap` (same probe_app + SUPER_USER_KEY discovery shape,
+    same "a mutating action against an already-running app" precedent that command already set). The Manager has ALREADY written `--model-path` to disk (with `--baseline-path` as its
+    pre-write backup, `apply_prompter_model`'s own convention) by the time this runs; this command's
+    only job is deciding whether the change can go live right now and, if so, making it so -- never
+    writing the model file itself.
+
+    Classifies first (`_studio_classify_and_route`), then routes (`_studio_route_for`):
+    `needs-rebuild` returns `ok: true` (the file on disk is valid) with `code: NEEDS_REBUILD` and
+    nothing else happens -- the caller offers a Rebuild button, never a silent partial apply.
+    `model-reload` always calls `/model-reload` (B28, safe for both buckets `_studio_route_for`
+    accepts); additionally, ONLY for a METADATA_ONLY diff, also runs the existing hotswap-`/apply` +
+    `_patch_generated_ui_manifest` path (RUN-24) so the SERVED business-ui grid's labels/widgets stay
+    in sync too -- `/model-reload`'s own response says so itself (`uiMetadataCatalogsRefreshed:
+    false`): the CompiledModel swap alone never touches those descriptive catalogs. A hotswap-apply
+    failure here is reported but does not flip the overall result to failure -- the model swap (the
+    behavior-affecting half) already succeeded and IS live; stale display metadata is a lesser,
+    separately-visible problem, never masked as the whole apply having failed.
+
+    Every expected outcome -- app not running, no key on disk, the classifier unavailable, the reload
+    endpoint refusing -- is a structured `ok: false` result (exit 2), same convention
+    `_run_monitor_hotswap` uses, never a traceback."""
+    app_dir = Path(args.app_dir).expanduser().resolve()
+    result: dict = {
+        "schemaVersion": "npdev-studio-apply-live.v1", "command": "studio apply-live",
+        "ok": False, "code": None, "message": None, "appDir": str(app_dir), "route": None,
+    }
+
+    def _refuse(code: str, message: str) -> int:
+        result["code"] = code
+        result["message"] = message
+        _print_result(result, args)
+        return 2
+
+    deadline = time.monotonic() + args.timeout
+    model_path = Path(args.model_path).expanduser().resolve()
+    baseline_path = Path(args.baseline_path).expanduser().resolve()
+    if not model_path.is_file():
+        return _refuse("MODEL_NOT_FOUND", f"--model-path does not exist: {model_path}")
+    if not baseline_path.is_file():
+        return _refuse("BASELINE_NOT_FOUND", f"--baseline-path does not exist: {baseline_path}")
+
+    app_record = npdev_monitor.probe_app(app_dir, origin="explicit",
+                                         health_timeout=min(args.timeout, 3.0))
+    if not app_record.get("isAppRoot"):
+        return _refuse("NOT_AN_APP", app_record.get("detail") or f"not a generated NPDev app: {app_dir}")
+    if app_record.get("health") != "running":
+        return _refuse(
+            "APP_NOT_RUNNING",
+            f"{app_record.get('name')} is not answering ({app_record.get('health')}): "
+            f"{app_record.get('healthDetail')} -- a live apply needs a RUNNING app; start it first.")
+
+    key_file = app_record.get("superUserKeyFile")
+    if not key_file:
+        return _refuse(
+            "SUPERUSER_KEY_NOT_FOUND",
+            "no SUPER_USER_KEY.txt found under this app's _ops directory -- either an app generated "
+            "before R1.7's SuperUserBootstrapper, or the key was already relocated/rotated elsewhere.")
+    try:
+        raw_key = Path(key_file).read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        return _refuse("SUPERUSER_KEY_UNREADABLE", f"found {key_file} but could not read it: {exc}")
+    if not raw_key:
+        return _refuse("SUPERUSER_KEY_EMPTY", f"{key_file} exists but is empty")
+
+    base_url = app_record.get("probeBaseUrl")
+    final_app_root = Path(app_record.get("finalAppRoot") or app_dir)
+
+    with tempfile.TemporaryDirectory(prefix="npdev-studio-metadata-") as emit_dir:
+        emit_to = Path(emit_dir)
+        try:
+            report = _studio_classify_and_route(repo_root(), baseline_path, model_path, deadline, emit_to)
+        except CliError as exc:
+            return _refuse("CLASSIFY_FAILED", str(exc))
+
+        result["classification"] = report.get("classification")
+        result["classificationReasons"] = report.get("classificationReasons")
+        route = _studio_route_for(report)
+        result["route"] = route
+
+        if route == "needs-rebuild":
+            result["ok"] = True
+            result["code"] = "NEEDS_REBUILD"
+            result["message"] = (
+                "this change needs a full regenerate + rebuild to take effect live -- classification="
+                f"{report.get('classification')}: {'; '.join(report.get('classificationReasons') or [])}")
+            _print_result(result, args)
+            return 0
+
+        reload_result = _model_reload_apply(base_url, raw_key, str(model_path), args.timeout)
+        result["modelReload"] = reload_result
+        if not reload_result.get("ok"):
+            result["code"] = reload_result.get("code") or "RELOAD_FAILED"
+            result["message"] = reload_result.get("message")
+            _print_result(result, args)
+            return 2
+
+        if report.get("classification") == "METADATA_ONLY" and report.get("emitted"):
+            result["metadataHotswap"] = _metadata_hotswap_apply(
+                base_url, raw_key, "METADATA_ONLY", report.get("classificationReasons") or [],
+                emit_to, final_app_root, args.timeout)
+
+    result["ok"] = True
+    result["code"] = "APPLIED_LIVE"
+    result["message"] = f"applied live via {route}"
+    _print_result(result, args)
+    return 0
 
 
 def _run_monitor_logs(args: argparse.Namespace) -> int:
@@ -16059,6 +16305,26 @@ def build_parser() -> argparse.ArgumentParser:
              "by the RUNNING APP's JVM (same machine), not uploaded over HTTP.")
     monitor_hotswap.add_argument("--timeout", type=float, default=15.0)
     monitor_hotswap.add_argument("--json", action="store_true")
+
+    monitor_studio_apply = monitor_sub.add_parser(
+        "studio-apply",
+        help="Wave 6.1: classify an already-written model.json against its own pre-write backup and, "
+             "if the change can go live, push it into a RUNNING app with no restart -- /model-reload "
+             "(B28) for a metadata-only or brand-new-concept-only diff, plus the existing hotswap "
+             "/apply + generated-ui-manifest.json patch for a metadata-only one's display catalogs. "
+             "Anything else reports NEEDS_REBUILD and touches nothing on the running app.",
+    )
+    monitor_studio_apply.add_argument("--app-dir", required=True)
+    monitor_studio_apply.add_argument(
+        "--model-path", required=True,
+        help="The app's model.json, ALREADY overwritten with the candidate on disk (the Manager's "
+             "apply_prompter_model convention) -- this command never writes it.")
+    monitor_studio_apply.add_argument(
+        "--baseline-path", required=True,
+        help="The pre-write backup of model.json (apply_prompter_model's own model.json.bak-<stamp>) "
+             "-- the classifier's diff baseline.")
+    monitor_studio_apply.add_argument("--timeout", type=float, default=20.0)
+    monitor_studio_apply.add_argument("--json", action="store_true")
 
     monitor_clone = monitor_sub.add_parser(
         "clone",

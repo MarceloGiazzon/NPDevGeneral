@@ -145,7 +145,14 @@ class LiveConceptCrudSupportTest {
     }
 
     @Test
-    void resolveIsEmptyForABondFieldConceptEvenIfNamedCorrectly() throws Exception {
+    void resolveSucceedsForAReferenceFieldConceptWhoseTargetExistsInTheLiveModel() throws Exception {
+        // Wave 6.3 (NPDEV_FEATURE_PLAN_2026-09-24.md) widened this scope: a reference field is
+        // CRUD-reachable exactly when its target concept currently exists in the LIVE model --
+        // `resolve` passes `liveModel` itself as the "existing" argument (see its own javadoc for
+        // why: by request time, any legitimately-provisioned concept is already reflected there),
+        // and both "Widget" and "Order" are declared together in this one live model, same as any
+        // model that was never live-reloaded at all -- an ordinarily-generated app's reference
+        // fields must resolve here too, not just a live-provisioned one's.
         CompiledModel model = compile("""
                 { "namespace": "reg244.phase4c", "dslVersion": "1.0.0", "version": "1.0", "concepts": [
                   { "name": "Widget", "fields": [
@@ -162,7 +169,8 @@ class LiveConceptCrudSupportTest {
         Optional<LiveConceptCrudSupport.LiveConceptOps> ops =
                 LiveConceptCrudSupport.resolve(model, "orders", gateway, CONTEXT);
 
-        assertTrue(ops.isEmpty(), "a bond-field concept must be refused, same scope as NewConceptSchemaProvisioner");
+        assertTrue(ops.isPresent(), "a reference field targeting an existing concept must resolve");
+        assertEquals("Order", ops.get().conceptName());
     }
 
     @Test
