@@ -173,6 +173,7 @@ public class SchemaAcknowledgmentController {
         body.put("markedAtUtc", row.markedAtUtc());
         body.put("markedBy", row.markedBy());
         body.put("note", row.note());
+        body.put("forced", row.forced());
         return body;
     }
 

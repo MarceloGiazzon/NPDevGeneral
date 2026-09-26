@@ -1,11 +1,53 @@
 id: B6
 title: "mark-done trusts the operator completely"
-codeLinked: false
+codeLinked: true
 codeLinkedNote: >-
-  POSTURAL: no diagnostic fires because there is nothing to hit. mark-done exists precisely for
-  "I fixed it by hand; stop trying to converge", so the boundary IS the absence of verification --
-  there is no refusal, no ValidationDiagnostic and no code path that could carry a boundaryId.
-  Verifying would defeat the command's purpose, which is why the row's own revisit trigger reads
-  "Never -- verification is what the ordinary path already does".
+  ORIGINAL (POSTURAL): no diagnostic fires because there was nothing to hit. mark-done exists
+  precisely for "I fixed it by hand; stop trying to converge", so the boundary WAS the absence of
+  verification -- no refusal, no ValidationDiagnostic and no code path that could carry a
+  boundaryId. The row's own revisit trigger read "Never -- verification is what the ordinary path
+  already does".
+
+  2026-09-25 (Wave 5, NPDEV_FEATURE_PLAN_2026-09-24.md): lifted anyway, on a deliberate re-read of
+  "Never" rather than a reflexive one. `SchemaVerifyMain`'s own exit-code javadoc had already named
+  the real gap this boundary was protecting nothing from: "an operator who hand-migrated outside
+  NPDev (B13), created nothing, and is about to `mark-done` on the strength of a green verify (B6)"
+  -- `db verify`'s SAFE verdict (changes exist but are non-destructive) reads as "fine" at a glance
+  but is NOT a match; an empty database verifies SAFE too. New `npdev db mark-done` (CLI,
+  `MigrationMarkDoneMain`, same "no app boot required" plain-JDBC shape as `db verify`/
+  `db schema-ahead`) runs the identical expected-vs-live diff `db verify` runs -- this build's OWN
+  `npdev-generated` manifest against the live database via `SchemaDiffEngine` -- and only records
+  the mark (`MigrationMarkStore.insert`) when the verdict is the strict `NO_CHANGES`, not the looser
+  `SAFE`. A mismatch refuses with the itemized diff (`ImpactReportText.render`, same renderer
+  `db verify` uses) and records nothing; `--force` overrides and stamps the row `forced: true`
+  (new column, `MigrationMarkStore` -- audited, never silently indistinguishable from a clean
+  match). `fromFingerprint` auto-resolves from the live database's own stored fingerprint
+  (`SchemaLifecycleExecutor.readStoredFingerprintPublic`) instead of requiring the operator to
+  paste it by hand off a printed plan, removing a transcription-error source the old REST-only path
+  had no way to catch either.
+
+  A real bug surfaced and fixed during manual H2 verification of this feature, not a pre-existing
+  regression: `MigrationMarkStore`'s own REG-30 unique index (one mark per exact `from -> to`
+  transition) threw an uncaught `SQLIntegrityConstraintViolationException` as a raw Java stack
+  trace when the same transition was marked twice -- a very plausible sequence given `--force` is
+  meant to be retried after a refusal. `MigrationMarkDoneMain` now checks
+  `MigrationMarkStore.findMatching` first and reports "already recorded" idempotently instead. The
+  underlying REST endpoint (`SchemaAcknowledgmentController#markDone`) has the same latent
+  uncaught-exception behavior and was NOT touched -- out of this wave's scope, flagged here for a
+  future session.
+
+  Manually verified against a real H2Local app (aggregate-query-verify-h2local): (1) matching
+  schema -> recorded, exit 0; (2) a hand-renamed column (drift) -> REFUSED with the itemized diff,
+  exit 1, nothing written; (3) same drift + `--force` -> recorded with `forced: true`, exit 0; (4)
+  re-running the identical forced command -> "already recorded", exit 0, no crash.
+
+  **Reclassified LIFTED** (was POSTURAL) -- **residue named, not claimed away:** the raw REST
+  primitive (`POST /api/admin/schema-migration/mark-done`, REG-7.2 D2: "ControlPanel-only v1, no
+  generator/CLI round-trip") is DELIBERATELY UNCHANGED -- it remains the unverified escape hatch for
+  when this CLI's app-directory/JDBC-direct access is unavailable (e.g. a target build's own
+  directory does not exist on the machine the operator is on), preserving the exact "trust the
+  operator, deliberately" spirit the original row protected. `npdev db mark-done` is the newly
+  sanctioned default path; the REST endpoint's own uncaught-exception behavior on a REG-30 collision
+  is real residue, not fixed here.
 ref: "docs/ACCEPTED_BOUNDARIES.md#B6 -- DATABASES_AND_MIGRATIONS.md §15"
-classification: POSTURAL
+classification: LIFTED

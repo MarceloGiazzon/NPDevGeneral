@@ -4711,6 +4711,123 @@ def run_db_schema_ahead(args: argparse.Namespace) -> int:
     return completed.returncode
 
 
+def run_db_mark_done(args: argparse.Namespace) -> int:
+    """`npdev db mark-done` -- Wave 5, boundary B6 lift (docs/ACCEPTED_BOUNDARIES.md). Shells to
+    `com.finalexec.db.MigrationMarkDoneMain` the same way `db verify`/`db schema-ahead` shell to their
+    own Main classes (see `run_db_verify`'s own docstring for why: the diff engine lives in
+    runtimehost-core, free of Spring, so this reuses the compiled class rather than forking the diff
+    into Python). `--app` is the TARGET build's own directory -- its manifest is read directly off
+    disk, so this works even for a build that has never been deployed/booted anywhere yet, which is
+    the whole REG-7.2 scenario (mark the live DB done for a build before rolling it out).
+
+    Exit codes, passed straight through from MigrationMarkDoneMain: 0 = recorded (matched, or forced),
+    1 = refused (drift found, no --force), 2 = could not determine.
+    """
+    app_root = Path(args.app).expanduser().resolve() if args.app else Path.cwd()
+    manifest_resources_root = app_root / "npdev-generated" / "src" / "main" / "resources"
+    manifest_file = manifest_resources_root / "npdev" / "db" / "schema-realization-manifest.json"
+
+    def fail(message: str) -> int:
+        print(f"npdev db mark-done: {message}", file=sys.stderr)
+        return 2
+
+    if not manifest_file.is_file():
+        return fail(f"no schema-realization-manifest.json found under {app_root} (looked for "
+                    f"{manifest_file}). Generate/build this app at least once first.")
+
+    if args.url:
+        url = args.url
+        user = args.db_user
+        password = args.db_password or ""
+    else:
+        # Same resolution order as run_db_schema_ahead/run_db_verify: prefer _ops/resolved-db-plan.json
+        # (emitted for every generated app, already fully-resolved), fall back to db.definition.json.
+        plan_path = app_root / "_ops" / "resolved-db-plan.json"
+        db_def_path = app_root / "db.definition.json"
+        if plan_path.is_file():
+            plan = read_json(plan_path)
+            if not plan.get("physicalDatabase", False):
+                print("npdev db mark-done: this app has no physical database (InMemory storage) -- nothing to mark.")
+                return 0
+            try:
+                engine_key = npdev_engines.resolve(plan.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {plan_path})")
+            url = plan.get("jdbcUrl") or None
+            if url is None:
+                return fail(f"{plan_path} has no jdbcUrl recorded -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else (plan.get("username") or None)
+            password = args.db_password if args.db_password is not None else (plan.get("password") or "")
+        elif db_def_path.is_file():
+            database = read_json(db_def_path).get("database", {})
+            try:
+                engine_key = npdev_engines.resolve(database.get("engine", ""))["key"]
+            except ValueError as exc:
+                return fail(f"{exc} (in {db_def_path})")
+            if engine_key == "inmemory":
+                print("npdev db mark-done: this app has no physical database (InMemory storage) -- nothing to mark.")
+                return 0
+            url = _jdbc_url_for_verify(engine_key, app_root, database)
+            if url is None:
+                return fail(f"do not know how to build a JDBC URL for engine '{engine_key}' -- pass --url explicitly.")
+            user = args.db_user if args.db_user is not None else database.get("username")
+            password = args.db_password if args.db_password is not None else (database.get("password") or "")
+        else:
+            return fail(f"neither {plan_path} nor {db_def_path} was found, and no --url was given. "
+                        f"Pass --url (with --db-user/--db-password as needed), or run this from "
+                        f"the app's own directory.")
+
+    libs = _default_runtimehost_libs_dir()
+    if libs is None:
+        return fail("runtimehost jars are not staged -- run `npdev setup`")
+    java_bin = java_launcher()
+    if java_bin is None:
+        return fail("no java found (see `npdev doctor`'s java checks)")
+
+    fat_jar = _finalexec_fat_jar_for(app_root)
+    if fat_jar is None:
+        return fail(f"no built jar found under {app_root / 'build' / 'libs'}. Build this app at "
+                    f"least once first (e.g. `_ops/Build-FinalApp.ps1`).")
+
+    with tempfile.TemporaryDirectory(prefix="npdev-db-mark-done-libs-") as extracted_dir:
+        with zipfile.ZipFile(fat_jar) as archive:
+            for name in archive.namelist():
+                if name.startswith("BOOT-INF/lib/") and name.endswith(".jar"):
+                    archive.extract(name, extracted_dir)
+        extracted_libs = Path(extracted_dir) / "BOOT-INF" / "lib"
+
+        separator = ";" if os.name == "nt" else ":"
+        classpath = separator.join([
+            str(manifest_resources_root), str(Path(libs) / "*"), str(extracted_libs / "*"),
+        ])
+
+        command = [java_bin, "-cp", classpath, "com.finalexec.db.MigrationMarkDoneMain", "--url", url]
+        if user:
+            command += ["--user", user]
+        if password:
+            command += ["--password", password]
+        if args.from_fingerprint:
+            command += ["--from-fingerprint", args.from_fingerprint]
+        if args.by:
+            command += ["--by", args.by]
+        if args.note:
+            command += ["--note", args.note]
+        if args.force:
+            command.append("--force")
+
+        try:
+            # cwd=app_root: same H2Local app-relative URL reasoning as run_db_verify.
+            completed = subprocess.run(command, cwd=str(app_root), capture_output=True, text=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return fail(f"could not run MigrationMarkDoneMain ({exc})")
+
+    if completed.stdout:
+        print(_strip_spring_jcl_notice(completed.stdout), end="")
+    if completed.stderr:
+        print(completed.stderr, end="", file=sys.stderr)
+    return completed.returncode
+
+
 def run_db_reverse_migrate(args: argparse.Namespace) -> int:
     """`npdev db reverse-migrate` -- B5-B, boundary-lift 2026-09-02 package 4.1. Turns `db schema-ahead`'s
     advisory diagnosis into an action for the pure-superset case: step the live database back down to
@@ -14198,6 +14315,47 @@ def build_parser() -> argparse.ArgumentParser:
              "--report') -- this command always reports; there is no other mode.",
     )
 
+    # Wave 5 (B6 lift, docs/ACCEPTED_BOUNDARIES.md): runs the SAME expected-vs-live diff `db verify`
+    # runs against THIS app's own manifest, and only records the mark (MigrationMarkStore, via a
+    # direct JDBC connection -- no app boot, no REST round-trip) when the live database matches
+    # exactly (NO_CHANGES). A mismatch refuses with the itemized diff unless --force is given, which
+    # records anyway and stamps the row forced:true. The raw REST endpoint
+    # (POST /api/admin/schema-migration/mark-done) is unchanged -- it remains the unverified
+    # ControlPanel primitive for when this CLI's app-directory/JDBC-direct access is unavailable.
+    db_mark_done = db_sub.add_parser(
+        "mark-done",
+        help="Verify the live database matches this build's own schema exactly, then record it as "
+             "migrated (B6) -- refuses with an itemized diff on mismatch; --force overrides.",
+    )
+    db_mark_done.add_argument(
+        "--app", default=None, metavar="DIR",
+        help="The app directory (holds npdev-generated/, a built jar under build/libs/, and -- unless "
+             "--url is given -- _ops/resolved-db-plan.json or db.definition.json for the connection). "
+             "Defaults to the current directory. This is the TARGET build's own directory -- its "
+             "manifest is what 'matches' is measured against.",
+    )
+    db_mark_done.add_argument(
+        "--url", default=None,
+        help="An explicit JDBC URL, overriding the app's own resolved connection.",
+    )
+    db_mark_done.add_argument("--db-user", default=None, help="Overrides the resolved username.")
+    db_mark_done.add_argument("--db-password", default=None, help="Overrides the resolved password.")
+    db_mark_done.add_argument(
+        "--from-fingerprint", default=None,
+        help="The fingerprint the live database is transitioning FROM (REG-28). Defaults to the live "
+             "database's own stored fingerprint -- pass this explicitly only to override it.",
+    )
+    db_mark_done.add_argument(
+        "--by", default=None,
+        help="Who is recording this mark, for the audit trail. Defaults to the OS username.",
+    )
+    db_mark_done.add_argument("--note", default=None, help="Optional free-text note recorded with the mark.")
+    db_mark_done.add_argument(
+        "--force", action="store_true",
+        help="Record the mark even if the live database does not match this build's schema exactly "
+             "(the itemized diff is still printed). Stamps the mark forced:true.",
+    )
+
     # STOR-32 (boundary-lift 2026-09-07 package P4, docs/ACCEPTED_BOUNDARIES.md B7): prints the most
     # recently refused boot's committed lifecycle steps, their idempotency, the retry verdict, and
     # the step it died in -- the platform-computed answer to B7's old "inspect before retrying"
@@ -16343,6 +16501,8 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_verify(args)
         if args.command == "db" and args.db_command == "schema-ahead":
             return run_db_schema_ahead(args)
+        if args.command == "db" and args.db_command == "mark-done":
+            return run_db_mark_done(args)
         if args.command == "db" and args.db_command == "explain-refusal":
             return run_db_explain_refusal(args)
         if args.command == "db" and args.db_command == "reverse-migrate":
