@@ -1880,6 +1880,12 @@
 
     const panelContext = panelContextValues();
     const panelEnabled = evaluateWhen(panelMeta.enabledWhen, panelContext);
+    // WMS-15: panelMeta.actions is the boot-time manifest (name/label/binding/visibleWhen/
+    // enabledWhen/inputFields only -- see loadDeclaredPanel's own comment); confirmationText is
+    // resolved server-side per request (PanelRuntime#panelActions, from the invoked flow's own
+    // declared action.confirmationText) and only ever appears on the live entry.actions. Looked up
+    // by name here so the header-button loop below can still iterate the boot-time list unchanged.
+    const headerEntry = declaredPanelState(panelMeta);
     (panelMeta.actions || []).forEach(function (action) {
       // G2: scope="row" actions render per row inside renderDeclaredColumnsTable instead -- skip here.
       if (action.scope === "row") { return; }
@@ -1915,6 +1921,8 @@
         section.appendChild(inlineForm);
       }
       const actionButton = button(action.label, "primary", function () {
+        const liveAction = (headerEntry.actions || []).find(function (a) { return a.name === action.name; });
+        if (liveAction && liveAction.confirmationText && !window.confirm(liveAction.confirmationText)) { return; }
         const data = {};
         Object.keys(inputsByField).forEach(function (field) { data[field] = inputsByField[field].value; });
         executeDeclaredPanelAction(panelMeta, action.name, data);
@@ -2104,6 +2112,10 @@
         rowActions.forEach(function (action) {
           if (!evaluateWhen(action.visibleWhen, rowContext)) { return; }
           const rowActionButton = button(action.label || action.name, "secondary small", function () {
+            // WMS-15: entry.actions already carries confirmationText (resolved server-side from
+            // the invoked flow's own declared action.confirmationText) -- no name lookup needed here
+            // since this list IS the live one, unlike the header-button loop above.
+            if (action.confirmationText && !window.confirm(action.confirmationText)) { return; }
             executeDeclaredPanelAction(panelMeta, action.name, { id: row.id });
           });
           rowActionButton.disabled = !evaluateWhen(action.enabledWhen, rowContext);

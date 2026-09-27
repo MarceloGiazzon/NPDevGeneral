@@ -4,9 +4,10 @@ title: >-
   item listing, unlike the original GeneXus screen's explicit named-items confirmation
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-09-26
-verification: NONE
+closed: 2026-09-27
+verification: PARTIAL
 source: >-
   WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.4 line E15, source-verified in this session (2026-09-26)
   while cross-referencing NPDEV_FEATURE_PLAN_2026-09-24.md's Wave 8 against the older WMS-9 record
@@ -40,3 +41,39 @@ detail: |
   Expedicao's itens before submitting; (b) wait for/propose a genuine declarative confirmation-gate
   primitive in the panel-action schema, which would also unblock any other screen needing the same
   shape (this is the second time it has been hit -- Reset first, now this).
+
+  CLOSED 2026-09-27, option (b), but simpler than expected: `flow.action.confirmationText` already
+  existed in the DSL schema (parsed/compiled/canonical-JSON round-tripped for flows since before this
+  session -- see CompiledFlow.getAction/CompiledActionMetadata.getConfirmationText, and
+  canonical-demo's own model.json already declares it on several flows), but NOTHING ever read it
+  back out anywhere in the generator or runtime -- confirmed by grepping confirmationText/
+  successMessage/failureHint across NPDevGenerator and NPDevRuntimeHost source and finding zero
+  consumers, only test fixtures and sample models. Same class of dead metadata as `inputFormHint`'s
+  own documented caveat. Wired it up for real instead of hand-authoring a bypass page:
+    1. `PanelRuntime.panelActions()` (NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/
+       PanelRuntime.java) now resolves a binding:"flow" action's own invoked-flow confirmationText
+       (via a new `flowConfirmationText` helper looking the flow up in the live CompiledModel) and
+       includes it in the panel's live GET /panels/{name} actions response.
+    2. business-ui-app.mustache's two action-button code paths (the panel-header loop and the
+       per-row loop) now gate the click with `window.confirm(confirmationText)` before calling
+       executeDeclaredPanelAction, when the resolved action carries one.
+    3. WmsOffice's ConfirmarSaidaExpedicao flow (model.json) now declares
+       `action.confirmationText`.
+  This closes the primitive gap platform-wide, not just for this one screen -- any flow can now
+  declare `action.confirmationText` and get a real client-side gate, wherever it's invoked from a
+  declared Panel action.
+
+  Verification: PARTIAL, honestly scoped. Full runtimehost-core test compile (`compileJava`) was a
+  false-positive pass -- PanelRuntime.java is NOT among the app-independent files split into that
+  module (it imports `com.npdev.generated.*`), so it was never actually recompiled by that run.
+  Real verification was a full `Build-FinalApp.ps1` against the assembled `wmsoffice-browser` app --
+  `:compileJava`, the FULL `:test` task (including PanelRuntimeFlowActionTest,
+  PanelRuntimeRowScopedActionTest, etc.), `:check`, and `:build` all green, no regressions. Then a
+  live REST check against the booted app (bootstrapped a throwaway admin via
+  /api/auth/bootstrap-admin, logged in for a JWT): GET
+  /api/runtime/metadata/ui/panels/ExpedicaoDemandaPanel's `actions[]` entry for
+  ConfirmarSaidaExpedicao now carries the declared confirmationText verbatim. NOT verified: an actual
+  browser click showing the `window.confirm()` dialog and a Cancel actually blocking the write --
+  the JS wiring was read/reasoned through but not driven live in a browser (ScrapForAI). Low risk
+  given the API-level plumbing is proven and the JS change is a single straightforward guard clause,
+  but flag this if WMS-15 is ever revisited and something looks off client-side.

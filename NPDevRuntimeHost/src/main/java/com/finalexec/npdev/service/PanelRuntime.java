@@ -1,6 +1,8 @@
 package com.finalexec.npdev.service;
 
 import com.finalexec.config.ModelHolder;
+import com.npdev.dsl.v1.compiled.CompiledActionMetadata;
+import com.npdev.dsl.v1.compiled.CompiledFlow;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledPanel;
 import com.npdev.dsl.v1.compiled.CompiledPanelAction;
@@ -302,7 +304,7 @@ public class PanelRuntime {
         response.put("data", data);
         response.put("fields", panelFields(panel));
         response.put("fieldBindings", panelFieldBindings(panel, effectiveContext));
-        response.put("actions", panelActions(panel, effectiveContext));
+        response.put("actions", panelActions(panel, effectiveContext, modelHolder.get()));
         // AW-P2: echo the compiled panel's own metadata (e.g. a selectors[]-expanded panel's
         // multiSelect/returnMapping/filters) so a caller referencing this panel as a bandPicker
         // source can consume the selector's declared pick contract instead of guessing from columns.
@@ -1036,7 +1038,7 @@ public class PanelRuntime {
 
     /** R5.6: same locale-resolution contract as {@link #panelFieldBindings} above, for
      * {@code CompiledPanelAction.label()}/{@code labelLocales()} (a panel button's own label). */
-    private static List<Map<String, Object>> panelActions(CompiledPanel panel, ExecutionContext context) {
+    private static List<Map<String, Object>> panelActions(CompiledPanel panel, ExecutionContext context, CompiledModel model) {
         List<Map<String, Object>> actions = new ArrayList<>();
         for (CompiledPanelAction action : panel.actions()) {
             Map<String, Object> item = new LinkedHashMap<>();
@@ -1055,9 +1057,35 @@ public class PanelRuntime {
             item.put("visibleWhen", safe(action.visibleWhen()));
             item.put("enabledWhen", safe(action.enabledWhen()));
             item.put("inputFields", action.inputFields());
+            // WMS-15: a binding:"flow" action inherits its client-side confirmation gate from the
+            // invoked flow's own declared `action.confirmationText` (actionMetadata was already
+            // parsed/compiled/round-tripped for flows -- see CompiledFlow.getAction -- but nothing
+            // ever read it back out until now). Declared on the flow rather than the panel action so
+            // any invoker (this panel button, a future one, a direct API caller's own UI) shares one
+            // confirmation text instead of redeclaring it per binding site.
+            String confirmationText = flowConfirmationText(model, action);
+            if (confirmationText != null) {
+                item.put("confirmationText", confirmationText);
+            }
             actions.add(item);
         }
         return List.copyOf(actions);
+    }
+
+    private static String flowConfirmationText(CompiledModel model, CompiledPanelAction action) {
+        if (model == null || !"flow".equalsIgnoreCase(safe(action.binding())) || action.flow() == null || action.flow().isBlank()) {
+            return null;
+        }
+        for (CompiledFlow flow : model.getFlows()) {
+            if (action.flow().equals(flow.getName())) {
+                CompiledActionMetadata flowAction = flow.getAction();
+                if (flowAction != null && flowAction.getConfirmationText() != null && !flowAction.getConfirmationText().isBlank()) {
+                    return flowAction.getConfirmationText();
+                }
+                return null;
+            }
+        }
+        return null;
     }
 
     private static String requireConceptName(String conceptName) {
