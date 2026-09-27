@@ -8,6 +8,27 @@ Rules live here. The reasoning behind the hard-won ones lives in
 [`docs/archive/PLATFORM_HISTORY.md`](docs/archive/PLATFORM_HISTORY.md) — read it when you want to
 know *why* a rule exists, never for current status.
 
+## ALERT (2026-09-26) — read before touching Rebuild-And-Restage.ps1 or any generated app's _ops/*.ps1
+
+A single WmsOffice rebuild in this session cost **6 hours 22 minutes of dead wall-clock time**
+because a background task's completion notification silently never fired and Claude sat waiting on
+it with zero independent check — an unacceptable, user-called-out failure. Immediately after that,
+in the SAME turn, Claude then guessed a script name (`Build-App.ps1`) that does not exist, when the
+correct name (`Build-FinalApp.ps1`) was sitting unread in a directory listing from three tool calls
+earlier in that very conversation. Guessing instead of re-reading your own prior tool output, right
+after the wait itself was called inexcusable, is a second, avoidable failure stacked on the first —
+do not repeat either half of this:
+
+1. **Never guess a script/file name.** If a directory was already listed in this conversation,
+   re-read that listing before invoking anything from it — do not invoke-and-see-if-it-exists.
+2. **A background-task completion notification is NOT guaranteed to fire promptly** — proven live at
+   6h22m in this session. For anything the user is actively waiting on, pair `run_in_background` with
+   a `Monitor` poll on the real log path (or a short bounded re-check), never a bare notification with
+   no fallback.
+3. **`-SkipProvenanceCheck` on `Rebuild-And-Restage.ps1` skips step 4 ENTIRELY** — build + start + the
+   gate, not just the gate check. It leaves you with no built jar and no running app. Confirmed live
+   2026-09-26; build the jar and start the app as separate explicit steps afterward.
+
 ## Session economics
 
 This file is re-billed on every request, in this session and in every subagent. So is everything
