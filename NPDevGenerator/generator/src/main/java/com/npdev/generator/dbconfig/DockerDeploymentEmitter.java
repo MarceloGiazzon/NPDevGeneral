@@ -480,8 +480,11 @@ public final class DockerDeploymentEmitter {
                   # NPDEV_FILESTORE_PROVIDER=objectstore in .env; the app ignores this service
                   # entirely otherwise. The bucket is NOT auto-created -- see docs/DEPLOYMENT.md
                   # for the one-time `mc mb` step after first bringing MinIO up.
+                  # Pinned to quay.io, not Docker Hub: MinIO deleted minio/minio from Docker Hub on
+                  # 2026-09-11 (archived its OSS repo, stopped publishing free images Oct 2025).
+                  # quay.io still serves this exact tag at the same digest.
                   minio:
-                    image: minio/minio:RELEASE.2024-08-29T01-40-52Z
+                    image: quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z
                     profiles: ["objectstore"]
                     command: server /data --console-address ":9001"
                     environment:

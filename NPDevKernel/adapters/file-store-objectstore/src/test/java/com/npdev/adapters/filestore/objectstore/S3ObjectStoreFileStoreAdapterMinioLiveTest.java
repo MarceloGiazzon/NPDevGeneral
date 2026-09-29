@@ -47,7 +47,10 @@ class S3ObjectStoreFileStoreAdapterMinioLiveTest {
         Assumptions.assumeTrue(minioEnabled(),
                 "MinIO/S3 disabled locally (scripts/policy/local-test-profile.json) -- "
                         + "set NPDEV_TEST_PROFILE_ENGINES=minio to opt in, or run with CI=true");
-        MINIO = new MinIOContainer("minio/minio:RELEASE.2024-08-29T01-40-52Z");
+        // MinIO deleted minio/minio from Docker Hub on 2026-09-11 (community-wide breaking change,
+        // MinIO archived its OSS repo and stopped publishing free images in Oct 2025); quay.io still
+        // serves the same tag at the same digest, so pin there instead of Docker Hub.
+        MINIO = new MinIOContainer("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z");
         MINIO.start();
 
         S3 = S3Client.builder()

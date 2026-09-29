@@ -91,7 +91,9 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
     void packagedGeneratedAppUploadsAndDownloadsAFileThroughARealObjectStore() throws Exception {
         String runId = "harden-objstore-p4-" + System.currentTimeMillis();
         Path runRoot = HARDEN_ROOT.resolve(runId);
-        MinIOContainer minio = new MinIOContainer("minio/minio:RELEASE.2024-08-29T01-40-52Z");
+        // MinIO deleted minio/minio from Docker Hub on 2026-09-11; quay.io still serves the same
+        // tag at the same digest (see S3ObjectStoreFileStoreAdapterMinioLiveTest for detail).
+        MinIOContainer minio = new MinIOContainer("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z");
         minio.start();
         try {
             S3Client s3 = S3Client.builder()
