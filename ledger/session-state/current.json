@@ -1,18 +1,17 @@
 {
-  "closedAt": "2026-09-29T03:12:55.9443564Z",
+  "closedAt": "2026-09-29T05:41:33.8259456Z",
   "branch": "close-all-open-2026-09-22",
-  "head": "a1b3b371",
-  "headSubject": "feat(dsl,generator,runtimehost): add panelDataSource.totalField + row-action clone/inputFields; close WMS-16 (Recebimento side)",
-  "summary": "Committed WMS-15's confirmationText fix, then implemented and closed WMS-16's Recebimento-side item-level wizard end-to-end: a new scope=row procedure-bound Panel action (AdicionarItemRecebimentoProcedure) for Adicionar Itens, default-1-position, duplicate-product refusal via a new AllocationCapability.verificarProdutoDuplicado (throw-to-block precedent), a new reusable panelDataSource.totalField platform primitive threaded through all 4 schema mirrors/AST/compiler/canonical-JSON/validation/runtime/mustache, and a generator-only row-clone Clonar button. Also fixed a platform gap found along the way (row-scoped Panel actions never rendered inputFields mini-forms), a real DSL coverage-ratchet regression (added tests, re-pinned the floor honestly), and an invalid verification:PARTIAL ledger enum value on both WMS-15 and WMS-16.",
-  "nextStep": "Pick up WMS-16's Expedicao residual next (see ledger/items/WMS-16.yml's RESIDUAL section): build the same 5 building blocks for ExpedicaoDemandaPanel/ExpedicaoItem that were just built for Recebimento -- a scope=row procedure-bound action mirroring AdicionarItemRecebimentoProcedure, an analogous duplicate-produto capability method (simpler than Recebimento's since ExpedicaoItem already carries produtoId directly, no Lote join needed), and reuse the SAME totalField/Clonar platform primitives unchanged (no new platform code needed for those two). Alternative: QUAL-41 (MEDIUM) is also still open. Neither an actual ScrapForAI browser pass over the Recebimento wizard UI nor WMS-15's missing test guard (flagged by check-done-item-guards.py, status:DONE with no guard: block) were done -- both are real residuals from this and the prior session, not started.",
-  "plan": "ledger/items/WMS-16.yml",
+  "head": "d728f25e",
+  "headSubject": "feat(wmsoffice): close WMS-16 Expedicao residual (item-level wizard)",
+  "summary": "Closed WMS-16's Expedicao residual: mirrored the Recebimento-side item-level wizard (AdicionarItemExpedicaoProcedure, AllocationCapability.verificarProdutoDuplicadoExpedicao, ExpedicaoDemandaPanel's new itens dataSource reusing the existing totalField/Clonar primitives unchanged), validated the model, ran a full green :test suite, and live-REST-verified default-quantity/duplicate-refusal/panel-metadata against a freshly rebuilt app before closing WMS-16 to DONE with a resolving guard block.",
+  "nextStep": "Pick up QUAL-41 (MEDIUM, still open) -- read ledger/items/QUAL-41.yml for its current scope before starting. No other WMS-16 residual work remains open in the ledger; the item is fully DONE.",
+  "plan": "ledger/items/QUAL-41.yml",
   "blocked": "",
-  "verified": "Full :test task on the assembled wmsoffice-browser FinalApp: green, no regressions (~7 min). Live REST verification against a freshly booted instance with a fresh admin/JWT: blank quantidade correctly defaults to 1, a duplicate-product add is cleanly rejected (JAVA_SOURCE_CAPABILITY_FAILED, zero phantom rows persisted), and totalField/inputFields are correctly exposed via panel metadata. NPDevContract:dsl module: 8/8 tests green including 4 new totalField tests; coverage ratchet re-checked twice clean (--no-build-cache) at a stable 85.1404%, floor re-pinned. Ran run-all-gates.ps1 in full: all 4 gates initially failed; traced each individually -- the dsl coverage drop (mine) is fixed; 2 generator-gate test failures, an NPDevCli coverage dip, WMS-15's missing guard, and a stale SqlDialect allowlist entry are all confirmed pre-existing/unrelated via git -S search and isolated reruns, left untouched.",
+  "verified": "npdev validate model: 0 errors (58 pre-existing unrelated ux-metadata warnings, unchanged baseline). Gradle :test on the assembled wmsoffice FinalApp: full green, ~7 min, no regressions. Live REST verification against a freshly rebuilt+rebooted wmsoffice instance (:8100): POST AdicionarItemExpedicao panel action with blank quantidade created an ExpedicaoItem with quantidade=1; a second call for the same produtoId returned status:FAILED/JAVA_SOURCE_CAPABILITY_FAILED with the duplicate-refusal message and left exactly 1 row (zero phantom row); GET panel metadata confirmed totalField:quantidade and inputFields:[produtoId,quantidade,autoFinalizacao]. check-done-item-guards.py: WMS-16's new guard resolves cleanly (the 2 remaining findings, WMS-15 and SEC-13, are pre-existing and unrelated). Not run this session: run-all-gates.ps1 (the prior session already ran and cleared it for the Recebimento-side half of this same item; this session's Expedicao-side change reuses the identical platform primitives with no new DSL/generator surface, so it was judged low-risk, but the full gate has not been re-run against this exact commit).",
   "dirtyCount": 0,
   "dirtyFiles": [],
-  "unpushed": 4,
+  "unpushed": 0,
   "landedCommits": [
-    "a1b3b371 feat(dsl,generator,runtimehost): add panelDataSource.totalField + row-action clone/inputFields; close WMS-16 (Recebimento side)",
-    "71a47801 fix(runtimehost,generator): wire dead flow.action.confirmationText into a real client-side confirm gate (WMS-15)"
+    "d728f25e feat(wmsoffice): close WMS-16 Expedicao residual (item-level wizard)"
   ]
 }
