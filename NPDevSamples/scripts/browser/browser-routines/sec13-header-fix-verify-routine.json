@@ -1,0 +1,21 @@
+{
+  "scenarioName": "sec13-verification-page-health-header-fix",
+  "targetPath": "/control-panel.html",
+  "options": { "headless": true, "screenshots": "always", "collectDomOnFailure": true, "viewport": { "width": 1400, "height": 900 } },
+  "variables": {
+    "superUserKey": "npk_ZRFskqpZNa1va5M2RpGsAtXQBuqzO1FJol4mnsOdyC4"
+  },
+  "steps": [
+    { "action": "goto", "url": "$targetUrl" },
+    { "action": "waitForSelector", "selector": "#key", "state": "visible" },
+    { "action": "fill", "selector": "#key", "valueFromVariable": "superUserKey" },
+    { "action": "click", "selector": "#saveKey", "label": "Unlock -- also writes localStorage['npdev.controlpanel.key']" },
+    { "action": "waitForTimeout", "timeoutMs": 800 },
+    { "action": "goto", "url": "http://127.0.0.1:8100/verification.html", "label": "Load the page under test with the key already seeded in localStorage" },
+    { "action": "waitForTimeout", "timeoutMs": 1200 },
+    { "action": "screenshot", "name": "sec13_verification_after_fix" },
+    { "action": "assertVisible", "selector": "#healthNote", "label": "SEC-13: HEALTH_AVAILABLE must be true now that the header is attached, so this note is shown" },
+    { "action": "assertCount", "selector": "button.actbtn.run", "operator": ">=", "count": 1, "label": "Live Run buttons render for the allowlisted items" },
+    { "action": "collect", "what": ["console", "pageErrors"] }
+  ]
+}

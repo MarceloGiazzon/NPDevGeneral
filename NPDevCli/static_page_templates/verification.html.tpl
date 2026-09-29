@@ -50,6 +50,7 @@ var HEALTH_ITEMS = {}; // healthId -> live item, populated only if /api/admin/he
 var HEALTH_AVAILABLE = false;
 var HEALTH_POLL = null;
 
+function key(){ return localStorage.getItem('npdev.controlpanel.key') || ''; }
 function esc(v){ var d=document.createElement('div'); d.textContent= v==null?'':String(v); return d.innerHTML; }
 function dur(v){ if(v==null) return '—'; return v>=60 ? (v/60).toFixed(1)+' min' : v+'s'; }
 function rel(iso){ if(!iso) return '—'; var d=(new Date(iso)).getTime(); if(!isFinite(d)) return esc(iso); var m=Math.floor((Date.now()-d)/60000); if(m<1)return 'just now'; if(m<60)return m+'m ago'; var h=Math.floor(m/60); if(h<24)return h+'h ago'; return Math.floor(h/24)+'d ago'; }
@@ -103,7 +104,7 @@ function render(){
 // error here is not an error state to report -- it means "not signed in as Super User" or "app not
 // reachable", both of which this page already handles by falling back to its baked-in snapshot.
 function refreshHealth(){
-  return fetch('/api/admin/health/items', { credentials: 'same-origin' })
+  return fetch('/api/admin/health/items', { credentials: 'same-origin', headers: { 'X-Super-User-Key': key() } })
     .then(function(r){ if(!r.ok) throw new Error('not available'); return r.json(); })
     .then(function(doc){
       HEALTH_AVAILABLE = true;
@@ -115,12 +116,12 @@ function refreshHealth(){
 }
 
 function runHealthItem(id){
-  fetch('/api/admin/health/run/'+encodeURIComponent(id), { method: 'POST', credentials: 'same-origin' })
+  fetch('/api/admin/health/run/'+encodeURIComponent(id), { method: 'POST', credentials: 'same-origin', headers: { 'X-Super-User-Key': key() } })
     .then(function(){ startPolling(); })
     .catch(function(){ });
 }
 function stopHealthItem(id){
-  fetch('/api/admin/health/stop/'+encodeURIComponent(id), { method: 'POST', credentials: 'same-origin' })
+  fetch('/api/admin/health/stop/'+encodeURIComponent(id), { method: 'POST', credentials: 'same-origin', headers: { 'X-Super-User-Key': key() } })
     .then(function(){ startPolling(); })
     .catch(function(){ });
 }
