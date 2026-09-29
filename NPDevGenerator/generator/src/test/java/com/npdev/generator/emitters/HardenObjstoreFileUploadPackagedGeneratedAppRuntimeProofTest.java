@@ -23,7 +23,7 @@ import com.npdev.generator.templates.TemplateEngine;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
-import org.testcontainers.containers.MinIOContainer;
+import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -64,12 +64,12 @@ import org.junit.jupiter.api.condition.OS;
  * HARDEN-OBJSTORE-P4: proves the full path (controller -&gt; config -&gt; adapter -&gt; object store)
  * end to end in a real packaged app -- generate a model with a genuine {@code file}-typed field,
  * assemble + boot the app configured for {@code npdev.filestore.provider=objectstore} against a
- * real MinIO endpoint, upload+download over HTTP, and assert bytes exist in the bucket under the
- * tenant prefix. Companion to {@link UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest}
+ * real S3-compatible endpoint, upload+download over HTTP, and assert bytes exist in the bucket
+ * under the tenant prefix. Companion to {@link UntrustedExtensionEmitterPackagedGeneratedAppRuntimeProofTest}
  * (same generate-assemble-boot harness), scoped to the file-store surface only.
  */
 @DisabledOnOs(value = OS.WINDOWS, disabledReason =
-        "Uses a MinIO Testcontainers Linux container; GitHub windows-latest runners cannot run Linux "
+        "Uses a LocalStack Testcontainers Linux container; GitHub windows-latest runners cannot run Linux "
         + "containers (unlike Linux runners / local Docker Desktop). Validated by the green Linux CI "
         + "job. Windows-CI Docker-test scoping is tracked as REG-34.")
 // storage/PLAN.md W2: the packaged-app proofs generate, build, boot and exercise a real
@@ -92,35 +92,35 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
     void packagedGeneratedAppUploadsAndDownloadsAFileThroughARealObjectStore() throws Exception {
         String runId = "harden-objstore-p4-" + System.currentTimeMillis();
         Path runRoot = HARDEN_ROOT.resolve(runId);
-        // MinIO deleted minio/minio from Docker Hub on 2026-09-11; quay.io still serves the same
-        // tag at the same digest (see S3ObjectStoreFileStoreAdapterMinioLiveTest for detail).
-        // asCompatibleSubstituteFor is required -- MinIOContainer(String) otherwise rejects a
-        // foreign registry with an IllegalStateException (confirmed live in CI).
-        MinIOContainer minio = new MinIOContainer(
-                DockerImageName.parse("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z")
-                        .asCompatibleSubstituteFor("minio/minio"));
-        minio.start();
+        // Was MinIO; switched 2026-09-29 after MinIO deleted minio/minio from Docker Hub
+        // (2026-09-11) and its quay.io mirror stopped allowing anonymous pulls shortly after
+        // (confirmed live in CI: consistent ConditionTimeoutException on every quay.io pull
+        // attempt) -- see S3ObjectStoreFileStoreAdapterMinioLiveTest for detail. LocalStack's S3
+        // service is a drop-in test double, still actively published.
+        LocalStackContainer localstack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.8.1"))
+                .withServices(LocalStackContainer.Service.S3);
+        localstack.start();
         try {
             S3Client s3 = S3Client.builder()
-                    .region(Region.US_EAST_1)
-                    .endpointOverride(URI.create(minio.getS3URL()))
+                    .region(Region.of(localstack.getRegion()))
+                    .endpointOverride(localstack.getEndpointOverride(LocalStackContainer.Service.S3))
                     .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
                     .credentialsProvider(StaticCredentialsProvider.create(
-                            AwsBasicCredentials.create(minio.getUserName(), minio.getPassword())))
+                            AwsBasicCredentials.create(localstack.getAccessKey(), localstack.getSecretKey())))
                     .build();
             s3.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build());
             try {
-                runProof(runId, runRoot, minio, s3);
+                runProof(runId, runRoot, localstack, s3);
             } finally {
                 s3.close();
             }
         } finally {
-            minio.stop();
+            localstack.stop();
             deleteRecursively(runRoot);
         }
     }
 
-    private void runProof(String runId, Path runRoot, MinIOContainer minio, S3Client s3) throws Exception {
+    private void runProof(String runId, Path runRoot, LocalStackContainer localstack, S3Client s3) throws Exception {
         Path generatedRoot = runRoot.resolve("generated-artifact");
         Path schemaRoot = generatedRoot.resolve("src/main/resources/db/schema-realization");
         Path finalAppRoot = runRoot.resolve("generated-app");
@@ -171,7 +171,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
         int port = freePort();
         String jdbcUrl = "jdbc:h2:mem:" + runId.replace("-", "_")
                 + ";MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE";
-        Process app = startPackagedApp(finalAppRoot, jar, port, jdbcUrl, runtimeHostLibs, evidenceRoot, minio);
+        Process app = startPackagedApp(finalAppRoot, jar, port, jdbcUrl, runtimeHostLibs, evidenceRoot, localstack);
         try {
             waitForHealth(port, evidenceRoot);
             HttpClient client = HttpClient.newHttpClient();
@@ -213,7 +213,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
             assertEquals(key, objectsUnderTenantPrefix.get(0).key());
 
             Files.writeString(evidenceRoot.resolve("harden-objstore-p4-proof-output.txt"),
-                    "MinIO endpoint: " + minio.getS3URL() + System.lineSeparator()
+                    "S3 endpoint: " + localstack.getEndpointOverride(LocalStackContainer.Service.S3) + System.lineSeparator()
                             + "Bucket: " + BUCKET + System.lineSeparator()
                             + "Upload response: " + uploadResponse + System.lineSeparator()
                             + "Download Content-Type: " + contentType + System.lineSeparator()
@@ -530,7 +530,7 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
             String jdbcUrl,
             Path runtimeHostLibs,
             Path evidenceRoot,
-            MinIOContainer minio
+            LocalStackContainer localstack
     ) throws IOException {
         Path bootLog = evidenceRoot.resolve("packaged-app-boot-output.txt");
         ProcessBuilder builder = new ProcessBuilder(
@@ -551,9 +551,9 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                 "--spring.flyway.locations=classpath:db/schema-realization",
                 "--npdev.filestore.provider=objectstore",
                 "--npdev.filestore.objectstore.bucket=" + BUCKET,
-                "--npdev.filestore.objectstore.endpoint=" + minio.getS3URL(),
-                "--npdev.filestore.objectstore.accessKeyId=" + minio.getUserName(),
-                "--npdev.filestore.objectstore.secretAccessKey=" + minio.getPassword(),
+                "--npdev.filestore.objectstore.endpoint=" + localstack.getEndpointOverride(LocalStackContainer.Service.S3),
+                "--npdev.filestore.objectstore.accessKeyId=" + localstack.getAccessKey(),
+                "--npdev.filestore.objectstore.secretAccessKey=" + localstack.getSecretKey(),
                 "--npdev.filestore.objectstore.pathStyleAccess=true"
         );
         builder.directory(finalAppRoot.toFile());

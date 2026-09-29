@@ -139,7 +139,8 @@ jobs:
             --no-daemon --console=plain
 
       # QUAL-23 (2026-08-19): S3ObjectStoreFileStoreAdapterMinioLiveTest boots a real
-      # org.testcontainers.containers.MinIOContainer -- same Docker-on-a-Linux-runner shape as the
+      # org.testcontainers.containers.localstack.LocalStackContainer (was MinIOContainer until
+      # 2026-09-29, see BREAKING.md) -- same Docker-on-a-Linux-runner shape as the
       # Postgres Testcontainers step above, just a different image, so it lives here rather than in
       # the fast inproc step below. Not added to npdev-pr-gate.yml: that job already accepts the cost
       # of one Testcontainers image (Postgres) per PR; a second, different container image would add

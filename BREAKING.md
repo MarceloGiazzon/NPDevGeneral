@@ -5,7 +5,31 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
-## 2026-09-10 — the escape-hatch vocabulary inverts: "trusted source" → "untrusted extension" (Path A P0.4)
+## 2026-09-29 — generated `docker-compose.yml`'s bundled object-store service switches from MinIO to LocalStack
+
+**What changes.** MinIO deleted `minio/minio` from Docker Hub on 2026-09-11 and its quay.io mirror
+stopped allowing anonymous pulls shortly after (confirmed live in this repo's own CI), so the
+`objectstore` compose profile `DockerDeploymentEmitter` emits into every newly-generated app now
+bundles LocalStack instead: service name `minio` → `objectstore`, image
+`minio/minio:RELEASE.2024-08-29T01-40-52Z` → `localstack/localstack:3.8.1`, volume `minio-data` →
+`objectstore-data`, default endpoint `http://minio:9000` → `http://objectstore:4566`, and
+`.env.example`'s `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` → `OBJECTSTORE_ACCESS_KEY`/
+`OBJECTSTORE_SECRET_KEY` (both now optional — LocalStack's community edition accepts any
+access key/secret, so nothing here needs a real value). `docs/DEPLOYMENT.md`'s bucket-creation step
+changes from `docker compose exec minio mc mb ...` to `docker compose exec objectstore awslocal s3
+mb ...` accordingly.
+
+**Who is affected.** Only apps that (a) already generated a `docker-compose.yml` with the
+`objectstore` profile in use, AND (b) regenerate. Apps on `file-store-inproc` (the default) are
+unaffected.
+
+**Codemod.** None — this changes generated deployment artifacts, not `model.json` or any DSL
+vocabulary, so a plain regeneration (`Build-NpdevApp.ps1` etc.) picks up the new compose/env content
+automatically, the same way any other emitter fix would. The one manual step this does NOT
+automate: an app with a live MinIO container holding real uploaded-file data must migrate that data
+into the new `objectstore-data` volume itself (e.g. `mc mirror` the old bucket into the new one)
+before regenerating and switching over — regeneration does not touch the OLD `minio-data` volume,
+so nothing is deleted, but nothing copies it forward either.
 
 **What changes.** The author-facing name for the hash-pinned, admission-gated escape hatch (a
 panel/procedure implemented as your own HTML/JS/Java rather than the DSL step vocabulary) inverts

@@ -5,7 +5,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.MinIOContainer;
+import org.testcontainers.containers.localstack.LocalStackContainer;
 import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
@@ -16,7 +16,6 @@ import software.amazon.awssdk.services.s3.model.CreateBucketRequest;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.NoSuchElementException;
@@ -35,36 +34,33 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class S3ObjectStoreFileStoreAdapterMinioLiveTest {
 
     private static final String BUCKET = "npdev-files";
-    private static MinIOContainer MINIO;
+    private static LocalStackContainer LOCALSTACK;
     private static S3Client S3;
     private static S3ObjectStoreFileStoreAdapter ADAPTER;
 
     @BeforeAll
-    static void startMinioAndAdapter() {
+    static void startLocalstackAndAdapter() {
         // RUN-31 item 2: same skip-cleanly convention PostgresTestSupport already uses --
         // scripts/policy/local-test-profile.json deliberately keeps Docker off for local/agent work
         // (NPDev_General/CLAUDE.md, "Local machine resource policy"), so this must abort the class
-        // cleanly rather than let MINIO.start() throw and report as an opaque initializationError.
+        // cleanly rather than let the container throw and report as an opaque initializationError.
         Assumptions.assumeTrue(minioEnabled(),
-                "MinIO/S3 disabled locally (scripts/policy/local-test-profile.json) -- "
+                "S3-compatible engine disabled locally (scripts/policy/local-test-profile.json) -- "
                         + "set NPDEV_TEST_PROFILE_ENGINES=minio to opt in, or run with CI=true");
-        // MinIO deleted minio/minio from Docker Hub on 2026-09-11 (community-wide breaking change,
-        // MinIO archived its OSS repo and stopped publishing free images in Oct 2025); quay.io still
-        // serves the same tag at the same digest, so pin there instead of Docker Hub.
-        // MinIOContainer(String) rejects a foreign registry outright (assertCompatibleWith throws
-        // IllegalStateException, confirmed live in CI) -- asCompatibleSubstituteFor is required to
-        // tell Testcontainers this is the same image family under a different registry.
-        MINIO = new MinIOContainer(
-                DockerImageName.parse("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z")
-                        .asCompatibleSubstituteFor("minio/minio"));
-        MINIO.start();
+        // Was MinIO; switched 2026-09-29 after MinIO deleted minio/minio from Docker Hub
+        // (2026-09-11) and its quay.io mirror stopped allowing anonymous pulls shortly after
+        // (confirmed live in CI: consistent ConditionTimeoutException on every quay.io pull
+        // attempt). LocalStack's S3 service is a drop-in test double, still actively published.
+        LOCALSTACK = new LocalStackContainer(DockerImageName.parse("localstack/localstack:3.8.1"))
+                .withServices(LocalStackContainer.Service.S3);
+        LOCALSTACK.start();
 
         S3 = S3Client.builder()
-                .region(Region.US_EAST_1)
-                .endpointOverride(URI.create(MINIO.getS3URL()))
+                .region(Region.of(LOCALSTACK.getRegion()))
+                .endpointOverride(LOCALSTACK.getEndpointOverride(LocalStackContainer.Service.S3))
                 .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build())
                 .credentialsProvider(StaticCredentialsProvider.create(
-                        AwsBasicCredentials.create(MINIO.getUserName(), MINIO.getPassword())))
+                        AwsBasicCredentials.create(LOCALSTACK.getAccessKey(), LOCALSTACK.getSecretKey())))
                 .build();
         S3.createBucket(CreateBucketRequest.builder().bucket(BUCKET).build());
 
@@ -72,19 +68,21 @@ class S3ObjectStoreFileStoreAdapterMinioLiveTest {
     }
 
     @AfterAll
-    static void stopMinio() {
+    static void stopLocalstack() {
         if (S3 != null) {
             S3.close();
         }
-        if (MINIO != null) {
-            MINIO.stop();
+        if (LOCALSTACK != null) {
+            LOCALSTACK.stop();
         }
     }
 
     // Same env-var convention as com.npdev.test.postgres.PostgresTestSupport.postgresEnabled() --
-    // duplicated rather than shared, since this is the only MinIO-based test that runs by default
-    // (HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest's own MinIOContainer use is
-    // already excluded from the default gate by NPDevGenerator's packaged-proof filter).
+    // duplicated rather than shared, since this is the only S3-compatible-engine test that runs by
+    // default (HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest's own container use is
+    // already excluded from the default gate by NPDevGenerator's packaged-proof filter). The
+    // "minio" engine name stays as the stable profile identifier (scripts/policy/local-test-profile.json)
+    // even though the backing container is now LocalStack.
     private static boolean minioEnabled() {
         if ("true".equalsIgnoreCase(System.getenv("CI"))) {
             return true;
