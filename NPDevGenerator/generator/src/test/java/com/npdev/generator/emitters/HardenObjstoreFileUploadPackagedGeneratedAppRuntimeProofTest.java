@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.testcontainers.containers.MinIOContainer;
+import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -93,7 +94,11 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
         Path runRoot = HARDEN_ROOT.resolve(runId);
         // MinIO deleted minio/minio from Docker Hub on 2026-09-11; quay.io still serves the same
         // tag at the same digest (see S3ObjectStoreFileStoreAdapterMinioLiveTest for detail).
-        MinIOContainer minio = new MinIOContainer("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z");
+        // asCompatibleSubstituteFor is required -- MinIOContainer(String) otherwise rejects a
+        // foreign registry with an IllegalStateException (confirmed live in CI).
+        MinIOContainer minio = new MinIOContainer(
+                DockerImageName.parse("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z")
+                        .asCompatibleSubstituteFor("minio/minio"));
         minio.start();
         try {
             S3Client s3 = S3Client.builder()

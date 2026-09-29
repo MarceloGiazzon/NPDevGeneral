@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.MinIOContainer;
+import org.testcontainers.utility.DockerImageName;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.regions.Region;
@@ -50,7 +51,12 @@ class S3ObjectStoreFileStoreAdapterMinioLiveTest {
         // MinIO deleted minio/minio from Docker Hub on 2026-09-11 (community-wide breaking change,
         // MinIO archived its OSS repo and stopped publishing free images in Oct 2025); quay.io still
         // serves the same tag at the same digest, so pin there instead of Docker Hub.
-        MINIO = new MinIOContainer("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z");
+        // MinIOContainer(String) rejects a foreign registry outright (assertCompatibleWith throws
+        // IllegalStateException, confirmed live in CI) -- asCompatibleSubstituteFor is required to
+        // tell Testcontainers this is the same image family under a different registry.
+        MINIO = new MinIOContainer(
+                DockerImageName.parse("quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z")
+                        .asCompatibleSubstituteFor("minio/minio"));
         MINIO.start();
 
         S3 = S3Client.builder()
