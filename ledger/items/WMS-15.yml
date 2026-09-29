@@ -98,3 +98,4 @@ guard:
     response (the flowConfirmationText helper PanelRuntime.panelActions() calls). Re-open this item
     if the helper stops being called, starts reading the wrong flow, or the field name it writes
     ("confirmationText") drifts from what business-ui-app.mustache's window.confirm(...) gate reads.
+  provenRed: false
