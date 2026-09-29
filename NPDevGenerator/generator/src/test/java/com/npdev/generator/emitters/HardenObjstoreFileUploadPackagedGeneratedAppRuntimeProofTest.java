@@ -411,6 +411,14 @@ final class HardenObjstoreFileUploadPackagedGeneratedAppRuntimeProofTest {
                         ":adapters:file-store-inproc:jar",
                         ":adapters:file-store-objectstore:jar",
                         ":adapters:flow-compiled:jar",
+                        // SEC-11: OAuthGoogleController (runtimehost-core) imports these two identity
+                        // providers unconditionally, same reason the mail/document-render adapters are
+                        // listed above -- missing here for weeks because CI never got far enough to
+                        // catch it (confirmed live in CI, 2026-09-29: a clean Linux runner's
+                        // runtimehost-core compile failed with "package com.npdev.adapters.idp.google
+                        // does not exist"). See docs/ADAPTER_REGISTRATION_CHECKLIST.md.
+                        ":adapters:idp-github:jar",
+                        ":adapters:idp-google:jar",
                         ":adapters:json-jackson:jar",
                         ":adapters:metrics-micrometer:jar",
                         ":adapters:notification-inproc:jar",

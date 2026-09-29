@@ -3,7 +3,10 @@
 > When you add (or rename) an adapter module under `NPDevKernel\adapters\`, its jar must be listed in
 > EVERY place below, or a freshly generated FinalApp will fail to compile on a clean machine / CI with
 > a silent symptom (a bare 404 or a `NoClassDefFoundError`, not an obvious build error). This has
-> already caused three incidents (`mail-inproc`/`mail-smtp`, `document-render-inproc`/`document-render-stub`).
+> already caused four incidents (`mail-inproc`/`mail-smtp`, `document-render-inproc`/`document-render-stub`,
+> `file-store-objectstore`, and `idp-google`/`idp-github` -- the last one sat undetected for two weeks,
+> 2026-09-16 to 2026-09-29, because CI itself was broken by an unrelated MinIO Docker Hub removal the
+> whole time and never got far enough to compile runtimehost-core).
 >
 > Do all of these in the same change. Then run the RuntimeHost gate and, if possible, a clean CI run.
 
@@ -43,12 +46,6 @@ verified list-free (jar discovery). If you consciously exclude a new adapter, ad
 - `audit-*`, `events-inproc`, `eventstore-postgres`, `flowinstance-*`, `idempotency-*`,
   `tracestore-postgres`, `tracing-inproc`: not imported unconditionally by the RuntimeHost template.
 - `postgres-test-support`: test-support module, never packaged.
-- `idp-google` (2026-09-16, SEC-11): the Google identity provider is imported only by
-  runtimehost-core's compiled OAuth classes (a staged runtimehost-libs jar), never by generated-app
-  source, so the proof tests need not build it from source; apps receive the jar via the staged
-  runtimehost-libs fileTree exactly like runtimehost-core itself.
-- `idp-github`: the GitHub identity provider, same reasoning as `idp-google` above -- imported only
-  by runtimehost-core's compiled OAuth classes, never by generated-app source.
 
 ## For a capable agent (future work, not part of this checklist)
 
