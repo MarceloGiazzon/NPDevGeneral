@@ -556,6 +556,9 @@ public class PanelRuntime {
         // no rowOps means no add/delete control is rendered for this dataSource.
         summary.put("rowOps", dataSource.rowOps());
         summary.put("addFormFields", dataSource.addFormFields());
+        // WMS-16: gates the client-side sum-and-render footer in renderDeclaredColumnsTable --
+        // absent means no footer, same declared-or-nothing convention as rowOps/addFormFields above.
+        summary.put("totalField", safe(dataSource.totalField()));
         summary.put("recordCount", value instanceof Collection<?> collection ? collection.size() : 0);
         summary.put("fallback", fallback);
         if (fallback && value instanceof Map<?, ?> fallbackMap) {

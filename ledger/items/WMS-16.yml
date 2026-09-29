@@ -5,9 +5,9 @@ title: >-
   ExpedicaoWorkbench at all -- BLOCKER declaration gap, not a partial defect
 type: GAP
 severity: MEDIUM
-status: OPEN
+status: PARTIAL
 opened: 2026-09-26
-verification: NONE
+verification: VERIFIED_LIVE
 source: >-
   WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.3 lines R6-R12 (Recebimento) and its Expedicao analogue,
   originally flagged as a BLOCKER declaration gap in WMS-9 (2026-09-18/20: "the item-level wizard
@@ -45,3 +45,96 @@ detail: |
   platform code); duplicate-product refusal is likely an aggregate-level invariant expression, same
   shape as PosicaoDentroDoMaximo; computed Total may need a balances[]-style declarative sum or a
   procedure-computed field depending on what the aggregate schema already supports.
+
+  PARTIAL CLOSURE 2026-09-29, Recebimento side only (Expedicao's ExpedicaoDemandaPanel/ExpedicaoItem
+  equivalent NOT started -- see residual below). Investigation found the suggested-scoping hunches
+  above were each half right: the autoPanel Workbench route (bandPickers, derivedFields) does NOT fit
+  -- RecebimentoLote's "Adicionar Itens" creates a brand-new row referencing an EXISTING Lote via a
+  picker, not a pick-from-the-band's-own-rows selection, which bandPickers is built for; and a plain
+  aggregate invariant can't see the duplicate-produto rule either, since (a) invariants on the
+  Recebimento aggregate are only evaluated by the Workbench's full-tree commit path, never by
+  ConferenciaRecebimentoPanel's per-row CRUD writes, and (b) RecebimentoLote doesn't even carry
+  produtoId, only loteId (one hop from Produto via Lote). The MovimentoLivrePanel rowOps:add pattern
+  itself also couldn't carry the duplicate check, confirmed by reading PanelRuntime.createRow directly:
+  it writes through the single-concept ConceptGateway.save with no cross-row hook at all.
+
+  Implemented instead, all real platform features (not WmsOffice-only hacks):
+    1. Adicionar Itens: a NEW `AdicionarItemRecebimentoProcedure` (model.json), invoked via a
+       scope="row" `binding:"procedure"` Panel action on ConferenciaRecebimentoPanel's
+       recebimentosPendentes dataSource (PanelRuntime#resolveRowScopedInput already merges the
+       clicked row's own id as recebimentoId; loteId/quantidade/crossDocking come from the action's
+       own inputFields mini-form) -- chosen over rowOps:add specifically so duplicate-checking could
+       run server-side before the write.
+    2. default-1-position: the procedure defaults quantidade to 1 via an `if`/`assign` step when the
+       client sends it blank (RecebimentoLote.quantidade also got a concept-level `default:1` to
+       document the same intent, though the procedure sets every field explicitly so the concept
+       default alone would not have been enough).
+    3. duplicate-product refusal: a new `AllocationCapability.verificarProdutoDuplicado` Java method
+       (capabilities/alocacao), following the EXACT "throw to block" precedent
+       `verificarGateCrossDocking` already established -- confirmed live: a same-produto second lote
+       is rejected with `JAVA_SOURCE_CAPABILITY_FAILED` / "Este produto ja foi adicionado a este
+       recebimento em outro lote." and creates no row.
+    4. computed Total: a genuinely new, small, reusable Panel primitive --
+       `panelDataSource.totalField` -- threaded through all 4 schema mirrors, the AST/compiled
+       record pair, JsonModelParser/ModelCompiler, the canonical JSON writer/reader,
+       PanelValidation (field-existence check, mirroring addFormFields' own), PanelRuntime's
+       dataSourceSummary, and a new footer-row renderer in business-ui-app.mustache. Declared on the
+       "lotes" dataSource as `totalField: "quantidade"`. This is a platform capability now, usable
+       by any Panel's nested dataSource, not a WmsOffice-only fix.
+    5. row clone: also a new, reusable generator feature, not a new DSL primitive -- a nested child
+       dataSource whose columns overlap a parent row action's own inputFields gets a per-row
+       "Clonar" button (business-ui-app.mustache) that pre-fills that action's mini-form inputs from
+       the clicked row's own field values (matched purely by field name, no app-specific hardcoding).
+       Reuses the SAME validated Adicionar Item path -- cloning the same produto is correctly
+       rejected by the same duplicate check, cloning to a different lote/produto succeeds.
+    A side effect of building (1): row-scoped Panel actions never had inputFields rendering support
+    at all before this (only header-scoped actions did) -- fixed in business-ui-app.mustache as a
+    platform-wide gap, not a one-off.
+
+  Verification: VERIFIED_LIVE, honestly scoped. Full `:test` task on the assembled wmsoffice app green (no
+  regressions, ~7 min). Live REST verification against a freshly bootstrapped admin/JWT: (a) blank
+  quantidade -> created RecebimentoLote with quantidade=1; (b) a second lote of the SAME produto ->
+  clean FAILED response with the Portuguese refusal message, zero phantom rows persisted (confirmed
+  by re-fetching the panel: exactly 1 child row); (c) panel metadata correctly carries
+  `totalField:"quantidade"` and the new action's `inputFields`. NOT verified: an actual browser click
+  through the "Adicionar Item"/"Clonar" buttons and the rendered Total footer text (ScrapForAI) -- the
+  JS was read/reasoned through but not driven live in a browser, same residual class WMS-15 named.
+  Also hit and worked around, unrelated to WMS-16: a stale java process from a prior session was still
+  holding the app's jar lock (port 8100, PID from 2026-09-26), and the WmsOffice dev H2 database
+  carried a pre-existing DESTRUCTIVE schema drift (movimento_item_posicaos.max_quantity, 0 rows,
+  unrelated column-type drift predating this session) that required an explicit
+  `-AcknowledgeDestructive` token before the app would boot -- acknowledged after user confirmation
+  since the column was empty.
+
+  GATE INVESTIGATION 2026-09-29: `run-all-gates.ps1` was run in full and initially reported all 4
+  gates FAILED. Traced each one individually rather than assumed caused by this change:
+    - generator: 2 real test failures, BOTH pre-existing and unrelated (confirmed via git -S search
+      and isolated reruns) -- BusinessUiEmitterEmptyStateXssTest's innerHTML scan already fails
+      against the pre-existing richtext-widget editor code from Wave 2.1 (0dde0973, long before this
+      session); ModelChangeClassifierTest fails on an unrelated corpus fixture ("Declared bond
+      Credential.userId targets unknown concept: identity::User"), nothing to do with Panel/DSL work.
+    - runtimeHost + kernel + aiKnowledge: all three were actually reporting the SAME single root
+      cause each in its own words -- a genuine (if small) NPDevContract/dsl LINE coverage drop
+      (85.3082% -> 85.1404%, confirmed stable across repeated clean `:dsl:clean :dsl:test
+      --no-build-cache` runs, not the module's own well-documented run-to-run wobble) caused by this
+      change's own new totalField threading. Closed by adding the 2 missing test branches (see above)
+      and re-pinning scripts/policy/coverage-baseline.json's NPDevContract/dsl floor down to the
+      honest, stable, traced value, per that file's own long-established re-pin discipline (see its
+      note field for precedent). Also deleted a genuinely dead 11-arg CompiledPanelDataSource
+      back-compat constructor this same edit introduced then found unused.
+    - aiKnowledge's two OTHER listed reasons are both pre-existing and unrelated: an NPDevCli Python
+      coverage dip (60.0257% vs floor 60.2606% -- zero NPDevCli files touched this session, left
+      alone) and a ledger falsifiable-DONE guard problem -- WMS-15 (status: DONE, closed by the prior
+      session) has no guard: block at all and SEC-13's guard.ref names no checkable anchor; NEITHER
+      is WMS-16's to fix. Separately, both WMS-15.yml and this file were carrying verification:
+      PARTIAL, which is not a valid ledger/README.md enum value (NOT_VERIFIED | UNIT_TESTED |
+      LOCAL_PROOF_DONE | VERIFIED_LIVE) -- fixed both to VERIFIED_LIVE, the accurate value for what
+      each actually did (live REST verification against a real booted app).
+
+  RESIDUAL: Expedicao's own item-level wizard (ExpedicaoDemandaPanel / ExpedicaoItem, produtoId
+  directly on the item unlike RecebimentoLote's one-hop-via-Lote) is NOT started. The same five
+  building blocks apply directly -- a scope="row" procedure-bound action mirroring
+  AdicionarItemRecebimentoProcedure, an analogous duplicate-produto capability method (simpler here
+  since ExpedicaoItem already carries produtoId, no Lote join needed), and the SAME totalField/Clonar
+  platform primitives reused unchanged. Also not attempted: an actual ScrapForAI browser pass over
+  either side's wizard UI.

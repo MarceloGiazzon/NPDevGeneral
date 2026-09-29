@@ -1889,7 +1889,8 @@ public final class JsonModelParser {
                     readText(dataSourceNode, "childField"),
                     parseTextArray(dataSourceNode.get("rowOps")),
                     parseTextArray(dataSourceNode.get("addFormFields")),
-                    readText(dataSourceNode, "onRowLoad")
+                    readText(dataSourceNode, "onRowLoad"),
+                    readText(dataSourceNode, "totalField")
             ));
         }
         return out;

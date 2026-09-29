@@ -115,6 +115,48 @@ class PanelRowOpsValidationTest {
     }
 
     @Test
+    void totalFieldCompilesAndValidates() throws Exception {
+        String dataSources = """
+                [
+                  { "name": "rows", "concept": "Order", "totalField": "sku" }
+                ]
+                """;
+        ValidationResult result = validate(dataSources);
+        assertFalse(result.hasErrors(), "Expected no errors: " + result.getErrors());
+
+        ModelAst ast = new JsonModelParser().parse(modelPath(dataSources));
+        CompiledModel compiled = new ModelCompiler().compile(ast);
+        CompiledPanelDataSource compiledDs = compiled.getPanels().stream()
+                .findFirst().orElseThrow().dataSources().get(0);
+        assertEquals("sku", compiledDs.totalField());
+    }
+
+    @Test
+    void unknownTotalFieldIsRejected() throws Exception {
+        ValidationResult result = validate("""
+                [
+                  { "name": "rows", "concept": "Order", "totalField": "bogus" }
+                ]
+                """);
+        assertTrue(result.hasErrors());
+        assertTrue(result.getErrors().stream().anyMatch(e -> e.contains("totalField references unknown field bogus")),
+                "Errors: " + result.getErrors());
+    }
+
+    @Test
+    void totalFieldOnAQueryBoundDataSourceIsNotBlamedForAnUnresolvableConcept() throws Exception {
+        // Mirrors validateAddFormFields' own "no resolvable concept" no-op branch: a query/procedure
+        // -bound dataSource is reported by its own dedicated check, not blamed here a second time.
+        ValidationResult result = validate("""
+                [
+                  { "name": "rows", "query": "SomeQuery", "totalField": "sku" }
+                ]
+                """);
+        assertFalse(result.getErrors().stream().anyMatch(e -> e.contains("totalField")),
+                "Errors: " + result.getErrors());
+    }
+
+    @Test
     void panelWithoutRowOpsStillCompiles() throws Exception {
         String dataSources = """
                 [

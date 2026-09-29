@@ -2030,7 +2030,8 @@ public final class ModelCompiler {
                     dataSource.childField(),
                     List.copyOf(rowOps),
                     List.copyOf(dataSource.addFormFields()),
-                    dataSource.onRowLoad()
+                    dataSource.onRowLoad(),
+                    dataSource.totalField()
             ));
         }
         out.sort(Comparator.comparing(dataSource -> normalize(dataSource.name())));

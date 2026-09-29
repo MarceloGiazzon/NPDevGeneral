@@ -7,7 +7,7 @@ severity: LOW
 status: DONE
 opened: 2026-09-26
 closed: 2026-09-27
-verification: PARTIAL
+verification: VERIFIED_LIVE
 source: >-
   WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.4 line E15, source-verified in this session (2026-09-26)
   while cross-referencing NPDEV_FEATURE_PLAN_2026-09-24.md's Wave 8 against the older WMS-9 record

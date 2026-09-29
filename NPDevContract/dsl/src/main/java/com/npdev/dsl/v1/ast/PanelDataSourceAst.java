@@ -14,7 +14,8 @@ public record PanelDataSourceAst(
         String childField,
         List<String> rowOps,
         List<String> addFormFields,
-        String onRowLoad
+        String onRowLoad,
+        String totalField
 ) {
     public PanelDataSourceAst {
         params = params == null ? Map.of() : Map.copyOf(params);

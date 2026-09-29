@@ -2062,7 +2062,7 @@
     });
   }
 
-  function renderDeclaredColumnsTable(rows, columns, dataSourceName, panelMeta, entry) {
+  function renderDeclaredColumnsTable(rows, columns, dataSourceName, panelMeta, entry, parentActionInputsByName) {
     const table = document.createElement("table");
     table.className = "records";
     const editableColumns = columns.filter(function (column) { return column.editable; });
@@ -2070,8 +2070,25 @@
     const dataSourceMeta = declaredPanelDataSourceMeta(entry, dataSourceName);
     const deletable = Boolean(dataSourceMeta && (dataSourceMeta.rowOps || []).indexOf("delete") !== -1);
     const rowActions = rowScopedActions(entry, dataSourceName);
+    // WMS-16: when THIS table is itself a nested child (parentActionInputsByName passed down from
+    // the currently-rendering parent row), a "Clonar" button per row pre-fills whichever of the
+    // parent's own input-collecting row actions declares at least one inputField matching one of
+    // THIS table's columns -- e.g. the lotes table's loteId/quantidade/crossDocking columns
+    // matching the recebimentosPendentes-scoped "Adicionar Item" action's own inputFields. Purely
+    // name-matching (row-independent, computed once per table render), so it works for any app's
+    // own field names, not just WmsOffice's.
+    const cloneTargets = [];
+    if (parentActionInputsByName) {
+      Object.keys(parentActionInputsByName).forEach(function (actionName) {
+        const targetInputs = parentActionInputsByName[actionName];
+        const matchingFields = Object.keys(targetInputs).filter(function (field) {
+          return columns.some(function (column) { return column.sourceField === field; });
+        });
+        if (matchingFields.length) { cloneTargets.push({ inputsByField: targetInputs, fields: matchingFields }); }
+      });
+    }
     const headerLabels = columns.map(function (column) { return column.label || column.field; });
-    if (saveAction || deletable || rowActions.length) { headerLabels.push(""); }
+    if (saveAction || deletable || rowActions.length || cloneTargets.length) { headerLabels.push(""); }
     const thead = document.createElement("thead");
     thead.appendChild(headerRow(headerLabels));
     table.appendChild(thead);
@@ -2096,8 +2113,22 @@
         }
         tr.appendChild(td);
       });
-      if (saveAction || deletable || rowActions.length) {
+      // WMS-16: per-parent-row registry of this row's own input-collecting row actions (keyed by
+      // action name), filled below and handed down to a nested child dataSource's "Clonar" button.
+      const actionInputsByName = {};
+      if (saveAction || deletable || rowActions.length || cloneTargets.length) {
         const actionTd = document.createElement("td");
+        if (cloneTargets.length) {
+          actionTd.appendChild(button("Clonar", "secondary small", function () {
+            cloneTargets.forEach(function (target) {
+              target.fields.forEach(function (field) {
+                const value = rowData[field];
+                target.inputsByField[field].value = value === null || value === undefined ? "" : value;
+              });
+            });
+            notify("Valores copiados para \"Adicionar Item\" -- ajuste e confirme.", false);
+          }));
+        }
         if (saveAction) {
           actionTd.appendChild(button("Save", "secondary small", function () {
             const data = Object.assign({}, rowData);
@@ -2111,12 +2142,36 @@
         const rowContext = Object.assign({}, panelContextValues(), rowData);
         rowActions.forEach(function (action) {
           if (!evaluateWhen(action.visibleWhen, rowContext)) { return; }
+          // WMS-16: a row-scoped action with declared inputFields gets the SAME inline
+          // "collect input, then invoke" mini-form the header-action loop already renders (see
+          // renderDeclaredPanel above) -- previously only {id: row.id} was ever sent for a
+          // scope="row" action, so any inputFields it declared had no way to reach the server even
+          // though PanelRuntime#resolveRowScopedInput already merges extra body fields on top of the
+          // row's own data unconditionally. rowInputsByField is keyed per action so a row with
+          // multiple input-collecting actions doesn't cross-wire their values.
+          const rowInputsByField = {};
+          const fieldNames = action.inputFields || [];
+          if (fieldNames.length) {
+            fieldNames.forEach(function (field) {
+              const input = createDeclaredPanelTextInput(field);
+              rowInputsByField[field] = input;
+              actionTd.appendChild(input);
+            });
+            // WMS-16: exposes this action's own live input elements to a nested child dataSource's
+            // "Clonar" row button (below), keyed by action name -- lets an existing child row
+            // pre-fill THIS parent row's own "Adicionar Item"-style mini-form from its own field
+            // values instead of the user retyping them, without hard-coding either name into this
+            // shared template.
+            if (actionInputsByName) { actionInputsByName[action.name] = rowInputsByField; }
+          }
           const rowActionButton = button(action.label || action.name, "secondary small", function () {
             // WMS-15: entry.actions already carries confirmationText (resolved server-side from
             // the invoked flow's own declared action.confirmationText) -- no name lookup needed here
             // since this list IS the live one, unlike the header-button loop above.
             if (action.confirmationText && !window.confirm(action.confirmationText)) { return; }
-            executeDeclaredPanelAction(panelMeta, action.name, { id: row.id });
+            const data = { id: row.id };
+            Object.keys(rowInputsByField).forEach(function (field) { data[field] = rowInputsByField[field].value; });
+            executeDeclaredPanelAction(panelMeta, action.name, data);
           });
           rowActionButton.disabled = !evaluateWhen(action.enabledWhen, rowContext);
           actionTd.appendChild(rowActionButton);
@@ -2138,20 +2193,40 @@
           childTr.className = "declared-panel-nested-row";
           const childTd = document.createElement("td");
           childTd.colSpan = headerLabels.length;
-          childTd.appendChild(renderDeclaredPanelValue(childRows, entry, childDataSourceName, panelMeta));
+          childTd.appendChild(renderDeclaredPanelValue(childRows, entry, childDataSourceName, panelMeta, actionInputsByName));
           childTr.appendChild(childTd);
           tbody.appendChild(childTr);
         });
       }
     });
     table.appendChild(tbody);
+    // WMS-16: dataSourceMeta.totalField (declared panelDataSource.totalField) gates a footer row
+    // summing that field across every currently-rendered row -- purely a display aggregate over
+    // rows already fetched, recomputed on each render() same as the rest of this table.
+    if (dataSourceMeta && dataSourceMeta.totalField) {
+      const totalColumn = columns.find(function (column) { return column.sourceField === dataSourceMeta.totalField; });
+      const total = rows.reduce(function (sum, row) {
+        const rowData = row && typeof row === "object" ? (row.data || {}) : {};
+        const raw = rowData[dataSourceMeta.totalField];
+        return sum + (typeof raw === "number" ? raw : Number(raw) || 0);
+      }, 0);
+      const tfoot = document.createElement("tfoot");
+      const totalTr = document.createElement("tr");
+      const totalTd = document.createElement("td");
+      totalTd.colSpan = headerLabels.length;
+      totalTd.className = "declared-panel-total";
+      totalTd.textContent = "Total " + (totalColumn ? (totalColumn.label || totalColumn.sourceField) : dataSourceMeta.totalField) + ": " + formatValue(total);
+      totalTr.appendChild(totalTd);
+      tfoot.appendChild(totalTr);
+      table.appendChild(tfoot);
+    }
     return table;
   }
 
-  function renderDeclaredPanelValue(value, entry, dataSourceName, panelMeta) {
+  function renderDeclaredPanelValue(value, entry, dataSourceName, panelMeta, parentActionInputsByName) {
     const columns = declaredPanelColumns(entry.fieldBindings, dataSourceName);
     const table = (columns && Array.isArray(value))
-      ? renderDeclaredColumnsTable(value, columns, dataSourceName, panelMeta, entry)
+      ? renderDeclaredColumnsTable(value, columns, dataSourceName, panelMeta, entry, parentActionInputsByName)
       : renderDeclaredPanelValueGeneric(value, panelMeta, entry, dataSourceName);
 
     const addForm = renderDeclaredPanelAddRowForm(panelMeta, entry, dataSourceName, columns);
