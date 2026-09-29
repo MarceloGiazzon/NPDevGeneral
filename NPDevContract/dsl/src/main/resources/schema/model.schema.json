@@ -4541,6 +4541,11 @@
           "type": "string",
           "minLength": 1,
           "description": "Move 6 Move C (docs/MOVE6_TYPED_SURFACE_PLAN.md \u00a74): a procedure that ENRICHES the rows this data source produced -- adds fields, never reorders/adds/drops rows (a count or id mismatch is a hard runtime failure, not silent truncation). Distinct from `procedure` above, which REPLACES the row source entirely."
+        },
+        "totalField": {
+          "type": "string",
+          "minLength": 1,
+          "description": "WMS-16: names a numeric field of this dataSource's own rows (as already scoped by fieldBindings' source prefix) to sum client-side across every currently-rendered row and display as a table footer -- e.g. a running quantity total for an item-wizard-style nested dataSource. Purely a display aggregate over already-loaded rows; never sent to the server, never affects the commit payload."
         }
       },
       "additionalProperties": false

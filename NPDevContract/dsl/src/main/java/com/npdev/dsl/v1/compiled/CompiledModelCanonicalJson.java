@@ -1382,6 +1382,7 @@ public final class CompiledModelCanonicalJson {
             node.set("rowOps", toStringArray(dataSource.rowOps()));
             node.set("addFormFields", toStringArray(dataSource.addFormFields()));
             node.put("onRowLoad", safe(dataSource.onRowLoad()));
+            node.put("totalField", safe(dataSource.totalField()));
             out.add(node);
         }
         return out;

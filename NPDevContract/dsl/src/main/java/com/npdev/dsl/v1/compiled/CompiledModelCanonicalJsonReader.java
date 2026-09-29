@@ -1458,7 +1458,8 @@ public final class CompiledModelCanonicalJsonReader {
                     optionalText(dataSourceNode, "childField"),
                     toStringList(dataSourceNode.get("rowOps")),
                     toStringList(dataSourceNode.get("addFormFields")),
-                    optionalText(dataSourceNode, "onRowLoad")
+                    optionalText(dataSourceNode, "onRowLoad"),
+                    optionalText(dataSourceNode, "totalField")
             ));
         }
         return out;

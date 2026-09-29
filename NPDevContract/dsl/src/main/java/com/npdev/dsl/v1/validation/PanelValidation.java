@@ -763,6 +763,7 @@ final class PanelValidation {
                 }
                 validatePanelRowOps(panel, dataSource, entitiesByLower, errors);
                 validateAddFormFields(panel, dataSource, entitiesByLower, errors);
+                validateTotalField(panel, dataSource, entitiesByLower, errors);
             }
             for (PanelActionAst action : panel.actions()) {
                 String binding = normalize(action.binding());
@@ -923,6 +924,31 @@ final class PanelValidation {
                 errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
                         + ": addFormFields references unknown field " + fieldName + " on concept " + dataSource.concept());
             }
+        }
+    }
+
+    /** WMS-16: same shape as {@link #validateAddFormFields} -- {@code totalField} names a field of
+     * the dataSource's own concept, and a name that does not exist there is wrong. */
+    private static void validateTotalField(
+            PanelAst panel,
+            PanelDataSourceAst dataSource,
+            Map<String, ConceptAst> entitiesByLower,
+            List<String> errors
+    ) {
+        if (!hasText(dataSource.totalField())) {
+            return;
+        }
+        ConceptAst concept = entitiesByLower.get(normalize(dataSource.concept()));
+        if (concept == null) {
+            return;
+        }
+        Set<String> conceptFieldNames = concept.getFields().stream()
+                .map(FieldAst::getName)
+                .map(SemanticValidator::normalize)
+                .collect(Collectors.toSet());
+        if (!conceptFieldNames.contains(normalize(dataSource.totalField()))) {
+            errors.add("Panel " + panel.name() + " dataSource " + dataSource.name()
+                    + ": totalField references unknown field " + dataSource.totalField() + " on concept " + dataSource.concept());
         }
     }
 

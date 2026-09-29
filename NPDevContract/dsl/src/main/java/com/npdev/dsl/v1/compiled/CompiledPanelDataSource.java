@@ -18,7 +18,10 @@ public record CompiledPanelDataSource(
          * this data source produced (adds fields; never reorders/adds/drops rows -- a count or id
          * mismatch is a hard runtime failure, not silent truncation). Distinct from {@code
          * procedure} above, which REPLACES the row source entirely. Null if undeclared. */
-        String onRowLoad
+        String onRowLoad,
+        /** WMS-16: names a numeric field of this dataSource's own rows to sum client-side across
+         * every currently-rendered row, rendered as a table footer. Null if undeclared. */
+        String totalField
 ) {
     public CompiledPanelDataSource {
         params = params == null ? Map.of() : Map.copyOf(params);
@@ -37,7 +40,7 @@ public record CompiledPanelDataSource(
             String parentField,
             String childField
     ) {
-        this(name, concept, query, procedure, params, parentDataSource, parentField, childField, List.of(), List.of(), null);
+        this(name, concept, query, procedure, params, parentDataSource, parentField, childField, List.of(), List.of(), null, null);
     }
 
     /** Move 6 Move C: back-compat 10-arg constructor for existing callers without onRowLoad. */
@@ -53,7 +56,7 @@ public record CompiledPanelDataSource(
             List<String> rowOps,
             List<String> addFormFields
     ) {
-        this(name, concept, query, procedure, params, parentDataSource, parentField, childField, rowOps, addFormFields, null);
+        this(name, concept, query, procedure, params, parentDataSource, parentField, childField, rowOps, addFormFields, null, null);
     }
 
     public boolean supportsAdd() {
