@@ -1,17 +1,18 @@
 {
-  "closedAt": "2026-09-29T05:41:33.8259456Z",
+  "closedAt": "2026-09-29T08:37:54.0938742Z",
   "branch": "close-all-open-2026-09-22",
-  "head": "d728f25e",
-  "headSubject": "feat(wmsoffice): close WMS-16 Expedicao residual (item-level wizard)",
-  "summary": "Closed WMS-16's Expedicao residual: mirrored the Recebimento-side item-level wizard (AdicionarItemExpedicaoProcedure, AllocationCapability.verificarProdutoDuplicadoExpedicao, ExpedicaoDemandaPanel's new itens dataSource reusing the existing totalField/Clonar primitives unchanged), validated the model, ran a full green :test suite, and live-REST-verified default-quantity/duplicate-refusal/panel-metadata against a freshly rebuilt app before closing WMS-16 to DONE with a resolving guard block.",
-  "nextStep": "Pick up QUAL-41 (MEDIUM, still open) -- read ledger/items/QUAL-41.yml for its current scope before starting. No other WMS-16 residual work remains open in the ledger; the item is fully DONE.",
+  "head": "3e88dd28",
+  "headSubject": "test(runtimehost): cover NpdevAuthConfig REG-156 conditional wiring; close QUAL-41",
+  "summary": "Closed QUAL-41 (NPDevRuntimeHost coverage floor programme) as DONE: wrote NpdevAuthConfigAuthModeTest, a real Spring ApplicationContextRunner test proving REG-156's matchIfMissing=true conditional-bean wiring on the apikey-mode auth filters, the one target every prior slice had deferred as 'too large.' NpdevAuthConfig moved from 0% to 100% line coverage; RuntimeHost's overall floor moved 23.6484% -> 25.2033%. Verified via the full unfiltered run-runtimehost-gate.ps1 (BUILD SUCCESSFUL) plus a narrow --tests rerun's fresh JUnit XML (4/4 passing). Owner (Marcelo) explicitly approved closing DONE rather than leaving PARTIAL. Committed as 3e88dd28 and pushed to close-all-open-2026-09-22.",
+  "nextStep": "Ledger is now fully closed: 505 items, 504 DONE, the only non-DONE item is QUAL-40 (kernel's sibling coverage item, already WONTFIX-accepted 2026-08-31 -- not live work). No specific next task is queued. Start the next session with /prep and pick a new focus with the user (e.g. a fresh, more narrowly scoped RuntimeHost coverage item covering BootstrapAdminController -- same REG-177 shape as the already-tested CreateUserController -- if continuing this programme is wanted).",
   "plan": "ledger/items/QUAL-41.yml",
   "blocked": "",
-  "verified": "npdev validate model: 0 errors (58 pre-existing unrelated ux-metadata warnings, unchanged baseline). Gradle :test on the assembled wmsoffice FinalApp: full green, ~7 min, no regressions. Live REST verification against a freshly rebuilt+rebooted wmsoffice instance (:8100): POST AdicionarItemExpedicao panel action with blank quantidade created an ExpedicaoItem with quantidade=1; a second call for the same produtoId returned status:FAILED/JAVA_SOURCE_CAPABILITY_FAILED with the duplicate-refusal message and left exactly 1 row (zero phantom row); GET panel metadata confirmed totalField:quantidade and inputFields:[produtoId,quantidade,autoFinalizacao]. check-done-item-guards.py: WMS-16's new guard resolves cleanly (the 2 remaining findings, WMS-15 and SEC-13, are pre-existing and unrelated). Not run this session: run-all-gates.ps1 (the prior session already ran and cleared it for the Recebimento-side half of this same item; this session's Expedicao-side change reuses the identical platform primitives with no new DSL/generator surface, so it was judged low-risk, but the full gate has not been re-run against this exact commit).",
+  "verified": "run-runtimehost-gate.ps1 (full, unfiltered, via digest runner): BUILD SUCCESSFUL for both the assembled-app test task and runtimehost-core:test; overall gate exit code non-zero only from an unrelated pre-existing NPDevCli coverage-report regression (confirmed via git diff untouched by this session). Narrow --tests rerun of com.finalexec.config.NpdevAuthConfigAuthModeTest against the same assembled app: fresh JUnit XML tests=4 skipped=0 failures=0 errors=0. check-done-item-guards.py: no new findings (2 pre-existing, unrelated: WMS-15, SEC-13). coverage-baseline.json and ledger/items/QUAL-41.yml validated as well-formed YAML/JSON after edits. Not run this session: full run-all-gates.ps1 (four-gate T2 sweep) -- only the RuntimeHost gate specifically relevant to this change was run.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "d728f25e feat(wmsoffice): close WMS-16 Expedicao residual (item-level wizard)"
+    "3e88dd28 test(runtimehost): cover NpdevAuthConfig REG-156 conditional wiring; close QUAL-41",
+    "94974690 chore(session): handoff -- WMS-16 fully closed (Expedicao side), QUAL-41 next"
   ]
 }
