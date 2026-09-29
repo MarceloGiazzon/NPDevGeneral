@@ -70,11 +70,25 @@ def _repo_root(explicit: str | None) -> Path:
 
 def _configs(root: Path, appgen: Path | None) -> list[Path]:
     found = [p for p in sorted(root.joinpath("NPDevSamples").rglob("config.json"))
-             if "Output" not in p.parts and "node_modules" not in p.parts]
+             if "Output" not in p.parts and "node_modules" not in p.parts
+             and not _is_dead_ai_scenario_config(p)]
     if appgen and appgen.is_dir():
         found += [p for p in sorted(appgen.rglob("config.json"))
                   if "Output" not in p.parts and "node_modules" not in p.parts]
     return found
+
+
+def _is_dead_ai_scenario_config(path: Path) -> bool:
+    """NPDevSamples/ai-scenarios/<id>/config.json is a stale sibling of a different, older
+    contract (schemaVersion "ai-generator-config.v1", no $schema key at all -- never an instance
+    of config.schema.json) that scenario.manifest.json's files.config once pointed at. Traced live
+    2026-09-29 and confirmed dead: Normalize-AiContract.ps1 (the only thing that runs these
+    scenarios) reads only files.aiModel/files.aiConfig and writes its OWN ephemeral config.json
+    under normalized/, never touching this checked-in one. Scoped to this exact path shape, not a
+    blanket "$schema missing" rule -- AppGen/apps/*/definition/config.json files also lack (or
+    mis-point) $schema sometimes, but those ARE real config.schema.json instances that should keep
+    being checked."""
+    return path.parent.parent.name == "ai-scenarios"
 
 
 def check(root: Path, appgen: Path | None) -> tuple[list[dict], int]:
