@@ -1,12 +1,13 @@
 id: QUAL-41
 title: >-
-  NPDevRuntimeHost's coverage floor (23.6484%, corrected 2026-09-23 (second update same day) -- the
-  17.45% this title originally cited is over a month stale) is the lowest in the platform and has no
-  tracked plan to raise it -- the module copied verbatim into every generated FinalApp
+  NPDevRuntimeHost's coverage floor (25.2033%, corrected 2026-09-29 -- the 23.6484% this title
+  previously cited is stale) is the lowest in the platform and has no tracked plan to raise it --
+  the module copied verbatim into every generated FinalApp
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-08-25
+closed: 2026-09-29
 verification: UNIT_TESTED
 source: >-
   2026-08-25 remediation plan W3.5. Same shape of gap as QUAL-40 (kernel's analogous item), split out
@@ -27,6 +28,7 @@ files:
   - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/auth/IdentityProvisioningTest.java
   - NPDevRuntimeHost/runtimehost-core/src/test/java/com/finalexec/controlpanel/TenantAutoRegistrationRunnerTest.java
   - NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelTenantUsersControllerTest.java
+  - NPDevRuntimeHost/src/test/java/com/finalexec/config/NpdevAuthConfigAuthModeTest.java
 detail: |
   17.4451% of NPDevRuntimeHost's lines execute under test (per the last real run-runtimehost-gate.ps1
   measurement this session, 2026-08-25) -- the lowest-covered module in the platform, and the one
@@ -315,6 +317,75 @@ detail: |
   boot-time/first-run surface remains beyond what REG-177's own defect trail named. Closing this
   item as DONE (vs. WONTFIX-accepting the new floor) is an owner call, not something this session
   decided unilaterally, consistent with how every prior slice of this item has been closed out.
+
+  2026-09-29 (owner-approved continuation of the standing programme): completed the exact target
+  every prior entry named and deferred -- `NpdevAuthConfig`'s REG-156 `@ConditionalOnProperty`
+  wiring (`matchIfMissing = true` on the apikey-mode filter beans, fixing a fail-open boot-time
+  regression where a bare/un-profiled boot's auth mode passed `StartupValidator` but the enforcing
+  filter never registered). This class had zero test coverage before this session (confirmed by
+  grep for a same-directory `*Test.java` and by the fresh JaCoCo report showing 0/45 lines before).
+
+  Chose a real Spring `ApplicationContextRunner` standing up the whole `NpdevAuthConfig`
+  `@Configuration` class (not calling its `@Bean` methods directly, which would bypass Spring's own
+  condition evaluation and prove nothing about REG-156's actual wiring), rather than treating the
+  prior "substantially larger, separately-scoped effort" framing as a hard stop -- the ~15-`@Bean`
+  dependency graph turned out tractable with existing repo idioms: `ModelHolder`/`CompiledModel`
+  construction copied from `PasswordResetControllerTest`'s established pattern, the
+  `ObjectProvider<DataSource>` `FixedProvider` record copied from
+  `CredentialRegistryServiceTest`/`TenantRegistryServiceTest`, and `RuntimeSettings`'s 16-arg
+  positional constructor copied from `RuntimeHealthIndicatorsTest`. New
+  `NpdevAuthConfigAuthModeTest` (4 cases): `npdev.auth.mode` absent -> `RuntimeApiKeyAuthFilter`
+  registers (the exact REG-156 fail-open regression shape, proven fixed), explicit `apikey` -> same,
+  explicit `jwt` -> `RuntimeApiKeyAuthFilter` absent and `JwtBearerAuthFilter` present instead, and
+  an explicit unrecognized value (`none`) -> neither filter registers (proving `matchIfMissing`
+  fires ONLY on genuine absence, not on every non-apikey value).
+
+  **Verified, not assumed:** ran the FULL, unfiltered `run-runtimehost-gate.ps1` via the digest
+  runner (never `--tests`-filtered, per this item's own standing warning) -- `BUILD SUCCESSFUL` for
+  both the assembled-app `test` task and the standalone `runtimehost-core:test` task; the overall
+  gate script's own exit code was non-zero, but ONLY because `check-coverage-ratchet.py` also
+  reported an unrelated `NPDevCli` regression (60.0257% vs recorded floor 60.2606%) from a stale
+  report already on disk -- confirmed via `git status`/`git diff` that this session touched only the
+  new test file and `coverage-baseline.json`, nothing under `NPDevCli/`, the same "the ratchet
+  checks every module's baseline whenever it runs, not just the one the calling gate cares about"
+  mechanism this item's 2026-09-21/2026-09-23 entries already documented; `NPDevCli`'s own floor was
+  NOT lowered (`check-coverage-ratchet.py` never lowers a floor for a regression). Additionally
+  captured a narrow `--tests`-filtered rerun against the SAME assembled app the full gate had just
+  built (`com.finalexec.config.NpdevAuthConfigAuthModeTest`) and read the fresh JUnit XML directly:
+  `tests="4" skipped="0" failures="0" errors="0"`.
+
+  **Measured, before/after, same mechanism this item always uses**
+  (`scripts/reports/out/runtimehost-jacoco-test-report.xml`, `simple-contact-intake` sample,
+  2026-09-29T05:56:02Z): RuntimeHost LINE coverage moved 23.6484% -> 25.2033%, a real +1.5549pp gain
+  -- `NpdevAuthConfig` itself moved from wholly uncovered to 45/45 lines (100%), confirmed by
+  reading the class-level counters in the fresh report directly, not the module aggregate.
+  `check-coverage-ratchet.py --write-baseline` ratcheted `NPDevRuntimeHost`'s floor up to match;
+  `NPDevKernel/kernel`'s entry (QUAL-40, separately accepted) was left untouched, confirmed by
+  `git diff` touching exactly the two `NPDevRuntimeHost` lines.
+
+  This closes the one substantial target every prior entry deferred as "a substantially larger,
+  separately-scoped effort" -- it turned out tractable in one slice once the dependency-stubbing
+  idioms were assembled. What remains outside this item's scope: `BootstrapAdminController` (same
+  REG-177 shape as the already-covered `CreateUserController`) and miscellaneous CRUD surface not
+  named by the defect-history rationale below.
+
+  2026-09-29 (owner decision, Marcelo, same session): closed DONE, not WONTFIX. Rationale: this
+  item's own opening rationale (PORT-1..5, the close-the-gaps first-run defects, REG-177's hardcoded
+  table name -- "the module most in need of real coverage is the one that keeps producing live
+  defects nothing caught first") named boot-time/first-run paths as the actual target, never a raw
+  percentage. Every one of REG-177's own named classes now has real behavioural tests:
+  `CreateUserController`, `ControlPanelAdminUserController`, `IdentityProvisioning`,
+  `TenantAutoRegistrationRunner` (2026-09-21), all 8 endpoints of the platform's largest previously-
+  untested controller `ControlPanelTenantUsersController` (2026-09-23), and now `NpdevAuthConfig`'s
+  REG-156 conditional-bean wiring (2026-09-29) -- the fail-open boot regression this item's own
+  defect history exists to prevent a repeat of. The floor moved 17.45% -> 25.2033% across these four
+  sessions as an honest side effect of that targeted work, never chased for its own sake. The two
+  residual gaps (`BootstrapAdminController`'s untested twin of an already-proven pattern, and
+  `NpdevAuthConfig`'s ~15-other-`@Bean` methods unrelated to REG-156) are accepted as the working
+  baseline rather than continuing this session -- this is a standing programme, not a single item,
+  and re-opening it (or a fresh, more narrowly scoped item) is the right move whenever a session's
+  actual focus is RuntimeHost again, per this item's own 2026-08-31 precedent for the sibling
+  QUAL-40 decision.
 guard:
   kind: test
   ref: NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelTenantUsersControllerTest.java#revokeRoleDeletesTheAssignmentAndAudits
