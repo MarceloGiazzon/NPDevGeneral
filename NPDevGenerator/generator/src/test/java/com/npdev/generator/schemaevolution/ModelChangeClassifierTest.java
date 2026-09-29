@@ -240,6 +240,25 @@ class ModelChangeClassifierTest {
             if (specializes.contains("::") || extendsBase.contains("::")) {
                 return false;
             }
+            // Same P4.1 reasoning, one level down: a concept can be entirely inline and still bond
+            // (reference-field) to a pack-qualified target ("identity::User") that only exists once
+            // packs are composed -- raw compile() here never composes them, so BondModelSupport
+            // resolves the target against the unresolved node and throws IllegalStateException. Skip
+            // exactly like a pack-qualified specializes/extends is already skipped.
+            JsonNode fields = concept.get("fields");
+            if (fields != null && fields.isArray()) {
+                for (JsonNode field : fields) {
+                    if (field == null || !field.isObject()) {
+                        continue;
+                    }
+                    JsonNode reference = field.get("reference");
+                    String target = reference != null && reference.isObject() && reference.has("target")
+                            ? reference.get("target").asText("") : "";
+                    if (target.contains("::")) {
+                        return false;
+                    }
+                }
+            }
         }
         return true;
     }

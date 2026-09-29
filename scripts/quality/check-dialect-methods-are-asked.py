@@ -151,11 +151,13 @@ INTERNAL_ONLY = {
 
     #   COVERED BY THE CONFORMANCE VECTORS -- a real consumer that this checker's production-only
     #   search roots structurally cannot see. Not "no caller": DialectConformanceTierATest asserts
-    #   their shape on all four dialects and TierB executes listColumnsSql against real engines.
-    "listTablesSql": "STOR-13 (covered). Asked by DialectConformanceTierATest against all four "
-                     "dialects -- a real consumer, outside this checker's production-only roots.",
-    "listColumnsSql": "STOR-13 (covered). Asked by DialectConformanceTierATest and EXECUTED by "
-                      "DialectConformanceTierBTest against real engines.",
+    #   its shape on all four dialects.
+    #
+    #   listTablesSql and listColumnsSql WERE here too, on the same "test-only consumer" reasoning --
+    #   removed (not just re-reasoned) once this checker found a real production caller
+    #   (NPDevRuntimeHost/runtimehost-core/.../db/DataTransferIntrospection.java): the entries had
+    #   gone stale (they now asserted "no production caller", which stopped being true), and a stale
+    #   allowlist entry is worse than none, per this file's own rule below.
     "listIndexesSql": "STOR-13 (covered). Asked by DialectConformanceTierATest against all four "
                       "dialects -- a real consumer, outside this checker's production-only roots.",
 }
