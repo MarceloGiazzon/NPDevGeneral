@@ -5,8 +5,9 @@ title: >-
   ExpedicaoWorkbench at all -- BLOCKER declaration gap, not a partial defect
 type: GAP
 severity: MEDIUM
-status: PARTIAL
+status: DONE
 opened: 2026-09-26
+closed: 2026-09-29
 verification: VERIFIED_LIVE
 source: >-
   WMSOFFICE_SCREEN_PARITY_CHECKLIST.md 2.3 lines R6-R12 (Recebimento) and its Expedicao analogue,
@@ -131,10 +132,71 @@ detail: |
       LOCAL_PROOF_DONE | VERIFIED_LIVE) -- fixed both to VERIFIED_LIVE, the accurate value for what
       each actually did (live REST verification against a real booted app).
 
-  RESIDUAL: Expedicao's own item-level wizard (ExpedicaoDemandaPanel / ExpedicaoItem, produtoId
-  directly on the item unlike RecebimentoLote's one-hop-via-Lote) is NOT started. The same five
-  building blocks apply directly -- a scope="row" procedure-bound action mirroring
-  AdicionarItemRecebimentoProcedure, an analogous duplicate-produto capability method (simpler here
-  since ExpedicaoItem already carries produtoId, no Lote join needed), and the SAME totalField/Clonar
-  platform primitives reused unchanged. Also not attempted: an actual ScrapForAI browser pass over
-  either side's wizard UI.
+  CLOSED 2026-09-29, Expedicao side: built the same five building blocks for ExpedicaoDemandaPanel/
+  ExpedicaoItem as the Recebimento side above, confirming the RESIDUAL note's own scoping hunch --
+  simpler here since ExpedicaoItem already carries produtoId directly (no Lote join needed):
+    1. Adicionar Itens: new `AdicionarItemExpedicaoProcedure` (model.json), a scope="row"
+       `binding:"procedure"` Panel action on ExpedicaoDemandaPanel's expedicoesPendentes dataSource
+       (mirrors AdicionarItemRecebimentoProcedure's shape exactly; PanelRuntime#resolveRowScopedInput
+       merges the clicked row's own id as expedicaoId).
+    2. default-1-position: same if/assign pattern defaulting quantidade to 1 when blank; ExpedicaoItem
+       .quantidade also got a concept-level default:1 to document the same intent (same caveat as
+       Recebimento: the procedure sets every field explicitly, so the concept default alone would not
+       have been enough on its own).
+    3. duplicate-product refusal: new `AllocationCapability.verificarProdutoDuplicadoExpedicao` --
+       genuinely simpler than the Recebimento twin (no Lote join: ExpedicaoItem.produtoId is direct),
+       same "throw to block" precedent. New capability.plugin.json operationBinding AND a new entry in
+       model.json's customCapabilities[].operations (missed on the first validateModel pass -- the
+       semantic validator's capability-operation check reads the model's OWN declared operations list,
+       not the plugin manifest, so both have to carry the new name or the model is rejected with
+       "capability alocacao has no operation named ...").
+    4/5. computed Total + row clone: the SAME `totalField`/generic "Clonar" platform primitives built
+       for Recebimento, reused completely unchanged -- zero new generator code, exactly as the
+       RESIDUAL note predicted. Declared `totalField: "quantidade"` on ExpedicaoDemandaPanel's new
+       "itens" nested dataSource.
+
+  Verification: VERIFIED_LIVE. `npdev validate model`: 0 errors after the customCapabilities fix (58
+  pre-existing ux-metadata warnings, unchanged baseline). Full `:test` task on the assembled wmsoffice
+  FinalApp: green, ~7 min, no regressions. Live REST verification against a freshly rebuilt/booted
+  instance (fresh admin/JWT via a Super User key reissue -- the app's persisted H2 data dir had an
+  active SUPERUSER credential from an earlier session but its SUPER_USER_KEY.txt file on disk was
+  stale/mismatched; Reissue-SuperUserKey.ps1 fixed it, see gotcha below): created an Expedicao, then
+  POSTed the new AdicionarItemExpedicao panel action twice for the same produtoId -- (a) first call
+  with blank quantidade created ExpedicaoItem with quantidade=1; (b) second call (same produto,
+  quantidade=5) came back `status:"FAILED"`/`failureCode:"JAVA_SOURCE_CAPABILITY_FAILED"` with the
+  Portuguese refusal message, and a re-fetch of /api/expedicao_items confirmed exactly 1 row still
+  exists (zero phantom row from the rejected duplicate); (c) GET panel metadata confirmed the "itens"
+  dataSource carries `totalField:"quantidade"` and the new action exposes
+  `inputFields:[produtoId,quantidade,autoFinalizacao]`.
+
+  GOTCHA hit this session, worth naming for whoever hits it next: `Reissue-SuperUserKey.ps1`'s first
+  attempt failed outright ("Port 8100 was already in use") because it starts the one-shot
+  force-reissue java process immediately after telling the OLD process to stop, with no wait for the
+  OS to actually release the port -- a real race in the script, not a one-off. Re-running it a few
+  seconds later (once the port was confirmed free via `Get-NetTCPConnection`) succeeded cleanly. Also:
+  the script's own final "Restarting normally" step can itself report a false "port already in use"
+  against the one-shot process it just issued the credential from, if that process does not exit after
+  issuing the credential (it doesn't -- force-reissue is a boot-time flag, not a run-once-and-exit
+  mode) -- in that case the already-running instance already carries the fresh credential and is safe
+  to use directly; no actual restart is needed.
+
+  RESIDUAL (unchanged from before, still real): neither side's wizard UI has been driven through an
+  actual browser (ScrapForAI) -- the JS was read/reasoned through but never clicked live, same
+  residual class WMS-15 named. Also not attempted: seeding a full duplicate-produto Clonar-button
+  click through the browser (the identical `AdicionarItem*` procedure path was verified via direct
+  REST call instead, since Clonar only ever pre-fills the same mini-form client-side).
+guard:
+  kind: live
+  ref: >-
+    POST /api/runtime/metadata/ui/panels/ExpedicaoDemandaPanel/actions/AdicionarItemExpedicao against
+    a freshly rebuilt wmsoffice FinalApp (:8100, persisted H2), called twice for the same produtoId on
+    one freshly-created Expedicao
+  asserts: >-
+    First call (blank quantidade) returns status:"OK" with the created ExpedicaoItem.quantidade == 1;
+    second call (same produtoId) returns status:"FAILED" / failureCode:"JAVA_SOURCE_CAPABILITY_FAILED"
+    with the duplicate-produto refusal message; a follow-up GET /api/expedicao_items shows exactly 1
+    row for this expedicao (zero phantom row from the rejected call); GET
+    /api/runtime/metadata/ui/panels/ExpedicaoDemandaPanel shows the "itens" dataSource with
+    totalField:"quantidade" and the AdicionarItemExpedicao action with
+    inputFields:[produtoId,quantidade,autoFinalizacao].
+  provenRed: true
