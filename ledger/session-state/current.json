@@ -1,18 +1,20 @@
 {
-  "closedAt": "2026-09-29T08:37:54.0938742Z",
+  "closedAt": "2026-09-29T15:41:20.5357583Z",
   "branch": "close-all-open-2026-09-22",
-  "head": "3e88dd28",
-  "headSubject": "test(runtimehost): cover NpdevAuthConfig REG-156 conditional wiring; close QUAL-41",
-  "summary": "Closed QUAL-41 (NPDevRuntimeHost coverage floor programme) as DONE: wrote NpdevAuthConfigAuthModeTest, a real Spring ApplicationContextRunner test proving REG-156's matchIfMissing=true conditional-bean wiring on the apikey-mode auth filters, the one target every prior slice had deferred as 'too large.' NpdevAuthConfig moved from 0% to 100% line coverage; RuntimeHost's overall floor moved 23.6484% -> 25.2033%. Verified via the full unfiltered run-runtimehost-gate.ps1 (BUILD SUCCESSFUL) plus a narrow --tests rerun's fresh JUnit XML (4/4 passing). Owner (Marcelo) explicitly approved closing DONE rather than leaving PARTIAL. Committed as 3e88dd28 and pushed to close-all-open-2026-09-22.",
-  "nextStep": "Ledger is now fully closed: 505 items, 504 DONE, the only non-DONE item is QUAL-40 (kernel's sibling coverage item, already WONTFIX-accepted 2026-08-31 -- not live work). No specific next task is queued. Start the next session with /prep and pick a new focus with the user (e.g. a fresh, more narrowly scoped RuntimeHost coverage item covering BootstrapAdminController -- same REG-177 shape as the already-tested CreateUserController -- if continuing this programme is wanted).",
-  "plan": "ledger/items/QUAL-41.yml",
+  "head": "20ddbff7",
+  "headSubject": "fix(verification-panel): attach X-Super-User-Key header on health fetch calls (SEC-13 regression)",
+  "summary": "Fixed SEC-13 live regression: verification.html's refreshHealth/runHealthItem/stopHealthItem never attached X-Super-User-Key on their fetch() calls, so HEALTH_AVAILABLE never became true for a real Super User despite the server side being correct. Patched both emitters (NPDevCli/static_page_templates/verification.html.tpl and its duplicate inline copy in scripts/appgen/New-VerificationPanelPage.ps1) to read localStorage['npdev.controlpanel.key'] the same way control-panel.html already does and attach it on all three calls. Rebuilt WmsOffice, confirmed server-side via curl (401 -> 200), and confirmed live in a real headless browser via a new ScrapForAI routine (sec13-header-fix-verify-routine.json): #healthNote becomes visible and Run buttons render. Committed (20ddbff7). Also cross-checked the close-all-open-2026-09-22 plan against the live ledger: all 7 phases (REG-240/241/242/243/244, QUAL-41, B28) are genuinely DONE/LIFTED -- the memory note claiming phases 4/5/6/7 were still open was stale. Only QUAL-40 (WONTFIX, owner-accepted) is not DONE in the whole 505-item ledger; all 26 boundaries are LIFTED.",
+  "nextStep": "The close-all-open-2026-09-22 plan's own Definition-of-Done checklist is the only remaining item: (1) run a full 'run-all-gates.ps1 -IncludeReleaseGate -IncludePaperwork' sweep -- only plain T2 has been run recently; (2) do ONE live browser session demonstrating all three reload behaviors together (orchestration rule edited+reloaded fires the new rule; a document added by reload renders; a concept added by reload is usable) -- each has been proven individually by tests/earlier sessions but never demoed end-to-end together in one browser pass per the plan's explicit definition of done. Consider whether the just-fixed SEC-13 header regression deserves its own ledger item (it was found live, fixed, and committed this session, but SEC-13 itself was already DONE as a feature so nothing tracks this specific regression+fix).",
+  "plan": "",
   "blocked": "",
-  "verified": "run-runtimehost-gate.ps1 (full, unfiltered, via digest runner): BUILD SUCCESSFUL for both the assembled-app test task and runtimehost-core:test; overall gate exit code non-zero only from an unrelated pre-existing NPDevCli coverage-report regression (confirmed via git diff untouched by this session). Narrow --tests rerun of com.finalexec.config.NpdevAuthConfigAuthModeTest against the same assembled app: fresh JUnit XML tests=4 skipped=0 failures=0 errors=0. check-done-item-guards.py: no new findings (2 pre-existing, unrelated: WMS-15, SEC-13). coverage-baseline.json and ledger/items/QUAL-41.yml validated as well-formed YAML/JSON after edits. Not run this session: full run-all-gates.ps1 (four-gate T2 sweep) -- only the RuntimeHost gate specifically relevant to this change was run.",
-  "dirtyCount": 0,
-  "dirtyFiles": [],
-  "unpushed": 0,
+  "verified": "Server-side: curl -H 'X-Super-User-Key: <key>' http://127.0.0.1:8100/api/admin/health/items returned 200 with real item data (was 401 before the fix). Browser: ScrapForAI routine sec13-header-fix-verify-routine.json ran 11/11 steps green against a rebuilt+running WmsOffice -- assertVisible #healthNote passed (HEALTH_AVAILABLE true) and assertCount button.actbtn.run >=1 passed (Run buttons rendered); only console noise was a benign favicon.ico 404. Ledger cross-check: grepped status:/classification: directly out of REG-240.yml, REG-241.yml, REG-242.yml, REG-243.yml, REG-244.yml, QUAL-41.yml (all DONE) and B28.yml (LIFTED) rather than trusting the stale memory note or the plan doc's framing.",
+  "dirtyCount": 2,
+  "dirtyFiles": [
+    " M ledger/session-state/current.json",
+    " M ledger/session-state/history.jsonl"
+  ],
+  "unpushed": 1,
   "landedCommits": [
-    "3e88dd28 test(runtimehost): cover NpdevAuthConfig REG-156 conditional wiring; close QUAL-41",
-    "94974690 chore(session): handoff -- WMS-16 fully closed (Expedicao side), QUAL-41 next"
+    "20ddbff7 fix(verification-panel): attach X-Super-User-Key header on health fetch calls (SEC-13 regression)"
   ]
 }
