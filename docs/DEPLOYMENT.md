@@ -104,21 +104,23 @@ By default the app stores uploaded files via `file-store-inproc` (a local filesy
 `npdev-files:/app/data/files` in the compose file) — fine for a single instance, but not
 multi-instance-safe and not externally durable. The `file-store-objectstore` adapter (S3-compatible:
 AWS S3, MinIO, Cloudflare R2) is a complete, independently-tested alternative — proven against a
-real MinIO instance in its own Testcontainers suite (`S3ObjectStoreFileStoreAdapterMinioLiveTest`).
+real S3-compatible endpoint in its own Testcontainers suite (`S3ObjectStoreFileStoreAdapterMinioLiveTest`).
 
-To switch a Postgres-engine app to it locally via the optional `objectstore` compose profile:
+To switch a Postgres-engine app to it locally via the optional `objectstore` compose profile — this
+bundles LocalStack, a local S3-compatible dev/test emulator, NOT a production object store (see
+below for production):
 
 ```powershell
 docker compose --profile objectstore up -d --build
-# MinIO does not auto-create its bucket -- one-time setup after MinIO is up:
-docker compose exec minio mc alias set local http://localhost:9000 <MINIO_ROOT_USER> <MINIO_ROOT_PASSWORD>
-docker compose exec minio mc mb local/npdev-files
+# LocalStack does not auto-create its bucket -- one-time setup after it is up:
+docker compose exec objectstore awslocal s3 mb s3://npdev-files
 docker compose restart app   # NPDEV_FILESTORE_PROVIDER=objectstore must be set in .env first
 ```
 
-For a real cloud provider (AWS S3, R2, ...) instead of the local MinIO service, set
+For a real cloud provider (AWS S3, R2, ...) or a production object-store deployment instead of the
+local LocalStack service, set
 `NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT`/`_BUCKET`/`_REGION`/`_ACCESSKEYID`/`_SECRETACCESSKEY` in
-`.env` directly and skip the `objectstore` compose profile (no local MinIO container needed).
+`.env` directly and skip the `objectstore` compose profile (no local container needed).
 
 ## TLS
 

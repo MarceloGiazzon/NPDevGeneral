@@ -140,7 +140,7 @@ jobs:
       # on the PR itself instead of waiting for that job's nightly/push-to-main-only schedule (its
       # Linux job does not run on `pull_request`). None need Docker/Postgres -- plain H2/in-memory/
       # loopback-socket unit tests, verified per-module (no testcontainers import or dependency)
-      # before adding. `file-store-objectstore` is the one exception: it needs a real MinIO
+      # before adding. `file-store-objectstore` is the one exception: it needs a real LocalStack
       # Testcontainers container, so it stays in npdev-ci-validation.yml only, alongside that job's
       # existing Postgres Testcontainers step, rather than adding a second container pull to every PR.
       - name: "Kernel adapter tests (previously CI-uncovered, QUAL-23)"

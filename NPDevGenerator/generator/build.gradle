@@ -228,11 +228,13 @@ dependencies {
     testImplementation 'org.flywaydb:flyway-core:10.10.0'
     testImplementation 'org.flywaydb:flyway-database-postgresql:10.10.0'
 
-    // HARDEN-OBJSTORE-P4: live packaged-app proof needs a real MinIO endpoint + an S3 client to
-    // assert bytes landed in the bucket under the tenant prefix.
+    // HARDEN-OBJSTORE-P4: live packaged-app proof needs a real S3-compatible endpoint + an S3 client
+    // to assert bytes landed in the bucket under the tenant prefix. LocalStack replaces MinIO here
+    // (see file-store-objectstore/build.gradle for why: MinIO's images are gone from both Docker Hub
+    // and its quay.io mirror as of 2026-09).
     testImplementation platform('software.amazon.awssdk:bom:2.28.11')
     testImplementation 'software.amazon.awssdk:s3'
-    testImplementation 'org.testcontainers:minio:1.21.4'
+    testImplementation 'org.testcontainers:localstack:1.21.4'
 
     // behaviorTest: isolated from the above on purpose -- see the sourceSets note.
     behaviorTestImplementation project(':adapters:runtime-support')

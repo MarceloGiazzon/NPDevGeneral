@@ -39,7 +39,7 @@ import java.util.regex.Pattern;
  * (application.properties). 10m x 5 files = 50MB per service before the oldest segment is
  * discarded; {@code docker compose logs -f} still tails live output the same way regardless of
  * driver options. Literal, not sourced from {@link DockerEngineProfile} -- these caps apply to
- * every service (including non-database ones like {@code proxy}/{@code mailhog}/{@code minio})
+ * every service (including non-database ones like {@code proxy}/{@code mailhog}/{@code objectstore})
  * identically regardless of engine, so there is no per-engine value to declare in
  * {@code engine-profiles.json}; putting a uniform literal in a profile would be indirection with
  * nothing behind it.</p>
@@ -316,10 +316,12 @@ public final class DockerDeploymentEmitter {
                 # `proxy` profile (`docker compose --profile proxy up`) adds a Caddy TLS-terminating
                 # reverse proxy in front (see deploy/Caddyfile) -- generated apps never terminate TLS
                 # themselves. The optional `objectstore` profile
-                # (`docker compose --profile objectstore up`) adds a MinIO service for LNCH-14's
-                # S3-compatible file-store adapter -- set NPDEV_FILESTORE_PROVIDER=objectstore in
+                # (`docker compose --profile objectstore up`) adds a local S3-compatible service for
+                # LNCH-14's file-store adapter -- set NPDEV_FILESTORE_PROVIDER=objectstore in
                 # .env to point the app at it instead of the default in-process file store (see
-                # docs/DEPLOYMENT.md for the one-time bucket-creation step). The optional `smtp`
+                # docs/DEPLOYMENT.md for the one-time bucket-creation step, and for production
+                # alternatives -- the bundled service is a dev/test convenience, not for production
+                # data). The optional `smtp`
                 # profile (`docker compose --profile smtp up`) adds a MailHog SMTP catcher for
                 # LNCH-11's mail-smtp adapter -- which adapter a given app actually uses is decided
                 # by the model's own capability binding (adapter: mail-inproc vs mail-smtp,
@@ -377,13 +379,13 @@ public final class DockerDeploymentEmitter {
                       # LNCH-14: defaults to the in-process file store (unchanged behavior) --
                       # set NPDEV_FILESTORE_PROVIDER=objectstore in .env (with the `objectstore`
                       # compose profile active) to switch to the S3-compatible adapter against the
-                      # MinIO service below. Blank values are harmless when provider=inproc.
+                      # objectstore service below. Blank values are harmless when provider=inproc.
                       NPDEV_FILESTORE_PROVIDER: ${NPDEV_FILESTORE_PROVIDER:-inproc}
                       NPDEV_FILESTORE_OBJECTSTORE_BUCKET: ${NPDEV_FILESTORE_OBJECTSTORE_BUCKET:-npdev-files}
-                      NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT: ${NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT:-http://minio:9000}
+                      NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT: ${NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT:-http://objectstore:4566}
                       NPDEV_FILESTORE_OBJECTSTORE_REGION: ${NPDEV_FILESTORE_OBJECTSTORE_REGION:-us-east-1}
-                      NPDEV_FILESTORE_OBJECTSTORE_ACCESSKEYID: ${MINIO_ROOT_USER:-}
-                      NPDEV_FILESTORE_OBJECTSTORE_SECRETACCESSKEY: ${MINIO_ROOT_PASSWORD:-}
+                      NPDEV_FILESTORE_OBJECTSTORE_ACCESSKEYID: ${OBJECTSTORE_ACCESS_KEY:-test}
+                      NPDEV_FILESTORE_OBJECTSTORE_SECRETACCESSKEY: ${OBJECTSTORE_SECRET_KEY:-test}
                       # LNCH-11: only consumed if this app's model bound the "mail" capability to
                       # adapter mail-smtp -- harmless if it's on mail-inproc (or unbound) instead.
                       # NPDEV_MAIL_SMTP_HOST defaults to the MailHog service below; point it
@@ -474,26 +476,29 @@ public final class DockerDeploymentEmitter {
                     restart: unless-stopped
 
                   # LNCH-14: S3-compatible object storage for the file-store-objectstore adapter
-                  # (proven against a real MinIO instance in the adapter's own Testcontainers
-                  # test -- this service is the same thing, wired into the deployment story).
+                  # (proven against a real S3-compatible endpoint in the adapter's own Testcontainers
+                  # test -- this service is the same idea, wired into the deployment story). This is
+                  # a LOCAL DEV/TEST CONVENIENCE, not a production object store -- for production,
+                  # point NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT at a real provider (AWS S3, Cloudflare
+                  # R2, a production object-store deployment, ...) and skip this profile entirely.
                   # Opt in with `docker compose --profile objectstore up` AND
                   # NPDEV_FILESTORE_PROVIDER=objectstore in .env; the app ignores this service
                   # entirely otherwise. The bucket is NOT auto-created -- see docs/DEPLOYMENT.md
-                  # for the one-time `mc mb` step after first bringing MinIO up.
-                  # Pinned to quay.io, not Docker Hub: MinIO deleted minio/minio from Docker Hub on
-                  # 2026-09-11 (archived its OSS repo, stopped publishing free images Oct 2025).
-                  # quay.io still serves this exact tag at the same digest.
-                  minio:
-                    image: quay.io/minio/minio:RELEASE.2024-08-29T01-40-52Z
+                  # for the one-time bucket-creation step after first bringing it up.
+                  # Was MinIO; switched to LocalStack 2026-09-29 after MinIO deleted minio/minio from
+                  # Docker Hub (2026-09-11) and its quay.io mirror stopped allowing anonymous pulls
+                  # shortly after. LocalStack accepts any access key/secret in community mode, so no
+                  # real secret is required here.
+                  objectstore:
+                    image: localstack/localstack:3.8.1
                     profiles: ["objectstore"]
-                    command: server /data --console-address ":9001"
                     environment:
-                      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-npdev}
-                      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set in .env to use the objectstore profile}
+                      SERVICES: s3
+                      DEFAULT_REGION: us-east-1
                     volumes:
-                      - minio-data:/data
+                      - objectstore-data:/var/lib/localstack
                     healthcheck:
-                      test: ["CMD", "mc", "ready", "local"]
+                      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
                       interval: 5s
                       timeout: 5s
                       retries: 10
@@ -527,7 +532,7 @@ public final class DockerDeploymentEmitter {
                   npdev-files:
                   app-data:
                   caddy-data:
-                  minio-data:
+                  objectstore-data:
                 """.formatted(
                 appId,
                 profile.engine().externalName(),
@@ -825,15 +830,17 @@ public final class DockerDeploymentEmitter {
                 # docker-compose.yml). After first `docker compose up`, retrieve it with:
                 #   cat ./secrets/SUPER_USER_KEY.txt
 
-                # LNCH-14: object storage (MinIO) -- OPTIONAL. Leave NPDEV_FILESTORE_PROVIDER unset
-                # (defaults to inproc) unless you bring the `objectstore` compose profile up
-                # (`docker compose --profile objectstore up`). MINIO_ROOT_USER/PASSWORD double as
-                # both the MinIO server's own admin credentials AND the S3 access key/secret the
-                # app authenticates with -- see docs/DEPLOYMENT.md for the one-time bucket-creation
-                # step MinIO needs after its first boot.
+                # LNCH-14: object storage -- OPTIONAL. Leave NPDEV_FILESTORE_PROVIDER unset (defaults
+                # to inproc) unless you bring the `objectstore` compose profile up (`docker compose
+                # --profile objectstore up`). The bundled service is LocalStack, a local S3-compatible
+                # dev/test emulator -- it accepts any access key/secret in community mode, so the
+                # defaults below need no real secret. For production, point
+                # NPDEV_FILESTORE_OBJECTSTORE_ENDPOINT at a real provider instead and skip this
+                # profile entirely -- see docs/DEPLOYMENT.md for the one-time bucket-creation step
+                # and production alternatives.
                 # NPDEV_FILESTORE_PROVIDER=objectstore
-                MINIO_ROOT_USER=npdev
-                MINIO_ROOT_PASSWORD=change-me-to-a-real-secret
+                # OBJECTSTORE_ACCESS_KEY=test
+                # OBJECTSTORE_SECRET_KEY=test
 
                 # LNCH-11: SMTP config for the mail-smtp adapter -- OPTIONAL, only consumed if this
                 # app's model bound the "mail" capability to adapter mail-smtp. Defaults point at

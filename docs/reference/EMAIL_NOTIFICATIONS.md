@@ -82,8 +82,8 @@ flow steps) for callers with a direct bean reference.
 ## Docker Compose: MailHog SMTP catcher
 
 Every generated app's `docker-compose.yml` includes an optional `mailhog` service gated behind the
-`smtp` compose profile (`docker compose --profile smtp up`), mirroring LNCH-14's `minio`/
-`objectstore` profile. It's a dev-only catcher — mail sent through it is never actually delivered;
+`smtp` compose profile (`docker compose --profile smtp up`), mirroring LNCH-14's `objectstore`
+profile. It's a dev-only catcher — mail sent through it is never actually delivered;
 view it at `http://localhost:8025`. `NPDEV_MAIL_SMTP_HOST` defaults to `mailhog` (the compose
 service's DNS name), so an app whose model bound `mail-smtp` reaches it automatically once the
 profile is up; the app ignores the service entirely if unbound.
