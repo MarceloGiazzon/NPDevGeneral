@@ -68,6 +68,37 @@ detail: |
   session's build-resource-contention caution; a full gate pass is still owed before the next
   phase boundary.
 
+  FOLLOW-UP (2026-09-29): the narrow local verification above never caught a real CI-portability gap
+  -- PigmentampasSampleTest ran in CI for the first time since 2026-09-12 (CI had been broken
+  upstream this whole time by an unrelated MinIO Docker Hub removal) and failed immediately with
+  "pack cache entry missing or incomplete", because npdev.lock's committed `sourcePath` and the
+  model.json packs[] `from:` coordinate both hardcode Marcelo's own machine's absolute paths
+  (`C:\Users\Marcelo\.npdev\...`, `git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo`), which
+  cannot resolve on any other machine. Worse, PackDependencyGraphWalker.checkLock does a STRICT
+  string-equality check of npdev.lock's `sourcePath` against the live resolved cache path
+  (user-home-relative, so never the same string on two machines) -- a committed npdev.lock can only
+  ever satisfy checkLock on the one machine that wrote it, by design as currently implemented.
+  Fixed by adding a `@BeforeAll` to PigmentampasSampleTest that (1) populates the local pack cache
+  directly from NPDevContract/packs/<id>/pack.json (the same source publish-pack-repo.py itself
+  publishes from -- portable, no git fetch needed), then (2) rewrites npdev.lock's `sourcePath` and
+  `digest` fields to match this machine's live resolved values before parsing, the same self-healing
+  role `npdev pack update` itself would play. Also discovered along the way: the committed digests
+  did NOT match what NPDevContract/packs/<id>/pack.json hashes to today, for all three packs, despite
+  git history showing no edits to those files since before the lock was written -- almost certainly
+  REG-164's exact failure mode (the SEPARATE `Build/npdev-pack-repo` git repository that
+  publish-pack-repo.py commits to has no `.gitattributes` of its own forcing `pack.json` to LF, so a
+  Windows `core.autocrlf=true` checkout of THAT repo silently produced CRLF bytes at lock time even
+  though this repo's own checkout is correctly LF-normalized). Updated npdev.lock's three digests to
+  match this repo's actual current pack.json content. Verified end-to-end against a genuinely empty,
+  fresh `NPDEV_PACK_CACHE_ROOT` (simulating a clean CI runner) as well as the normal default root --
+  both green, full parse+validate+compile+generate pipeline. Model.json's own hardcoded git+file://
+  coordinate is UNCHANGED and still not portable, but it turns out to never actually be dereferenced
+  by a normal resolve (only by an explicit `npdev pack update` re-lock) once the cache + lock
+  self-heal, so it was out of scope for this fix -- a genuine `npdev pack update` on a fresh machine
+  would still need that coordinate to be reachable, which remains an open, separate gap in pack
+  coordinate portability (no environment/build-root-relative indirection exists yet for git+file://
+  coordinates) if anyone ever needs to re-lock this sample from scratch on a non-Marcelo machine.
+
   NOT fixed here, deliberately out of scope -- the OTHER half of S6's own done-when ("a person who
   has never seen NPDev signs up with Google and completes a real task"): no ScrapForAI job or
   live-browser evidence for Pigmentampas exists anywhere (`git log --all -i --grep=pigmentampa`
