@@ -77,3 +77,24 @@ detail: |
   the JS wiring was read/reasoned through but not driven live in a browser (ScrapForAI). Low risk
   given the API-level plumbing is proven and the JS change is a single straightforward guard clause,
   but flag this if WMS-15 is ever revisited and something looks off client-side.
+
+  2026-09-29: closed a real gap `check-done-item-guards.py` caught -- this item had been DONE with
+  NO guard block at all, so nothing would fail if `flowConfirmationText` regressed or was deleted.
+  Added `PanelRuntimeFlowConfirmationTextTest` (NPDevRuntimeHost/src/test/java/com/finalexec/), a
+  minimal `CompiledModel`+`CompiledPanel`+`CompiledFlow` fixture asserting (a) a binding:"flow"
+  action surfaces its invoked flow's `action.confirmationText` on the live panel-actions response,
+  and (b) a flow with none declared carries no `confirmationText` key at all (not a null/undefined
+  that could misfire `window.confirm(undefined)`). Verified green via the real assembled-app path
+  (`run-runtimehost-gate.ps1`, not a standalone `gradlew -p NPDevRuntimeHost` -- that module's
+  build.gradle is a template and cannot build alone; PanelRuntime.java imports
+  `com.npdev.generated.*`, exactly the false-positive-compile trap this item's own PARTIAL note
+  above already flagged). Still does not close the "actual browser click" gap noted above.
+guard:
+  kind: test
+  ref: NPDevRuntimeHost/src/test/java/com/finalexec/PanelRuntimeFlowConfirmationTextTest.java#flowBoundActionSurfacesItsInvokedFlowsConfirmationText
+  asserts: >-
+    A binding:"flow" CompiledPanelAction whose invoked CompiledFlow declares
+    action.confirmationText carries that exact text on PanelRuntime.loadPanel's live actions[]
+    response (the flowConfirmationText helper PanelRuntime.panelActions() calls). Re-open this item
+    if the helper stops being called, starts reading the wrong flow, or the field name it writes
+    ("confirmationText") drifts from what business-ui-app.mustache's window.confirm(...) gate reads.

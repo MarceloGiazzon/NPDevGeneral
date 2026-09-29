@@ -104,21 +104,59 @@ public class BusinessUiEmitterEmptyStateXssTest {
                 "no empty-state placeholder may be assembled as an HTML string any more");
     }
 
+    /**
+     * The richtext widget's sanitizer (see its own docstring in the template) parses untrusted HTML
+     * into a {@code document.createElement("div")} node that is never inserted into the live
+     * document, then strips it down to a small tag whitelist with every attribute removed. That
+     * parse step is itself an {@code innerHTML} assignment of non-empty, non-sanitized content --
+     * the one deliberate exception to the "clear only" rule below. Anchored to the exact idiom
+     * (container creation immediately followed by the parse, immediately followed by the cleaning
+     * walk) so a differently-shaped assignment elsewhere can't accidentally match it.
+     */
+    private static final Pattern SANITIZER_DETACHED_PARSE_STEP = Pattern.compile(
+            "const container = document\\.createElement\\(\"div\"\\);\\s*"
+                    + "container\\.innerHTML = html \\|\\| \"\";\\s*"
+                    + "\\(function clean\\(node\\) \\{");
+
+    /** Local variable names provably holding sanitizeRichText's own output: {@code name = sanitizeRichText(}. */
+    private static java.util.Set<String> sanitizedRichTextVariableNames(String appJs) {
+        java.util.Set<String> names = new java.util.HashSet<>();
+        Matcher m = Pattern.compile("(\\w+)\\s*=\\s*sanitizeRichText\\(").matcher(appJs);
+        while (m.find()) {
+            names.add(m.group(1));
+        }
+        return names;
+    }
+
     @Test
     void everyRemainingInnerHtmlAssignmentOnlyClearsItsContainer() throws Exception {
         String appJs = withoutLineComments(emitAppJs());
+        java.util.Set<String> sanitizedVariables = sanitizedRichTextVariableNames(appJs);
+        boolean isSanitizerParseStep = SANITIZER_DETACHED_PARSE_STEP.matcher(appJs).find();
 
-        // Clearing (`= ""`) cannot inject anything. Anything else assigns markup, and markup built
-        // in JS is exactly where a message the server composed becomes executable. Whitelisting the
-        // one safe form is far more durable than enumerating unsafe ones.
+        // Clearing (`= ""`) cannot inject anything, and neither can a direct sanitizeRichText(...)
+        // call, a variable holding its result, or the sanitizer's own detached-container parse step
+        // above. Anything else assigns markup, and markup built in JS is exactly where a message the
+        // server composed becomes executable. Whitelisting these known-safe forms is far more
+        // durable than enumerating unsafe ones.
         Matcher matcher = NON_EMPTY_INNER_HTML.matcher(appJs);
         StringBuilder offenders = new StringBuilder();
         while (matcher.find()) {
-            offenders.append("\n  ").append(matcher.group(1)).append(".innerHTML = ").append(matcher.group(2).trim());
+            String target = matcher.group(1);
+            String rhs = matcher.group(2).trim();
+            boolean directSanitizerCall = rhs.startsWith("sanitizeRichText(");
+            boolean sanitizedVariable = sanitizedVariables.contains(rhs.replaceFirst("[;,)\\s].*$", ""));
+            boolean detachedParseStep = isSanitizerParseStep
+                    && target.equals("container") && rhs.equals("html || \"\";");
+            if (directSanitizerCall || sanitizedVariable || detachedParseStep) {
+                continue;
+            }
+            offenders.append("\n  ").append(target).append(".innerHTML = ").append(rhs);
         }
         assertEquals("", offenders.toString(),
-                "innerHTML may only be used to CLEAR a container; build content through the DOM instead."
-                        + " Offending assignment(s):" + offenders);
+                "innerHTML may only clear a container, receive sanitizeRichText(...)'s own output, or be"
+                        + " the sanitizer's own detached-container parse step; build anything else through the"
+                        + " DOM instead. Offending assignment(s):" + offenders);
     }
 
     @Test

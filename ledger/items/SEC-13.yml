@@ -129,7 +129,12 @@ detail: |
   pre-existing Windows OS-level race in this test suite generally, not something this session's
   changes introduced. Not fixed here (out of scope, pre-existing, unrelated file).
 guard:
-  kind: script
+  # check-done-item-guards.py: kind: script wants a single anchor shaped as a repo-rooted
+  # .py/.ps1/.sh path, a fully-qualified test class, or a Gradle task path -- this citation is
+  # deliberately a COMPOUND, cross-language pair (a Java test class file + a pytest node id), which
+  # is real evidence but not any one of those three shapes, so the checker correctly reported it
+  # unresolvable. kind: manual is the accurate fit: both paths below are real and repo-rooted.
+  kind: manual
   ref: >-
     NPDevRuntimeHost/src/test/java/com/finalexec/controlpanel/ControlPanelHealthControllerTest.java ;
     NPDevCli/tests/test_static_pages.py::test_verification_panel_marks_only_the_reviewed_allowlist_as_runnable
