@@ -8,6 +8,19 @@ Rules live here. The reasoning behind the hard-won ones lives in
 [`docs/archive/PLATFORM_HISTORY.md`](docs/archive/PLATFORM_HISTORY.md) — read it when you want to
 know *why* a rule exists, never for current status.
 
+## NEVER open a GitHub pull request on this repo
+
+Marcelo works this repo solo. There is no reviewer, so a PR is pure friction with no one on the
+other end. **Never run `gh pr create` or otherwise open a PR.** To land work: commit on the working
+branch, then `git checkout main && git merge --ff-only <branch> && git push origin main` (or a
+regular merge commit if a fast-forward isn't possible) — direct to `main`, every time. This applies
+regardless of branch size or how long it's been diverged. Stated explicitly, emphatically, twice
+(2026-09-29, close-all-open-2026-09-22 session) after Dependabot left 15 stray PRs open on the repo
+and Claude asked whether to open one of its own for a CI signal — the answer is always no, not even
+to get a real CI run: merge to `main` first, CI runs there. `.github/dependabot.yml` already sets
+`updates: []` for the identical reason (see that file's own comment) — routine Dependabot PRs are
+also unwanted here, not just Claude-initiated ones.
+
 ## ALERT (2026-09-26) — read before touching Rebuild-And-Restage.ps1 or any generated app's _ops/*.ps1
 
 A single WmsOffice rebuild in this session cost **6 hours 22 minutes of dead wall-clock time**
