@@ -2137,10 +2137,21 @@ public final class GeneratedCrudRuntimeSupport {
         }
         String sql = "INSERT INTO " + orchestration.targetTable()
                 + " (" + columns + ") VALUES (" + values + ")";
-        // An event-triggered orchestration runs outside the originating request's JPA transaction,
-        // so it persists through its own short JDBC transaction. Using the shared EntityManager here
-        // is not allowed (it surfaced as TransactionRequiredException); the DataSource path mirrors
-        // the bond membership writes in this class.
+        // A lifecycle event is published synchronously INSIDE the originating service's
+        // @Transactional update, so this insert usually runs while the caller's transaction still
+        // holds a row lock on the source row. On its own pooled connection the insert's FK check
+        // then waited on that lock forever while the caller waited on the insert -- a cross-
+        // connection self-deadlock Postgres cannot detect (CI, 2026-09-30: CanonicalDemoBusinessE2EIT
+        // hung with pid A "idle in transaction" after the orchestration's own existence check, and
+        // pid B's INSERT INTO insurance_claims blocked_by {A}). When a Spring transaction is active,
+        // join its connection instead, under a SAVEPOINT so a unique/NOT NULL failure rolls back
+        // only this insert -- on Postgres a failed statement would otherwise abort the caller's whole
+        // transaction. With no transaction active (a deferred or async event), keep the own short
+        // JDBC transaction; the shared EntityManager is not usable there (TransactionRequiredException).
+        if (CallerTransaction.isBoundTo(dataSource)) {
+            CallerTransaction.insertUnderSavepoint(dataSource, sql, entries);
+            return;
+        }
         try (Connection connection = dataSource.getConnection()) {
             boolean previousAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
@@ -2152,6 +2163,66 @@ public final class GeneratedCrudRuntimeSupport {
             }
             connection.commit();
             connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    /**
+     * The caller's Spring-managed JDBC connection, when there is one. spring-jdbc is compileOnly here
+     * (runtime-support also runs outside a Spring app), so every Spring type stays behind
+     * {@link #isBoundTo(DataSource)}'s class-presence check and is never loaded when it is absent.
+     */
+    private static final class CallerTransaction {
+        private static final boolean SPRING_JDBC_PRESENT = isPresent(
+                "org.springframework.jdbc.datasource.DataSourceUtils");
+
+        private static boolean isPresent(String className) {
+            try {
+                Class.forName(className, false, GeneratedCrudRuntimeSupport.class.getClassLoader());
+                return true;
+            } catch (ClassNotFoundException | LinkageError absent) {
+                return false;
+            }
+        }
+
+        // Bound, not merely "a transaction is active": if this DataSource is not the one the
+        // transaction manager bound a connection for, DataSourceUtils would hand back a fresh
+        // unbound connection and the insert would never be committed by anyone.
+        static boolean isBoundTo(DataSource dataSource) {
+            return SPRING_JDBC_PRESENT && SpringJdbc.hasBoundConnection(dataSource);
+        }
+
+        static void insertUnderSavepoint(DataSource dataSource, String sql,
+                                         List<Map.Entry<String, Object>> entries) throws SQLException {
+            SpringJdbc.insertUnderSavepoint(dataSource, sql, entries);
+        }
+
+        private static final class SpringJdbc {
+            static boolean hasBoundConnection(DataSource dataSource) {
+                return org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isActualTransactionActive()
+                        && org.springframework.transaction.support.TransactionSynchronizationManager
+                        .hasResource(dataSource);
+            }
+
+            static void insertUnderSavepoint(DataSource dataSource, String sql,
+                                             List<Map.Entry<String, Object>> entries) throws SQLException {
+                Connection connection = org.springframework.jdbc.datasource.DataSourceUtils
+                        .getConnection(dataSource);
+                try {
+                    java.sql.Savepoint savepoint = connection.setSavepoint();
+                    try (PreparedStatement insert = connection.prepareStatement(sql)) {
+                        for (int index = 0; index < entries.size(); index++) {
+                            insert.setObject(index + 1, entries.get(index).getValue());
+                        }
+                        insert.executeUpdate();
+                    } catch (SQLException | RuntimeException failure) {
+                        connection.rollback(savepoint);
+                        throw failure;
+                    }
+                } finally {
+                    org.springframework.jdbc.datasource.DataSourceUtils.releaseConnection(connection, dataSource);
+                }
+            }
         }
     }
 
