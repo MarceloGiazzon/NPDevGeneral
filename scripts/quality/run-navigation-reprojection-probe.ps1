@@ -100,17 +100,26 @@ function Write-SeedFile([string]$SourceJsonPath) {
 }
 
 function Start-ProbeApp([string]$Label) {
-    $gradlew = Join-Path $appRoot "gradlew.bat"
-    Ensure-File -PathValue $gradlew -Label "Generated app gradlew.bat"
+    # gradlew.bat on Windows, the POSIX gradlew elsewhere (Start-Process cannot run a .bat on Linux).
+    $gradlew = Get-NPDevGradleWrapperExecutable $appRoot
+    Ensure-File -PathValue $gradlew -Label "Generated app Gradle wrapper"
+    if (-not ($PSVersionTable.PSEdition -eq 'Desktop' -or $IsWindows)) { & chmod +x $gradlew }
     $outLog = Join-Path $bootLogRoot ($Label + "-boot-out.log")
     $errLog = Join-Path $bootLogRoot ($Label + "-boot-err.log")
     Remove-Item -LiteralPath $outLog -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $errLog -Force -ErrorAction SilentlyContinue
 
     $argsLine = '--no-daemon bootRun "--args=--spring.profiles.active=dev,trial --server.port=' + $port + '"'
-    $proc = Start-Process -FilePath $gradlew -ArgumentList $argsLine `
-        -WorkingDirectory $appRoot -PassThru -WindowStyle Hidden `
-        -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    # -WindowStyle exists only on Windows PowerShell's Start-Process; on Linux pwsh passing it at all is
+    # a parameter-binding error, which is why this probe failed on the Linux AI Knowledge Gate.
+    $startArgs = @{
+        FilePath = $gradlew; ArgumentList = $argsLine; WorkingDirectory = $appRoot; PassThru = $true
+        RedirectStandardOutput = $outLog; RedirectStandardError = $errLog
+    }
+    # PSEdition first: $IsWindows does not exist on Windows PowerShell 5.1, and StrictMode Latest throws
+    # on an undefined variable -- -or short-circuits before it is read there.
+    if ($PSVersionTable.PSEdition -eq 'Desktop' -or $IsWindows) { $startArgs.WindowStyle = 'Hidden' }
+    $proc = Start-Process @startArgs
 
     $ready = $false
     for ($i = 0; $i -lt 90; $i++) {
