@@ -195,6 +195,7 @@ $finalScriptText = Get-TextFile $FinalReleaseScriptPath
 $requiredFinalScripts = @(
     "run-direct-evidence-hardening-tests.ps1",
     "run-runbook-workflow-alignment-tests.ps1",
+    "run-app-upgrade-contract-gate.ps1",
     "run-final-regression-coverage-audit.ps1",
     "run-report-schema-validation.ps1",
     "run-doc-entrypoint-validation.ps1",
