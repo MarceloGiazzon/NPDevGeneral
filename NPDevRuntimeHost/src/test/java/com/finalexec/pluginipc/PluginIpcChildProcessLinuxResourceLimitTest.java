@@ -5,6 +5,7 @@ import com.finalexec.npdev.service.PluginExecutionPolicyEvaluator;
 import com.finalexec.npdev.service.RuntimePluginAdapterRegistry;
 import com.finalexec.npdev.service.pluginipc.PluginIpcChildProcess;
 import com.finalexec.npdev.service.pluginipc.PluginIpcHostSession;
+import com.finalexec.npdev.service.pluginipc.PluginProcessResourceLimiter;
 import com.finalexec.npdev.service.pluginipc.PluginProcessResourceLimits;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
@@ -29,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
  * SEC-3 Model B step 4 (design doc section 3 / section 6 step 4): live-fired proof that a Linux cgroup v2
@@ -55,6 +57,14 @@ class PluginIpcChildProcessLinuxResourceLimitTest {
 
     @Test
     void aChildThatExceedsItsMemoryCeilingIsKilledByTheCgroup() throws Exception {
+        // A plain CI runner (no --privileged --cgroupns=private, no cgroup delegation) has no working
+        // limiter, so the hog is never killed and this "fails" after 30s having proven nothing -- the
+        // PR gate went red on exactly that. The PROOF is runtimehost-core's twin of this class, which
+        // hard-asserts a real limiter and is live-fired in scripts/quality/linux-plugin-proof's Docker
+        // image; this template copy skips where containment cannot be exercised at all.
+        PluginProcessResourceLimiter limiter = PluginProcessResourceLimiter.forCurrentOs();
+        assumeTrue(limiter.isAvailable(), () -> "no Linux resource limiter available here ("
+                + limiter.getClass().getSimpleName() + ") -- containment is proven by runtimehost-core's twin");
         InMemoryAuditLogStore auditLogStore = new InMemoryAuditLogStore();
         PluginIpcHostSession hostSession = hostSession(auditLogStore);
         PluginProcessResourceLimits limits = new PluginProcessResourceLimits(128, 50);
