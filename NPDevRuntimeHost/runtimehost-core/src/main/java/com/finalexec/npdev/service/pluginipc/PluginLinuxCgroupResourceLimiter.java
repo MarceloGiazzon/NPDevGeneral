@@ -17,8 +17,9 @@ import java.util.logging.Logger;
  * <ol>
  *   <li><b>{@code systemd-run --user --scope}</b> (primary): reuses a stable, already-present OS
  *   mechanism instead of hand-rolled cgroup-fs writes. Probed once at construction by actually launching
- *   a real no-op transient scope -- the only way to know {@code --user} has a usable systemd session
- *   (e.g. via {@code loginctl linger}) without guessing.</li>
+ *   a real transient scope WITH a memory/CPU limit and reading that limit back from inside it -- the
+ *   only way to know {@code --user} has a usable systemd session (e.g. via {@code loginctl linger}) AND
+ *   the controllers delegated to enforce it, without guessing (see {@link #probeSystemdRunUser()}).</li>
  *   <li><b>Direct cgroup v2 filesystem writes</b> (fallback), for a target where systemd is unavailable
  *   (e.g. a minimal container): create a cgroup as a SIBLING of this process's own cgroup, under the
  *   nearest ancestor that actually delegates the {@code memory}/{@code cpu} controllers to its children
@@ -73,10 +74,29 @@ final class PluginLinuxCgroupResourceLimiter implements PluginProcessResourceLim
         return Mode.UNAVAILABLE;
     }
 
+    /** 64 MiB -- what the probe asks for, and what it then requires to read back from inside the scope. */
+    private static final String PROBE_MEMORY_MAX_BYTES = "67108864";
+
+    /**
+     * A scope that merely STARTS proves nothing about containment. On a host whose user manager has
+     * no {@code memory}/{@code cpu} controller delegated (a GitHub-hosted Ubuntu runner, 2026-09-30),
+     * {@code systemd-run --user --scope -p MemoryMax=...} still exits 0 and silently ignores the
+     * limit -- the old {@code /bin/true} probe then reported this limiter available, and a plugin
+     * allowed 20x its "ceiling" ran to completion (PluginIpcChildProcessLinuxResourceLimitTest, PR
+     * gate run 36688066038). So the probe applies a real {@code MemoryMax}/{@code CPUQuota} and, from
+     * INSIDE the scope, requires its own cgroup to show that exact {@code memory.max} and a
+     * {@code cpu.max} -- i.e. both controllers are genuinely active there. Anything less falls through
+     * to the raw-cgroup probe, then to an honest "unavailable".
+     */
     private static boolean probeSystemdRunUser() {
+        String insideScope = "d=/sys/fs/cgroup$(sed -n 's/^0:://p' /proc/self/cgroup); "
+                + "[ \"$(cat \"$d/memory.max\" 2>/dev/null)\" = " + PROBE_MEMORY_MAX_BYTES + " ] "
+                + "&& [ -f \"$d/cpu.max\" ]";
         try {
             Process probe = new ProcessBuilder(
-                    "systemd-run", "--user", "--scope", "--quiet", "--collect", "--", "/bin/true"
+                    "systemd-run", "--user", "--scope", "--quiet", "--collect",
+                    "-p", "MemoryMax=" + PROBE_MEMORY_MAX_BYTES, "-p", "CPUQuota=50%",
+                    "--", "/bin/sh", "-c", insideScope
             ).redirectErrorStream(true).start();
             boolean exited = probe.waitFor(5, TimeUnit.SECONDS);
             return exited && probe.exitValue() == 0;
