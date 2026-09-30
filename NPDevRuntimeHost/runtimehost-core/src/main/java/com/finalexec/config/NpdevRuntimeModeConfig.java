@@ -36,6 +36,7 @@ import com.npdev.kernel.ports.JsonCodec;
 import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.ports.TraceStore;
 import com.npdev.kernel.trace.FlowTrace;
+import com.npdev.kernel.trace.TraceSummary;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -71,6 +72,10 @@ public class NpdevRuntimeModeConfig {
      */
     public static final class InProcTraceRecorder {
         private final InProcExecutionTracer tracer = new InProcExecutionTracer();
+
+        public List<TraceSummary> searchSummaries(TraceQuery query) {
+            return tracer.searchSummaries(query);
+        }
     }
 
     @Bean

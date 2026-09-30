@@ -8,6 +8,7 @@ import com.npdev.kernel.ports.TraceSummaryStore;
 import com.npdev.kernel.trace.FlowTrace;
 import com.npdev.kernel.trace.FlowTraceMeta;
 import com.npdev.kernel.trace.StepOutcome;
+import com.npdev.kernel.trace.TraceSummary;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.support.StaticListableBeanFactory;
@@ -45,6 +46,34 @@ class NpdevRuntimeModeConfigInMemoryTraceStoreTest {
         assertThat(found).contains(trace);
         assertThat(store.search(new TraceQuery("corr-1", null, null, null, null, 10, 0))).containsExactly(trace);
         assertThat(store.findByExecutionId("unknown")).isEmpty();
+    }
+
+    @Test
+    void theSummaryStoreReadsTheSameRecorderSoCorrelationTimelinesSeeTheTrace() {
+        // AsyncWaitResumeE2EIT, CI 2026-09-30, one layer further: once the trace itself was readable
+        // the correlation timeline's traceExecutionIds was still empty -- traceSummaryStore only
+        // delegated when the TraceStore was itself a TraceSummaryStore, which the view deliberately
+        // is not.
+        NpdevRuntimeModeConfig.InProcTraceRecorder recorder = config.inProcTraceRecorder();
+        ExecutionTracer tracer = config.inProcExecutionTracer(recorder, noBridge);
+        TraceStore store = config.inProcTraceStore(recorder);
+        TraceSummaryStore summaries = new NpdevObservabilityConfig().traceSummaryStore(
+                store, providerOf(recorder));
+
+        tracer.onFlowEnd(new FlowTrace(
+                new FlowTraceMeta("exec-2", "corr-2", "TypedHappyPath", Map.of()),
+                1_000L, 2_000L, StepOutcome.OK, List.of()));
+
+        assertThat(summaries.searchSummaries(new TraceQuery("corr-2", null, null, null, null, 10, 0)))
+                .extracting(TraceSummary::executionId)
+                .containsExactly("exec-2");
+    }
+
+    private static ObjectProvider<NpdevRuntimeModeConfig.InProcTraceRecorder> providerOf(
+            NpdevRuntimeModeConfig.InProcTraceRecorder recorder) {
+        StaticListableBeanFactory beans = new StaticListableBeanFactory();
+        beans.addBean("inProcTraceRecorder", recorder);
+        return beans.getBeanProvider(NpdevRuntimeModeConfig.InProcTraceRecorder.class);
     }
 
     @Test

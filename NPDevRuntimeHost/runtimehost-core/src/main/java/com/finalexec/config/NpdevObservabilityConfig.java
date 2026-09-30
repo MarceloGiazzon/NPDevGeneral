@@ -133,7 +133,10 @@ public class NpdevObservabilityConfig {
     }
 
     @Bean
-    public TraceSummaryStore traceSummaryStore(TraceStore traceStore) {
+    public TraceSummaryStore traceSummaryStore(
+            TraceStore traceStore,
+            ObjectProvider<NpdevRuntimeModeConfig.InProcTraceRecorder> inProcTraces
+    ) {
         // ROUND2_PLAN.md R1c: returning `store` directly (an adapter like JdbcTraceStore implements
         // both TraceStore and TraceSummaryStore) registers ONE object under TWO type-assignable
         // beans -- any plain TraceStore-typed injection point (e.g. StorageWiringLogger) then finds
@@ -145,6 +148,13 @@ public class NpdevObservabilityConfig {
         // interface list, so it is never itself a TraceStore autowire candidate.
         if (traceStore instanceof TraceSummaryStore store) {
             return store::searchSummaries;
+        }
+        // In-memory storage mode: the TraceStore is a TraceStore-only view (so it adds no summary-
+        // store candidate), so read summaries from the same recorder it views. Without this the
+        // correlation timeline's traceExecutionIds was always empty in that mode.
+        NpdevRuntimeModeConfig.InProcTraceRecorder recorder = inProcTraces.getIfAvailable();
+        if (recorder != null) {
+            return recorder::searchSummaries;
         }
         return query -> List.of();
     }
