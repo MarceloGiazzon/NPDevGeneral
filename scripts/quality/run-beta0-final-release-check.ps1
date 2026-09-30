@@ -73,7 +73,9 @@ function Invoke-PostVerificationWorkspaceCleanup {
     $slimnessExitCode = $null
     if ($cleanupExitCode -eq 0) {
         Write-ReleaseCheckMessage "Workspace slimness START -> scripts/hygiene/Test-WorkspaceSlimness.ps1"
-        & pwsh -NoProfile -File $slimnessCommand -RunId $RunId
+        # Refresh the report the release gate reads: run-expanded-beta0-evidence.ps1 wrote it mid-chain,
+        # before this cleanup, while sample-matrix output still bloated the workspace.
+        & pwsh -NoProfile -File $slimnessCommand -WorkspaceRoot $workspaceRoot -ReportPath "scripts/reports/out/workspace-cleanliness-report.json" -RunId $RunId
         $slimnessExitCode = $LASTEXITCODE
         if ($null -eq $slimnessExitCode) { $slimnessExitCode = 0 }
         Write-ReleaseCheckMessage ("Workspace slimness END   => exit " + $slimnessExitCode)
