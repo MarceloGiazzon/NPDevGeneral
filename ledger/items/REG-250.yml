@@ -52,8 +52,10 @@ detail: |
 guard:
   kind: test
   ref: >-
-    NPDevGenerator/generator/src/test/java/com/npdev/generator/PigmentampasSampleTest.java (empty temp
-    pack cache + NPDevContract/packs mirror, committed npdev.lock read unmodified); scripts/quality/
-    validate-corpus.py with an empty scripts/quality/corpus-parse-allowlist.json on bare CI checkouts.
+    NPDevGenerator/generator/src/test/java/com/npdev/generator/PigmentampasSampleTest.java#pigmentampasModelParsesValidatesAndGenerates
   asserts: >-
-    pigmentampas parses, validates and generates on a machine whose pack cache starts empty.
+    Starting from an EMPTY temp pack cache with NPDevContract/packs as the offline mirror, the
+    committed npdev.lock (read unmodified) resolves all three remote packs and Pigmentampas parses,
+    validates and generates. Also exercised on every bare CI checkout by validate-corpus.py with an
+    empty corpus-parse-allowlist.json.
+  provenRed: true
