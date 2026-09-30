@@ -11,7 +11,7 @@
   ],
   "cleared": {
     "NPDevSamples/pigmentampas": {
-      "why": "REG-250: its packs[] are pinned to a git+file:///D:/... pack repo that exists only on the machine that ran publish-pack-repo.py, so on a bare CI checkout the pack cache is empty and the model cannot parse. Still validated wherever it does parse; remove this entry when REG-250 makes the coordinates portable."
+      "why": "REG-250: its packs[] are pinned to a git+file:// pack repo on one Windows machine's drive that exists only on the machine that ran publish-pack-repo.py, so on a bare CI checkout the pack cache is empty and the model cannot parse. Still validated wherever it does parse; remove this entry when REG-250 makes the coordinates portable."
     }
   }
 }
