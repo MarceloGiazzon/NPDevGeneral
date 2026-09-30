@@ -116,7 +116,9 @@ preliminary pass.
 ## Consequences
 
 - `docs/RELEASE_PROCESS.md` and a lightweight release-checklist gate
-  (`scripts/quality/run-release-checklist-gate.ps1`) enforce the mechanical parts of this ADR
+  (`scripts/quality/run-release-checklist-gate.ps1` -- retired 2026-08-13 as an orphan gate nothing
+  invoked, commit 83eaf603; those checks are now a manual step in `docs/RELEASE_PROCESS.md`)
+  enforce the mechanical parts of this ADR
   (LICENSE present, CHANGELOG entry present, HEAD tagged) — they cannot enforce trademark
   clearance, which remains a human step this ADR surfaces rather than automates away.
 - Decisions 1-4 are ratified as of 2026-07-17 and should be treated as the platform's actual

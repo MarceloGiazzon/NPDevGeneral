@@ -15,15 +15,11 @@ existing gate seed) and the beta0 tag-immutability rules already written into
    `docs/architecture/APP_UPGRADE_CONTRACT.md`'s compatibility rule gets its own explicit line
    under a "Behavior changes" sub-heading, so an upgrader auditing what changed between versions
    has a single place to look.
-3. **Run the release-checklist gate**:
-   ```powershell
-   pwsh -File scripts/quality/run-release-checklist-gate.ps1 -ExpectedVersion <version>
-   ```
-   Refuses to pass if: `LICENSE` is missing, `CHANGELOG.md` has no entry for `<version>`, or the
-   current `HEAD` is not tagged `v<version>`. This is deliberately a separate, lightweight script
-   from `run-beta-release-gate.ps1`'s much larger evidence-report machinery — it checks the
-   mechanical release-hygiene items LNCH-23 asks for, not code quality (the other gates already
-   own that).
+3. **Check the release-hygiene items by hand**: `LICENSE` is present, `CHANGELOG.md` has an entry
+   for `<version>`, and (after step 4) `HEAD` is tagged `v<version>`. These are the mechanical
+   items LNCH-23 asks for, not code quality (the other gates already own that). A script used to
+   check them, but it was retired on 2026-08-13 as an orphan gate that nothing ever invoked
+   (commit 83eaf603) -- so today this is a manual step, and nothing enforces it.
 4. **Tag.** `git tag -a v<version> -m "<one-line summary>"`, then push the tag. Per the beta0
    tag-immutability precedent: once pushed, a release tag is never force-moved or deleted — a
    mistake gets a new patch tag, not a rewritten one.
