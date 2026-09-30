@@ -32,6 +32,45 @@ $generatorGovernanceScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\
 $generatorGovernanceReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\generator-governance-report.json"
 Write-NPDevInfo "Running NPDevGenerator gate"
 
+# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): run-untrusted-extension-security-check.ps1
+# (renamed from run-trusted-source-security-check.ps1 by W0.2; its report contract still says
+# "trusted-source" -- schemas/ai/trusted-source-security-report.schema.json pins it) does an
+# AST-validation + bytecode-restriction proof (javac/javap forbidden-opcode scan) for
+# UntrustedExtensionEmitter's generated code -- but to get there it also runs its OWN
+# `:generator:test --tests "*UntrustedExtension*" --rerun-tasks` (see that script), which shares
+# :generator:test's Gradle task outputs (test-results, jacoco/test.exec) with the FULL,
+# unfiltered `:generator:test` the generatorQualityGate call below runs. Whichever of the two
+# runs LAST wins that shared output directory (E2.2, 2026-09-30: CI's uploaded generator jacoco
+# evidence showed only the ~6 UntrustedExtension* classes' results -- everything else was
+# clobbered because this check used to run AFTER generatorQualityGate). Run it FIRST: the
+# unfiltered `:generator:test` inside generatorQualityGate always re-executes for real afterward
+# (its filter args differ from this run's, so Gradle never considers it up-to-date), leaving the
+# full suite's results as what's actually on disk when this gate finishes.
+$trustedSourceSecurityScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-untrusted-extension-security-check.ps1"
+$trustedSourceSecurityReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\trusted-source-security-report.json"
+$trustedSourceSecurityError = $null
+$trustedSourceSecurityReport = $null
+try {
+    & $trustedSourceSecurityScript `
+        -WorkspaceRoot $WorkspaceRoot `
+        -RunId ($RunId + "-trusted-source-security") `
+        -ReportPath $trustedSourceSecurityReportPath | Out-Null
+    if (Test-Path -LiteralPath $trustedSourceSecurityReportPath -PathType Leaf) {
+        $trustedSourceSecurityReport = Get-Content -LiteralPath $trustedSourceSecurityReportPath -Raw | ConvertFrom-Json
+    }
+}
+catch {
+    $trustedSourceSecurityError = $_.Exception.Message
+    if (Test-Path -LiteralPath $trustedSourceSecurityReportPath -PathType Leaf) {
+        try {
+            $trustedSourceSecurityReport = Get-Content -LiteralPath $trustedSourceSecurityReportPath -Raw | ConvertFrom-Json
+        }
+        catch {
+            $trustedSourceSecurityReport = $null
+        }
+    }
+}
+
 Invoke-NPDevReportedCommand `
     -WorkspaceRoot $WorkspaceRoot `
     -ScriptPath $PSCommandPath `
@@ -255,37 +294,11 @@ $releaseGateEvidence = [pscustomobject]@{
 $gateReport | Add-Member -NotePropertyName releaseGateT2 -NotePropertyValue $releaseGateEvidence -Force
 $gateReport | Add-Member -NotePropertyName outOfTreeGeneration -NotePropertyValue $outOfTreeEvidence -Force
 
-# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): run-untrusted-extension-security-check.ps1
-# (renamed from run-trusted-source-security-check.ps1 by W0.2; its report contract still says
-# "trusted-source" -- schemas/ai/trusted-source-security-report.schema.json pins it) was
-# reachable from no gate at all before this card. It does something no check-*.py duplicates -- an
-# AST-validation + bytecode-restriction proof (javac/javap forbidden-opcode scan) for
-# UntrustedExtensionEmitter's generated code, not just re-running :generator:test (which
-# generatorQualityGate above already does). Wired in HERE rather than a new standalone gate.
-$trustedSourceSecurityScript = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\quality\run-untrusted-extension-security-check.ps1"
-$trustedSourceSecurityReportPath = Resolve-NPDevWorkspacePath $WorkspaceRoot "scripts\reports\out\trusted-source-security-report.json"
-$trustedSourceSecurityError = $null
-$trustedSourceSecurityReport = $null
-try {
-    & $trustedSourceSecurityScript `
-        -WorkspaceRoot $WorkspaceRoot `
-        -RunId ($RunId + "-trusted-source-security") `
-        -ReportPath $trustedSourceSecurityReportPath | Out-Null
-    if (Test-Path -LiteralPath $trustedSourceSecurityReportPath -PathType Leaf) {
-        $trustedSourceSecurityReport = Get-Content -LiteralPath $trustedSourceSecurityReportPath -Raw | ConvertFrom-Json
-    }
-}
-catch {
-    $trustedSourceSecurityError = $_.Exception.Message
-    if (Test-Path -LiteralPath $trustedSourceSecurityReportPath -PathType Leaf) {
-        try {
-            $trustedSourceSecurityReport = Get-Content -LiteralPath $trustedSourceSecurityReportPath -Raw | ConvertFrom-Json
-        }
-        catch {
-            $trustedSourceSecurityReport = $null
-        }
-    }
-}
+# R4 Part A (MASTER-ROADMAP.md Step 9 / ledger QUAL-7): the actual run-untrusted-extension-
+# security-check.ps1 invocation now happens BEFORE generatorQualityGate above (see that block's
+# own comment, E2.2 2026-09-30) so its filtered `:generator:test --tests` call can never clobber
+# the full suite's shared test-results/jacoco output -- this just assembles the evidence from the
+# variables that early run already populated.
 $trustedSourceSecurityEvidence = [pscustomobject]@{
     overallStatus = if ($null -eq $trustedSourceSecurityReport) { "failed" } else { [string]$trustedSourceSecurityReport.overallStatus }
     reportPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $trustedSourceSecurityReportPath
@@ -306,7 +319,10 @@ $coverageRatchetExitCode = $null
 $coverageRatchetOutput = @()
 try {
     $pyExe = (Get-Command python -ErrorAction Stop).Source
-    $coverageRatchetOutput = & $pyExe $coverageRatchetScript 2>&1 | ForEach-Object { $_.ToString() }
+    $coverageRatchetOutput = & $pyExe $coverageRatchetScript `
+        "--require-measured" "NPDevContract/dsl" `
+        "--require-measured" "NPDevGenerator/generator" `
+        2>&1 | ForEach-Object { $_.ToString() }
     $coverageRatchetExitCode = $LASTEXITCODE
 }
 catch {

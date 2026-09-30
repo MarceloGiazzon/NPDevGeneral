@@ -404,6 +404,10 @@ def main(argv: list[str]) -> int:
         "measurement is higher -- nine re-pins on NPDevCli (coverage-baseline.json's own note) were "
         "all a Windows number silently overwriting a Linux-CI-measured floor with no flag to stop it.",
     )
+    parser.add_argument(
+        "--require-measured", action="append", default=[], metavar="MODULE",
+        help="Fail (not skip) when MODULE produces no usable report this run -- for a gate that just built it.",
+    )
     args = parser.parse_args(argv)
 
     if args.calibrate:
@@ -442,6 +446,8 @@ def main(argv: list[str]) -> int:
         pct, evidence = measure_module(repo_root, cfg, overrides.get(name), name)
         if pct is None:
             print(f"  - {name}: not measured this run (floor stays {recorded}%)")
+            if name in args.require_measured:
+                failures.append(f"{name}: required but not measured (missing, stale or partial report)")
             continue
         if pct < recorded - 1e-9:
             failures.append(
