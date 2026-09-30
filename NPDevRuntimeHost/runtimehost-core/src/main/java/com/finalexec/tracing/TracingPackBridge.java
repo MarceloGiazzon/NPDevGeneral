@@ -2,6 +2,9 @@ package com.finalexec.tracing;
 
 import com.npdev.kernel.trace.FlowTrace;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.sql.Timestamp;
@@ -22,39 +25,56 @@ import java.time.Instant;
  * ({@code identity_v1_users}) by {@code actor_id}. When the users table is absent (pre-bootstrap,
  * or an app without the identity pack), the actor name is left null and the viewer shows the
  * raw actor_id instead.</p>
+ *
+ * <p>{@code onFlowEnd} runs synchronously inside the caller's own business transaction (it is
+ * invoked from {@code KernelRunner} mid-flow, still under the create/update service's
+ * {@code @Transactional}). A missing {@code identity_v1_users} table is caught locally as a Java
+ * exception, but on Postgres a single failed statement marks the WHOLE transaction aborted at the
+ * protocol level -- every later statement on that same connection fails too, regardless of the
+ * Java-level catch, which silently rolled back the caller's real business write. Running this
+ * bridge's own work in its own {@code PROPAGATION_REQUIRES_NEW} transaction (a separate pooled
+ * connection) contains any such failure to this best-effort side write, exactly as the "not an
+ * error" comment below always intended.</p>
  */
 public class TracingPackBridge {
 
     private final JdbcTemplate jdbc;
+    private final TransactionTemplate isolatedTransaction;
 
     public TracingPackBridge(DataSource dataSource) {
         this.jdbc = new JdbcTemplate(dataSource);
+        this.isolatedTransaction = new TransactionTemplate(new DataSourceTransactionManager(dataSource));
+        this.isolatedTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     public void onFlowEnd(FlowTrace flowTrace) {
-        com.npdev.kernel.trace.FlowTraceMeta meta = flowTrace.meta();
         try {
-            String actorName = resolveActorName(meta.actorId());
-            jdbc.update(
-                    "INSERT INTO trace_entries (id, execution_id, correlation_id, flow_name,"
-                            + " tenant_id, actor_id, actor_name, outcome, started_at, ended_at, summary)"
-                            + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    java.util.UUID.randomUUID().toString(),
-                    meta.executionId(),
-                    meta.correlationId(),
-                    meta.flowName(),
-                    meta.tenantId(),
-                    meta.actorId(),
-                    actorName,
-                    flowTrace.outcome() == com.npdev.kernel.trace.StepOutcome.OK ? "SUCCESS" : "FAILURE",
-                    Timestamp.from(Instant.ofEpochMilli(flowTrace.startedAtEpochMs())),
-                    Timestamp.from(Instant.ofEpochMilli(flowTrace.endedAtEpochMs())),
-                    buildSummary(flowTrace)
-            );
+            isolatedTransaction.executeWithoutResult(status -> writeTraceEntry(flowTrace));
         } catch (Exception ignored) {
             // Best-effort: trace_entries is a business-level convenience view.
             // A missing table (pre-migration or tracing pack not composed) is not an error.
         }
+    }
+
+    private void writeTraceEntry(FlowTrace flowTrace) {
+        com.npdev.kernel.trace.FlowTraceMeta meta = flowTrace.meta();
+        String actorName = resolveActorName(meta.actorId());
+        jdbc.update(
+                "INSERT INTO trace_entries (id, execution_id, correlation_id, flow_name,"
+                        + " tenant_id, actor_id, actor_name, outcome, started_at, ended_at, summary)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                java.util.UUID.randomUUID().toString(),
+                meta.executionId(),
+                meta.correlationId(),
+                meta.flowName(),
+                meta.tenantId(),
+                meta.actorId(),
+                actorName,
+                flowTrace.outcome() == com.npdev.kernel.trace.StepOutcome.OK ? "SUCCESS" : "FAILURE",
+                Timestamp.from(Instant.ofEpochMilli(flowTrace.startedAtEpochMs())),
+                Timestamp.from(Instant.ofEpochMilli(flowTrace.endedAtEpochMs())),
+                buildSummary(flowTrace)
+        );
     }
 
     private String resolveActorName(String actorId) {
