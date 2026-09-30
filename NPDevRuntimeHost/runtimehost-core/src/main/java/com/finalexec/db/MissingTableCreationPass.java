@@ -45,14 +45,21 @@ import java.util.List;
  *
  * <p><b>Wave 6.3 (NPDEV_FEATURE_PLAN_2026-09-24.md, live provisioning of a reference field):</b>
  * foreign keys ARE created here now, but ONLY for a table this call is creating for the first time --
- * {@link #createBusinessTableConstraints} runs immediately after a successful {@code createTable} for
- * a brand-new table, reading the SAME {@link DesiredTable#foreignKeys()}/{@link DesiredTable#indexes()}
- * {@link DesiredSchemaFactory#fromManifest} already projects from {@code SchemaManifest}'s SER-G8
- * fields (used elsewhere for diffing, never before for DDL emission here) -- {@link
- * NewConceptSchemaProvisioner} is the one caller that populates them, for a new concept's reference
- * field whose target concept already existed. No "IF NOT EXISTS" guard is needed for either
- * statement: this method only ever runs on a table {@code createMissingBusinessTables}'s own {@code
- * tableExists} check just proved does not exist yet, so its FK/index cannot exist yet either.
+ * {@link #createBusinessTableConstraints} runs, for every brand-new table, only AFTER every missing
+ * table in the manifest has been created (a separate second pass over {@code createMissingBusinessTables}'s
+ * own {@code createdTables} list, not interleaved with the create loop). A FK's {@code REFERENCES}
+ * target may itself be a table this same call is about to create, in whatever order
+ * {@code desired.tables().values()} iterates; running every {@code CREATE TABLE} to completion first
+ * guarantees every {@code REFERENCES} target already exists by the time any constraint is added,
+ * regardless of that order -- interleaving them (the original shape) failed with "relation ... does
+ * not exist" whenever the referenced table's turn hadn't come up yet. Reads the SAME
+ * {@link DesiredTable#foreignKeys()}/{@link DesiredTable#indexes()} {@link DesiredSchemaFactory#fromManifest}
+ * already projects from {@code SchemaManifest}'s SER-G8 fields (used elsewhere for diffing, never
+ * before for DDL emission here) -- {@link NewConceptSchemaProvisioner} is the one caller that
+ * populates them, for a new concept's reference field whose target concept already existed. No
+ * "IF NOT EXISTS" guard is needed for either statement: this method only ever runs on a table
+ * {@code createMissingBusinessTables}'s own {@code tableExists} check just proved does not exist
+ * yet, so its FK/index cannot exist yet either.
  *
  * <p>{@code IF NOT EXISTS} via {@link com.npdev.kernel.storage.sql.SqlDialect#guardedCreateTable}, same
  * as every other CREATE TABLE in this package -- idempotent by construction, safe to call every boot.
@@ -65,11 +72,22 @@ final class MissingTableCreationPass {
     static void createMissingBusinessTables(DataSource dataSource, SchemaLifecycleExecutor.SchemaManifest manifest) {
         DesiredSchema desired = DesiredSchemaFactory.fromManifest(manifest);
         try (Connection connection = dataSource.getConnection()) {
+            // Two phases, deliberately: a FK's REFERENCES target may be a table this SAME call is
+            // about to create, in whatever order desired.tables().values() happens to iterate --
+            // interleaving "create table, then immediately add its constraints" (the original
+            // one-phase version) makes the ALTER TABLE ... REFERENCES fail with "relation ... does
+            // not exist" whenever the referenced table's turn hasn't come up yet. Creating every
+            // missing table FIRST guarantees every REFERENCES target already exists by the time any
+            // constraint is added, regardless of map iteration order.
+            List<DesiredTable> createdTables = new ArrayList<>();
             for (DesiredTable table : desired.tables().values()) {
                 if (tableExists(connection, table.name())) {
                     continue;
                 }
                 createTable(connection, table.name(), businessColumnDefs(table), List.of());
+                createdTables.add(table);
+            }
+            for (DesiredTable table : createdTables) {
                 createBusinessTableConstraints(connection, table);
             }
         } catch (SQLException exception) {
