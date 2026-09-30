@@ -137,6 +137,19 @@ function Assert-AiContractSupported {
     return $failures
 }
 
+# Path A P0.4's schema gives metadata.untrustedExtensionEntrypoint minLength 1 -- it names an
+# author-supplied extension, so a procedure/panel with no `implementation` must OMIT the key. Writing
+# "" (as this normalizer did since the P0.4 rename) failed strict official validation for every
+# positive AI scenario without one -- red in the AI Beta Gate's Docker/Linux proof, 2026-09-30.
+function Add-UntrustedExtensionEntrypoint {
+    param([System.Collections.IDictionary]$Metadata, [object]$Implementation)
+    if ($null -eq $Implementation) { return }
+    $entrypoint = [string]$Implementation.entrypoint
+    if (-not [string]::IsNullOrWhiteSpace($entrypoint)) {
+        $Metadata["untrustedExtensionEntrypoint"] = $entrypoint
+    }
+}
+
 function New-OfficialModel {
     param([object]$Model, [string]$ScenarioId)
     $concepts = @()
@@ -352,9 +365,9 @@ function New-OfficialModel {
                 sideEffectType = [string]$procedure.sideEffectType
                 tenantScoped = [bool]$procedure.tenantScoped
                 maxAffectedRows = [int]$procedure.maxAffectedRows
-                untrustedExtensionEntrypoint = if ($null -ne $procedure.implementation) { [string]$procedure.implementation.entrypoint } else { "" }
             }
         }
+        Add-UntrustedExtensionEntrypoint -Metadata $procedures[-1].metadata -Implementation $procedure.implementation
     }
 
     foreach ($panel in $modelPanels) {
@@ -400,9 +413,9 @@ function New-OfficialModel {
                 sourceType = [string]$panel.type
                 tenantScoped = [bool]$panel.tenantScoped
                 safeCustomPanelMetadata = $safePanelMetadata
-                untrustedExtensionEntrypoint = if ($null -ne $panel.implementation) { [string]$panel.implementation.entrypoint } else { "" }
             }
         }
+        Add-UntrustedExtensionEntrypoint -Metadata $panels[-1].metadata -Implementation $panel.implementation
     }
 
     return [ordered]@{
