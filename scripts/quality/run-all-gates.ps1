@@ -119,6 +119,10 @@ $deferrableGates = @{
     "weeklyPaperwork" = @{ Included = [bool]$IncludePaperwork;   Switch = "-IncludePaperwork";   Note = "T3, GATE-SPLIT";    ThirdOption = "the weekly GitHub Actions schedule" }
 }
 
+# `pwsh -File run-all-gates.ps1 -Only a,b` (the documented form above) passes ONE string "a,b" --
+# array binding from a comma list only happens in-process (`& ./run-all-gates.ps1 -Only a,b`), so
+# split here or every -File caller gets "Unknown gate name(s): a,b".
+$Only = @($Only | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($Only.Count -gt 0) {
     $unknown = @($Only | Where-Object { $_ -notin $gates.Name })
     if ($unknown.Count -gt 0) {

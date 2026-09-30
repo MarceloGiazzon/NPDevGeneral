@@ -45,6 +45,22 @@ $tenantId = "dev"
 $bootLogRoot = Join-Path $buildRoot "navigation-reprojection-logs"
 New-Item -ItemType Directory -Force -Path $bootLogRoot | Out-Null
 
+# Standard structured run report (run-script-automation-quality.ps1's structured-report-contract):
+# written on pass AND fail, under the build root so a probe run never dirties the repo.
+$ReportPath = Join-Path $bootLogRoot "navigation-reprojection-report.json"
+$runId = "navigation-reprojection-" + (Get-Date).ToUniversalTime().ToString("yyyyMMddTHHmmssZ")
+function Write-ProbeReport([string]$Status, [string[]]$Problems) {
+    Write-NPDevJsonFile $ReportPath ([pscustomobject]@{
+        generatedAt = (Get-Date).ToString("o")
+        runId = $runId
+        scriptPath = Get-NPDevWorkspaceRelativePath $repoRoot $PSCommandPath
+        workspaceRoot = $repoRoot
+        overallStatus = $Status
+        sampleId = $sampleId
+        problems = @($Problems)
+    })
+}
+
 function Resolve-H2Jar {
     $roots = @($buildRoot, (Join-Path $env:USERPROFILE ".gradle\caches"))
     $jar = Get-ChildItem -Path $roots -Recurse -Filter 'h2-2*.jar' -ErrorAction SilentlyContinue |
@@ -290,8 +306,10 @@ finally {
 if ($problems.Count -gt 0) {
     Write-Host ""
     foreach ($p in $problems) { Write-Host ("FAIL  " + $p) -ForegroundColor Red }
+    Write-ProbeReport "failed" @($problems)
     Fail ($problems.Count.ToString() + " problem(s) -- see above.")
 }
 
+Write-ProbeReport "passed" @()
 Write-Host ""
 Ok "Navigation reprojection proof passed: insert + update-with-preserved-override (D7: model wins) + remove + leave-unrelated-row-untouched, all confirmed across a real two-boot cycle against the same database."
