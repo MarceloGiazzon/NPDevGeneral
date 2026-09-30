@@ -109,17 +109,12 @@ function Start-ProbeApp([string]$Label) {
     Remove-Item -LiteralPath $outLog -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $errLog -Force -ErrorAction SilentlyContinue
 
-    $argsLine = '--no-daemon bootRun "--args=--spring.profiles.active=dev,trial --server.port=' + $port + '"'
-    # -WindowStyle exists only on Windows PowerShell's Start-Process; on Linux pwsh passing it at all is
-    # a parameter-binding error, which is why this probe failed on the Linux AI Knowledge Gate.
-    $startArgs = @{
-        FilePath = $gradlew; ArgumentList = $argsLine; WorkingDirectory = $appRoot; PassThru = $true
-        RedirectStandardOutput = $outLog; RedirectStandardError = $errLog
-    }
-    # PSEdition first: $IsWindows does not exist on Windows PowerShell 5.1, and StrictMode Latest throws
-    # on an undefined variable -- -or short-circuits before it is read there.
-    if ($PSVersionTable.PSEdition -eq 'Desktop' -or $IsWindows) { $startArgs.WindowStyle = 'Hidden' }
-    $proc = Start-Process @startArgs
+    # The same launch shape invoke-ai-beta-app-smoke.ps1 / run-shell-scenarios.ps1 already run on
+    # Linux CI: an argument ARRAY and -NoNewWindow. The old single-string -ArgumentList with
+    # -WindowStyle Hidden was Windows-only (-WindowStyle is a binding error on Linux pwsh).
+    $bootArgs = @("--no-daemon", "bootRun", ('--args="--spring.profiles.active=dev,trial --server.port=' + $port + '"'))
+    $proc = Start-Process -FilePath $gradlew -ArgumentList $bootArgs -WorkingDirectory $appRoot `
+        -NoNewWindow -PassThru -RedirectStandardOutput $outLog -RedirectStandardError $errLog
 
     $ready = $false
     for ($i = 0; $i -lt 90; $i++) {
@@ -132,7 +127,12 @@ function Start-ProbeApp([string]$Label) {
     }
     if (-not $ready) {
         $tail = if (Test-Path -LiteralPath $outLog) { (Get-Content -LiteralPath $outLog -Tail 60) -join "`n" } else { "(no stdout log)" }
-        Fail ("$Label`: app did not become healthy on $appBaseUrl. Boot log tail:`n" + $tail)
+        # stderr too: a Gradle process that dies in seconds says why ONLY there (Linux CI showed just
+        # the stdout welcome banner, 10s after launch, and nothing else to go on).
+        $errTail = if (Test-Path -LiteralPath $errLog) { (Get-Content -LiteralPath $errLog -Tail 40) -join "`n" } else { "(no stderr log)" }
+        $exitNote = if ($proc.HasExited) { "exited with code $($proc.ExitCode)" } else { "still running" }
+        Fail ("$Label`: app did not become healthy on $appBaseUrl (Gradle process $exitNote). Boot log tail:`n" +
+              $tail + "`n--- stderr tail ---`n" + $errTail)
     }
     Ok ("$Label`: app healthy on $appBaseUrl")
     return [pscustomobject]@{ Proc = $proc; OutLog = $outLog }
@@ -140,7 +140,15 @@ function Start-ProbeApp([string]$Label) {
 
 function Get-DescendantProcessIds {
     param([int]$RootProcessId)
-    $allProcesses = @(Get-CimInstance Win32_Process)
+    # Win32_Process is Windows-only; elsewhere read the same pid/ppid table from `ps`.
+    if ($PSVersionTable.PSEdition -eq 'Desktop' -or $IsWindows) {
+        $allProcesses = @(Get-CimInstance Win32_Process)
+    } else {
+        $allProcesses = @(& ps -e -o pid=,ppid= | ForEach-Object {
+            $cols = $_.Trim() -split '\s+'
+            [pscustomobject]@{ ProcessId = [int]$cols[0]; ParentProcessId = [int]$cols[1] }
+        })
+    }
     $pending = [System.Collections.Generic.Queue[int]]::new()
     $descendants = [System.Collections.Generic.List[int]]::new()
     $pending.Enqueue($RootProcessId)
