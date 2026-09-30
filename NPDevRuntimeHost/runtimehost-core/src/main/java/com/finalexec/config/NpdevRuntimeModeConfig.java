@@ -33,7 +33,9 @@ import com.npdev.kernel.ports.ExecutionTracer;
 import com.npdev.kernel.ports.FlowInstanceStore;
 import com.npdev.kernel.ports.IdempotencyStore;
 import com.npdev.kernel.ports.JsonCodec;
+import com.npdev.kernel.ports.TraceQuery;
 import com.npdev.kernel.ports.TraceStore;
+import com.npdev.kernel.trace.FlowTrace;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
@@ -43,6 +45,9 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Primary;
 
 import javax.sql.DataSource;
+
+import java.util.List;
+import java.util.Optional;
 
 @Configuration
 public class NpdevRuntimeModeConfig {
@@ -59,10 +64,26 @@ public class NpdevRuntimeModeConfig {
         return new JdbcEventStore(dataSource);
     }
 
+    /**
+     * The ONE in-memory trace recorder, shared by the tracer that writes traces and the TraceStore
+     * that reads them back. Held in a neutral type so this bean is never itself an ExecutionTracer
+     * or TraceStore autowire candidate (REG-229's NoUniqueBeanDefinitionException).
+     */
+    public static final class InProcTraceRecorder {
+        private final InProcExecutionTracer tracer = new InProcExecutionTracer();
+    }
+
     @Bean
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
-    public ExecutionTracer inProcExecutionTracer(ObjectProvider<TracingPackBridge> tracingBridge) {
-        return chained(new InProcExecutionTracer(), tracingBridge);
+    public InProcTraceRecorder inProcTraceRecorder() {
+        return new InProcTraceRecorder();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
+    public ExecutionTracer inProcExecutionTracer(InProcTraceRecorder recorder,
+                                                 ObjectProvider<TracingPackBridge> tracingBridge) {
+        return chained(recorder.tracer, tracingBridge);
     }
 
     @Bean
@@ -92,7 +113,7 @@ public class NpdevRuntimeModeConfig {
     @Bean
     @Primary
     @ConditionalOnProperty(name = "npdev.storage.mode", havingValue = "in-memory", matchIfMissing = true)
-    public TraceStore inProcTraceStore() {
+    public TraceStore inProcTraceStore(InProcTraceRecorder recorder) {
         // Unlike its sibling ports (EventStore, FlowInstanceStore, ...), TraceStore never had an
         // in-memory bean -- only jdbcTraceStore below, gated on npdev.storage.mode=jdbc. Any app
         // booted with the default (unset/in-memory) storage mode failed at startup with
@@ -108,7 +129,29 @@ public class NpdevRuntimeModeConfig {
         // let the ExecutionTracer bean construct successfully in in-memory mode for the first time in
         // these particular contexts; this bean, not the tracer's incidental interface, is the one
         // real TraceStore for in-memory storage mode.
-        return TraceStore.noop();
+        //
+        // It used to be TraceStore.noop(), which made GET /api/v1/traces/{executionId} a 404 for
+        // EVERY in-memory-mode app: the tracer recorded each trace and nothing could read it back
+        // (AsyncWaitResumeE2EIT, CI 2026-09-30: a COMPLETED execution's trace 404'd). It is now a
+        // view over the same recorder the tracer writes to -- implementing only TraceStore, so it adds
+        // no new ExecutionTracer/TraceSummaryStore candidate.
+        InProcExecutionTracer traces = recorder.tracer;
+        return new TraceStore() {
+            @Override
+            public void save(FlowTrace trace) {
+                traces.save(trace);
+            }
+
+            @Override
+            public Optional<FlowTrace> findByExecutionId(String executionId) {
+                return traces.findByExecutionId(executionId);
+            }
+
+            @Override
+            public List<FlowTrace> search(TraceQuery query) {
+                return traces.search(query);
+            }
+        };
     }
 
     @Bean
