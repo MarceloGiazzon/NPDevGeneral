@@ -30,11 +30,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @AutoConfigureMockMvc
 // Only IT class that flips npdev.scheduler.enabled=true (with a 100ms tick, below) -- every other
-// subclass leaves the default scheduler disabled. @EnableScheduling with no custom TaskScheduler
-// bean spins up a non-daemon thread; without a forced close here, that thread keeps the forked
-// Gradle test JVM alive, which stops the JVM shutdown hook that would otherwise close (and stop)
-// this cached Spring context from ever firing -- a deadlock that hung the whole Postgres IT step
-// for the full CI timeout (confirmed via CI evidence: 3 orphaned java processes force-killed).
+// subclass leaves the default scheduler disabled, and @EnableScheduling with no custom
+// TaskScheduler bean spins up a non-daemon thread. @DirtiesContext was added here on the
+// hypothesis that this leaked thread was blocking the forked Gradle test JVM's own shutdown --
+// DISPROVEN live in CI (run 36662397857, 2026-09-30): with this annotation in place, the Postgres
+// integration-test step still hung the full 45-minute CI timeout with zero further Gradle output
+// after this test's own (fast, ~14s) HTTP-status assertion failure (line 190 of commit e9aefeca's
+// version of this file, in getJson()'s andExpect(status().is(expectedStatus))) and no completed JUnit XML
+// report, identical to the pre-fix symptom. Left in place because it's harmless and still
+// correct hygiene for a scheduler-enabling test, but it is NOT the fix for the hang -- the real
+// blocker is elsewhere (candidate: the resume scheduler's poll() or a DB connection/lock stuck
+// after this test's Postgres-specific assertion failure, given this session's other two real
+// Postgres transaction bugs). See ledger/session-state/current.json for the live handoff.
 @DirtiesContext
 class AsyncWaitResumeE2EIT extends AbstractScenarioIntegrationTest {
     // resume after scheduled time
