@@ -724,6 +724,20 @@ jobs:
           Get-ChildItem -LiteralPath $outputRoot -Force |
             Select-Object Name, FullName, PSIsContainer |
             Format-Table -AutoSize
+
+      - name: Upload generator coverage evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npdev-generator-coverage-evidence
+          path: |
+            Build/gradle/npdev-generator/generator/reports/jacoco/test/jacocoTestReport.xml
+            Build/gradle/npdev-generator/generator/test-results/test/*.xml
+            Build/gradle/npdev-generator/generator/test-results/packagedProofTest/*.xml
+            Build/gradle/npdev-generator/generator/jacoco/*.exec
+          if-no-files-found: warn
+          retention-days: 7
+
       - name: Security hardening maturity evidence
         timeout-minutes: 10
         run: |
