@@ -9,9 +9,5 @@
     "excepting any of them (they are the DSL's only volume regression corpus). Add an entry here only",
     "for a genuine, reviewed exception with a REG id -- never pre-clear speculatively."
   ],
-  "cleared": {
-    "NPDevSamples/pigmentampas": {
-      "why": "REG-250: its packs[] are pinned to a git+file:// pack repo on one Windows machine's drive that exists only on the machine that ran publish-pack-repo.py, so on a bare CI checkout the pack cache is empty and the model cannot parse. Still validated wherever it does parse; remove this entry when REG-250 makes the coordinates portable."
-    }
-  }
+  "cleared": {}
 }

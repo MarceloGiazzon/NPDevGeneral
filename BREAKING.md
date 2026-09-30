@@ -5,6 +5,19 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-09-30 — `npdev.lock` records a remote pack's `sourcePath` relative to the pack cache
+
+**What changes.** For a pack consumed by `from:` coordinate, `npdev.lock`'s `sourcePath` is now
+`sha256/<digest>/pack.json` (relative to `~/.npdev/packs`) instead of that machine's absolute cache
+path, so one committed lock is valid on every machine (REG-250). A cache miss can also be filled
+offline from `NPDEV_PACK_MIRRORS` (`<mirror>/<packId>/pack.json`), accepted only when its digest
+equals the locked one.
+
+**Who is affected.** Apps with a committed `npdev.lock` containing a remote pack: generate reports the
+lock as stale until it is rewritten.
+
+**Codemod.** `npdev migrate pack-lock-paths --input <dir> --write` (or `npdev pack update`).
+
 ## 2026-09-29 — generated `docker-compose.yml`'s bundled object-store service switches from MinIO to LocalStack
 
 **What changes.** MinIO deleted `minio/minio` from Docker Hub on 2026-09-11 and its quay.io mirror

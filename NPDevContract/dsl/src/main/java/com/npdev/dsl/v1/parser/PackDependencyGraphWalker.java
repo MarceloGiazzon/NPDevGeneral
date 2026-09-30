@@ -183,16 +183,15 @@ final class PackDependencyGraphWalker {
         return entries;
     }
 
-    /** PK-5: a LOCAL pack's sourcePath is (as before) the app-relative path to its {@code $ref}
-     *  file. A REMOTE pack's file lives in the shared, machine-wide {@link PackCache} -- which can
-     *  sit on an entirely different filesystem root than the app (a different drive letter on
-     *  Windows, in particular) -- so {@code rootDirectory.relativize(packFile)} would throw
-     *  {@code IllegalArgumentException} there; record the cache path's own absolute form instead,
-     *  informational only (the digest, not sourcePath, is what generate actually re-verifies). */
-    private String sourcePathFor(Path packFile, String from) {
-        return from.isEmpty()
-                ? rootDirectory.relativize(packFile).toString().replace('\\', '/')
-                : packFile.toAbsolutePath().toString();
+    /** PK-5: a LOCAL pack's sourcePath is the app-relative path to its {@code $ref} file. A REMOTE
+     *  pack's is relative to the {@link PackCache} root ({@link PackCache#lockSourcePath}) -- an
+     *  absolute cache path names one user's home directory, so a committed lock carrying it only
+     *  ever satisfied {@link #checkLock} on the machine that wrote it (REG-250). */
+    private String sourcePathFor(Path packFile, String from) throws IOException {
+        if (from.isEmpty()) {
+            return rootDirectory.relativize(packFile).toString().replace('\\', '/');
+        }
+        return PackCache.lockSourcePath(digestFor(packFile, from).substring("sha256:".length()));
     }
 
     /**
@@ -488,11 +487,12 @@ final class PackDependencyGraphWalker {
                     + "'npdev pack add' first; npdev generate never touches the network");
         }
         PackLockFile lock = PackLockFile.read(rootDirectory);
-        for (PackLockFile.LockedPack locked : lock.packs().values()) {
+        for (Map.Entry<String, PackLockFile.LockedPack> entry : lock.packs().entrySet()) {
+            PackLockFile.LockedPack locked = entry.getValue();
             if (fromCoordinate.equals(locked.from())) {
                 String digest = locked.digest();
                 String digestHex = digest.startsWith("sha256:") ? digest.substring("sha256:".length()) : digest;
-                return cache.read(digestHex);
+                return cache.readOrSeedFromMirrors(digestHex, entry.getKey(), PackCache.configuredMirrors());
             }
         }
         throw ModelSourceResolver.error(modelFile, path + "/from", "pack 'from: " + fromCoordinate
@@ -664,9 +664,10 @@ final class PackDependencyGraphWalker {
             Path packFile = packFileById.get(packId);
             String liveVersion = ModelSourceResolver.textOrBlank(packNode.get("version"));
             String from = fromByPackId.getOrDefault(packId, "");
-            String liveSourcePath = sourcePathFor(packFile, from);
+            String liveSourcePath;
             String liveDigest;
             try {
+                liveSourcePath = sourcePathFor(packFile, from);
                 liveDigest = digestFor(packFile, from);
             } catch (IOException unreadable) {
                 stale.add(packId + " (its locked sourcePath " + locked.sourcePath() + " could not be read: "

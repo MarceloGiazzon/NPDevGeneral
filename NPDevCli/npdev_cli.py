@@ -1326,6 +1326,49 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_migrate_pack_lock_paths(args: argparse.Namespace) -> int:
+    """REG-250: rewrite a remote pack's absolute `sourcePath` in npdev.lock (a path under one
+    user's pack cache) to the portable cache-relative form `sha256/<digest>/pack.json`."""
+    targets: list[Path] = []
+    for entry in args.input:
+        path = Path(entry).expanduser()
+        if path.is_dir():
+            targets.extend(sorted(path.rglob(PACK_LOCK_FILE_NAME)))
+        elif path.exists():
+            targets.append(path)
+        else:
+            raise CliError(f"not found: {path}")
+    changed = 0
+    for target in targets:
+        doc = read_json(target)
+        packs = doc.get("packs") if isinstance(doc, dict) else None
+        if not isinstance(packs, dict):
+            continue
+        edits = []
+        for pack_id, entry in packs.items():
+            if not isinstance(entry, dict) or not entry.get("from"):
+                continue
+            source_path = str(entry.get("sourcePath") or "")
+            digest = str(entry.get("digest") or "")
+            if not digest.startswith("sha256:") or not Path(source_path).is_absolute():
+                continue
+            portable = f"sha256/{digest[len('sha256:'):]}/pack.json"
+            edits.append(f"{pack_id}: {source_path} -> {portable}")
+            entry["sourcePath"] = portable
+        if not edits:
+            continue
+        changed += 1
+        verb = "CHANGED" if args.write else "WOULD CHANGE"
+        for edit in edits:
+            print(f"  [{verb}] {target}: {edit}")
+        if args.write:
+            target.write_bytes((json.dumps(doc, indent=2).replace('": ', '" : ') + "\n").encode("utf-8"))
+    print(f"{changed} of {len(targets)} lock file(s) carry a machine-specific remote sourcePath.")
+    if changed and not args.write:
+        print("Dry run -- pass --write to apply.")
+    return 0
+
+
 def run_migrate_label_locales(args: argparse.Namespace) -> int:
     """CLI-1: wires `dsl_v2_migration.migrate_label_locales` (written and round-trip tested for
     R5.6, but never callable) to `npdev migrate label-locales`. Deliberately a separate pass from
@@ -9939,16 +9982,25 @@ def _pack_lock_path(model_path: Path) -> Path:
     return Path(model_path).expanduser().resolve().parent / PACK_LOCK_FILE_NAME
 
 
-def _resolve_pack_source_path(model_path: Path, source_path: str) -> Path:
+def _pack_cache_root() -> Path:
+    override = os.environ.get("NPDEV_PACK_CACHE_ROOT", "").strip()
+    return Path(override) if override else Path.home() / ".npdev" / "packs"
+
+
+def _resolve_pack_source_path(model_path: Path, source_path: str, from_coordinate: str = "") -> Path:
     """A LOCAL pack's `sourcePath` in npdev.lock is written relative to the model's own directory
     (`PackDependencyGraphWalker`'s `rootDirectory.relativize(packFile)`), NOT relative to whatever
     directory the CLI process happens to be running from -- a real bug caught live while capturing
     a Manager fixture (W3.2): running `pack list` from the repo root against an app in a different
     directory silently found nothing for a relative sourcePath, because `Path("packs/x/pack.json")`
-    resolved against the WRONG base. A REMOTE pack's `sourcePath` is already absolute (the machine-
-    wide pack cache), so this is a no-op for that case -- `Path.is_absolute()` tells them apart."""
+    resolved against the WRONG base. A REMOTE pack's (non-empty `from`) `sourcePath` is relative to
+    the machine-wide pack cache root (REG-250); an absolute value from an older lock is used as-is."""
     candidate = Path(source_path)
-    return candidate if candidate.is_absolute() else Path(model_path).expanduser().resolve().parent / candidate
+    if candidate.is_absolute():
+        return candidate
+    if from_coordinate:
+        return _pack_cache_root() / candidate
+    return Path(model_path).expanduser().resolve().parent / candidate
 
 
 def _read_lock_entries_from_text(text: str | None) -> dict:
@@ -10228,7 +10280,7 @@ def _check_deprecated_packs(model_path: Path, before_text: str | None, args: arg
         source_path = entry.get("sourcePath")
         if not source_path:
             continue
-        resolved_source = _resolve_pack_source_path(model_path, source_path)
+        resolved_source = _resolve_pack_source_path(model_path, source_path, str(entry.get("from") or ""))
         if not resolved_source.is_file():
             continue
         try:
@@ -10588,7 +10640,7 @@ def _enrich_pack_list_report(model_path: Path, report: dict) -> None:
         source_path = entry.get("sourcePath")
         if not source_path:
             continue
-        resolved_source = _resolve_pack_source_path(model_path, source_path)
+        resolved_source = _resolve_pack_source_path(model_path, source_path, str(entry.get("from") or ""))
         if not resolved_source.is_file():
             continue
         try:
@@ -15508,6 +15560,20 @@ def build_parser() -> argparse.ArgumentParser:
              "--cascade.",
     )
 
+    migrate_pack_lock_paths = migrate_sub.add_parser(
+        "pack-lock-paths",
+        help="Rewrite a remote pack's absolute npdev.lock sourcePath to the portable "
+             "cache-relative form (REG-250).",
+    )
+    migrate_pack_lock_paths.add_argument(
+        "--input", required=True, nargs="+",
+        help="npdev.lock files, or directories to search recursively.",
+    )
+    migrate_pack_lock_paths.add_argument(
+        "--write", action="store_true",
+        help="apply the edits; without this flag, reports what would change and exits",
+    )
+
     # STOR-16: the codemod the RecreateOnAppStart deprecation warning names. F3 (Cold Clone Audit,
     # P0) reuses the same file-walking command to flag a second, unrelated hazard in the same files:
     # a server-engine definition with no database.externallyProvisioned declared at all.
@@ -17003,6 +17069,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)
             return 0
+        if args.command == "migrate" and args.migrate_command == "pack-lock-paths":
+            return run_migrate_pack_lock_paths(args)
         if args.command == "migrate" and args.migrate_command == "db-lifecycle":
             return run_migrate_db_lifecycle(args)
         if args.command == "migrate" and args.migrate_command == "rename":

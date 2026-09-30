@@ -5,8 +5,10 @@ title: >-
   bare CI checkout
 type: GAP
 severity: LOW
-status: OPEN
+status: DONE
 opened: 2026-09-30
+closed: 2026-09-30
+verification: VERIFIED_LIVE
 source: >-
   The AI Knowledge Gate workflow (pull_request / workflow_dispatch only, so never seen on main) failed
   on Linux 2026-09-29, run 36619239384: validate-corpus.py "1 model(s) do not parse and are not
@@ -33,3 +35,25 @@ detail: |
   pointing them at a published repo reachable from CI (github.com/MarceloGiazzon/NPR, if it carries the
   identity/tracing/workspace tags), or by a portable, repo-relative coordinate form -- and the allowlist
   entry is removed. Owner call: whether a showcase may depend on network access to a public pack repo.
+
+  RESOLUTION (2026-09-30, owner chose "portable lock"): two platform changes, no network dependency.
+  (1) npdev.lock now records a remote pack's sourcePath relative to the pack cache root
+  (PackCache.lockSourcePath -> "sha256/<digest>/pack.json") instead of one user's absolute home path,
+  so checkLock passes on every machine; PackAddMain and the Python CLI resolve it against the local
+  cache root. `npdev migrate pack-lock-paths` rewrites older locks (BREAKING.md 2026-09-30).
+  (2) PackCache.readOrSeedFromMirrors: on a cache miss, an offline mirror (NPDEV_PACK_MIRRORS /
+  npdev.pack.mirrors, laid out <mirror>/<packId>/pack.json) seeds the entry only if its whole-tree
+  digest equals the locked one. validate-corpus.py points it at NPDevContract/packs;
+  PigmentampasSampleTest now starts from an EMPTY temp cache with that mirror and no longer rewrites
+  npdev.lock. Allowlist entry removed.
+  Verified: validateModel on pigmentampas with an empty cache fails without the mirror (same
+  "pack cache entry missing" as CI run 36619239384) and passes with it (3 entries seeded);
+  PigmentampasSampleTest green from an empty cache; :NPDevContract:dsl:test green; 96 pack CLI tests OK.
+guard:
+  kind: test
+  ref: >-
+    NPDevGenerator/generator/src/test/java/com/npdev/generator/PigmentampasSampleTest.java (empty temp
+    pack cache + NPDevContract/packs mirror, committed npdev.lock read unmodified); scripts/quality/
+    validate-corpus.py with an empty scripts/quality/corpus-parse-allowlist.json on bare CI checkouts.
+  asserts: >-
+    pigmentampas parses, validates and generates on a machine whose pack cache starts empty.
