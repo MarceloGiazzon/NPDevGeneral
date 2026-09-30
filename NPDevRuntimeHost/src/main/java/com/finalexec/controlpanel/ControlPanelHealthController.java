@@ -175,7 +175,7 @@ public class ControlPanelHealthController {
             timeoutExecutor.schedule(() -> {
                 if ("running".equals(state.result) && state.process != null && state.process.isAlive()) {
                     state.result = "timed-out";
-                    state.process.destroyForcibly();
+                    destroyProcessTree(state.process);
                 }
             }, runTimeoutSeconds, TimeUnit.SECONDS);
         } catch (IOException e) {
@@ -203,6 +203,16 @@ public class ControlPanelHealthController {
         }
     }
 
+    // Process.destroyForcibly() kills only the direct pwsh child: whatever the script itself spawned
+    // (gradle, java, curl -- and on Windows at least the console host) kept running and kept the
+    // inherited log-file handle open, so a "stopped" run was still alive and its log undeletable
+    // (ControlPanelHealthControllerTest's @TempDir cleanup failed on exactly that). Kill the
+    // descendants first, snapshotted before the parent dies and orphans them.
+    private static void destroyProcessTree(Process process) {
+        process.descendants().forEach(ProcessHandle::destroyForcibly);
+        process.destroyForcibly();
+    }
+
     @PostMapping("/stop/{id}")
     public ResponseEntity<Map<String, Object>> stop(@PathVariable String id, HttpServletRequest httpRequest) {
         requireSuperUser(httpRequest);
@@ -214,7 +224,7 @@ public class ControlPanelHealthController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, id + " is not running");
         }
         state.result = "stopped";
-        state.process.destroyForcibly();
+        destroyProcessTree(state.process);
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("id", id);
         body.put("result", "stopping");
