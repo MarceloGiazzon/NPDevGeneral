@@ -166,6 +166,12 @@ def is_alive(state: dict) -> bool:
     pid = state.get("pid")
     if not pid:
         return False
+    # POSIX: a killed process stays a ZOMBIE until its parent reaps it, and both `kill(pid, 0)` and
+    # psutil.pid_exists() report a zombie as alive -- so `stop()` saw its own successful kill as a
+    # failure whenever the tunnel was a child of this same process (share + down in one run; the
+    # whole of test_host_share, red on Linux CI and invisible on Windows, which has no zombies).
+    if os.name != "nt" and _reaped_or_zombie(int(pid)):
+        return False
     try:
         import psutil  # type: ignore
 
@@ -185,6 +191,29 @@ def is_alive(state: dict) -> bool:
         return True
     except (OSError, ProcessLookupError):
         return False
+
+
+def _reaped_or_zombie(pid: int) -> bool:
+    """True when `pid` has exited but not been reaped: reap it if it is our own child, otherwise
+    read its state from /proc (Linux). False means "no evidence it is dead" -- the caller's own
+    liveness probe decides."""
+    try:
+        reaped, _status = os.waitpid(pid, os.WNOHANG)
+        if reaped == pid:
+            return True
+    except ChildProcessError:
+        pass  # not our child (or already reaped) -- fall through to /proc
+    except OSError:
+        return False
+    try:
+        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as handle:
+            stat = handle.read()
+    except OSError:
+        return False
+    # Format: "<pid> (<comm>) <state> ..." -- comm may itself contain spaces/parens, so split after
+    # the LAST ')'.
+    fields = stat.rsplit(")", 1)[-1].split()
+    return bool(fields) and fields[0] in ("Z", "X")
 
 
 def stop(state: dict) -> bool:
