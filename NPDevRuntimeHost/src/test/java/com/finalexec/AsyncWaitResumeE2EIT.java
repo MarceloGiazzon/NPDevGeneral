@@ -38,10 +38,12 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 // after this test's own (fast, ~14s) HTTP-status assertion failure (line 190 of commit e9aefeca's
 // version of this file, in getJson()'s andExpect(status().is(expectedStatus))) and no completed JUnit XML
 // report, identical to the pre-fix symptom. Left in place because it's harmless and still
-// correct hygiene for a scheduler-enabling test, but it is NOT the fix for the hang -- the real
-// blocker is elsewhere (candidate: the resume scheduler's poll() or a DB connection/lock stuck
-// after this test's Postgres-specific assertion failure, given this session's other two real
-// Postgres transaction bugs). See ledger/session-state/current.json for the live handoff.
+// correct hygiene for a scheduler-enabling test, but it is NOT the fix for the hang. The CI hang
+// watchdog's thread dump + pg_locks (run 36670999703) showed both real causes: this test's own
+// failure was GET /api/v1/traces/{id} -> 404 (in-memory mode's TraceStore was a no-op, fixed in
+// NpdevRuntimeModeConfig), and the hang was the NEXT class, CanonicalDemoBusinessE2EIT, deadlocked
+// on a create-orchestration INSERT taking its own connection inside the caller's transaction
+// (fixed in GeneratedCrudRuntimeSupport.insertMappedRow).
 @DirtiesContext
 class AsyncWaitResumeE2EIT extends AbstractScenarioIntegrationTest {
     // resume after scheduled time
