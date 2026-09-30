@@ -163,13 +163,23 @@ public final class PluginIpcChildProcess implements AutoCloseable {
      * deliberately left at its default: it is a virtual RESERVATION, not a commit, so it does not itself
      * threaten the ceiling, and leaving it alone means a genuinely runaway plugin still grows its real
      * heap commit past the ceiling and gets caught by the OS limiter exactly as before.
+     *
+     * <p>That last premise only holds when the ceiling lands AFTER the JVM starts (Windows Job
+     * Object, raw-cgroup fallback). Under {@code systemd-run --scope} the cgroup exists BEFORE the
+     * JVM starts, so container-aware ergonomics size the default max heap to ~25% of the ceiling:
+     * a runaway plugin hits a Java {@code OutOfMemoryError} long before the OS limit and nothing
+     * ever kills it -- a plugin that catches the error (or whose worker thread simply dies) leaves a
+     * live, useless child the host keeps waiting on (PR gate run 36689576607, GitHub runner:
+     * 20x-over-budget plugin, still running after 30s). {@code -XX:+ExitOnOutOfMemoryError} makes
+     * the JVM exit at the FIRST such error, catch or no catch, so "exceeded its memory budget" ends
+     * the child the same way on every limiter path; on the other two the OS kill comes first anyway.</p>
      */
     private static List<String> childHeapFlags(PluginProcessResourceLimits limits) {
         if (limits.memoryLimitMb() == null) {
             return List.of();
         }
         int initialHeapMb = Math.max(8, Math.min(32, limits.memoryLimitMb() / 4));
-        return List.of("-Xms" + initialHeapMb + "m");
+        return List.of("-Xms" + initialHeapMb + "m", "-XX:+ExitOnOutOfMemoryError");
     }
 
     private static Path writeClasspathArgFile(String classpath) throws IOException {
