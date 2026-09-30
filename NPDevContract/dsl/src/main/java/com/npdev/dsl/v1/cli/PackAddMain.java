@@ -124,7 +124,9 @@ public final class PackAddMain {
     private static List<String> verifyPackSignatures(ModelSourceResolver.PackCliResolution resolution) {
         List<String> results = new ArrayList<>();
         resolution.lockEntries().forEach((packId, locked) -> {
-            Path packJsonPath = Path.of(locked.sourcePath());
+            Path packJsonPath = locked.from().isEmpty()
+                    ? Path.of(locked.sourcePath())
+                    : com.npdev.dsl.v1.pack.PackCache.atDefaultRoot().resolveLockSourcePath(locked.sourcePath());
             if (!Files.isRegularFile(packJsonPath)) {
                 return; // local packs without a source path in the cache are not checked
             }

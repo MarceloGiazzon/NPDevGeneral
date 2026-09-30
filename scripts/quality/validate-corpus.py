@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -140,7 +141,11 @@ def validate_one(label: str, model_path: Path, report_dir: Path) -> dict:
         f"-PreportOut={report_path}",
         "--console=plain", "-q",
     ]
-    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=300)
+    # REG-250: a model consuming packs by remote coordinate resolves on a fresh machine from the
+    # repo's own packs, digest-verified against npdev.lock -- never from this machine's cache alone.
+    env = dict(os.environ)
+    env.setdefault("NPDEV_PACK_MIRRORS", str(REPO_ROOT / "NPDevContract" / "packs"))
+    proc = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True, timeout=300, env=env)
 
     if not report_path.exists():
         return {

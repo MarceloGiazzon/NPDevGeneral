@@ -82,6 +82,60 @@ public final class PackCache {
         return new PackCache(defaultRoot());
     }
 
+    /** Offline pack mirrors: directories laid out as {@code <mirror>/<packId>/pack.json} (e.g. this
+     *  repo's {@code NPDevContract/packs}), separated by the platform path separator. Consulted only
+     *  on a cache miss, and only ever for a tree whose digest equals the locked one. */
+    public static final String ENV_MIRRORS = "NPDEV_PACK_MIRRORS";
+    public static final String PROPERTY_MIRRORS = "npdev.pack.mirrors";
+    private static final java.util.regex.Pattern PACK_ID_PATTERN = java.util.regex.Pattern.compile("^[a-z][a-z0-9_-]*$");
+
+    public static List<Path> configuredMirrors() {
+        String raw = System.getProperty(PROPERTY_MIRRORS);
+        if (raw == null || raw.isBlank()) {
+            raw = System.getenv(ENV_MIRRORS);
+        }
+        if (raw == null || raw.isBlank()) {
+            return List.of();
+        }
+        return java.util.Arrays.stream(raw.split(java.util.regex.Pattern.quote(java.io.File.pathSeparator)))
+                .map(String::trim)
+                .filter(entry -> !entry.isEmpty())
+                .map(Path::of)
+                .toList();
+    }
+
+    /** The machine-independent form an {@code npdev.lock} records for a remote pack's
+     *  {@code sourcePath}: relative to the cache root, so the same lock is valid on every machine. */
+    public static String lockSourcePath(String digestHex) {
+        return "sha256/" + digestHex + "/" + ENTRY_FILE_NAME;
+    }
+
+    /** Resolves a remote pack's lock {@code sourcePath} against this cache's root; an absolute
+     *  (pre-portable) value is returned unchanged. */
+    public Path resolveLockSourcePath(String sourcePath) {
+        Path path = Path.of(sourcePath);
+        return path.isAbsolute() ? path : root.resolve(sourcePath);
+    }
+
+    /**
+     * {@link #read}, but on a cache miss first seeds the entry from the first mirror holding
+     * {@code <mirror>/<packId>/} whose whole-tree digest equals {@code digestHex}. A mirror tree
+     * with any other content is ignored, so a mirror can never substitute different bytes.
+     */
+    public Path readOrSeedFromMirrors(String digestHex, String packId, List<Path> mirrors) throws IOException {
+        if (!has(digestHex) && packId != null && PACK_ID_PATTERN.matcher(packId).matches()) {
+            String expected = "sha256:" + digestHex;
+            for (Path mirror : mirrors) {
+                Path candidate = mirror.resolve(packId);
+                if (Files.isRegularFile(candidate.resolve(ENTRY_FILE_NAME)) && expected.equals(sha256OfTree(candidate))) {
+                    store(candidate);
+                    break;
+                }
+            }
+        }
+        return read(digestHex);
+    }
+
     public Path root() {
         return root;
     }
