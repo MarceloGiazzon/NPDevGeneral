@@ -275,14 +275,79 @@ jobs:
             -WorkspaceRoot "$GITHUB_WORKSPACE" \
             -SampleIds canonical-demo
 
+      # Hang watchdog (2026-09-30): this step hung the full 45-minute timeout twice (runs up to
+      # 36662397857) with zero output after AsyncWaitResumeE2EIT failed, and GitHub's hard kill left
+      # no JUnit XML, no thread dump and no DB state -- nothing to diagnose from. Gradle now runs in
+      # the background; if its output goes silent for 7 minutes (testLogging prints every test's
+      # start/finish, so a healthy run is never that quiet) or it passes 35 minutes, the step takes
+      # two rounds of evidence 20s apart (jstack of every JVM, pg_stat_activity + pg_locks of every
+      # Postgres container) BEFORE killing it, so the next step uploads something real.
       - name: RuntimeHost generated-app Postgres integration tests
         working-directory: NPDevSamples/canonical-demo/Output/App
         timeout-minutes: 45
         run: |
+          set +e
           chmod +x ./gradlew
+          log="$RUNNER_TEMP/integrationTest.log"
+          diag="$RUNNER_TEMP/integrationTest-hang-diagnostics"
+          mkdir -p "$diag"
           ./gradlew integrationTest \
             -Dspring.profiles.active=test,postgres \
-            --no-daemon --console=plain
+            --no-daemon --console=plain > "$log" 2>&1 &
+          gpid=$!
+          tail -n +1 -f --pid="$gpid" "$log" &
+          tpid=$!
+          start=$(date +%s)
+          hung=""
+          while kill -0 "$gpid" 2>/dev/null; do
+            sleep 30
+            now=$(date +%s)
+            idle=$(( now - $(stat -c %Y "$log") ))
+            if [ "$idle" -ge 420 ]; then hung="no Gradle output for ${idle}s"; break; fi
+            if [ $(( now - start )) -ge 2100 ]; then hung="35-minute internal deadline"; break; fi
+          done
+          if [ -z "$hung" ]; then
+            wait "$gpid"; rc=$?
+            wait "$tpid"
+            exit "$rc"
+          fi
+          echo "::error::integrationTest hang detected ($hung) -- collecting diagnostics before killing it"
+          jdk_bin="${JAVA_HOME:+$JAVA_HOME/bin/}"
+          for round in 1 2; do
+            echo "===== hang diagnostics round $round at $(date -u +%H:%M:%S) ====="
+            "${jdk_bin}jps" -lv | tee "$diag/jps-round$round.txt"
+            for pid in $("${jdk_bin}jps" -q); do
+              out="$diag/jstack-$pid-round$round.txt"
+              if ! "${jdk_bin}jstack" -l "$pid" > "$out" 2>&1; then
+                echo "jstack failed for $pid (JDK mismatch?); sending SIGQUIT so the JVM dumps to its own stdout"
+                kill -3 "$pid"
+              fi
+              echo "----- jstack $pid (round $round) -----"
+              cat "$out"
+            done
+            docker ps -a | tee "$diag/docker-ps-round$round.txt"
+            for c in $(docker ps --format '{{.ID}} {{.Image}}' | awk 'tolower($2) ~ /postgres/ {print $1}'); do
+              echo "----- postgres container $c (round $round) -----"
+              docker exec "$c" sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -x -c "select pid, datname, usename, application_name, state, wait_event_type, wait_event, pg_blocking_pids(pid) as blocked_by, now() - xact_start as xact_age, now() - state_change as state_age, left(query, 500) as query from pg_stat_activity where backend_type = '"'"'client backend'"'"' and pid <> pg_backend_pid()" -c "select l.pid, l.locktype, l.mode, l.granted, l.relation::regclass as relation, l.transactionid from pg_locks l where l.pid <> pg_backend_pid() order by l.granted, l.pid"' 2>&1 | tee "$diag/postgres-$c-round$round.txt"
+            done
+            [ "$round" = 1 ] && sleep 20
+          done
+          cp "$log" "$diag/"
+          pkill -TERM -P "$gpid"; kill -TERM "$gpid"
+          for pid in $("${jdk_bin}jps" -q); do kill -9 "$pid" 2>/dev/null; done
+          exit 1
+
+      - name: On failure, upload integration-test hang diagnostics and results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-diagnostics
+          path: |
+            ${{ runner.temp }}/integrationTest-hang-diagnostics
+            ${{ runner.temp }}/integrationTest.log
+            NPDevSamples/canonical-demo/Output/App/build/test-results/integrationTest
+            NPDevSamples/canonical-demo/Output/App/build/reports/tests/integrationTest
+          if-no-files-found: ignore
 
       # NEW-1 diagnostic (2026-07-23): the compact console truncates the StartupValidator failure
       # message, so we can't tell WHICH postgres check fired (:260 connectivity / :274 flyway-history

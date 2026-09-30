@@ -12,6 +12,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.net.URISyntaxException;
@@ -26,7 +27,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.http.MediaType.APPLICATION_JSON;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
 // Only IT class that flips npdev.scheduler.enabled=true (with a 100ms tick, below) -- every other
@@ -167,38 +167,45 @@ class AsyncWaitResumeE2EIT extends AbstractScenarioIntegrationTest {
     }
 
     private void resumeExecution(String executionId) throws Exception {
-        int statusCode = mockMvc.perform(post("/api/v1/executions/{executionId}/resume", executionId)
+        MockHttpServletResponse response = mockMvc.perform(post("/api/v1/executions/{executionId}/resume", executionId)
                         .header("X-Api-Key", API_KEY))
                 .andReturn()
-                .getResponse()
-                .getStatus();
+                .getResponse();
+        int statusCode = response.getStatus();
         assertTrue(
                 statusCode == 200 || statusCode == 202 || statusCode == 422,
-                "Unexpected resume status: " + statusCode
+                "Unexpected resume status: " + statusCode + " with body: " + response.getContentAsString()
         );
     }
 
     private JsonNode postJson(String path, Object body, int expectedStatus) throws Exception {
-        String response = mockMvc.perform(post(path)
+        MockHttpServletResponse response = mockMvc.perform(post(path)
                         .header("X-Api-Key", API_KEY)
                         .contentType(APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
-                .andExpect(status().is(expectedStatus))
                 .andReturn()
-                .getResponse()
-                .getContentAsString();
-        return objectMapper.readTree(response);
+                .getResponse();
+        return readExpecting("POST " + path, response, expectedStatus);
     }
 
     private JsonNode getJson(String path, int expectedStatus) throws Exception {
-        String response = mockMvc.perform(get(path)
+        MockHttpServletResponse response = mockMvc.perform(get(path)
                         .header("X-Api-Key", API_KEY)
                         .contentType(APPLICATION_JSON))
-                .andExpect(status().is(expectedStatus))
                 .andReturn()
-                .getResponse()
-                .getContentAsString();
-        return objectMapper.readTree(response);
+                .getResponse();
+        return readExpecting("GET " + path, response, expectedStatus);
+    }
+
+    // A bare status().is(...) matcher reports only "Status expected:<202> but was:<500>" -- the
+    // Postgres-only CI failure (run 36662397857) was undiagnosable because the response body, which
+    // carries the server-side error, never reached the log. Always put the body in the message.
+    private JsonNode readExpecting(String request, MockHttpServletResponse response, int expectedStatus)
+            throws Exception {
+        String content = response.getContentAsString();
+        assertEquals(expectedStatus, response.getStatus(),
+                request + " returned HTTP " + response.getStatus() + " with body: " + content);
+        return objectMapper.readTree(content);
     }
 
     private static boolean arrayContains(JsonNode array, String fieldName, String expectedValue) {

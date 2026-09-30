@@ -703,6 +703,14 @@ tasks.register('integrationTest', Test) {
     useJUnitPlatform {
         includeTags 'integration'
     }
+    // CI's Postgres run hung past its 45-minute timeout with no JUnit XML ever flushed, so the only
+    // record was this console -- which by default names a failed test but truncates its message
+    // (the expected-vs-actual status was lost) and never says which test was RUNNING when output
+    // stopped. 'started' pins the hung test; 'full' keeps the whole assertion message.
+    testLogging {
+        events 'started', 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
     def activeProfiles = providers.gradleProperty('spring.profiles.active')
             .orElse(providers.environmentVariable('SPRING_PROFILES_ACTIVE'))
             .orElse('test,postgres')
