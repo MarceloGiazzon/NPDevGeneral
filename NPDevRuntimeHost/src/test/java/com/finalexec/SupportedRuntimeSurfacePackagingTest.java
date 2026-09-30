@@ -17,19 +17,19 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.api.RuntimeSchedulesController");
         assertPackaged("com.finalexec.api.RuntimeUiMetadataController");
         assertPackaged("com.finalexec.api.SupportDiagnosticsController");
-        assertPackaged("com.finalexec.api.internal.PublicationExecutorController");
-        assertPackaged("com.finalexec.api.internal.PublicationRollbackExecutorController");
-        assertPackaged("com.finalexec.api.internal.PublicationTransactionRecordController");
-        assertPackaged("com.finalexec.api.internal.RealPublicationExecutorController");
-        assertPackaged("com.finalexec.api.internal.RollbackExecutionController");
-        assertPackaged("com.finalexec.api.internal.SemanticPublicationMappingController");
-        assertPackaged("com.finalexec.api.internal.SourceMutationApprovalGateController");
-        assertPackaged("com.finalexec.api.internal.SourceMutationAuditRecordController");
-        assertPackaged("com.finalexec.api.internal.SourceMutationRollbackAnchorController");
-        assertPackaged("com.finalexec.api.internal.StructuralPublicationMappingController");
+        assertPackaged("com.finalexec.api.PublicationExecutorController");
+        assertPackaged("com.finalexec.api.PublicationRollbackExecutorController");
+        assertPackaged("com.finalexec.api.PublicationTransactionRecordController");
+        assertPackaged("com.finalexec.api.RealPublicationExecutorController");
+        assertPackaged("com.finalexec.api.RollbackExecutionController");
+        assertPackaged("com.finalexec.api.SemanticPublicationMappingController");
+        assertPackaged("com.finalexec.api.SourceMutationApprovalGateController");
+        assertPackaged("com.finalexec.api.SourceMutationAuditRecordController");
+        assertPackaged("com.finalexec.api.SourceMutationRollbackAnchorController");
+        assertPackaged("com.finalexec.api.StructuralPublicationMappingController");
         // REG-138: promoted out of deferredControllers -- the semantic-behavior-writeback
         // endpoints are now reachable in the default supported-core profile.
-        assertPackaged("com.finalexec.api.internal.SemanticBehaviorWriteBackController");
+        assertPackaged("com.finalexec.api.SemanticBehaviorWriteBackController");
 
         assertNotPackaged("com.finalexec.HelloController");
         assertNotPackaged("com.finalexec.api.experimental.FlowBuilderController"); // remains excluded (old path)
@@ -41,13 +41,13 @@ class SupportedRuntimeSurfacePackagingTest {
         // compiled classpath) is no longer the same question as "active under the default profile";
         // this test only ever asked the former. RuntimePluginPackagesController/RuntimeRefreshController/
         // ModelSyncStatusController all compile cleanly under the new gate, so they move here.
-        assertPackaged("com.finalexec.api.internal.RuntimePluginPackagesController");
-        assertPackaged("com.finalexec.api.internal.ModelSyncStatusController");
+        assertPackaged("com.finalexec.api.RuntimePluginPackagesController");
+        assertPackaged("com.finalexec.api.ModelSyncStatusController");
         // REG-168: RuntimeTopologyExplorerController promoted to allowedControllers -- its service
         // dependencies (FlowBuilderService, GovernanceWorkspaceService, CapabilityIntegrationPanelService)
-        // are now all in supportedCoreServiceComponents and live in service/internal/, so the
+        // are now all in supportedCoreServiceComponents and live in service/, so the
         // dependency chain is fully satisfiable.
-        assertPackaged("com.finalexec.api.internal.RuntimeTopologyExplorerController");
+        assertPackaged("com.finalexec.api.RuntimeTopologyExplorerController");
 
         // Wave 4 (2026-09-25): RuntimeRefreshController deleted -- a canned-response stub superseded
         // by MetadataHotSwapController's real /model-reload (REG-208/B28). BetaOnboardingController
@@ -80,27 +80,27 @@ class SupportedRuntimeSurfacePackagingTest {
         assertPackaged("com.finalexec.npdev.service.RuntimePluginPackageRealizationService");
         assertPackaged("com.finalexec.npdev.service.SupportDiagnosticsService");
         assertPackaged("com.finalexec.npdev.service.TenantStoragePathResolver");
-        assertPackaged("com.finalexec.npdev.service.internal.CanonicalSourceArtifactStore");
-        assertPackaged("com.finalexec.npdev.service.internal.CanonicalSourceMutationExecutorService");
-        assertPackaged("com.finalexec.npdev.service.internal.CanonicalSourceValidationService");
-        assertPackaged("com.finalexec.npdev.service.internal.PublicationExecutorService");
-        assertPackaged("com.finalexec.npdev.service.internal.PublicationRollbackExecutorService");
-        assertPackaged("com.finalexec.npdev.service.internal.PublicationStateStore");
-        assertPackaged("com.finalexec.npdev.service.internal.PublicationTransactionRecordService");
-        assertPackaged("com.finalexec.npdev.service.internal.RealPublicationExecutorService");
-        assertPackaged("com.finalexec.npdev.service.internal.RollbackExecutionService");
-        assertPackaged("com.finalexec.npdev.service.internal.RollbackReferenceNormalizer");
-        assertPackaged("com.finalexec.npdev.service.internal.SemanticPublicationMappingService");
-        assertPackaged("com.finalexec.npdev.service.internal.SourceMutationApprovalGateService");
-        assertPackaged("com.finalexec.npdev.service.internal.SourceMutationAuditRecordService");
-        assertPackaged("com.finalexec.npdev.service.internal.SourceMutationRegenerationArtifactStore");
-        assertPackaged("com.finalexec.npdev.service.internal.SourceMutationRegenerationService");
-        assertPackaged("com.finalexec.npdev.service.internal.SourceMutationRollbackAnchorService");
-        assertPackaged("com.finalexec.npdev.service.internal.StructuralPublicationMappingService");
+        assertPackaged("com.finalexec.npdev.service.CanonicalSourceArtifactStore");
+        assertPackaged("com.finalexec.npdev.service.CanonicalSourceMutationExecutorService");
+        assertPackaged("com.finalexec.npdev.service.CanonicalSourceValidationService");
+        assertPackaged("com.finalexec.npdev.service.PublicationExecutorService");
+        assertPackaged("com.finalexec.npdev.service.PublicationRollbackExecutorService");
+        assertPackaged("com.finalexec.npdev.service.PublicationStateStore");
+        assertPackaged("com.finalexec.npdev.service.PublicationTransactionRecordService");
+        assertPackaged("com.finalexec.npdev.service.RealPublicationExecutorService");
+        assertPackaged("com.finalexec.npdev.service.RollbackExecutionService");
+        assertPackaged("com.finalexec.npdev.service.RollbackReferenceNormalizer");
+        assertPackaged("com.finalexec.npdev.service.SemanticPublicationMappingService");
+        assertPackaged("com.finalexec.npdev.service.SourceMutationApprovalGateService");
+        assertPackaged("com.finalexec.npdev.service.SourceMutationAuditRecordService");
+        assertPackaged("com.finalexec.npdev.service.SourceMutationRegenerationArtifactStore");
+        assertPackaged("com.finalexec.npdev.service.SourceMutationRegenerationService");
+        assertPackaged("com.finalexec.npdev.service.SourceMutationRollbackAnchorService");
+        assertPackaged("com.finalexec.npdev.service.StructuralPublicationMappingService");
         // REG-138: promoted alongside the controller -- execute() now writes a real capabilityCall
         // step into the app's own model source instead of an unread workspace audit file.
-        assertPackaged("com.finalexec.npdev.service.internal.SemanticBehaviorWriteBackService");
-        assertPackaged("com.finalexec.npdev.service.internal.SemanticBehaviorWriteBackCanonicalizationService");
+        assertPackaged("com.finalexec.npdev.service.SemanticBehaviorWriteBackService");
+        assertPackaged("com.finalexec.npdev.service.SemanticBehaviorWriteBackCanonicalizationService");
 
         assertNotPackaged("com.finalexec.npdev.service.experimental.FlowBuilderService");
         assertNotPackaged("com.finalexec.npdev.service.experimental.PreviewReferenceResolver");
@@ -110,13 +110,13 @@ class SupportedRuntimeSurfacePackagingTest {
         assertNotPackaged("com.finalexec.npdev.service.internal.BetaOnboardingService");
         // REG-163: see the sibling controller test's own comment -- nonDefaultServicePatterns
         // services are now compiled so the profile they exist for is reachable at all.
-        assertPackaged("com.finalexec.npdev.service.internal.ModelSyncStatusService");
+        assertPackaged("com.finalexec.npdev.service.ModelSyncStatusService");
         assertPackaged("com.finalexec.npdev.service.internal.TenantOperationalAdministrationService");
         // REG-168: RuntimeTopologyExplorerService promoted alongside its controller -- all transitive
-        // deps now in service/internal/ and supportedCoreServiceComponents.
-        assertPackaged("com.finalexec.npdev.service.internal.RuntimeTopologyExplorerService");
-        assertPackaged("com.finalexec.npdev.service.internal.FlowBuilderService");
-        assertPackaged("com.finalexec.npdev.service.internal.CapabilityIntegrationPanelService");
+        // deps now in service/ and supportedCoreServiceComponents.
+        assertPackaged("com.finalexec.npdev.service.RuntimeTopologyExplorerService");
+        assertPackaged("com.finalexec.npdev.service.FlowBuilderService");
+        assertPackaged("com.finalexec.npdev.service.CapabilityIntegrationPanelService");
     }
 
     private static void assertPackaged(String className) {

@@ -172,8 +172,9 @@ Verify with `python scripts/quality/check-schema-mirror-consistency.py` — the 
   `run-generator-gate.ps1` (codegen engine; also checks the dsl/generator coverage ratchet)
   → `run-runtimehost-gate.ps1` (assembled sample app + its suite; + RuntimeHost coverage ratchet)
   → `run-kernel-quality-gate.ps1` (`kernelQualityGate`: `:kernel:test` + all 36+ `:adapters:*:test`,
-  then the kernel aggregate ratchet) → `run-ai-knowledge-gate.ps1` (static — no build, no boot;
-  hosts 40 of the 42 `scripts/quality/check-*.py` across 39 numbered checks).
+  then the kernel aggregate ratchet) → `run-ai-knowledge-gate.ps1` (mostly static,
+  but some checks generate and boot probe apps and it runs the NPDevCli suite -- never run a build
+  alongside it; hosts 40 of the 42 `scripts/quality/check-*.py` across 39 numbered checks).
   **Two checkers are not in it:** `check-dsl-reference-output-floor.py` runs in
   `run-generator-gate.ps1` (needs a build), and `check-external-ai-mission-coverage.py` runs only in
   `run-weekly-paperwork-checks.ps1`.

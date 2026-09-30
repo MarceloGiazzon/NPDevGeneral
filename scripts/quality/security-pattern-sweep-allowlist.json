@@ -900,7 +900,7 @@
     },
     "4d7974ce2800": {
       "rule": "F6",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackCanonicalizationService.java:216",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SemanticBehaviorWriteBackCanonicalizationService.java:216",
       "why": "Admin/diagnostic surface splicing an internal CONSTANT table name; no request data reaches the statement text and every value is bound."
     },
     "4f4350ae354c": {
@@ -1110,7 +1110,7 @@
     },
     "6749f98d0229": {
       "rule": "F6",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackCanonicalizationService.java:218",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SemanticBehaviorWriteBackCanonicalizationService.java:218",
       "why": "Admin/diagnostic surface splicing an internal CONSTANT table name; no request data reaches the statement text and every value is bound."
     },
     "681c83d68750": {
@@ -1200,7 +1200,7 @@
     },
     "708f2dd719a3": {
       "rule": "A1/A5/H1",
-      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198; NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130; NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539; NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/SemanticBehaviorWriteBackService.java:372; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
+      "where": "NPDevKernel/kernel/src/main/java/com/npdev/kernel/KernelRunner.java:4198; NPDevKernel/kernel/src/main/java/com/npdev/kernel/concepts/ConceptQueryEngine.java:130; NPDevKernel/kernel/src/main/java/com/npdev/kernel/mvp/MvpKernelRunner.java:539; NPDevRuntimeHost/src/main/java/com/finalexec/api/ConceptQueryController.java:251; NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/SemanticBehaviorWriteBackService.java:372; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/expr/ComputedExpression.java:395; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/reflection/ObjectFieldSupport.java:136; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/schemaexpr/SchemaExpressionSupport.java:161; NPDevKernel/adapters/runtime-support/src/main/java/com/npdev/runtime/support/crud/valuecoercion/ValueCoercionSupport.java:62,83,104,128; NPDevContract/dsl/src/main/java/com/npdev/dsl/v1/schemaevolution/TypeChangeMatrix.java:163",
       "why": "Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. || Value coercion, not an authorization verdict -- same reasoning as rule A1, one module over. ComputedExpression catches NumberFormatException around Double.parseDouble to answer 'is this text numeric?'; TypeChangeMatrix catches it while parsing a SQL type's (precision,scale) and returns null meaning 'unparseable type'. No security decision is being answered. Verified 2026-07-25. || Data-integrity probes (uniqueness, reference existence, lifecycle status), not authorization verdicts. A failed uniqueness probe degrades to the DATABASE's own unique constraint raising a 409 instead of a friendlier validation error; a failed existence probe reports 'not found', which is the closed direction. Round 3. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint. || Value-coercion helper, not an authorization verdict: the catch converts 'this text is not a number/date/path' into 'absent', and every caller treats absent as not-supplied. No security decision is being answered here. Relocated verbatim by T2.B.3's GeneratedCrudRuntimeSupport split (docs/DSL2_AND_DECOMPOSITION_PLAN.md 2.B.3) -- same code, new file, hence a new file-inclusive fingerprint."
     },
     "71c2527ac682": {
@@ -1645,7 +1645,7 @@
     },
     "a41be03c2f19": {
       "rule": "H2",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/PublicationStateStore.java:144",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PublicationStateStore.java:144",
       "why": "Schema, diagnostic or build-metadata path: the swallowed failure yields 'this optional detail is unavailable', not a security answer. No caller treats the result as an authorization decision."
     },
     "a42211a58b22": {
@@ -1680,7 +1680,7 @@
     },
     "a8a1824489b9": {
       "rule": "G5",
-      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/internal/PublicationStateStore.java:156",
+      "where": "NPDevRuntimeHost/src/main/java/com/finalexec/npdev/service/PublicationStateStore.java:156",
       "why": "Round 5 section 4: what these guard is the PHYSICAL SCHEMA / deployment state, which belongs to the database rather than to a tenant -- all tenants share one set of tables. A tenant predicate would be meaningless, and a per-tenant migration claim would let two tenants migrate the same schema at once."
     },
     "aa2adaca7e53": {

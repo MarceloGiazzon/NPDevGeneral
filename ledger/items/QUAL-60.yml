@@ -1,0 +1,42 @@
+id: QUAL-60
+title: >-
+  Runtime-surface convergence drift: 14 supported controllers and 50 supported services lived in
+  packages that did not name their manifest bucket, so the convergence checks ran advisory-only
+type: GAP
+severity: LOW
+status: DONE
+opened: 2026-09-30
+closed: 2026-09-30
+verification: VERIFIED_LIVE
+source: >-
+  Deferred owner decision in the 2026-09-30 handoff (GATE-OBS-1a had retired the checks to advisory
+  on 2026-07-21). Owner decision: move the classes; no external users, so no compatibility shims.
+surface: NPDevRuntimeHost, runtimehost-core, scripts/quality/run-runtime-surface-evidence.ps1
+files:
+  - scripts/quality/run-runtime-surface-evidence.ps1
+  - scripts/quality/run-observability-hardening.ps1
+  - scripts/quality/run-runtimehost-gate.ps1
+  - .github/workflows/npdev-ci-validation.yml
+  - NPDevCli/npdev_cli.py
+detail: |
+  Three findings, three fixes:
+  - 14 controllers in com.finalexec.api.internal and 24 services in
+    com.finalexec.npdev.service.internal are supported-core per runtime-supported-controllers.json:
+    moved to com.finalexec.api / com.finalexec.npdev.service (plus the one test in the old package
+    that exercises its subject's package-private surface). Codemod: npdev migrate runtimehost-packages.
+  - 26 service.pluginipc classes were flagged only because the rule accepted three exact flat
+    packages; a bucket now owns its package subtree, so a cohesive functional subpackage is not drift.
+  - 21 "overlapping" services were promoted by exact name while broad nonDefault patterns (Semantic*,
+    Rollback*) still matched them; an exact manifest entry now overrides patterns.
+  The three "supported footprint stays a minority" heuristics were deleted: all 36 controllers are
+  allowed by design. Every remaining check is blocking again -- the -PendingOk /
+  -IncludeRetiredConvergenceChecks / -SurfaceConvergencePendingOk excuse paths are gone.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-runtime-surface-evidence.ps1
+  asserts: >-
+    runtime-surface-classification, -allowlist and runtime-footprint reports all overallStatus
+    passed with zero failing checks and no advisory downgrade. Before this change the same script
+    reported 14 controller and 50 service namespace mismatches and 21 overlapping services
+    (scripts/reports/out/runtime-footprint-report.json of 2026-09-30T09:25).
+  provenRed: true

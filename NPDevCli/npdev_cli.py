@@ -1326,6 +1326,63 @@ def run_migrate_db_lifecycle(args: argparse.Namespace) -> int:
     return 0
 
 
+RUNTIMEHOST_PROMOTED_CLASSES = {
+    "com.finalexec.api.internal": (
+        "ModelSyncStatusController", "PublicationExecutorController", "PublicationRollbackExecutorController",
+        "PublicationTransactionRecordController", "RealPublicationExecutorController", "RollbackExecutionController",
+        "RuntimePluginPackagesController", "RuntimeTopologyExplorerController", "SemanticBehaviorWriteBackController",
+        "SemanticPublicationMappingController", "SourceMutationApprovalGateController",
+        "SourceMutationAuditRecordController", "SourceMutationRollbackAnchorController",
+        "StructuralPublicationMappingController",
+    ),
+    "com.finalexec.npdev.service.internal": (
+        "CanonicalSourceArtifactStore", "CanonicalSourceMutationExecutorService", "CanonicalSourceValidationService",
+        "CapabilityIntegrationPanelService", "FlowBuilderService", "GovernanceWorkspaceService",
+        "ModelSyncStatusService", "PublicationExecutorService", "PublicationRollbackExecutorService",
+        "PublicationStateStore", "PublicationTransactionRecordService", "RealPublicationExecutorService",
+        "RollbackExecutionService", "RollbackReferenceNormalizer", "RuntimeTopologyExplorerService",
+        "SemanticBehaviorWriteBackCanonicalizationService", "SemanticBehaviorWriteBackService",
+        "SemanticPublicationMappingService", "SourceMutationApprovalGateService", "SourceMutationAuditRecordService",
+        "SourceMutationRegenerationArtifactStore", "SourceMutationRegenerationService",
+        "SourceMutationRollbackAnchorService", "StructuralPublicationMappingService",
+    ),
+}
+
+
+def run_migrate_runtimehost_packages(args: argparse.Namespace) -> int:
+    """2026-09-30: RuntimeHost classes the surface manifest lists as supported-core moved out of
+    `.internal` into their bucket's package; rewrite references to the old fully-qualified names."""
+    replacements = {
+        f"{old_package}.{name}": f"{old_package[: -len('.internal')]}.{name}"
+        for old_package, names in RUNTIMEHOST_PROMOTED_CLASSES.items()
+        for name in names
+    }
+    pattern = re.compile("(?:" + "|".join(re.escape(old) for old in sorted(replacements, key=len, reverse=True)) + r")\b")
+    targets: list[Path] = []
+    for entry in args.input:
+        path = Path(entry).expanduser()
+        if path.is_dir():
+            targets.extend(p for p in sorted(path.rglob("*")) if p.suffix in (".java", ".kt", ".groovy") and p.is_file())
+        elif path.exists():
+            targets.append(path)
+        else:
+            raise CliError(f"not found: {path}")
+    changed = 0
+    for target in targets:
+        text = target.read_bytes().decode("utf-8")
+        rewritten, count = pattern.subn(lambda match: replacements[match.group(0)], text)
+        if not count:
+            continue
+        changed += 1
+        print(f"  [{'CHANGED' if args.write else 'WOULD CHANGE'}] {target}: {count} reference(s)")
+        if args.write:
+            target.write_bytes(rewritten.encode("utf-8"))
+    print(f"{changed} of {len(targets)} source file(s) reference a moved RuntimeHost class.")
+    if changed and not args.write:
+        print("Dry run -- pass --write to apply.")
+    return 0
+
+
 def run_migrate_pack_lock_paths(args: argparse.Namespace) -> int:
     """REG-250: rewrite a remote pack's absolute `sourcePath` in npdev.lock (a path under one
     user's pack cache) to the portable cache-relative form `sha256/<digest>/pack.json`."""
@@ -15560,6 +15617,20 @@ def build_parser() -> argparse.ArgumentParser:
              "--cascade.",
     )
 
+    migrate_runtimehost_packages = migrate_sub.add_parser(
+        "runtimehost-packages",
+        help="Rewrite references to RuntimeHost classes that moved out of api.internal / "
+             "npdev.service.internal into their supported-core package (2026-09-30).",
+    )
+    migrate_runtimehost_packages.add_argument(
+        "--input", required=True, nargs="+",
+        help="Java/Kotlin/Groovy source files, or directories to search recursively.",
+    )
+    migrate_runtimehost_packages.add_argument(
+        "--write", action="store_true",
+        help="apply the edits; without this flag, reports what would change and exits",
+    )
+
     migrate_pack_lock_paths = migrate_sub.add_parser(
         "pack-lock-paths",
         help="Rewrite a remote pack's absolute npdev.lock sourcePath to the portable "
@@ -17069,6 +17140,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "migrate" and args.migrate_command == "legacy-model":
             migrate_legacy_model(args)
             return 0
+        if args.command == "migrate" and args.migrate_command == "runtimehost-packages":
+            return run_migrate_runtimehost_packages(args)
         if args.command == "migrate" and args.migrate_command == "pack-lock-paths":
             return run_migrate_pack_lock_paths(args)
         if args.command == "migrate" and args.migrate_command == "db-lifecycle":

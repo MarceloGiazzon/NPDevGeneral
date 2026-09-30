@@ -1,0 +1,37 @@
+id: QUAL-59
+title: >-
+  APP_UPGRADE_CONTRACT's DoD ("proven in the release gate") was unmet since 2026-08-13: its gate
+  script was retired as an orphan and only ever ran against an AppGen app on one machine
+type: GAP
+severity: MEDIUM
+status: DONE
+opened: 2026-09-30
+closed: 2026-09-30
+verification: VERIFIED_LIVE
+source: >-
+  Session handoff 2026-09-30: docs/architecture/APP_UPGRADE_CONTRACT.md said its own DoD was
+  "currently unmet" because scripts/quality/run-app-upgrade-contract-gate.ps1 was deleted in
+  83eaf603. Owner decision the same day: re-wire it into the release gate.
+surface: release gate, generator assembly, NPDevSamples/simple-user-registry
+files:
+  - scripts/quality/run-app-upgrade-contract-gate.ps1
+  - scripts/quality/run-beta0-final-release-check.ps1
+  - scripts/policy/final-regression-coverage-manifest.json
+  - NPDevSamples/simple-user-registry/Input/web/registry-help.html
+detail: |
+  The old script hard-coded D:\WorkSpace\NPDev\AppGen, wrote into that external app folder and only
+  checked that one web/ marker survived two regenerations. The new sub-gate (after sample-matrix in
+  run-beta0-final-release-check.ps1) generates the in-repo release sample simple-user-registry, which
+  now ships a real hand-written Input/web page, into the Build root; drifts a platform-owned file
+  under npdev-generated/, adds a stray one, writes operator state into data/logs/secrets; regenerates;
+  and asserts web/ files and operator state are byte-identical while the drifted file is replaced and
+  the stray one removed. final-regression-coverage-manifest.json requires its report, and
+  run-final-regression-coverage-audit.ps1 requires the entrypoint in the canonical sequence.
+guard:
+  kind: script
+  ref: pwsh -NoProfile -File scripts/quality/run-app-upgrade-contract-gate.ps1
+  asserts: >-
+    Report overallStatus passed with all five assertions (web-customization-mounted,
+    web-customization-survives-regeneration, operator-state-survives-regeneration,
+    platform-owned-file-replaced, stale-platform-file-removed). Verified live 2026-09-30.
+  provenRed: false

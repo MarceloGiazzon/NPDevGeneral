@@ -5,6 +5,18 @@ why. Every breaking change to the model DSL, generated code layout, or internal 
 one-line entry here, in the same commit that makes the change, alongside the `npdev migrate`
 codemod that rewrites existing models automatically.
 
+## 2026-09-30 — supported-core RuntimeHost classes leave `api.internal` / `npdev.service.internal`
+
+**What changes.** The 14 controllers and 24 services that `runtime-supported-controllers.json`
+lists as supported-core moved from `com.finalexec.api.internal` to `com.finalexec.api` and from
+`com.finalexec.npdev.service.internal` to `com.finalexec.npdev.service`, so a class's package names
+its support bucket again. The runtime-surface convergence checks that were advisory since
+2026-07-21 (GATE-OBS-1a) now block.
+
+**Who is affected.** Only hand-written code that imports one of those classes by its old name.
+
+**Codemod.** `npdev migrate runtimehost-packages --input <src-dir> --write`.
+
 ## 2026-09-30 — `npdev.lock` records a remote pack's `sourcePath` relative to the pack cache
 
 **What changes.** For a pack consumed by `from:` coordinate, `npdev.lock`'s `sourcePath` is now
