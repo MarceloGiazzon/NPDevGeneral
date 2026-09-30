@@ -7,7 +7,8 @@ param(
     [string]$FinalReleaseScriptPath = "scripts/quality/run-beta0-final-release-check.ps1",
     [string]$ReportSchemaValidationScriptPath = "scripts/quality/run-report-schema-validation.ps1",
     [string]$SampleMatrixReportPath = "scripts/reports/out/sample-matrix-report.json",
-    [string]$BetaReleaseGateReportPath = "scripts/reports/out/beta-release-gate-report.json"
+    [string]$BetaReleaseGateReportPath = "scripts/reports/out/beta-release-gate-report.json",
+    [string]$ReportsRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +38,15 @@ function Resolve-UnderWorkspace {
     return [System.IO.Path]::GetFullPath((Join-Path $workspaceRoot $PathValue))
 }
 
+function Resolve-ReportPath {
+    param([string]$PathValue)
+    $prefix = "scripts/reports/out/"
+    if (-not [string]::IsNullOrWhiteSpace($ReportsRoot) -and ($PathValue -replace '\\', '/').StartsWith($prefix)) {
+        return [System.IO.Path]::GetFullPath((Join-Path $ReportsRoot ($PathValue.Substring($prefix.Length))))
+    }
+    return Resolve-UnderWorkspace $PathValue
+}
+
 function Get-ReportPropertyValue {
     param([object]$Report, [string]$PropertyPath)
     $value = $Report
@@ -63,7 +73,7 @@ function Get-ReportNames {
 function Test-ReportEvidence {
     param([object]$Definition)
     $reportPath = [string]$Definition.path
-    $fullPath = Resolve-UnderWorkspace $reportPath
+    $fullPath = Resolve-ReportPath $reportPath
     $report = Read-JsonFile $fullPath
     $errors = [System.Collections.Generic.List[string]]::new()
     if ($null -eq $report) {

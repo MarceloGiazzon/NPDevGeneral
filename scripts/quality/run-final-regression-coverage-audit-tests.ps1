@@ -31,6 +31,11 @@ function Read-JsonFile {
     return Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
 }
 
+function Get-Basename {
+    param([string]$PathValue)
+    return [System.IO.Path]::GetFileName(([string]$PathValue).Replace("\", "/"))
+}
+
 function Invoke-Audit {
     param([hashtable]$AuditArgs)
     $argList = @("-NoProfile", "-File", "scripts/quality/run-final-regression-coverage-audit.ps1")
@@ -58,8 +63,10 @@ function New-Fixture {
     $manifestPath = Join-Path $Root "final-regression-coverage-manifest.json"
     $finalScriptPath = Join-Path $Root "run-beta0-final-release-check.ps1"
     $schemaScriptPath = Join-Path $Root "run-report-schema-validation.ps1"
-    $samplePath = Join-Path $Root "sample-matrix-report.json"
-    $betaPath = Join-Path $Root "beta-release-gate-report.json"
+    $reportsRoot = Join-Path $Root "reports"
+    New-Item -ItemType Directory -Force -Path $reportsRoot | Out-Null
+    $samplePath = Join-Path $reportsRoot "sample-matrix-report.json"
+    $betaPath = Join-Path $reportsRoot "beta-release-gate-report.json"
     $auditPath = Join-Path $Root "final-regression-coverage-audit-report.json"
 
     $sampleEvidenceRequirements = @()
@@ -124,6 +131,69 @@ schemas/ai/final-regression-coverage-audit-report.schema.json
             overallStatus = "failed"
             blockers = @("fixture red")
         })
+
+    # Every OTHER report the manifest's coverage items depend on must exist and satisfy its own
+    # definition too, or the generic Test-ReportEvidence check fails it as "missing" -- these stubs
+    # are generated FROM the manifest's own report definitions (never hand-authored) so they can't
+    # drift from what the real manifest actually requires.
+    $skipBasenames = @((Get-Basename $samplePath), (Get-Basename $betaPath), (Get-Basename $auditPath))
+    $reportDefsByPath = [ordered]@{}
+    foreach ($item in @($realManifest.coverageItems)) {
+        foreach ($reportDef in @($item.reports | Where-Object { $null -ne $_ -and -not [string]::IsNullOrWhiteSpace([string]$_.path) })) {
+            $key = [string]$reportDef.path
+            if (-not $reportDefsByPath.Contains($key)) {
+                $reportDefsByPath[$key] = [System.Collections.Generic.List[object]]::new()
+            }
+            $reportDefsByPath[$key].Add($reportDef) | Out-Null
+        }
+    }
+    foreach ($path in $reportDefsByPath.Keys) {
+        if ($skipBasenames -contains (Get-Basename $path)) { continue }
+        $defs = $reportDefsByPath[$path]
+
+        $stub = [ordered]@{}
+        $schemaVersion = ($defs | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_.schemaVersion) } | Select-Object -First 1).schemaVersion
+        if (-not [string]::IsNullOrWhiteSpace([string]$schemaVersion)) {
+            $stub["schemaVersion"] = [string]$schemaVersion
+        }
+        foreach ($def in $defs) {
+            $statusProperty = [string]$def.statusProperty
+            if ([string]::IsNullOrWhiteSpace($statusProperty)) { continue }
+            $segments = $statusProperty -split "\."
+            $cursor = $stub
+            for ($i = 0; $i -lt $segments.Count - 1; $i++) {
+                $segment = $segments[$i]
+                if (-not $cursor.Contains($segment)) {
+                    $cursor[$segment] = [ordered]@{}
+                }
+                $cursor = $cursor[$segment]
+            }
+            $cursor[$segments[-1]] = [string]$def.passValue
+        }
+        $assertionNames = @($defs | ForEach-Object { @($_.requiredAssertionNames) } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+        if ($assertionNames.Count -gt 0) {
+            $stub["assertions"] = [ordered]@{ names = @($assertionNames) }
+        }
+        $caseNames = @($defs | ForEach-Object { @($_.requiredCaseNames) } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+        if ($caseNames.Count -gt 0) {
+            $stub["cases"] = @($caseNames | ForEach-Object { [ordered]@{ name = $_ } })
+        }
+        $testedReportNames = @($defs | ForEach-Object { @($_.requiredTestedReportBasenames) } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+        if ($testedReportNames.Count -gt 0) {
+            $stub["testedReports"] = @($testedReportNames)
+        }
+        $topLevelProperties = @($defs | ForEach-Object { @($_.requiredTopLevelProperties) } | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Sort-Object -Unique)
+        foreach ($property in $topLevelProperties) {
+            if (-not $stub.Contains($property)) {
+                $stub[$property] = $true
+            }
+        }
+
+        $prefix = "scripts/reports/out/"
+        $relative = if (([string]$path).StartsWith($prefix)) { ([string]$path).Substring($prefix.Length) } else { Get-Basename $path }
+        Write-JsonFile -Path (Join-Path $reportsRoot $relative) -Value $stub
+    }
+
     return [pscustomobject]@{
         policyPath = $policyPath
         scopePath = $scopePath
@@ -133,6 +203,7 @@ schemas/ai/final-regression-coverage-audit-report.schema.json
         samplePath = $samplePath
         betaPath = $betaPath
         auditPath = $auditPath
+        reportsRoot = $reportsRoot
     }
 }
 
@@ -158,6 +229,7 @@ $passingExit = Invoke-Audit -AuditArgs @{
     ReportSchemaValidationScriptPath = $passingFixture.schemaScriptPath
     SampleMatrixReportPath = $passingFixture.samplePath
     BetaReleaseGateReportPath = $passingFixture.betaPath
+    ReportsRoot = $passingFixture.reportsRoot
 }
 $passingReport = Read-JsonFile $passingFixture.auditPath
 Assert-Condition -Condition ($passingExit -eq 0) -Name "audit-passes-coverage-while-release-blocked" -Message "Audit should pass coverage controls while preserving separate release blockers."
@@ -175,6 +247,7 @@ $missingRequirementExit = Invoke-Audit -AuditArgs @{
     ReportSchemaValidationScriptPath = $missingRequirementFixture.schemaScriptPath
     SampleMatrixReportPath = $missingRequirementFixture.samplePath
     BetaReleaseGateReportPath = $missingRequirementFixture.betaPath
+    ReportsRoot = $missingRequirementFixture.reportsRoot
 }
 $missingRequirementReport = Read-JsonFile $missingRequirementFixture.auditPath
 Assert-Condition -Condition ($missingRequirementExit -ne 0) -Name "audit-fails-missing-sample-release-requirement" -Message "Audit should fail when sample releaseEvidence.eligible is no longer blocking."
@@ -191,6 +264,7 @@ $missingSchemaExit = Invoke-Audit -AuditArgs @{
     ReportSchemaValidationScriptPath = $missingSchemaFixture.schemaScriptPath
     SampleMatrixReportPath = $missingSchemaFixture.samplePath
     BetaReleaseGateReportPath = $missingSchemaFixture.betaPath
+    ReportsRoot = $missingSchemaFixture.reportsRoot
 }
 $missingSchemaReport = Read-JsonFile $missingSchemaFixture.auditPath
 Assert-Condition -Condition ($missingSchemaExit -ne 0) -Name "audit-fails-missing-schema-validation-wiring" -Message "Audit should fail when report-schema validation does not cover governance schemas."
@@ -216,6 +290,7 @@ foreach ($case in $representativeMissingEntrypoints) {
         ReportSchemaValidationScriptPath = $fixture.schemaScriptPath
         SampleMatrixReportPath = $fixture.samplePath
         BetaReleaseGateReportPath = $fixture.betaPath
+        ReportsRoot = $fixture.reportsRoot
     }
     $report = Read-JsonFile $fixture.auditPath
     $representativeReports += $fixture.auditPath
