@@ -80,6 +80,14 @@ if ($status -eq "passed") {
     return
 }
 
+if ([string]$kernelCommand.status -ne "passed") {
+    Write-NPDevWarn ("  reason: kernelQualityGate failed -- see " + $kernelLogPath)
+}
+if ($null -ne $coverageRatchetEvidence -and $coverageRatchetEvidence.overallStatus -ne "passed") {
+    Write-NPDevWarn "  reason: Coverage ratchet failed for kernel/adapters aggregate."
+    Write-Host "  coverage ratchet output (last 30 lines):"
+    $coverageRatchetEvidence.output | ForEach-Object { Write-Host ("    " + $_) }
+}
 Write-NPDevWarn "NPDevKernel quality gate failed."
 if ([string]$kernelCommand.status -ne "passed") {
     throw "kernelQualityGate failed -- see $kernelLogPath"
