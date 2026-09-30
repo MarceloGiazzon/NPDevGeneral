@@ -65,10 +65,10 @@ class H2LocalBootLockCrossProcessTest {
                 assertEquals(0, contender.exitValue(), readQuietly(contenderLog));
                 assertTrue(readQuietly(contenderLog).contains("HARNESS: ACQUIRED"), readQuietly(contenderLog));
             } finally {
-                contender.destroyForcibly();
+                terminate(contender);
             }
         } finally {
-            holder.destroyForcibly();
+            terminate(holder);
         }
     }
 
@@ -91,10 +91,10 @@ class H2LocalBootLockCrossProcessTest {
                 String output = readQuietly(contenderLog);
                 assertTrue(output.contains("HARNESS: FAILED B31:h2local_boot_lock_held:"), output);
             } finally {
-                contender.destroyForcibly();
+                terminate(contender);
             }
         } finally {
-            holder.destroyForcibly();
+            terminate(holder);
         }
     }
 
@@ -132,10 +132,10 @@ class H2LocalBootLockCrossProcessTest {
                 assertEquals(0, second.exitValue(), readQuietly(secondLog));
                 assertTrue(readQuietly(secondLog).contains("HARNESS: DISCONNECTED"), readQuietly(secondLog));
             } finally {
-                second.destroyForcibly();
+                terminate(second);
             }
         } finally {
-            first.destroyForcibly();
+            terminate(first);
         }
     }
 
@@ -174,6 +174,13 @@ class H2LocalBootLockCrossProcessTest {
             Thread.sleep(100L);
         }
         fail("timed out waiting for '" + marker + "' in " + logFile + "; last content: " + readQuietly(logFile));
+    }
+
+    // destroyForcibly() only REQUESTS termination. Returning straight to @TempDir's cleanup raced the
+    // child JVM still holding holder.log and the H2 files open on Windows -- an "IOException at
+    // ForEachOps" failing the test after every assertion had passed, most often under load.
+    private void terminate(Process process) throws InterruptedException {
+        process.destroyForcibly().waitFor(20, TimeUnit.SECONDS);
     }
 
     private void waitForExit(Process process, Duration timeout) throws InterruptedException {
