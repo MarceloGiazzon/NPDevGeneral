@@ -52,9 +52,9 @@
   "sourceRefs": [
     "docs/SCHEMA_EVOLUTION.md",
     "NPDevRuntimeHost/runtimehost-core/src/main/java/com/finalexec/db/SchemaLifecycleExecutor.java",
-    "D:\\WorkSpace\\NPDev\\AppGen\\apps\\APP_DEFINITION_FORMAT.md",
-    "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\lnch1-evidence\\phase-7.md",
-    "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\lnch1-evidence\\closeout-C1.md"
+    "<NPDevWorkspace>\\AppGen\\apps\\APP_DEFINITION_FORMAT.md",
+    "<NPDevWorkspace>\\NPDev_General__OutsideRepo\\lnch1-evidence\\phase-7.md",
+    "<NPDevWorkspace>\\NPDev_General__OutsideRepo\\lnch1-evidence\\closeout-C1.md"
   ],
   "status": "active"
 }

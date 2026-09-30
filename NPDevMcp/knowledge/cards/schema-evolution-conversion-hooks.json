@@ -8,6 +8,6 @@
   "appliesTo": ["schema-evolution", "build-ops", "model"],
   "signature": null,
   "fix": null,
-  "sourceRefs": ["docs/IMPACT_REPORTS.md", "docs/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md", "docs/DATABASES_AND_MIGRATIONS.md", "NPDevRuntimeHost/src/main/java/com/finalexec/db/ConversionHookRunner.java", "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java", "NPDevContract/schemas/conversion-hook.schema.json", "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\SER-P7.7-conversion-hook-live-proof\\EVIDENCE.md"],
+  "sourceRefs": ["docs/IMPACT_REPORTS.md", "docs/SCHEMA_ENGINE_REMAINING_EXECUTION_PLAN.md", "docs/DATABASES_AND_MIGRATIONS.md", "NPDevRuntimeHost/src/main/java/com/finalexec/db/ConversionHookRunner.java", "NPDevGenerator/generator/src/main/java/com/npdev/generator/dbconfig/ConversionHookEmitter.java", "NPDevContract/schemas/conversion-hook.schema.json", "<NPDevWorkspace>\\NPDev_General__OutsideRepo\\SER-P7.7-conversion-hook-live-proof\\EVIDENCE.md"],
   "status": "active"
 }
