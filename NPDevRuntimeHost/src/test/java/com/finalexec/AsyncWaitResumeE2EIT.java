@@ -8,6 +8,7 @@ import org.awaitility.core.ConditionTimeoutException;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -28,6 +29,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
+// Only IT class that flips npdev.scheduler.enabled=true (with a 100ms tick, below) -- every other
+// subclass leaves the default scheduler disabled. @EnableScheduling with no custom TaskScheduler
+// bean spins up a non-daemon thread; without a forced close here, that thread keeps the forked
+// Gradle test JVM alive, which stops the JVM shutdown hook that would otherwise close (and stop)
+// this cached Spring context from ever firing -- a deadlock that hung the whole Postgres IT step
+// for the full CI timeout (confirmed via CI evidence: 3 orphaned java processes force-killed).
+@DirtiesContext
 class AsyncWaitResumeE2EIT extends AbstractScenarioIntegrationTest {
     // resume after scheduled time
     // resume after event
