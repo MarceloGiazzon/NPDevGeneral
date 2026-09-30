@@ -510,6 +510,9 @@
       "invocation": "manual-runbook",
       "documentedIn": "CLAUDE.md"
     },
+    "scripts/quality/run-app-upgrade-contract-gate.ps1": {
+      "invocation": "orchestrated"
+    },
     "scripts/quality/run-beta-release-evidence-orchestration.ps1": {
       "invocation": "manual-runbook",
       "documentedIn": "docs/archive/programme-history/POST_REG17_CLOSURE_PLAN.md"

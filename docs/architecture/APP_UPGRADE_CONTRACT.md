@@ -93,15 +93,12 @@ re-mount model), this is the existing seam to wire up — not a new mechanism to
 > A FinalApp generated on version N upgrades to N+1 with local `web/` customizations intact,
 > proven in the release gate.
 
-**Was proven** (not continuously re-proven today) by `scripts/quality/run-app-upgrade-contract-gate.ps1`
--- retired 2026-08-13 as an orphan gate no workflow or gate ever invoked (commit 83eaf603), so the
-DoD's "proven in the release gate" is currently unmet. What that script did: it ran `Build-NpdevApp.ps1` twice
-against a real AppGen sample (`simple-user-registry-inmemory`) with a `web/` customization marker
-file present, asserting the marker is byte-identical in the mounted output
-(`src/main/resources/static/`) after both runs. Confirmed live (2026-07-17) — the customization
-survived two full regenerations unchanged, for the intended customization path (`apps/<App>/web/`,
-`apps/<App>/definition/*.json`), exactly as this document's "re-mount, not in-place preservation"
-correction predicted. **Not yet wired into a CI/release gate run** (LNCH-19's Linux-CI wiring is
-the natural home for that) and does not yet assert the app boots afterward — the generator step
-alone (`-GenerateOnly`) is what's proven; a full build+boot pass is the next increment if deeper
-assurance is wanted.
+**Proven in the release gate** by `scripts/quality/run-app-upgrade-contract-gate.ps1`, a sub-gate of
+`run-beta0-final-release-check.ps1` whose report the final regression coverage audit requires. It
+generates `NPDevSamples/simple-user-registry` (which ships a hand-written `Input/web/registry-help.html`)
+into the Build root, then makes that output look like an older platform's: one platform-owned file
+under `npdev-generated/` drifted, one stray file added there, and operator state written into the
+spared `data/`, `logs/` and `secrets/` directories. It regenerates over it and asserts that every
+`web/` file is mounted byte-identical into `src/main/resources/static/`, the operator state survived
+byte-identical, the drifted platform file was replaced and the stray one removed. It proves the
+generator step, not a boot of the upgraded app.

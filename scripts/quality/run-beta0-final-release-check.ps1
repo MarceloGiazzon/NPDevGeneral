@@ -135,6 +135,7 @@ $orderedGates = @(
     [pscustomobject]@{ name = "direct-evidence-hardening-tests"; command = "scripts/quality/run-direct-evidence-hardening-tests.ps1" },
     [pscustomobject]@{ name = "runbook-workflow-alignment-tests"; command = "scripts/quality/run-runbook-workflow-alignment-tests.ps1" },
     [pscustomobject]@{ name = "sample-matrix"; command = "scripts/quality/run-sample-matrix.ps1" },
+    [pscustomobject]@{ name = "app-upgrade-contract"; command = "scripts/quality/run-app-upgrade-contract-gate.ps1" },
     [pscustomobject]@{ name = "ai-beta-gate"; command = "scripts/quality/run-ai-beta-gate.ps1" },
     [pscustomobject]@{ name = "expanded-beta0-evidence"; command = "scripts/quality/run-expanded-beta0-evidence.ps1" },
     [pscustomobject]@{ name = "structured-command-surface-alignment"; command = "scripts/quality/run-structured-command-surface-alignment.ps1" },

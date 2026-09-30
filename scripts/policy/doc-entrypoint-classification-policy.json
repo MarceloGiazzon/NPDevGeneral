@@ -123,12 +123,6 @@
       "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
     },
     {
-      "path": "scripts/quality/run-app-upgrade-contract-gate.ps1",
-      "classification": "future-non-release",
-      "releaseRelevant": false,
-      "reason": "Retired 2026-08-13 (commit 83eaf603, Step 9 R4) as an orphan gate that no gate or workflow invoked. Still NAMED in docs only as the historical record of how a roadmap checkpoint / decision was once verified, and each such doc says so in place -- not a current command."
-    },
-    {
       "path": "scripts/quality/run-phase2-residual-fidelity-check.ps1",
       "classification": "future-non-release",
       "releaseRelevant": false,
