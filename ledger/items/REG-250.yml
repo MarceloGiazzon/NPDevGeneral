@@ -1,6 +1,6 @@
 id: REG-250
 title: >-
-  NPDevSamples/pigmentampas pins its packs[] to a git+file:///D:/... coordinate on one machine, so the
+  NPDevSamples/pigmentampas pins its packs[] to a git+file:// coordinate naming one Windows machine's drive, so the
   showcase only parses where that machine's pack repo and ~/.npdev/packs cache exist -- red on every
   bare CI checkout
 type: GAP
@@ -19,7 +19,7 @@ files:
   - scripts/quality/corpus-parse-allowlist.json
 detail: |
   PACK-23 (DONE) moved Pigmentampas to consume identity/tracing/workspace by remote coordinate, but the
-  coordinates it committed are `git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/<id>@<tag>`
+  coordinates it committed are `git+file:///<drive>/WorkSpace/NPDev/Build/npdev-pack-repo//packs/<id>@<tag>`
   -- a pack repo that exists only on the machine that ran scripts/pack-repo/publish-pack-repo.py. On any
   other machine the pack cache is empty and the model does not parse. c8e82b6a worked around the same
   root cause for PigmentampasSampleTest alone (its @BeforeAll materializes the cache from
