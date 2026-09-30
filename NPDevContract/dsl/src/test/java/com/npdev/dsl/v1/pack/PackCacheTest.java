@@ -3,14 +3,17 @@ package com.npdev.dsl.v1.pack;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /** PK-5 steps 1+4: the content-addressed local cache -- store/read round trip, and the "corrupt a
  *  cache entry -> hard refusal" proof the card's own Proof section names explicitly. */
@@ -27,6 +30,13 @@ class PackCacheTest {
         Path tree = Files.createTempDirectory(tempCacheRoot.getParent(), "fetched-");
         Files.writeString(tree.resolve("pack.json"), packJsonContent);
         return tree;
+    }
+
+    /** Writes a minimal {@code pack.json} for {@code id} under {@code dir}, creating it if needed. */
+    private void writePack(Path dir, String id, String extraContent) throws IOException {
+        Files.createDirectories(dir);
+        Files.writeString(dir.resolve("pack.json"),
+                "{\"pack\":\"" + id + "\",\"version\":\"1.0.0\"" + (extraContent == null ? "" : "," + extraContent) + "}");
     }
 
     @Test
@@ -164,5 +174,144 @@ class PackCacheTest {
                 && System.getProperty(PackCache.PROPERTY_ROOT_OVERRIDE) == null) {
             assertEquals(Path.of(System.getProperty("user.home"), ".npdev", "packs"), root);
         }
+    }
+
+    @Test
+    void configuredMirrorsParsesPropertySplitTrimmedAndSkipsBlanks() {
+        String previous = System.getProperty(PackCache.PROPERTY_MIRRORS);
+        try {
+            System.setProperty(PackCache.PROPERTY_MIRRORS, " a" + File.pathSeparator + File.pathSeparator + "b ");
+            assertEquals(List.of(Path.of("a"), Path.of("b")), PackCache.configuredMirrors());
+        } finally {
+            if (previous == null) {
+                System.clearProperty(PackCache.PROPERTY_MIRRORS);
+            } else {
+                System.setProperty(PackCache.PROPERTY_MIRRORS, previous);
+            }
+        }
+    }
+
+    @Test
+    void configuredMirrorsIsEmptyWhenPropertyBlankAndEnvUnset() {
+        assumeTrue(System.getenv(PackCache.ENV_MIRRORS) == null);
+        String previous = System.getProperty(PackCache.PROPERTY_MIRRORS);
+        try {
+            System.setProperty(PackCache.PROPERTY_MIRRORS, "  ");
+            assertEquals(List.of(), PackCache.configuredMirrors());
+        } finally {
+            if (previous == null) {
+                System.clearProperty(PackCache.PROPERTY_MIRRORS);
+            } else {
+                System.setProperty(PackCache.PROPERTY_MIRRORS, previous);
+            }
+        }
+    }
+
+    @Test
+    void lockSourcePathIsCacheRelative() {
+        assertEquals("sha256/abc/pack.json", PackCache.lockSourcePath("abc"));
+    }
+
+    @Test
+    void resolveLockSourcePathResolvesRelativeUnderRoot() {
+        assertEquals(tempCacheRoot.resolve("sha256/x/pack.json"),
+                cache().resolveLockSourcePath("sha256/x/pack.json"));
+    }
+
+    @Test
+    void resolveLockSourcePathKeepsAbsoluteUnchanged() throws IOException {
+        Path absolute = Files.createTempDirectory(tempCacheRoot.getParent(), "absolute-").resolve("pack.json");
+        assertEquals(absolute, cache().resolveLockSourcePath(absolute.toString()));
+    }
+
+    @Test
+    void readOrSeedReturnsCacheHitWithoutTouchingMirrors() throws Exception {
+        Path tree = fetchedTree("{\"pack\":\"identity\",\"version\":\"2.1.0\"}");
+        String hex = cache().store(tree);
+
+        Path nonExistentMirror = tempCacheRoot.getParent().resolve("does-not-exist-mirror");
+        Path result = cache().readOrSeedFromMirrors(hex, "identity", List.of(nonExistentMirror));
+
+        assertEquals(cache().read(hex), result);
+    }
+
+    @Test
+    void readOrSeedSeedsFromMatchingMirror() throws Exception {
+        String packId = "widgets";
+        Path mirrorRoot = Files.createTempDirectory(tempCacheRoot.getParent(), "mirror-root-");
+        Path packDirInMirror = mirrorRoot.resolve(packId);
+        writePack(packDirInMirror, packId, null);
+
+        Path throwawayRoot = Files.createTempDirectory(tempCacheRoot.getParent(), "throwaway-cache-");
+        String hex = new PackCache(throwawayRoot).store(packDirInMirror);
+
+        assertFalse(cache().has(hex));
+        Path result = cache().readOrSeedFromMirrors(hex, packId, List.of(mirrorRoot));
+        assertTrue(Files.isRegularFile(result));
+        assertTrue(cache().has(hex));
+    }
+
+    @Test
+    void readOrSeedIgnoresMirrorWithDifferentContent() throws Exception {
+        String packId = "widgets";
+        Path mirrorRoot = Files.createTempDirectory(tempCacheRoot.getParent(), "mirror-root-");
+        writePack(mirrorRoot.resolve(packId), packId, null);
+
+        String hex = "f".repeat(64);
+        assertThrows(IOException.class, () -> cache().readOrSeedFromMirrors(hex, packId, List.of(mirrorRoot)));
+        assertFalse(cache().has(hex));
+    }
+
+    @Test
+    void readOrSeedNeverConsultsMirrorsForInvalidPackId() throws Exception {
+        Path mirrorRoot = Files.createTempDirectory(tempCacheRoot.getParent(), "mirror-root-");
+        Path packDirInMirror = mirrorRoot.resolve("x");
+        writePack(packDirInMirror, "x", null);
+
+        Path throwawayRoot = Files.createTempDirectory(tempCacheRoot.getParent(), "throwaway-cache-");
+        String hex = new PackCache(throwawayRoot).store(packDirInMirror);
+
+        assertThrows(IOException.class, () -> cache().readOrSeedFromMirrors(hex, "../x", List.of(mirrorRoot)));
+        assertFalse(cache().has(hex));
+
+        assertThrows(IOException.class, () -> cache().readOrSeedFromMirrors(hex, null, List.of(mirrorRoot)));
+        assertFalse(cache().has(hex));
+    }
+
+    @Test
+    void readOrSeedSkipsMirrorWithoutPackJson() throws Exception {
+        String packId = "widgets";
+        Path mirror1 = Files.createTempDirectory(tempCacheRoot.getParent(), "mirror1-");
+        Files.createDirectories(mirror1.resolve(packId)); // no pack.json inside
+
+        Path mirror2 = Files.createTempDirectory(tempCacheRoot.getParent(), "mirror2-");
+        Path packDir2 = mirror2.resolve(packId);
+        writePack(packDir2, packId, null);
+
+        Path throwawayRoot = Files.createTempDirectory(tempCacheRoot.getParent(), "throwaway-cache-");
+        String hex = new PackCache(throwawayRoot).store(packDir2);
+
+        Path result = cache().readOrSeedFromMirrors(hex, packId, List.of(mirror1, mirror2));
+        assertTrue(Files.isRegularFile(result));
+        assertTrue(cache().has(hex));
+    }
+
+    @Test
+    void readOrSeedUsesFirstMatchingMirror() throws Exception {
+        String packId = "widgets";
+        Path mirror1 = Files.createTempDirectory(tempCacheRoot.getParent(), "mirror1-");
+        Path packDir1 = mirror1.resolve(packId);
+        writePack(packDir1, packId, null);
+
+        Path mirror2 = Files.createTempDirectory(tempCacheRoot.getParent(), "mirror2-");
+        Path packDir2 = mirror2.resolve(packId);
+        writePack(packDir2, packId, null);
+
+        Path throwawayRoot = Files.createTempDirectory(tempCacheRoot.getParent(), "throwaway-cache-");
+        String hex = new PackCache(throwawayRoot).store(packDir1);
+
+        Path result = cache().readOrSeedFromMirrors(hex, packId, List.of(mirror1, mirror2));
+        assertTrue(Files.isRegularFile(result));
+        assertTrue(cache().has(hex));
     }
 }

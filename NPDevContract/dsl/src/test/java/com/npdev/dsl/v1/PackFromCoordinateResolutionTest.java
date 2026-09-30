@@ -22,6 +22,7 @@ import java.util.Locale;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -455,6 +456,140 @@ class PackFromCoordinateResolutionTest {
                 "the intermediate pack's concept must be merged");
         assertTrue(containsConceptNamed(resolved.resolvedRoot(), "identity::User"),
                 "the transitively-resolved pack's concept must be merged via transitive `from`");
+    }
+
+    /**
+     * REG-250: a remote pack's lock {@code sourcePath} must be portable across machines -- relative
+     * to the cache root ({@link PackCache#lockSourcePath}), never an absolute path naming one user's
+     * home directory (which is what {@link PackDependencyGraphWalker#sourcePathFor}'s pre-fix,
+     * {@link Path#relativize}-based branch produced for a remote pack).
+     */
+    @Test
+    void lockRecordsCacheRelativeSourcePathForRemotePack() throws Exception {
+        Path repo = initRepo(temp.resolve("identity-repo"));
+        Files.writeString(repo.resolve("pack.json"), minimalPackJson());
+        commitAndTag(repo, "v1.0.0");
+        String from = fileCoordinate(repo, "v1.0.0");
+
+        Path model = write("model.json", """
+                {
+                  "namespace": "pk5.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "from": "%s" } ]
+                }
+                """.formatted(from));
+
+        ModelSourceResolver.PackCliResolution resolution =
+                new ModelSourceResolver().resolvePackGraphForCli(model, NetworkPolicy.ALLOWED);
+        PackLockFile.LockedPack locked = resolution.lockEntries().get("identity");
+        String digestHex = locked.digest().substring("sha256:".length());
+
+        assertEquals(PackCache.lockSourcePath(digestHex), locked.sourcePath());
+        assertFalse(locked.sourcePath().contains(System.getProperty("user.home")), locked.sourcePath());
+        assertFalse(locked.sourcePath().matches("^[A-Za-z]:.*"),
+                "sourcePath must not carry a drive letter: " + locked.sourcePath());
+    }
+
+    /**
+     * REG-250 / offline mirror: on a genuine cache miss (a fresh, empty cache root), {@code npdev
+     * generate}'s network-DENIED path must still resolve when the digest-matching tree is available
+     * through {@code NPDEV_PACK_MIRRORS}/{@code npdev.pack.mirrors} -- {@link
+     * PackDependencyGraphWalker#resolveRemotePackFile}'s DENIED branch calls {@link
+     * PackCache#readOrSeedFromMirrors} rather than refusing outright.
+     */
+    @Test
+    void remotePackResolvesOfflineFromMirrorOnCacheMiss() throws Exception {
+        Path repo = initRepo(temp.resolve("identity-repo"));
+        Files.writeString(repo.resolve("pack.json"), minimalPackJson());
+        commitAndTag(repo, "v1.0.0");
+        String from = fileCoordinate(repo, "v1.0.0");
+
+        Path model = write("model.json", """
+                {
+                  "namespace": "pk5.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "from": "%s" } ]
+                }
+                """.formatted(from));
+
+        ModelSourceResolver.PackCliResolution resolution =
+                new ModelSourceResolver().resolvePackGraphForCli(model, NetworkPolicy.ALLOWED);
+        PackLockFile.of(resolution.lockEntries()).write(resolution.rootDirectory());
+        String digestHex = resolution.lockEntries().get("identity").digest().substring("sha256:".length());
+
+        // Seed a mirror from the cache entry this fetch just verified, then delete the source repo
+        // AND point the cache at a brand-new, empty root -- a genuine cache miss, resolvable only
+        // through the mirror.
+        Path realCacheRoot = Path.of(System.getProperty(PackCache.PROPERTY_ROOT_OVERRIDE));
+        Path cacheEntryDir = new PackCache(realCacheRoot).entryDir(digestHex);
+        Path mirrorRoot = Files.createDirectories(temp.resolve("mirror"));
+        copyTree(cacheEntryDir, mirrorRoot.resolve("identity"));
+        deleteRecursively(repo);
+
+        Path emptyCacheRoot = temp.resolve("empty-pack-cache");
+        System.setProperty(PackCache.PROPERTY_ROOT_OVERRIDE, emptyCacheRoot.toString());
+        String previousMirrors = System.getProperty(PackCache.PROPERTY_MIRRORS);
+        try {
+            System.setProperty(PackCache.PROPERTY_MIRRORS, mirrorRoot.toString());
+
+            ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
+            assertTrue(containsConceptNamed(resolved.resolvedRoot(), "identity::Item"));
+            assertTrue(new PackCache(emptyCacheRoot).has(digestHex),
+                    "resolution must have seeded the previously-empty cache from the mirror");
+        } finally {
+            if (previousMirrors == null) {
+                System.clearProperty(PackCache.PROPERTY_MIRRORS);
+            } else {
+                System.setProperty(PackCache.PROPERTY_MIRRORS, previousMirrors);
+            }
+        }
+    }
+
+    /**
+     * The lock entry {@link #lockRecordsCacheRelativeSourcePathForRemotePack} writes must also
+     * survive {@link PackDependencyGraphWalker#checkLock}'s own re-derivation of the live
+     * sourcePath on a completely fresh resolve -- proving the committed relative form round-trips
+     * rather than only ever being checked against itself in the same process.
+     */
+    @Test
+    void checkLockAcceptsCommittedRelativeSourcePath() throws Exception {
+        Path repo = initRepo(temp.resolve("identity-repo"));
+        Files.writeString(repo.resolve("pack.json"), minimalPackJson());
+        commitAndTag(repo, "v1.0.0");
+        String from = fileCoordinate(repo, "v1.0.0");
+
+        Path model = write("model.json", """
+                {
+                  "namespace": "pk5.test",
+                  "dslVersion": "1.0.0",
+                  "version": "1.0",
+                  "packs": [ { "from": "%s" } ]
+                }
+                """.formatted(from));
+
+        ModelSourceResolver.PackCliResolution resolution =
+                new ModelSourceResolver().resolvePackGraphForCli(model, NetworkPolicy.ALLOWED);
+        PackLockFile.of(resolution.lockEntries()).write(resolution.rootDirectory());
+        deleteRecursively(repo);
+
+        ResolvedModelSource resolved = new ModelSourceResolver().resolve(model);
+        assertTrue(containsConceptNamed(resolved.resolvedRoot(), "identity::Item"));
+    }
+
+    private static void copyTree(Path source, Path dest) throws IOException {
+        try (var walk = Files.walk(source)) {
+            for (Path path : walk.toList()) {
+                Path target = dest.resolve(source.relativize(path));
+                if (Files.isDirectory(path)) {
+                    Files.createDirectories(target);
+                } else {
+                    Files.createDirectories(target.getParent());
+                    Files.copy(path, target);
+                }
+            }
+        }
     }
 
     private static boolean containsConceptNamed(JsonNode resolvedRoot, String name) {
