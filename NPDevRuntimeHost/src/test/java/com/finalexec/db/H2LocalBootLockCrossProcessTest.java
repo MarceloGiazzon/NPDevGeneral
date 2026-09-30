@@ -8,7 +8,11 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
+import java.util.Comparator;
+import java.util.stream.Stream;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,8 +39,38 @@ import static org.junit.jupiter.api.Assertions.fail;
  */
 class H2LocalBootLockCrossProcessTest {
 
+    /**
+     * JUnit's own @TempDir cleanup fails the test on the FIRST undeletable file, and on Windows a file a
+     * killed child JVM (or the OS's own file scanner) just released can stay briefly locked -- this test
+     * went red with "JUnitException ... IOException at ForEachOps" on a Windows CI runner even after
+     * terminate() began waiting for the children to exit, every assertion having passed. Cleanup is
+     * therefore ours: retried for a few seconds, and never a test failure -- this class proves the
+     * lock's behavior, not the host's file-deletion timing.
+     */
+    private Path tempDirToClean;
+
+    @AfterEach
+    void deleteTempDirBestEffort() throws InterruptedException {
+        if (tempDirToClean == null) {
+            return;
+        }
+        for (int attempt = 0; attempt < 20; attempt++) {
+            try (Stream<Path> walk = Files.walk(tempDirToClean)) {
+                for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+                return;
+            } catch (IOException | java.io.UncheckedIOException stillLocked) {
+                Thread.sleep(250);
+            }
+        }
+        System.err.println("H2LocalBootLockCrossProcessTest: could not fully delete " + tempDirToClean
+                + " after retries; leaving it for the OS temp cleaner.");
+    }
+
     @Test
-    void contenderWaitsThenSucceedsOnceTheHolderReleases(@TempDir Path tempDir) throws Exception {
+    void contenderWaitsThenSucceedsOnceTheHolderReleases(@TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
+        tempDirToClean = tempDir;
         String jdbcUrl = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL";
         Path releaseSignal = tempDir.resolve("release.signal");
 
@@ -73,7 +107,8 @@ class H2LocalBootLockCrossProcessTest {
     }
 
     @Test
-    void contenderTimesOutAndRefusesWithTheNamedBoundary(@TempDir Path tempDir) throws Exception {
+    void contenderTimesOutAndRefusesWithTheNamedBoundary(@TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
+        tempDirToClean = tempDir;
         String jdbcUrl = "jdbc:h2:file:" + tempDir.resolve("mydb") + ";MODE=PostgreSQL";
         Path releaseSignal = tempDir.resolve("release.signal"); // never written -- holder never releases
 
@@ -99,7 +134,8 @@ class H2LocalBootLockCrossProcessTest {
     }
 
     @Test
-    void bothProcessesConnectSuccessfullyWhenAutoServerIsEnabled(@TempDir Path tempDir) throws Exception {
+    void bothProcessesConnectSuccessfullyWhenAutoServerIsEnabled(@TempDir(cleanup = CleanupMode.NEVER) Path tempDir) throws Exception {
+        tempDirToClean = tempDir;
         // STOR-27 (B31 lift): the AUTO_SERVER=TRUE case -- H2's own TCP server arbitrates access, so
         // both processes connect straight through, neither ever logging a wait. This bypasses
         // H2LocalBootLock entirely (mirrors production: H2LocalBootLockEnvironmentPostProcessor skips

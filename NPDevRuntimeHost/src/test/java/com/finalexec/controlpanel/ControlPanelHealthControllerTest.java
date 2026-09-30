@@ -5,6 +5,7 @@ import com.npdev.kernel.ExecutionContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
 import org.springframework.http.ResponseEntity;
@@ -14,8 +15,10 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -34,7 +37,11 @@ class ControlPanelHealthControllerTest {
 
     private final RuntimeContextService runtimeContextService = Mockito.mock(RuntimeContextService.class);
 
-    @TempDir
+    // cleanup = NEVER + tearDown's retrying delete: a just-stopped pwsh child's redirected log can stay
+    // locked for a moment on Windows (antivirus/handle release), and JUnit's own cleanup fails the test
+    // on the FIRST undeletable file -- stopKillsARunningProcessAndRecordsStopped went red exactly so,
+    // every assertion having passed. Same fix as H2LocalBootLockCrossProcessTest.
+    @TempDir(cleanup = CleanupMode.NEVER)
     Path tempRoot;
 
     private Path opsDir;
@@ -49,8 +56,20 @@ class ControlPanelHealthControllerTest {
     }
 
     @AfterEach
-    void tearDown() {
+    void tearDown() throws InterruptedException {
         // Belt and suspenders: a timed-out test must not leave a real pwsh process behind.
+        for (int attempt = 0; attempt < 20; attempt++) {
+            try (Stream<Path> walk = Files.walk(tempRoot)) {
+                for (Path path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                    Files.deleteIfExists(path);
+                }
+                return;
+            } catch (IOException | java.io.UncheckedIOException stillLocked) {
+                Thread.sleep(250);
+            }
+        }
+        System.err.println("ControlPanelHealthControllerTest: could not fully delete " + tempRoot
+                + " after retries; leaving it for the OS temp cleaner.");
     }
 
     private void writeScript(String name, String body) throws IOException {
