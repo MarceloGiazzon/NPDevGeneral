@@ -67,6 +67,20 @@ function Test-ReportEvidence {
     $report = Read-JsonFile $fullPath
     $errors = [System.Collections.Generic.List[string]]::new()
     if ($null -eq $report) {
+        # allowCurrentFailureAsReleaseBlocker means "this release report not passing yet is a RELEASE
+        # blocker, not a coverage gap" -- and a report the chain has not produced YET is exactly that.
+        # beta-release-gate-report.json is written by the final "beta-release-gate-initial-final" step,
+        # AFTER this audit (sub-gate 25) and its tests (24) run, so on every fresh chain it is absent
+        # here: the coverage item failed and stopped the whole release check at sub-gate 24 (AI Beta
+        # Gate run 36715798256). It only ever passed where a stale copy of the report lay around.
+        if ($Definition.PSObject.Properties.Name -contains "allowCurrentFailureAsReleaseBlocker" -and [bool]$Definition.allowCurrentFailureAsReleaseBlocker) {
+            return [pscustomobject]@{
+                passed = $true
+                errors = @()
+                allowCurrentFailureAsReleaseBlocker = $true
+                evidence = [pscustomobject]@{ path = $reportPath; exists = $false; actualStatus = "not-yet-produced" }
+            }
+        }
         $errors.Add("Report is missing: $reportPath") | Out-Null
         return [pscustomobject]@{ passed = $false; errors = @($errors); evidence = [pscustomobject]@{ path = $reportPath; exists = $false } }
     }
