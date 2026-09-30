@@ -62,7 +62,9 @@ function Write-ProbeReport([string]$Status, [string[]]$Problems) {
 }
 
 function Resolve-H2Jar {
-    $roots = @($buildRoot, (Join-Path $env:USERPROFILE ".gradle\caches"))
+    # USERPROFILE is Windows-only (null on Linux -> Join-Path binding error in CI); $HOME is set on both.
+    $userHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
+    $roots = @($buildRoot, (Join-Path $userHome ".gradle\caches"))
     $jar = Get-ChildItem -Path $roots -Recurse -Filter 'h2-2*.jar' -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -notmatch 'sources|javadoc' } |
         Sort-Object LastWriteTime -Descending | Select-Object -First 1
