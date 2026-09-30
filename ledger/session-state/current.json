@@ -1,18 +1,22 @@
 {
-  "closedAt": "2026-09-30T15:13:47.3284161Z",
+  "closedAt": "2026-09-30T20:11:46.5686337Z",
   "branch": "main",
-  "head": "a9663766",
-  "headSubject": "fix(quality): post-cleanup slimness check refreshes the report the release gate reads",
-  "summary": "Checked the AI Beta Gate + Release Gate runs on 0657bb76: all 27 sub-gates passed but the final roll-up (beta-release-gate, beta0-final-closure, roadmap-closure) failed on a stale workspace-cleanliness report (mid-chain slimness check ran on the sample-matrix-bloated workspace; the post-cleanup pass wrote to Build/reports, not scripts/reports/out). Fixed in a9663766 (run-beta0-final-release-check.ps1 now refreshes the report the gate reads), pushed to main, re-dispatched both workflows.",
-  "nextStep": "Check AI Beta Gate run 36732388481 and NPDev Release Gate run 36732392584 (dispatched on a9663766, ~55 min; 'gh run view <id> --json conclusion,jobs'). Expected: the workspace-cleanliness blocker is gone; if beta-release-gate / beta0-final-closure still fail, download the evidence artifact (gh run download <id>) and read blockers in beta-release-gate-report.json -- remaining reds should only be genuine posture (officialReleaseEligible / beta0TagAllowed), an owner decision. Then decide REG-250 and runtime-surface convergence drift with the owner.",
+  "head": "915cb8bf",
+  "headSubject": "refactor(runtimehost): move supported-core classes out of .internal; convergence checks block again",
+  "summary": "Fixed every open item: REG-250 portable npdev.lock + digest-verified NPDEV_PACK_MIRRORS offline mirror (a3d55358/e73e4bf6); re-wired the app-upgrade-contract gate into the release chain as sub-gate 16/28 (7c0d3555, QUAL-59); moved 14 controllers + 24 services out of .internal and made the runtime-surface convergence checks blocking again (915cb8bf, QUAL-60); fixed the flaky existsUnique timing test (e2f44e76, REG-251). Also diagnosed a poisoned local Gradle build cache in BOTH ~/.gradle and %LOCALAPPDATA%\\NPDev\\gradle (both moved aside as build-cache-1.poisoned-20260930).",
+  "nextStep": "Ledger is fully DONE (0 open items) and main is green. Pick the next piece of platform work with the owner; optionally delete the two moved-aside caches (~/.gradle/caches/build-cache-1.poisoned-20260930 and %LOCALAPPDATA%\\NPDev\\gradle\\caches\\build-cache-1.poisoned-20260930). Known local-only red: run-final-regression-coverage-audit-tests.ps1 fails on this machine with or without changes (needs full local release-chain reports) -- not a regression.",
   "plan": "",
-  "blocked": "Nothing blocked; release-posture reds, REG-250 and runtime-surface convergence drift await owner decisions.",
-  "verified": "Local only: edited script parses; Test-WorkspaceSlimness with the new -WorkspaceRoot/-ReportPath args passes (4526 files, 43 MB); pre-commit hook ran. Fix NOT yet proven in CI -- the two re-dispatched workflows were still running at close. Previous runs on 0657bb76 confirmed 27/27 sub-gates passed.",
+  "blocked": "",
+  "verified": "CI: NPDev Release Gate 36763312798 on 915cb8bf SUCCESS (28/28 incl. app-upgrade-contract sub-gate 16); Release Gate 36741456192 on e2f44e76 SUCCESS; AI Beta Gate 36732388481 SUCCESS; Manager harness rerun 36704513828 SUCCESS. Local on 915cb8bf: run-all-gates -Only runtimeHost PASSED, -Only aiKnowledge PASSED; run-app-upgrade-contract-gate.ps1 passed (5/5); :NPDevContract:dsl:test green; PigmentampasSampleTest green from empty cache; 96 pack CLI tests + new codemod tests OK.",
   "dirtyCount": 0,
   "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "a9663766 fix(quality): post-cleanup slimness check refreshes the report the release gate reads",
-    "d1805c5f chore(session): handoff -- CI green; release chain past sub-gate 23, final posture pending"
+    "915cb8bf refactor(runtimehost): move supported-core classes out of .internal; convergence checks block again",
+    "7c0d3555 feat(quality): prove the app upgrade contract in the release gate again",
+    "e73e4bf6 fix(ledger): REG-250 guard resolves to a real test; cover the pack-lock-paths codemod",
+    "a3d55358 fix(packs): portable npdev.lock + digest-verified offline pack mirror (REG-250)",
+    "e2f44e76 test(runtimehost): warm up and best-of-5 the existsUnique pushdown timing",
+    "a712df04 chore(session): handoff -- release roll-up fix a9663766 dispatched, awaiting CI"
   ]
 }
