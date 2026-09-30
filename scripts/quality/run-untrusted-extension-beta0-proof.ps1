@@ -663,16 +663,27 @@ function Write-GeneratedRuntimeConfig {
         [string]$OutputRoot,
         [string]$RuntimeHostRoot
     )
+    # Must satisfy config.schema.json: GeneratorMain now validates --config against it strictly
+    # (ConfigSchemaValidator), and this hand-built config predated that -- missing required keys plus
+    # the non-enum provider "h2" / resetMode "recreate" made the generator refuse it, so this proof
+    # (release-gate sub-gate 19) failed before generating anything. Field set mirrors
+    # NPDevSamples/canonical-demo/Input/config.json; H2 file DB is the schema's "h2-local".
     $config = [ordered]@{
         '$schema' = "NPDevContract/schemas/config.schema.json"
         configVersion = "1.0"
         scenario = [ordered]@{ name = "trusted-source-generated-runtime-proof"; outputRoot = $OutputRoot }
-        generator = [ordered]@{ cleanOutputBeforeGenerate = $true; emitRuntimeAssets = $true; emitUiAssets = $true }
+        generator = [ordered]@{
+            failIfModelMissing = $true; failIfConfigMissing = $true; cleanOutputBeforeGenerate = $true
+            emitPluginAssets = $true; emitRuntimeAssets = $true; emitUiAssets = $true
+        }
         bootstrap = [ordered]@{ root = $RuntimeHostRoot; mergeStrategy = "clean-copy" }
-        artifact = [ordered]@{ root = (Join-Path $OutputRoot "ArtifactNP"); generatedFolderName = "npdev-generated"; metaFolderName = "npdev-meta" }
+        artifact = [ordered]@{
+            root = (Join-Path $OutputRoot "ArtifactNP"); generatedFolderName = "npdev-generated"
+            libsFolderName = "libs"; metaFolderName = "npdev-meta"
+        }
         finalExec = [ordered]@{ root = (Join-Path $OutputRoot "App"); deleteBeforeMount = $true }
-        database = [ordered]@{ provider = "h2"; database = "trusted_source_beta0"; resetMode = "recreate" }
-        runtime = [ordered]@{ springProfile = "dev,step0,ai-beta-local"; serverPort = 18190; gradleTask = "bootRun" }
+        database = [ordered]@{ provider = "h2-local"; database = "trusted_source_beta0"; resetMode = "reset" }
+        runtime = [ordered]@{ springProfile = "dev,step0,ai-beta-local"; serverPort = 18190; javaArgs = @(); gradleTask = "bootRun" }
     }
     New-Item -ItemType Directory -Force -Path (Split-Path -Parent $ConfigPath) | Out-Null
     $config | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
