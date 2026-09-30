@@ -635,15 +635,9 @@ jobs:
       - name: Runtime surface evidence
         timeout-minutes: 10
         run: |
-          # NEW-2 (2026-07-23): pass -PendingOk so the surface-convergence classification/footprint
-          # checks REG-5 formally RETIRED to advisory (docs/OPEN_GAPS_AND_ROADMAP.md#GATE-OBS-1a) are
-          # recorded as warnings, not a hard throw. run-runtimehost-gate.ps1:123 already invokes this
-          # script WITH -PendingOk; ci-validation was the one call site that omitted it, so the retired
-          # checks (which the real allowlist enforcement makes redundant) failed this job.
           & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File "$env:NPDEV_WORKSPACE\scripts\quality\run-runtime-surface-evidence.ps1" `
-            -WorkspaceRoot "$env:NPDEV_WORKSPACE" `
-            -PendingOk
+            -WorkspaceRoot "$env:NPDEV_WORKSPACE"
 
       - name: DSL contract check
         working-directory: NPDevContract\dsl

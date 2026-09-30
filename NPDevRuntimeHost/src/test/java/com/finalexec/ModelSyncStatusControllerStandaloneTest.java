@@ -1,8 +1,8 @@
 package com.finalexec;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.finalexec.api.internal.ModelSyncStatusController;
-import com.finalexec.npdev.service.internal.ModelSyncStatusService;
+import com.finalexec.api.ModelSyncStatusController;
+import com.finalexec.npdev.service.ModelSyncStatusService;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
 import org.junit.jupiter.api.BeforeEach;

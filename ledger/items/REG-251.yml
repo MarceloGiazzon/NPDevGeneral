@@ -1,0 +1,29 @@
+id: REG-251
+title: >-
+  JdbcBusinessConceptStoreExistsUniqueTest's 3x pushdown-vs-full-scan timing assertion timed ONE cold
+  call, and flaked the Release Gate's sample-matrix on a memory-starved runner
+type: BUG
+severity: LOW
+status: DONE
+opened: 2026-09-30
+closed: 2026-09-30
+verification: VERIFIED_LIVE
+source: >-
+  NPDev Release Gate run 36732392584 (a9663766): medium-expense-approval's suite 954/955, the one
+  failure at JdbcBusinessConceptStoreExistsUniqueTest.java:194, in a log also reporting "The paging
+  file is too small for this operation to complete". The previous run passed all 27 sub-gates.
+surface: NPDevRuntimeHost tests (copied into every generated app)
+files:
+  - NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreExistsUniqueTest.java
+detail: |
+  The first existsUnique call after a 100k-row bulk insert absorbed JIT and any GC pause, so one pause
+  pushed it past the 3x floor. It now warms up and takes the best of five runs; the relative
+  assertion is unchanged, so a regression to a full scan still fails.
+guard:
+  kind: test
+  ref: >-
+    NPDevRuntimeHost/src/test/java/com/finalexec/db/JdbcBusinessConceptStoreExistsUniqueTest.java#existsUniqueOverOneHundredThousandRowsIsDramaticallyFasterThanTheOldFullScanItReplaced
+  asserts: >-
+    Best-of-5 warmed existsUnique is at least 3x faster than findAll over the same 100k rows;
+    Release Gate run 36741456192 on e2f44e76 passed end to end.
+  provenRed: false
