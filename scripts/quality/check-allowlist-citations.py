@@ -76,7 +76,10 @@ CITATION_RE = re.compile(
 
 # Files whose own _comment header already promises a REG id -- enforced.
 ENFORCED = (
-    "corpus-parse-allowlist.json",
+    # Was the bare file name, so load_cleared() never found it and returned {}: the corpus allowlist
+    # was reported as "0" and never enforced at all, whatever it held (found 2026-09-30 when its
+    # first real entry, REG-250, still read as 0). load_cleared() now refuses a missing enforced file.
+    "scripts/quality/corpus-parse-allowlist.json",
     "scripts/quality/test-task-coverage-allowlist.json",
     "scripts/quality/dsl-coverage-allowlist.json",
 )
@@ -167,8 +170,13 @@ def main(argv: list[str]) -> int:
     total_blocking = 0
 
     for rel_path in ENFORCED:
-        cleared = load_cleared(root, rel_path)
         name = Path(rel_path).name
+        if not (root / rel_path).exists():
+            print(f"  {name}: enforced allowlist not found at {rel_path} -- a wrong path here silently "
+                  f"disables enforcement for that file")
+            total_blocking += 1
+            continue
+        cleared = load_cleared(root, rel_path)
         counts.append(f"{name} {len(cleared)}")
         findings = check_citations(cleared)
         for f in findings:
