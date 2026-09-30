@@ -61,7 +61,8 @@ echo
 # explainable -- NOT silently passing over it. Exit non-zero OR a warning that fails to name the
 # version are both bugs, and "silent pass" is the worst of the three because it lies about being
 # checked.
-if [ "$RC" -eq 0 ] && echo "$OUTPUT" | grep -q "${JDK_VERSION:-__unset__}"; then
+# Here-string, not `echo | grep -q`: under pipefail a match can SIGPIPE the echo (see run-readme.sh).
+if [ "$RC" -eq 0 ] && grep -q "${JDK_VERSION:-__unset__}" <<< "$OUTPUT"; then
   echo "PASS -- doctor did not block the JDK ${JDK_VERSION} machine and named the found version"
   exit 0
 fi

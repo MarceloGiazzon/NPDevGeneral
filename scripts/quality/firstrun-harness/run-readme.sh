@@ -365,7 +365,7 @@ else
   pass "prereqs-declared"
 fi
 
-want() { echo "$PREREQ_LINE" | grep -qi "$1"; }
+want() { grep -qi "$1" <<< "$PREREQ_LINE"; }
 
 # I4: `npdev setup` replaced pwsh as the way to build runtimehost jars on the user path -- README
 # no longer names PowerShell as a requirement, and should not start again by accident (a stale
@@ -435,7 +435,7 @@ fi
 # Java must specifically be 17 -- the single most common newcomer failure.
 if command -v java >/dev/null 2>&1; then
   JV=$(java -version 2>&1 | head -1)
-  if echo "$JV" | grep -q '"17'; then
+  if grep -q '"17' <<< "$JV"; then
     pass "java-is-17  ($JV)"
   else
     fail "java-is-17" "found: $JV" "README must state Java 17 specifically"
@@ -532,8 +532,8 @@ printf '%s\n' "$CMDS" | sed 's/^/    $ /'
 
 DID_BOOTJAR=0
 DID_SYNC=0
-printf '%s\n' "$CMDS" | grep -qE 'sync-runtimehost-libs|npdev setup' && DID_SYNC=1
-printf '%s\n' "$CMDS" | grep -q 'bootJar'               && DID_BOOTJAR=1
+grep -qE 'sync-runtimehost-libs|npdev setup' <<< "$CMDS" && DID_SYNC=1
+grep -q 'bootJar' <<< "$CMDS"               && DID_BOOTJAR=1
 # Does the documented flow actually RUN a prebuilt artifact? The generated Dockerfile still
 # `COPY build/libs/<jar> app.jar` (DockerDeploymentEmitter, verified) -- so W2 is a real hazard for
 # anyone told to `docker compose up` or `java -jar` without being told to build the jar first. It is
@@ -541,7 +541,7 @@ printf '%s\n' "$CMDS" | grep -q 'bootJar'               && DID_BOOTJAR=1
 # themselves. Asking unconditionally for `bootJar` made this check fail on a README that had
 # correctly moved past needing it -- testing the remedy instead of the hazard.
 NEEDS_PREBUILT=0
-printf '%s\n' "$CMDS" | grep -qE 'docker compose up|docker run|java -jar' && NEEDS_PREBUILT=1
+grep -qE 'docker compose up|docker run|java -jar' <<< "$CMDS" && NEEDS_PREBUILT=1
 
 # A real terminal keeps ONE persistent working directory across a whole session -- `cd` in one
 # line changes where the NEXT line runs. Each extracted command here runs in its own throwaway
@@ -633,7 +633,12 @@ section "3. Does the app actually run, on the documented port?"
 # W3: is the login path documented? Pure documentation greps -- they used to sit INSIDE the
 # jar-exists branch below, so a flow that produced no jar took them down with it and the harness
 # stopped asking the question entirely. Nothing about them needs a running app.
-if printf '%s\n%s\n' "$README_TEXT" "$GETTING_STARTED_TEXT" | grep -q 'SUPER_USER_KEY'; then
+#
+# Here-strings, never `printf ... | grep -q`, anywhere in this script: under `set -o pipefail`,
+# grep -q exits at its first match and the still-writing printf dies of SIGPIPE (141), failing the
+# pipeline on a MATCH. documents-login-key flipped red/green on alternate nightly runs (2026-09-26..29)
+# with byte-identical README content while documents-app-url -- same text, same pipe -- passed.
+if grep -q 'SUPER_USER_KEY' <<< "$README_TEXT"$'\n'"$GETTING_STARTED_TEXT"; then
   pass "documents-login-key"
 else
   fail "documents-login-key" \
@@ -641,7 +646,7 @@ else
        "print the URL and key location at the end of 'generate app', and document both"
 fi
 
-if printf '%s\n%s\n' "$README_TEXT" "$GETTING_STARTED_TEXT" | grep -qE 'localhost:[0-9]{4}'; then
+if grep -qE 'localhost:[0-9]{4}' <<< "$README_TEXT"$'\n'"$GETTING_STARTED_TEXT"; then
   pass "documents-app-url"
 else
   fail "documents-app-url" "no localhost URL documented" "state http://localhost:$APP_PORT"
@@ -719,7 +724,7 @@ cd "$SRC" || die "cannot cd to $SRC for section 4"
 if RUN_APP_JSON=$(./npdev run app --model NPDevContract/dsl/resources/Models/canonical-demo/model.json \
     --config NPDevContract/dsl/resources/Models/canonical-demo/config.json \
     --output "$RUN_APP_OUT" --port "$RUN_APP_PORT" --timeout 600 2>>"$LOG"); then
-  if printf '%s' "$RUN_APP_JSON" | grep -q '"ok": true'; then
+  if grep -q '"ok": true' <<< "$RUN_APP_JSON"; then
     pass "npdev run app (one-shot generate+build+boot) succeeds"
     RUN_APP_OK=1
   else
@@ -857,7 +862,7 @@ else
         -H "X-Api-Key: $CAF_API_KEY" -H 'Content-Type: application/json' \
         -d '{"npi":"1234567890","fullName":"Harness Test Provider","specialty":"Testing","phone":"555-0100"}' 2>>"$LOG")
 
-      if printf '%s' "$CAF_CREATE" | grep -q '"phone"[[:space:]]*:[[:space:]]*"555-0100"'; then
+      if grep -q '"phone"[[:space:]]*:[[:space:]]*"555-0100"' <<< "$CAF_CREATE"; then
         pass "change-a-field: new field reachable via REST (POST echoes it)"
       else
         fail "change-a-field: new field reachable via REST (POST echoes it)" \
@@ -866,7 +871,7 @@ else
       fi
 
       CAF_LIST=$(curl -sS "http://localhost:$CAF_PORT/api/providers" -H "X-Api-Key: $CAF_API_KEY" 2>>"$LOG")
-      if printf '%s' "$CAF_LIST" | grep -q '"phone"[[:space:]]*:[[:space:]]*"555-0100"'; then
+      if grep -q '"phone"[[:space:]]*:[[:space:]]*"555-0100"' <<< "$CAF_LIST"; then
         pass "change-a-field: new field survives a GET (not just an echo)"
       else
         fail "change-a-field: new field survives a GET (not just an echo)" \
@@ -1087,7 +1092,7 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
         YFA_BOOK=$(curl -sS -X POST "http://localhost:$YFA_PORT/api/books" \
           -H "X-Api-Key: $YFA_API_KEY" -H 'Content-Type: application/json' \
           -d '{"title":"The Hobbit","isbn":"9780345339683","copies":1}' 2>>"$LOG")
-        if printf '%s' "$YFA_BOOK" | grep -q '"title"[[:space:]]*:[[:space:]]*"The Hobbit"'; then
+        if grep -q '"title"[[:space:]]*:[[:space:]]*"The Hobbit"' <<< "$YFA_BOOK"; then
           pass "your-first-app step4: creates a Book over the documented REST API"
         else
           fail "your-first-app step4: creates a Book over the documented REST API" \
@@ -1141,13 +1146,13 @@ with open('$YFA_WORK/model.json', 'w', encoding='utf-8') as f:
       if [ "$YFA_UP2" = "1" ]; then
         pass "your-first-app step5: app responds after regenerate+rebuild+restart"
         YFA_LIST=$(curl -sS "http://localhost:$YFA_PORT/api/books" -H "X-Api-Key: $YFA_API_KEY" 2>>"$LOG")
-        if printf '%s' "$YFA_LIST" | grep -q '"publishedYear"'; then
+        if grep -q '"publishedYear"' <<< "$YFA_LIST"; then
           pass "your-first-app step5: publishedYear field reachable via REST"
         else
           fail "your-first-app step5: publishedYear field reachable via REST" "see $LOG"
           printf '%s' "$YFA_LIST" | tail -c 500 | sed 's/^/          | /'
         fi
-        if printf '%s' "$YFA_LIST" | grep -q '"title"[[:space:]]*:[[:space:]]*"The Hobbit"'; then
+        if grep -q '"title"[[:space:]]*:[[:space:]]*"The Hobbit"' <<< "$YFA_LIST"; then
           pass "your-first-app step5: the book created in step 4 survived the schema change"
         else
           fail "your-first-app step5: the book created in step 4 survived the schema change" \
@@ -1227,7 +1232,7 @@ fi
 # The actual point of this section: no --model/--config/--output at all.
 INIT_JSON=$(cd "$INIT_DIR" && "$SRC/npdev" run app --timeout 420 2>>"$LOG")
 INIT_RC=$?
-if [ "$INIT_RC" -eq 0 ] && printf '%s' "$INIT_JSON" | grep -q '"ok": true'; then
+if [ "$INIT_RC" -eq 0 ] && grep -q '"ok": true' <<< "$INIT_JSON"; then
   pass "npdev run app (no flags): infers model/config/output from CWD and boots"
   INIT_URL=$(printf '%s' "$INIT_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin).get('baseUrl') or '')" 2>>"$LOG")
   if [ -n "$INIT_URL" ] && curl -sS -o /dev/null -w '%{http_code}' "$INIT_URL/" 2>/dev/null | grep -qE '^(200|301|302|401|403)$'; then
@@ -1291,7 +1296,7 @@ finally:
     p.terminate()
 PYEOF
 )
-if printf '%s' "$HANDSHAKE_OK" | grep -q '^true'; then
+if grep -q '^true' <<< "$HANDSHAKE_OK"; then
   pass "npdev mcp install: server answers initialize + tools/list over stdio ($(printf '%s' "$HANDSHAKE_OK" | awk '{print $2}') tools)"
 else
   fail "npdev mcp install: server answers initialize + tools/list over stdio" "$HANDSHAKE_OK"
