@@ -39,7 +39,14 @@ jobs:
     # OBSERVED (PR #6, run 30421704185, 2026-07-29, cold runner): 1m21s total wall clock. 20 min
     # leaves ample headroom even against a fully cold Gradle+dependency cache; revisit only if a
     # future run approaches half the cap.
-    timeout-minutes: 20
+    # Raised 20 -> 40 (2026-09-30): the gate is no longer purely static -- check-navigation-reprojection.py
+    # generates, builds and boots a real app twice, and the RuntimeHost-libs staging step below builds
+    # the kernel/generator jars first. Neither existed when the 20-minute figure was measured.
+    timeout-minutes: 40
+    env:
+      # Same pin as npdev-ci-validation.yml's Linux job: makes sync-runtimehost-libs.ps1 and the
+      # generated app's build.gradle resolve ONE runtimehost-libs dir structurally.
+      NPDEV_BUILD_ROOT: ${{ github.workspace }}/Build
 
     steps:
       - name: Checkout
@@ -72,6 +79,16 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install -r scripts/requirements.txt
+
+      # The navigation-reprojection probe (check-navigation-reprojection.py) boots a real generated
+      # app, whose build refuses to start without the RuntimeHost libs manifest
+      # (verifyNpdevRuntimeHostLibs). Locally they are always already staged, so the gap only ever
+      # showed on this runner: "Missing NPDev RuntimeHost libs manifest", runs 36686342061 and
+      # 36688061837. Same deterministic staging step npdev-ci-validation.yml already runs.
+      - name: Stage RuntimeHost libs (deterministic; not cache-dependent)
+        run: |
+          chmod +x NPDevKernel/gradlew NPDevGenerator/gradlew NPDevRuntimeHost/gradlew 2>/dev/null || true
+          pwsh -NoProfile -File scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars
 
       - name: Run AI knowledge gate
         shell: pwsh
