@@ -45,6 +45,13 @@ The roadmap contains exactly these 16 checkpoints:
 14. DSL Parser Robustness (`scripts/quality/run-dsl-parser-robustness-check.ps1`)
 15. CI Parallelization, Caching, Onboarding, and Final Closure (`scripts/quality/run-maturity-max-final-closure-check.ps1`, `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, `scripts/quality/run-maturity-score.ps1`)
 
+**Retired scripts (2026-08-13):** every per-checkpoint script named above except
+`run-portable-tooling-check.ps1` was deleted in commit 83eaf603 (Step 9 R4) as an orphan gate --
+nothing in `run-all-gates.ps1` or any workflow invoked it. The names stay here as the historical
+record of how each checkpoint was verified; they are not current commands. The same applies to the
+boundary-check claim in the paragraph below: that script is gone, so these rules are not currently
+machine-checked.
+
 No checkpoint may be added, removed, renamed, split, merged, or reordered without explicit human approval. Checkpoint numbers without a script named above either have no dedicated per-checkpoint script (verification is manual/narrative) or their script lives outside this per-checkpoint naming convention -- absence here is not itself evidence the checkpoint is unverified.
 
 This policy document's own boundary rules (the checkpoint list, the no-new-roadmap rule, the closure definition) are themselves checked against reality by `scripts/quality/run-maturity-max-roadmap-boundary-check.ps1`, which reads `scripts/policy/maturity-max-roadmap-policy.json` directly -- never this rendered file.

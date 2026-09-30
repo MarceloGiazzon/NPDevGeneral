@@ -93,7 +93,9 @@ re-mount model), this is the existing seam to wire up — not a new mechanism to
 > A FinalApp generated on version N upgrades to N+1 with local `web/` customizations intact,
 > proven in the release gate.
 
-**Proven** by `scripts/quality/run-app-upgrade-contract-gate.ps1`: runs `Build-NpdevApp.ps1` twice
+**Was proven** (not continuously re-proven today) by `scripts/quality/run-app-upgrade-contract-gate.ps1`
+-- retired 2026-08-13 as an orphan gate no workflow or gate ever invoked (commit 83eaf603), so the
+DoD's "proven in the release gate" is currently unmet. What that script did: it ran `Build-NpdevApp.ps1` twice
 against a real AppGen sample (`simple-user-registry-inmemory`) with a `web/` customization marker
 file present, asserting the marker is byte-identical in the mounted output
 (`src/main/resources/static/`) after both runs. Confirmed live (2026-07-17) — the customization

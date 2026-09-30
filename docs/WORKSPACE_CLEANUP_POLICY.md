@@ -161,13 +161,9 @@ Gradle wrapper consistency across the repo's multiple Gradle roots (root, `NPDev
 pwsh -File scripts\hygiene\Test-GradleWrapperConsistency.ps1
 ```
 
-A fresh clone should move the React editor's `node_modules` outside the source tree via a directory
-junction (keeps the workspace slim per the size limits above), run once after cloning or whenever the
-junction is missing:
-
-```powershell
-pwsh -File scripts\hygiene\Setup-EditorNodeModules.ps1
-```
+(The React editor's `node_modules` junction step that used to follow here is gone with the editor
+itself, removed from the repository on 2026-08-17 -- see `BREAKING.md`. A fresh clone needs no
+extra junction setup.)
 
 ## Release Bundle Retention
 

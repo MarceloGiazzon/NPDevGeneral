@@ -310,31 +310,9 @@ git show --no-patch --decorate --oneline npdev-official-beta-20260428-062512
 
 ### Problem: Playwright download or browser cache failure
 
-Symptoms:
-
-```text
-getaddrinfo ENOTFOUND cdn.playwright.dev
-Task :playwrightInstall FAILED
-```
-
-Fix:
-
-```powershell
-Set-Location 'D:\WorkSpace\NPDev_General\NPDevEditor\ui-react'
-
-Resolve-DnsName cdn.playwright.dev
-Test-NetConnection cdn.playwright.dev -Port 443
-npm ci
-npm exec playwright install chromium
-```
-
-Then rerun:
-
-```powershell
-& 'C:\Program Files (x86)\PowerShell\7\pwsh.exe' -NoProfile -ExecutionPolicy Bypass `
-  -File 'D:\WorkSpace\NPDev_General\scripts\quality\run-editor-gate.ps1' `
-  -WorkspaceRoot 'D:\WorkSpace\NPDev_General'
-```
+No longer applicable. This troubleshooting step belonged to the React editor (`NPDevEditor/ui-react`)
+and its editor gate, both removed from the repository on 2026-08-17 (commit 7cf1d5f5; see
+`BREAKING.md`). No part of the Beta 0 release path installs Playwright any more.
 
 ### Problem: Git commit identity missing
 
