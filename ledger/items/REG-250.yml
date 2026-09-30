@@ -1,0 +1,35 @@
+id: REG-250
+title: >-
+  NPDevSamples/pigmentampas pins its packs[] to a git+file:///D:/... coordinate on one machine, so the
+  showcase only parses where that machine's pack repo and ~/.npdev/packs cache exist -- red on every
+  bare CI checkout
+type: GAP
+severity: LOW
+status: OPEN
+opened: 2026-09-30
+source: >-
+  The AI Knowledge Gate workflow (pull_request / workflow_dispatch only, so never seen on main) failed
+  on Linux 2026-09-29, run 36619239384: validate-corpus.py "1 model(s) do not parse and are not
+  allowlisted -- NPDevSamples/pigmentampas [structural] pack cache entry missing or incomplete:
+  /home/runner/.npdev/packs/sha256/8bcdea9f... (expected pack.json)". Parses locally only because this
+  machine ran `npdev pack update` against its own Build/npdev-pack-repo.
+surface: samples/pigmentampas, packs/remote-coordinates
+files:
+  - NPDevSamples/pigmentampas/Input/model.json
+  - scripts/quality/corpus-parse-allowlist.json
+detail: |
+  PACK-23 (DONE) moved Pigmentampas to consume identity/tracing/workspace by remote coordinate, but the
+  coordinates it committed are `git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/<id>@<tag>`
+  -- a pack repo that exists only on the machine that ran scripts/pack-repo/publish-pack-repo.py. On any
+  other machine the pack cache is empty and the model does not parse. c8e82b6a worked around the same
+  root cause for PigmentampasSampleTest alone (its @BeforeAll materializes the cache from
+  NPDevContract/packs and rewrites npdev.lock); the corpus validator has no such workaround.
+
+  Interim (2026-09-30): allowlisted in scripts/quality/corpus-parse-allowlist.json citing this item, so
+  the gate stays meaningful for every OTHER model. The allowlist entry only matters where the model
+  genuinely fails to parse -- locally it still parses and is still validated.
+
+  Done when: the sample's packs[] resolve on a machine that never ran publish-pack-repo.py -- e.g. by
+  pointing them at a published repo reachable from CI (github.com/MarceloGiazzon/NPR, if it carries the
+  identity/tracing/workspace tags), or by a portable, repo-relative coordinate form -- and the allowlist
+  entry is removed. Owner call: whether a showcase may depend on network access to a public pack repo.
