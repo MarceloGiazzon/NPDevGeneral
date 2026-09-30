@@ -391,8 +391,18 @@ if (
 Write-NPDevJsonFile $ReportPath $gateReport
 
 if ([string]$gateReport.overallStatus -eq "passed") {
+    $dslGeneratorRatchetLines = @($coverageRatchetOutput | Select-String 'NPDevContract/dsl|NPDevGenerator/generator')
+    if ($dslGeneratorRatchetLines.Count -gt 0) {
+        Write-Host ("  coverage ratchet: " + (($dslGeneratorRatchetLines | ForEach-Object { $_.ToString().Trim() }) -join " | "))
+    }
     Write-NPDevOk "NPDevGenerator gate passed."
     return
+}
+
+foreach ($reason in @($gateReport.failureReasons)) { Write-NPDevWarn ("  reason: " + [string]$reason) }
+if ($null -ne $coverageRatchetEvidence -and $coverageRatchetEvidence.overallStatus -ne "passed") {
+    Write-Host "  coverage ratchet output (last 30 lines):"
+    $coverageRatchetEvidence.output | ForEach-Object { Write-Host ("    " + $_) }
 }
 
 Write-NPDevWarn "NPDevGenerator gate failed."

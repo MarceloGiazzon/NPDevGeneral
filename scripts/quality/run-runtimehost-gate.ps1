@@ -307,6 +307,11 @@ if ($status -eq "passed") {
             reportPath = Get-NPDevWorkspaceRelativePath $WorkspaceRoot $observabilityHardeningReportPath
         }
         Write-NPDevJsonFile $ReportPath $report
+        Write-NPDevWarn ("  reason: " + $report.error)
+        if ($null -ne $coverageRatchetEvidence -and $coverageRatchetEvidence.overallStatus -ne "passed") {
+            Write-Host "  coverage ratchet output (last 30 lines):"
+            $coverageRatchetEvidence.output | ForEach-Object { Write-Host ("    " + $_) }
+        }
         Write-NPDevWarn "NPDevRuntimeHost gate failed."
         throw $report.error
     }
@@ -320,5 +325,10 @@ if ($status -eq "passed") {
     return
 }
 
+if (-not [string]::IsNullOrWhiteSpace($errorMessage)) { Write-NPDevWarn ("  reason: " + $errorMessage) }
+if ($null -ne $coverageRatchetEvidence -and $coverageRatchetEvidence.overallStatus -ne "passed") {
+    Write-Host "  coverage ratchet output (last 30 lines):"
+    $coverageRatchetEvidence.output | ForEach-Object { Write-Host ("    " + $_) }
+}
 Write-NPDevWarn "NPDevRuntimeHost gate failed."
 throw $errorMessage
