@@ -8,6 +8,7 @@ import com.npdev.dsl.v1.settings.SettingResolver;
 import com.npdev.dsl.v1.settings.SettingStore;
 import com.npdev.dsl.v1.settings.SettingTarget;
 import com.npdev.generator.emitters.BusinessUiEmitter;
+import com.npdev.generator.emitters.AgentLinkPageEmitter;
 import com.npdev.generator.emitters.ChangePasswordPageEmitter;
 import com.npdev.generator.emitters.ControllerEmitter;
 import com.npdev.generator.emitters.DtoEmitter;
@@ -375,6 +376,10 @@ public final class GeneratorFacade {
             new ChangePasswordPageEmitter(templates, writer).emit(
                     model == null ? "" : model.getNamespace(),
                     "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
+            // AGENT-1 (A6.4): the Telegram/WhatsApp/MCP self-service page, same jwt-mode gating,
+            // only when the model declares an agentAccess block at all.
+            new AgentLinkPageEmitter(templates, writer).emit(
+                    model, "jwt".equalsIgnoreCase(settingResolver.value(NpdevSettings.AUTH_MODE, SettingTarget.app())));
             // Phase 7: provenance/store/box-view admin surfaces ride along with the business UI,
             // since they are only reachable through its super-user admin nav.
             // P3.3: also computes and attaches each specialized concept's lineage (parent,
