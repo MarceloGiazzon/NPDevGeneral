@@ -139,7 +139,7 @@ public final class TelegramChannel {
                 handleMessage(update.path("message"));
             }
         } catch (RuntimeException failed) {
-            LOG.warning("Telegram: update failed: " + failed.getClass().getSimpleName());
+            LOG.warning("Telegram: handling an incoming bot event failed: " + failed.getClass().getSimpleName());
         }
     }
 

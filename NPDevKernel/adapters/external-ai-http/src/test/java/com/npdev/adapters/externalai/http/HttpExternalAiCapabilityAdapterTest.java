@@ -1,10 +1,17 @@
 package com.npdev.adapters.externalai.http;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.npdev.kernel.ports.ExternalAiChatTurn;
 import com.npdev.kernel.ports.ExternalAiEgressDeniedException;
 import com.npdev.kernel.ports.ExternalAiGenerationRequest;
 import com.npdev.kernel.ports.ExternalAiGenerationResult;
 import com.npdev.kernel.ports.ExternalAiPackSubmission;
 import com.npdev.kernel.ports.ExternalAiRunResult;
+import com.npdev.kernel.ports.ExternalAiToolCall;
+import com.npdev.kernel.ports.ExternalAiToolChatRequest;
+import com.npdev.kernel.ports.ExternalAiToolChatResult;
+import com.npdev.kernel.ports.ExternalAiToolSpec;
 import com.npdev.kernel.ports.ExternalAiVendorSummary;
 import com.npdev.kernel.ports.ExternalAiVerdictRecord;
 import com.sun.net.httpserver.HttpServer;
@@ -22,6 +29,7 @@ import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -310,6 +318,162 @@ class HttpExternalAiCapabilityAdapterTest {
                     "expected exactly maxRetries+1 = 2 attempts (2 real TCP connections) against the hanging server");
             assertTrue(thrown.getMessage().contains("attempt 2/2"), thrown.getMessage());
         }
+    }
+
+    @Test
+    void chatWithToolsDeniesWhenNoVendorIsConfigured() {
+        HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(List.of());
+
+        assertThrows(ExternalAiEgressDeniedException.class, () -> adapter.chatWithTools(
+                new ExternalAiToolChatRequest("gemini", null, null, List.of(), List.of(ExternalAiChatTurn.user("hi")))));
+    }
+
+    @Test
+    void chatWithToolsSendsTheGeminiShapeAndParsesFunctionCalls() throws IOException {
+        AtomicReference<String> seenBody = new AtomicReference<>();
+        server = startStubServer("/models/gemini-3-pro:generateContent", exchange -> {
+            seenBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, "{\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":["
+                    + "{\"text\":\"checking stock\"},"
+                    + "{\"functionCall\":{\"name\":\"list_StockEntry\",\"args\":{\"limit\":5}}}]}}]}");
+        });
+        ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
+                "gemini", "http://127.0.0.1:" + server.getAddress().getPort(),
+                "gemini-3-pro", "NPDEV_TEST_GEMINI_KEY", ExternalAiRequestFormat.GEMINI_GENERATE_CONTENT);
+        HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
+                List.of(profile), HttpClient.newHttpClient(), env -> "test-key");
+
+        ExternalAiToolChatResult result = adapter.chatWithTools(new ExternalAiToolChatRequest(
+                "gemini", null, "be brief", List.of(stockTool()), List.of(
+                        ExternalAiChatTurn.user("how much red?"),
+                        assistantRaw("{\"role\":\"model\",\"parts\":[{\"thoughtSignature\":\"sig\"}]}"),
+                        ExternalAiChatTurn.toolResult("gemini-0", "list_StockEntry", "{\"rows\":[]}"),
+                        ExternalAiChatTurn.toolResult("gemini-1", "get_Pigment", null),
+                        assistantText("none left"),
+                        ExternalAiChatTurn.user(null))));
+
+        JsonNode body = new ObjectMapper().readTree(seenBody.get());
+        assertEquals("be brief", body.at("/systemInstruction/parts/0/text").asText());
+        JsonNode contents = body.path("contents");
+        assertEquals(5, contents.size(), "two consecutive tool turns merge into ONE user content: " + contents);
+        assertEquals("sig", contents.at("/1/parts/0/thoughtSignature").asText(), "vendorRaw replays verbatim");
+        assertEquals(2, contents.at("/2/parts").size());
+        assertEquals("list_StockEntry", contents.at("/2/parts/0/functionResponse/name").asText());
+        assertTrue(contents.at("/2/parts/1/functionResponse/response").isObject(), "a null result becomes {}");
+        assertEquals("model", contents.at("/3/role").asText());
+        assertEquals("none left", contents.at("/3/parts/0/text").asText());
+        assertEquals("", contents.at("/4/parts/0/text").asText());
+        assertEquals("list_StockEntry", body.at("/tools/0/functionDeclarations/0/name").asText());
+        assertEquals("AUTO", body.at("/toolConfig/functionCallingConfig/mode").asText());
+
+        assertEquals("gemini-3-pro", result.model(), "an omitted model falls back to the profile default");
+        assertTrue(result.wantsTools());
+        ExternalAiToolCall call = result.assistantTurn().toolCalls().get(0);
+        assertEquals("gemini-0", call.id());
+        assertEquals("list_StockEntry", call.name());
+        assertEquals(5, ((Number) call.arguments().get("limit")).intValue());
+        assertEquals("checking stock", result.assistantTurn().text());
+        assertTrue(result.assistantTurn().vendorRaw().contains("functionCall"));
+    }
+
+    @Test
+    void chatWithToolsSendsTheOpenAiShapeAndRejectsMalformedArguments() throws IOException {
+        AtomicReference<String> seenBody = new AtomicReference<>();
+        AtomicInteger calls = new AtomicInteger();
+        server = startStubServer("/v1/chat/completions", exchange -> {
+            seenBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            String arguments = calls.incrementAndGet() == 1 ? "{\\\"id\\\":\\\"p1\\\"}" : "not json";
+            writeJson(exchange, "{\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":null,"
+                    + "\"tool_calls\":[{\"id\":\"call_9\",\"type\":\"function\","
+                    + "\"function\":{\"name\":\"get_Pigment\",\"arguments\":\"" + arguments + "\"}}]}}]}");
+        });
+        ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
+                "openai", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/chat/completions",
+                "gpt-4o-mini", "NPDEV_TEST_OPENAI_KEY", ExternalAiRequestFormat.OPENAI_CHAT);
+        HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
+                List.of(profile), HttpClient.newHttpClient(), env -> "test-key");
+        ExternalAiToolChatRequest request = new ExternalAiToolChatRequest(
+                "openai", "gpt-5", "be brief", List.of(stockTool()), List.of(
+                        ExternalAiChatTurn.user("show p1"),
+                        assistantText(null),
+                        assistantRaw("{\"role\":\"assistant\",\"content\":null,\"tool_calls\":[]}"),
+                        ExternalAiChatTurn.toolResult("call_8", "get_Pigment", null)));
+
+        ExternalAiToolChatResult result = adapter.chatWithTools(request);
+
+        JsonNode messages = new ObjectMapper().readTree(seenBody.get()).path("messages");
+        assertEquals("system", messages.at("/0/role").asText());
+        assertTrue(messages.at("/2/content").isNull(), "an assistant turn with no text sends content:null");
+        assertTrue(messages.at("/3/tool_calls").isArray(), "vendorRaw replays verbatim");
+        assertEquals("tool", messages.at("/4/role").asText());
+        assertEquals("call_8", messages.at("/4/tool_call_id").asText());
+        assertEquals("{}", messages.at("/4/content").asText());
+        assertTrue(seenBody.get().contains("\"model\":\"gpt-5\""), seenBody.get());
+        assertTrue(seenBody.get().contains("\"type\":\"function\""), seenBody.get());
+
+        ExternalAiToolCall call = result.assistantTurn().toolCalls().get(0);
+        assertEquals("call_9", call.id());
+        assertEquals("p1", call.arguments().get("id"));
+        assertNull(result.assistantTurn().text());
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, () -> adapter.chatWithTools(request));
+        assertTrue(thrown.getMessage().contains("not valid JSON"), thrown.getMessage());
+    }
+
+    @Test
+    void chatWithToolsSendsTheAnthropicShapeAndParsesToolUseBlocks() throws IOException {
+        AtomicReference<String> seenBody = new AtomicReference<>();
+        server = startStubServer("/v1/messages", exchange -> {
+            seenBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            writeJson(exchange, "{\"content\":[{\"type\":\"text\",\"text\":\"one sec\"},"
+                    + "{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"list_StockEntry\",\"input\":{\"limit\":2}}]}");
+        });
+        ExternalAiVendorProfile profile = new ExternalAiVendorProfile(
+                "anthropic", "http://127.0.0.1:" + server.getAddress().getPort() + "/v1/messages",
+                "claude-opus-5", "NPDEV_TEST_ANTHROPIC_KEY", ExternalAiRequestFormat.ANTHROPIC_MESSAGES);
+        HttpExternalAiCapabilityAdapter adapter = new HttpExternalAiCapabilityAdapter(
+                List.of(profile), HttpClient.newHttpClient(), env -> "test-key");
+
+        ExternalAiToolChatResult result = adapter.chatWithTools(new ExternalAiToolChatRequest(
+                "anthropic", null, "be brief", List.of(stockTool()), List.of(
+                        ExternalAiChatTurn.user("stock?"),
+                        assistantRaw("[{\"type\":\"tool_use\",\"id\":\"toolu_0\",\"name\":\"x\",\"input\":{}}]"),
+                        ExternalAiChatTurn.toolResult("toolu_0", "x", "{\"ok\":true}"),
+                        ExternalAiChatTurn.toolResult("toolu_00", "x", null),
+                        assistantText("done"),
+                        ExternalAiChatTurn.user(null))));
+
+        JsonNode body = new ObjectMapper().readTree(seenBody.get());
+        assertEquals("be brief", body.path("system").asText());
+        assertTrue(body.path("max_tokens").isNumber());
+        assertEquals("list_StockEntry", body.at("/tools/0/name").asText());
+        assertTrue(body.at("/tools/0/input_schema").isObject());
+        JsonNode messages = body.path("messages");
+        assertEquals(5, messages.size(), "two consecutive tool turns merge into ONE user message: " + messages);
+        assertEquals("toolu_0", messages.at("/1/content/0/id").asText(), "vendorRaw replays verbatim");
+        assertEquals(2, messages.at("/2/content").size());
+        assertEquals("tool_result", messages.at("/2/content/0/type").asText());
+        assertEquals("{}", messages.at("/2/content/1/content").asText());
+        assertEquals("done", messages.at("/3/content/0/text").asText());
+        assertEquals("", messages.at("/4/content").asText());
+
+        assertEquals("one sec", result.assistantTurn().text());
+        ExternalAiToolCall call = result.assistantTurn().toolCalls().get(0);
+        assertEquals("toolu_1", call.id());
+        assertEquals(2, ((Number) call.arguments().get("limit")).intValue());
+    }
+
+    private static ExternalAiToolSpec stockTool() {
+        return new ExternalAiToolSpec("list_StockEntry", "List stock entries.",
+                Map.of("type", "object", "properties", Map.of("limit", Map.of("type", "integer"))));
+    }
+
+    private static ExternalAiChatTurn assistantRaw(String vendorRaw) {
+        return new ExternalAiChatTurn("assistant", null, List.of(), vendorRaw, null, null, null);
+    }
+
+    private static ExternalAiChatTurn assistantText(String text) {
+        return new ExternalAiChatTurn("assistant", text, List.of(), null, null, null, null);
     }
 
     private interface StubHandler {

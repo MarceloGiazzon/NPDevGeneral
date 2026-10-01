@@ -30,6 +30,11 @@ public final class ExternalIdentityStore {
     public record ActiveUser(String username, String tenantId) {
     }
 
+    /** identity::ExternalIdentity.providerSubject and identity::User.username maxLength (pack.json). */
+    static final int MAX_SUBJECT_LENGTH = 255;
+    static final int MAX_USERNAME_LENGTH = 120;
+    static final int MAX_TENANT_ID_LENGTH = 128;
+
     private final DataSource dataSource;
 
     public ExternalIdentityStore(DataSource dataSource) {
@@ -57,6 +62,9 @@ public final class ExternalIdentityStore {
     }
 
     public Optional<String> findLinkOwner(Tables tables, String provider, String subject) {
+        if (!fits(subject, MAX_SUBJECT_LENGTH)) {
+            return Optional.empty(); // longer than the column: no stored row can match it
+        }
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement ps = connection.prepareStatement(
                         "SELECT user_id FROM " + tables.externalIdentityTable()
@@ -67,11 +75,15 @@ public final class ExternalIdentityStore {
                 return rs.next() ? Optional.of(rs.getString("user_id")) : Optional.empty();
             }
         } catch (SQLException ex) {
-            return Optional.empty();
+            throw storeFailure("findLinkOwner", ex);
         }
     }
 
     public boolean insertLink(Tables tables, String userId, String provider, String subject, String tenantId) {
+        if (!fits(subject, MAX_SUBJECT_LENGTH) || !fits(tenantId, MAX_TENANT_ID_LENGTH)) {
+            throw new IllegalArgumentException("ExternalIdentityStore.insertLink: subject over "
+                    + MAX_SUBJECT_LENGTH + " or tenant id over " + MAX_TENANT_ID_LENGTH + " characters");
+        }
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement ps = connection.prepareStatement(
                         "INSERT INTO " + tables.externalIdentityTable()
@@ -85,11 +97,19 @@ public final class ExternalIdentityStore {
             ps.setTimestamp(6, Timestamp.from(Instant.now()));
             return ps.executeUpdate() > 0;
         } catch (SQLException ex) {
-            return false;
+            // SQLState class 23 (integrity constraint): a concurrent link of the same (provider,
+            // subject) won the race -- a real "not inserted", which the caller tells the user to retry.
+            if (ex.getSQLState() != null && ex.getSQLState().startsWith("23")) {
+                return false;
+            }
+            throw storeFailure("insertLink", ex);
         }
     }
 
     public boolean deleteLink(Tables tables, String provider, String subject) {
+        if (!fits(subject, MAX_SUBJECT_LENGTH)) {
+            return false; // longer than the column: no stored row can match it
+        }
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement ps = connection.prepareStatement(
                         "DELETE FROM " + tables.externalIdentityTable()
@@ -98,7 +118,7 @@ public final class ExternalIdentityStore {
             ps.setString(2, subject);
             return ps.executeUpdate() > 0;
         } catch (SQLException ex) {
-            return false;
+            throw storeFailure("deleteLink", ex);
         }
     }
 
@@ -112,8 +132,8 @@ public final class ExternalIdentityStore {
             ps.setObject(1, UUID.fromString(userId));
             ps.setString(2, provider);
             return ps.executeUpdate() > 0;
-        } catch (SQLException | IllegalArgumentException ex) {
-            return false;
+        } catch (SQLException ex) {
+            throw storeFailure("deleteLinkForUser", ex);
         }
     }
 
@@ -131,7 +151,7 @@ public final class ExternalIdentityStore {
                 }
             }
         } catch (SQLException ex) {
-            return java.util.List.of();
+            throw storeFailure("linkedProviders", ex);
         }
         return out;
     }
@@ -146,7 +166,7 @@ public final class ExternalIdentityStore {
                 return rs.next() ? rs.getInt(1) : 0;
             }
         } catch (SQLException ex) {
-            return 0;
+            throw storeFailure("countLinked", ex);
         }
     }
 
@@ -161,14 +181,17 @@ public final class ExternalIdentityStore {
                 }
                 return Optional.of(new ActiveUser(rs.getString("username"), rs.getString("tenant_id")));
             }
-        } catch (SQLException | IllegalArgumentException ex) {
-            return Optional.empty();
+        } catch (SQLException ex) {
+            throw storeFailure("findActiveUserById", ex);
         }
     }
 
     /** The current user's own id + tenant, resolved by username -- used when minting a link code
      *  for the caller. */
     public Optional<String> findUserIdByUsername(Tables tables, String username, String tenantId) {
+        if (!fits(username, MAX_USERNAME_LENGTH) || !fits(tenantId, MAX_TENANT_ID_LENGTH)) {
+            return Optional.empty(); // longer than the column: no stored row can match it
+        }
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement ps = connection.prepareStatement(
                         "SELECT id FROM " + tables.usersTable() + " WHERE username = ? AND tenant_id = ?")) {
@@ -178,7 +201,22 @@ public final class ExternalIdentityStore {
                 return rs.next() ? Optional.of(rs.getString("id")) : Optional.empty();
             }
         } catch (SQLException ex) {
-            return Optional.empty();
+            throw storeFailure("findUserIdByUsername", ex);
         }
+    }
+
+    /**
+     * A database fault is never answered as "not linked" / "no such user": on this auth path that
+     * would turn an outage into a security verdict the caller cannot tell from a real one (REG-39).
+     * Every user id reaching this store was read from the identity tables, so a malformed UUID is a
+     * bug and propagates as-is rather than being folded into "not found" either.
+     */
+    private static boolean fits(String value, int max) {
+        return value == null || value.length() <= max;
+    }
+
+    private static IllegalStateException storeFailure(String operation, SQLException ex) {
+        return new IllegalStateException(
+                "ExternalIdentityStore." + operation + " failed (SQLState " + ex.getSQLState() + ")", ex);
     }
 }

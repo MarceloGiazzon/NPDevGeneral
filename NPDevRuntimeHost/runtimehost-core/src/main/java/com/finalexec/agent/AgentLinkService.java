@@ -6,6 +6,7 @@ import com.finalexec.auth.LoginController;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.runtime.support.IdentityRoleLookup;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.stereotype.Component;
@@ -67,8 +68,9 @@ public final class AgentLinkService {
     }
 
     private final ModelHolder modelHolder;
-    private final DataSource dataSource;
-    private final ExternalIdentityStore store;
+    /** Lazy, like IdentityAwareContextResolver: an app (or test profile) with no JDBC DataSource still
+     *  boots; only a call that actually needs the identity tables asks for one. */
+    private final ObjectProvider<DataSource> dataSourceProvider;
     private final PrivateKey privateKey;
     private final ObjectMapper objectMapper;
     private final String issuer;
@@ -80,16 +82,15 @@ public final class AgentLinkService {
     private final Map<String, Deque<Long>> badAttemptsBySubjectKey = new ConcurrentHashMap<>();
 
     public AgentLinkService(
-            DataSource dataSource,
+            ObjectProvider<DataSource> dataSourceProvider,
             ModelHolder modelHolder,
             ObjectMapper objectMapper,
             @Value("${npdev.auth.jwt.private-key-path:}") String privateKeyPath,
             @Value("${npdev.auth.jwt.issuer:}") String issuer,
             @Value("${npdev.auth.jwt.audience:}") String audience
     ) throws Exception {
-        this.dataSource = dataSource;
+        this.dataSourceProvider = dataSourceProvider;
         this.modelHolder = modelHolder;
-        this.store = new ExternalIdentityStore(dataSource);
         this.objectMapper = objectMapper;
         this.issuer = issuer;
         this.audience = audience;
@@ -114,7 +115,7 @@ public final class AgentLinkService {
         return new CreatedCode(code, Instant.ofEpochMilli(expiresAtMillis));
     }
 
-    /** @return a user-facing sentence: success, or why it failed. Never throws. */
+    /** @return a user-facing sentence: success, or why it failed. Throws only on a database fault. */
     public String completeLink(String provider, String subject, String code) {
         String subjectKey = provider + ":" + subject;
         if (isLockedOut(subjectKey)) {
@@ -129,11 +130,11 @@ public final class AgentLinkService {
         if (tables == null) {
             return "This app has no identity pack composed; account linking is unavailable.";
         }
-        Optional<String> userId = store.findUserIdByUsername(tables, entry.username, entry.tenantId);
+        Optional<String> userId = store().findUserIdByUsername(tables, entry.username, entry.tenantId);
         if (userId.isEmpty()) {
             return "Your account could not be resolved. Create a new code on the Connect page.";
         }
-        Optional<String> existingOwner = store.findLinkOwner(tables, provider, subject);
+        Optional<String> existingOwner = store().findLinkOwner(tables, provider, subject);
         if (existingOwner.isPresent() && !existingOwner.get().equals(userId.get())) {
             return "This " + provider + " account is already connected to another user. Send /unlink first.";
         }
@@ -141,7 +142,7 @@ public final class AgentLinkService {
         if (existingOwner.isPresent()) {
             return "Connected! You are " + entry.username + ".";
         }
-        boolean inserted = store.insertLink(tables, userId.get(), provider, subject, entry.tenantId);
+        boolean inserted = store().insertLink(tables, userId.get(), provider, subject, entry.tenantId);
         if (!inserted) {
             return "Could not connect right now. Try again in a moment.";
         }
@@ -153,7 +154,7 @@ public final class AgentLinkService {
         if (tables == null) {
             return false;
         }
-        return store.deleteLink(tables, provider, subject);
+        return store().deleteLink(tables, provider, subject);
     }
 
     /** Scoped unlink for the {@code agent-link.html} page / {@code DELETE /api/agent/links/{provider}}:
@@ -163,8 +164,8 @@ public final class AgentLinkService {
         if (tables == null) {
             return false;
         }
-        return store.findUserIdByUsername(tables, username, tenantId)
-                .map(userId -> store.deleteLinkForUser(tables, userId, provider))
+        return store().findUserIdByUsername(tables, username, tenantId)
+                .map(userId -> store().deleteLinkForUser(tables, userId, provider))
                 .orElse(false);
     }
 
@@ -173,16 +174,16 @@ public final class AgentLinkService {
         if (tables == null) {
             return Optional.empty();
         }
-        Optional<String> userId = store.findLinkOwner(tables, provider, subject);
+        Optional<String> userId = store().findLinkOwner(tables, provider, subject);
         if (userId.isEmpty()) {
             return Optional.empty();
         }
-        Optional<ExternalIdentityStore.ActiveUser> active = store.findActiveUserById(tables, userId.get());
+        Optional<ExternalIdentityStore.ActiveUser> active = store().findActiveUserById(tables, userId.get());
         if (active.isEmpty()) {
             return Optional.empty();
         }
         Set<String> roles = IdentityPackTableNames.tryResolve(modelHolder.get())
-                .map(t -> IdentityRoleLookup.rolesFor(dataSource, t, active.get().tenantId(), active.get().username()))
+                .map(t -> IdentityRoleLookup.rolesFor(dataSource(), t, active.get().tenantId(), active.get().username()))
                 .orElseGet(Set::of);
         return Optional.of(new Speaker(active.get().tenantId(), active.get().username(), roles));
     }
@@ -193,7 +194,7 @@ public final class AgentLinkService {
         if (tables == null) {
             return 0;
         }
-        return store.countLinked(tables, provider);
+        return store().countLinked(tables, provider);
     }
 
     public List<String> linkedProviders(String tenantId, String username) {
@@ -201,8 +202,8 @@ public final class AgentLinkService {
         if (tables == null) {
             return List.of();
         }
-        return store.findUserIdByUsername(tables, username, tenantId)
-                .map(userId -> store.linkedProviders(tables, userId))
+        return store().findUserIdByUsername(tables, username, tenantId)
+                .map(userId -> store().linkedProviders(tables, userId))
                 .orElseGet(List::of);
     }
 
@@ -215,11 +216,24 @@ public final class AgentLinkService {
         }
         JwtSigner signer = new JwtSigner(objectMapper, privateKey, issuer, audience, SHORT_LIVED_TOKEN_SECONDS);
         Optional<IdentityPackTableNames> tables = IdentityPackTableNames.tryResolve(modelHolder.get());
-        Set<String> roles = tables.map(t -> IdentityRoleLookup.rolesFor(dataSource, t, tenantId, username))
+        Set<String> roles = tables.map(t -> IdentityRoleLookup.rolesFor(dataSource(), t, tenantId, username))
                 .orElseGet(Set::of);
-        int tokenVersion = tables.map(t -> IdentityRoleLookup.tokenVersion(dataSource, t, tenantId, username))
+        int tokenVersion = tables.map(t -> IdentityRoleLookup.tokenVersion(dataSource(), t, tenantId, username))
                 .orElse(0);
         return Optional.of(signer.sign(tenantId, username, roles, tokenVersion));
+    }
+
+    private DataSource dataSource() {
+        DataSource dataSource = dataSourceProvider.getIfAvailable();
+        if (dataSource == null) {
+            throw new IllegalStateException("agent account linking needs the identity pack's tables, "
+                    + "but this app has no JDBC DataSource");
+        }
+        return dataSource;
+    }
+
+    private ExternalIdentityStore store() {
+        return new ExternalIdentityStore(dataSource());
     }
 
     private boolean isLockedOut(String subjectKey) {
