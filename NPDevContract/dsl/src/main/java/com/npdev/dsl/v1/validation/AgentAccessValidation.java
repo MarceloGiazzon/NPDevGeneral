@@ -51,10 +51,13 @@ final class AgentAccessValidation {
             if (hasConcept) {
                 ConceptAst concept = entitiesByLower.get(normalize(exposure.getConcept()));
                 if (concept == null) {
-                    errors.add(here + ": concept '" + exposure.getConcept() + "' does not resolve to a declared concept");
+                    errors.add(here + ": concept '" + exposure.getConcept() + "' does not resolve to a declared concept"
+                            + " -- suggestedFix: Name a concept declared in concepts[] (or a composed pack's), "
+                            + "or remove this exposure.");
                 } else {
                     if (!conceptsSeen.add(normalize(exposure.getConcept()))) {
-                        errors.add(here + ": concept '" + exposure.getConcept() + "' is exposed more than once");
+                        errors.add(here + ": concept '" + exposure.getConcept() + "' is exposed more than once"
+                                + " -- suggestedFix: Merge the duplicate exposures of this concept into one entry.");
                     }
                     Set<String> fieldNames = new HashSet<>();
                     for (FieldAst field : concept.getFields()) {
@@ -63,26 +66,31 @@ final class AgentAccessValidation {
                     for (String fieldName : exposure.getFields()) {
                         if (!fieldNames.contains(normalize(fieldName))) {
                             errors.add(here + ": fields entry '" + fieldName + "' is not a field of concept '"
-                                    + exposure.getConcept() + "'");
+                                    + exposure.getConcept() + "'"
+                                    + " -- suggestedFix: Use a field name declared on this concept, or drop the entry.");
                             continue;
                         }
                         for (FieldAst field : concept.getFields()) {
                             if (normalize(field.getName()).equals(normalize(fieldName)) && field.isSensitive()) {
                                 errors.add(here + ": fields entry '" + fieldName
-                                        + "' is sensitive -- sensitive fields are never exposed to agents");
+                                        + "' is sensitive -- sensitive fields are never exposed to agents"
+                                        + " -- suggestedFix: Remove this field from the exposure's fields list.");
                             }
                         }
                     }
                 }
             } else {
                 if (!flowNames.contains(normalize(exposure.getFlow()))) {
-                    errors.add(here + ": flow '" + exposure.getFlow() + "' does not resolve to a declared flow");
+                    errors.add(here + ": flow '" + exposure.getFlow() + "' does not resolve to a declared flow"
+                            + " -- suggestedFix: Name a flow declared in flows[], or remove this exposure.");
                 }
                 if (!exposure.getOperations().isEmpty()) {
-                    errors.add(here + ": operations is concept-only, not valid on a flow exposure");
+                    errors.add(here + ": operations is concept-only, not valid on a flow exposure"
+                            + " -- suggestedFix: Remove 'operations' from this flow exposure.");
                 }
                 if (!exposure.getFields().isEmpty()) {
-                    errors.add(here + ": fields is concept-only, not valid on a flow exposure");
+                    errors.add(here + ": fields is concept-only, not valid on a flow exposure"
+                            + " -- suggestedFix: Remove 'fields' from this flow exposure.");
                 }
             }
             index++;

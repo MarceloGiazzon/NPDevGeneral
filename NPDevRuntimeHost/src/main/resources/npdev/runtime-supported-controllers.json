@@ -6,7 +6,6 @@
   "allowedControllers": [
     "AgentProxyController",
     "AgentMcpController",
-    "AgentLinkController",
     "AggregateApiController",
     "WebhookInboundController",
     "MessagingDeliveryController",

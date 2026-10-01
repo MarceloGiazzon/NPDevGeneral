@@ -1,14 +1,17 @@
 package com.npdev.generator;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.npdev.dsl.v1.ast.ModelAst;
 import com.npdev.dsl.v1.compiler.ModelCompiler;
 import com.npdev.dsl.v1.compiled.CompiledConcept;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.pack.PackCache;
 import com.npdev.dsl.v1.parser.JsonModelParser;
+import com.npdev.dsl.v1.settings.SettingResolver;
 import com.npdev.dsl.v1.validation.SemanticValidator;
 import com.npdev.generator.api.GeneratorFacade;
 import com.npdev.generator.output.GeneratedSourceWriter;
+import com.npdev.generator.settings.ConfigSettingsReader;
 import com.npdev.generator.strategy.RegenerationPolicy;
 import com.npdev.generator.templates.TemplateEngine;
 import org.junit.jupiter.api.AfterAll;
@@ -90,7 +93,11 @@ class PigmentampasSampleTest {
         Path migrations = Files.createTempDirectory("npdev-pigmentampas-migrations-");
         TemplateEngine templates = new TemplateEngine("npdev-templates/");
         GeneratedSourceWriter writer = new GeneratedSourceWriter(out, new RegenerationPolicy());
-        new GeneratorFacade(templates, writer).generate(compiled, out, migrations, SAMPLE_MODEL);
+        // The sample's own config.json, as GeneratorMain reads it: agentAccess.channels.telegram is
+        // only legal under its defaults.auth.mode=jwt, which an empty SettingStore never supplies.
+        SettingResolver settings = new SettingResolver(new ConfigSettingsReader().read(
+                new ObjectMapper().readTree(SAMPLE_MODEL.resolveSibling("config.json").toFile())));
+        new GeneratorFacade(templates, writer, settings).generate(compiled, out, migrations, SAMPLE_MODEL);
 
         for (String entity : List.of("Pigment", "PigmentCategory", "Supplier", "PigmentSupplier",
                 "StockEntry", "Order", "OrderItem")) {

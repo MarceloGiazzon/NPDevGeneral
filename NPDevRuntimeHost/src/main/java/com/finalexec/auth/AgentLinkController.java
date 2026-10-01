@@ -1,11 +1,9 @@
-package com.finalexec.api;
+package com.finalexec.auth;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.agent.AgentChannelsStarter;
 import com.finalexec.agent.AgentLinkService;
 import com.finalexec.agent.TelegramChannel;
-import com.finalexec.auth.JwtSigner;
-import com.finalexec.auth.LoginController;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -40,12 +38,15 @@ import java.util.Set;
 /**
  * AGENT-1 (A5.2, A6.3): endpoints an authenticated app user calls to manage their own agent
  * access -- minting an MCP token, and linking/unlinking Telegram/WhatsApp. The status probe lands
- * here too in A9; this class is already in {@code allowedControllers}.
+ * here too in A9.
  *
  * <p>jwt-mode only: an MCP token is itself a JWT, so this endpoint needs the same signing key
  * {@code OAuthGoogleController}/{@code LoginController} use for session tokens. apiKey/none apps
  * get no route here (the class never registers), matching {@code OAuthGoogleController}'s own
- * {@code @ConditionalOnProperty} gate.
+ * {@code @ConditionalOnProperty} gate -- and, like every other jwt-only controller, it lives in
+ * {@code com.finalexec.auth}, not {@code com.finalexec.api}: the runtime-surface manifest
+ * classifies {@code com.finalexec.api} controllers, which must exist in EVERY auth mode, so a
+ * conditional one there reads as a phantom entry ({@code SupportedCoreControllerBlackBoxIntegrationTest}).
  */
 @RestController
 @ConditionalOnProperty(name = "npdev.auth.mode", havingValue = "jwt")
