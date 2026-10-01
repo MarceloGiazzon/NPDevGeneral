@@ -27,6 +27,7 @@ import com.npdev.generator.emitters.RuntimeLogPropertiesEmitter;
 import com.npdev.generator.emitters.SemanticGraphEmitter;
 import com.npdev.generator.emitters.ServiceEmitter;
 import com.npdev.generator.emitters.UntrustedExtensionEmitter;
+import com.npdev.generator.emitters.GpuCheckEmitter;
 import com.npdev.generator.emitters.WidgetCatalogueEmitter;
 import com.npdev.generator.emitters.XrefEmitter;
 import com.npdev.generator.guard.GeneratedProjectionGuard;
@@ -363,6 +364,12 @@ public final class GeneratorFacade {
         // Wave 2.2: widget reference page, also unconditional -- it describes the widget SYSTEM
         // (FieldWidgetDefaults.catalogue()), not this app's own panels.
         new WidgetCatalogueEmitter(templates, writer).emit(model);
+        // GPU-1 (G2.4): the data-rule check manifest + WGSL shaders, opt-in only (checks.gpuArtifacts
+        // defaults false) -- independent of UI_GENERATE_BUSINESS_UI, since the sweep checks the
+        // concepts' own data rules, not generated screens.
+        if (settingResolver.value(NpdevSettings.CHECKS_GPU_ARTIFACTS, SettingTarget.app())) {
+            new GpuCheckEmitter(templates, writer).emit(model);
+        }
         if (settingResolver.value(NpdevSettings.UI_GENERATE_BUSINESS_UI, SettingTarget.app())) {
             new BusinessUiEmitter(templates, writer).emit(
                     appOwnedSourceModel, superUserRole, settingResolver, extensionFieldOrigins);
