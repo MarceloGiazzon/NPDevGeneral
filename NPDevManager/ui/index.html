@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="packs.css" />
 <link rel="stylesheet" href="provenance.css" />
 <link rel="stylesheet" href="dbio.css" />
+<link rel="stylesheet" href="gpuchecks.css" />
 <link rel="stylesheet" href="secrets.css" />
 <link rel="stylesheet" href="studio.css" />
 <link rel="stylesheet" href="evals.css" />
@@ -42,6 +43,7 @@
     <button class="tab" data-screen="packs">Packs</button>
     <button class="tab" data-screen="provenance">Impact</button>
     <button class="tab" data-screen="dbio">DB Import/Export</button>
+    <button class="tab" data-screen="gpuchecks">GPU Checks</button>
     <button class="tab" data-screen="secrets">Secrets</button>
     <button class="tab" data-screen="studio">Studio</button>
     <button class="tab" data-screen="evals">Evals</button>
@@ -654,6 +656,72 @@
       </div>
     </section>
 
+    <section id="screen-gpuchecks" class="screen" hidden>
+      <h1>&#9889; GPU CHECKS <span class="dim">// data-rule sweep, GPU-accelerated, with an exact CPU twin</span></h1>
+      <p class="subtitle">
+        Reads/runs through <code>npdev gpu-check</code> -- engine choice, packing, GPU/CPU dispatch
+        and host checks are all decided there, never here. "Before I deploy this model change,
+        which existing rows would break the new rules?"
+      </p>
+
+      <div class="packs-toolbar gpuchecks-toolbar">
+        <label id="gpuchecks-app-label" hidden>App <select id="gpuchecks-app-picker"></select></label>
+        <button class="btn ghost" id="gpuchecks-refresh-apps">⟳ REFRESH APPS</button>
+        <label>Engine <select id="gpuchecks-engine">
+          <option value="auto">auto</option>
+          <option value="gpu">gpu</option>
+          <option value="cpu">cpu</option>
+        </select></label>
+        <label class="gpuchecks-verify"><input type="checkbox" id="gpuchecks-verify" /> Verify every row on CPU</label>
+        <button class="btn" id="gpuchecks-run-btn">▶ RUN</button>
+        <span id="gpuchecks-status" class="status-line"></span>
+      </div>
+
+      <div id="gpuchecks-empty" class="gpuchecks-empty" hidden>
+        This app was generated without GPU check artifacts, or has no manifest yet.
+        Add <code>"checks.gpuArtifacts": true</code> to <code>config.json</code> → <code>defaults</code>,
+        then regenerate. <span id="gpuchecks-empty-detail"></span>
+      </div>
+
+      <div id="gpuchecks-columns" class="gpuchecks-columns">
+        <div class="gpuchecks-panel">
+          <h3>CHECKS</h3>
+          <div class="gpuchecks-scroll">
+            <table class="gpuchecks-table">
+              <thead><tr><th>Concept</th><th>Check</th><th>Kind</th><th>Engine</th></tr></thead>
+              <tbody id="gpuchecks-checks-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="gpuchecks-panel">
+          <h3>RUNS</h3>
+          <div class="gpuchecks-scroll">
+            <table class="gpuchecks-table">
+              <thead><tr><th>Time</th><th>Engine</th><th>Rows</th><th>Violations</th><th>Verify</th><th>Total</th></tr></thead>
+              <tbody id="gpuchecks-runs-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div id="gpuchecks-details" class="gpuchecks-details" hidden>
+        <h3 id="gpuchecks-details-title">Run details</h3>
+        <div class="gpuchecks-details-actions">
+          <button class="btn ghost" id="gpuchecks-download-bundle">⬇ Download bundle</button>
+          <button class="btn ghost" id="gpuchecks-copy-prompt">⧉ Copy AI prompt</button>
+          <button class="btn ghost" id="gpuchecks-view-shader">📄 View shader</button>
+        </div>
+        <p id="gpuchecks-details-packs" class="gpuchecks-samples"></p>
+        <table class="gpuchecks-table">
+          <thead><tr><th>Concept</th><th>Check</th><th>Status</th><th>Violations</th><th>Sample ids / reason</th></tr></thead>
+          <tbody id="gpuchecks-details-body"></tbody>
+        </table>
+        <pre class="gpuchecks-shader-pre" id="gpuchecks-shader-pre" hidden></pre>
+        <pre class="gpuchecks-prompt-pre" id="gpuchecks-prompt-pre" hidden></pre>
+      </div>
+    </section>
+
     <section id="screen-secrets" class="screen" hidden>
       <h1>&#128272; SECRETS <span class="dim">// db and deploy credentials, in the OS keyring</span></h1>
       <p class="subtitle">
@@ -928,6 +996,7 @@
   <script src="packs.js"></script>
   <script src="provenance.js"></script>
   <script src="dbio.js"></script>
+  <script src="gpuchecks.js"></script>
   <script src="secrets.js"></script>
   <script src="studio.js"></script>
   <script src="evals.js"></script>
@@ -943,6 +1012,7 @@
     try { window.__npdevInitPacks(); } catch (e) { console.error("Packs init failed", e); }
     try { window.__npdevInitProvenance(); } catch (e) { console.error("Impact init failed", e); }
     try { window.__npdevInitDbio(); } catch (e) { console.error("DB Import/Export init failed", e); }
+    try { window.__npdevInitGpuChecks(); } catch (e) { console.error("GPU Checks init failed", e); }
     try { window.__npdevInitSecrets(); } catch (e) { console.error("Secrets init failed", e); }
     try { window.__npdevInitStudio(); } catch (e) { console.error("Studio init failed", e); }
     try { window.__npdevInitEvals(); } catch (e) { console.error("Evals init failed", e); }

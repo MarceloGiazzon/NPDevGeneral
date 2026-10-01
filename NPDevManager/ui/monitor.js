@@ -279,6 +279,7 @@ function cardHtml(app) {
         <button class="danger" data-ops="reset-environment" data-dir="${dir}" data-destructive="1">Reset-Environment <i>⚠ deletes data</i></button>
         <hr>
         <button data-explore="${dir}">Explore this app <i>scrap</i></button>
+        <button data-gpu-check="${dir}">GPU Check Routines <i>data rules</i></button>
         <button data-folder="${dir}">Open app folder <i>explorer</i></button>
         <button data-folder="${esc(app.opsDir || app.appDir)}">Open _ops folder <i>explorer</i></button>
         <button data-export="${dir}">Export support bundle <i>zip</i></button>
@@ -339,6 +340,11 @@ function wireCards() {
   grid.querySelectorAll("[data-explore]").forEach((btn) =>
     btn.addEventListener("click", () => {
       window.__npdevOpenScrap && window.__npdevOpenScrap(btn.dataset.explore);
+    })
+  );
+  grid.querySelectorAll("[data-gpu-check]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      window.__npdevOpenGpuChecks && window.__npdevOpenGpuChecks(btn.dataset.gpuCheck);
     })
   );
   grid.querySelectorAll("[data-ops]").forEach((btn) =>

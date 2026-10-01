@@ -110,6 +110,13 @@ const FIXTURE_PACK_WHY: &str = include_str!("../fixtures/pack-why.json");
 /// `npdev-cli-result.v1` envelope `run_db_export`/`run_db_import` (npdev_cli.py) emit with --json.
 const FIXTURE_DB_EXPORT_RESULT: &str = include_str!("../fixtures/db-export-result.json");
 const FIXTURE_DB_IMPORT_RESULT: &str = include_str!("../fixtures/db-import-result.json");
+/// GPU Checks tab (Track B, G5): hand-written from the REAL `npdev-cli-result.v1` shapes captured
+/// live in Track B's own session (`npdev gpu-check list/run/history --json` against
+/// NPDevSamples/dsl-conformance-max's real generated manifest and a real GPU run on this machine's
+/// NVIDIA GeForce MX330) -- not invented, trimmed from the actual captured output.
+const FIXTURE_GPU_CHECK_LIST: &str = include_str!("../fixtures/gpu-check-list.json");
+const FIXTURE_GPU_CHECK_RUN: &str = include_str!("../fixtures/gpu-check-run.json");
+const FIXTURE_GPU_CHECK_HISTORY: &str = include_str!("../fixtures/gpu-check-history.json");
 
 /// Which doctor fixture stub mode serves -- switchable at runtime (see `set_fake_doctor_scenario`
 /// command) so every failure screen (missing Java, wrong version, unstaged jars) can be exercised
@@ -1346,6 +1353,121 @@ pub async fn run_db_import(
         args.push("--force".to_string());
     }
     run_json(python_exe, npdev_cli, &args, java_home, "db import").await
+}
+
+// ---------------------------------------------------------------------------------------------
+// GPU Checks tab (Track B, G5): `npdev gpu-check list/run/history/show/bundle`, wrapped. Same
+// thin-pipe rule as every tab above -- engine choice, packing, GPU/CPU dispatch, host checks and
+// the run record's own shape all live in NPDevCli/npdev_gpu_check.py; this file only builds argv
+// and parses the one JSON object back.
+// ---------------------------------------------------------------------------------------------
+
+/// `npdev gpu-check list --app <dir> --json` -- every check in the app's GPU check manifest, with
+/// its engine eligibility (gpu / host / skipped + reason).
+pub async fn run_gpu_check_list(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_GPU_CHECK_LIST).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec!["gpu-check".to_string(), "list".to_string(),
+                     "--app".to_string(), app_dir.to_string(), "--json".to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "gpu-check list").await
+}
+
+/// `npdev gpu-check run --app <dir> --engine <e> [--verify] --json` -- export, pack, run every
+/// check, write a run record. `engine`: "auto" | "gpu" | "cpu".
+pub async fn run_gpu_check_run(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    engine: &str,
+    verify: bool,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_GPU_CHECK_RUN).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let mut args = vec!["gpu-check".to_string(), "run".to_string(),
+                         "--app".to_string(), app_dir.to_string(),
+                         "--engine".to_string(), engine.to_string(), "--json".to_string()];
+    if verify {
+        args.push("--verify".to_string());
+    }
+    run_json(python_exe, npdev_cli, &args, java_home, "gpu-check run").await
+}
+
+/// `npdev gpu-check history --app <dir> --json` -- previous runs for this app, newest first.
+pub async fn run_gpu_check_history(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_GPU_CHECK_HISTORY).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec!["gpu-check".to_string(), "history".to_string(),
+                     "--app".to_string(), app_dir.to_string(), "--json".to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "gpu-check history").await
+}
+
+/// `npdev gpu-check show --app <dir> --run <id> --json` -- one run's full result record (per-check
+/// violations, sample ids, timings).
+pub async fn run_gpu_check_show(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    run_id: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return serde_json::from_str(FIXTURE_GPU_CHECK_RUN).map_err(|e| format!("fixture did not parse: {e}"));
+    }
+    let args = vec!["gpu-check".to_string(), "show".to_string(),
+                     "--app".to_string(), app_dir.to_string(), "--run".to_string(), run_id.to_string(),
+                     "--json".to_string()];
+    run_json(python_exe, npdev_cli, &args, java_home, "gpu-check show").await
+}
+
+/// `npdev gpu-check bundle --app <dir> --run <id> --out <zip>` -- zips one run's record (never the
+/// CSV export). This CLI subcommand has no `--json` mode (it only ever prints the written zip
+/// path) -- wraps the raw stdout into an `npdev-cli-result.v1`-shaped object by hand so the UI
+/// side has one envelope convention regardless.
+pub async fn run_gpu_check_bundle(
+    python_exe: &Path,
+    npdev_cli: &Path,
+    java_home: Option<&str>,
+    app_dir: &str,
+    run_id: &str,
+    out_zip: &str,
+) -> Result<Value, String> {
+    if fake_mode() {
+        return Ok(serde_json::json!({
+            "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check bundle",
+            "ok": true, "exitCode": 0, "path": out_zip
+        }));
+    }
+    let args = vec!["gpu-check".to_string(), "bundle".to_string(),
+                     "--app".to_string(), app_dir.to_string(), "--run".to_string(), run_id.to_string(),
+                     "--out".to_string(), out_zip.to_string()];
+    let borrowed: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = build_command(python_exe, npdev_cli, &borrowed, java_home, None)
+        .output()
+        .await
+        .map_err(|e| format!("could not run gpu-check bundle: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() { "gpu-check bundle failed".to_string() } else { stderr });
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Ok(serde_json::json!({
+        "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check bundle",
+        "ok": true, "exitCode": 0, "path": path
+    }))
 }
 
 /// S16 (NPDEV_MEGA_ROADMAP.md, Track B): `npdev impact --baseline <old> --current <new> --app <d>`

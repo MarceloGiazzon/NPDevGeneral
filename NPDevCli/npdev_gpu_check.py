@@ -647,7 +647,7 @@ def run(app_dir: Path, engine: str = "auto", concept_names: list[str] | None = N
     if not gpu_ok and engine in ("gpu", "auto"):
         result["engine"]["gpuUnavailableReason"] = gpu_info
 
-    _write_run_record(run_dir, manifest, result)
+    _write_run_record(run_dir, manifest, result, shader_dir)
     return result
 
 
@@ -666,13 +666,23 @@ def _collect_tables_for_host_checks(concept: dict, export_dir: Path, own_table) 
     return tables
 
 
-def _write_run_record(run_dir: Path, manifest: dict, result: dict) -> None:
+def _write_run_record(run_dir: Path, manifest: dict, result: dict, shader_dir: Path | None = None) -> None:
     (run_dir / "result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     (run_dir / "summary.txt").write_text(_summary_text(result), encoding="utf-8")
     (run_dir / "ai-prompt.txt").write_text(_ai_prompt_text(result), encoding="utf-8")
     artifacts_dir = run_dir / "artifacts"
     artifacts_dir.mkdir(exist_ok=True)
     (artifacts_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    # Copy the shader text behind every pack this manifest declares (not just the ones this run
+    # happened to use), so the Manager's "View shader" button has something to show for any pack
+    # even if it ran on the CPU twin this time.
+    if shader_dir is not None:
+        for concept in manifest.get("concepts", []):
+            for pack in concept.get("packs", []):
+                src = shader_dir / pack["shader"]
+                if src.exists():
+                    (artifacts_dir / pack["shader"]).write_text(
+                        src.read_text(encoding="utf-8"), encoding="utf-8")
 
 
 def _summary_text(result: dict) -> str:
@@ -756,10 +766,25 @@ def history(app_dir: Path) -> list[dict]:
 
 
 def show(app_dir: Path, run_id: str) -> dict:
-    result_path = app_dir / RUNS_REL / run_id / "result.json"
+    run_dir = app_dir / RUNS_REL / run_id
+    result_path = run_dir / "result.json"
     if not result_path.exists():
         raise GpuCheckError(f"no such run: {run_id}")
-    return json.loads(result_path.read_text(encoding="utf-8"))
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    # Embedded here (not a separate CLI call) so the Manager's "Copy AI prompt" / "View shader"
+    # buttons have one round trip to work with, same reasoning as bundle() zipping everything
+    # together.
+    ai_prompt_path = run_dir / "ai-prompt.txt"
+    if ai_prompt_path.exists():
+        result["aiPrompt"] = ai_prompt_path.read_text(encoding="utf-8")
+    shaders: dict[str, str] = {}
+    artifacts_dir = run_dir / "artifacts"
+    if artifacts_dir.is_dir():
+        for shader_path in sorted(artifacts_dir.glob("*.wgsl")):
+            shaders[shader_path.name] = shader_path.read_text(encoding="utf-8")
+    if shaders:
+        result["shaders"] = shaders
+    return result
 
 
 def bundle(app_dir: Path, run_id: str, out_zip: Path) -> Path:
