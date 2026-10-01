@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent access — {{appName}}</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --card: #ffffff; --ink: #1f2430; --muted: #6b7280;
+    --accent: #2563eb; --accent-ink: #ffffff; --line: #e2e5ea;
+    --error: #b91c1c; --error-bg: #fef2f2; --ok: #15803d; --ok-bg: #f0fdf4;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center;
+         background: var(--bg); color: var(--ink); padding: 2.5rem 1rem;
+         font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { width: 32rem; max-width: calc(100vw - 2rem); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+          padding: 1.25rem 1.4rem 1.5rem; box-shadow: 0 6px 24px rgba(16, 24, 40, .07); margin-bottom: 1.1rem; }
+  h1 { font-size: 1.3rem; margin: 0 0 .25rem; }
+  h2 { font-size: 1rem; margin: 0 0 .6rem; font-weight: 600; }
+  .sub { color: var(--muted); font-size: .9rem; margin: 0 0 1.3rem; }
+  .note { font-size: .85rem; color: var(--muted); line-height: 1.45; margin: 0 0 .9rem; }
+  .primary { padding: .55rem 1rem; border: 0; border-radius: 7px; background: var(--accent);
+             color: var(--accent-ink); font-size: .9rem; cursor: pointer; }
+  .primary:hover { filter: brightness(1.05); }
+  .primary:disabled { opacity: .6; cursor: not-allowed; }
+  .secondary { padding: .5rem .9rem; border: 1px solid var(--line); border-radius: 7px; background: #fff;
+               color: var(--ink); font-size: .85rem; cursor: pointer; }
+  .code { font-family: ui-monospace, Consolas, monospace; font-size: 1.1rem; letter-spacing: .12em;
+          background: #f4f5f7; border: 1px solid var(--line); border-radius: 7px; padding: .5rem .7rem;
+          display: inline-block; margin: .5rem 0; }
+  .token-box { word-break: break-all; font-family: ui-monospace, Consolas, monospace; font-size: .78rem;
+               background: #f4f5f7; border: 1px solid var(--line); border-radius: 7px; padding: .6rem .7rem;
+               margin: .6rem 0; }
+  .cmd-box { word-break: break-all; font-family: ui-monospace, Consolas, monospace; font-size: .76rem;
+             background: #11131a; color: #d7e2ff; border-radius: 7px; padding: .6rem .7rem; margin: .6rem 0; }
+  .row { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .pill { display: inline-flex; align-items: center; gap: .4rem; background: #f0fdf4; color: var(--ok);
+          border-radius: 999px; padding: .25rem .65rem; font-size: .8rem; }
+  .pill button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: .85rem; }
+  .banner { margin-top: .8rem; padding: .55rem .65rem; border-radius: 7px; font-size: .82rem; line-height: 1.4; }
+  .banner.error { background: var(--error-bg); color: var(--error); }
+  .banner.ok { background: var(--ok-bg); color: var(--ok); }
+  .hidden { display: none; }
+  .countdown { font-size: .8rem; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Agent access</h1>
+  <p class="sub">Connect a chat app or an AI coding agent to your account on {{appName}}.</p>
+
+  <section class="card" id="telegramCard">
+    <h2>Telegram</h2>
+    <p class="note" id="telegramIntro">Connect your Telegram account so you can chat with this app.</p>
+    <div id="telegramLinked" class="hidden">
+      <div class="row"><span class="pill">✓ Connected<button id="telegramUnlink" type="button" title="Unlink">✕</button></span></div>
+    </div>
+    <div id="telegramConnect">
+      <button class="primary" id="telegramConnectBtn" type="button">Connect Telegram</button>
+      <div id="telegramCodeBlock" class="hidden">
+        <p class="note">Your code (valid 10 minutes):</p>
+        <div class="code" id="telegramCode">--------</div>
+        <div class="row">
+          <a id="telegramDeepLink" class="primary" href="#" target="_blank" rel="noopener">Open Telegram</a>
+          <span class="countdown" id="telegramCountdown"></span>
+        </div>
+      </div>
+    </div>
+    <p id="telegramError" class="banner error hidden"></p>
+  </section>
+
+  <section class="card" id="whatsappCard">
+    <h2>WhatsApp</h2>
+    <p class="note" id="whatsappIntro">Connect your WhatsApp account so you can chat with this app.</p>
+    <div id="whatsappLinked" class="hidden">
+      <div class="row"><span class="pill">✓ Connected<button id="whatsappUnlink" type="button" title="Unlink">✕</button></span></div>
+    </div>
+    <div id="whatsappConnect">
+      <button class="primary" id="whatsappConnectBtn" type="button">Connect WhatsApp</button>
+      <div id="whatsappCodeBlock" class="hidden">
+        <p class="note">Send this message to the number shown below:</p>
+        <div class="code" id="whatsappCommand">link --------</div>
+        <p class="note" id="whatsappPhone"></p>
+        <span class="countdown" id="whatsappCountdown"></span>
+      </div>
+    </div>
+    <p id="whatsappError" class="banner error hidden"></p>
+  </section>
+
+  <section class="card">
+    <h2>MCP (Claude Code / Claude Desktop / any MCP agent)</h2>
+    <p class="note">Create a token this app's MCP endpoint accepts as your own login. Shown once -- copy it now.</p>
+    <button class="primary" id="mcpCreateBtn" type="button">Create MCP token</button>
+    <div id="mcpResult" class="hidden">
+      <p class="note">Token:</p>
+      <div class="token-box" id="mcpToken"></div>
+      <button class="secondary" id="mcpCopyToken" type="button">Copy token</button>
+      <p class="note">Add to Claude Code:</p>
+      <div class="cmd-box" id="mcpCommand"></div>
+      <button class="secondary" id="mcpCopyCommand" type="button">Copy command</button>
+    </div>
+    <p id="mcpError" class="banner error hidden"></p>
+  </section>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var TOKEN_KEYS = ["npdev.shell.token", "npdev.businessUi.apiKey"];
+  function currentToken() {
+    for (var i = 0; i < TOKEN_KEYS.length; i++) {
+      var v = localStorage.getItem(TOKEN_KEYS[i]);
+      if (v) { return v; }
+    }
+    return null;
+  }
+
+  var token = currentToken();
+
+  function authedFetch(url, options) {
+    options = options || {};
+    options.headers = Object.assign({
+      "Authorization": "Bearer " + token,
+      "X-Api-Key": token,
+      "Content-Type": "application/json"
+    }, options.headers || {});
+    return fetch(url, options).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (body) {
+        return { status: r.status, body: body };
+      });
+    });
+  }
+
+  function showError(elId, message) {
+    var el = document.getElementById(elId);
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+
+  function startCountdown(elId, expiresAtIso) {
+    var el = document.getElementById(elId);
+    var expiresAt = new Date(expiresAtIso).getTime();
+    function tick() {
+      var remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+      el.textContent = remaining > 0 ? ("expires in " + remaining + "s") : "expired -- create a new one";
+      if (remaining > 0) { setTimeout(tick, 1000); }
+    }
+    tick();
+  }
+
+  function refreshLinks() {
+    if (!token) { return; }
+    authedFetch("/api/agent/links").then(function (res) {
+      if (res.status !== 200) { return; }
+      var linked = res.body.linked || [];
+      toggleLinked("telegram", linked.indexOf("telegram") >= 0);
+      toggleLinked("whatsapp", linked.indexOf("whatsapp") >= 0);
+    });
+  }
+
+  function toggleLinked(provider, isLinked) {
+    document.getElementById(provider + "Linked").classList.toggle("hidden", !isLinked);
+    document.getElementById(provider + "Connect").classList.toggle("hidden", isLinked);
+  }
+
+  function wireUnlink(provider) {
+    document.getElementById(provider + "Unlink").addEventListener("click", function () {
+      authedFetch("/api/agent/links/" + provider, { method: "DELETE" }).then(function () {
+        refreshLinks();
+      });
+    });
+  }
+
+  if (!token) {
+    ["telegramError", "whatsappError", "mcpError"].forEach(function (id) {
+      showError(id, "Sign in first to connect agent access.");
+    });
+  } else {
+    refreshLinks();
+    wireUnlink("telegram");
+    wireUnlink("whatsapp");
+
+    document.getElementById("telegramConnectBtn").addEventListener("click", function () {
+      authedFetch("/api/agent/link-code", { method: "POST" }).then(function (res) {
+        if (res.status !== 200) { showError("telegramError", "Could not create a code."); return; }
+        if (!res.body.telegram) { showError("telegramError", "Telegram is not configured on this app."); return; }
+        document.getElementById("telegramCode").textContent = res.body.code;
+        document.getElementById("telegramDeepLink").href = res.body.telegram.deepLink;
+        document.getElementById("telegramCodeBlock").classList.remove("hidden");
+        startCountdown("telegramCountdown", res.body.expiresAt);
+      });
+    });
+
+    document.getElementById("whatsappConnectBtn").addEventListener("click", function () {
+      authedFetch("/api/agent/link-code", { method: "POST" }).then(function (res) {
+        if (res.status !== 200) { showError("whatsappError", "Could not create a code."); return; }
+        if (!res.body.whatsapp) { showError("whatsappError", "WhatsApp is not configured on this app."); return; }
+        document.getElementById("whatsappCommand").textContent = res.body.whatsapp.linkCommand;
+        document.getElementById("whatsappPhone").textContent = "Number: " + res.body.whatsapp.phoneDisplay;
+        document.getElementById("whatsappCodeBlock").classList.remove("hidden");
+        startCountdown("whatsappCountdown", res.body.expiresAt);
+      });
+    });
+
+    document.getElementById("mcpCreateBtn").addEventListener("click", function () {
+      authedFetch("/api/agent/mcp-token", { method: "POST" }).then(function (res) {
+        if (res.status !== 200) { showError("mcpError", "Could not create a token."); return; }
+        document.getElementById("mcpToken").textContent = res.body.token;
+        document.getElementById("mcpCommand").textContent = res.body.claudeCodeCommand;
+        document.getElementById("mcpResult").classList.remove("hidden");
+      });
+    });
+    document.getElementById("mcpCopyToken").addEventListener("click", function () {
+      navigator.clipboard.writeText(document.getElementById("mcpToken").textContent);
+    });
+    document.getElementById("mcpCopyCommand").addEventListener("click", function () {
+      navigator.clipboard.writeText(document.getElementById("mcpCommand").textContent);
+    });
+  }
+})();
+</script>
+</body>
+</html>

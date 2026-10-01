@@ -1,6 +1,7 @@
 package com.finalexec.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.agent.AgentLinkService;
 import com.finalexec.auth.JwtSigner;
 import com.finalexec.auth.LoginController;
 import com.finalexec.config.ModelHolder;
@@ -14,6 +15,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,14 +26,16 @@ import javax.sql.DataSource;
 import java.security.PrivateKey;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * AGENT-1 (A5.2): endpoints an authenticated app user calls to manage their own agent access --
- * today just minting an MCP token. Account linking (Telegram/WhatsApp) and the status probe land
- * here too in later phases (A6, A9); this class is already in {@code allowedControllers}.
+ * AGENT-1 (A5.2, A6.3): endpoints an authenticated app user calls to manage their own agent
+ * access -- minting an MCP token, and linking/unlinking Telegram/WhatsApp. The status probe lands
+ * here too in A9; this class is already in {@code allowedControllers}.
  *
  * <p>jwt-mode only: an MCP token is itself a JWT, so this endpoint needs the same signing key
  * {@code OAuthGoogleController}/{@code LoginController} use for session tokens. apiKey/none apps
@@ -45,22 +51,31 @@ public class AgentLinkController {
     private final RuntimeContextService runtimeContextService;
     private final ModelHolder modelHolder;
     private final DataSource dataSource;
+    private final AgentLinkService linkService;
     private final JwtSigner mcpTokenSigner;
     private final long mcpTokenExpirySeconds;
+    private final String telegramBotUsername;
+    private final String whatsappPhoneDisplay;
 
     public AgentLinkController(
             RuntimeContextService runtimeContextService,
             ModelHolder modelHolder,
             DataSource dataSource,
+            AgentLinkService linkService,
             ObjectMapper objectMapper,
             @Value("${npdev.auth.jwt.private-key-path:}") String privateKeyPath,
             @Value("${npdev.auth.jwt.issuer:}") String issuer,
             @Value("${npdev.auth.jwt.audience:}") String audience,
-            @Value("${NPDEV_AGENT_MCP_TOKEN_DAYS:30}") long mcpTokenDays
+            @Value("${NPDEV_AGENT_MCP_TOKEN_DAYS:30}") long mcpTokenDays,
+            @Value("${NPDEV_TELEGRAM_BOT_USERNAME:}") String telegramBotUsername,
+            @Value("${NPDEV_WHATSAPP_PHONE_DISPLAY:}") String whatsappPhoneDisplay
     ) throws Exception {
         this.runtimeContextService = runtimeContextService;
         this.modelHolder = modelHolder;
         this.dataSource = dataSource;
+        this.linkService = linkService;
+        this.telegramBotUsername = telegramBotUsername;
+        this.whatsappPhoneDisplay = whatsappPhoneDisplay;
         long days = mcpTokenDays > 0 ? mcpTokenDays : DEFAULT_MCP_TOKEN_DAYS;
         this.mcpTokenExpirySeconds = days * 24 * 60 * 60;
         PrivateKey privateKey = (privateKeyPath == null || privateKeyPath.isBlank())
@@ -70,6 +85,69 @@ public class AgentLinkController {
         this.mcpTokenSigner = privateKey == null
                 ? null
                 : new JwtSigner(objectMapper, privateKey, issuer, audience, mcpTokenExpirySeconds);
+    }
+
+    /**
+     * Creates a 10-minute link code for the calling user and returns the deep links a Telegram/
+     * WhatsApp channel's connect button can offer -- {@code null} for a channel the model does not
+     * enable (A1.11 already guarantees telegram/whatsapp enabled implies jwt mode + identity pack,
+     * so this endpoint existing at all means those prerequisites hold).
+     */
+    @PostMapping("/api/agent/link-code")
+    public ResponseEntity<Map<String, Object>> createLinkCode(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        AgentLinkService.CreatedCode created = linkService.createCode(context.tenantId(), context.actorId());
+
+        var access = modelHolder.get().getAgentAccess();
+        boolean telegramEnabled = access != null && access.getChannels() != null
+                && access.getChannels().getTelegram().isEnabled();
+        boolean whatsappEnabled = access != null && access.getChannels() != null
+                && access.getChannels().getWhatsapp().isEnabled();
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("code", created.code());
+        body.put("expiresAt", DateTimeFormatter.ISO_INSTANT.format(created.expiresAt()));
+        if (telegramEnabled && telegramBotUsername != null && !telegramBotUsername.isBlank()) {
+            Map<String, Object> telegram = new LinkedHashMap<>();
+            telegram.put("botUsername", telegramBotUsername);
+            telegram.put("deepLink", "https://t.me/" + telegramBotUsername + "?start=" + created.code());
+            body.put("telegram", telegram);
+        } else {
+            body.put("telegram", null);
+        }
+        if (whatsappEnabled && whatsappPhoneDisplay != null && !whatsappPhoneDisplay.isBlank()) {
+            Map<String, Object> whatsapp = new LinkedHashMap<>();
+            whatsapp.put("phoneDisplay", whatsappPhoneDisplay);
+            whatsapp.put("linkCommand", "link " + created.code());
+            body.put("whatsapp", whatsapp);
+        } else {
+            body.put("whatsapp", null);
+        }
+        return ResponseEntity.ok(body);
+    }
+
+    /** The current user's own linked channels. */
+    @GetMapping("/api/agent/links")
+    public ResponseEntity<Map<String, Object>> links(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        List<String> providers = linkService.linkedProviders(context.tenantId(), context.actorId());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("linked", new ArrayList<>(providers));
+        return ResponseEntity.ok(body);
+    }
+
+    /**
+     * Unlinks the given channel from the account linked to it, scoped to the CALLING user: the
+     * provider/subject pair deleted must already resolve back to this user, so one user can never
+     * unlink another's channel by guessing a provider name.
+     */
+    @DeleteMapping("/api/agent/links/{provider}")
+    public ResponseEntity<Map<String, Object>> unlink(@PathVariable String provider, HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        boolean removed = linkService.unlinkForUser(provider, context.tenantId(), context.actorId());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ok", removed);
+        return ResponseEntity.ok(body);
     }
 
     /**
