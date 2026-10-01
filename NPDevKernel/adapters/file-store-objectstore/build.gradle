@@ -7,11 +7,11 @@ dependencies {
     implementation 'software.amazon.awssdk:s3'
 
     testImplementation 'org.mockito:mockito-core:5.11.0'
-    testImplementation 'org.testcontainers:testcontainers:1.21.4'
+    testImplementation 'org.testcontainers:testcontainers:2.0.5'
     // MinIO deleted minio/minio from both Docker Hub (2026-09-11) and its quay.io mirror stopped
     // allowing anonymous pulls shortly after (confirmed live in CI: consistent ConditionTimeoutException
     // on every quay.io/minio/minio pull attempt) -- LocalStack's S3 service is the replacement test
     // double, still actively published on Docker Hub.
-    testImplementation 'org.testcontainers:localstack:1.21.4'
-    testImplementation 'org.testcontainers:junit-jupiter:1.21.4'
+    testImplementation 'org.testcontainers:localstack:2.0.5'
+    testImplementation 'org.testcontainers:junit-jupiter:2.0.5'
 }
