@@ -210,8 +210,10 @@ class NumpyTwin:
             _, b, _ = self.value(node["r"])
             return "num", (a + b) if node["op"] == "+" else (a - b), np.zeros(self.n, bool)
         if k == "call" and node["name"] == "__len":
+            # Same rescale as GpuWgslEmitter: a str_len word is packed as the raw length, while every
+            # other number in the pack (literals, i32/fixed32 words) sits at the pack's scale.
             _, v, n = self.value(node["args"][0])
-            return "num", v, n
+            return "num", v.astype(np.int64) * (10 ** self.scale), n
         return "bool", self.boolean(node), np.zeros(self.n, bool)
 
     def boolean(self, node: dict):
