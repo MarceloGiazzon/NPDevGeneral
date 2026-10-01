@@ -91,7 +91,12 @@ public final class GpuWgslEmitter {
         if ("call".equals(k) && "__len".equals(str(node.get("name")))) {
             List<Object> args = (List<Object>) node.get("args");
             Val a = value((Map<String, Object>) args.get(0));
-            return new Val("num", a.expr(), a.nullExpr());
+            // Every number in a pack is compared at the pack's decimal scale (num literals are
+            // rescaled above, i32/fixed32 columns are packed rescaled) -- a str_len word is packed as
+            // the raw length, so it must be rescaled here or maxLength 5 becomes "<= 500".
+            String expr = scale == 0 ? a.expr()
+                    : "(" + a.expr() + " * " + java.math.BigInteger.TEN.pow(scale) + "u)";
+            return new Val("num", expr, a.nullExpr());
         }
         return new Val("bool", booleanExpr(node), "false");
     }

@@ -303,7 +303,19 @@ public final class GpuCheckManifestBuilder {
             if (fields.size() > MAX_COLUMNS_PER_PACK) {
                 throw new GpuUnsupportedException("touches more than " + MAX_COLUMNS_PER_PACK + " fields");
             }
-            GpuCheckSupport.analyze(tree, allColumns);
+            int scale = GpuCheckSupport.analyze(tree, allColumns);
+            // analyze() does not catch every shape the emitter refuses (a string compared with
+            // anything but ''), and shaders() emits all packs in one pass -- so a refused check that
+            // got packed would fail EVERY shader of the model, not just its own. Emit it once here.
+            List<GpuManifestColumn> trialColumns = new ArrayList<>();
+            int word = 1;
+            for (String f : fields) {
+                GpuColumnInfo info = allColumns.get(f);
+                trialColumns.add(new GpuManifestColumn(word, word - 1, f, f, info.encoding(), info.scale(),
+                        info.enumValues()));
+                word++;
+            }
+            new GpuWgslEmitter(trialColumns, scale).booleanExpr(tree);
             candidates.add(new CandidateCheck(id, "invariant", fields,
                     "Invariant " + invariant.getRef() + ": " + expr, expr, tree));
         } catch (RuntimeException e) {
