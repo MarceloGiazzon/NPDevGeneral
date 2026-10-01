@@ -1,19 +1,28 @@
 package com.npdev.adapters.externalai.http;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.npdev.kernel.CapabilityCall;
 import com.npdev.kernel.CapabilityErrorKind;
 import com.npdev.kernel.CapabilityResult;
 import com.npdev.kernel.ports.CapabilityAdapter;
 import com.npdev.kernel.ports.ExternalAiCapabilityContract;
+import com.npdev.kernel.ports.ExternalAiChatTurn;
 import com.npdev.kernel.ports.ExternalAiEgressDeniedException;
 import com.npdev.kernel.ports.ExternalAiGenerationRequest;
 import com.npdev.kernel.ports.ExternalAiGenerationResult;
 import com.npdev.kernel.ports.ExternalAiPackSubmission;
 import com.npdev.kernel.ports.ExternalAiPayload;
 import com.npdev.kernel.ports.ExternalAiRunResult;
+import com.npdev.kernel.ports.ExternalAiToolCall;
+import com.npdev.kernel.ports.ExternalAiToolChatRequest;
+import com.npdev.kernel.ports.ExternalAiToolChatResult;
+import com.npdev.kernel.ports.ExternalAiToolSpec;
 import com.npdev.kernel.ports.ExternalAiVendorSummary;
 import com.npdev.kernel.ports.ExternalAiVerdictRecord;
 
@@ -25,6 +34,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -229,6 +239,17 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
     }
 
     @Override
+    public ExternalAiToolChatResult chatWithTools(ExternalAiToolChatRequest request) {
+        ExternalAiVendorProfile profile = requireConfiguredVendor(request.vendorId(), "tool chat");
+        String apiKey = requireApiKey(profile, "tool chat");
+        String model = (request.model() == null || request.model().isBlank()) ? profile.model() : request.model();
+
+        HttpResponse<String> response = send(buildToolChatRequest(profile, apiKey, model, request), profile);
+        ExternalAiChatTurn assistantTurn = parseToolChatResponse(profile.requestFormat(), response.body());
+        return new ExternalAiToolChatResult(profile.vendorId(), model, assistantTurn, response.body());
+    }
+
+    @Override
     public List<ExternalAiVendorSummary> configuredVendors() {
         return vendorsInOrder.stream()
                 .map(profile -> new ExternalAiVendorSummary(
@@ -373,6 +394,343 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
     }
 
     /**
+     * AGENT-1 (A2.2): the URI + auth headers triple, shared by {@link #buildGenerationRequest} and
+     * {@link #buildToolChatRequest} so the two never drift when a vendor is added or a header
+     * changes.
+     */
+    private void applyUriAndAuth(
+            HttpRequest.Builder builder, ExternalAiVendorProfile profile, String apiKey, String model) {
+        switch (profile.requestFormat()) {
+            case OPENAI_CHAT -> builder.uri(URI.create(profile.baseUrl()))
+                    .header("Authorization", "Bearer " + apiKey);
+            case GEMINI_GENERATE_CONTENT -> builder
+                    .uri(URI.create(profile.baseUrl() + "/models/" + model + ":generateContent"))
+                    .header("x-goog-api-key", apiKey);
+            case ANTHROPIC_MESSAGES -> builder.uri(URI.create(profile.baseUrl()))
+                    .header("x-api-key", apiKey)
+                    .header("anthropic-version", ANTHROPIC_VERSION);
+        }
+    }
+
+    /**
+     * AGENT-1 (A2.2): builds one tool-calling chat request body, format-specific. Reuses
+     * {@link #applyUriAndAuth} for the URI/auth triple and {@link #send} for retries/timeouts
+     * (both free). See {@code wire-formats.md} section 1 for the exact shapes.
+     */
+    private HttpRequest buildToolChatRequest(
+            ExternalAiVendorProfile profile, String apiKey, String model, ExternalAiToolChatRequest request) {
+        HttpRequest.Builder builder = HttpRequest.newBuilder();
+        applyUriAndAuth(builder, profile, apiKey, model);
+        String body;
+        try {
+            body = switch (profile.requestFormat()) {
+                case GEMINI_GENERATE_CONTENT -> buildGeminiToolChatBody(model, request);
+                case OPENAI_CHAT -> buildOpenAiToolChatBody(model, request);
+                case ANTHROPIC_MESSAGES -> buildAnthropicToolChatBody(model, request);
+            };
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed building external AI tool-chat request body", e);
+        }
+        return builder
+                .header("Content-Type", "application/json")
+                .timeout(requestTimeout)
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
+    }
+
+    /**
+     * AGENT-1 (A2.3): assistant turns with {@code vendorRaw} are replayed VERBATIM (thought
+     * signatures survive); consecutive {@code tool} turns are merged into one {@code user} content
+     * with several {@code functionResponse} parts (Gemini requires this).
+     * {@code functionResponse.response} must be a JSON object -- {@code AgentApiExecutor} guarantees
+     * every {@code resultJson} already is one.
+     */
+    private String buildGeminiToolChatBody(String model, ExternalAiToolChatRequest request) throws IOException {
+        ObjectNode root = JsonNodeFactory.instance.objectNode();
+        if (hasText(request.systemInstruction())) {
+            ObjectNode systemInstruction = JsonNodeFactory.instance.objectNode();
+            ArrayNode parts = JsonNodeFactory.instance.arrayNode();
+            parts.add(JsonNodeFactory.instance.objectNode().put("text", request.systemInstruction()));
+            systemInstruction.set("parts", parts);
+            root.set("systemInstruction", systemInstruction);
+        }
+        ArrayNode contents = JsonNodeFactory.instance.arrayNode();
+        List<ExternalAiChatTurn> turns = request.turns();
+        int i = 0;
+        while (i < turns.size()) {
+            ExternalAiChatTurn turn = turns.get(i);
+            if ("tool".equals(turn.role())) {
+                ObjectNode node = JsonNodeFactory.instance.objectNode();
+                node.put("role", "user");
+                ArrayNode parts = JsonNodeFactory.instance.arrayNode();
+                while (i < turns.size() && "tool".equals(turns.get(i).role())) {
+                    ExternalAiChatTurn toolTurn = turns.get(i);
+                    ObjectNode functionResponse = JsonNodeFactory.instance.objectNode();
+                    functionResponse.put("name", toolTurn.toolName());
+                    functionResponse.set("response", hasText(toolTurn.resultJson())
+                            ? readTree(toolTurn.resultJson()) : JsonNodeFactory.instance.objectNode());
+                    ObjectNode partNode = JsonNodeFactory.instance.objectNode();
+                    partNode.set("functionResponse", functionResponse);
+                    parts.add(partNode);
+                    i++;
+                }
+                node.set("parts", parts);
+                contents.add(node);
+            } else if ("assistant".equals(turn.role())) {
+                if (hasText(turn.vendorRaw())) {
+                    contents.add(readTree(turn.vendorRaw()));
+                } else {
+                    ObjectNode node = JsonNodeFactory.instance.objectNode();
+                    node.put("role", "model");
+                    ArrayNode parts = JsonNodeFactory.instance.arrayNode();
+                    if (turn.text() != null) {
+                        parts.add(JsonNodeFactory.instance.objectNode().put("text", turn.text()));
+                    }
+                    node.set("parts", parts);
+                    contents.add(node);
+                }
+                i++;
+            } else {
+                ObjectNode node = JsonNodeFactory.instance.objectNode();
+                node.put("role", "user");
+                ArrayNode parts = JsonNodeFactory.instance.arrayNode();
+                parts.add(JsonNodeFactory.instance.objectNode().put("text", turn.text() == null ? "" : turn.text()));
+                node.set("parts", parts);
+                contents.add(node);
+                i++;
+            }
+        }
+        root.set("contents", contents);
+
+        ArrayNode functionDeclarations = JsonNodeFactory.instance.arrayNode();
+        for (ExternalAiToolSpec tool : request.tools()) {
+            ObjectNode declaration = JsonNodeFactory.instance.objectNode();
+            declaration.put("name", tool.name());
+            if (tool.description() != null) {
+                declaration.put("description", tool.description());
+            }
+            declaration.set("parameters", toJsonNode(tool.parameters()));
+            functionDeclarations.add(declaration);
+        }
+        ObjectNode toolsNode = JsonNodeFactory.instance.objectNode();
+        toolsNode.set("functionDeclarations", functionDeclarations);
+        root.set("tools", JsonNodeFactory.instance.arrayNode().add(toolsNode));
+        ObjectNode functionCallingConfig = JsonNodeFactory.instance.objectNode();
+        functionCallingConfig.put("mode", "AUTO");
+        ObjectNode toolConfig = JsonNodeFactory.instance.objectNode();
+        toolConfig.set("functionCallingConfig", functionCallingConfig);
+        root.set("toolConfig", toolConfig);
+        return objectMapper.writeValueAsString(root);
+    }
+
+    /** AGENT-1 (A2.3): OpenAI gets one {@code {"role":"tool"}} message per tool result (no merging). */
+    private String buildOpenAiToolChatBody(String model, ExternalAiToolChatRequest request) throws IOException {
+        ObjectNode root = JsonNodeFactory.instance.objectNode();
+        root.put("model", model);
+        ArrayNode messages = JsonNodeFactory.instance.arrayNode();
+        if (hasText(request.systemInstruction())) {
+            messages.add(JsonNodeFactory.instance.objectNode()
+                    .put("role", "system").put("content", request.systemInstruction()));
+        }
+        for (ExternalAiChatTurn turn : request.turns()) {
+            switch (turn.role()) {
+                case "assistant" -> {
+                    if (hasText(turn.vendorRaw())) {
+                        messages.add(readTree(turn.vendorRaw()));
+                    } else {
+                        ObjectNode node = JsonNodeFactory.instance.objectNode();
+                        node.put("role", "assistant");
+                        if (turn.text() != null) {
+                            node.put("content", turn.text());
+                        } else {
+                            node.putNull("content");
+                        }
+                        messages.add(node);
+                    }
+                }
+                case "tool" -> {
+                    ObjectNode node = JsonNodeFactory.instance.objectNode();
+                    node.put("role", "tool");
+                    node.put("tool_call_id", turn.toolCallId());
+                    node.put("content", turn.resultJson() == null ? "{}" : turn.resultJson());
+                    messages.add(node);
+                }
+                default -> messages.add(JsonNodeFactory.instance.objectNode()
+                        .put("role", "user").put("content", turn.text() == null ? "" : turn.text()));
+            }
+        }
+        root.set("messages", messages);
+
+        ArrayNode tools = JsonNodeFactory.instance.arrayNode();
+        for (ExternalAiToolSpec tool : request.tools()) {
+            ObjectNode function = JsonNodeFactory.instance.objectNode();
+            function.put("name", tool.name());
+            if (tool.description() != null) {
+                function.put("description", tool.description());
+            }
+            function.set("parameters", toJsonNode(tool.parameters()));
+            ObjectNode toolNode = JsonNodeFactory.instance.objectNode();
+            toolNode.put("type", "function");
+            toolNode.set("function", function);
+            tools.add(toolNode);
+        }
+        root.set("tools", tools);
+        return objectMapper.writeValueAsString(root);
+    }
+
+    /**
+     * AGENT-1 (A2.3): Anthropic merges consecutive {@code tool} turns into ONE {@code user} message
+     * with several {@code tool_result} blocks (same reasoning as Gemini's {@code functionResponse}
+     * merge). {@code max_tokens} reuses {@link #ANTHROPIC_MAX_TOKENS}.
+     */
+    private String buildAnthropicToolChatBody(String model, ExternalAiToolChatRequest request) throws IOException {
+        ObjectNode root = JsonNodeFactory.instance.objectNode();
+        root.put("model", model);
+        root.put("max_tokens", ANTHROPIC_MAX_TOKENS);
+        if (hasText(request.systemInstruction())) {
+            root.put("system", request.systemInstruction());
+        }
+        ArrayNode tools = JsonNodeFactory.instance.arrayNode();
+        for (ExternalAiToolSpec tool : request.tools()) {
+            ObjectNode toolNode = JsonNodeFactory.instance.objectNode();
+            toolNode.put("name", tool.name());
+            if (tool.description() != null) {
+                toolNode.put("description", tool.description());
+            }
+            toolNode.set("input_schema", toJsonNode(tool.parameters()));
+            tools.add(toolNode);
+        }
+        root.set("tools", tools);
+
+        ArrayNode messages = JsonNodeFactory.instance.arrayNode();
+        List<ExternalAiChatTurn> turns = request.turns();
+        int i = 0;
+        while (i < turns.size()) {
+            ExternalAiChatTurn turn = turns.get(i);
+            if ("tool".equals(turn.role())) {
+                ArrayNode content = JsonNodeFactory.instance.arrayNode();
+                while (i < turns.size() && "tool".equals(turns.get(i).role())) {
+                    ExternalAiChatTurn toolTurn = turns.get(i);
+                    ObjectNode toolResult = JsonNodeFactory.instance.objectNode();
+                    toolResult.put("type", "tool_result");
+                    toolResult.put("tool_use_id", toolTurn.toolCallId());
+                    toolResult.put("content", toolTurn.resultJson() == null ? "{}" : toolTurn.resultJson());
+                    content.add(toolResult);
+                    i++;
+                }
+                ObjectNode node = JsonNodeFactory.instance.objectNode();
+                node.put("role", "user");
+                node.set("content", content);
+                messages.add(node);
+            } else if ("assistant".equals(turn.role())) {
+                ObjectNode node = JsonNodeFactory.instance.objectNode();
+                node.put("role", "assistant");
+                if (hasText(turn.vendorRaw())) {
+                    node.set("content", readTree(turn.vendorRaw()));
+                } else {
+                    ArrayNode content = JsonNodeFactory.instance.arrayNode();
+                    if (turn.text() != null) {
+                        content.add(JsonNodeFactory.instance.objectNode().put("type", "text").put("text", turn.text()));
+                    }
+                    node.set("content", content);
+                }
+                messages.add(node);
+                i++;
+            } else {
+                messages.add(JsonNodeFactory.instance.objectNode()
+                        .put("role", "user").put("content", turn.text() == null ? "" : turn.text()));
+                i++;
+            }
+        }
+        root.set("messages", messages);
+        return objectMapper.writeValueAsString(root);
+    }
+
+    private JsonNode toJsonNode(Map<String, Object> value) {
+        return objectMapper.valueToTree(value == null ? Map.of() : value);
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    /** AGENT-1 (A2.3): pulls the assistant turn (text and/or tool calls) out of whichever response
+     *  shape the vendor uses, keeping the raw vendor JSON in {@code vendorRaw} for verbatim replay. */
+    private ExternalAiChatTurn parseToolChatResponse(ExternalAiRequestFormat format, String responseBody) {
+        JsonNode root = readTree(responseBody);
+        return switch (format) {
+            case GEMINI_GENERATE_CONTENT -> parseGeminiToolChatResponse(root);
+            case OPENAI_CHAT -> parseOpenAiToolChatResponse(root);
+            case ANTHROPIC_MESSAGES -> parseAnthropicToolChatResponse(root);
+        };
+    }
+
+    private ExternalAiChatTurn parseGeminiToolChatResponse(JsonNode root) {
+        JsonNode contentNode = root.path("candidates").path(0).path("content");
+        StringBuilder text = new StringBuilder();
+        List<ExternalAiToolCall> calls = new ArrayList<>();
+        int callIndex = 0;
+        for (JsonNode part : contentNode.path("parts")) {
+            if (part.path("text").isTextual()) {
+                text.append(part.path("text").asText());
+            }
+            if (part.has("functionCall")) {
+                JsonNode functionCall = part.path("functionCall");
+                Map<String, Object> args = objectMapper.convertValue(
+                        functionCall.path("args"), new TypeReference<Map<String, Object>>() { });
+                calls.add(new ExternalAiToolCall(
+                        "gemini-" + callIndex, functionCall.path("name").asText(null),
+                        args == null ? Map.of() : args));
+                callIndex++;
+            }
+        }
+        String vendorRaw = contentNode.isMissingNode() ? null : contentNode.toString();
+        return new ExternalAiChatTurn(
+                "assistant", text.length() == 0 ? null : text.toString(), calls, vendorRaw, null, null, null);
+    }
+
+    private ExternalAiChatTurn parseOpenAiToolChatResponse(JsonNode root) {
+        JsonNode messageNode = root.path("choices").path(0).path("message");
+        String text = messageNode.path("content").isTextual() ? messageNode.path("content").asText() : null;
+        List<ExternalAiToolCall> calls = new ArrayList<>();
+        for (JsonNode toolCall : messageNode.path("tool_calls")) {
+            String argumentsJson = toolCall.path("function").path("arguments").asText("{}");
+            Map<String, Object> args;
+            try {
+                args = objectMapper.readValue(argumentsJson, new TypeReference<Map<String, Object>>() { });
+            } catch (IOException e) {
+                throw new IllegalStateException(
+                        "OpenAI tool_calls.function.arguments was not valid JSON: " + argumentsJson, e);
+            }
+            calls.add(new ExternalAiToolCall(
+                    toolCall.path("id").asText(null), toolCall.path("function").path("name").asText(null), args));
+        }
+        String vendorRaw = messageNode.isMissingNode() ? null : messageNode.toString();
+        return new ExternalAiChatTurn("assistant", text, calls, vendorRaw, null, null, null);
+    }
+
+    private ExternalAiChatTurn parseAnthropicToolChatResponse(JsonNode root) {
+        JsonNode contentArray = root.path("content");
+        StringBuilder text = new StringBuilder();
+        List<ExternalAiToolCall> calls = new ArrayList<>();
+        for (JsonNode block : contentArray) {
+            String type = block.path("type").asText();
+            if ("text".equals(type)) {
+                text.append(block.path("text").asText(""));
+            } else if ("tool_use".equals(type)) {
+                Map<String, Object> args = objectMapper.convertValue(
+                        block.path("input"), new TypeReference<Map<String, Object>>() { });
+                calls.add(new ExternalAiToolCall(
+                        block.path("id").asText(null), block.path("name").asText(null),
+                        args == null ? Map.of() : args));
+            }
+        }
+        String vendorRaw = contentArray.isMissingNode() ? null : contentArray.toString();
+        return new ExternalAiChatTurn(
+                "assistant", text.length() == 0 ? null : text.toString(), calls, vendorRaw, null, null, null);
+    }
+
+    /**
      * Build one vendor request from a single user prompt. Both callers -- {@code submitPack}'s
      * review pack and {@code generateText}'s free-form prompt -- are exactly that at the wire level,
      * so they share this method rather than keeping two copies of the auth/URL/body triple that
@@ -385,28 +743,18 @@ public final class HttpExternalAiCapabilityAdapter implements CapabilityAdapter,
     private HttpRequest buildGenerationRequest(
             ExternalAiVendorProfile profile, String apiKey, String model, String effort, String prompt) {
         HttpRequest.Builder builder = HttpRequest.newBuilder();
+        applyUriAndAuth(builder, profile, apiKey, model);
         String body;
         try {
             body = switch (profile.requestFormat()) {
-                case OPENAI_CHAT -> {
-                    builder.uri(URI.create(profile.baseUrl()))
-                            .header("Authorization", "Bearer " + apiKey);
-                    yield objectMapper.writeValueAsString(Map.of(
-                            "model", model,
-                            "messages", List.of(Map.of("role", "user", "content", prompt))
-                    ));
-                }
-                case GEMINI_GENERATE_CONTENT -> {
-                    builder.uri(URI.create(profile.baseUrl() + "/models/" + model + ":generateContent"))
-                            .header("x-goog-api-key", apiKey);
-                    yield objectMapper.writeValueAsString(Map.of(
-                            "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt))))
-                    ));
-                }
+                case OPENAI_CHAT -> objectMapper.writeValueAsString(Map.of(
+                        "model", model,
+                        "messages", List.of(Map.of("role", "user", "content", prompt))
+                ));
+                case GEMINI_GENERATE_CONTENT -> objectMapper.writeValueAsString(Map.of(
+                        "contents", List.of(Map.of("parts", List.of(Map.of("text", prompt))))
+                ));
                 case ANTHROPIC_MESSAGES -> {
-                    builder.uri(URI.create(profile.baseUrl()))
-                            .header("x-api-key", apiKey)
-                            .header("anthropic-version", ANTHROPIC_VERSION);
                     Map<String, Object> payload = new LinkedHashMap<>();
                     payload.put("model", model);
                     // Required by the Messages API, and a hard cap on thinking PLUS response text --
