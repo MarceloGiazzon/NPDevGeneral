@@ -135,6 +135,12 @@ public final class NpdevSettings {
             SettingKey.string("database.provider", "",
                     "Database provider for this app (e.g. h2-local|docker-postgres). Generation-time only.");
 
+    /** GPU-1 (G2.3): whether the generator emits GPU data-rule check artifacts (manifest + WGSL)
+     *  into the app. */
+    public static final SettingKey<Boolean> CHECKS_GPU_ARTIFACTS =
+            SettingKey.bool("checks.gpuArtifacts", false,
+                    "Emit GPU data-rule check artifacts (npdev/gpu-checks/manifest.json + WGSL shaders) into the app.");
+
     private static final List<SettingKey<?>> ALL = List.of(
             UI_GENERATE_BUSINESS_UI,
             CRUD_KERNEL_CONTROLLED,
@@ -151,7 +157,8 @@ public final class NpdevSettings {
             PERSISTENCE_ADAPTER,
             DATABASE_PROVIDER,
             UI_THEME_MODE,
-            UI_DENSITY
+            UI_DENSITY,
+            CHECKS_GPU_ARTIFACTS
     );
 
     /** All registered settings, in declaration order. */

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "npdev-gpu-check-manifest.v1",
+  "title": "NPDev GPU check manifest",
+  "description": "Emitted by GpuCheckManifestBuilder (dsl) via GpuCheckEmitter (generator) to <app>/src/main/resources/npdev/gpu-checks/manifest.json, and on demand by GpuCheckManifestMain for `npdev gpu-check plan`. Deterministic: no timestamps, no absolute paths, arrays sorted by concept name then check id.",
+  "type": "object",
+  "required": ["schemaVersion", "namespace", "concepts"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": "npdev-gpu-check-manifest.v1" },
+    "namespace": { "type": "string" },
+    "concepts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["concept", "table", "idColumn", "packs", "hostChecks", "skipped"],
+        "additionalProperties": false,
+        "properties": {
+          "concept": { "type": "string", "description": "Concept name as in the compiled model (pack-qualified names keep their '::')." },
+          "table": { "type": "string", "description": "CompiledConcept.getTableName() -- the physical table `npdev db export --tables` takes." },
+          "idColumn": { "type": "string", "description": "Column of the id field; the runner keeps row -> id so violations can be reported by id." },
+          "packs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["packId", "shader", "strideWords", "columns", "checks"],
+              "additionalProperties": false,
+              "properties": {
+                "packId": { "type": "string", "pattern": "^[A-Za-z0-9_]+-p[0-9]+$" },
+                "shader": { "type": "string", "description": "File name next to manifest.json, e.g. Order-p0.wgsl" },
+                "strideWords": { "type": "integer", "minimum": 2, "maximum": 32, "description": "1 (null bitmask) + number of columns" },
+                "columns": {
+                  "type": "array",
+                  "maxItems": 31,
+                  "items": {
+                    "type": "object",
+                    "required": ["word", "nullBit", "field", "column", "encoding"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "word": { "type": "integer", "minimum": 1 },
+                      "nullBit": { "type": "integer", "minimum": 0, "maximum": 30 },
+                      "field": { "type": "string" },
+                      "column": { "type": "string", "description": "Physical column name as it appears in the CSV header" },
+                      "encoding": { "enum": ["bool", "i32", "fixed32", "enum_index", "str_len"] },
+                      "scale": { "type": "integer", "minimum": 0, "maximum": 9, "description": "fixed32 only: value is stored as round(value * 10^scale); must be exact" },
+                      "enumValues": { "type": "array", "items": { "type": "string" }, "description": "enum_index only: declaration order defines the index" }
+                    }
+                  }
+                },
+                "checks": {
+                  "type": "array",
+                  "maxItems": 32,
+                  "items": {
+                    "type": "object",
+                    "required": ["bit", "id", "kind", "fields", "message", "tree"],
+                    "additionalProperties": false,
+                    "properties": {
+                      "bit": { "type": "integer", "minimum": 0, "maximum": 31 },
+                      "id": { "type": "string" },
+                      "kind": { "enum": ["required", "min", "max", "minLength", "maxLength", "enum", "invariant"] },
+                      "fields": { "type": "array", "items": { "type": "string" } },
+                      "message": { "type": "string", "description": "Human sentence, e.g. 'Order.totalAmount must be >= 0'" },
+                      "source": { "type": "string", "description": "invariant only: the original expression text" },
+                      "tree": { "$ref": "#/$defs/node" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "hostChecks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "kind", "fields", "columns", "message"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "kind": { "enum": ["unique", "reference", "requiredOpaque"] },
+                "fields": { "type": "array", "items": { "type": "string" } },
+                "columns": { "type": "array", "items": { "type": "string" } },
+                "message": { "type": "string" },
+                "targetConcept": { "type": "string" },
+                "targetTable": { "type": "string" },
+                "targetIdColumn": { "type": "string" }
+              }
+            }
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "kind", "reason"],
+              "additionalProperties": false,
+              "properties": {
+                "id": { "type": "string" },
+                "kind": { "type": "string" },
+                "source": { "type": "string" },
+                "reason": { "type": "string", "description": "Plain sentence, shown in the UI: 'uses /, which divides with fractions in the app but not on the GPU'" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": ["k"],
+      "description": "Portable expression tree produced by ComputedExpression.toPortableTree (G1) or synthesized by the builder (internal __ functions).",
+      "properties": {
+        "k": { "enum": ["lit", "var", "un", "bin", "call"] },
+        "v": { "description": "lit: number (as a JSON string to keep decimals exact, e.g. \"999.99\"), boolean, string, or null; plus t: 'num'|'bool'|'str'|'null'" },
+        "t": { "enum": ["num", "bool", "str", "null"] },
+        "name": { "type": "string", "description": "var: field name; call: function name" },
+        "op": { "type": "string", "description": "un: '-' | '!'; bin: '+','-','*','/','%','==','!=','<','<=','>','>=','&&','||'" },
+        "a": { "$ref": "#/$defs/node" },
+        "l": { "$ref": "#/$defs/node" },
+        "r": { "$ref": "#/$defs/node" },
+        "args": { "type": "array", "items": { "$ref": "#/$defs/node" } }
+      }
+    }
+  }
+}
