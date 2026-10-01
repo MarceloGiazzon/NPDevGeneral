@@ -55,4 +55,17 @@ public interface ExternalAiCapabilityContract {
     default java.util.List<ExternalAiVendorSummary> configuredVendors() {
         return java.util.List.of();
     }
+
+    /**
+     * AGENT-1: send a tool-calling chat turn to a configured vendor and return either its final text
+     * answer or the tool call(s) it wants executed. Fail-closed by the same inverted-default
+     * convention as {@link #submitPack}/{@link #generateText}: an adapter that cannot do tool
+     * calling (or isn't configured) denies rather than sending unchecked.
+     */
+    default ExternalAiToolChatResult chatWithTools(ExternalAiToolChatRequest request) {
+        throw new ExternalAiEgressDeniedException(
+                "EGRESS_DENIED_TOOLS_UNSUPPORTED",
+                "This ExternalAiCapabilityContract has no adapter opted in to tool-calling chat; denying "
+                        + "rather than sending unchecked to vendor '" + request.vendorId() + "'.");
+    }
 }
