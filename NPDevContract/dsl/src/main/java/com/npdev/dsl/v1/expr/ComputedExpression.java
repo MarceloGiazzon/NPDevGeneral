@@ -89,6 +89,57 @@ public final class ComputedExpression {
         return new Parser(tokenize(expression)).parseAll();
     }
 
+    /** GPU-1 (G1.1): a JSON-able view of the parsed tree, for code outside this class that must
+     *  translate an expression (the GPU check builder, {@code GpuCheckManifestBuilder}). Kinds:
+     *  lit, var, un, bin, call, lambda. Numbers become plain decimal strings so no precision is lost. */
+    public static Map<String, Object> toPortableTree(String expression) {
+        return portable(parse(expression));
+    }
+
+    private static Map<String, Object> portable(Node node) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        if (node instanceof Literal literal) {
+            Object v = literal.value();
+            out.put("k", "lit");
+            if (v == null) {
+                out.put("t", "null");
+                out.put("v", null);
+            } else if (v instanceof Boolean b) {
+                out.put("t", "bool");
+                out.put("v", b);
+            } else if (v instanceof Number n) {
+                out.put("t", "num");
+                out.put("v", new java.math.BigDecimal(n.toString()).toPlainString());
+            } else {
+                out.put("t", "str");
+                out.put("v", v.toString());
+            }
+        } else if (node instanceof Var var) {
+            out.put("k", "var");
+            out.put("name", var.name());
+        } else if (node instanceof Unary unary) {
+            out.put("k", "un");
+            out.put("op", unary.op());
+            out.put("a", portable(unary.operand()));
+        } else if (node instanceof Binary binary) {
+            out.put("k", "bin");
+            out.put("op", binary.op());
+            out.put("l", portable(binary.left()));
+            out.put("r", portable(binary.right()));
+        } else if (node instanceof Call call) {
+            out.put("k", "call");
+            out.put("name", call.name());
+            List<Object> args = new ArrayList<>();
+            for (Node arg : call.args()) {
+                args.add(portable(arg));
+            }
+            out.put("args", args);
+        } else {
+            out.put("k", "lambda");
+        }
+        return out;
+    }
+
     /** Parse-only syntax check; throws {@link ExpressionException} if invalid. */
     public static void validate(String expression) {
         parse(expression);
