@@ -1,15 +1,20 @@
 package com.finalexec.api;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.finalexec.agent.AgentChannelsStarter;
 import com.finalexec.agent.AgentLinkService;
+import com.finalexec.agent.TelegramChannel;
 import com.finalexec.auth.JwtSigner;
 import com.finalexec.auth.LoginController;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.generated.runtime.service.RuntimeContextService;
 import com.npdev.kernel.ExecutionContext;
+import com.npdev.kernel.ports.ExternalAiCapabilityContract;
+import com.npdev.kernel.ports.ExternalAiVendorSummary;
 import com.npdev.runtime.support.IdentityRoleLookup;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.DefaultResourceLoader;
@@ -52,6 +57,8 @@ public class AgentLinkController {
     private final ModelHolder modelHolder;
     private final DataSource dataSource;
     private final AgentLinkService linkService;
+    private final AgentChannelsStarter channelsStarter;
+    private final ObjectProvider<ExternalAiCapabilityContract> aiProvider;
     private final JwtSigner mcpTokenSigner;
     private final long mcpTokenExpirySeconds;
     private final String telegramBotUsername;
@@ -62,6 +69,8 @@ public class AgentLinkController {
             ModelHolder modelHolder,
             DataSource dataSource,
             AgentLinkService linkService,
+            AgentChannelsStarter channelsStarter,
+            ObjectProvider<ExternalAiCapabilityContract> aiProvider,
             ObjectMapper objectMapper,
             @Value("${npdev.auth.jwt.private-key-path:}") String privateKeyPath,
             @Value("${npdev.auth.jwt.issuer:}") String issuer,
@@ -74,6 +83,8 @@ public class AgentLinkController {
         this.modelHolder = modelHolder;
         this.dataSource = dataSource;
         this.linkService = linkService;
+        this.channelsStarter = channelsStarter;
+        this.aiProvider = aiProvider;
         this.telegramBotUsername = telegramBotUsername;
         this.whatsappPhoneDisplay = whatsappPhoneDisplay;
         long days = mcpTokenDays > 0 ? mcpTokenDays : DEFAULT_MCP_TOKEN_DAYS;
@@ -183,6 +194,60 @@ public class AgentLinkController {
         body.put("claudeCodeCommand", "claude mcp add --transport http " + namespaceSlug()
                 + " " + mcpUrl + " --header \"Authorization: Bearer " + token + "\"");
         return ResponseEntity.ok(body);
+    }
+
+    /**
+     * AGENT-1 (A9.2): operator-facing status probe. SUPERUSER-only, same idiom
+     * {@code AgentProxyController.requireSuperUser} uses. No secrets, no field whose name matches
+     * the platform's redaction pattern (token|secret|apikey|...) -- {@code keyPresent} and
+     * {@code botUsername} are the non-sensitive shapes those values take.
+     */
+    @GetMapping("/api/agent/status")
+    public ResponseEntity<Map<String, Object>> status(HttpServletRequest request) {
+        requireSuperUser(request);
+        var access = modelHolder.get().getAgentAccess();
+
+        Map<String, Object> channels = new LinkedHashMap<>();
+        boolean mcpEnabled = access != null && access.getChannels() != null && access.getChannels().getMcp().isEnabled();
+        boolean telegramEnabled = access != null && access.getChannels() != null
+                && access.getChannels().getTelegram().isEnabled();
+        boolean whatsappEnabled = access != null && access.getChannels() != null
+                && access.getChannels().getWhatsapp().isEnabled();
+        channels.put("mcp", mcpEnabled);
+        channels.put("telegram", telegramEnabled);
+        channels.put("whatsapp", whatsappEnabled);
+
+        TelegramChannel telegramChannel = channelsStarter == null ? null : channelsStarter.telegramChannel();
+        Map<String, Object> telegram = new LinkedHashMap<>();
+        telegram.put("running", telegramChannel != null && telegramChannel.isRunning());
+        telegram.put("botUsername", telegramChannel == null ? "" : telegramChannel.botUsername());
+        telegram.put("lastPollOk", telegramChannel == null || telegramChannel.lastPollOk() == null
+                ? null : DateTimeFormatter.ISO_INSTANT.format(telegramChannel.lastPollOk()));
+
+        ExternalAiCapabilityContract ai = aiProvider.getIfAvailable();
+        List<ExternalAiVendorSummary> vendors = ai == null ? List.of() : ai.configuredVendors();
+        Map<String, Object> aiStatus = new LinkedHashMap<>();
+        aiStatus.put("vendor", vendors.stream().map(ExternalAiVendorSummary::vendorId).findFirst().orElse(""));
+        aiStatus.put("keyPresent", vendors.stream().anyMatch(ExternalAiVendorSummary::keyPresent));
+
+        Map<String, Object> linkedAccounts = new LinkedHashMap<>();
+        linkedAccounts.put("telegram", linkService.linkedCount("telegram"));
+        linkedAccounts.put("whatsapp", linkService.linkedCount("whatsapp"));
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("channels", channels);
+        body.put("telegram", telegram);
+        body.put("ai", aiStatus);
+        body.put("linkedAccounts", linkedAccounts);
+        body.put("mcpUrl", baseUrl(request) + "/api/mcp");
+        return ResponseEntity.ok(body);
+    }
+
+    private void requireSuperUser(HttpServletRequest request) {
+        ExecutionContext context = runtimeContextService.currentContext(request);
+        if (!context.hasRole("SUPERUSER")) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "forbidden");
+        }
     }
 
     private String namespaceSlug() {

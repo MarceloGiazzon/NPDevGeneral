@@ -8,6 +8,12 @@ Landed on `main` AFTER the `beta1.20` tag (`ec0350a9`) and therefore **not** in 
 release. Ships in the next tag.
 
 ### Added
+- **Agent Access** (`agentAccess` model block): a generated app serves a standard MCP endpoint
+  (`/api/mcp`) so Claude Code/Desktop or any MCP client can use its data as tools, and optionally
+  runs a Telegram bot linking a Telegram account to an app user for plain-language chat -- every
+  tool call executes through the app's own REST API as that user, so existing role permissions and
+  row-level `access` rules decide what happens, never a second permission system. See
+  `docs/reference/AGENT_ACCESS.md`.
 - **Verification panel** (`npdev verify --panel`): one inventory of what verifies this system --
   name, category, command, last result, last run, last duration -- rendered as a Kanban and a table.
   A new Manager tab for the repo, and a READ-ONLY `verification.html` emitted into every generated

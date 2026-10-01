@@ -187,6 +187,15 @@ public final class AgentLinkService {
         return Optional.of(new Speaker(active.get().tenantId(), active.get().username(), roles));
     }
 
+    /** How many accounts are linked to this provider, total -- for the status probe (A9). */
+    public int linkedCount(String provider) {
+        ExternalIdentityStore.Tables tables = ExternalIdentityStore.Tables.resolve(modelHolder.get());
+        if (tables == null) {
+            return 0;
+        }
+        return store.countLinked(tables, provider);
+    }
+
     public List<String> linkedProviders(String tenantId, String username) {
         ExternalIdentityStore.Tables tables = ExternalIdentityStore.Tables.resolve(modelHolder.get());
         if (tables == null) {
