@@ -5997,11 +5997,59 @@ def run_gpu_check_bench(args: argparse.Namespace) -> int:
 
 
 def run_gpu_check_plan(args: argparse.Namespace) -> int:
-    """`npdev gpu-check plan` -- pre-flight a model change with no app regeneration. Reserved for
-    Track B phase G6 (canonicalize --model, run GpuCheckManifestMain, diff against the app's current
-    manifest); refuses cleanly rather than silently doing nothing in the meantime."""
-    detail = "npdev gpu-check plan is reserved for Track B phase G6 (not yet implemented)."
-    return _gpu_check_error(args, "plan", detail)
+    """`npdev gpu-check plan` (G6) -- builds --model's GPU check manifest with GpuCheckManifestMain
+    (G2.5, no app regeneration -- parses + compiles the model directly from its own location, so
+    packs AND contexts resolve normally), sweeps the app's CURRENT data against that candidate
+    manifest, and diffs it against the app's own current manifest by check id. The headline answer:
+    "if you deploy this model, N existing rows break M rules, K of them new"."""
+    import npdev_gpu_check as gpu_check
+    app_dir = _gpu_check_app_dir(args)
+    if not getattr(args, "model", None):
+        return _gpu_check_error(args, "plan", "--model is required (the candidate model.json)")
+    model_path = Path(args.model).expanduser().resolve()
+
+    ai_tools_jar = _default_ai_tools_jar()
+    if ai_tools_jar is None:
+        return _gpu_check_error(
+            args, "plan",
+            "npdev-ai-tools.jar not staged (it bundles GpuCheckManifestMain + Jackson, so it runs "
+            "with no separate classpath assembly) -- run "
+            "scripts/runtimehost/sync-runtimehost-libs.ps1 -BuildLocalJars")
+    java_home = os.environ.get("JAVA_HOME")
+    java_bin = _resolve_java_home_binary(java_home) if java_home else None
+    if java_bin is None or not java_bin.exists():
+        path_java = shutil.which("java")
+        java_bin = Path(path_java) if path_java else None
+    if java_bin is None:
+        return _gpu_check_error(args, "plan", "no Java runtime found (set JAVA_HOME or put java on PATH)")
+
+    concept_names = args.concepts.split(",") if getattr(args, "concepts", None) else None
+    try:
+        result = gpu_check.plan(app_dir, model_path, java_bin, ai_tools_jar,
+                                 engine=getattr(args, "engine", "auto") or "auto", concept_names=concept_names)
+    except gpu_check.GpuCheckError as exc:
+        return _gpu_check_error(args, "plan", str(exc))
+
+    exit_code = 2 if not result["verify"]["matched"] else (1 if result["violations"] > 0 else 0)
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check plan",
+            "ok": exit_code != 2, "exitCode": exit_code, "result": result,
+        }, indent=2))
+    else:
+        print(gpu_check.plan_summary_line(result))
+        diff = result.get("planDiff", {})
+        if diff.get("new"):
+            print(f"  new rules: {', '.join(diff['new'])}")
+        if diff.get("changed"):
+            print(f"  changed rules: {', '.join(diff['changed'])}")
+        if diff.get("removed"):
+            print(f"  removed rules: {', '.join(diff['removed'])}")
+        for concept in result["concepts"]:
+            for check in concept["checks"]:
+                if check["status"] == "failed":
+                    print(f"  FAIL [{check['violations']}] {check['id']} -- {check['message']}")
+    return exit_code
 
 
 def run_db_export(args: argparse.Namespace) -> int:
@@ -15553,11 +15601,17 @@ def build_parser() -> argparse.ArgumentParser:
     gpu_check_bench.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
 
     gpu_check_plan = gpu_check_sub.add_parser(
-        "plan", help="(Track B phase G6, not yet implemented) Pre-flight a model change against this "
-                    "app's existing data, with no regeneration.")
+        "plan", help="Pre-flight a model change against this app's existing data, with NO "
+                    "regeneration -- 'if I deploy this model, which rows break the new rules?'")
     gpu_check_plan.add_argument("--app", default=None, metavar="DIR",
                                  help="The app directory. Defaults to the current directory.")
-    gpu_check_plan.add_argument("--model", default=None, metavar="FILE", help="The candidate model.json.")
+    gpu_check_plan.add_argument("--model", required=True, metavar="FILE",
+                                 help="The candidate model.json to pre-flight.")
+    gpu_check_plan.add_argument("--engine", choices=["auto", "gpu", "cpu"], default="auto",
+                                 help="Same meaning as `run --engine`.")
+    gpu_check_plan.add_argument("--concepts", default=None, metavar="A,B",
+                                 help="Comma-separated concept names to check. Default: every concept "
+                                      "the candidate manifest covers.")
     gpu_check_plan.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
 
     # SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): the bootstrap Super User key is meant to be a

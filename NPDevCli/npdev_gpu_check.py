@@ -466,13 +466,19 @@ def new_run_dir(app_dir: Path) -> tuple[str, Path]:
 # 6. run -- the orchestration every subcommand but list/history/show/bundle goes through.
 # =================================================================================================
 def run(app_dir: Path, engine: str = "auto", concept_names: list[str] | None = None,
-        data_dir: Path | None = None, verify: bool = False) -> dict:
+        data_dir: Path | None = None, verify: bool = False, manifest_override: dict | None = None,
+        shader_dir: Path | None = None, mode: str = "app") -> dict:
     """Returns the result record (schema: gpu-check-result.schema.json). Raises GpuCheckError on a
     setup problem (bad manifest, export failure); a GPU/CPU mismatch is NOT raised -- it is recorded
-    in verify.matched=false and the caller decides the exit code (2)."""
+    in verify.matched=false and the caller decides the exit code (2).
+
+    `manifest_override`/`shader_dir` are G6's pre-flight seam: `plan` builds a manifest from a
+    CANDIDATE model (never regenerating the app) and sweeps the app's CURRENT data against it --
+    everything else about the sweep (export, packing, both engines, host checks) is identical."""
     timings: dict[str, float] = {}
     t_total = time.perf_counter()
-    manifest = load_manifest(app_dir)
+    manifest = manifest_override if manifest_override is not None else load_manifest(app_dir)
+    shader_dir = shader_dir if shader_dir is not None else (app_dir / MANIFEST_REL.parent)
     all_concepts = manifest["concepts"]
     if concept_names:
         wanted = set(concept_names)
@@ -549,7 +555,7 @@ def run(app_dir: Path, engine: str = "auto", concept_names: list[str] | None = N
             pack_engine = "cpu"
             fails = None
             if use_gpu:
-                shader_path = app_dir / MANIFEST_REL.parent / pack["shader"]
+                shader_path = shader_dir / pack["shader"]
                 if not shader_path.exists():
                     pack_engine = "cpu"
                 else:
@@ -625,7 +631,7 @@ def run(app_dir: Path, engine: str = "auto", concept_names: list[str] | None = N
         "startedAt": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "app": app_dir.name,
         "namespace": manifest.get("namespace", ""),
-        "mode": "app",
+        "mode": mode,
         "engine": {"requested": engine, "used": used, "device": gpu_info if gpu_ok else ""},
         "rowsChecked": total_rows_checked,
         "violations": total_violations,
@@ -821,3 +827,114 @@ def bench(app_dir: Path, rows: int = 10_000_000) -> dict:
         result["rowChecksBreakEven"] = break_even
     shutil.rmtree(run_dir, ignore_errors=True)
     return result
+
+
+# =================================================================================================
+# G6 -- pre-flight a model change, with no app regeneration. The headline use: "if I deploy this
+# model, which existing rows would break the new rules?" -- answered from the CANDIDATE model's
+# manifest, swept against the app's CURRENT data, with no generate/build/boot in between.
+# =================================================================================================
+def _check_identity(check: dict) -> tuple:
+    """What makes a check 'the same rule' across two manifests -- id, kind and message match; the
+    tree is compared separately (same id/kind/message but a different tree is reported as CHANGED,
+    not NEW+REMOVED, since it is the same named rule evolving)."""
+    return check["id"], check.get("kind", ""), check.get("message", "")
+
+
+def _all_checks_by_id(manifest: dict) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    for concept in manifest.get("concepts", []):
+        for pack in concept.get("packs", []):
+            for check in pack["checks"]:
+                out[check["id"]] = check
+        for hc in concept.get("hostChecks", []):
+            out[hc["id"]] = {**hc, "tree": None}
+    return out
+
+
+def diff_manifests(old_manifest: dict, new_manifest: dict) -> dict:
+    """Returns {"new": [...], "changed": [...], "removed": [...]} -- check ids only, for the
+    headline summary line ('N existing rows break M rules, K of them new or changed')."""
+    old_by_id = _all_checks_by_id(old_manifest)
+    new_by_id = _all_checks_by_id(new_manifest)
+    new_ids = sorted(set(new_by_id) - set(old_by_id))
+    removed_ids = sorted(set(old_by_id) - set(new_by_id))
+    changed_ids = sorted(
+        cid for cid in (set(new_by_id) & set(old_by_id))
+        if json.dumps(old_by_id[cid].get("tree"), sort_keys=True) != json.dumps(new_by_id[cid].get("tree"), sort_keys=True)
+        or old_by_id[cid].get("message") != new_by_id[cid].get("message")
+    )
+    return {"new": new_ids, "changed": changed_ids, "removed": removed_ids}
+
+
+def plan(app_dir: Path, model_path: Path, java_bin: Path, ai_tools_jar: Path,
+         engine: str = "auto", concept_names: list[str] | None = None) -> dict:
+    """G6: builds the candidate model's GPU check manifest via the Java CLI (GpuCheckManifestMain,
+    G2.5 -- no app regeneration), sweeps the app's CURRENT data against that CANDIDATE manifest, and
+    diffs it against the app's own current manifest by check id.
+
+    `model_path` is passed straight to GpuCheckManifestMain, which parses + compiles it with the
+    real DSL pipeline (JsonModelParser resolves packs AND contexts from the model's own location,
+    then ModelCompiler) -- NOT a separate "canonicalize" pre-pass. An earlier version of this
+    function ran the model through `:NPDevContract:dsl:canonicalizeModel` first (the same step
+    `npdev monitor`'s sync-status check uses) and fed GpuCheckManifestMain that intermediate JSON;
+    that JSON only resolves packs, not `contexts[].$ref` entries, and was written to a scratch
+    directory with no sibling `contexts/*.json` files for a second resolution pass to find --
+    GpuCheckManifestMain failed naming exactly that missing file. Passing model_path directly sidesteps
+    the whole problem: the model's own directory already has every pack/context file a full
+    resolution needs.
+
+    `ai_tools_jar` is the staged `npdev-ai-tools.jar` (NPDevGenerator/generator's `aiToolsJar` task)
+    -- a self-contained fat jar bundling GpuCheckManifestMain, its dsl/generator dependency classes
+    AND Jackson, so it runs with a one-entry classpath. The plain `runtimehost-libs/*` directory
+    that every other `java -cp` call in this CLI uses does NOT carry a standalone jackson-databind
+    jar (WidgetCatalogueMain hand-builds its own JSON for exactly this reason) -- discovered live
+    while building this phase (NoClassDefFoundError: com/fasterxml/jackson/databind/ObjectMapper).
+    """
+    run_id, run_dir = new_run_dir(app_dir)
+    artifacts_dir = run_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    java_cmd = [str(java_bin), "-cp", str(ai_tools_jar),
+                "com.npdev.dsl.v1.cli.GpuCheckManifestMain",
+                "--canonical", str(model_path), "--out", str(artifacts_dir)]
+    completed = subprocess.run(java_cmd, capture_output=True, text=True, timeout=120)
+    if completed.returncode != 0:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise GpuCheckError(
+            "GpuCheckManifestMain failed: " + (completed.stderr.strip() or completed.stdout.strip()))
+
+    new_manifest_path = artifacts_dir / "manifest.json"
+    if not new_manifest_path.exists():
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise GpuCheckError(f"GpuCheckManifestMain did not write {new_manifest_path}")
+    new_manifest = json.loads(new_manifest_path.read_text(encoding="utf-8"))
+
+    try:
+        old_manifest = load_manifest(app_dir)
+    except GpuCheckError:
+        old_manifest = {"concepts": []}
+    diff = diff_manifests(old_manifest, new_manifest)
+
+    shutil.rmtree(run_dir, ignore_errors=True)  # the real run() below makes its own run dir
+    result = run(app_dir, engine=engine, concept_names=concept_names, data_dir=None, verify=False,
+                 manifest_override=new_manifest, shader_dir=artifacts_dir, mode="preflight")
+    result["planDiff"] = diff
+    result["modelPath"] = str(model_path)
+    # run() already wrote the record without planDiff/modelPath -- patch it in place so `show`
+    # returns the complete picture.
+    result_path = app_dir / RUNS_REL / result["runId"] / "result.json"
+    if result_path.exists():
+        result_path.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    return result
+
+
+def plan_summary_line(result: dict) -> str:
+    diff = result.get("planDiff", {})
+    new_or_changed = len(diff.get("new", [])) + len(diff.get("changed", []))
+    return (f"If you deploy this model, {result['violations']} existing row(s) break "
+            f"{_failed_check_count(result)} rule(s) ({new_or_changed} of them new or changed).")
+
+
+def _failed_check_count(result: dict) -> int:
+    return sum(1 for concept in result["concepts"] for check in concept["checks"] if check["status"] == "failed")
