@@ -5848,6 +5848,162 @@ def _data_transfer_classpath_and_java(app_root: Path, args: argparse.Namespace, 
     return java_bin, libs
 
 
+def _gpu_check_app_dir(args: argparse.Namespace) -> Path:
+    return Path(args.app).expanduser().resolve() if getattr(args, "app", None) else Path.cwd()
+
+
+def _gpu_check_error(args: argparse.Namespace, subcommand: str, message: str) -> int:
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": f"gpu-check {subcommand}",
+            "ok": False, "exitCode": 1, "detail": message,
+        }, indent=2))
+    else:
+        print(f"npdev gpu-check {subcommand}: {message}", file=sys.stderr)
+    return 1
+
+
+def run_gpu_check_list(args: argparse.Namespace) -> int:
+    """`npdev gpu-check list` -- every check in this app's GPU check manifest (G2), with its engine
+    eligibility (gpu / host / skipped + reason). Needs no numpy/wgpu -- a plain manifest read."""
+    import npdev_gpu_check as gpu_check
+    app_dir = _gpu_check_app_dir(args)
+    try:
+        checks = gpu_check.list_checks(app_dir)
+    except gpu_check.GpuCheckError as exc:
+        return _gpu_check_error(args, "list", str(exc))
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check list",
+            "ok": True, "exitCode": 0, "checks": checks,
+        }, indent=2))
+    else:
+        print(f"{len(checks)} check(s):")
+        for c in checks:
+            print(f"  [{c['engine']:7}] {c['concept']:30} {c['id']:50} {c['kind']}")
+    return 0
+
+
+def run_gpu_check_run(args: argparse.Namespace) -> int:
+    """`npdev gpu-check run` -- export (unless --data), pack, run every check on GPU and/or host,
+    write a run record. Exit 0 = no violations, 1 = violations found, 2 = GPU disagreed with the CPU
+    twin (never report GPU numbers that disagree with the twin)."""
+    import npdev_gpu_check as gpu_check
+    app_dir = _gpu_check_app_dir(args)
+    concept_names = args.concepts.split(",") if getattr(args, "concepts", None) else None
+    data_dir = Path(args.data).expanduser().resolve() if getattr(args, "data", None) else None
+    try:
+        result = gpu_check.run(app_dir, engine=args.engine, concept_names=concept_names,
+                                data_dir=data_dir, verify=bool(args.verify))
+    except gpu_check.GpuCheckError as exc:
+        return _gpu_check_error(args, "run", str(exc))
+    if not result["verify"]["matched"]:
+        exit_code = 2
+    elif result["violations"] > 0:
+        exit_code = 1
+    else:
+        exit_code = 0
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check run",
+            "ok": exit_code != 2, "exitCode": exit_code, "result": result,
+        }, indent=2))
+    else:
+        print(f"run {result['runId']}: engine={result['engine']['used']} rows={result['rowsChecked']} "
+              f"violations={result['violations']} verify.matched={result['verify']['matched']}")
+        for concept in result["concepts"]:
+            for check in concept["checks"]:
+                if check["status"] == "failed":
+                    print(f"  FAIL [{check['violations']}] {check['id']} -- {check['message']}")
+        if exit_code == 2:
+            print("GPU result disagreed with the CPU twin -- see result.json mismatches.", file=sys.stderr)
+    return exit_code
+
+
+def run_gpu_check_history(args: argparse.Namespace) -> int:
+    """`npdev gpu-check history` -- previous runs for this app, newest first."""
+    import npdev_gpu_check as gpu_check
+    app_dir = _gpu_check_app_dir(args)
+    runs = gpu_check.history(app_dir)
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check history",
+            "ok": True, "exitCode": 0, "runs": runs,
+        }, indent=2))
+    else:
+        print(f"{len(runs)} run(s):")
+        for r in runs:
+            engine = r.get("engine") or {}
+            verify = r.get("verify") or {}
+            print(f"  {r['runId']}  engine={engine.get('used')}  rows={r.get('rowsChecked')}  "
+                  f"violations={r.get('violations')}  verify.matched={verify.get('matched')}")
+    return 0
+
+
+def run_gpu_check_show(args: argparse.Namespace) -> int:
+    """`npdev gpu-check show` -- one run's full result record."""
+    import npdev_gpu_check as gpu_check
+    app_dir = _gpu_check_app_dir(args)
+    try:
+        result = gpu_check.show(app_dir, args.run)
+    except gpu_check.GpuCheckError as exc:
+        return _gpu_check_error(args, "show", str(exc))
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check show",
+            "ok": True, "exitCode": 0, "result": result,
+        }, indent=2))
+    else:
+        print(json.dumps(result, indent=2))
+    return 0
+
+
+def run_gpu_check_bundle(args: argparse.Namespace) -> int:
+    """`npdev gpu-check bundle` -- zip one run's record (never the CSV export)."""
+    import npdev_gpu_check as gpu_check
+    app_dir = _gpu_check_app_dir(args)
+    out_path = Path(args.out).expanduser().resolve()
+    try:
+        gpu_check.bundle(app_dir, args.run, out_path)
+    except gpu_check.GpuCheckError as exc:
+        return _gpu_check_error(args, "bundle", str(exc))
+    print(str(out_path))
+    return 0
+
+
+def run_gpu_check_bench(args: argparse.Namespace) -> int:
+    """`npdev gpu-check bench` -- numpy vs GPU timing on this app's own (tiled) data, writing the
+    calibration `run --engine auto` reads."""
+    import npdev_gpu_check as gpu_check
+    app_dir = _gpu_check_app_dir(args)
+    try:
+        result = gpu_check.bench(app_dir, rows=args.rows)
+    except gpu_check.GpuCheckError as exc:
+        return _gpu_check_error(args, "bench", str(exc))
+    if getattr(args, "json", False):
+        print(json.dumps({
+            "schemaVersion": "npdev-cli-result.v1", "command": "gpu-check bench",
+            "ok": True, "exitCode": 0, "result": result,
+        }, indent=2))
+    else:
+        print(f"rows={result['rows']} checks={result['checks']}")
+        print(f"cpu: {result['cpuMs']:.1f} ms")
+        if result["gpuAvailable"]:
+            print(f"gpu ({result['device']}): {result['gpuMs']:.1f} ms")
+            print(f"rowChecksBreakEven calibrated: {result['rowChecksBreakEven']:.0f}")
+        else:
+            print(f"gpu: unavailable ({result.get('device', '')})")
+    return 0
+
+
+def run_gpu_check_plan(args: argparse.Namespace) -> int:
+    """`npdev gpu-check plan` -- pre-flight a model change with no app regeneration. Reserved for
+    Track B phase G6 (canonicalize --model, run GpuCheckManifestMain, diff against the app's current
+    manifest); refuses cleanly rather than silently doing nothing in the meantime."""
+    detail = "npdev gpu-check plan is reserved for Track B phase G6 (not yet implemented)."
+    return _gpu_check_error(args, "plan", detail)
+
+
 def run_db_export(args: argparse.Namespace) -> int:
     """`npdev db export` -- data mobility (ListaSementes.txt: "Data mobility is very important "
     "value... I want to have some options... to export and import... path, format (SQL Insert "
@@ -15332,6 +15488,78 @@ def build_parser() -> argparse.ArgumentParser:
                      f"token exists so it cannot happen by accident, from a terminal or a button.",
             )
 
+    # GPU-1 (Track B, G3): data-rule sweep with GPU acceleration and an exact CPU twin, reading the
+    # GPU check manifest G2's generator emits into every app whose config.json sets
+    # checks.gpuArtifacts (npdev_gpu_check.py owns every decision below this registration).
+    gpu_check_parser = subparsers.add_parser(
+        "gpu-check", help="Data-rule sweep over an app's exported data, with GPU acceleration and an "
+                          "exact CPU twin -- 'before I deploy this model change, which existing rows "
+                          "would break the new rules?'"
+    )
+    gpu_check_sub = gpu_check_parser.add_subparsers(dest="gpu_check_command")
+
+    gpu_check_list = gpu_check_sub.add_parser(
+        "list", help="List every check in this app's GPU check manifest, with its engine eligibility.")
+    gpu_check_list.add_argument("--app", default=None, metavar="DIR",
+                                 help="The app directory. Defaults to the current directory.")
+    gpu_check_list.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
+    gpu_check_run = gpu_check_sub.add_parser(
+        "run", help="Export this app's data, pack it, run every check (GPU and/or host), and record "
+                    "a run. Exit 0 = no violations, 1 = violations found, 2 = GPU/CPU mismatch.")
+    gpu_check_run.add_argument("--app", default=None, metavar="DIR",
+                                help="The app directory. Defaults to the current directory.")
+    gpu_check_run.add_argument("--engine", choices=["auto", "gpu", "cpu"], default="auto",
+                                help="auto picks GPU only above the calibrated row*check threshold "
+                                     "(see `bench`); default 300,000,000 with no calibration.")
+    gpu_check_run.add_argument("--concepts", default=None, metavar="A,B",
+                                help="Comma-separated concept names to check. Default: every concept "
+                                     "the manifest covers.")
+    gpu_check_run.add_argument("--data", default=None, metavar="DIR",
+                                help="Use an already-exported CSV directory instead of running a fresh "
+                                     "`npdev db export`.")
+    gpu_check_run.add_argument("--verify", action="store_true",
+                                help="Re-check every row on the CPU twin even when the GPU ran (default: "
+                                     "only a 10,000-row sample is cross-checked when the GPU is used).")
+    gpu_check_run.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
+    gpu_check_history = gpu_check_sub.add_parser(
+        "history", help="List previous gpu-check runs for this app, newest first.")
+    gpu_check_history.add_argument("--app", default=None, metavar="DIR",
+                                    help="The app directory. Defaults to the current directory.")
+    gpu_check_history.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
+    gpu_check_show = gpu_check_sub.add_parser(
+        "show", help="Show one run's full result record: per-check violations, sample ids, timings.")
+    gpu_check_show.add_argument("--app", default=None, metavar="DIR",
+                                 help="The app directory. Defaults to the current directory.")
+    gpu_check_show.add_argument("--run", required=True, metavar="RUN_ID", help="The run id (see `history`).")
+    gpu_check_show.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
+    gpu_check_bundle = gpu_check_sub.add_parser(
+        "bundle", help="Zip one run's record (result.json, summary.txt, ai-prompt.txt, artifacts/) -- "
+                      "never the CSV export, which can hold personal data.")
+    gpu_check_bundle.add_argument("--app", default=None, metavar="DIR",
+                                   help="The app directory. Defaults to the current directory.")
+    gpu_check_bundle.add_argument("--run", required=True, metavar="RUN_ID", help="The run id (see `history`).")
+    gpu_check_bundle.add_argument("--out", required=True, metavar="FILE.zip", help="Output zip path.")
+
+    gpu_check_bench = gpu_check_sub.add_parser(
+        "bench", help="Time numpy vs GPU on this app's own (tiled) data, in one process, and write "
+                      "the calibration `run --engine auto` reads.")
+    gpu_check_bench.add_argument("--app", default=None, metavar="DIR",
+                                  help="The app directory. Defaults to the current directory.")
+    gpu_check_bench.add_argument("--rows", type=int, default=10_000_000, help="Target row count (tiled).")
+    gpu_check_bench.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
+    gpu_check_plan = gpu_check_sub.add_parser(
+        "plan", help="(Track B phase G6, not yet implemented) Pre-flight a model change against this "
+                    "app's existing data, with no regeneration.")
+    gpu_check_plan.add_argument("--app", default=None, metavar="DIR",
+                                 help="The app directory. Defaults to the current directory.")
+    gpu_check_plan.add_argument("--model", default=None, metavar="FILE", help="The candidate model.json.")
+    gpu_check_plan.add_argument("--json", action="store_true", help="Emit an npdev-cli-result.v1 object.")
+
     # SEC-8 (docs/ACCEPTED_BOUNDARIES.md B17): the bootstrap Super User key is meant to be a
     # short-lived handoff, not a permanent identity -- these two commands are the operator side of
     # that: hash-key for a deployment supplying its OWN bootstrap key (no plaintext secret in a
@@ -17269,6 +17497,20 @@ def main(argv: list[str] | None = None) -> int:
             return run_db_surplus(args)
         if args.command == "db" and args.db_command in _DB_OPERATIONS:
             return run_db_operation(args)
+        if args.command == "gpu-check" and args.gpu_check_command == "list":
+            return run_gpu_check_list(args)
+        if args.command == "gpu-check" and args.gpu_check_command == "run":
+            return run_gpu_check_run(args)
+        if args.command == "gpu-check" and args.gpu_check_command == "history":
+            return run_gpu_check_history(args)
+        if args.command == "gpu-check" and args.gpu_check_command == "show":
+            return run_gpu_check_show(args)
+        if args.command == "gpu-check" and args.gpu_check_command == "bundle":
+            return run_gpu_check_bundle(args)
+        if args.command == "gpu-check" and args.gpu_check_command == "bench":
+            return run_gpu_check_bench(args)
+        if args.command == "gpu-check" and args.gpu_check_command == "plan":
+            return run_gpu_check_plan(args)
         if args.command == "admin" and args.admin_command == "hash-key":
             return run_admin_hash_key(args)
         if args.command == "admin" and args.admin_command == "create":
