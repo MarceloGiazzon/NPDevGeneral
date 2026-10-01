@@ -608,6 +608,7 @@ public final class JsonModelParser {
         List<com.npdev.dsl.v1.ast.SequenceAst> sequences = parseSequences(root.get("sequences"));
         List<com.npdev.dsl.v1.ast.SeedAst> seeds = parseSeeds(root.get("seeds"));
         AppShellAst appShell = parseAppShell(root.get("appShell"));
+        com.npdev.dsl.v1.ast.AgentAccessAst agentAccess = parseAgentAccess(root.get("agentAccess"));
 
         return new ModelAst(
                 namespace,
@@ -641,7 +642,8 @@ public final class JsonModelParser {
                 webhooks,
                 sequences,
                 seeds,
-                appShell
+                appShell,
+                agentAccess
         );
     }
 
@@ -1034,6 +1036,73 @@ public final class JsonModelParser {
             }
         }
         return new AppShellAst(defaultRoute, navigation);
+    }
+
+    /** AGENT-1: parses the optional top-level {@code agentAccess} block (what an AI agent may see and
+     *  do, and on which channels); null if the model declares none. */
+    private static com.npdev.dsl.v1.ast.AgentAccessAst parseAgentAccess(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("agentAccess must be an object");
+        }
+        com.npdev.dsl.v1.ast.AgentAccessAssistantAst assistant = null;
+        JsonNode assistantNode = node.get("assistant");
+        if (assistantNode != null && !assistantNode.isNull()) {
+            if (!assistantNode.isObject()) {
+                throw new IOException("agentAccess.assistant must be an object");
+            }
+            assistant = new com.npdev.dsl.v1.ast.AgentAccessAssistantAst(
+                    readText(assistantNode, "name"),
+                    readText(assistantNode, "instructions"),
+                    readText(assistantNode, "language")
+            );
+        }
+        com.npdev.dsl.v1.ast.AgentAccessChannelsAst channels = null;
+        JsonNode channelsNode = node.get("channels");
+        if (channelsNode != null && !channelsNode.isNull()) {
+            if (!channelsNode.isObject()) {
+                throw new IOException("agentAccess.channels must be an object");
+            }
+            channels = new com.npdev.dsl.v1.ast.AgentAccessChannelsAst(
+                    readChannelEnabled(channelsNode, "mcp"),
+                    readChannelEnabled(channelsNode, "telegram"),
+                    readChannelEnabled(channelsNode, "whatsapp")
+            );
+        }
+        List<com.npdev.dsl.v1.ast.AgentAccessExposureAst> expose = new ArrayList<>();
+        JsonNode exposeNode = node.get("expose");
+        if (exposeNode == null || !exposeNode.isArray() || exposeNode.isEmpty()) {
+            throw new IOException("agentAccess.expose must be a non-empty array");
+        }
+        for (JsonNode exposureNode : exposeNode) {
+            if (!exposureNode.isObject()) {
+                throw new IOException("agentAccess.expose entries must be objects");
+            }
+            expose.add(new com.npdev.dsl.v1.ast.AgentAccessExposureAst(
+                    readText(exposureNode, "concept"),
+                    readText(exposureNode, "flow"),
+                    parseTextArray(exposureNode.get("operations")),
+                    parseTextArray(exposureNode.get("fields")),
+                    parseTextArray(exposureNode.get("roles")),
+                    readText(exposureNode, "description"),
+                    readOptionalBoolean(exposureNode, "confirmWrites")
+            ));
+        }
+        return new com.npdev.dsl.v1.ast.AgentAccessAst(assistant, channels, expose);
+    }
+
+    private static boolean readChannelEnabled(JsonNode channelsNode, String channelKey) throws IOException {
+        JsonNode channelNode = channelsNode.get(channelKey);
+        if (channelNode == null || channelNode.isNull()) {
+            return false;
+        }
+        if (!channelNode.isObject()) {
+            throw new IOException("agentAccess.channels." + channelKey + " must be an object");
+        }
+        Boolean enabled = readOptionalBoolean(channelNode, "enabled");
+        return enabled != null && enabled;
     }
 
     private static List<QueryAst> parseQueries(

@@ -1,5 +1,7 @@
 package com.npdev.dsl.v1.compiler;
 
+import com.npdev.dsl.v1.ast.AgentAccessAst;
+import com.npdev.dsl.v1.ast.AgentAccessExposureAst;
 import com.npdev.dsl.v1.ast.AppShellAst;
 import com.npdev.dsl.v1.ast.AppShellNavItemAst;
 import com.npdev.dsl.v1.ast.ConceptAst;
@@ -79,6 +81,11 @@ import com.npdev.dsl.v1.ast.RuleProfileAst;
 import com.npdev.dsl.v1.ast.StateMachineStateAst;
 import com.npdev.dsl.v1.ast.StateTransitionAst;
 import com.npdev.dsl.v1.ast.StepAst;
+import com.npdev.dsl.v1.compiled.CompiledAgentAccess;
+import com.npdev.dsl.v1.compiled.CompiledAgentAccessAssistant;
+import com.npdev.dsl.v1.compiled.CompiledAgentAccessChannel;
+import com.npdev.dsl.v1.compiled.CompiledAgentAccessChannels;
+import com.npdev.dsl.v1.compiled.CompiledAgentAccessExposure;
 import com.npdev.dsl.v1.compiled.CompiledAppShell;
 import com.npdev.dsl.v1.compiled.CompiledAppShellNavItem;
 import com.npdev.dsl.v1.compiled.CompiledConversion;
@@ -666,8 +673,49 @@ public final class ModelCompiler {
                 toCompiledWebhooks(modelAst.getWebhooks()),
                 toCompiledSequences(modelAst.getSequences()),
                 toCompiledSeeds(modelAst.getSeeds()),
-                toCompiledAppShell(modelAst.getAppShell())
+                toCompiledAppShell(modelAst.getAppShell()),
+                toCompiledAgentAccess(modelAst.getAgentAccess())
         );
+    }
+
+    /** AGENT-1: compiles the app-level agentAccess block, or null if the model declares none.
+     *  Defaults a concept exposure's {@code operations} to {@code [list, get]} here, so every
+     *  consumer (tool catalog, generator checks) sees the default already applied. */
+    private static CompiledAgentAccess toCompiledAgentAccess(AgentAccessAst agentAccessAst) {
+        if (agentAccessAst == null) {
+            return null;
+        }
+        CompiledAgentAccessAssistant assistant = null;
+        if (agentAccessAst.getAssistant() != null) {
+            assistant = new CompiledAgentAccessAssistant(
+                    agentAccessAst.getAssistant().getName(),
+                    agentAccessAst.getAssistant().getInstructions(),
+                    agentAccessAst.getAssistant().getLanguage());
+        }
+        CompiledAgentAccessChannels channels = null;
+        if (agentAccessAst.getChannels() != null) {
+            channels = new CompiledAgentAccessChannels(
+                    new CompiledAgentAccessChannel(agentAccessAst.getChannels().isMcp()),
+                    new CompiledAgentAccessChannel(agentAccessAst.getChannels().isTelegram()),
+                    new CompiledAgentAccessChannel(agentAccessAst.getChannels().isWhatsapp()));
+        }
+        List<CompiledAgentAccessExposure> expose = new ArrayList<>();
+        for (AgentAccessExposureAst exposure : agentAccessAst.getExpose()) {
+            List<String> operations = exposure.getOperations();
+            if ((exposure.getFlow() == null || exposure.getFlow().isBlank()) && operations.isEmpty()) {
+                operations = List.of("list", "get");
+            }
+            boolean confirmWrites = exposure.getConfirmWrites() == null || exposure.getConfirmWrites();
+            expose.add(new CompiledAgentAccessExposure(
+                    exposure.getConcept(),
+                    exposure.getFlow(),
+                    operations,
+                    exposure.getFields(),
+                    exposure.getRoles(),
+                    exposure.getDescription(),
+                    confirmWrites));
+        }
+        return new CompiledAgentAccess(assistant, channels, expose);
     }
 
     /** Path A P6.3: compiles the app-level appShell block, or null if the model declares none. */

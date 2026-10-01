@@ -73,6 +73,7 @@ public final class CompiledModelCanonicalJson {
         root.set("sequences", toSequences(model));
         root.set("seeds", toSeeds(model));
         root.set("appShell", toAppShell(model));
+        root.set("agentAccess", toAgentAccess(model));
         return root;
     }
 
@@ -100,6 +101,74 @@ public final class CompiledModelCanonicalJson {
             navigation.add(itemNode);
         }
         node.set("navigation", navigation);
+        return node;
+    }
+
+    /** AGENT-1: writes what an AI agent may see and do, and on which channels, or JSON null if the
+     *  model declares no {@code agentAccess} block. */
+    private static ObjectNode toAgentAccess(CompiledModel model) {
+        CompiledAgentAccess agentAccess = model.getAgentAccess();
+        if (agentAccess == null) {
+            return null;
+        }
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        if (agentAccess.getAssistant() != null) {
+            ObjectNode assistant = JsonNodeFactory.instance.objectNode();
+            if (agentAccess.getAssistant().getName() != null) {
+                assistant.put("name", safe(agentAccess.getAssistant().getName()));
+            }
+            if (agentAccess.getAssistant().getInstructions() != null) {
+                assistant.put("instructions", safe(agentAccess.getAssistant().getInstructions()));
+            }
+            if (agentAccess.getAssistant().getLanguage() != null) {
+                assistant.put("language", safe(agentAccess.getAssistant().getLanguage()));
+            }
+            node.set("assistant", assistant);
+        }
+        if (agentAccess.getChannels() != null) {
+            ObjectNode channels = JsonNodeFactory.instance.objectNode();
+            ObjectNode mcp = JsonNodeFactory.instance.objectNode();
+            mcp.put("enabled", agentAccess.getChannels().getMcp().isEnabled());
+            channels.set("mcp", mcp);
+            ObjectNode telegram = JsonNodeFactory.instance.objectNode();
+            telegram.put("enabled", agentAccess.getChannels().getTelegram().isEnabled());
+            channels.set("telegram", telegram);
+            ObjectNode whatsapp = JsonNodeFactory.instance.objectNode();
+            whatsapp.put("enabled", agentAccess.getChannels().getWhatsapp().isEnabled());
+            channels.set("whatsapp", whatsapp);
+            node.set("channels", channels);
+        }
+        ArrayNode expose = JsonNodeFactory.instance.arrayNode();
+        for (CompiledAgentAccessExposure exposure : agentAccess.getExpose()) {
+            ObjectNode exposureNode = JsonNodeFactory.instance.objectNode();
+            if (exposure.getConcept() != null) {
+                exposureNode.put("concept", safe(exposure.getConcept()));
+            }
+            if (exposure.getFlow() != null) {
+                exposureNode.put("flow", safe(exposure.getFlow()));
+            }
+            ArrayNode operations = JsonNodeFactory.instance.arrayNode();
+            for (String operation : exposure.getOperations()) {
+                operations.add(operation);
+            }
+            exposureNode.set("operations", operations);
+            ArrayNode fields = JsonNodeFactory.instance.arrayNode();
+            for (String field : exposure.getFields()) {
+                fields.add(field);
+            }
+            exposureNode.set("fields", fields);
+            ArrayNode roles = JsonNodeFactory.instance.arrayNode();
+            for (String role : exposure.getRoles()) {
+                roles.add(role);
+            }
+            exposureNode.set("roles", roles);
+            if (exposure.getDescription() != null) {
+                exposureNode.put("description", safe(exposure.getDescription()));
+            }
+            exposureNode.put("confirmWrites", exposure.getConfirmWrites());
+            expose.add(exposureNode);
+        }
+        node.set("expose", expose);
         return node;
     }
 

@@ -473,6 +473,9 @@
     },
     "appShell": {
       "$ref": "#/$defs/appShell"
+    },
+    "agentAccess": {
+      "$ref": "#/$defs/agentAccess"
     }
   },
   "$defs": {
@@ -808,6 +811,80 @@
           "description": "Optional section/group label this entry is organized under (e.g. \"Operations\"), mirroring the shell's own System/Dados/Paineis grouping."
         }
       }
+    },
+    "agentAccess": {
+      "type": "object",
+      "description": "AGENT-1: what an AI agent may see and do in this app, and on which channels. Every tool call runs through the app's own REST API as the calling (or linked) user, so role permissions and concept `access` rules still decide what actually happens -- this block only decides what is OFFERED to the agent. Secrets (bot tokens, AI keys) never live here; they go in <app>/secrets/agent-proxy.env.",
+      "properties": {
+        "assistant": {
+          "type": "object",
+          "description": "How the built-in assistant (Telegram/WhatsApp) behaves. Not used by the MCP endpoint, where the connecting agent brings its own model.",
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "description": "Shown in greetings, e.g. 'Pizza Bot'." },
+            "instructions": { "type": "string", "minLength": 1, "description": "Plain-language guidance added to the system prompt, e.g. 'Answer in Portuguese. Staff manage stock; customers order pizzas.'" },
+            "language": { "type": "string", "minLength": 2, "description": "Default reply language tag, e.g. 'pt-BR'. Optional." }
+          },
+          "additionalProperties": false
+        },
+        "channels": {
+          "type": "object",
+          "properties": {
+            "mcp": { "$ref": "#/$defs/agentAccessChannel" },
+            "telegram": { "$ref": "#/$defs/agentAccessChannel" },
+            "whatsapp": { "$ref": "#/$defs/agentAccessChannel" }
+          },
+          "additionalProperties": false
+        },
+        "expose": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/agentAccessExposure" }
+        }
+      },
+      "required": ["expose"],
+      "additionalProperties": false
+    },
+    "agentAccessChannel": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean", "description": "Off by default. telegram/whatsapp also need auth.mode=jwt and the identity pack (account linking uses identity::ExternalIdentity)." }
+      },
+      "required": ["enabled"],
+      "additionalProperties": false
+    },
+    "agentAccessExposure": {
+      "type": "object",
+      "description": "One concept or one flow offered to agents. Exactly one of concept / flow.",
+      "properties": {
+        "concept": { "type": "string", "minLength": 1 },
+        "flow": { "type": "string", "minLength": 1 },
+        "operations": {
+          "type": "array",
+          "description": "concept only. Default: [\"list\", \"get\"] (read-only).",
+          "items": { "type": "string", "enum": ["list", "get", "create", "update", "delete"] },
+          "uniqueItems": true,
+          "minItems": 1
+        },
+        "fields": {
+          "type": "array",
+          "description": "concept only. Allow-list of fields the agent sees and may set. Default: every non-sensitive field. A `sensitive: true` field is NEVER exposed, even if listed here (validation error).",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "roles": {
+          "type": "array",
+          "description": "Offer these tools only to users holding at least one of these roles. Absent = every linked user. This filters the OFFER; the app's permissions still enforce every call.",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "description": { "type": "string", "minLength": 1, "description": "Plain-language hint for the AI, e.g. 'Pizza ingredients and how much of each is in stock.'" },
+        "confirmWrites": { "type": "boolean", "description": "Chat channels only: ask the user to confirm create/update/delete/flow runs before executing. Default true." }
+      },
+      "oneOf": [
+        { "required": ["concept"], "not": { "required": ["flow"] } },
+        { "required": ["flow"], "not": { "required": ["concept"] } }
+      ],
+      "additionalProperties": false
     },
     "externalAi": {
       "type": "object",
