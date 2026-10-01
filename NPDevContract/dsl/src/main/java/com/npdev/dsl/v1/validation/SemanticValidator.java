@@ -160,6 +160,7 @@ public final class SemanticValidator {
         SequenceValidation.validateSequences(effectiveModel, errors);
         SeedValidation.validateSeeds(effectiveModel, errors);
         PropertyValidation.validatePropertyScopesAndProperties(effectiveModel, errors);
+        AgentAccessValidation.validateAgentAccess(effectiveModel, entitiesByLower, errors);
         errors = canonicalizeConceptTerminology(errors);
         semanticWarnings = canonicalizeConceptTerminology(semanticWarnings);
         for (String semanticWarning : semanticWarnings) {

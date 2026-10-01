@@ -33,6 +33,7 @@ public final class CompiledModel {
     private final List<CompiledSequence> sequences;
     private final List<CompiledSeed> seeds;
     private final CompiledAppShell appShell;
+    private final CompiledAgentAccess agentAccess;
 
     public CompiledModel(String namespace, String version, Map<String, ? extends CompiledEntity> entitiesByName) {
         this(namespace, "1.0.0", version, entitiesByName, List.of(), List.of(), List.of(), List.of(), List.of(), List.of());
@@ -539,6 +540,46 @@ public final class CompiledModel {
             List<CompiledSeed> seeds,
             CompiledAppShell appShell
     ) {
+        this(namespace, dslVersion, version, entitiesByName, domainTypes, capabilities, bindings, events, flows,
+                orchestrationRules, queries, ruleProfiles, procedures, panels, guidePages, aggregates, autoPanels,
+                documents, externalAi, settings, roles, propertyScopes, properties, contexts, conversions, webhooks,
+                sequences, seeds, appShell, null);
+    }
+
+    /** AGENT-1: canonical constructor, adds {@code agentAccess} (what an AI agent may see and do, and
+     *  on which channels -- see {@link CompiledAgentAccess}). */
+    public CompiledModel(
+            String namespace,
+            String dslVersion,
+            String version,
+            Map<String, ? extends CompiledEntity> entitiesByName,
+            List<CompiledDomainType> domainTypes,
+            List<CompiledCapability> capabilities,
+            List<CompiledCapabilityBinding> bindings,
+            List<CompiledEvent> events,
+            List<CompiledFlow> flows,
+            List<CompiledOrchestration> orchestrationRules,
+            List<CompiledQuery> queries,
+            List<CompiledRuleProfile> ruleProfiles,
+            List<CompiledProcedure> procedures,
+            List<CompiledPanel> panels,
+            List<CompiledGuidePage> guidePages,
+            List<CompiledAggregate> aggregates,
+            List<CompiledAutoPanel> autoPanels,
+            List<CompiledDocument> documents,
+            CompiledExternalAi externalAi,
+            CompiledSettings settings,
+            List<CompiledRole> roles,
+            List<CompiledPropertyScope> propertyScopes,
+            List<CompiledProperty> properties,
+            List<CompiledContext> contexts,
+            List<CompiledConversion> conversions,
+            List<CompiledWebhook> webhooks,
+            List<CompiledSequence> sequences,
+            List<CompiledSeed> seeds,
+            CompiledAppShell appShell,
+            CompiledAgentAccess agentAccess
+    ) {
         this.namespace = namespace;
         this.dslVersion = dslVersion;
         this.version = version;
@@ -572,6 +613,7 @@ public final class CompiledModel {
         this.sequences = sequences == null ? List.of() : List.copyOf(sequences);
         this.seeds = seeds == null ? List.of() : List.copyOf(seeds);
         this.appShell = appShell;
+        this.agentAccess = agentAccess;
     }
 
     public String getNamespace() { return namespace; }
@@ -760,6 +802,12 @@ public final class CompiledModel {
      *  {@code null} if the model declares none (the shell's existing default behavior applies). */
     public CompiledAppShell getAppShell() {
         return appShell;
+    }
+
+    /** AGENT-1: what an AI agent may see and do, and on which channels, or {@code null} if the model
+     *  declares none (agent access is entirely off in that case). */
+    public CompiledAgentAccess getAgentAccess() {
+        return agentAccess;
     }
 
     public Optional<CompiledFlow> findFlow(String flowName) {

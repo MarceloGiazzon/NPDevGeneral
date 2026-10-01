@@ -331,6 +331,7 @@ public final class GeneratorFacade {
         // any coarse CRUD permission check -- see UnenforceableAccessRuleCheck for why that is an error
         // rather than a warning, and why the check cannot live in SemanticValidator.
         UnenforceableAccessRuleCheck.verify(model, settingResolver);
+        AgentAccessChannelCheck.verify(model, settingResolver);
 
         boolean kernelControlled = settingResolver.value(NpdevSettings.CRUD_KERNEL_CONTROLLED, SettingTarget.app());
         String superUserRole = settingResolver.value(NpdevSettings.SECURITY_SUPER_USER_ROLE, SettingTarget.app());

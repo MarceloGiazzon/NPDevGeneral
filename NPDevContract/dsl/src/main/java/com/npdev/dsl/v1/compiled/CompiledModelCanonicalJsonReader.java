@@ -148,6 +148,7 @@ public final class CompiledModelCanonicalJsonReader {
         }
 
         CompiledAppShell appShell = toAppShell(root.get("appShell"));
+        CompiledAgentAccess agentAccess = toAgentAccess(root.get("agentAccess"));
 
         return new CompiledModel(
                 namespace,
@@ -178,7 +179,8 @@ public final class CompiledModelCanonicalJsonReader {
                 webhooks,
                 sequences,
                 seeds,
-                appShell
+                appShell,
+                agentAccess
         );
     }
 
@@ -345,6 +347,48 @@ public final class CompiledModelCanonicalJsonReader {
                     text(itemNode, "label"), optionalText(itemNode, "target"), optionalText(itemNode, "group")));
         }
         return new CompiledAppShell(optionalText(node, "defaultRoute"), navigation);
+    }
+
+    /** AGENT-1: reads the optional {@code agentAccess} block; null if absent. */
+    private static CompiledAgentAccess toAgentAccess(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        CompiledAgentAccessAssistant assistant = null;
+        JsonNode assistantNode = node.get("assistant");
+        if (assistantNode != null && !assistantNode.isNull()) {
+            assistant = new CompiledAgentAccessAssistant(
+                    optionalText(assistantNode, "name"),
+                    optionalText(assistantNode, "instructions"),
+                    optionalText(assistantNode, "language"));
+        }
+        CompiledAgentAccessChannels channels = null;
+        JsonNode channelsNode = node.get("channels");
+        if (channelsNode != null && !channelsNode.isNull()) {
+            channels = new CompiledAgentAccessChannels(
+                    toAgentAccessChannel(channelsNode.get("mcp")),
+                    toAgentAccessChannel(channelsNode.get("telegram")),
+                    toAgentAccessChannel(channelsNode.get("whatsapp")));
+        }
+        List<CompiledAgentAccessExposure> expose = new ArrayList<>();
+        for (JsonNode exposureNode : array(node, "expose")) {
+            expose.add(new CompiledAgentAccessExposure(
+                    optionalText(exposureNode, "concept"),
+                    optionalText(exposureNode, "flow"),
+                    toStringList(exposureNode.get("operations")),
+                    toStringList(exposureNode.get("fields")),
+                    toStringList(exposureNode.get("roles")),
+                    optionalText(exposureNode, "description"),
+                    booleanValue(exposureNode, "confirmWrites")));
+        }
+        return new CompiledAgentAccess(assistant, channels, expose);
+    }
+
+    private static CompiledAgentAccessChannel toAgentAccessChannel(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return new CompiledAgentAccessChannel(false);
+        }
+        return new CompiledAgentAccessChannel(booleanValue(node, "enabled"));
     }
 
     private static CompiledDocument toDocument(JsonNode node) {

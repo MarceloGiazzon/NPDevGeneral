@@ -29,6 +29,14 @@
     ]
   },
 
+  "agentAccess": {
+    "channels": { "mcp": { "enabled": true } },
+    "expose": [
+      { "concept": "WidgetOrder", "operations": ["list", "get"], "description": "Widget orders placed by customers." },
+      { "flow": "PlaceWidgetOrder", "description": "Place a new widget order." }
+    ]
+  },
+
   "roles": [
     {
       "name": "WarehouseManager",

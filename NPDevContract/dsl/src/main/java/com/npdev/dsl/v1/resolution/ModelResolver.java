@@ -140,7 +140,11 @@ public final class ModelResolver {
                 // Path A P6.3: whole-object pass-through, same reasoning as settings/externalAi
                 // above -- appShell is app-level shell chrome with no `extends`/specialization
                 // concept of its own for this resolver to expand.
-                source.getAppShell()
+                source.getAppShell(),
+                // AGENT-1: whole-object pass-through, same reasoning -- agentAccess is an app-level
+                // declaration (concept/flow names, not fields) with no `extends`/specialization
+                // concept of its own for this resolver to expand.
+                source.getAgentAccess()
         );
         return ResolvedModel.from(resolvedAst);
     }
