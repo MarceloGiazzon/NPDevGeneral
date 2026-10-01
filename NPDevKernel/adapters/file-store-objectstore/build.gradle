@@ -3,10 +3,10 @@ dependencies {
 
     // HARDEN-OBJSTORE-P1: the first external SDK in a kernel adapter -- deliberately isolated to
     // this module only (kernel core and the other adapters stay dependency-free on it).
-    implementation platform('software.amazon.awssdk:bom:2.28.11')
+    implementation platform('software.amazon.awssdk:bom:2.55.6')
     implementation 'software.amazon.awssdk:s3'
 
-    testImplementation 'org.mockito:mockito-core:5.11.0'
+    testImplementation 'org.mockito:mockito-core:5.24.0'
     testImplementation 'org.testcontainers:testcontainers:1.21.4'
     // MinIO deleted minio/minio from both Docker Hub (2026-09-11) and its quay.io mirror stopped
     // allowing anonymous pulls shortly after (confirmed live in CI: consistent ConditionTimeoutException
