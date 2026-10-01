@@ -17,6 +17,7 @@
       "resolvedVersion" : "1.1.0",
       "digest" : "sha256:bbc08e6dad012455ec4b56469428864f0564ff099108ec7f0908c3d13a1400c8",
       "sourcePath" : "sha256/bbc08e6dad012455ec4b56469428864f0564ff099108ec7f0908c3d13a1400c8/pack.json",
+      "migratedVersion" : "1.1.0",
       "from" : "git+file:///D:/WorkSpace/NPDev/Build/npdev-pack-repo//packs/workspace@workspace-1.1.0"
     }
   }

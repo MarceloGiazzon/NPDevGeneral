@@ -10,6 +10,38 @@
     { "name": "user", "from": "$user.id" },
     { "name": "tenant" }
   ],
+  "agentAccess": {
+    "assistant": {
+      "name": "Pigmentampas Assistant",
+      "instructions": "You help the staff of a pigment store check and update stock, and you help customers browse pigments and place or follow their own orders. Reply in the user's language. Prices are in BRL per kg. When a customer places an order, set customerUsername to their own username and status to OPEN.",
+      "language": "pt-BR"
+    },
+    "channels": {
+      "mcp": { "enabled": true },
+      "telegram": { "enabled": true },
+      "whatsapp": { "enabled": false }
+    },
+    "expose": [
+      {
+        "concept": "Pigment",
+        "operations": ["list", "get"],
+        "description": "The pigments the store sells: name, color code, price per kg, whether it is active."
+      },
+      {
+        "concept": "StockEntry",
+        "operations": ["list", "get", "update"],
+        "roles": ["Staff"],
+        "description": "How many kg of each pigment are in stock, and where."
+      },
+      {
+        "concept": "Order",
+        "operations": ["list", "get", "create"],
+        "roles": ["Staff", "Customer"],
+        "description": "Customer orders. Customers only ever see their own.",
+        "confirmWrites": true
+      }
+    ]
+  },
   "bindings": [
     { "adapter": "repository", "capability": "persistence" },
     { "adapter": "inproc", "capability": "eventBus" }
@@ -121,8 +153,15 @@
         { "name": "totalAmount", "type": "decimal", "required": true,
           "ui": { "label": "Total amount" } },
         { "name": "placedAt", "type": "datetime", "required": true,
-          "ui": { "label": "Placed at" } }
-      ]
+          "ui": { "label": "Placed at" } },
+        { "name": "customerUsername", "type": "string", "required": false,
+          "ui": { "label": "Customer account" },
+          "description": "Username of the app user who placed the order. Set by the agent (or staff); row-level access below keys on it." }
+      ],
+      "access": {
+        "read": "$user.roles.contains('Staff') || customerUsername == $user.id",
+        "write": "$user.roles.contains('Staff') || customerUsername == $user.id"
+      }
     },
     {
       "name": "OrderItem",
