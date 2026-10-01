@@ -303,7 +303,9 @@ public class LoginController {
         return request.getRemoteAddr();
     }
 
-    static String readKeyFile(ResourceLoader resourceLoader, String path) throws Exception {
+    /** AGENT-1 (A5.2): widened to public so AgentLinkController (com.finalexec.api, a different
+     *  package) can load a PEM key file the same way OAuthGoogleController does within this package. */
+    public static String readKeyFile(ResourceLoader resourceLoader, String path) throws Exception {
         if (path.startsWith("classpath:")) {
             Resource resource = resourceLoader.getResource(path);
             try (var inputStream = resource.getInputStream()) {

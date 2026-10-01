@@ -5,6 +5,8 @@
   "enforcedByProperty": "npdev.runtime.supported-surface-enforced",
   "allowedControllers": [
     "AgentProxyController",
+    "AgentMcpController",
+    "AgentLinkController",
     "AggregateApiController",
     "WebhookInboundController",
     "MessagingDeliveryController",
