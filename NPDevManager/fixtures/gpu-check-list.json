@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "gpu-check list",
+  "ok": true,
+  "exitCode": 0,
+  "checks": [
+    { "concept": "billing::Invoice", "id": "billing::Invoice.amountCents.required", "kind": "required", "engine": "gpu", "message": "billing::Invoice.amountCents is required" },
+    { "concept": "billing::Invoice", "id": "billing::Invoice.status.required", "kind": "required", "engine": "gpu", "message": "billing::Invoice.status is required" },
+    { "concept": "ConversionDemoCustomer", "id": "ConversionDemoCustomer.firstName.required", "kind": "required", "engine": "gpu", "message": "ConversionDemoCustomer.firstName is required" },
+    { "concept": "ConversionDemoOrderLine", "id": "ConversionDemoOrderLine.productId.required", "kind": "requiredOpaque", "engine": "host", "message": "ConversionDemoOrderLine.productId is required (uuid: checked on the host from the null mask only)" },
+    { "concept": "shipping::DeliveryAttempt", "id": "shipping::DeliveryAttempt.succeeded.required", "kind": "required", "engine": "gpu", "message": "shipping::DeliveryAttempt.succeeded is required" },
+    { "concept": "shipping::DeliveryAttempt", "id": "shipping::DeliveryAttempt.attemptedOn.required", "kind": "requiredOpaque", "engine": "host", "message": "shipping::DeliveryAttempt.attemptedOn is required (date: checked on the host from the null mask only)" },
+    { "concept": "shipping::DeliveryAttempt", "id": "shipping::DeliveryAttempt.shipment.reference", "kind": "reference", "engine": "host", "message": "shipping::DeliveryAttempt.shipment must reference an existing shipping::Shipment" },
+    { "concept": "WidgetSupplier", "id": "WidgetSupplier.supplierCode.unique", "kind": "unique", "engine": "host", "message": "WidgetSupplier.supplierCode must be unique" },
+    { "concept": "labeling::Label", "id": "labeling::Label.text.maxLength", "kind": "maxLength", "engine": "gpu", "message": "labeling::Label.text must be at most 200 characters" }
+  ]
+}

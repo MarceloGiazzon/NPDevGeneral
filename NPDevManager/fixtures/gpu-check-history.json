@@ -1,0 +1,44 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "gpu-check history",
+  "ok": true,
+  "exitCode": 0,
+  "runs": [
+    {
+      "runId": "20261001T133507Z-e2288f",
+      "startedAt": "2026-10-01T13:35:07Z",
+      "engine": { "requested": "gpu", "used": "gpu", "device": "NVIDIA GeForce MX330" },
+      "rowsChecked": 5,
+      "violations": 4,
+      "verify": { "mode": "full", "rows": 5, "matched": true, "mismatches": [] },
+      "timingsMs": { "total": 1972.3 }
+    },
+    {
+      "runId": "20261001T133250Z-3db093",
+      "startedAt": "2026-10-01T13:32:50Z",
+      "engine": { "requested": "cpu", "used": "cpu", "device": "" },
+      "rowsChecked": 3,
+      "violations": 3,
+      "verify": { "mode": "none", "rows": 3, "matched": true, "mismatches": [] },
+      "timingsMs": { "total": 87.4 }
+    },
+    {
+      "runId": "20261001T133218Z-75cd81",
+      "startedAt": "2026-10-01T13:32:21Z",
+      "engine": { "requested": "gpu", "used": "gpu", "device": "NVIDIA GeForce MX330" },
+      "rowsChecked": 5,
+      "violations": 4,
+      "verify": { "mode": "full", "rows": 5, "matched": true, "mismatches": [] },
+      "timingsMs": { "total": 2809.58 }
+    },
+    {
+      "runId": "20261001T133211Z-2e2cb0",
+      "startedAt": "2026-10-01T13:32:11Z",
+      "engine": { "requested": "cpu", "used": "cpu", "device": "" },
+      "rowsChecked": 5,
+      "violations": 4,
+      "verify": { "mode": "none", "rows": 5, "matched": true, "mismatches": [] },
+      "timingsMs": { "total": 87.1 }
+    }
+  ]
+}

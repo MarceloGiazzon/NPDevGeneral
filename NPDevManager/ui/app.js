@@ -37,6 +37,9 @@ function showScreen(name) {
   // A run can finish (or a new one start from a terminal) while this tab is not the one showing --
   // same reasoning as verification above.
   if (name === "evals" && window.__npdevRefreshEvals) window.__npdevRefreshEvals();
+  // A run can be kicked off from a terminal (`npdev gpu-check run`) while this tab is not the one
+  // showing -- same reasoning as verification/evals above.
+  if (name === "gpuchecks" && window.__npdevRefreshGpuChecks) window.__npdevRefreshGpuChecks();
 }
 
 // The Monitor's "Explore this app" button crosses screens, which is the one affordance that turns

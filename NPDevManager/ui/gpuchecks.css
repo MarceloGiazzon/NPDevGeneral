@@ -1,0 +1,84 @@
+/* GPU Checks tab (Track B, G5) -- data-rule sweep with GPU acceleration and an exact CPU twin.
+   Same tokens/shapes as dbio.css/packs.css. */
+
+#screen-gpuchecks h1 {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  letter-spacing: 4px;
+  color: var(--ok);
+  text-shadow: 0 0 8px rgba(52, 255, 109, .55), 0 0 24px rgba(52, 255, 109, .25);
+  margin: 6px 0 2px;
+}
+#screen-gpuchecks h1 .dim { color: var(--muted); text-shadow: none; font-size: 14px; letter-spacing: 2px; }
+#screen-gpuchecks .subtitle { color: var(--muted); font-size: 12.5px; margin-bottom: 12px; }
+#screen-gpuchecks .btn {
+  font-family: var(--font-ui); font-size: 12.5px; font-weight: 600;
+  padding: 7px 16px; border-radius: 6px; cursor: pointer;
+  background: #1c2b1f; color: var(--ok); border: 1px solid #2c5236;
+}
+#screen-gpuchecks .btn:hover { background: #234030; }
+#screen-gpuchecks .btn.ghost { background: transparent; color: var(--muted); border-color: #262c33; padding: 4px 10px; font-size: 11.5px; }
+#screen-gpuchecks .btn.ghost:hover { color: var(--text); }
+#screen-gpuchecks .status-line.err { color: var(--err); }
+
+.gpuchecks-empty {
+  background: var(--bg2); border: 1px dashed #2c333c; border-radius: 8px;
+  padding: 18px; color: var(--muted); font-size: 12.5px; line-height: 1.5;
+}
+.gpuchecks-empty code { color: var(--text); }
+
+.gpuchecks-toolbar select, .gpuchecks-toolbar label {
+  font-size: 11.5px; color: var(--muted);
+}
+.gpuchecks-toolbar select {
+  background: #0d1117; color: var(--text); border: 1px solid #262c33; border-radius: 6px;
+  padding: 5px 8px; font-family: var(--font-ui); font-size: 12.5px; margin-left: 4px;
+}
+.gpuchecks-toolbar .gpuchecks-verify { display: inline-flex; align-items: center; gap: 4px; }
+
+.gpuchecks-columns { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 12px; }
+.gpuchecks-panel {
+  flex: 1 1 380px;
+  background: var(--bg2);
+  border: 1px solid #1f242b;
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+.gpuchecks-panel h3 { margin: 0 0 10px; font-size: 13px; color: var(--text); font-family: var(--font-mono); letter-spacing: 1px; }
+
+table.gpuchecks-table {
+  width: 100%; border-collapse: collapse; font-size: 11.5px; font-family: var(--font-mono);
+}
+table.gpuchecks-table th {
+  text-align: left; color: var(--muted); font-weight: 600; padding: 4px 6px;
+  border-bottom: 1px solid #262c33;
+}
+table.gpuchecks-table td {
+  padding: 4px 6px; border-bottom: 1px solid #1a1f26; color: var(--text); vertical-align: top;
+}
+table.gpuchecks-table tr.gpuchecks-row-clickable { cursor: pointer; }
+table.gpuchecks-table tr.gpuchecks-row-clickable:hover td { background: #161b22; }
+table.gpuchecks-table .gpuchecks-pass { color: var(--ok); }
+table.gpuchecks-table .gpuchecks-fail { color: var(--err); }
+table.gpuchecks-table .gpuchecks-skip { color: var(--muted); }
+.gpuchecks-engine-tag {
+  display: inline-block; border-radius: 4px; padding: 1px 6px; font-size: 10.5px;
+  border: 1px solid #2c333c; color: var(--muted);
+}
+.gpuchecks-engine-tag.gpu { color: var(--ok); border-color: #2c5236; }
+
+.gpuchecks-scroll { max-height: 340px; overflow: auto; }
+
+.gpuchecks-details {
+  margin-top: 16px; background: var(--bg2); border: 1px solid #1f242b; border-radius: 8px;
+  padding: 14px 16px;
+}
+.gpuchecks-details h3 { margin: 0 0 10px; font-size: 13px; color: var(--text); font-family: var(--font-mono); }
+.gpuchecks-details-actions { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.gpuchecks-samples { color: var(--muted); font-size: 10.5px; }
+.gpuchecks-shader-pre, .gpuchecks-prompt-pre {
+  margin: 8px 0 0; max-height: 320px; overflow: auto;
+  background: #0d1117; border: 1px solid #1f242b; border-radius: 6px;
+  padding: 8px 10px; font-family: var(--font-mono); font-size: 11px; color: var(--muted);
+  white-space: pre-wrap; word-break: break-word;
+}

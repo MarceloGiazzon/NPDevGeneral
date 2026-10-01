@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "npdev-cli-result.v1",
+  "command": "gpu-check run",
+  "ok": true,
+  "exitCode": 1,
+  "result": {
+    "schemaVersion": "npdev-gpu-check-result.v1",
+    "runId": "20261001T133218Z-75cd81",
+    "startedAt": "2026-10-01T13:32:21Z",
+    "app": "App",
+    "namespace": "trial.dslconformancemax",
+    "mode": "app",
+    "engine": { "requested": "gpu", "used": "gpu", "device": "NVIDIA GeForce MX330" },
+    "rowsChecked": 5,
+    "violations": 4,
+    "verify": { "mode": "full", "rows": 5, "matched": true, "mismatches": [] },
+    "timingsMs": {
+      "gpuInit": 976.75,
+      "gpuUpload": 26.54,
+      "gpuDispatch": 135.27,
+      "read": 0.25,
+      "pack": 60.24,
+      "cpuTwin": 0.0,
+      "host": 0.003,
+      "total": 2809.58
+    },
+    "concepts": [
+      {
+        "concept": "billing::Invoice",
+        "rows": 5,
+        "packs": [ { "packId": "billing__Invoice-p0", "engine": "gpu" } ],
+        "checks": [
+          {
+            "id": "billing::Invoice.amountCents.required", "kind": "required",
+            "message": "billing::Invoice.amountCents is required",
+            "status": "failed", "violations": 2, "sampleIds": ["row-2", "row-4"]
+          },
+          {
+            "id": "billing::Invoice.status.required", "kind": "required",
+            "message": "billing::Invoice.status is required",
+            "status": "failed", "violations": 2, "sampleIds": ["row-3", "row-4"]
+          }
+        ]
+      }
+    ]
+  }
+}

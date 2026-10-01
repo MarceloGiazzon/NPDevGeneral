@@ -526,6 +526,86 @@ async fn pick_db_transfer_folder(title: String) -> Option<String> {
     Some(handle.path().to_string_lossy().to_string())
 }
 
+/// GPU Checks tab (Track B, G5): `npdev gpu-check list`. Thin pipe, same shape as `pack_list` --
+/// engine eligibility per check is entirely the CLI's own decision.
+#[tauri::command]
+async fn gpu_check_list(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_gpu_check_list(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_gpu_check_list(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+/// GPU Checks tab: `npdev gpu-check run --engine <auto|gpu|cpu> [--verify]`. Exit 0 = no
+/// violations, 1 = violations found, 2 = GPU disagreed with the CPU twin -- the CLI's own
+/// npdev-cli-result.v1 envelope carries that in `exitCode`/`ok`, nothing re-derived here.
+#[tauri::command]
+async fn gpu_check_run(
+    state: State<'_, AppState>,
+    app_dir: String,
+    engine: String,
+    verify: bool,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_gpu_check_run(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(), &app_dir, &engine, verify).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_gpu_check_run(&python, &cli, java_home.as_deref(), &app_dir, &engine, verify).await
+}
+
+/// GPU Checks tab: `npdev gpu-check history`.
+#[tauri::command]
+async fn gpu_check_history(state: State<'_, AppState>, app_dir: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_gpu_check_history(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(), &app_dir).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_gpu_check_history(&python, &cli, java_home.as_deref(), &app_dir).await
+}
+
+/// GPU Checks tab: `npdev gpu-check show --run <id>` -- the details pane behind clicking a run row.
+#[tauri::command]
+async fn gpu_check_show(state: State<'_, AppState>, app_dir: String, run_id: String) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_gpu_check_show(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(), &app_dir, &run_id).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_gpu_check_show(&python, &cli, java_home.as_deref(), &app_dir, &run_id).await
+}
+
+/// GPU Checks tab: the "⬇ Download bundle" button -- `npdev gpu-check bundle`, writing to a
+/// user-picked folder (reuses `pick_db_transfer_folder`'s dialog from the UI side; this command
+/// only runs the CLI once a destination path is known).
+#[tauri::command]
+async fn gpu_check_bundle(
+    state: State<'_, AppState>,
+    app_dir: String,
+    run_id: String,
+    out_zip: String,
+) -> Result<Value, String> {
+    let java_home = resolve_java_home(&state);
+    if npdev::fake_mode() {
+        return npdev::run_gpu_check_bundle(&PathBuf::from("python"), &PathBuf::from("npdev_cli.py"),
+            java_home.as_deref(), &app_dir, &run_id, &out_zip).await;
+    }
+    let python = resolve_python_exe(&state).await?;
+    let cli = resolve_npdev_cli(&state)?;
+    npdev::run_gpu_check_bundle(&python, &cli, java_home.as_deref(), &app_dir, &run_id, &out_zip).await
+}
+
 #[tauri::command]
 fn open_folder(app: tauri::AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
@@ -2924,6 +3004,11 @@ the blast radius needs a baseline to diff against"
             db_export,
             db_import,
             pick_db_transfer_folder,
+            gpu_check_list,
+            gpu_check_run,
+            gpu_check_history,
+            gpu_check_show,
+            gpu_check_bundle,
             open_folder,
             read_json_file,
             open_url,
