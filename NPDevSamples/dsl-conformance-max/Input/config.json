@@ -14,6 +14,9 @@
     "emitRuntimeAssets": true,
     "emitUiAssets": true
   },
+  "defaults": {
+    "checks.gpuArtifacts": true
+  },
   "bootstrap": {
     "root": "..\\..\\NPDevRuntimeHost",
     "mergeStrategy": "clean-copy"
