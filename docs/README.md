@@ -40,6 +40,7 @@ release-governance material (still live, just not what a newcomer needs) lives i
 
 One file per built-in feature.
 
+[AGENT_ACCESS.md](reference/AGENT_ACCESS.md) ·
 [CSV_EXPORT.md](reference/CSV_EXPORT.md) ·
 [EMAIL_NOTIFICATIONS.md](reference/EMAIL_NOTIFICATIONS.md) ·
 [OPTIMISTIC_LOCKING.md](reference/OPTIMISTIC_LOCKING.md) ·

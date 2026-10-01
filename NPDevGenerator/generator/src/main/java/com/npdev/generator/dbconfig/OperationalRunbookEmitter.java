@@ -726,6 +726,7 @@ npdev_resolve_app_relative() {
         Files.createDirectories(secretsDir);
         writeOauthGoogleExample(secretsDir);
         writeOauthGithubExample(secretsDir);
+        writeAgentAccessEnvExample(secretsDir);
         write(secretsDir.resolve("agent-proxy.env.example"), """
 # agent-proxy.env.example -- copy to `agent-proxy.env` in this directory and fill in ONE provider key.
 #
@@ -759,6 +760,56 @@ NPDEV_EXTERNALAI_ANTHROPIC_API_KEY=sk-ant-replace-me
 # type into it, so this only changes the suggestion.
 # NPDEV_EXTERNALAI_HTTP_ANTHROPIC_MODEL=claude-opus-5
 # NPDEV_EXTERNALAI_HTTP_OPENAI_MODEL=gpt-4o-mini
+""");
+    }
+
+    /**
+     * AGENT-1 (A9.1): emit {@code <app>/secrets/agent-access.env.example} -- the variables Agent
+     * Access (Telegram/WhatsApp/MCP) reads. Emitted unconditionally, like
+     * {@code agent-proxy.env.example}: this method has no model in scope to gate on, and inert text
+     * costs nothing in an app that never declares {@code agentAccess}. Fixed text, no timestamps
+     * (deterministic generation).
+     */
+    private static void writeAgentAccessEnvExample(Path secretsDir) throws Exception {
+        write(secretsDir.resolve("agent-access.env.example"), """
+# agent-access.env.example -- the variables Agent Access (Telegram / WhatsApp / MCP) reads.
+#
+# The generator emits this text as <app>/secrets/agent-access.env.example (fixed text, no timestamps
+# -- deterministic generation). Copy the lines you need INTO <app>/secrets/agent-proxy.env, which is
+# the ONE file `_ops\\Start-App.ps1` / `_ops\\Run-FinalApp.ps1` load into the app's environment.
+#
+# Never commit the real file. `secrets/` is spared by regeneration, excluded from Docker builds and
+# from `npdev monitor logs export`.
+
+# --- 1. The AI that powers the chat assistant (Telegram / WhatsApp) -----------------------------
+# MCP clients bring their own AI; these lines are only for the built-in assistant.
+NPDEV_EXTERNALAI_PROVIDER=http
+NPDEV_EXTERNALAI_GEMINI_API_KEY=replace-me
+# Which vendor the assistant uses: gemini | anthropic | openai | nvidia. Default gemini.
+NPDEV_AGENT_VENDOR=gemini
+# Optional model override, e.g. gemini-2.5-flash. Empty = the vendor's configured default.
+# NPDEV_AGENT_MODEL=
+
+# --- 2. Telegram ----------------------------------------------------------------------------------
+# Create a bot: open Telegram, talk to @BotFather, send /newbot, follow the steps, copy the token here.
+NPDEV_TELEGRAM_BOT_TOKEN=123456789:replace-me
+# The bot's own @username (from @BotFather) -- used to build the Connect-page deep link.
+NPDEV_TELEGRAM_BOT_USERNAME=replace_me_bot
+# Optional: the address people use to reach this app (shown by the bot to users who are not linked yet).
+# NPDEV_PUBLIC_BASE_URL=https://your-app.example.com
+
+# --- 3. WhatsApp (optional, needs a public HTTPS address -- the NPDev Manager's tunnel gives one in dev) ---
+# NPDEV_WHATSAPP_PHONE_NUMBER_ID=replace-me
+# NPDEV_WHATSAPP_ACCESS_TOKEN=replace-me
+# NPDEV_WHATSAPP_APP_SECRET=replace-me
+# NPDEV_WHATSAPP_VERIFY_TOKEN=choose-any-long-random-text
+# The phone number shown to a user connecting on the agent-link.html page.
+# NPDEV_WHATSAPP_PHONE_DISPLAY=+1 555 0100
+
+# --- 4. MCP access tokens ---------------------------------------------------------------------------
+# How many days a token made by the "Create MCP token" button stays valid. Default 30. Changing a
+# user's password revokes all their tokens (token_version bump).
+# NPDEV_AGENT_MCP_TOKEN_DAYS=30
 """);
     }
 

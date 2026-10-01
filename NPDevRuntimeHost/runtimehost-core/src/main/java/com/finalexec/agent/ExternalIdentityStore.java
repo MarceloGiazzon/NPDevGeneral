@@ -136,6 +136,20 @@ public final class ExternalIdentityStore {
         return out;
     }
 
+    /** How many accounts are linked to this provider, total -- for the status probe (A9). */
+    public int countLinked(Tables tables, String provider) {
+        try (Connection connection = dataSource.getConnection();
+                PreparedStatement ps = connection.prepareStatement(
+                        "SELECT COUNT(*) FROM " + tables.externalIdentityTable() + " WHERE provider = ?")) {
+            ps.setString(1, provider);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        } catch (SQLException ex) {
+            return 0;
+        }
+    }
+
     public Optional<ActiveUser> findActiveUserById(Tables tables, String userId) {
         try (Connection connection = dataSource.getConnection();
                 PreparedStatement ps = connection.prepareStatement(
