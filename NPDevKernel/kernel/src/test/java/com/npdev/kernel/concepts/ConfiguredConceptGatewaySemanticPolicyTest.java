@@ -225,6 +225,48 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
         assertEquals("label-1", saved.id());
     }
 
+    /**
+     * Role names are case-insensitive everywhere else on the platform -- ExecutionContext
+     * upper-cases every role it carries -- so a model author's natural {@code
+     * $user.roles.contains('Staff')} must match a STAFF actor. Found live on Pigmentampas: that
+     * exact rule never matched, so staff silently lost their "see every order" clause.
+     */
+    @Test
+    void containsAccessRuleMatchesRoleNamesCaseInsensitively() {
+        ConceptGateway gateway = ConceptGateways.inMemory(curatedLabelPolicy("$user.roles.contains('Curator')"));
+        ExecutionContext curator = new ExecutionContext("tenant-a", "curator-2", Map.of(), java.util.Set.of("curator"));
+
+        ConceptRecord saved = gateway.save(
+                new ConceptWriteRequest("Label", "label-2", null, Map.of("text", "hello")),
+                curator
+        );
+
+        assertEquals("label-2", saved.id());
+        // The receiver is still only the role set: case-folding never leaks into contains() on
+        // record data, and a non-string needle is a plain "no", never a ClassCastException.
+        ConceptGateway numeric = ConceptGateways.inMemory(curatedLabelPolicy("$user.roles.contains(1)"));
+        assertThrows(ConceptGatewayAccessDeniedException.class, () -> numeric.save(
+                new ConceptWriteRequest("Label", "label-3", null, Map.of("text", "hello")), curator));
+    }
+
+    /** contains() on RECORD data keeps exact, case-sensitive semantics -- only $user.roles folds case. */
+    @Test
+    void containsAccessRuleOnRecordDataStaysCaseSensitive() {
+        ExecutionContext anyone = new ExecutionContext("tenant-a", "writer-1", Map.of(), java.util.Set.of("USER"));
+
+        ConceptGateway listRule = ConceptGateways.inMemory(curatedLabelPolicy("text.contains('b')"));
+        assertEquals("label-4", listRule.save(
+                new ConceptWriteRequest("Label", "label-4", null, Map.of("text", List.of("a", "b"))), anyone).id());
+        assertThrows(ConceptGatewayAccessDeniedException.class, () -> listRule.save(
+                new ConceptWriteRequest("Label", "label-5", null, Map.of("text", List.of("A", "B"))), anyone));
+
+        ConceptGateway stringRule = ConceptGateways.inMemory(curatedLabelPolicy("text.contains('ell')"));
+        assertEquals("label-6", stringRule.save(
+                new ConceptWriteRequest("Label", "label-6", null, Map.of("text", "hello")), anyone).id());
+        assertThrows(ConceptGatewayAccessDeniedException.class, () -> stringRule.save(
+                new ConceptWriteRequest("Label", "label-7", null, Map.of("text", "HELLO")), anyone));
+    }
+
     @Test
     void deniesRowWriteAccessWhenActorRoleFailsContainsAccessRule() {
         ConceptGateway gateway = ConceptGateways.inMemory(curatedLabelPolicy());
@@ -240,6 +282,10 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
     }
 
     private static ConfiguredConceptGatewaySemanticPolicy curatedLabelPolicy() {
+        return curatedLabelPolicy("$user.roles.contains('CURATOR')");
+    }
+
+    private static ConfiguredConceptGatewaySemanticPolicy curatedLabelPolicy(String writeRule) {
         return new ConfiguredConceptGatewaySemanticPolicy(List.of(
                 new ConfiguredConceptGatewaySemanticPolicy.ConceptDefinition(
                         "Label",
@@ -259,7 +305,7 @@ class ConfiguredConceptGatewaySemanticPolicyTest {
                         java.util.Set.of(),
                         new ConfiguredConceptGatewaySemanticPolicy.AccessRules(
                                 null,
-                                "$user.roles.contains('CURATOR')"
+                                writeRule
                         )
                 )
         ));

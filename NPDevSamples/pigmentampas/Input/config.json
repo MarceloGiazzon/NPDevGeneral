@@ -34,7 +34,7 @@
     "resetMode": "reset"
   },
   "runtime": {
-    "springProfile": "dev,step0,trial",
+    "springProfile": "dev,step0,trial,pigmentampa",
     "serverPort": 8084,
     "javaArgs": [],
     "gradleTask": "bootRun"
@@ -43,7 +43,7 @@
     "auth.mode": "jwt"
   },
   "trialDefaults": {
-    "recommendedProfiles": "dev,step0,trial",
+    "recommendedProfiles": "dev,step0,trial,pigmentampa",
     "runtimeUrl": "http://localhost:8084/",
     "databaseMode": "step0-h2",
     "notes": [
