@@ -54,9 +54,12 @@ USAGE
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import json
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 _HERE = Path(__file__).resolve().parent
@@ -148,11 +151,36 @@ def calibrate() -> int:
            check_citations({"synthetic": {"why": "NOTAREALFAMILY-1 is not one of the declared families."}}),
            expect_fire=True)
 
+    # The end-to-end half, through main() itself over throwaway repo roots: the 2026-09-30 bug was
+    # not in check_citations() at all -- an ENFORCED path that did not resolve made load_cleared()
+    # return {}, so a whole allowlist was silently never enforced. Only a run over real files can
+    # see that shape.
+    print("Calibration -- main() over a real file layout (a missing enforced file must block):")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        report("enforced allowlists absent from the root", _main_findings(root), expect_fire=True)
+        for rel_path in ENFORCED + REPORT_ONLY:
+            path = root / rel_path
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"cleared": {"ok": {"why": "Reviewed, see REG-1."}}}), encoding="utf-8")
+        report("every allowlist present, every entry cited", _main_findings(root), expect_fire=False)
+        (root / ENFORCED[0]).write_text(
+            json.dumps({"cleared": {"bad": {"why": "Trust me."}}}), encoding="utf-8")
+        report("an enforced allowlist gains an uncited entry", _main_findings(root), expect_fire=True)
+
     if not ok:
         print("\nFAIL: at least one control did not behave as required.", file=sys.stderr)
         return 1
     print("\nOK: all controls behave correctly.")
     return 0
+
+
+def _main_findings(root: Path) -> list[str]:
+    """main()'s verdict over `root`, as findings: its own printed lines when it blocks, else none."""
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        code = main(["--root", str(root)])
+    return [line.strip() for line in out.getvalue().splitlines() if line.startswith("  ")] if code else []
 
 
 def main(argv: list[str]) -> int:

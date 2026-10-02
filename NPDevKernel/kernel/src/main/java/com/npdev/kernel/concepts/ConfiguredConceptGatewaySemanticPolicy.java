@@ -544,6 +544,11 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
                     "contains", (args, vars) -> {
                         Object receiver = args.get(0).eval(vars);
                         Object needle = args.get(1).eval(vars);
+                        if (receiver instanceof java.util.SortedSet<?> roleSet) {
+                            // $user.roles (below): a case-insensitive String set, so a non-String
+                            // needle would throw ClassCastException -- it simply is not a role.
+                            return needle instanceof String && roleSet.contains(needle);
+                        }
                         if (receiver instanceof java.util.Collection<?> collection) {
                             return collection.contains(needle);
                         }
@@ -560,7 +565,11 @@ public final class ConfiguredConceptGatewaySemanticPolicy implements ConceptGate
         scope.put("$user.id", effectiveContext.actorId());
         scope.put("$user.actorId", effectiveContext.actorId());
         scope.put("$user.tenantId", effectiveContext.tenantId());
-        scope.put("$user.roles", effectiveContext.roles());
+        // Role names are case-insensitive identifiers platform-wide (ExecutionContext upper-cases
+        // them), so a model's natural $user.roles.contains('Staff') must match a STAFF actor.
+        java.util.SortedSet<String> roles = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        roles.addAll(effectiveContext.roles());
+        scope.put("$user.roles", roles);
         try {
             return ComputedExpression.evaluateBoolean(expression, scope, ACCESS_RULE_FUNCTIONS);
         } catch (ComputedExpression.ExpressionException malformed) {
