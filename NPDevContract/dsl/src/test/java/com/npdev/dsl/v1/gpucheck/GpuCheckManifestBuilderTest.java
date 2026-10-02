@@ -38,7 +38,8 @@ class GpuCheckManifestBuilderTest {
                   "name": "Customer",
                   "fields": [
                     { "name": "id", "type": "uuid", "id": true, "required": true },
-                    { "name": "name", "type": "string", "required": true, "maxLength": 80 }
+                    { "name": "name", "type": "string", "required": true, "maxLength": 80 },
+                    { "name": "credit", "type": "decimal", "min": 0 }
                   ]
                 },
                 {
@@ -89,6 +90,14 @@ class GpuCheckManifestBuilderTest {
         List<Map<String, Object>> concepts = (List<Map<String, Object>>) manifest.get("concepts");
         assertEquals(List.of("Customer", "Order"), concepts.stream().map(c -> c.get("concept")).toList(),
                 "Note has no rule at all, so it gets no entry; the rest sort by name");
+
+        // A decimal with NO declared scale is stored at D1's default scale 4 ("120.5000"), so it must
+        // pack at 4 too -- at 0 every real value overflowed and the whole pack fell back unchecked.
+        Map<String, Object> creditColumn = ((List<Map<String, Object>>) ((List<Map<String, Object>>)
+                concepts.get(0).get("packs")).get(0).get("columns")).stream()
+                .filter(c -> "credit".equals(c.get("field"))).findFirst().orElseThrow();
+        assertEquals("fixed32", creditColumn.get("encoding"));
+        assertEquals(4, creditColumn.get("scale"));
 
         Map<String, Object> order = concepts.get(1);
         assertNotNull(order.get("table"));

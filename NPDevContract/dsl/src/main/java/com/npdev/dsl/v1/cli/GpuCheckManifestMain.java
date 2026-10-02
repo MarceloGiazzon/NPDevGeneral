@@ -62,7 +62,8 @@ public final class GpuCheckManifestMain {
         }
     }
 
-    private static void run(Path canonicalPath, Path outDir) throws IOException {
+    /** Package-private so a test can prove the files {@code gpu-check plan} consumes are written. */
+    static void run(Path canonicalPath, Path outDir) throws IOException {
         ModelAst ast = new JsonModelParser().parse(canonicalPath);
         CompiledModel model = new ModelCompiler().compile(ast);
         Map<String, Object> manifest = GpuCheckManifestBuilder.build(model);

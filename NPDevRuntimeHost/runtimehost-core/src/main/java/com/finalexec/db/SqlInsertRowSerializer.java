@@ -95,6 +95,6 @@ final class SqlInsertRowSerializer implements RowSerializer {
         if (value instanceof Number || value instanceof Boolean) {
             return String.valueOf(value);
         }
-        return "'" + String.valueOf(value).replace("'", "''") + "'";
+        return "'" + TransferValueText.text(value).replace("'", "''") + "'";
     }
 }

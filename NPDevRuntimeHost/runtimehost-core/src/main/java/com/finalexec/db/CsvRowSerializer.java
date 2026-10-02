@@ -67,7 +67,7 @@ final class CsvRowSerializer implements RowSerializer {
                     Object value = dialect.isJsonColumnType(column.dataType())
                             ? resultSet.getString(index + 1)
                             : resultSet.getObject(index + 1);
-                    cells.add(csvCell(value == null ? null : String.valueOf(value)));
+                    cells.add(csvCell(TransferValueText.text(value)));
                 }
                 writer.write(String.join(",", cells));
                 writer.write("\n");
@@ -131,12 +131,33 @@ final class CsvRowSerializer implements RowSerializer {
         } else if (type.contains("BOOL")) {
             statement.setObject(index, "1".equals(cell) || Boolean.parseBoolean(cell));
         } else if (type.contains("TIMESTAMP")) {
-            statement.setObject(index, Timestamp.valueOf(cell));
+            statement.setObject(index, timestampValue(cell));
         } else if (type.contains("DATE")) {
             statement.setObject(index, java.sql.Date.valueOf(cell));
         } else {
             statement.setObject(index, cell);
         }
+    }
+
+    /**
+     * exportTable writes {@code String.valueOf(getObject())}: a TIMESTAMP WITH TIME ZONE comes out
+     * as {@code OffsetDateTime.toString()} ("2026-10-01T07:00-03:00") and a plain TIMESTAMP as
+     * {@code LocalDateTime.toString()} on H2/Postgres drivers that return java.time types. Accept
+     * those ISO forms first, then JDBC's "yyyy-mm-dd hh:mm:ss[.f]" from drivers that return
+     * java.sql.Timestamp -- whatever export wrote, import must read back.
+     */
+    static Object timestampValue(String cell) {
+        try {
+            return java.time.OffsetDateTime.parse(cell);
+        } catch (java.time.format.DateTimeParseException notOffset) {
+            // fall through
+        }
+        try {
+            return java.time.LocalDateTime.parse(cell);
+        } catch (java.time.format.DateTimeParseException notLocal) {
+            // fall through
+        }
+        return Timestamp.valueOf(cell);
     }
 
     private void bindJson(PreparedStatement statement, int index, String cell, SqlDialect targetDialect, Connection connection)

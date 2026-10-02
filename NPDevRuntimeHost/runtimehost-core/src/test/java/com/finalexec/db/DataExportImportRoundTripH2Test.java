@@ -136,6 +136,49 @@ class DataExportImportRoundTripH2Test {
     }
 
     @Test
+    void datetimeColumnsRoundTripThroughBothExportFormats() throws SQLException {
+        for (String format : java.util.List.of("csv", "sql-insert")) {
+            setUp();
+            assertDatetimeRoundTrip(format);
+        }
+    }
+
+    private void assertDatetimeRoundTrip(String format) throws SQLException {
+        // Found live on Pigmentampas (2026-10-01, GPU-1 G4): export writes a TIMESTAMP WITH TIME
+        // ZONE as OffsetDateTime.toString() ("2026-10-01T07:00-03:00") and a plain TIMESTAMP as
+        // LocalDateTime.toString(), while import parsed only JDBC's "yyyy-mm-dd hh:mm:ss" -- so no
+        // export holding a datetime could ever be imported back.
+        try (Connection connection = DriverManager.getConnection(sourceUrl); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, at_tz TIMESTAMP WITH TIME ZONE, "
+                    + "at_local TIMESTAMP, on_day DATE)");
+            statement.execute("INSERT INTO events VALUES (1, TIMESTAMP WITH TIME ZONE '2026-10-01 07:00:00-03:00', "
+                    + "TIMESTAMP '2026-10-01 10:15:30.5', DATE '2026-10-01')");
+            statement.execute("INSERT INTO events VALUES (2, NULL, NULL, NULL)");
+        }
+        assertEquals(ExportMain.EXIT_OK, runExport(format));
+
+        String targetUrl = freshTargetUrl();
+        try (Connection connection = DriverManager.getConnection(targetUrl); Statement statement = connection.createStatement()) {
+            statement.execute("CREATE TABLE events (id BIGINT PRIMARY KEY, at_tz TIMESTAMP WITH TIME ZONE, "
+                    + "at_local TIMESTAMP, on_day DATE)");
+        }
+
+        String applyOutput = runImport(targetUrl, format, true, false);
+        assertTrue(applyOutput.contains("imported 2 row(s)") || applyOutput.contains("2 statement"), format + ": " + applyOutput);
+        try (Connection connection = DriverManager.getConnection(targetUrl);
+                Statement statement = connection.createStatement();
+                var resultSet = statement.executeQuery(
+                        "SELECT at_tz, at_local, on_day FROM events WHERE id = 1")) {
+            assertTrue(resultSet.next());
+            assertEquals(java.time.OffsetDateTime.parse("2026-10-01T07:00-03:00"),
+                    resultSet.getObject(1, java.time.OffsetDateTime.class));
+            assertEquals(java.time.LocalDateTime.parse("2026-10-01T10:15:30.5"),
+                    resultSet.getObject(2, java.time.LocalDateTime.class));
+            assertEquals(java.time.LocalDate.parse("2026-10-01"), resultSet.getObject(3, java.time.LocalDate.class));
+        }
+    }
+
+    @Test
     void notNullColumnWithEmptyStringRoundTripsAsEmptyStringNotNull() throws SQLException {
         // Reproduces a live failure (2026-09-24, against a running app's flyway_schema_history):
         // a NOT NULL text column legitimately holding '' must not come back as SQL NULL, or the

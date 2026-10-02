@@ -6,6 +6,7 @@ import com.npdev.dsl.v1.compiled.CompiledInvariant;
 import com.npdev.dsl.v1.compiled.CompiledModel;
 import com.npdev.dsl.v1.compiled.CompiledSchema;
 import com.npdev.dsl.v1.compiled.SqlIdentifierSupport;
+import com.npdev.dsl.v1.compiled.SqlTypeSupport;
 import com.npdev.dsl.v1.expr.ComputedExpression;
 
 import java.math.BigDecimal;
@@ -424,11 +425,10 @@ public final class GpuCheckManifestBuilder {
         return switch (type) {
             case "boolean" -> new GpuColumnInfo("bool", 0, List.of());
             case "int", "integer" -> new GpuColumnInfo("i32", 0, List.of());
-            case "decimal" -> {
-                CompiledSchema schema = field.getSchema();
-                int scale = schema != null && schema.getScale() != null ? schema.getScale() : 0;
-                yield new GpuColumnInfo("fixed32", scale, List.of());
-            }
+            // The column's real scale (SqlTypeSupport's D1 default 4 when undeclared), not 0: an
+            // undeclared-scale decimal stores "120.5000", which never fits scale 0, so every such
+            // pack fell back unchecked (found live on Pigmentampas' Order.totalAmount, G4).
+            case "decimal" -> new GpuColumnInfo("fixed32", SqlTypeSupport.decimalScale(field), List.of());
             case "enum" -> new GpuColumnInfo("enum_index", 0,
                     field.getEnumValues() == null ? List.of() : field.getEnumValues());
             case "string" -> new GpuColumnInfo("str_len", 0, List.of());
