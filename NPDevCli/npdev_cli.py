@@ -5990,7 +5990,10 @@ def run_gpu_check_bench(args: argparse.Namespace) -> int:
         print(f"cpu: {result['cpuMs']:.1f} ms")
         if result["gpuAvailable"]:
             print(f"gpu ({result['device']}): {result['gpuMs']:.1f} ms")
-            print(f"rowChecksBreakEven calibrated: {result['rowChecksBreakEven']:.0f}")
+            break_even = result["rowChecksBreakEven"]
+            print("rowChecksBreakEven calibrated: " + (
+                f"{break_even:.0f}" if break_even is not None
+                else "never (the GPU is slower per row-check on this device; --engine auto stays on the CPU)"))
         else:
             print(f"gpu: unavailable ({result.get('device', '')})")
     return 0

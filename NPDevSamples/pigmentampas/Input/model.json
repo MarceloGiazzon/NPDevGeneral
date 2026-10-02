@@ -150,13 +150,16 @@
         { "name": "status", "type": "enum", "required": true,
           "enumValues": ["OPEN", "PAID", "SHIPPED", "CANCELLED"],
           "ui": { "label": "Status" } },
-        { "name": "totalAmount", "type": "decimal", "required": true,
+        { "name": "totalAmount", "type": "decimal", "required": true, "min": 0,
           "ui": { "label": "Total amount" } },
         { "name": "placedAt", "type": "datetime", "required": true,
           "ui": { "label": "Placed at" } },
         { "name": "customerUsername", "type": "string", "required": false,
           "ui": { "label": "Customer account" },
           "description": "Username of the app user who placed the order. Set by the agent (or staff); row-level access below keys on it." }
+      ],
+      "invariants": [
+        { "name": "PaidOrdersHaveAmount", "type": "expression", "expression": "status != 'PAID' || totalAmount > 0" }
       ],
       "access": {
         "read": "$user.roles.contains('Staff') || customerUsername == $user.id",

@@ -34,16 +34,17 @@
     "resetMode": "reset"
   },
   "runtime": {
-    "springProfile": "dev,step0,trial,pigmentampa",
+    "springProfile": "dev,trial,pigmentampa",
     "serverPort": 8084,
     "javaArgs": [],
     "gradleTask": "bootRun"
   },
   "defaults": {
-    "auth.mode": "jwt"
+    "auth.mode": "jwt",
+    "checks.gpuArtifacts": true
   },
   "trialDefaults": {
-    "recommendedProfiles": "dev,step0,trial,pigmentampa",
+    "recommendedProfiles": "dev,trial,pigmentampa",
     "runtimeUrl": "http://localhost:8084/",
     "databaseMode": "step0-h2",
     "notes": [

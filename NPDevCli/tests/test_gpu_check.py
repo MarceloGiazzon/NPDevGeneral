@@ -363,6 +363,31 @@ class RunOnTheCpuTwinTest(unittest.TestCase):
             calibration.write_text("{broken", encoding="utf-8")
             self.assertEqual(gpu_check.load_calibration(), {})
 
+    def test_break_even_separates_the_gpus_fixed_cost_from_its_per_row_cost(self):
+        # The live G4 numbers (MX330, 10M rows x 2 checks): numpy 317 ms; GPU init 1745 + upload 243
+        # + dispatch 252. The GPU's per-row-check cost (495 ms) is above numpy's, so it never wins.
+        live = {"gpuInit": 1745.0, "gpuUpload": 243.0, "gpuDispatch": 252.0}
+        self.assertIsNone(gpu_check.row_checks_break_even(20_000_000, 317.0, live))
+        # A GPU that is 10x cheaper per row-check pays its 2 s init back at ~3.7M row-checks:
+        # 2000 / (300/20M - 30/20M) = 2000 / 1.35e-5.
+        fast = {"gpuInit": 2000.0, "gpuUpload": 10.0, "gpuDispatch": 20.0}
+        self.assertAlmostEqual(gpu_check.row_checks_break_even(20_000_000, 300.0, fast), 2000 / (270 / 20_000_000))
+        self.assertIsNone(gpu_check.row_checks_break_even(0, 1.0, fast))
+
+    def test_auto_never_picks_the_gpu_when_calibration_says_it_never_wins(self):
+        calibration = Path(self._tmp.name) / "calibration.json"
+        with mock.patch.object(gpu_check, "CALIBRATION_FILE", calibration), \
+                mock.patch.object(gpu_check, "gpu_available", return_value=(True, "fake gpu")), \
+                mock.patch.object(gpu_check, "run_gpu_pack") as gpu:
+            gpu_check.save_calibration("fake gpu", None)
+            result = gpu_check.run(self.fx.app, engine="auto", data_dir=self.fx.data, concept_names=["Order"])
+            gpu.assert_not_called()
+            gpu_check.save_calibration("fake gpu", 1.0)
+            gpu.return_value = (numpy.zeros(4, dtype=numpy.uint32), {"gpuDispatch": 1.0})
+            gpu_check.run(self.fx.app, engine="auto", data_dir=self.fx.data, concept_names=["Order"])
+            gpu.assert_called_once()
+        self.assertEqual(result["engine"]["used"], "cpu")
+
     def test_bench_refuses_an_app_with_no_export(self):
         with mock.patch.object(gpu_check, "export_tables", return_value=1.0):
             with self.assertRaisesRegex(gpu_check.GpuCheckError, "export produced no file"):
@@ -379,6 +404,7 @@ class RunOnTheCpuTwinTest(unittest.TestCase):
         def fake_java(cmd, **kwargs):
             out_dir = Path(cmd[cmd.index("--out") + 1])
             (out_dir / "manifest.json").write_text(json.dumps(candidate), encoding="utf-8")
+            (out_dir / "Order-p0.wgsl").write_text("// candidate shader\n", encoding="utf-8")
             return mock.Mock(returncode=0, stdout="", stderr="")
 
         def fake_export(app_dir, out_dir, tables):
@@ -400,6 +426,15 @@ class RunOnTheCpuTwinTest(unittest.TestCase):
         self.assertIn("(2 of them new or changed)", line)
         saved = gpu_check.show(self.fx.app, result["runId"])
         self.assertEqual(saved["planDiff"], result["planDiff"], "the record is patched with the diff")
+        # The candidate's shaders must still exist when run() reads them -- they once sat in a
+        # directory plan() deleted first, so every plan silently ran on the CPU (G4).
+        self.assertEqual(saved["shaders"]["Order-p0.wgsl"], "// candidate shader\n")
+
+    def test_a_gpu_requested_pack_with_no_shader_says_why_it_ran_on_the_twin(self):
+        (self.fx.app / gpu_check.MANIFEST_REL.parent / "Order-p0.wgsl").unlink()
+        with mock.patch.object(gpu_check, "gpu_available", return_value=(True, "fake gpu")):
+            result = gpu_check.run(self.fx.app, engine="gpu", data_dir=self.fx.data, concept_names=["Order"])
+        self.assertIn("Order-p0.wgsl not found", json.dumps(result["concepts"][0]["packs"]))
 
     def test_plan_reports_a_java_failure_and_leaves_no_run_behind(self):
         with mock.patch.object(gpu_check.subprocess, "run",

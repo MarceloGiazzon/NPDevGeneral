@@ -73,9 +73,17 @@ public final class SqlTypeSupport {
      */
     private static String decimalType(CompiledField field) {
         Integer precision = field == null || field.getSchema() == null ? null : field.getSchema().getPrecision();
-        Integer scale = field == null || field.getSchema() == null ? null : field.getSchema().getScale();
         int p = precision != null && precision > 0 ? precision : 19;
-        int s = scale != null && scale >= 0 ? scale : 4;
-        return "NUMERIC(" + p + "," + s + ")";
+        return "NUMERIC(" + p + "," + decimalScale(field) + ")";
+    }
+
+    /**
+     * The scale a decimal field's column REALLY has -- its declared scale, else D1's default 4.
+     * Public so any consumer that must agree with the stored digits (the GPU check manifest packs
+     * decimals as scaled integers) reads the same rule instead of assuming 0 for an undeclared one.
+     */
+    public static int decimalScale(CompiledField field) {
+        Integer scale = field == null || field.getSchema() == null ? null : field.getSchema().getScale();
+        return scale != null && scale >= 0 ? scale : 4;
     }
 }

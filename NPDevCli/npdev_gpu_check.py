@@ -19,6 +19,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 import zipfile
@@ -450,7 +451,9 @@ def load_calibration() -> dict:
     return {}
 
 
-def save_calibration(device: str, row_checks_break_even: float) -> None:
+def save_calibration(device: str, row_checks_break_even: float | None) -> None:
+    """`None` = the GPU never wins on this device for this workload shape; `run --engine auto`
+    then always stays on the CPU twin."""
     CALIBRATION_FILE.parent.mkdir(parents=True, exist_ok=True)
     CALIBRATION_FILE.write_bytes(json.dumps(
         {"device": device, "rowChecksBreakEven": row_checks_break_even}, indent=2).encode("utf-8"))
@@ -550,7 +553,8 @@ def run(app_dir: Path, engine: str = "auto", concept_names: list[str] | None = N
                 continue
             t_pack += time.perf_counter() - tp0
 
-            use_gpu = engine == "gpu" or (engine == "auto" and gpu_ok and rows * checks_in_pack >= break_even)
+            use_gpu = engine == "gpu" or (engine == "auto" and gpu_ok and break_even is not None
+                                            and rows * checks_in_pack >= break_even)
             if engine == "gpu" and not gpu_ok:
                 raise GpuCheckError(f"--engine gpu requested but unavailable: {gpu_info}")
 
@@ -559,7 +563,11 @@ def run(app_dir: Path, engine: str = "auto", concept_names: list[str] | None = N
             if use_gpu:
                 shader_path = shader_dir / pack["shader"]
                 if not shader_path.exists():
+                    # Say so: a GPU-eligible pack quietly running on the twin hid plan()'s deleted
+                    # shader directory (G4) behind an innocent-looking engine.used=cpu.
                     pack_engine = "cpu"
+                    pack_summaries.append({"packId": pack["packId"], "engine": "cpu-fallback",
+                                            "fallbackReason": f"shader {shader_path} not found"})
                 else:
                     try:
                         fails, gpu_timings = run_gpu_pack(packed, shader_path.read_text(encoding="utf-8"))
@@ -801,6 +809,27 @@ def bundle(app_dir: Path, run_id: str, out_zip: Path) -> Path:
     return out_zip
 
 
+def row_checks_break_even(row_checks: int, cpu_ms: float, gpu_timings: dict) -> float | None:
+    """The row*check count above which the GPU beats the CPU twin, from ONE measured run.
+
+    The twin's cost is linear in row*checks; the GPU's is a fixed init plus a linear
+    upload+dispatch. Break-even is where they cross: init / (cpuRate - gpuRate). If the GPU's
+    per-row-check cost is not below the twin's, it never wins at any size -> None. (The first
+    version, rowChecks * cpuMs / gpuMs, ran the wrong way: a GPU 7x SLOWER than numpy produced a
+    break-even BELOW the measured size, so `auto` chose the slower engine for every larger sweep --
+    found live on a GeForce MX330, G4.)
+    """
+    if row_checks <= 0:
+        return None
+    fixed_ms = gpu_timings.get("gpuInit", 0.0)
+    linear_ms = gpu_timings.get("gpuUpload", 0.0) + gpu_timings.get("gpuDispatch", 0.0)
+    cpu_rate = cpu_ms / row_checks
+    gpu_rate = linear_ms / row_checks
+    if cpu_rate <= gpu_rate:
+        return None
+    return fixed_ms / (cpu_rate - gpu_rate)
+
+
 def bench(app_dir: Path, rows: int = 10_000_000) -> dict:
     """Times numpy vs GPU over the app's own exported data, tiled up to `rows`, in ONE process so
     the comparison is apples-to-apples. Writes the calibration file `run --engine auto` reads."""
@@ -849,7 +878,7 @@ def bench(app_dir: Path, rows: int = 10_000_000) -> dict:
         gpu_ms = sum(gpu_timings.values())
         result["gpuMs"] = gpu_ms
         result["gpuTimingsMs"] = gpu_timings
-        break_even = (actual_rows * len(pack["checks"])) * (cpu_ms / max(gpu_ms, 0.001))
+        break_even = row_checks_break_even(actual_rows * len(pack["checks"]), cpu_ms, gpu_timings)
         save_calibration(device, break_even)
         result["rowChecksBreakEven"] = break_even
     shutil.rmtree(run_dir, ignore_errors=True)
@@ -918,34 +947,33 @@ def plan(app_dir: Path, model_path: Path, java_bin: Path, ai_tools_jar: Path,
     jar (WidgetCatalogueMain hand-builds its own JSON for exactly this reason) -- discovered live
     while building this phase (NoClassDefFoundError: com/fasterxml/jackson/databind/ObjectMapper).
     """
-    run_id, run_dir = new_run_dir(app_dir)
-    artifacts_dir = run_dir / "artifacts"
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    # The candidate manifest AND its shaders live in a scratch directory that outlives run(): run()
+    # reads the .wgsl files from it and copies them into its own record. (They used to sit inside a
+    # run dir this function deleted BEFORE calling run(), so every plan silently ran on the CPU --
+    # found live on Pigmentampas, G4.)
+    with tempfile.TemporaryDirectory(prefix="npdev-gpu-plan-") as scratch:
+        artifacts_dir = Path(scratch)
+        java_cmd = [str(java_bin), "-cp", str(ai_tools_jar),
+                    "com.npdev.dsl.v1.cli.GpuCheckManifestMain",
+                    "--canonical", str(model_path), "--out", str(artifacts_dir)]
+        completed = subprocess.run(java_cmd, capture_output=True, text=True, timeout=120)
+        if completed.returncode != 0:
+            raise GpuCheckError(
+                "GpuCheckManifestMain failed: " + (completed.stderr.strip() or completed.stdout.strip()))
 
-    java_cmd = [str(java_bin), "-cp", str(ai_tools_jar),
-                "com.npdev.dsl.v1.cli.GpuCheckManifestMain",
-                "--canonical", str(model_path), "--out", str(artifacts_dir)]
-    completed = subprocess.run(java_cmd, capture_output=True, text=True, timeout=120)
-    if completed.returncode != 0:
-        shutil.rmtree(run_dir, ignore_errors=True)
-        raise GpuCheckError(
-            "GpuCheckManifestMain failed: " + (completed.stderr.strip() or completed.stdout.strip()))
+        new_manifest_path = artifacts_dir / "manifest.json"
+        if not new_manifest_path.exists():
+            raise GpuCheckError(f"GpuCheckManifestMain did not write {new_manifest_path}")
+        new_manifest = json.loads(new_manifest_path.read_text(encoding="utf-8"))
 
-    new_manifest_path = artifacts_dir / "manifest.json"
-    if not new_manifest_path.exists():
-        shutil.rmtree(run_dir, ignore_errors=True)
-        raise GpuCheckError(f"GpuCheckManifestMain did not write {new_manifest_path}")
-    new_manifest = json.loads(new_manifest_path.read_text(encoding="utf-8"))
+        try:
+            old_manifest = load_manifest(app_dir)
+        except GpuCheckError:
+            old_manifest = {"concepts": []}
+        diff = diff_manifests(old_manifest, new_manifest)
 
-    try:
-        old_manifest = load_manifest(app_dir)
-    except GpuCheckError:
-        old_manifest = {"concepts": []}
-    diff = diff_manifests(old_manifest, new_manifest)
-
-    shutil.rmtree(run_dir, ignore_errors=True)  # the real run() below makes its own run dir
-    result = run(app_dir, engine=engine, concept_names=concept_names, data_dir=None, verify=False,
-                 manifest_override=new_manifest, shader_dir=artifacts_dir, mode="preflight")
+        result = run(app_dir, engine=engine, concept_names=concept_names, data_dir=None, verify=False,
+                     manifest_override=new_manifest, shader_dir=artifacts_dir, mode="preflight")
     result["planDiff"] = diff
     result["modelPath"] = str(model_path)
     # run() already wrote the record without planDiff/modelPath -- patch it in place so `show`
