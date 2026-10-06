@@ -548,6 +548,55 @@ class FinalAppAssemblerTest {
     }
 
     /**
+     * Both fallbacks of {@code resolveRuntimeHostLibsDir} when {@code NPDEV_RUNTIMEHOST_LIBS_DIR}
+     * is unset: {@code NPDEV_BUILD_ROOT}'s own runtimehost-libs, else {@code <repo parent>/Build}.
+     * Pinned rather than inherited -- CI sets NPDEV_BUILD_ROOT and a dev box usually does not, so
+     * an ambient env covered one branch on each and the generator coverage floor recorded locally
+     * sat 2 lines above what CI could ever reach (CI red on 4ba33be1 and 742138fd).
+     */
+    @Test
+    void bakesBuildRootThenRepoSiblingFallbackWhenLibsDirEnvUnset() throws Exception {
+        Path workspace = Files.createTempDirectory("npdev-final-app-assembly-libs-fallback-");
+        Path host = workspace.resolve("repo").resolve("RuntimeHost");
+        Path artifact = workspace.resolve("ArtifactNP");
+        Path buildRoot = workspace.resolve("custom-build-root");
+
+        write(host.resolve("build.gradle.template"), "plugins { id 'java' }\n");
+        write(artifact.resolve("src/main/resources/npdev/compiled-model.json"),
+                "{\"namespace\":\"demo.sample\",\"version\":\"1.0\",\"dslVersion\":\"1.0.0\"}\n");
+
+        java.util.Map<String, String> buildRootOnly = new java.util.HashMap<>();
+        buildRootOnly.put("NPDEV_RUNTIMEHOST_LIBS_DIR", null);
+        buildRootOnly.put("NPDEV_BUILD_ROOT", buildRoot.toString());
+        Path viaBuildRoot = assembleWithEnv(buildRootOnly, host, artifact, workspace.resolve("FinalExecA"));
+        assertTrue(Files.readString(viaBuildRoot.resolve("gradle.properties")).contains(
+                        "npdevRuntimeHostLibsDir=" + bakedPath(buildRoot.resolve("runtimehost-libs"))),
+                "NPDEV_BUILD_ROOT's runtimehost-libs must be baked when the libs-dir var is unset");
+
+        java.util.Map<String, String> neither = new java.util.HashMap<>();
+        neither.put("NPDEV_RUNTIMEHOST_LIBS_DIR", "");
+        neither.put("NPDEV_BUILD_ROOT", null);
+        Path viaRepoSibling = assembleWithEnv(neither, host, artifact, workspace.resolve("FinalExecB"));
+        assertTrue(Files.readString(viaRepoSibling.resolve("gradle.properties")).contains(
+                        "npdevRuntimeHostLibsDir=" + bakedPath(workspace.resolve("Build").resolve("runtimehost-libs"))),
+                "with neither var set, <repo parent>/Build/runtimehost-libs must be baked");
+    }
+
+    private static Path assembleWithEnv(java.util.Map<String, String> pinned, Path host, Path artifact, Path finalApp)
+            throws Exception {
+        withEnv(pinned, () -> new FinalAppAssembler().assemble(
+                new FinalAppAssembler.Options(
+                        host, artifact, finalApp, null, "npdev-generated", "npdev-meta", true, 17, null
+                )
+        ));
+        return finalApp;
+    }
+
+    private static String bakedPath(Path path) {
+        return path.toAbsolutePath().normalize().toString().replace('\\', '/');
+    }
+
+    /**
      * RUN-34: a stale jar the source cache accumulated after a module rename (dsl-0.1.0.jar beside
      * npdev-dsl-0.1.0.jar, both defining the same com.npdev.dsl classes) must NOT be staged into a
      * freshly generated app -- the manifest's requiredStagedJars is the authoritative set of jars
@@ -624,10 +673,14 @@ class FinalAppAssemblerTest {
      * JDK-vendor internals).
      */
     private static <T> T withRuntimeHostLibsDir(Path dir, java.util.concurrent.Callable<T> body) throws Exception {
+        return withEnv(java.util.Map.of("NPDEV_RUNTIMEHOST_LIBS_DIR", dir.toAbsolutePath().toString()), body);
+    }
+
+    /** Pin each named var to its mapped value (a null value reads as unset); others pass through. */
+    private static <T> T withEnv(java.util.Map<String, String> pinned, java.util.concurrent.Callable<T> body) throws Exception {
         java.util.function.Function<String, String> realEnv = FinalAppAssembler.env;
-        Path target = dir.toAbsolutePath();
         try {
-            FinalAppAssembler.env = name -> name.equals("NPDEV_RUNTIMEHOST_LIBS_DIR") ? target.toString() : realEnv.apply(name);
+            FinalAppAssembler.env = name -> pinned.containsKey(name) ? pinned.get(name) : realEnv.apply(name);
             return body.call();
         } finally {
             FinalAppAssembler.env = realEnv;
