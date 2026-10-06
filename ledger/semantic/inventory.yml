@@ -19,9 +19,8 @@ keys:
     status: shipped
 
   - key: agentAccess
-    mechanism: "AgentAccessAst -> CompiledAgentAccess (AGENT-1): what AI agents may see and do, per exposure and role. Served by the generated app as an MCP endpoint (AgentMcpController, caller's own bearer token) and a Telegram bot (TelegramChannel via AgentConversationService), both calling the app's own REST API on loopback as the linked user; AgentAccessValidation + AgentAccessChannelCheck guard the model and its auth prerequisites."
-    status: partial
-    notes: "channels.whatsapp is accepted by the schema and validated, but no WhatsApp channel is implemented yet (plan item A10)."
+    mechanism: "AgentAccessAst -> CompiledAgentAccess (AGENT-1): what AI agents may see and do, per exposure and role. Served by the generated app as an MCP endpoint (AgentMcpController, caller's own bearer token) and chat channels -- a Telegram bot (TelegramChannel) and a WhatsApp Cloud API webhook (WhatsAppChannel + AgentWhatsAppWebhookController) over one AgentConversationService -- all calling the app's own REST API on loopback as the linked user; AgentAccessValidation + AgentAccessChannelCheck guard the model and its auth prerequisites."
+    status: shipped
 
   - key: aggregates
     mechanism: "AggregateAst + Aggregate Workbench (docs/architecture ADR-0004, project_aggregate_workbench_vision)."

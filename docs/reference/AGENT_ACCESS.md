@@ -56,9 +56,32 @@ The generator writes `secrets/agent-access.env.example` into every app. Copy the
   only needed for Telegram/WhatsApp, never for MCP.
 - A Telegram bot token + username (`NPDEV_TELEGRAM_BOT_TOKEN`, `NPDEV_TELEGRAM_BOT_USERNAME`) — create
   a bot by messaging **@BotFather** on Telegram, `/newbot`, follow the prompts.
+- For WhatsApp, four secrets plus a display number: `NPDEV_WHATSAPP_PHONE_NUMBER_ID`,
+  `NPDEV_WHATSAPP_ACCESS_TOKEN`, `NPDEV_WHATSAPP_APP_SECRET`, `NPDEV_WHATSAPP_VERIFY_TOKEN` (any long
+  random text you choose), and `NPDEV_WHATSAPP_PHONE_DISPLAY` (shown on the Connect page). The channel
+  starts only when all four secrets are set; the boot log names any that are missing.
 - `NPDEV_AGENT_MCP_TOKEN_DAYS` (default 30) — how long a "Create MCP token" button's token lasts.
 
 Restart the app after editing `agent-proxy.env`.
+
+### Setting up WhatsApp
+
+Telegram polls, so it works from a laptop. WhatsApp is the other way round: Meta delivers each
+message to the app, so the app needs a **public HTTPS address**. In development that's a tunnel —
+`cloudflared tunnel --url http://127.0.0.1:<app port>`, or `npdev host share --app <app dir>`.
+
+1. In the Meta developer console, create an app with the **WhatsApp** product. Copy the
+   **phone number id**, a **permanent access token** (system user) and the app's **App secret**
+   into the variables above.
+2. Under WhatsApp → Configuration → Webhook, set the callback URL to
+   `<public address>/api/hooks/agent/whatsapp` and the verify token to your
+   `NPDEV_WHATSAPP_VERIFY_TOKEN`. Meta calls the URL once to check it; the app answers only when the
+   token matches.
+3. Subscribe the webhook to the **messages** field.
+
+Every delivery must carry Meta's `X-Hub-Signature-256` signature over the raw body, made with the
+App secret; anything else is refused with `401` before it is read. `GET /api/agent/status` shows
+`whatsapp.lastInboundAt` — once that has a time, Meta is reaching the app.
 
 ## 3. How a user connects
 
@@ -99,6 +122,9 @@ tools the token's own roles are offered; `tools/call` executes through the app's
 | Every chat answer is an error | No AI vendor key configured (`secrets/agent-proxy.env`) — `GET /api/agent/status` (SUPERUSER) reports `ai.keyPresent: false`. |
 | `409 Conflict` in the boot log | Another copy of this app (or a Telegram webhook) is polling with the same bot token. |
 | `401` and the Telegram channel stops | The bot token was rejected — check it was pasted correctly, no extra whitespace. |
+| Meta says the callback URL "couldn't be validated" | The app is not reachable at that address, `NPDEV_WHATSAPP_VERIFY_TOKEN` differs from what you typed in Meta, or the channel is not running (`/api/hooks/agent/whatsapp` answers `404` until all four `NPDEV_WHATSAPP_*` secrets are set). |
+| WhatsApp messages never get an answer, `lastInboundAt` stays empty | Meta is not delivering: the webhook is not subscribed to **messages**, or the tunnel address changed (a new tunnel means a new callback URL). |
+| `lastInboundAt` updates but nothing is answered | Deliveries are refused with `401` (look for "signature verification failed" in the log — wrong `NPDEV_WHATSAPP_APP_SECRET`), or sending fails (`lastSendOk: false` — check `NPDEV_WHATSAPP_ACCESS_TOKEN`). |
 | MCP client gets 404 on `/api/mcp` | `agentAccess.channels.mcp.enabled` is `false` or the model declares no `agentAccess` block at all. |
 
 ## See also
