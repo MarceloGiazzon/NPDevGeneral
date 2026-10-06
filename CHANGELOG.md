@@ -14,6 +14,9 @@ release. Ships in the next tag.
   tool call executes through the app's own REST API as that user, so existing role permissions and
   row-level `access` rules decide what happens, never a second permission system. See
   `docs/reference/AGENT_ACCESS.md`.
+- **Agent Access over WhatsApp**: `agentAccess.channels.whatsapp` now runs a WhatsApp Cloud API
+  channel next to Telegram -- Meta delivers to `/api/hooks/agent/whatsapp` (signature-checked), a
+  user links with `link <code>` from the Connect page, and writes still wait for a Confirm button.
 - **Verification panel** (`npdev verify --panel`): one inventory of what verifies this system --
   name, category, command, last result, last run, last duration -- rendered as a Kanban and a table.
   A new Manager tab for the repo, and a READ-ONLY `verification.html` emitted into every generated

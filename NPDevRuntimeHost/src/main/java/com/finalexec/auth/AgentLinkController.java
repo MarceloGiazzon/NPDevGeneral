@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.finalexec.agent.AgentChannelsStarter;
 import com.finalexec.agent.AgentLinkService;
 import com.finalexec.agent.TelegramChannel;
+import com.finalexec.agent.WhatsAppChannel;
 import com.finalexec.config.ModelHolder;
 import com.npdev.dsl.v1.compiled.IdentityPackTableNames;
 import com.npdev.generated.runtime.service.RuntimeContextService;
@@ -225,6 +226,16 @@ public class AgentLinkController {
         telegram.put("lastPollOk", telegramChannel == null || telegramChannel.lastPollOk() == null
                 ? null : DateTimeFormatter.ISO_INSTANT.format(telegramChannel.lastPollOk()));
 
+        // WhatsApp has no poll loop: "running" means configured and accepting deliveries; whether
+        // Meta can actually reach the webhook shows up as lastInboundAt.
+        WhatsAppChannel whatsappChannel = channelsStarter == null ? null : channelsStarter.whatsappChannel();
+        Map<String, Object> whatsapp = new LinkedHashMap<>();
+        whatsapp.put("running", whatsappChannel != null);
+        whatsapp.put("webhookPath", "/api/hooks/agent/whatsapp");
+        whatsapp.put("lastInboundAt", whatsappChannel == null || whatsappChannel.lastInboundAt() == null
+                ? null : DateTimeFormatter.ISO_INSTANT.format(whatsappChannel.lastInboundAt()));
+        whatsapp.put("lastSendOk", whatsappChannel == null ? null : whatsappChannel.lastSendOk());
+
         ExternalAiCapabilityContract ai = aiProvider.getIfAvailable();
         List<ExternalAiVendorSummary> vendors = ai == null ? List.of() : ai.configuredVendors();
         Map<String, Object> aiStatus = new LinkedHashMap<>();
@@ -238,6 +249,7 @@ public class AgentLinkController {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("channels", channels);
         body.put("telegram", telegram);
+        body.put("whatsapp", whatsapp);
         body.put("ai", aiStatus);
         body.put("linkedAccounts", linkedAccounts);
         body.put("mcpUrl", baseUrl(request) + "/api/mcp");
