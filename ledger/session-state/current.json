@@ -1,21 +1,18 @@
 {
-  "closedAt": "2026-10-07T19:50:36.7341321Z",
+  "closedAt": "2026-10-07T20:57:48.9231213Z",
   "branch": "main",
-  "head": "b4ddcc73",
-  "headSubject": "feat(pigmentampas): photo -> mosaic via an app customCapability + fileStore.readImage (P5)",
-  "summary": "Allowlisted the owner-approved fail-closed AccessReadPredicate security-sweep hit (0f600f19, frozenCount 628). Shipped Pigmentampas P5 photo->mosaic (b4ddcc73): app customCapability mosaicPainter (CIELAB hex sampling, only-owned caps, cap colour extraction), platform fileStore.readImage capability with shared TenantFileReader, workbench header checkbox/file-upload widgets, seed cap colours corrected.",
-  "nextStep": "Start Pigmentampas P6 (public read, G4) per the plan README section 4: access.read: public, anonymous gallery route, never anonymous writes, rate-limited, then /security-review. App runs from D:\\WorkSpace\\NPDev\\Build\\samples\\pigmentampas\\Output (port 8084, login tito/demo-pass-1). Optional side items: shorten external-ai-http 503 retry budget; aggregate invoke echoes all procedure state (incl. photo data URI) -- see friction log.",
+  "head": "ad245850",
+  "headSubject": "feat(access): access.public -- anonymous read-only API + public Pigmentampas gallery (P6, G4)",
+  "summary": "Shipped Pigmentampas P6 public read (ad245850): DSL concept access.public {where, fields[], scope concept|aggregate} through 4 schema mirrors/parser/compiler/canonical JSON + validator; GET-only /api/public/** (PublicReadController over runtimehost-core PublicReadService: where pushed into the query, allow-list projection, file fields as {url} images-only, uniform 404, per-client rate limit, disabled tenant serves nothing, tenant npdev.public-read.tenant-id default dev); JWT + api-key filters exempt GET/HEAD /api/public only; shell <meta name=npdev-public-page> skips login redirect + identity/menu/gadget fetches; Pigmentampas Cap/Mosaic/MosaicCell grants, gallery.html works logged out; conformance WidgetCatalogEntry + ShelfLayout; docs/reference/ROW_LEVEL_AUTHORIZATION.md section. /security-review clean.",
+  "nextStep": "Run T2 (run-all-gates.ps1 via digest runner) on ad245850 -- P6 is a platform phase and only narrow tests ran; then start Pigmentampas P7 (community flows: trades lifecycle + awaitEvent 7-day timeout + MailHog email, likes -> likeCount, monthly challenge scheduled flow) per plan README section 4. App runs from D:\\WorkSpace\\NPDev\\Build\\samples\\pigmentampas\\Output (port 8084, tito/demo-pass-1); public gallery http://127.0.0.1:8084/gallery.html logged out.",
   "plan": "D:\\WorkSpace\\NPDev\\NPDev_General__OutsideRepo\\PLAN_PIGMENTAMPAS_MOSAIC_DEMO_2026-10-07\\README.md",
   "blocked": "D5 Google OAuth client + Meta app must be created by the owner (P8); D6 story names unanswered (P8/P9).",
-  "verified": "T2 run-all-gates on b4ddcc73: generator PASSED, runtimeHost PASSED, kernel PASSED, aiKnowledge PASSED (exit 0). Narrow: runtimehost-core FileStoreCapabilityHandlerTest 2/2, ExternalAiPromptRunnerTest 9/9. Live API smoke: 20x33 photo -> 660 cells ~100ms, only-owned palette restriction, capColors on 4 seed caps. ScrapForAI browser: upload via header file input, tick onlyOwnedCaps, Paint from photo -- all 24 steps passed (console errors only pre-existing theme.css/ShellCompanyName/identity 403 noise).",
-  "dirtyCount": 1,
-  "dirtyFiles": [
-    " M scripts/policy/coverage-baseline.json"
-  ],
+  "verified": "Narrow: dsl PublicReadValidationTest + CompiledModelCanonicalJsonReaderTest + ConceptAccessValidationTest green; runtimehost-core publicread 9/9. check-dsl-coverage, twin-pair (39), schema-mirror OK. Live on regenerated app: catalog/page/get/image/aggregate 200 with projection, drafts 404 by id/aggregate and 0 via filter, non-public filter 400, POST/DELETE 401, /api/mosaics anon 401, stale bearer still 200 on public, path tricks (..; %2e%2e) 404, 240/min -> 30x429 of 260. Public aggregate cells == authenticated cells. ScrapForAI logged-out gallery: 7 cards, no studio links, no redirect, only theme.css/favicon 404 console noise. T2 NOT run.",
+  "dirtyCount": 0,
+  "dirtyFiles": [],
   "unpushed": 0,
   "landedCommits": [
-    "b4ddcc73 feat(pigmentampas): photo -> mosaic via an app customCapability + fileStore.readImage (P5)",
-    "0f600f19 chore(security): allowlist fail-closed AccessReadPredicate catch (64bd0d0b9492), frozenCount 627->628",
-    "5c48a7a5 chore(session): handoff after Pigmentampas P4 AI capability"
+    "ad245850 feat(access): access.public -- anonymous read-only API + public Pigmentampas gallery (P6, G4)",
+    "8853cb13 chore(session): handoff after Pigmentampas P5 photo->mosaic; coverage floors auto-ratcheted up by T2"
   ]
 }
