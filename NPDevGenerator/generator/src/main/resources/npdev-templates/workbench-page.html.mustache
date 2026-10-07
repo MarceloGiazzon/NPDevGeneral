@@ -70,6 +70,18 @@
   .modal-ft{display:flex;gap:8px;justify-content:flex-end;padding:10px 14px;border-top:1px solid var(--np-line)}
   .modal tr.master.sel td{background:#dcecff}
   .btn.ghost{background:#e6ebf0;color:var(--np-ink)}
+  /* P3b: built-in cellGrid region (renderCellGrid). */
+  .cg-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:8px}
+  .cg-bar .btn.ghost[aria-pressed=true]{outline:2px solid var(--np-accent)}
+  .cg-palette{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;max-height:130px;overflow-y:auto}
+  .cg-wrap{overflow:auto;padding-bottom:6px}
+  .cg-board{position:relative;user-select:none;touch-action:none}
+  .cg-cell{display:inline-block;background-size:cover;background-position:center;border-radius:3px}
+  .cg-board .cg-cell{position:absolute;cursor:crosshair}
+  .cg-board.hex .cg-cell,.cg-swatch{border-radius:50%}
+  .cg-cell.empty{background:#888;opacity:.25}
+  .cg-swatch{width:28px;height:28px;cursor:pointer;border:2px solid transparent}
+  .cg-swatch.sel{border-color:var(--np-accent);box-shadow:0 0 0 2px #fff inset}
 
   /* R7.10: the one small-viewport threshold this file's responsive behaviour keys off -- 768
      matches shell.js.mustache's MOBILE_BREAKPOINT_PX and business-ui-style.mustache's own
@@ -232,6 +244,10 @@
         };
       },
       toDraft: function () { return clone(draft); },
+      // P3b: live, uncloned reads for the built-in cellGrid region -- it repaints hundreds of cells
+      // per stroke, so cloning the whole draft per cell (toDraft) is not an option. Callers must not mutate.
+      rowsOf: function (c) { return draft[c] || []; },
+      headerValue: function (f) { return draft[f]; },
       view: function () {
         var hf = (descriptor.header && descriptor.header.fields) || [];
         return {
@@ -248,6 +264,7 @@
             return {
               collection: s.collection, columns: s.columns || [], visibleWhen: s.visibleWhen || null,
               address: s.address, render: s.render || null, component: s.component || null,
+              cellGrid: s.cellGrid || null,
               readOnlyColumns: s.readOnlyColumns || null,
               bandDefs: (s.bands || []).map(function (b) {
                 return {
@@ -752,6 +769,192 @@
     return entry.el;
   }
 
+  /**
+   * P3b: the built-in render:"cellGrid" region -- a child collection painted as a board. One child
+   * row per painted cell (rowField, colField, valueField); an empty cell has no row, so erase deletes
+   * it. Edits go straight into the store (no per-cell render) and one render() runs when a stroke
+   * ends, so Save still commits the whole aggregate in its single transaction. The container, palette,
+   * tool, zoom and undo history persist across render() calls, keyed by region address.
+   */
+  var cellGridStates = {};
+  var CELL_ZOOMS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 2];
+
+  function renderCellGrid(sec) {
+    var cfg = sec.cellGrid;
+    var st = cellGridStates[sec.address];
+    if (!st) {
+      st = cellGridStates[sec.address] = { el: document.createElement("div"), palette: null, byId: {},
+        selected: null, tool: "paint", zoom: 3, undo: [], painting: false, strokeOpen: false, cells: {} };
+      st.el.className = "cellgrid";
+      var pal = cfg.palette || {};
+      fetch("/api/queries/" + encodeURIComponent(pal.query) + "?limit=1000", { headers: authHeaders() })
+        .then(function (r) { return r.ok ? r.json() : { rows: [] }; })
+        .then(function (body) {
+          st.palette = (body && body.rows) || [];
+          st.palette.forEach(function (p) { st.byId[p.id] = p; });
+          if (st.palette.length && st.selected == null) st.selected = st.palette[0].id;
+          buildCellGrid(st.sec, st);
+        })
+        .catch(function () { st.palette = []; buildCellGrid(st.sec, st); });
+    }
+    st.sec = sec;
+    if (st.palette) buildCellGrid(sec, st);
+    else st.el.innerHTML = '<p class="sub">Loading palette…</p>';
+    return st.el;
+  }
+
+  function cellGridFileUrl(handle) {
+    if (!handle || !handle.key) return "";
+    return "/api/files?" + new URLSearchParams({ storeId: handle.storeId || "", key: handle.key }).toString();
+  }
+
+  function styleGridCell(node, item, cfg) {
+    var pal = cfg.palette || {};
+    if (!item) { node.className = "cg-cell empty"; node.style.backgroundImage = ""; node.style.backgroundColor = ""; node.title = ""; return; }
+    node.className = "cg-cell";
+    var img = pal.imageField ? cellGridFileUrl(item[pal.imageField]) : "";
+    node.style.backgroundImage = img ? 'url("' + img + '")' : "";
+    node.style.backgroundColor = (pal.colorField && item[pal.colorField]) || "#999";
+    node.title = pal.labelField ? String(item[pal.labelField] == null ? "" : item[pal.labelField]) : String(item.id);
+  }
+
+  function buildCellGrid(sec, st) {
+    var cfg = sec.cellGrid, coll = sec.collection;
+    var hex = cfg.layout === "hexOffset";
+    var ROWS = Number(cfg.rowsField && store.headerValue(cfg.rowsField)) || cfg.defaultRows || 10;
+    var COLS = Number(cfg.colsField && store.headerValue(cfg.colsField)) || cfg.defaultCols || 10;
+    var size = Math.round(24 * CELL_ZOOMS[st.zoom]), rowStep = hex ? Math.round(size * 0.885) : size;
+    var key = function (r, c) { return r + "," + c; };
+    // "r,c" -> the live child row, rebuilt from the draft on every build and kept current per edit.
+    var index = {};
+    store.rowsOf(coll).forEach(function (row) {
+      var r = Number(row[cfg.rowField]), c = Number(row[cfg.colField]);
+      if (row[cfg.rowField] != null && row[cfg.colField] != null && isFinite(r) && isFinite(c)) index[key(r, c)] = row;
+    });
+    function valueAt(k) { var row = index[k]; return row ? row[cfg.valueField] : null; }
+    function setCell(r, c, value) {
+      var k = key(r, c), row = index[k];
+      var current = row ? row[cfg.valueField] : null;
+      if ((current == null ? null : current) === (value == null ? null : value)) return;
+      if (value == null) { store.deleteRow(coll, row.id); delete index[k]; }
+      else if (row) { store.editRow(coll, row.id, cfg.valueField, value); }
+      else {
+        var id = store.addRow(coll);
+        store.editRow(coll, id, cfg.rowField, r);
+        store.editRow(coll, id, cfg.colField, c);
+        store.editRow(coll, id, cfg.valueField, value);
+        index[k] = store.rowsOf(coll).filter(function (x) { return x.id === id; })[0];
+      }
+      if (st.cells[k]) styleGridCell(st.cells[k], value == null ? null : st.byId[value] || { id: value }, cfg);
+    }
+    function neighbours(r, c) {
+      var d = !hex ? [[0, -1], [0, 1], [-1, 0], [1, 0]]
+        : r % 2 ? [[0, -1], [0, 1], [-1, 0], [-1, 1], [1, 0], [1, 1]]
+        : [[0, -1], [0, 1], [-1, -1], [-1, 0], [1, -1], [1, 0]];
+      return d.map(function (x) { return [r + x[0], c + x[1]]; })
+        .filter(function (p) { return p[0] >= 0 && p[0] < ROWS && p[1] >= 0 && p[1] < COLS; });
+    }
+    function fill(r, c, value) {
+      var target = valueAt(key(r, c));
+      if (target === value) return;
+      var queue = [[r, c]], seen = {};
+      seen[key(r, c)] = true;
+      while (queue.length) {
+        var p = queue.shift();
+        setCell(p[0], p[1], value);
+        neighbours(p[0], p[1]).forEach(function (n) {
+          var k = key(n[0], n[1]);
+          if (!seen[k] && valueAt(k) == target) { seen[k] = true; queue.push(n); }
+        });
+      }
+    }
+    function snapshot() {
+      var snap = {};
+      Object.keys(index).forEach(function (k) { snap[k] = index[k][cfg.valueField]; });
+      st.undo.push(snap);
+      if (st.undo.length > 50) st.undo.shift();
+    }
+    function apply(target) {
+      if (!target || !target.dataset || target.dataset.r === undefined || !EDITABLE) return;
+      var r = +target.dataset.r, c = +target.dataset.c;
+      if (!st.strokeOpen) { snapshot(); st.strokeOpen = true; }
+      if (st.tool === "erase") setCell(r, c, null);
+      else if (st.selected == null) return;
+      else if (st.tool === "fill") fill(r, c, st.selected);
+      else setCell(r, c, st.selected);
+    }
+    function endStroke() { if (!st.strokeOpen) return; st.painting = false; st.strokeOpen = false; render(); }
+
+    var root = st.el;
+    root.innerHTML = "";
+    var bar = el('<div class="cg-bar"></div>');
+    if (EDITABLE) {
+      ["paint", "fill", "erase"].forEach(function (t) {
+        var b = el('<button type="button" class="btn ghost" aria-pressed="' + (st.tool === t) + '">' + t.charAt(0).toUpperCase() + t.slice(1) + '</button>');
+        b.onclick = function () { st.tool = t; buildCellGrid(st.sec, st); };
+        bar.append(b);
+      });
+      var undo = el('<button type="button" class="btn ghost">Undo</button>');
+      undo.onclick = function () {
+        var snap = st.undo.pop();
+        if (!snap) return;
+        Object.keys(index).forEach(function (k) { if (!(k in snap)) { var p = k.split(","); setCell(+p[0], +p[1], null); } });
+        Object.keys(snap).forEach(function (k) { var p = k.split(","); setCell(+p[0], +p[1], snap[k]); });
+        render();
+      };
+      bar.append(undo);
+    }
+    var zOut = el('<button type="button" class="btn ghost" aria-label="Zoom out">−</button>');
+    var zIn = el('<button type="button" class="btn ghost" aria-label="Zoom in">+</button>');
+    zOut.onclick = function () { st.zoom = Math.max(0, st.zoom - 1); buildCellGrid(st.sec, st); };
+    zIn.onclick = function () { st.zoom = Math.min(CELL_ZOOMS.length - 1, st.zoom + 1); buildCellGrid(st.sec, st); };
+    bar.append(zOut);
+    bar.append(el('<span class="cg-zoom">' + Math.round(CELL_ZOOMS[st.zoom] * 100) + '%</span>'));
+    bar.append(zIn);
+    bar.append(el('<span class="sub cg-count" style="margin:0">' + Object.keys(index).length + ' of ' + (ROWS * COLS) + ' cells painted</span>'));
+    root.append(bar);
+
+    if (EDITABLE) {
+      var palEl = el('<div class="cg-palette" aria-label="Palette"></div>');
+      st.palette.forEach(function (item) {
+        var sw = document.createElement("span");
+        styleGridCell(sw, item, cfg);
+        sw.className = "cg-cell cg-swatch" + (item.id === st.selected ? " sel" : "");
+        sw.onclick = function () { st.selected = item.id; if (st.tool === "erase") st.tool = "paint"; buildCellGrid(st.sec, st); };
+        palEl.append(sw);
+      });
+      if (!st.palette.length) palEl.append(el('<span class="sub">Palette query ' + ((cfg.palette && cfg.palette.query) || "") + ' returned no rows.</span>'));
+      root.append(palEl);
+    }
+
+    var wrap = el('<div class="cg-wrap"></div>');
+    var board = el('<div class="cg-board' + (hex ? ' hex' : '') + '"></div>');
+    board.style.width = (COLS * size + (hex ? size / 2 : 0)) + "px";
+    board.style.height = ((ROWS - 1) * rowStep + size) + "px";
+    st.cells = {};
+    for (var r = 0; r < ROWS; r++) {
+      for (var c = 0; c < COLS; c++) {
+        var node = document.createElement("span");
+        node.dataset.r = r;
+        node.dataset.c = c;
+        node.style.width = node.style.height = size + "px";
+        node.style.left = (c * size + (hex && r % 2 ? size / 2 : 0)) + "px";
+        node.style.top = (r * rowStep) + "px";
+        var v = valueAt(key(r, c));
+        styleGridCell(node, v == null ? null : st.byId[v] || { id: v }, cfg);
+        board.append(node);
+        st.cells[key(r, c)] = node;
+      }
+    }
+    board.addEventListener("pointerdown", function (e) { st.painting = st.tool !== "fill"; st.strokeOpen = false; apply(e.target); e.preventDefault(); });
+    board.addEventListener("pointerover", function (e) { if (st.painting) apply(e.target); });
+    // One render() per stroke refreshes the dirty chip and painted count without rebuilding per cell.
+    board.addEventListener("pointerup", endStroke);
+    board.addEventListener("pointerleave", endStroke);
+    wrap.append(board);
+    root.append(wrap);
+  }
+
   /** Distinct component names referenced anywhere in the workbench descriptor, so boot() can
    * inject exactly the app-owned web/regions/<name>.js files this page actually needs. */
   function componentNamesIn(descriptor) {
@@ -861,7 +1064,9 @@
       if (EDITABLE && store.regionDirty("section", sec.collection)) itemsBar.append(regionRevert("section", sec.collection));
       items.append(itemsBar);
       var ib = el('<div class="body"></div>');
-      if (sec.render === "component") {
+      if (sec.render === "cellGrid" && sec.cellGrid) {
+        ib.append(renderCellGrid(sec));
+      } else if (sec.render === "component") {
         ib.append(mountRegion(sec, regionApi(sec.rows, sec.columns, {
           editRow: function (id, field, value) { store.editRow(sec.collection, id, field, value); scheduleRecompute(); },
           addRow: function () { var id = store.addRow(sec.collection); selected = id; render(); return id; },
@@ -958,8 +1163,10 @@
     }
     var msg = el('<span class="msg"></span>');
     if (pendingMsg) { msg.className = pendingMsg.className; msg.textContent = pendingMsg.text; pendingMsg = null; }
-    function commitDraft(label) {
-      msg.className = "msg"; msg.textContent = (label || "Saving") + "…";
+    // progressLabel is shown while the commit is in flight, label once it succeeded -- Save used to
+    // pass its success word as the only label, so "Saved…" appeared before the server had answered.
+    function commitDraft(label, progressLabel) {
+      msg.className = "msg"; msg.textContent = (progressLabel || label || STRINGS['workbench.saving']) + "…";
       var payload = store.toDraft();
       stripClientTempIds(payload);
       fetch("/api/runtime/aggregate/" + encodeURIComponent(store.aggregate),
@@ -971,7 +1178,7 @@
         })
         .catch(function (e) { msg.className = "msg err"; msg.textContent = "Error: " + e; });
     }
-    var save = el('<button class="btn">' + STRINGS['action.save'] + '</button>'); save.onclick = function () { commitDraft(STRINGS['workbench.saved']); };
+    var save = el('<button class="btn">' + STRINGS['action.save'] + '</button>'); save.onclick = function () { commitDraft(STRINGS['workbench.saved'], STRINGS['workbench.saving']); };
     barDiv.append(save);
     // Lifecycle transition actions available from the current state (e.g. "Confirmar Saída"): set the
     // status field to the target state and commit; the persistence adapter enforces the legal transition.

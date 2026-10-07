@@ -667,9 +667,44 @@ public final class CompiledModelCanonicalJson {
             if (region.component() != null) {
                 regionNode.put("component", safe(region.component()));
             }
+            if (region.cellGrid() != null) {
+                regionNode.set("cellGrid", toCellGrid(region.cellGrid()));
+            }
             node.set(safe(entry.getKey()), regionNode);
         }
         return node;
+    }
+
+    /** P3b: writes a region's cellGrid block in its authored nested shape (palette as a sub-object). */
+    private static ObjectNode toCellGrid(CompiledCellGrid grid) {
+        ObjectNode node = JsonNodeFactory.instance.objectNode();
+        putText(node, "rowField", grid.rowField());
+        putText(node, "colField", grid.colField());
+        putText(node, "valueField", grid.valueField());
+        putText(node, "rowsField", grid.rowsField());
+        putText(node, "colsField", grid.colsField());
+        if (grid.defaultRows() != null) {
+            node.put("defaultRows", grid.defaultRows());
+        }
+        if (grid.defaultCols() != null) {
+            node.put("defaultCols", grid.defaultCols());
+        }
+        putText(node, "layout", grid.layout());
+        ObjectNode palette = JsonNodeFactory.instance.objectNode();
+        putText(palette, "query", grid.paletteQuery());
+        putText(palette, "labelField", grid.paletteLabelField());
+        putText(palette, "imageField", grid.paletteImageField());
+        putText(palette, "colorField", grid.paletteColorField());
+        if (!palette.isEmpty()) {
+            node.set("palette", palette);
+        }
+        return node;
+    }
+
+    private static void putText(ObjectNode node, String key, String value) {
+        if (value != null) {
+            node.put(key, value);
+        }
     }
 
     /** Move 6 Move B: writes the closed-enum transaction.hooks block, or null if absent. */

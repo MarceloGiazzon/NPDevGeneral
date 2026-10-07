@@ -100,6 +100,30 @@
 
   "concepts": [
     {
+      "name": "ShelfLayout",
+      "truthLevel": "T2",
+      "ui": { "label": "Shelf layout" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "name", "type": "string", "required": true, "ui": { "label": "Name" } },
+        { "name": "rows", "type": "integer", "required": true, "min": 1, "ui": { "label": "Rows" } },
+        { "name": "cols", "type": "integer", "required": true, "min": 1, "ui": { "label": "Columns" } }
+      ]
+    },
+    {
+      "name": "ShelfSlot",
+      "truthLevel": "T2",
+      "ui": { "label": "Shelf slot" },
+      "fields": [
+        { "name": "id", "type": "uuid", "id": true, "required": true },
+        { "name": "shelfLayoutId", "type": "uuid", "required": true, "ui": { "label": "Shelf layout" } },
+        { "name": "row", "type": "integer", "required": true, "min": 0, "ui": { "label": "Row" } },
+        { "name": "col", "type": "integer", "required": true, "min": 0, "ui": { "label": "Column" } },
+        { "name": "entryId", "type": "reference", "required": true, "ui": { "label": "Catalogue entry" },
+          "reference": { "target": "WidgetCatalogEntry", "displayField": "displayName" } }
+      ]
+    },
+    {
       "name": "WidgetOrder",
       "truthLevel": "T2",
       "uid": "wo00000000000001",
@@ -822,6 +846,14 @@
 
   "aggregates": [
     {
+      "name": "ShelfLayoutAggregate",
+      "root": "ShelfLayout",
+      "collections": [
+        { "name": "slots", "concept": "ShelfSlot", "childField": "shelfLayoutId", "ownership": "owned" }
+      ],
+      "metadata": { "purpose": "P3b (Pigmentampas plan, 2026-10-07): the second cellGrid consumer -- a warehouse shelf map where each painted slot holds a catalogue entry. Square layout, board size from the root's rows/cols." }
+    },
+    {
       "name": "WidgetOrderAggregate",
       "root": "WidgetOrder",
       "onCommit": "AuditWidgetOrderProcedure",
@@ -900,6 +932,30 @@
   ],
 
   "autoPanels": [
+    {
+      "name": "ShelfLayoutWorkbench",
+      "aggregate": "ShelfLayoutAggregate",
+      "route": "/shelf-layouts",
+      "metadata": { "purpose": "P3b: corpus witness for transaction.regions render \"cellGrid\" -- the slots collection painted as a square board sized by the root's rows/cols, palette from ActiveCatalogEntries." },
+      "transaction": {
+        "regions": {
+          "slots": {
+            "render": "cellGrid",
+            "cellGrid": {
+              "rowField": "row",
+              "colField": "col",
+              "valueField": "entryId",
+              "rowsField": "rows",
+              "colsField": "cols",
+              "defaultRows": 4,
+              "defaultCols": 6,
+              "layout": "square",
+              "palette": { "query": "ActiveCatalogEntries", "labelField": "displayName" }
+            }
+          }
+        }
+      }
+    },
     {
       "name": "WidgetOrderWorkbench",
       "aggregate": "WidgetOrderAggregate",

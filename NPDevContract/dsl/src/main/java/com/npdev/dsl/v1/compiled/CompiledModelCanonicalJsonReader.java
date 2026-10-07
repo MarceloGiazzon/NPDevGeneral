@@ -565,9 +565,32 @@ public final class CompiledModelCanonicalJsonReader {
             JsonNode regionNode = entry.getValue();
             out.put(entry.getKey(), new CompiledRegionMount(
                     defaulted(optionalText(regionNode, "render"), "generated"),
-                    optionalText(regionNode, "component")));
+                    optionalText(regionNode, "component"),
+                    toCellGrid(regionNode.get("cellGrid"))));
         });
         return out;
+    }
+
+    /** P3b: reads a region's cellGrid block; null when absent. */
+    private static CompiledCellGrid toCellGrid(JsonNode node) {
+        if (node == null || !node.isObject()) {
+            return null;
+        }
+        JsonNode palette = node.has("palette")
+                ? node.get("palette") : com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
+        return new CompiledCellGrid(
+                optionalText(node, "rowField"),
+                optionalText(node, "colField"),
+                optionalText(node, "valueField"),
+                optionalText(node, "rowsField"),
+                optionalText(node, "colsField"),
+                optionalIntegerObject(node.get("defaultRows")),
+                optionalIntegerObject(node.get("defaultCols")),
+                optionalText(node, "layout"),
+                optionalText(palette, "query"),
+                optionalText(palette, "labelField"),
+                optionalText(palette, "imageField"),
+                optionalText(palette, "colorField"));
     }
 
     /** Move 6 Move B: reads the closed-enum transaction.hooks block; null if absent. */

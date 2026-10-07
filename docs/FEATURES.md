@@ -97,6 +97,7 @@ processes, screens, permissions, and how it all changes over time.
 | **`documents`** | generated documents and printable output |
 | **`guidePages` / `explainability`** | attach guidance to a screen so users are told what it is for — in the model, beside the thing it explains |
 | **Widget catalogue** | field types map to appropriate inputs, validated for compatibility at authoring time |
+| **Paintable boards (`render: "cellGrid"`)** | a workbench collection drawn as a square or hex board instead of a row grid: each child row is one painted cell (row, col, value), the palette is a query's rows (label, image, colour), with paint/fill/erase/undo/zoom, and Save still commits the whole aggregate in one transaction. Examples: Pigmentampas `Mosaics` (20×33 hex mosaic of caps), `dsl-conformance-max` `ShelfLayoutWorkbench` (warehouse shelf map) |
 | **Hand-made pages (`web/*.html`)** | when no declaration fits — a drawing board, a map — write the page yourself beside the model. It is copied into the app on every generate, wrapped by the shell (nav, sign-in, roles), listed in the menu from `pages.json`, and talks to the app through `NPDevShell.api` (`get`/`post`/`fileUrl`, same token and errors as the generated UI). Example: `NPDevSamples/pigmentampas/Input/web/studio.html` |
 | **Custom regions and widgets** | smaller escape hatches: an app-owned region inside a generated workbench (`regionMount`), or one field rendered by your own widget (`ui.widget: "custom"`) |
 

@@ -312,7 +312,20 @@
   "autoPanels": [
     { "name": "Mosaics", "aggregate": "MosaicAggregate", "route": "/mosaics",
       "surfaces": ["selection", "detail", "transaction"],
-      "selection": { "columns": ["code", "title", "ownerUsername", "rows", "cols", "status"] } },
+      "selection": { "columns": ["code", "title", "ownerUsername", "rows", "cols", "status"] },
+      "transaction": {
+        "regions": {
+          "cells": {
+            "render": "cellGrid",
+            "cellGrid": {
+              "rowField": "row", "colField": "col", "valueField": "capId",
+              "rowsField": "rows", "colsField": "cols", "defaultRows": 20, "defaultCols": 33,
+              "layout": "hexOffset",
+              "palette": { "query": "ApprovedCaps", "labelField": "label", "imageField": "image", "colorField": "dominantColor" }
+            }
+          }
+        }
+      } },
     { "name": "Collection", "concept": "CollectionItem", "route": "/collection",
       "surfaces": ["selection", "detail", "transaction"] },
     { "name": "Caps", "concept": "Cap", "route": "/caps",

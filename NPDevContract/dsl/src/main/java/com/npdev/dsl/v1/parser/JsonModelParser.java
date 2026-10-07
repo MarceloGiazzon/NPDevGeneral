@@ -1781,9 +1781,34 @@ public final class JsonModelParser {
         while (addresses.hasNext()) {
             String address = addresses.next();
             JsonNode regionNode = node.get(address);
-            out.put(address, new RegionMountAst(readText(regionNode, "render"), readText(regionNode, "component")));
+            out.put(address, new RegionMountAst(
+                    readText(regionNode, "render"), readText(regionNode, "component"), parseCellGrid(regionNode.get("cellGrid"))));
         }
         return out;
+    }
+
+    /** P3b: parses a region's optional cellGrid block (render "cellGrid"); null when absent. */
+    private static CellGridAst parseCellGrid(JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("transaction region cellGrid must be an object");
+        }
+        JsonNode palette = node.get("palette");
+        return new CellGridAst(
+                readText(node, "rowField"),
+                readText(node, "colField"),
+                readText(node, "valueField"),
+                readText(node, "rowsField"),
+                readText(node, "colsField"),
+                readOptionalInt(node, "defaultRows"),
+                readOptionalInt(node, "defaultCols"),
+                readText(node, "layout"),
+                palette == null ? null : readText(palette, "query"),
+                palette == null ? null : readText(palette, "labelField"),
+                palette == null ? null : readText(palette, "imageField"),
+                palette == null ? null : readText(palette, "colorField"));
     }
 
     /** Move 6 Move B: parses the optional closed-enum transaction.hooks block; null if absent. */

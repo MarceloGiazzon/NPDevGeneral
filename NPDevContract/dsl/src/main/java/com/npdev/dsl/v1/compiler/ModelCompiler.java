@@ -25,6 +25,7 @@ import com.npdev.dsl.v1.ast.SettingsAst;
 import com.npdev.dsl.v1.ast.TransactionHooksAst;
 import com.npdev.dsl.v1.ast.DerivedFieldAst;
 import com.npdev.dsl.v1.ast.RegionMountAst;
+import com.npdev.dsl.v1.ast.CellGridAst;
 import com.npdev.dsl.v1.ast.UiStateControlAst;
 import com.npdev.dsl.v1.ast.WorkbenchActionAst;
 import com.npdev.dsl.v1.ast.WorkbenchActionApplyToAst;
@@ -142,6 +143,7 @@ import com.npdev.dsl.v1.compiled.CompiledSettings;
 import com.npdev.dsl.v1.compiled.CompiledTransactionHooks;
 import com.npdev.dsl.v1.compiled.CompiledDerivedField;
 import com.npdev.dsl.v1.compiled.CompiledRegionMount;
+import com.npdev.dsl.v1.compiled.CompiledCellGrid;
 import com.npdev.dsl.v1.compiled.CompiledUiStateControl;
 import com.npdev.dsl.v1.compiled.CompiledWorkbenchAction;
 import com.npdev.dsl.v1.compiled.CompiledWorkbenchActionApplyTo;
@@ -1108,6 +1110,15 @@ public final class ModelCompiler {
         );
     }
 
+    private static CompiledCellGrid compileCellGrid(CellGridAst grid) {
+        if (grid == null) {
+            return null;
+        }
+        return new CompiledCellGrid(grid.rowField(), grid.colField(), grid.valueField(), grid.rowsField(), grid.colsField(),
+                grid.defaultRows(), grid.defaultCols(), grid.layout(),
+                grid.paletteQuery(), grid.paletteLabelField(), grid.paletteImageField(), grid.paletteColorField());
+    }
+
     private static CompiledAutoPanelSurface compileAutoPanelSurface(AutoPanelSurfaceAst surface, Map<String, SelectorAst> selectorsByName) {
         if (surface == null) {
             return null;
@@ -1123,7 +1134,7 @@ public final class ModelCompiler {
         Map<String, CompiledRegionMount> regions = new LinkedHashMap<>();
         for (Map.Entry<String, RegionMountAst> entry : surface.regions().entrySet()) {
             RegionMountAst region = entry.getValue();
-            regions.put(entry.getKey(), new CompiledRegionMount(region.render(), region.component()));
+            regions.put(entry.getKey(), new CompiledRegionMount(region.render(), region.component(), compileCellGrid(region.cellGrid())));
         }
         List<CompiledWorkbenchAction> actions = new ArrayList<>();
         for (WorkbenchActionAst action : surface.actions()) {

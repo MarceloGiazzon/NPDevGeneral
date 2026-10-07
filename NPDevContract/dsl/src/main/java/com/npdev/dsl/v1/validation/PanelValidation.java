@@ -32,6 +32,7 @@ import com.npdev.dsl.v1.ast.AutoPanelComputedAst;
 import com.npdev.dsl.v1.ast.AutoPanelSurfaceAst;
 import com.npdev.dsl.v1.ast.SelectorAst;
 import com.npdev.dsl.v1.ast.RegionMountAst;
+import com.npdev.dsl.v1.ast.CellGridAst;
 import com.npdev.dsl.v1.ast.WorkbenchActionAst;
 import com.npdev.dsl.v1.ast.WorkbenchBandPickerAst;
 import com.npdev.dsl.v1.ast.GuidePageAst;
@@ -224,7 +225,7 @@ final class PanelValidation {
 
             if (hasAggregate) {
                 AggregateAst aggregate = aggregatesByNormalizedName.get(normalize(autoPanel.aggregate()));
-                validateRegions(here, autoPanel, aggregate, errors);
+                validateRegions(here, autoPanel, aggregate, entitiesByLower, modelAst.getQueries(), errors);
                 validateWorkbenchActions(here, autoPanel, aggregate, procedureNames, errors);
                 validateVisibleWhen(here, autoPanel, aggregate, entitiesByLower, errors);
                 validateBandPickers(here, autoPanel, aggregate, entitiesByLower, errors);
@@ -578,7 +579,8 @@ final class PanelValidation {
      * rather than silently doing nothing. render:"component" must also declare a component name.
      */
     private static void validateRegions(
-            String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate, List<String> errors) {
+            String panelLabel, AutoPanelAst autoPanel, AggregateAst aggregate,
+            Map<String, ConceptAst> entitiesByLower, List<QueryAst> queries, List<String> errors) {
         AutoPanelSurfaceAst transaction = autoPanel.transaction();
         if (transaction == null || transaction.regions().isEmpty()) {
             return;
@@ -602,7 +604,96 @@ final class PanelValidation {
                         + " -- suggestedFix: declare component with the component's name on this region, "
                         + "or change render away from \"component\" to a render mode that needs no name");
             }
+            if ("cellGrid".equals(region.render())) {
+                validateCellGrid(panelLabel + " transaction.regions." + address, address, region.cellGrid(),
+                        aggregate, entitiesByLower, queries, errors);
+            }
         }
+    }
+
+    /**
+     * P3b: a render:"cellGrid" region paints a child collection as a board. Its address must be a
+     * collection (never "header"), and every field it names must exist where it is read from:
+     * row/col/value on the collection's concept, rows/cols on the aggregate root, label/image/color on
+     * the palette query's concept. A reference valueField must point at the palette query's concept,
+     * since the painted value IS a palette row's id.
+     */
+    private static void validateCellGrid(
+            String here, String address, CellGridAst grid, AggregateAst aggregate,
+            Map<String, ConceptAst> entitiesByLower, List<QueryAst> queries, List<String> errors) {
+        if (grid == null) {
+            errors.add(here + ": render is \"cellGrid\" but no cellGrid block is declared"
+                    + " -- suggestedFix: add cellGrid {rowField, colField, valueField, palette: {query}}");
+            return;
+        }
+        AggregateCollectionAst collection = address.contains(".") ? null : topLevelCollection(aggregate, address);
+        if (collection == null) {
+            errors.add(here + ": cellGrid must be mounted on a top-level collection region, not '" + address + "'"
+                    + " (the header and nested band regions are not supported)");
+            return;
+        }
+        ConceptAst cellConcept = entitiesByLower.get(normalize(collection.concept()));
+        ConceptAst rootConcept = aggregate.root() == null ? null : entitiesByLower.get(normalize(aggregate.root()));
+        requireField(here, "rowField", grid.rowField(), cellConcept, true, errors);
+        requireField(here, "colField", grid.colField(), cellConcept, true, errors);
+        FieldAst valueField = requireField(here, "valueField", grid.valueField(), cellConcept, true, errors);
+        requireField(here, "rowsField", grid.rowsField(), rootConcept, false, errors);
+        requireField(here, "colsField", grid.colsField(), rootConcept, false, errors);
+        if ((grid.defaultRows() != null && grid.defaultRows() < 1) || (grid.defaultCols() != null && grid.defaultCols() < 1)) {
+            errors.add(here + ": defaultRows/defaultCols must be at least 1");
+        }
+        if (!hasText(grid.paletteQuery())) {
+            errors.add(here + ": palette.query is required -- the query whose rows are the paintable values");
+            return;
+        }
+        QueryAst query = queries.stream()
+                .filter(q -> normalize(q.name()).equals(normalize(grid.paletteQuery())))
+                .findFirst().orElse(null);
+        if (query == null) {
+            errors.add(here + ": palette.query not found: " + grid.paletteQuery());
+            return;
+        }
+        ConceptAst paletteConcept = entitiesByLower.get(normalize(query.concept()));
+        requireField(here, "palette.labelField", grid.paletteLabelField(), paletteConcept, false, errors);
+        requireField(here, "palette.imageField", grid.paletteImageField(), paletteConcept, false, errors);
+        requireField(here, "palette.colorField", grid.paletteColorField(), paletteConcept, false, errors);
+        if (valueField != null && hasText(valueField.getReferenceTarget())
+                && !normalize(valueField.getReferenceTarget()).equals(normalize(query.concept()))) {
+            errors.add(here + ": valueField " + valueField.getName() + " references " + valueField.getReferenceTarget()
+                    + " but palette.query " + query.name() + " returns " + query.concept()
+                    + " -- the painted value is a palette row's id, so both must be the same concept");
+        }
+    }
+
+    private static AggregateCollectionAst topLevelCollection(AggregateAst aggregate, String address) {
+        for (AggregateCollectionAst collection : aggregate.collections()) {
+            if (normalize(collection.name()).equals(normalize(address))) {
+                return collection;
+            }
+        }
+        return null;
+    }
+
+    /** Returns the named field of {@code concept}, adding an error when it is required-but-absent or not found. */
+    private static FieldAst requireField(
+            String here, String key, String fieldName, ConceptAst concept, boolean required, List<String> errors) {
+        if (!hasText(fieldName)) {
+            if (required) {
+                errors.add(here + ": cellGrid." + key + " is required");
+            }
+            return null;
+        }
+        if (concept == null) {
+            return null; // an unknown concept is reported by the aggregate/query checks
+        }
+        for (FieldAst field : concept.getFields()) {
+            if (normalize(field.getName()).equals(normalize(fieldName))) {
+                return field;
+            }
+        }
+        errors.add(here + ": cellGrid." + key + " '" + fieldName + "' is not a field of " + concept.getName()
+                + " -- suggestedFix: name one of " + concept.getName() + "'s declared fields in cellGrid." + key);
+        return null;
     }
 
     private static void validateSurfaceComputed(
