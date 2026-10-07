@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pigmentampas - Studio</title>
+  <link rel="stylesheet" href="shell.css" />
+  <script src="shell.js" defer></script>
+  <style>
+    .studio { padding: 14px; max-width: 1100px; margin: 0 auto; font-size: 13px; }
+    .studio h2 { margin: 0 0 10px; font-size: 16px; }
+    .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .bar input[type=text] { min-width: 220px; padding: 5px 8px; }
+    .bar select, .bar button { padding: 5px 10px; cursor: pointer; }
+    .bar button[aria-pressed=true] { outline: 2px solid currentColor; font-weight: 600; }
+    .status { min-height: 18px; opacity: .8; margin-bottom: 8px; }
+    .status.error { color: #b3261e; opacity: 1; }
+    .palette { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; max-height: 150px; overflow-y: auto; }
+    .palette .cap { width: 30px; height: 30px; border: 2px solid transparent; cursor: pointer; }
+    .palette .cap.selected { border-color: #1a73e8; box-shadow: 0 0 0 2px #fff inset; }
+    .cap { border-radius: 50%; background-size: cover; background-position: center; display: inline-block; }
+    .board-wrap { overflow-x: auto; padding-bottom: 8px; }
+    .board { position: relative; user-select: none; }
+    .board .cell { position: absolute; width: 26px; height: 26px; cursor: crosshair; }
+    .board .cell.empty { background: #888; opacity: .25; }
+    .legend { margin-top: 8px; opacity: .7; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main class="studio">
+    <h2>Mosaic studio</h2>
+    <div class="bar">
+      <select id="mosaicPicker" title="Open one of your mosaics"><option value="">-- new mosaic --</option></select>
+      <input id="title" type="text" placeholder="Title" maxlength="120" />
+      <button id="save" type="button">Save</button>
+      <button id="saveAs" type="button">Save as new</button>
+      <span style="width:12px"></span>
+      <button id="toolPaint" type="button" aria-pressed="true">Paint</button>
+      <button id="toolFill" type="button" aria-pressed="false">Fill</button>
+      <button id="toolErase" type="button" aria-pressed="false">Erase</button>
+      <button id="undo" type="button">Undo</button>
+      <button id="clear" type="button">Clear</button>
+    </div>
+    <div id="status" class="status">Loading...</div>
+    <div id="palette" class="palette" aria-label="Cap palette"></div>
+    <div class="board-wrap"><div id="board" class="board" aria-label="Mosaic board"></div></div>
+    <div id="legend" class="legend"></div>
+  </main>
+  <script>
+  (function () {
+    "use strict";
+    // Pigmentampas studio: a hex-offset board (odd rows shifted half a cap) painted with caps from the
+    // ApprovedCaps query, saved as one MosaicAggregate commit (root Mosaic + cells[]). Only painted
+    // cells are sent; a cell absent from the draft is deleted by the aggregate reconcile.
+    var ROWS = 20, COLS = 33, SIZE = 26, ROW_STEP = 23;
+    var api;
+    var caps = [], capById = {};
+    var grid = {};          // "r,c" -> capId
+    var cellIds = {};       // "r,c" -> persisted MosaicCell id (kept so unchanged rows are updates, not churn)
+    var root = null;        // the loaded Mosaic root, or null for a new mosaic
+    var user = null;
+    var selectedCap = null, tool = "paint", undoStack = [], painting = false, strokeOpen = false;
+    var cellEls = {};
+
+    function $(id) { return document.getElementById(id); }
+    function key(r, c) { return r + "," + c; }
+    function setStatus(text, isError) {
+      var el = $("status");
+      el.textContent = text;
+      el.className = "status" + (isError ? " error" : "");
+    }
+
+    function capStyle(el, cap) {
+      el.classList.remove("empty");
+      var url = cap.image ? api.fileUrl(cap.image) : "";
+      el.style.backgroundImage = url ? "url(\"" + url + "\")" : "";
+      el.style.backgroundColor = cap.dominantColor || "#999";
+      el.title = cap.label;
+    }
+
+    function paintCellEl(k) {
+      var el = cellEls[k];
+      var cap = grid[k] && capById[grid[k]];
+      if (cap) { capStyle(el, cap); return; }
+      el.className = "cap cell empty";
+      el.style.backgroundImage = "";
+      el.style.backgroundColor = "";
+      el.title = "";
+    }
+
+    function renderBoard() {
+      var board = $("board");
+      board.innerHTML = "";
+      cellEls = {};
+      board.style.width = (COLS * SIZE + SIZE / 2) + "px";
+      board.style.height = ((ROWS - 1) * ROW_STEP + SIZE) + "px";
+      for (var r = 0; r < ROWS; r++) {
+        for (var c = 0; c < COLS; c++) {
+          var el = document.createElement("span");
+          el.className = "cap cell empty";
+          el.style.left = (c * SIZE + (r % 2 ? SIZE / 2 : 0)) + "px";
+          el.style.top = (r * ROW_STEP) + "px";
+          el.dataset.r = r;
+          el.dataset.c = c;
+          board.appendChild(el);
+          cellEls[key(r, c)] = el;
+          paintCellEl(key(r, c));
+        }
+      }
+      updateLegend();
+    }
+
+    function updateLegend() {
+      var painted = Object.keys(grid).length;
+      var distinct = {};
+      Object.keys(grid).forEach(function (k) { distinct[grid[k]] = true; });
+      $("legend").textContent = painted + " of " + (ROWS * COLS) + " cells painted, "
+        + Object.keys(distinct).length + " distinct caps"
+        + (root && root.code ? " - " + root.code + " (" + root.status + ")" : " - unsaved");
+    }
+
+    // odd-r offset neighbours: odd rows sit half a cap to the right.
+    function neighbours(r, c) {
+      var d = r % 2
+        ? [[0, -1], [0, 1], [-1, 0], [-1, 1], [1, 0], [1, 1]]
+        : [[0, -1], [0, 1], [-1, -1], [-1, 0], [1, -1], [1, 0]];
+      return d.map(function (x) { return [r + x[0], c + x[1]]; })
+        .filter(function (p) { return p[0] >= 0 && p[0] < ROWS && p[1] >= 0 && p[1] < COLS; });
+    }
+
+    function snapshot() { undoStack.push(Object.assign({}, grid)); if (undoStack.length > 100) undoStack.shift(); }
+
+    function setCell(r, c, capId) {
+      var k = key(r, c);
+      if ((grid[k] || null) === (capId || null)) return;
+      if (capId) grid[k] = capId; else delete grid[k];
+      paintCellEl(k);
+    }
+
+    function fill(r, c, capId) {
+      var target = grid[key(r, c)] || null;
+      if (target === (capId || null)) return;
+      var queue = [[r, c]], seen = {};
+      seen[key(r, c)] = true;
+      while (queue.length) {
+        var p = queue.shift();
+        setCell(p[0], p[1], capId);
+        neighbours(p[0], p[1]).forEach(function (n) {
+          var k = key(n[0], n[1]);
+          if (!seen[k] && (grid[k] || null) === target) { seen[k] = true; queue.push(n); }
+        });
+      }
+    }
+
+    function applyTool(el) {
+      if (!el || !el.dataset || el.dataset.r === undefined) return;
+      var r = +el.dataset.r, c = +el.dataset.c;
+      if (!strokeOpen) { snapshot(); strokeOpen = true; }
+      if (tool === "erase") setCell(r, c, null);
+      else if (!selectedCap) { setStatus("Pick a cap from the palette first.", true); return; }
+      else if (tool === "fill") fill(r, c, selectedCap);
+      else setCell(r, c, selectedCap);
+      updateLegend();
+    }
+
+    function wireBoard() {
+      var board = $("board");
+      board.addEventListener("pointerdown", function (e) {
+        painting = tool !== "fill";
+        strokeOpen = false;
+        applyTool(e.target);
+        e.preventDefault();
+      });
+      board.addEventListener("pointerover", function (e) { if (painting) applyTool(e.target); });
+      document.addEventListener("pointerup", function () { painting = false; strokeOpen = false; });
+    }
+
+    function setTool(name) {
+      tool = name;
+      ["Paint", "Fill", "Erase"].forEach(function (t) {
+        $("tool" + t).setAttribute("aria-pressed", String(t.toLowerCase() === name));
+      });
+    }
+
+    function renderPalette() {
+      var pal = $("palette");
+      pal.innerHTML = "";
+      caps.forEach(function (cap) {
+        var el = document.createElement("span");
+        el.className = "cap" + (cap.id === selectedCap ? " selected" : "");
+        capStyle(el, cap);
+        el.addEventListener("click", function () {
+          selectedCap = cap.id;
+          if (tool === "erase") setTool("paint");
+          renderPalette();
+        });
+        pal.appendChild(el);
+      });
+    }
+
+    function loadMosaicList(selectId) {
+      return api.get("/api/mosaics").then(function (body) {
+        var rows = Array.isArray(body) ? body : (body && (body.items || body.rows || body.content)) || [];
+        var mine = rows.filter(function (m) { return m.ownerUsername === user.id; });
+        var picker = $("mosaicPicker");
+        picker.innerHTML = "<option value=\"\">-- new mosaic --</option>";
+        mine.forEach(function (m) {
+          var opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = (m.code ? m.code + " - " : "") + m.title;
+          picker.appendChild(opt);
+        });
+        picker.value = selectId || "";
+      });
+    }
+
+    function newMosaic() {
+      root = null; grid = {}; cellIds = {}; undoStack = [];
+      ROWS = 20; COLS = 33;
+      $("title").value = "";
+      renderBoard();
+      setStatus("New mosaic - pick a cap and paint.");
+    }
+
+    function openMosaic(id) {
+      setStatus("Loading mosaic...");
+      return api.get("/api/runtime/aggregate/MosaicAggregate/" + encodeURIComponent(id)).then(function (tree) {
+        root = tree; grid = {}; cellIds = {}; undoStack = [];
+        ROWS = tree.rows || 20; COLS = tree.cols || 33;
+        (tree.cells || []).forEach(function (cell) {
+          var k = key(cell.row, cell.col);
+          cellIds[k] = cell.id;
+          if (cell.capId) grid[k] = cell.capId;
+        });
+        $("title").value = tree.title || "";
+        renderBoard();
+        setStatus("Opened " + (tree.code || tree.title) + ".");
+      });
+    }
+
+    function save(asNew) {
+      var title = $("title").value.trim();
+      if (!title) { setStatus("Give the mosaic a title first.", true); $("title").focus(); return; }
+      var existing = root && !asNew ? root : null;
+      var draft = {
+        title: title,
+        ownerUsername: existing ? existing.ownerUsername : user.id,
+        rows: ROWS,
+        cols: COLS,
+        layout: "HEX_OFFSET",
+        status: existing ? existing.status : "DRAFT",
+        description: existing ? existing.description || null : null
+      };
+      if (existing) {
+        draft.id = existing.id;
+        if (existing.code) draft.code = existing.code;
+        if (existing.sourceImage) draft.sourceImage = existing.sourceImage;
+        if (existing.builtPhoto) draft.builtPhoto = existing.builtPhoto;
+      }
+      draft.cells = Object.keys(grid).map(function (k) {
+        var parts = k.split(",");
+        var cell = { row: +parts[0], col: +parts[1], capId: grid[k] };
+        if (existing && cellIds[k]) cell.id = cellIds[k];
+        return cell;
+      });
+      setStatus("Saving " + draft.cells.length + " cells...");
+      var started = performance.now();
+      return api.post("/api/runtime/aggregate/MosaicAggregate", draft).then(function (tree) {
+        var ms = Math.round(performance.now() - started);
+        root = tree; cellIds = {};
+        (tree.cells || []).forEach(function (cell) { cellIds[key(cell.row, cell.col)] = cell.id; });
+        updateLegend();
+        setStatus("Saved " + (tree.code || tree.title) + " - " + (tree.cells || []).length + " cells committed in " + ms + " ms.");
+        return loadMosaicList(tree.id);
+      }).catch(function (err) { setStatus("Save failed: " + err.message, true); });
+    }
+
+    function start() {
+      api = window.NPDevShell.api;
+      wireBoard();
+      $("toolPaint").addEventListener("click", function () { setTool("paint"); });
+      $("toolFill").addEventListener("click", function () { setTool("fill"); });
+      $("toolErase").addEventListener("click", function () { setTool("erase"); });
+      $("undo").addEventListener("click", function () {
+        if (!undoStack.length) return;
+        grid = undoStack.pop();
+        Object.keys(cellEls).forEach(paintCellEl);
+        updateLegend();
+      });
+      $("clear").addEventListener("click", function () {
+        snapshot(); grid = {}; Object.keys(cellEls).forEach(paintCellEl); updateLegend();
+      });
+      $("save").addEventListener("click", function () { save(false); });
+      $("saveAs").addEventListener("click", function () { save(true); });
+      $("mosaicPicker").addEventListener("change", function (e) {
+        var id = e.target.value;
+        (id ? openMosaic(id) : Promise.resolve(newMosaic())).catch(function (err) {
+          setStatus("Could not open mosaic: " + err.message, true);
+        });
+      });
+
+      api.ready().then(function (me) {
+        user = me;
+        return api.get("/api/queries/ApprovedCaps?limit=1000");
+      }).then(function (body) {
+        caps = (body && body.rows) || [];
+        caps.forEach(function (cap) { capById[cap.id] = cap; });
+        if (caps.length) selectedCap = caps[0].id;
+        renderPalette();
+        var wanted = new URLSearchParams(location.search).get("id");
+        return loadMosaicList(wanted).then(function () {
+          return wanted ? openMosaic(wanted) : newMosaic();
+        });
+      }).catch(function (err) {
+        setStatus("Studio failed to load: " + err.message, true);
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", function () {
+      if (!window.NPDevShell || !window.NPDevShell.api) {
+        setStatus("The NPDev shell (shell.js) did not load - this page must be served by the app.", true);
+        return;
+      }
+      start();
+    });
+  })();
+  </script>
+</body>
+</html>

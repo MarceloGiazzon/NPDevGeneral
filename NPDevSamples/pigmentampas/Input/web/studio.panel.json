@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "npdev-panel-provenance.v1",
+  "panel": "Studio",
+  "screen": "web/studio.html",
+  "screenClass": "workbench",
+  "producer": "human",
+  "generatedFrom": {
+    "modelHash": null,
+    "generatedAt": "2026-10-07T00:00:00Z",
+    "generator": "hand-written companion page (path 4)",
+    "bundleScope": {}
+  },
+  "reads": [
+    "Cap.label",
+    "Cap.image",
+    "Cap.dominantColor",
+    "Mosaic.title",
+    "Mosaic.code",
+    "Mosaic.ownerUsername",
+    "MosaicCell.row",
+    "MosaicCell.col",
+    "MosaicCell.capId"
+  ],
+  "writes": [
+    "Mosaic.title",
+    "Mosaic.ownerUsername",
+    "Mosaic.rows",
+    "Mosaic.cols",
+    "Mosaic.layout",
+    "MosaicCell.row",
+    "MosaicCell.col",
+    "MosaicCell.capId"
+  ],
+  "invokes": [],
+  "calls": [
+    "/api/queries/ApprovedCaps",
+    "/api/mosaics",
+    "/api/runtime/aggregate/MosaicAggregate",
+    "/api/files"
+  ],
+  "slotOf": null,
+  "confirmed": true,
+  "unresolved": [],
+  "handWritten": true,
+  "reviewedBy": "claude-opus-5-5",
+  "notes": "Hex-offset mosaic editor (20x33 by default, rows/cols taken from a loaded Mosaic). Talks to the app only through NPDevShell.api; saves one MosaicAggregate commit with only the painted cells."
+}
