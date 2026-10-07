@@ -2,6 +2,7 @@ package com.npdev.dsl.v1.validation;
 
 import com.npdev.dsl.v1.ast.CapabilityAst;
 import com.npdev.dsl.v1.ast.ConceptAccessAst;
+import com.npdev.dsl.v1.ast.PublicReadAst;
 import com.npdev.dsl.v1.ast.CapabilityBindingAst;
 import com.npdev.dsl.v1.ast.CapabilityOperationAst;
 import com.npdev.dsl.v1.ast.DomainTypeAst;
@@ -335,6 +336,7 @@ final class ConceptValidation {
             }
 
             validateAccessRules(e.getName(), e.getAccess(), fieldNames, errors);
+            validatePublicRead(e, effective.fields(), effectiveModel.getAggregates(), errors);
             validateLifecycle(e, effective, effectiveModel.getAutoPanels(), effectiveModel.getAggregates(), errors);
         }
     }
@@ -846,6 +848,107 @@ final class ConceptValidation {
         }
         validateAccessExpression(entityName, "read", access.getRead(), fieldNames, errors);
         validateAccessExpression(entityName, "write", access.getWrite(), fieldNames, errors);
+    }
+
+    /**
+     * P6 (G4): compile-time checks for {@code access.public} -- the anonymous read grant. Every
+     * listed field must exist and must not carry its own field-level {@code access.read} (a public
+     * surface has no caller to evaluate it against, so the field would leak or silently vanish);
+     * {@code where} must be inside the {@code queries[].where} grammar on the concept's own fields,
+     * with no {@code $user}/{@code $prop} (no caller); {@code scope: aggregate} must name a concept
+     * that really is a child collection of some aggregate, or it would be unreachable.
+     */
+    private static void validatePublicRead(
+            ConceptAst concept,
+            List<FieldAst> fields,
+            List<AggregateAst> aggregates,
+            List<String> errors
+    ) {
+        PublicReadAst publicRead = concept.getAccess() == null ? null : concept.getAccess().getPublicRead();
+        if (publicRead == null) {
+            return;
+        }
+        String label = "Entity " + concept.getName() + " access.public";
+        Map<String, FieldAst> byName = new HashMap<>();
+        for (FieldAst field : fields) {
+            byName.put(SemanticValidator.normalize(field.getName()), field);
+        }
+        if (publicRead.fields().isEmpty()) {
+            errors.add(label + ".fields: must list at least one field (nothing is public by default)");
+        }
+        for (String name : publicRead.fields()) {
+            FieldAst field = byName.get(SemanticValidator.normalize(name));
+            if (field == null) {
+                errors.add(label + ".fields: unknown field '" + name + "'");
+            } else if (field.getAccess() != null && field.getAccess().getRead() != null) {
+                errors.add(label + ".fields: field '" + name + "' declares its own access.read, which an"
+                        + " anonymous caller cannot satisfy -- drop it from the public list or drop the rule");
+            }
+        }
+        if (!PublicReadAst.SCOPE_CONCEPT.equals(publicRead.scope())
+                && !PublicReadAst.SCOPE_AGGREGATE.equals(publicRead.scope())) {
+            errors.add(label + ".scope: must be 'concept' or 'aggregate', got '" + publicRead.scope() + "'");
+        }
+        if (PublicReadAst.SCOPE_AGGREGATE.equals(publicRead.scope())
+                && !isAggregateChild(concept.getName(), aggregates)) {
+            errors.add(label + ".scope: 'aggregate' but " + concept.getName()
+                    + " is not a child collection of any aggregate, so it could never be served");
+        }
+        String where = publicRead.where();
+        if (where == null) {
+            return;
+        }
+        if (hasDollarOutsideQuotes(where)) {
+            errors.add(label + ".where: must not reference $user/$prop -- a public read has no caller: " + where);
+            return;
+        }
+        List<List<com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateClause>> groups;
+        try {
+            groups = com.npdev.dsl.v1.query.QueryPredicateGrammar.parseGroups(where);
+        } catch (com.npdev.dsl.v1.query.QueryPredicateGrammar.UnsupportedPredicateException unsupported) {
+            errors.add(label + ".where: outside the queries[].where grammar: " + unsupported.getMessage());
+            return;
+        }
+        for (List<com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateClause> group : groups) {
+            for (com.npdev.dsl.v1.query.QueryPredicateGrammar.PredicateClause clause : group) {
+                if (!(clause.path() instanceof com.npdev.dsl.v1.query.GroupByJoinGrammar.Target.Direct direct)) {
+                    errors.add(label + ".where: reference-path joins are not supported in a public filter: " + where);
+                } else if (!byName.containsKey(SemanticValidator.normalize(direct.field()))) {
+                    errors.add(label + ".where: unknown field '" + direct.field() + "'");
+                }
+            }
+        }
+    }
+
+    private static boolean isAggregateChild(String conceptName, List<AggregateAst> aggregates) {
+        for (AggregateAst aggregate : aggregates == null ? List.<AggregateAst>of() : aggregates) {
+            if (collectionsName(conceptName, aggregate.collections())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean collectionsName(String conceptName, List<AggregateCollectionAst> collections) {
+        for (AggregateCollectionAst collection : collections == null ? List.<AggregateCollectionAst>of() : collections) {
+            if (conceptName.equalsIgnoreCase(collection.concept()) || collectionsName(conceptName, collection.collections())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasDollarOutsideQuotes(String text) {
+        boolean inQuote = false;
+        for (int index = 0; index < text.length(); index++) {
+            char current = text.charAt(index);
+            if (current == '\'') {
+                inQuote = !inQuote;
+            } else if (current == '$' && !inQuote) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -7,6 +7,7 @@
     "AgentProxyController",
     "AgentMcpController",
     "AggregateApiController",
+    "PublicReadController",
     "WebhookInboundController",
     "MessagingDeliveryController",
     "ConceptQueryController",

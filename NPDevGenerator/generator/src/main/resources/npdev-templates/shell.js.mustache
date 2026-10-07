@@ -1452,7 +1452,15 @@
   // no login flow to redirect to). A visitor already on the login page is never redirected (loop
   // guard), whether or not it happens to include this script.
   function shouldRedirectToLogin(auth, token) {
-    return Boolean(auth && auth.loginPath && auth.mode === "jwt" && !token);
+    return Boolean(auth && auth.loginPath && auth.mode === "jwt" && !token) && !isPublicPage();
+  }
+
+  // P6 (G4): a hand-made page declaring <meta name="npdev-public-page" content="true"> is meant for
+  // logged-out visitors too (e.g. a public gallery reading /api/public/**) -- never bounced to login.
+  // The shell still paints its chrome; a visitor without a token just has no menu and no identity.
+  function isPublicPage() {
+    var meta = document.querySelector('meta[name="npdev-public-page"]');
+    return Boolean(meta) && String(meta.getAttribute("content") || "").toLowerCase() === "true";
   }
 
   function redirectToLogin(loginPathRaw) {
@@ -1538,7 +1546,8 @@
     applyCompanyName();
     renderSidebar();
     applyAppTheme(manifest);
-    applyGuidePage(manifest, currentGuidePageName());
+    // P6: guide-page gadgets run authenticated queries -- not for a logged-out visitor of a public page.
+    if (!(isPublicPage() && !token)) applyGuidePage(manifest, currentGuidePageName());
     recordRecentItem(document.title, window.location.pathname);
     // R3.9: the routine recorder never even builds its UI for a visitor who is not both the app's
     // superUserRole AND explicitly opted in -- see the routine-recorder section below.
@@ -1557,9 +1566,14 @@
       applyData(cached.me, cached.menuRows, cached.manifest, token);
     }
 
+    // P6: a logged-out visitor on a public page has no identity or menu to fetch -- skip the two
+    // calls that could only 401 (the page reads /api/public/** itself).
+    var anonymousPublic = isPublicPage() && !token;
     Promise.all([
-      fetchJson("/api/me", token).catch(function () { return { roles: [], actorId: "" }; }),
-      fetchJson("/api/workspace_menus?page=0&size=200&sort=ordinal&direction=asc", token).catch(function () { return { content: [] }; }),
+      anonymousPublic ? Promise.resolve({ roles: [], actorId: "" })
+        : fetchJson("/api/me", token).catch(function () { return { roles: [], actorId: "" }; }),
+      anonymousPublic ? Promise.resolve({ content: [] })
+        : fetchJson("/api/workspace_menus?page=0&size=200&sort=ordinal&direction=asc", token).catch(function () { return { content: [] }; }),
       fetchJson("/npdev-business-ui/generated-ui-manifest.json", token).catch(function () { return { guidePages: [], defaultGuidePage: "Default" }; })
     ]).then(function (results) {
       var me = results[0];
@@ -2132,6 +2146,8 @@
       put: function (path, body) { return apiRequest("PUT", path, body === undefined ? {} : body); },
       del: function (path) { return apiRequest("DELETE", path); },
       fileUrl: function (handle) {
+        // P6: /api/public/** already projects a file field to { url } (no store handle exposed).
+        if (handle && typeof handle.url === "string") return handle.url;
         if (!handle || !handle.key) return "";
         return "/api/files?" + new URLSearchParams({ storeId: handle.storeId || "", key: handle.key }).toString();
       }

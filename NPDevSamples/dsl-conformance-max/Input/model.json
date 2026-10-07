@@ -135,7 +135,8 @@
         { "name": "name", "type": "string", "required": true, "ui": { "label": "Name" } },
         { "name": "rows", "type": "integer", "required": true, "min": 1, "ui": { "label": "Rows" } },
         { "name": "cols", "type": "integer", "required": true, "min": 1, "ui": { "label": "Columns" } }
-      ]
+      ],
+      "access": { "public": { "fields": ["name", "rows", "cols"] } }
     },
     {
       "name": "ShelfSlot",
@@ -148,7 +149,8 @@
         { "name": "col", "type": "integer", "required": true, "min": 0, "ui": { "label": "Column" } },
         { "name": "entryId", "type": "reference", "required": true, "ui": { "label": "Catalogue entry" },
           "reference": { "target": "WidgetCatalogEntry", "displayField": "displayName" } }
-      ]
+      ],
+      "access": { "public": { "fields": ["row", "col", "entryId"], "scope": "aggregate" } }
     },
     {
       "name": "WidgetOrder",
@@ -392,7 +394,13 @@
           "name": "CatalogSkuRequired",
           "expr": "sku != null && sku != ''"
         }
-      ]
+      ],
+      "access": {
+        "public": {
+          "where": "discontinued == false",
+          "fields": ["sku", "displayName", "unitPrice"]
+        }
+      }
     },
     {
       "name": "PromotedWidgetCatalogEntry",

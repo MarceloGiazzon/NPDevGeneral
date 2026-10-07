@@ -839,7 +839,12 @@ public final class CompiledModelCanonicalJsonReader {
         if (node == null || node.isNull()) {
             return null;
         }
-        return new CompiledConceptAccess(optionalText(node, "read"), optionalText(node, "write"));
+        JsonNode publicNode = node.get("public");
+        CompiledPublicRead publicRead = publicNode == null || !publicNode.isObject()
+                ? null
+                : new CompiledPublicRead(optionalText(publicNode, "where"), toStringList(publicNode.get("fields")),
+                        optionalText(publicNode, "scope"));
+        return new CompiledConceptAccess(optionalText(node, "read"), optionalText(node, "write"), publicRead);
     }
 
     /** PACK-2 (ledger; PACK-ROADMAP.md card PK-1 steps 5-7): reads {@code origin:

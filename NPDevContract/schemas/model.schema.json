@@ -2701,6 +2701,35 @@
         "write": {
           "type": "string",
           "minLength": 1
+        },
+        "public": {
+          "type": "object",
+          "description": "P6 (G4): an anonymous, read-only grant served only by the RuntimeHost /api/public/** surface (GET only; writes are never public). where narrows which rows are public (the queries[].where grammar; must not reference $user -- there is no caller); absent means every row. fields is the explicit allow-list of fields served (id is always included). scope concept (default) gives the concept its own public list/get routes; scope aggregate serves it only as a child collection inside a public aggregate root.",
+          "required": [
+            "fields"
+          ],
+          "properties": {
+            "where": {
+              "type": "string",
+              "minLength": 1
+            },
+            "fields": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "scope": {
+              "type": "string",
+              "enum": [
+                "concept",
+                "aggregate"
+              ]
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

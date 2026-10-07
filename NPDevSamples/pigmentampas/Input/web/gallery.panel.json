@@ -16,7 +16,6 @@
     "Cap.dominantColor",
     "Mosaic.title",
     "Mosaic.code",
-    "Mosaic.ownerUsername",
     "Mosaic.status",
     "Mosaic.rows",
     "Mosaic.cols",
@@ -27,15 +26,15 @@
   "writes": [],
   "invokes": [],
   "calls": [
-    "/api/queries/ApprovedCaps",
-    "/api/queries/PublishedMosaics",
-    "/api/runtime/aggregate/MosaicAggregate",
-    "/api/files"
+    "/api/public/concepts/Cap",
+    "/api/public/concepts/Mosaic",
+    "/api/public/aggregate/MosaicAggregate",
+    "/api/public/concepts/Cap/{id}/image/image"
   ],
   "slotOf": null,
   "confirmed": true,
   "unresolved": [],
   "handWritten": true,
   "reviewedBy": "claude-opus-5-5",
-  "notes": "Read-only gallery of PublishedMosaics. Each card shows a 30-cell hex thumbnail (rows 3-4-5-6-5-4-3) cropped around the densest painted region, and links to studio.html?id=<id>."
+  "notes": "Public (P6): readable logged out via <meta name=npdev-public-page>; reads only /api/public/** (Cap/Mosaic/MosaicCell access.public). Each card shows a 30-cell hex thumbnail (rows 3-4-5-6-5-4-3) cropped around the densest painted region; signed-in members get a link to studio.html?id=<id>."
 }
