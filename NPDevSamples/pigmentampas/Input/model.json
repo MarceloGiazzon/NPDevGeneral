@@ -245,7 +245,13 @@
       },
       "indexes": [
         { "name": "idx_cap_brewery", "fields": ["breweryId"] }
-      ]
+      ],
+      "access": {
+        "public": {
+          "where": "status == 'APPROVED'",
+          "fields": ["label", "dominantColor", "accentColor", "finish", "image"]
+        }
+      }
     },
     {
       "name": "CollectionItem",
@@ -324,7 +330,11 @@
       },
       "access": {
         "read": "ownerUsername == $user.id || status != 'DRAFT'",
-        "write": "ownerUsername == $user.id"
+        "write": "ownerUsername == $user.id",
+        "public": {
+          "where": "status != 'DRAFT'",
+          "fields": ["code", "title", "rows", "cols", "layout", "description", "status", "builtPhoto"]
+        }
       }
     },
     {
@@ -346,7 +356,10 @@
       "indexes": [
         { "name": "ux_mosaic_cell_pos", "fields": ["mosaicId", "row", "col"], "unique": true },
         { "name": "idx_mosaic_cell_cap", "fields": ["capId"] }
-      ]
+      ],
+      "access": {
+        "public": { "fields": ["row", "col", "capId"], "scope": "aggregate" }
+      }
     },
     {
       "name": "Credential",

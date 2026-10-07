@@ -111,6 +111,12 @@ public class JwtBearerAuthFilter extends OncePerRequestFilter {
         if (uri.startsWith("/api/hooks/")) {
             return true;
         }
+        // P6 (G4): the anonymous read surface (PublicReadController) -- GET/HEAD only, and only
+        // concepts the model marks access.public. Exempt even when a header/cookie IS present, so a
+        // visitor holding an expired session still sees the public gallery instead of a 401.
+        if (com.finalexec.publicread.PublicReadPaths.isAnonymousRead(request)) {
+            return true;
+        }
         // R6.4: the cross-app messaging inbound door has its OWN independent authentication -- an
         // HMAC-SHA256 signature HttpMessagingCapabilityAdapter itself verifies (MessagingDeliveryController
         // calls HttpMessagingCapabilityAdapter#receiveInboundDelivery directly, in-process -- no second

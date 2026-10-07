@@ -380,7 +380,7 @@ public final class JsonModelParser {
                 }
                 String accessRead = readText(accessNode, "read");
                 String accessWrite = readText(accessNode, "write");
-                access = new ConceptAccessAst(accessRead, accessWrite);
+                access = new ConceptAccessAst(accessRead, accessWrite, readPublicRead(name, accessNode.get("public")));
             }
 
             JsonNode conceptEventsNode = ent.get("events");
@@ -2109,6 +2109,26 @@ public final class JsonModelParser {
             out.put(key, parseJsonValue(node.get(key)));
         }
         return out;
+    }
+
+    /** P6: {@code access.public: { where, fields[], scope }}; null when absent. */
+    private static PublicReadAst readPublicRead(String conceptName, JsonNode node) throws IOException {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (!node.isObject()) {
+            throw new IOException("Concept " + conceptName + " access.public must be an object");
+        }
+        List<String> fields = new ArrayList<>();
+        JsonNode fieldsNode = node.get("fields");
+        if (fieldsNode != null && fieldsNode.isArray()) {
+            for (JsonNode field : fieldsNode) {
+                if (field.isTextual() && !field.asText().isBlank()) {
+                    fields.add(field.asText().trim());
+                }
+            }
+        }
+        return new PublicReadAst(readText(node, "where"), fields, readText(node, "scope"));
     }
 
     private static String readText(JsonNode node, String key) {

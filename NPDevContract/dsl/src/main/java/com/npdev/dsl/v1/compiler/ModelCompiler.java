@@ -351,7 +351,11 @@ public final class ModelCompiler {
             }
             CompiledConceptAccess compiledAccess = concept.getAccess() == null
                     ? null
-                    : new CompiledConceptAccess(concept.getAccess().getRead(), concept.getAccess().getWrite());
+                    : new CompiledConceptAccess(concept.getAccess().getRead(), concept.getAccess().getWrite(),
+                            concept.getAccess().getPublicRead() == null ? null : new com.npdev.dsl.v1.compiled.CompiledPublicRead(
+                                    concept.getAccess().getPublicRead().where(),
+                                    concept.getAccess().getPublicRead().fields(),
+                                    concept.getAccess().getPublicRead().scope()));
 
             concepts.put(
                     concept.getName(),

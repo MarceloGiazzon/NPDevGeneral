@@ -115,6 +115,58 @@ against the row version their read-for-update just returned, so even an *unversi
 race loudly instead of overwriting silently — a caller who supplies an explicit version gets the
 stronger stale-authorization guarantee whenever the row changed underneath them.
 
+## Public (anonymous) read: `access.public`
+
+A concept can also be readable by visitors who are **not signed in**, on a separate, read-only API.
+Nothing is public by default: the model names the rows and the fields.
+
+```json
+"access": {
+  "read": "ownerUsername == $user.id || status != 'DRAFT'",
+  "public": {
+    "where": "status != 'DRAFT'",
+    "fields": ["code", "title", "rows", "cols", "status", "builtPhoto"]
+  }
+}
+```
+
+- `where`: which rows are public. Same grammar as `queries[].where`, on the concept's own fields. No
+  `$user`/`$prop`, because there is no caller. Leave it out to make every row public.
+- `fields`: the allow-list. `id` is always served. A field with its own `access.read` cannot be
+  listed, because an anonymous caller can never satisfy that rule.
+- `scope`: `concept` (the default) gives the concept its own public routes. `aggregate` serves it
+  only as a child collection inside a public aggregate root, for example a published mosaic's cells.
+
+Served by `PublicReadController`. It handles `GET` only, so no public write route exists:
+
+| Route | Returns |
+|---|---|
+| `GET /api/public/concepts` | the public concepts and their fields |
+| `GET /api/public/concepts/{concept}?limit&offset&sort&direction&<field>=<value>` | `{items, total, hasMore, offset, limit}`; at most 100 rows; filters and sorts only on public fields |
+| `GET /api/public/concepts/{concept}/{id}` | one row |
+| `GET /api/public/concepts/{concept}/{id}/image/{field}` | image bytes; only public `file` fields, only images |
+| `GET /api/public/aggregate/{aggregate}/{rootId}` | the tree; children only from concepts with `access.public` |
+
+Guarantees:
+
+- **Not found looks the same every time.** A missing concept, a private concept, a filtered-out row
+  and a non-public field all return the same 404. The API never confirms that private data exists.
+- **Counts are correct.** `where` is pushed into the store query, so `total` only counts public rows.
+- **No file handles are exposed.** A `file` field is served as `{ "url": "/api/public/.../image/<field>" }`.
+- **Public read only narrows.** Reads go through the concept gateway as the principal
+  `public:anonymous`, so the concept's own `access.read` still applies.
+- **One tenant.** Public data is read from `npdev.public-read.tenant-id`. The default is `dev`, the same tenant a login without a tenant uses. If that
+  tenant is disabled, nothing is served.
+- **Rate-limited.** `npdev.public-read.rate-limit-per-minute` (default 240) per client address.
+  Over the limit returns 429 with `Retry-After`. `X-Forwarded-For` is ignored unless
+  `npdev.public-read.trust-forwarded-for=true` (set it only behind a proxy you control).
+- **Exempt from auth for GET/HEAD only.** Both auth filters skip `/api/public/**` for those two
+  methods, even if a stale session token is sent. Any other method still needs a credential.
+
+A hand-made page (`web/*.html`) that should work for logged-out visitors declares
+`<meta name="npdev-public-page" content="true">`. The shell then skips the login redirect.
+`NPDevShell.api.fileUrl()` accepts the public `{url}` shape. Example: Pigmentampas `web/gallery.html`.
+
 ## What's deliberately out of scope
 
 - **Uniqueness pre-checks** (`existsUniqueInConceptStore` and friends) intentionally scan the

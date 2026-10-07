@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pigmentampas - Gallery</title>
+  <!-- P6: readable while logged out -- the shell does not bounce visitors to login, and all data
+       comes from the anonymous, read-only /api/public/** surface (model access.public grants). -->
+  <meta name="npdev-public-page" content="true" />
   <link rel="stylesheet" href="shell.css" />
   <script src="shell.js" defer></script>
   <style>
@@ -32,10 +35,12 @@
   <script>
   (function () {
     "use strict";
-    // Pigmentampas gallery: every mosaic the PublishedMosaics query returns, each with a 30-cell hex
-    // thumbnail (rows of 3-4-5-6-5-4-3 caps) cropped around the most densely painted part of the board.
-    // Same odd-r offset geometry as studio.html: odd rows sit half a cap to the right.
-    var SHAPE = [3, 4, 5, 6, 5, 4, 3], SIZE = 22, ROW_STEP = 19, MAX_CARDS = 48;
+    // Pigmentampas gallery: every non-draft mosaic, each with a 30-cell hex thumbnail (rows of
+    // 3-4-5-6-5-4-3 caps) cropped around the most densely painted part of the board. Same odd-r offset
+    // geometry as studio.html: odd rows sit half a cap to the right. Public: everything is read from
+    // /api/public/** (Mosaic/Cap/MosaicCell declare access.public), so it works logged out too.
+    var SHAPE = [3, 4, 5, 6, 5, 4, 3], SIZE = 22, ROW_STEP = 19, MAX_CARDS = 48, PAGE = 100;
+    var PUBLIC = "/api/public";
     var api, capById = {};
 
     function $(id) { return document.getElementById(id); }
@@ -102,40 +107,48 @@
       return thumb;
     }
 
-    function card(mosaic) {
-      var a = document.createElement("a");
+    function card(mosaic, signedIn) {
+      // Only a signed-in member can open the studio; a visitor just looks.
+      var a = document.createElement(signedIn ? "a" : "div");
       a.className = "card";
-      a.href = "studio.html?id=" + encodeURIComponent(mosaic.id);
+      if (signedIn) a.href = "studio.html?id=" + encodeURIComponent(mosaic.id);
       var title = document.createElement("div");
       title.className = "title";
       title.textContent = mosaic.title;
       var meta = document.createElement("div");
       meta.className = "meta";
-      meta.textContent = [mosaic.code, mosaic.ownerUsername, mosaic.status].filter(Boolean).join(" - ");
+      meta.textContent = [mosaic.code, mosaic.status].filter(Boolean).join(" - ");
       a.appendChild(document.createElement("div"));
       a.appendChild(title);
       a.appendChild(meta);
       return a;
     }
 
+    // The public list endpoint pages at most PAGE rows; walk it for the whole approved catalogue.
+    function allCaps(offset) {
+      return api.get(PUBLIC + "/concepts/Cap?sort=label&limit=" + PAGE + "&offset=" + offset).then(function (page) {
+        (page.items || []).forEach(function (cap) { capById[cap.id] = cap; });
+        return page.hasMore ? allCaps(offset + PAGE) : null;
+      });
+    }
+
     function start() {
       api = window.NPDevShell.api;
-      api.ready().then(function () {
-        return Promise.all([
-          api.get("/api/queries/ApprovedCaps?limit=1000"),
-          api.get("/api/queries/PublishedMosaics?limit=" + MAX_CARDS)
-        ]);
-      }).then(function (res) {
-        ((res[0] && res[0].rows) || []).forEach(function (cap) { capById[cap.id] = cap; });
-        var mosaics = (res[1] && res[1].rows) || [];
+      var signedIn = Boolean(api.token());
+      Promise.all([
+        allCaps(0),
+        api.get(PUBLIC + "/concepts/Mosaic?sort=code&direction=desc&limit=" + MAX_CARDS)
+      ]).then(function (res) {
+        var mosaics = (res[1] && res[1].items) || [];
         if (!mosaics.length) { setStatus("No published mosaics yet."); return; }
-        setStatus(mosaics.length + " published mosaic" + (mosaics.length === 1 ? "" : "s") + ".");
+        setStatus(mosaics.length + " published mosaic" + (mosaics.length === 1 ? "" : "s") + "."
+            + (signedIn ? "" : " Sign in to paint your own."));
         var cards = $("cards");
         // One aggregate read per mosaic fills its thumbnail; the card shows as soon as the list is in.
         mosaics.forEach(function (m) {
-          var el = card(m);
+          var el = card(m, signedIn);
           cards.appendChild(el);
-          api.get("/api/runtime/aggregate/MosaicAggregate/" + encodeURIComponent(m.id)).then(function (tree) {
+          api.get(PUBLIC + "/aggregate/MosaicAggregate/" + encodeURIComponent(m.id)).then(function (tree) {
             el.replaceChild(renderThumb(tree), el.firstChild);
           }).catch(function () { /* card stays without a thumbnail */ });
         });

@@ -57,6 +57,14 @@ public class RuntimeApiKeyAuthFilter extends OncePerRequestFilter {
         if (uri.startsWith("/npdev/messaging/")) {
             return true;
         }
+        // P6 (G4): the anonymous read surface -- GET/HEAD only under /api/public/. Same check as
+        // com.finalexec.publicread.PublicReadPaths (JwtBearerAuthFilter's side), inlined here.
+        String method = request.getMethod();
+        if (("GET".equalsIgnoreCase(method) || "HEAD".equalsIgnoreCase(method))
+                && (uri.startsWith("/api/public/") || uri.equals("/api/public")
+                        || uri.startsWith("/api/v1/public/") || uri.equals("/api/v1/public"))) {
+            return true;
+        }
         // An earlier filter in the chain (e.g. SuperUserCredentialAuthFilter, order -110) may already
         // have authenticated this request via a completely independent credential (the ControlPanel's
         // X-Super-User-Key) and set the claims attribute. This filter must not clobber that

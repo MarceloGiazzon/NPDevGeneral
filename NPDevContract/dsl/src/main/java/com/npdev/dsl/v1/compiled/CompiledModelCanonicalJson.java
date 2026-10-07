@@ -1598,6 +1598,15 @@ public final class CompiledModelCanonicalJson {
         ObjectNode node = JsonNodeFactory.instance.objectNode();
         node.put("read", safe(access.getRead()));
         node.put("write", safe(access.getWrite()));
+        CompiledPublicRead publicRead = access.getPublicRead();
+        if (publicRead != null) {
+            // P6: key omitted when undeclared, so every existing canonical JSON stays byte-identical.
+            ObjectNode publicNode = node.putObject("public");
+            publicNode.put("where", safe(publicRead.where()));
+            ArrayNode fields = publicNode.putArray("fields");
+            publicRead.fields().forEach(fields::add);
+            publicNode.put("scope", publicRead.scope());
+        }
         return node;
     }
 
